@@ -1,7 +1,7 @@
 /**
  * Privacy filter for trajectory exports.
  *
- * Three jobs:
+ * Four jobs:
  *   1. Anonymize cross-platform handles by mapping them to opaque entity IDs
  *      (the caller supplies a lookup callback so app-training does not have
  *      to depend on the relationships service directly).
@@ -9,6 +9,9 @@
  *      the participating entity is `private`.
  *   3. Strip credential references — env-var name patterns from process.env,
  *      plus the usual API key shapes (`sk-…`, `Bearer …`).
+ *   4. Strip geo coordinates — bare decimal pairs, labeled `lat:`/`lng:`
+ *      values, and JSON `"coords":{"latitude":..,"longitude":..}` blocks
+ *      from the Location plugin — replaced with `[REDACTED_GEO]`.
  *
  * Run automatically before any export to disk; required for any cloud upload.
  */
@@ -94,6 +97,37 @@ const DEFAULT_CREDENTIAL_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   },
 ];
 
+/**
+ * Geo coordinate redaction.
+ *
+ * The travel-time consumer now reads from the Location plugin
+ * (`apps/app-lifeops/src/travel-time/service.ts`), so precise lat/lon
+ * values can land in trajectory text. We strip them before any export with
+ * the marker `[REDACTED_GEO]`.
+ *
+ * Patterns are intentionally narrow — they require a lat/lng label, a JSON
+ * wrapper, or at least one decimal place per number — so we do not redact
+ * ordinary integer pairs (timestamps, IDs) that happen to be comma-separated.
+ *
+ * Order matters: the JSON `coords` block is consumed first so the inner
+ * `latitude/longitude` pair does not get redacted twice.
+ */
+const GEO_REPLACEMENT = "[REDACTED_GEO]";
+
+const DEFAULT_GEO_PATTERNS: RegExp[] = [
+  // 1. JSON `"coords":{"latitude":..,"longitude":..[,...]}` (Capacitor shape).
+  /"coords"\s*:\s*\{\s*"latitude"\s*:\s*-?\d+(?:\.\d+)?\s*,\s*"longitude"\s*:\s*-?\d+(?:\.\d+)?(?:\s*,\s*"[A-Za-z_][A-Za-z0-9_]*"\s*:\s*[^,}]+)*\s*\}/g,
+  // 2. Bare JSON pair `"latitude":..,"longitude":..`.
+  /"latitude"\s*:\s*-?\d+(?:\.\d+)?\s*,\s*"longitude"\s*:\s*-?\d+(?:\.\d+)?/g,
+  // 3. `current location: 37.7, -122.4` / `coords: ...` / `coordinates=...`.
+  /\b(?:current\s+location|location|coords|coordinates)\s*[:=]\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?/gi,
+  // 4. Labeled `lat: .., lng: ..` / `latitude=.., longitude=..`.
+  /\b(?:lat|latitude)\s*[:=]\s*-?\d+(?:\.\d+)?\s*[,;]\s*(?:lng|lon|long|longitude)\s*[:=]\s*-?\d+(?:\.\d+)?/gi,
+  // 5. Bare decimal pair `37.7749, -122.4194` (both numbers must have a
+  //    fractional component to avoid matching integer pairs).
+  /\b-?\d{1,3}\.\d{2,}\s*,\s*-?\d{1,3}\.\d{2,}\b/g,
+];
+
 function snapshotEnvCredentials(envKeys: string[]): string[] {
   // Heuristic: a key counts as a credential if its NAME matches a common
   // secret-marker substring AND its VALUE is non-empty and reasonably long.
@@ -139,6 +173,17 @@ function redactCredentials(
   return out;
 }
 
+function redactGeo(value: string, state: InternalState): string {
+  let out = value;
+  for (const pattern of DEFAULT_GEO_PATTERNS) {
+    out = out.replace(pattern, () => {
+      state.redactionCount += 1;
+      return GEO_REPLACEMENT;
+    });
+  }
+  return out;
+}
+
 function anonymizeHandles(
   value: string,
   options: PrivacyFilterOptions,
@@ -173,13 +218,16 @@ function transformText(
   state: InternalState,
   collectedEntities: Set<string>,
 ): string {
-  const redacted = redactCredentials(
-    value,
+  // Geo first so JSON `coords` blocks collapse before any later pass can see
+  // a stray decimal pair inside them.
+  const geoRedacted = redactGeo(value, state);
+  const credRedacted = redactCredentials(
+    geoRedacted,
     credentialPatterns,
     credentialValues,
     state,
   );
-  const { result, entityHits } = anonymizeHandles(redacted, options, state);
+  const { result, entityHits } = anonymizeHandles(credRedacted, options, state);
   for (const entityId of entityHits) collectedEntities.add(entityId);
   return result;
 }

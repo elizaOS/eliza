@@ -12,7 +12,7 @@ function createActionResult(partial: Partial<ActionResult> = {}): ActionResult {
 	};
 }
 
-describe("Action Chaining Fixes", () => {
+describe("Action Plan immutability + working-memory helpers", () => {
 	describe("createActionResult helper", () => {
 		it("should create ActionResult with default success=true", () => {
 			const result = createActionResult();

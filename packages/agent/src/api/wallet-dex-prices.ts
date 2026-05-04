@@ -1,12 +1,4 @@
-/**
- * DEX Price Oracle — DexScreener (primary) + DexPaprika (fallback).
- *
- * Fetches USD token prices from on-chain DEX aggregators.
- * Used by the wallet balance modules to annotate token rows with USD values.
- */
 import { logger } from "@elizaos/core";
-
-// ── Chain ID → DEX API slug mappings ──────────────────────────────────
 
 export const DEXSCREENER_CHAIN_MAP: Record<number, string> = {
   1: "ethereum",
@@ -28,7 +20,6 @@ export const DEXPAPRIKA_CHAIN_MAP: Record<number, string> = {
   43114: "avalanche",
 };
 
-/** Wrapped native token addresses for pricing native balances via DEX APIs. */
 export const WRAPPED_NATIVE: Record<number, string> = {
   1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   56: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
@@ -41,8 +32,6 @@ export const WRAPPED_NATIVE: Record<number, string> = {
 
 export const DEX_PRICE_TIMEOUT_MS = 10_000;
 
-// ── Types ─────────────────────────────────────────────────────────────
-
 export interface DexScreenerPair {
   baseToken?: { address?: string };
   priceUsd?: string | null;
@@ -50,18 +39,11 @@ export interface DexScreenerPair {
   info?: { imageUrl?: string };
 }
 
-/** Price + optional logo URL from DEX aggregators. */
 export interface DexTokenMeta {
   price: string;
   logoUrl?: string;
 }
 
-// ── DexScreener ───────────────────────────────────────────────────────
-
-/**
- * Batch-fetch USD prices from DexScreener.
- * Returns a map of lowercased contract address → price USD string.
- */
 export async function fetchDexScreenerPrices(
   chainId: number,
   addresses: string[],
@@ -70,7 +52,6 @@ export async function fetchDexScreenerPrices(
   const chain = DEXSCREENER_CHAIN_MAP[chainId];
   if (!chain || addresses.length === 0) return results;
 
-  // DexScreener supports up to 30 addresses per request.
   const batches: string[][] = [];
   for (let i = 0; i < addresses.length; i += 30) {
     batches.push(addresses.slice(i, i + 30));
@@ -88,7 +69,6 @@ export async function fetchDexScreenerPrices(
         const pairs: DexScreenerPair[] = await res.json();
         if (!Array.isArray(pairs)) return;
 
-        // Group by base token address; pick the pair with highest liquidity.
         const best = new Map<string, DexScreenerPair>();
         for (const pair of pairs) {
           const addr = pair.baseToken?.address?.toLowerCase();
@@ -121,12 +101,6 @@ export async function fetchDexScreenerPrices(
   return results;
 }
 
-// ── DexPaprika (fallback) ─────────────────────────────────────────────
-
-/**
- * Fetch individual token prices from DexPaprika as fallback.
- * Only called for addresses that DexScreener couldn't price.
- */
 export async function fetchDexPaprikaPrices(
   chainId: number,
   addresses: string[],
@@ -159,23 +133,15 @@ export async function fetchDexPaprikaPrices(
   return results;
 }
 
-// ── Combined price fetcher ────────────────────────────────────────────
-
-/**
- * Fetch USD prices for a list of token addresses using DexScreener (primary)
- * with DexPaprika fallback. Returns a map of lowercased address → price string.
- */
 export async function fetchDexPrices(
   chainId: number,
   addresses: string[],
 ): Promise<Map<string, DexTokenMeta>> {
   if (addresses.length === 0) return new Map();
 
-  const lowerAddresses = addresses.map((a) => a.toLowerCase());
+  const lowerAddresses = addresses.map((address) => address.toLowerCase());
   const results = await fetchDexScreenerPrices(chainId, lowerAddresses);
-
-  // Fallback to DexPaprika for tokens DexScreener couldn't price.
-  const missing = lowerAddresses.filter((a) => !results.has(a));
+  const missing = lowerAddresses.filter((address) => !results.has(address));
   if (missing.length > 0) {
     const fallback = await fetchDexPaprikaPrices(chainId, missing);
     for (const [addr, meta] of fallback) {
@@ -186,12 +152,6 @@ export async function fetchDexPrices(
   return results;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────
-
-/**
- * Compute USD value from a formatted balance string and a price string.
- * Returns "0" if either value is invalid.
- */
 export function computeValueUsd(balance: string, priceUsd: string): string {
   const bal = Number.parseFloat(balance);
   const price = Number.parseFloat(priceUsd);
@@ -200,7 +160,8 @@ export function computeValueUsd(balance: string, priceUsd: string): string {
     !Number.isFinite(price) ||
     bal <= 0 ||
     price <= 0
-  )
+  ) {
     return "0";
+  }
   return (bal * price).toFixed(2);
 }

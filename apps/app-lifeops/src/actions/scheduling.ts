@@ -12,6 +12,11 @@
  *    hours, blackout windows, and travel buffer to the LifeOps profile
  *    (stored alongside the existing owner profile in scheduler task
  *    metadata — no new table).
+ *
+ * Every user-visible reply runs through `renderLifeOpsActionReply` so the raw
+ * data templates land in the agent's character voice instead of being streamed
+ * raw. The structured `data` payload on each ActionResult is preserved verbatim
+ * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
@@ -41,6 +46,10 @@ import {
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { getZonedDateParts } from "../lifeops/time.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import {
+  messageText as getMessageText,
+  renderLifeOpsActionReply,
+} from "./lifeops-grounded-reply.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { inferTimeZoneFromLocationText } from "./timezone-normalization.js";
 
@@ -391,6 +400,51 @@ async function denyIfNoAccess(
   return !(await hasLifeOpsAccess(runtime, message));
 }
 
+type SchedulingRespondPayload<
+  T extends NonNullable<ActionResult["data"]> | undefined,
+> = {
+  success: boolean;
+  scenario: string;
+  fallback: string;
+  context?: Record<string, unknown>;
+  data?: T;
+  values?: ActionResult["values"];
+};
+
+function makeSchedulingRespond(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  callback: Parameters<NonNullable<Action["handler"]>>[4];
+  actionName: string;
+}): <T extends NonNullable<ActionResult["data"]> | undefined>(
+  payload: SchedulingRespondPayload<T>,
+) => Promise<ActionResult> {
+  const intent = getMessageText(args.message).trim();
+  return async (payload) => {
+    const text = await renderLifeOpsActionReply({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      intent,
+      scenario: payload.scenario,
+      fallback: payload.fallback,
+      context: payload.context,
+    });
+    await args.callback?.({
+      text,
+      source: "action",
+      action: args.actionName,
+    });
+    return {
+      text,
+      success: payload.success,
+      ...(payload.values ? { values: payload.values } : {}),
+      ...(payload.data ? { data: payload.data } : {}),
+    };
+  };
+}
+
 export const proposeMeetingTimesAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -426,30 +480,41 @@ export const proposeMeetingTimesAction: Action & {
     "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  handler: async (runtime, message, _state, options, callback) => {
+  handler: async (runtime, message, state, options, callback) => {
+    const respond = makeSchedulingRespond({
+      runtime,
+      message,
+      state,
+      callback,
+      actionName: "OWNER_CALENDAR",
+    });
+
     if (await denyIfNoAccess(runtime, message)) {
-      const text =
-        "Scheduling actions are restricted to the owner and authorized users.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "scheduling_access_denied",
+        fallback:
+          "Scheduling actions are restricted to the owner and authorized users.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
 
     const params = getParams<ProposeMeetingTimesParameters>(options);
     const preferences = await readLifeOpsMeetingPreferences(runtime);
-    const messageText =
+    const messageBody =
       typeof message.content?.text === "string" ? message.content.text : "";
     const inferredTimeZone =
       (typeof params.timeZone === "string" && params.timeZone.trim().length > 0
         ? params.timeZone.trim()
-        : null) ?? inferTimeZoneFromLocationText(messageText);
+        : null) ?? inferTimeZoneFromLocationText(messageBody);
     const effectivePreferences = inferredTimeZone
       ? { ...preferences, timeZone: inferredTimeZone }
       : preferences;
     const counterparties =
       Array.isArray(params.counterparties) && params.counterparties.length > 0
         ? params.counterparties
-        : extractBundledMeetingCounterparties(messageText);
-    const bundleLocationLabel = deriveBundleLocationLabel(messageText);
+        : extractBundledMeetingCounterparties(messageBody);
+    const bundleLocationLabel = deriveBundleLocationLabel(messageBody);
     const durationMinutes =
       typeof params.durationMinutes === "number" &&
       params.durationMinutes >= 5 &&
@@ -489,20 +554,21 @@ export const proposeMeetingTimesAction: Action & {
       events = feed.events;
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
-        const text =
+        const fallback =
           error.status === 403
             ? "I can't propose times yet — Google Calendar isn't connected. Connect your calendar and try again."
             : `I couldn't read your calendar (${error.message}).`;
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "scheduling_calendar_unavailable",
+          fallback,
+          context: { status: error.status, detail: error.message },
           data: {
             error: "CALENDAR_UNAVAILABLE",
             status: error.status,
             detail: error.message,
           },
-        };
+        });
       }
       throw error;
     }
@@ -517,7 +583,7 @@ export const proposeMeetingTimesAction: Action & {
       events,
     });
 
-    const text = formatProposedSlotsReply({
+    const fallback = formatProposedSlotsReply({
       slots,
       context: {
         counterparties,
@@ -525,10 +591,17 @@ export const proposeMeetingTimesAction: Action & {
         timeZone: effectivePreferences.timeZone,
       },
     });
-    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-    return {
-      text,
+    return respond({
       success: true,
+      scenario: "scheduling_proposed_slots",
+      fallback,
+      context: {
+        slotCount: slots.length,
+        durationMinutes,
+        timeZone: effectivePreferences.timeZone,
+        counterparties,
+        bundleLocationLabel,
+      },
       data: {
         slots,
         durationMinutes,
@@ -539,7 +612,7 @@ export const proposeMeetingTimesAction: Action & {
         counterparties,
         bundleLocationLabel,
       },
-    };
+    });
   },
   parameters: [
     {
@@ -601,22 +674,36 @@ export const checkAvailabilityAction: Action = {
     "Check whether the owner is free or busy across a specific ISO-8601 " +
     "time window. Returns a free/busy summary and any overlapping events.",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  handler: async (runtime, message, _state, options, callback) => {
+  handler: async (runtime, message, state, options, callback) => {
+    const respond = makeSchedulingRespond({
+      runtime,
+      message,
+      state,
+      callback,
+      actionName: "OWNER_CALENDAR",
+    });
+
     if (await denyIfNoAccess(runtime, message)) {
-      const text =
-        "Scheduling actions are restricted to the owner and authorized users.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "scheduling_access_denied",
+        fallback:
+          "Scheduling actions are restricted to the owner and authorized users.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
 
     const params = getParams<CheckAvailabilityParameters>(options);
     const windowStart = parseOptionalIso(params.startAt);
     const windowEnd = parseOptionalIso(params.endAt);
     if (!windowStart || !windowEnd || windowEnd <= windowStart) {
-      const text =
-        "I need a valid ISO start and end time to check availability (end must be after start).";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "INVALID_WINDOW" } };
+      return respond({
+        success: false,
+        scenario: "scheduling_invalid_window",
+        fallback:
+          "I need a valid ISO start and end time to check availability (end must be after start).",
+        data: { error: "INVALID_WINDOW" },
+      });
     }
 
     const preferences = await readLifeOpsMeetingPreferences(runtime);
@@ -632,20 +719,21 @@ export const checkAvailabilityAction: Action = {
       events = feed.events;
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
-        const text =
+        const fallback =
           error.status === 403
             ? "I can't check availability — Google Calendar isn't connected."
             : `I couldn't read your calendar (${error.message}).`;
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "scheduling_calendar_unavailable",
+          fallback,
+          context: { status: error.status, detail: error.message },
           data: {
             error: "CALENDAR_UNAVAILABLE",
             status: error.status,
             detail: error.message,
           },
-        };
+        });
       }
       throw error;
     }
@@ -659,14 +747,19 @@ export const checkAvailabilityAction: Action = {
     });
 
     const isFree = conflicts.length === 0;
-    const text = isFree
+    const fallback = isFree
       ? `You're free from ${formatLocalForDisplay(windowStart.toISOString(), preferences.timeZone)} to ${formatLocalForDisplay(windowEnd.toISOString(), preferences.timeZone)}.`
       : `You have ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} in that window: ${conflicts.map((c) => c.title || "Untitled").join(", ")}.`;
 
-    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-    return {
-      text,
+    return respond({
       success: true,
+      scenario: isFree ? "scheduling_window_free" : "scheduling_window_busy",
+      fallback,
+      context: {
+        isFree,
+        conflictCount: conflicts.length,
+        timeZone: preferences.timeZone,
+      },
       data: {
         isFree,
         windowStart: windowStart.toISOString(),
@@ -679,7 +772,7 @@ export const checkAvailabilityAction: Action = {
         })),
         timeZone: preferences.timeZone,
       },
-    };
+    });
   },
   parameters: [
     {
@@ -754,12 +847,23 @@ export const updateMeetingPreferencesAction: Action & {
     "sleep windows, no-call hours, and other recurring scheduling rules.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  handler: async (runtime, message, _state, options, callback) => {
+  handler: async (runtime, message, state, options, callback) => {
+    const respond = makeSchedulingRespond({
+      runtime,
+      message,
+      state,
+      callback,
+      actionName: "OWNER_CALENDAR",
+    });
+
     if (await denyIfNoAccess(runtime, message)) {
-      const text =
-        "Scheduling actions are restricted to the owner and authorized users.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "scheduling_access_denied",
+        fallback:
+          "Scheduling actions are restricted to the owner and authorized users.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
 
     const params = getParams<Record<string, unknown>>(options);
@@ -767,34 +871,40 @@ export const updateMeetingPreferencesAction: Action & {
       normalizeLifeOpsMeetingPreferencesPatch(params);
 
     if (Object.keys(patch).length === 0) {
-      const text =
-        "No valid preference fields were provided. Supply preferredStartLocal/preferredEndLocal as HH:MM, numeric defaultDurationMinutes/travelBufferMinutes, or a blackoutWindows array.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "NO_FIELDS" } };
+      return respond({
+        success: false,
+        scenario: "scheduling_preferences_no_fields",
+        fallback:
+          "No valid preference fields were provided. Supply preferredStartLocal/preferredEndLocal as HH:MM, numeric defaultDurationMinutes/travelBufferMinutes, or a blackoutWindows array.",
+        data: { error: "NO_FIELDS" },
+      });
     }
 
     const updated = await updateLifeOpsMeetingPreferences(runtime, patch);
     if (!updated) {
-      const text = "Could not persist meeting preferences.";
-      await callback?.({ text });
-      return {
-        text,
+      return respond({
         success: false,
+        scenario: "scheduling_preferences_update_failed",
+        fallback: "Could not persist meeting preferences.",
         data: { error: "PREFERENCES_UPDATE_FAILED" },
-      };
+      });
     }
 
-    const text = `Updated meeting preferences (${updated.preferredStartLocal}–${updated.preferredEndLocal} ${updated.timeZone}, default ${updated.defaultDurationMinutes} min, travel buffer ${updated.travelBufferMinutes} min, ${updated.blackoutWindows.length} blackout window${updated.blackoutWindows.length === 1 ? "" : "s"}).`;
-    await callback?.({
-      text,
-      source: "action",
-      action: "OWNER_CALENDAR",
-    });
-    return {
-      text,
+    const fallback = `Updated meeting preferences (${updated.preferredStartLocal}–${updated.preferredEndLocal} ${updated.timeZone}, default ${updated.defaultDurationMinutes} min, travel buffer ${updated.travelBufferMinutes} min, ${updated.blackoutWindows.length} blackout window${updated.blackoutWindows.length === 1 ? "" : "s"}).`;
+    return respond({
       success: true,
+      scenario: "scheduling_preferences_updated",
+      fallback,
+      context: {
+        preferredStartLocal: updated.preferredStartLocal,
+        preferredEndLocal: updated.preferredEndLocal,
+        timeZone: updated.timeZone,
+        defaultDurationMinutes: updated.defaultDurationMinutes,
+        travelBufferMinutes: updated.travelBufferMinutes,
+        blackoutWindowCount: updated.blackoutWindows.length,
+      },
       data: { preferences: updated, updatedFields: Object.keys(patch) },
-    };
+    });
   },
   parameters: [
     {
@@ -1077,10 +1187,21 @@ export const schedulingAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
+    const respond = makeSchedulingRespond({
+      runtime,
+      message,
+      state,
+      callback,
+      actionName: "OWNER_CALENDAR",
+    });
+
     if (!(await hasOwnerAccess(runtime, message))) {
-      const text = "Scheduling negotiation is restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "scheduling_negotiation_access_denied",
+        fallback: "Scheduling negotiation is restricted to the owner.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
 
     const params =
@@ -1089,48 +1210,48 @@ export const schedulingAction: Action & {
         | undefined) ?? {};
     const messageBody =
       typeof message.content?.text === "string" ? message.content.text : "";
-    const intent = (params.intent ?? messageBody).trim();
+    const planIntent = (params.intent ?? messageBody).trim();
     const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
     const llmPlan = await resolveSchedulingPlanWithLlm({
       runtime,
       message,
       state,
-      intent,
+      intent: planIntent,
       params,
     });
     const subaction = explicitSubaction ?? llmPlan.subaction;
 
     if (llmPlan.shouldAct === false && !explicitSubaction) {
-      const text =
+      const fallback =
         llmPlan.response ??
         "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
-      await callback?.({ text });
-      return {
-        text,
+      return respond({
         success: false,
+        scenario: "scheduling_negotiation_clarification",
+        fallback,
         values: {
           success: false,
           error: "PLANNER_SHOULDACT_FALSE",
           noop: true,
         },
         data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
-      };
+      });
     }
 
     if (!subaction) {
-      const text =
+      const fallback =
         llmPlan.response ??
         "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
-      await callback?.({ text });
-      return {
-        text,
+      return respond({
         success: false,
+        scenario: "scheduling_negotiation_missing_subaction",
+        fallback,
         values: { requiresConfirmation: true },
         data: {
           error: "MISSING_SUBACTION",
           requiresConfirmation: true,
         },
-      };
+      });
     }
 
     const service = new LifeOpsService(runtime);
@@ -1138,18 +1259,17 @@ export const schedulingAction: Action & {
       if (subaction === "start") {
         const subject = params.subject ?? params.intent ?? messageBody.trim();
         if (!subject) {
-          const text =
-            "I need a subject (what the meeting is about) to start a negotiation.";
-          await callback?.({ text });
-          return {
-            text,
+          return respond({
             success: false,
+            scenario: "scheduling_negotiation_start_missing_subject",
+            fallback:
+              "I need a subject (what the meeting is about) to start a negotiation.",
             values: { requiresConfirmation: true },
             data: {
               error: "MISSING_SUBJECT",
               requiresConfirmation: true,
             },
-          };
+          });
         }
         const neg = await service.startNegotiation({
           subject,
@@ -1157,28 +1277,36 @@ export const schedulingAction: Action & {
           durationMinutes: params.durationMinutes,
           timezone: params.timezone,
         });
-        const text = `Started ${formatNegotiationSummary(neg)} and notified the counterparty.`;
-        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-        return { text, success: true, data: { negotiation: neg } };
+        return respond({
+          success: true,
+          scenario: "scheduling_negotiation_started",
+          fallback: `Started ${formatNegotiationSummary(neg)} and notified the counterparty.`,
+          context: {
+            negotiationId: neg.id,
+            subject: neg.subject,
+            durationMinutes: neg.durationMinutes,
+            state: neg.state,
+          },
+          data: { negotiation: neg },
+        });
       }
 
       if (subaction === "propose") {
         if (!params.negotiationId || !params.startAt || !params.endAt) {
-          const text =
-            "Propose needs negotiationId, startAt, and endAt (ISO-8601).";
-          await callback?.({ text });
           // Selection + execution were correct: the user wanted to propose
           // times, the handler ran, and we now need the user to fill in the
           // missing fields. Mark as awaiting-confirmation.
-          return {
-            text,
+          return respond({
             success: false,
+            scenario: "scheduling_negotiation_propose_missing_fields",
+            fallback:
+              "Propose needs negotiationId, startAt, and endAt (ISO-8601).",
             values: { requiresConfirmation: true },
             data: {
               error: "MISSING_PROPOSAL_FIELDS",
               requiresConfirmation: true,
             },
-          };
+          });
         }
         const proposedBy = params.proposedBy ?? "agent";
         const proposal = await service.proposeTime({
@@ -1187,110 +1315,143 @@ export const schedulingAction: Action & {
           endAt: params.endAt,
           proposedBy,
         });
-        const text =
+        const fallback =
           proposedBy === "counterparty"
             ? `Recorded ${formatProposalSummary(proposal)}.`
             : `Recorded ${formatProposalSummary(proposal)} and sent it to the counterparty.`;
-        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-        return { text, success: true, data: { proposal } };
+        return respond({
+          success: true,
+          scenario: "scheduling_negotiation_proposed",
+          fallback,
+          context: {
+            proposalId: proposal.id,
+            startAt: proposal.startAt,
+            endAt: proposal.endAt,
+            proposedBy,
+            status: proposal.status,
+          },
+          data: { proposal },
+        });
       }
 
       if (subaction === "respond") {
         if (!params.proposalId || !params.response) {
-          const text = "Respond needs proposalId and response.";
-          await callback?.({ text });
-          return {
-            text,
+          return respond({
             success: false,
+            scenario: "scheduling_negotiation_respond_missing_fields",
+            fallback: "Respond needs proposalId and response.",
             data: { error: "MISSING_RESPONSE_FIELDS" },
-          };
+          });
         }
         const proposal = await service.respondToProposal(
           params.proposalId,
           params.response,
         );
-        const text = `Proposal ${proposal.id} is now ${proposal.status}.`;
-        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-        return { text, success: true, data: { proposal } };
+        return respond({
+          success: true,
+          scenario: "scheduling_negotiation_respond",
+          fallback: `Proposal ${proposal.id} is now ${proposal.status}.`,
+          context: { proposalId: proposal.id, status: proposal.status },
+          data: { proposal },
+        });
       }
 
       if (subaction === "finalize") {
         if (!params.negotiationId || !params.proposalId) {
-          const text = "Finalize needs negotiationId and proposalId.";
-          await callback?.({ text });
-          return {
-            text,
+          return respond({
             success: false,
+            scenario: "scheduling_negotiation_finalize_missing_fields",
+            fallback: "Finalize needs negotiationId and proposalId.",
             data: { error: "MISSING_FINALIZE_FIELDS" },
-          };
+          });
         }
         const neg = await service.finalizeNegotiation(
           params.negotiationId,
           params.proposalId,
         );
-        const text = `Confirmed ${formatNegotiationSummary(neg)} and sent confirmation to the counterparty.`;
-        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-        return { text, success: true, data: { negotiation: neg } };
+        return respond({
+          success: true,
+          scenario: "scheduling_negotiation_finalized",
+          fallback: `Confirmed ${formatNegotiationSummary(neg)} and sent confirmation to the counterparty.`,
+          context: {
+            negotiationId: neg.id,
+            subject: neg.subject,
+            durationMinutes: neg.durationMinutes,
+            state: neg.state,
+          },
+          data: { negotiation: neg },
+        });
       }
 
       if (subaction === "cancel") {
         if (!params.negotiationId) {
-          const text = "Cancel needs negotiationId.";
-          await callback?.({ text });
-          return {
-            text,
+          return respond({
             success: false,
+            scenario: "scheduling_negotiation_cancel_missing_id",
+            fallback: "Cancel needs negotiationId.",
             data: { error: "MISSING_NEGOTIATION_ID" },
-          };
+          });
         }
         await service.cancelNegotiation(params.negotiationId, params.reason);
-        const text = `Cancelled negotiation ${params.negotiationId} and notified the counterparty.`;
-        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-        return {
-          text,
+        return respond({
           success: true,
+          scenario: "scheduling_negotiation_cancelled",
+          fallback: `Cancelled negotiation ${params.negotiationId} and notified the counterparty.`,
+          context: { negotiationId: params.negotiationId },
           data: { negotiationId: params.negotiationId },
-        };
+        });
       }
 
       if (subaction === "list_proposals") {
         if (!params.negotiationId) {
-          const text = "list_proposals needs negotiationId.";
-          await callback?.({ text });
-          return {
-            text,
+          return respond({
             success: false,
+            scenario: "scheduling_negotiation_list_proposals_missing_id",
+            fallback: "list_proposals needs negotiationId.",
             data: { error: "MISSING_NEGOTIATION_ID" },
-          };
+          });
         }
         const proposals = await service.listProposals(params.negotiationId);
-        const text = proposals.length
+        const fallback = proposals.length
           ? `Proposals for ${params.negotiationId}:\n${proposals.map(formatProposalSummary).join("\n")}`
           : `No proposals for ${params.negotiationId}.`;
-        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-        return { text, success: true, data: { proposals } };
+        return respond({
+          success: true,
+          scenario: "scheduling_negotiation_list_proposals",
+          fallback,
+          context: {
+            negotiationId: params.negotiationId,
+            proposalCount: proposals.length,
+          },
+          data: { proposals },
+        });
       }
 
       // list_active
       const active = await service.listActiveNegotiations({ limit: 20 });
-      const text = active.length
+      const fallback = active.length
         ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
         : "No active scheduling negotiations.";
-      await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
-      return { text, success: true, data: { negotiations: active } };
+      return respond({
+        success: true,
+        scenario: "scheduling_negotiation_list_active",
+        fallback,
+        context: { activeCount: active.length },
+        data: { negotiations: active },
+      });
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
-        const text = `Scheduling error: ${error.message}`;
-        await callback?.({ text });
         // Selection + execution were correct: the user asked to schedule, the
         // action ran, and the lifeops service surfaced a needs-human signal
         // (no counterparty contact, missing scheduling field, dispatch
         // failed, etc.). Mark as awaiting-confirmation so the runtime stops
         // the multi-step continuation and the benchmark scorer treats this
         // as completed.
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "scheduling_negotiation_service_error",
+          fallback: `Scheduling error: ${error.message}`,
+          context: { status: error.status, detail: error.message },
           values: { requiresConfirmation: true },
           data: {
             error: "SERVICE_ERROR",
@@ -1298,7 +1459,7 @@ export const schedulingAction: Action & {
             detail: error.message,
             requiresConfirmation: true,
           },
-        };
+        });
       }
       throw error;
     }

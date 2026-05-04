@@ -70,6 +70,15 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 		platforms: ["darwin", "win32", "linux"],
 		requiredForFeatures: ["website-blocker"],
 	},
+	{
+		id: "location",
+		name: "Location",
+		description:
+			"Read the device's current location for travel-time, time-zone, and place-aware planning. Mobile uses GPS; desktop falls back to coarse IP geolocation.",
+		icon: "map-pin",
+		platforms: ["darwin", "win32", "linux"],
+		requiredForFeatures: ["travel-time", "location"],
+	},
 ];
 
 const PERMISSION_MAP = new Map<SystemPermissionId, SystemPermissionDefinition>(

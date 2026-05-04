@@ -380,7 +380,7 @@ export class MatrixService extends Service implements IMatrixService {
     const response = await this.client.sendMessage(
       resolvedRoomId,
       // biome-ignore lint/suspicious/noExplicitAny: type not exported from main entry
-      content as any,
+      content as any
     );
     const eventId = response.event_id;
 

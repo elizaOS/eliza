@@ -15,6 +15,7 @@ import {
   createCharacter,
   logger,
 } from "@elizaos/core";
+
 import {
   type LiveProviderConfig,
   type LiveProviderName,
@@ -84,6 +85,44 @@ export interface CreateScenarioRuntimeOptions {
   extraPlugins?: Plugin[];
 }
 
+const SAVE_TRAJECTORY_ENV_FLAGS = [
+  "MILADY_SAVE_TRAJECTORIES",
+  "ELIZA_SAVE_TRAJECTORIES",
+  "SCENARIO_SAVE_TRAJECTORIES",
+] as const;
+
+const SCENARIO_PGLITE_DIR_ENV_VARS = [
+  "MILADY_SCENARIO_PGLITE_DIR",
+  "ELIZA_SCENARIO_PGLITE_DIR",
+  "SCENARIO_PGLITE_DIR",
+] as const;
+
+function envFlag(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
+export function shouldPreserveScenarioTrajectoryDb(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return SAVE_TRAJECTORY_ENV_FLAGS.some((name) => envFlag(env[name]));
+}
+
+export function scenarioPgliteDirOverride(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  for (const name of SCENARIO_PGLITE_DIR_ENV_VARS) {
+    const value = env[name]?.trim();
+    if (value) return path.resolve(value);
+  }
+  return null;
+}
+
 export async function createScenarioRuntime(
   options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
@@ -107,9 +146,15 @@ export async function createScenarioRuntime(
     process.env[key] = value;
   }
 
-  const pgliteDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "scenario-runner-pglite-"),
-  );
+  const explicitPgliteDir = scenarioPgliteDirOverride();
+  const pgliteDir =
+    explicitPgliteDir ??
+    fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-pglite-"));
+  const removePgliteDirOnCleanup =
+    !explicitPgliteDir && !shouldPreserveScenarioTrajectoryDb();
+  if (explicitPgliteDir) {
+    fs.mkdirSync(explicitPgliteDir, { recursive: true });
+  }
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
   const prevWebsiteBlockerHostsFilePath =
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
@@ -353,12 +398,6 @@ export async function createScenarioRuntime(
     } else {
       delete process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
     }
-    if (prevElizaDisableActivityTracker !== undefined) {
-      process.env.ELIZA_DISABLE_ACTIVITY_TRACKER =
-        prevElizaDisableActivityTracker;
-    } else {
-      delete process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
-    }
     try {
       await mockedEnvironment.cleanup();
     } catch (err) {
@@ -366,10 +405,16 @@ export async function createScenarioRuntime(
         `[scenario-runner] mocked environment cleanup error: ${err}`,
       );
     }
-    try {
-      fs.rmSync(pgliteDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
+    if (removePgliteDirOnCleanup) {
+      try {
+        fs.rmSync(pgliteDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup errors
+      }
+    } else {
+      logger.info(
+        `[scenario-runner] preserved scenario PGLite trajectory DB at ${pgliteDir}`,
+      );
     }
     if (scenarioHostsRoot) {
       try {

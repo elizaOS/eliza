@@ -16,9 +16,11 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 
 type RetryableError = {
   readonly cause?: unknown;
+  readonly data?: unknown;
   readonly isRetryable?: boolean;
   readonly message?: string;
   readonly name?: string;
+  readonly responseBody?: unknown;
   readonly status?: number;
   readonly statusCode?: number;
 };
@@ -36,6 +38,32 @@ export function getErrorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function readProviderErrorMessage(error: unknown): string | undefined {
+  const retryableError = getRetryableError(error);
+  const data = retryableError?.data;
+  if (data && typeof data === "object") {
+    const providerError = (data as { error?: { message?: unknown } }).error;
+    if (typeof providerError?.message === "string" && providerError.message.trim()) {
+      return providerError.message.trim();
+    }
+  }
+
+  const responseBody = retryableError?.responseBody;
+  if (typeof responseBody === "string" && responseBody.trim()) {
+    try {
+      const parsed = JSON.parse(responseBody) as { error?: { message?: unknown } };
+      if (typeof parsed.error?.message === "string" && parsed.error.message.trim()) {
+        return parsed.error.message.trim();
+      }
+    } catch {
+      // Fall through to the SDK error message.
+    }
+  }
+
+  const message = getErrorMessage(error).trim();
+  return message.length > 0 ? message : undefined;
 }
 
 function getStatusCode(error: unknown): number | undefined {
@@ -112,10 +140,19 @@ export async function executeWithRetry<T>(
 
 export function formatModelError(operationName: string, error: unknown): Error {
   const statusCode = getStatusCode(error);
+  const providerMessage = readProviderErrorMessage(error);
   let reason = "An unexpected error occurred while processing the request.";
 
   if (statusCode === 401) {
     reason = "Authentication failed. Check the configured Anthropic API key.";
+  } else if (statusCode === 400 && providerMessage) {
+    reason = providerMessage;
+  } else if (statusCode === 403 && providerMessage) {
+    reason = providerMessage;
+  } else if (statusCode === 404 && providerMessage) {
+    reason = providerMessage;
+  } else if (statusCode === 413 && providerMessage) {
+    reason = providerMessage;
   } else if (statusCode === 429) {
     reason = "Anthropic rate limited the request. Retry after a short delay.";
   } else if (statusCode === 504 || hasTimeoutMessage(error)) {

@@ -348,7 +348,16 @@ describe("LifeOps sleep-cycle check-in scheduler", () => {
         deliveryBasis: "sleep_cycle",
         circadianState: "awake",
         wakeAt: "2026-04-22T07:00:00.000Z",
+        contactRoutePurpose: "checkin",
       });
+      expect(firstEvents[0].data.contactRouteCandidates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            channel: "in_app",
+            evidence: expect.arrayContaining(["purpose:checkin"]),
+          }),
+        ]),
+      );
 
       const firstRows = await listCheckinRows(fixture.runtime);
       expect(firstRows.map((row) => row.kind)).toEqual(["morning"]);
@@ -393,7 +402,16 @@ describe("LifeOps sleep-cycle check-in scheduler", () => {
         circadianState: "awake",
         bedtimeTargetAt: "2026-04-22T22:30:00.000Z",
         minutesUntilBedtimeTarget: 150,
+        contactRoutePurpose: "checkin",
       });
+      expect(events[0].data.contactRouteCandidates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            channel: "in_app",
+            evidence: expect.arrayContaining(["purpose:checkin"]),
+          }),
+        ]),
+      );
       expect(
         (await listCheckinRows(fixture.runtime)).map((row) => row.kind),
       ).toEqual(["night"]);

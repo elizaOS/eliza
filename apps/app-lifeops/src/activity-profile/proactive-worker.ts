@@ -27,11 +27,14 @@ import {
   type InboxDigestSlim,
   type OccurrenceSlim,
   type ProactiveRelativeTimeSlim,
+  type SocialHabitSummarySlim,
   planDowntimeNudges,
   planGm,
   planGn,
   planGoalCheckIns,
   planNudges,
+  planSocialOveruseCheck,
+  SOCIAL_OVERUSE_WINDOW_MINUTES,
 } from "./proactive-planner.js";
 import {
   buildActivityProfile,
@@ -410,6 +413,11 @@ export async function executeProactiveTask(
     now,
   );
 
+  const socialSummary = await loadSocialOveruseSummary(runtime, now);
+  const socialOveruseAction = socialSummary
+    ? planSocialOveruseCheck(profile, socialSummary, firedLog, timezone, now)
+    : null;
+
   const seedingAction = await planSeedingOffer(runtime, profile, firedLog, now);
 
   const allActions = [
@@ -419,6 +427,7 @@ export async function executeProactiveTask(
     ...nudgeActions,
     ...downtimeActions,
     ...goalCheckInActions,
+    socialOveruseAction,
   ].filter(
     (action): action is ProactiveAction =>
       action !== null && action.status === "pending",
@@ -802,6 +811,8 @@ function recordFiredAction(
     nudgedOccurrenceIds: [...(log?.nudgedOccurrenceIds ?? [])],
     nudgedCalendarEventIds: [...(log?.nudgedCalendarEventIds ?? [])],
     checkedGoalIds: [...(log?.checkedGoalIds ?? [])],
+    seedingOfferedAt: log?.seedingOfferedAt,
+    socialOveruseCheckedAt: log?.socialOveruseCheckedAt,
   };
 
   if (action.kind === "gm") {
@@ -827,9 +838,47 @@ function recordFiredAction(
     }
   } else if (action.kind === "onboarding_seed") {
     current.seedingOfferedAt = Date.now();
+  } else if (action.kind === "social_overuse_check") {
+    current.socialOveruseCheckedAt = Date.now();
   }
 
   return current;
+}
+
+async function loadSocialOveruseSummary(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<SocialHabitSummarySlim | null> {
+  const sinceMs = now.getTime() - SOCIAL_OVERUSE_WINDOW_MINUTES * 60_000;
+  const since = new Date(sinceMs).toISOString();
+  const until = now.toISOString();
+  try {
+    // Same pattern as `loadInboxDigest`/`fetchPlannerContext`: a transient
+    // screen-time read failure must not abort the whole proactive tick or
+    // suppress GM/GN/nudges. Logged and skipped; next tick retries.
+    const summary = await new LifeOpsService(runtime).getSocialHabitSummary({
+      since,
+      until,
+    });
+    return {
+      totalSeconds: summary.totalSeconds,
+      services: summary.services.map((entry) => ({
+        key: entry.key,
+        label: entry.label,
+        totalSeconds: entry.totalSeconds,
+      })),
+    };
+  } catch (error) {
+    logger.warn(
+      {
+        boundary: "activity_profile",
+        operation: "planner_social_overuse_summary",
+        err: error instanceof Error ? error : undefined,
+      },
+      `[proactive] Failed to read social-habit summary for overuse planner: ${String(error)}`,
+    );
+    return null;
+  }
 }
 
 function buildProactiveDeliveryContent(
@@ -887,6 +936,9 @@ function resolveProactiveAssistantEventSource(action: ProactiveAction): string {
   }
   if (action.kind === "onboarding_seed") {
     return "proactive-onboarding";
+  }
+  if (action.kind === "social_overuse_check") {
+    return "proactive-social-overuse";
   }
   return "proactive-nudge";
 }

@@ -5,9 +5,11 @@ import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetCheckinMissingSourceLog,
+  buildCheckinSummaryPrompt,
   CheckinService,
   type CheckinSourceService,
 } from "../checkin-service.js";
+import type { CheckinReport, SleepRecap } from "../types.js";
 
 interface CheckinTestHarness {
   runtime: IAgentRuntime;
@@ -360,5 +362,91 @@ describe("CheckinService", () => {
       isPaused: false,
     });
     expect(report.overdueTodos).toHaveLength(2);
+  });
+
+  describe("night summary prompt — sleep recap surfacing", () => {
+    function emptyReportFor(
+      kind: "morning" | "night",
+      sleepRecap: SleepRecap | null,
+    ): Omit<CheckinReport, "summaryText"> {
+      return {
+        reportId: "report-test",
+        kind,
+        generatedAt: "2026-04-22T22:30:00.000Z",
+        escalationLevel: 0,
+        overdueTodos: [],
+        todaysMeetings: [],
+        yesterdaysWins: [],
+        habitSummaries: [],
+        habitEscalationLevel: 0,
+        briefingSections: [],
+        sleepRecap,
+        collectorErrors: {
+          overdueTodos: null,
+          todaysMeetings: null,
+          yesterdaysWins: null,
+        },
+      };
+    }
+
+    it("threads all four sleep-recap fields into the night-summary prompt", () => {
+      const recap: SleepRecap = {
+        medianBedtimeLocalHour: 23.5,
+        medianSleepDurationMin: 420,
+        sri: 82,
+        regularityClass: "regular",
+      };
+      const prompt = buildCheckinSummaryPrompt(emptyReportFor("night", recap));
+
+      // The four fields the report identifies as "computed and never
+      // surfaced": medianBedtimeLocalHour, medianSleepDurationMin, sri,
+      // regularityClass. Pin each one as a load-bearing prompt token.
+      expect(prompt).toContain("Sleep recap");
+      expect(prompt).toContain("typical bedtime: 23:30 local");
+      expect(prompt).toContain("typical sleep duration: 7h");
+      expect(prompt).toContain("sleep regularity index (SRI): 82/100");
+      expect(prompt).toContain("regularity class: regular");
+      // "do not invent facts" baseline must remain so the LLM trusts these
+      // numbers as ground truth instead of hallucinating its own.
+      expect(prompt).toContain("Do not invent facts");
+    });
+
+    it("omits sleep-recap section entirely on morning runs even if a recap is somehow attached", () => {
+      const recap: SleepRecap = {
+        medianBedtimeLocalHour: 23.5,
+        medianSleepDurationMin: 420,
+        sri: 82,
+        regularityClass: "regular",
+      };
+      const prompt = buildCheckinSummaryPrompt(emptyReportFor("morning", recap));
+      expect(prompt).not.toContain("Sleep recap");
+      expect(prompt).not.toContain("sleep regularity index");
+    });
+
+    it("omits sleep-recap section when recap is null (morning or night)", () => {
+      const nightPrompt = buildCheckinSummaryPrompt(
+        emptyReportFor("night", null),
+      );
+      const morningPrompt = buildCheckinSummaryPrompt(
+        emptyReportFor("morning", null),
+      );
+      expect(nightPrompt).not.toContain("Sleep recap");
+      expect(morningPrompt).not.toContain("Sleep recap");
+    });
+
+    it("drops bedtime + duration lines when baseline is null but still surfaces SRI + class", () => {
+      const recap: SleepRecap = {
+        medianBedtimeLocalHour: null,
+        medianSleepDurationMin: null,
+        sri: 0,
+        regularityClass: "insufficient_data",
+      };
+      const prompt = buildCheckinSummaryPrompt(emptyReportFor("night", recap));
+      expect(prompt).toContain("Sleep recap");
+      expect(prompt).not.toContain("typical bedtime");
+      expect(prompt).not.toContain("typical sleep duration");
+      expect(prompt).toContain("sleep regularity index (SRI): 0/100");
+      expect(prompt).toContain("regularity class: insufficient_data");
+    });
   });
 });

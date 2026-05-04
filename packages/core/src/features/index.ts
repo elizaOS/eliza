@@ -29,7 +29,6 @@ import {
 import {
 	securityEvaluator,
 	trustChangeEvaluator,
-	reflectionEvaluator as trustReflectionEvaluator,
 } from "./trust/evaluators/index.ts";
 import {
 	adminTrustProvider,
@@ -54,11 +53,7 @@ const trustCapability = {
 		evaluateTrustAction,
 		requestElevationAction,
 	] as Action[],
-	evaluators: [
-		securityEvaluator,
-		trustReflectionEvaluator,
-		trustChangeEvaluator,
-	] as Evaluator[],
+	evaluators: [securityEvaluator, trustChangeEvaluator] as Evaluator[],
 	services: [
 		{
 			serviceType: "trust-engine",

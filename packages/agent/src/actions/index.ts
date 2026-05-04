@@ -22,4 +22,5 @@ export * from "./terminal.ts";
 export * from "./toggle-plugin.js";
 export * from "./uninstall-plugin.js";
 export * from "./update-plugin.js";
+export * from "./update-prompt.js";
 export * from "./web-search.js";
