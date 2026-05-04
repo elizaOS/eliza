@@ -52,7 +52,7 @@
     "@lifi/types": "^17.18.0",
     "@solana/spl-token": "0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",
-    "@solana/web3.js": "^1.98.4",
+    "@solana/web3.js": "1.98.4",
     "bignumber.js": "^11.0.0",
     "bs58": "^6.0.0",
     "tweetnacl": "^1.0.3",

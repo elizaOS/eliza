@@ -1,4 +1,5 @@
 export * from "../components/config-ui/config-renderer";
+export * from "./allowed-hosts";
 export {
   evaluateUiVisibility,
   getSupportedComponents,

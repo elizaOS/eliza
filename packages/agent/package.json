@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-alpha.537",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -18,6 +18,12 @@
     "elizaos"
   ],
   "main": "src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "bin": {
     "eliza-autonomous": "./src/bin.ts"
   },
@@ -25,6 +31,7 @@
     "clean": "rm -rf dist",
     "start": "bun run src/bin.ts",
     "dev": "bun --hot src/bin.ts",
+    "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
@@ -159,7 +166,7 @@
     "@elizaos/vault": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@noble/curves": "^2.0.1",
-    "@solana/web3.js": "^1.98.4",
+    "@solana/web3.js": "1.98.4",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "abitype": "^1.0.0",
     "coding-agent-adapters": "0.16.3",

@@ -15,7 +15,7 @@
     "@raydium-io/raydium-sdk-v2": "^0.2.12-alpha",
     "@solana/kit": "^6.0.0",
     "@solana/spl-token": "^0.4.13",
-    "@solana/web3.js": "^1.98.4",
+    "@solana/web3.js": "1.98.4",
     "axios": "^1.16.0",
     "bs58": "^6.0.0",
     "codama": "^1.3.1",
