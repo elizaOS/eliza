@@ -11,7 +11,6 @@ import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
 } from "@/lib/auth/playwright-test-session";
-import { usersService } from "@/lib/services/users";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 function isEnabled(c: AppContext): boolean {
@@ -57,7 +56,7 @@ app.post("/", async (c) => {
     return c.json({ error: "API key has expired" }, 401);
   }
 
-  const user = await usersService.getWithOrganization(apiKey.user_id);
+  const user = await c.var.deps.getUserWithOrganization.execute(apiKey.user_id);
   if (!user || !user.organization_id || !user.organization) {
     return c.json({ error: "User organization not found" }, 403);
   }

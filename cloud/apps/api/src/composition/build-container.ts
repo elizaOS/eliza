@@ -36,12 +36,23 @@ import { GetOrganizationByStripeCustomerIdUseCase } from "@/lib/application/orga
 import { GetOrganizationWithUsersUseCase } from "@/lib/application/organization/get-organization-with-users";
 import { UpdateOrganizationUseCase } from "@/lib/application/organization/update-organization";
 import { UpdateOrganizationCreditBalanceUseCase } from "@/lib/application/organization/update-organization-credit-balance";
+import { CreateUserUseCase } from "@/lib/application/user/create-user";
+import { DeleteUserUseCase } from "@/lib/application/user/delete-user";
+import { GetUserByEmailUseCase } from "@/lib/application/user/get-user-by-email";
+import { GetUserByIdUseCase } from "@/lib/application/user/get-user-by-id";
+import { GetUserByStewardIdUseCase } from "@/lib/application/user/get-user-by-steward-id";
+import { GetUserWithOrganizationUseCase } from "@/lib/application/user/get-user-with-organization";
+import { ListUsersByOrganizationUseCase } from "@/lib/application/user/list-users-by-organization";
+import { UpdateUserUseCase } from "@/lib/application/user/update-user";
 import type { ApiKeyRepository } from "@/lib/domain/api-key/api-key-repository";
 import type { OrganizationRepository } from "@/lib/domain/organization/organization-repository";
+import type { UserRepository } from "@/lib/domain/user/user-repository";
 import { CachedApiKeyRepository } from "@/lib/infrastructure/cache/api-key/cached-api-key-repository";
 import { CachedOrganizationRepository } from "@/lib/infrastructure/cache/organization/cached-organization-repository";
+import { CachedUserRepository } from "@/lib/infrastructure/cache/user/cached-user-repository";
 import { PostgresApiKeyRepository } from "@/lib/infrastructure/db/api-key/postgres-api-key-repository";
 import { PostgresOrganizationRepository } from "@/lib/infrastructure/db/organization/postgres-organization-repository";
+import { PostgresUserRepository } from "@/lib/infrastructure/db/user/postgres-user-repository";
 import type { Bindings } from "@/types/cloud-worker-env";
 
 export interface CompositionContext {
@@ -64,6 +75,16 @@ export interface CompositionContext {
   updateOrganization: UpdateOrganizationUseCase;
   updateOrganizationCreditBalance: UpdateOrganizationCreditBalanceUseCase;
   deleteOrganization: DeleteOrganizationUseCase;
+
+  // ── User aggregate (Phase C.2) ────────────────────────────────────────
+  getUserById: GetUserByIdUseCase;
+  getUserByEmail: GetUserByEmailUseCase;
+  getUserByStewardId: GetUserByStewardIdUseCase;
+  getUserWithOrganization: GetUserWithOrganizationUseCase;
+  listUsersByOrganization: ListUsersByOrganizationUseCase;
+  createUser: CreateUserUseCase;
+  updateUser: UpdateUserUseCase;
+  deleteUser: DeleteUserUseCase;
 }
 
 export function buildContainer(_env: Bindings): CompositionContext {
@@ -76,6 +97,10 @@ export function buildContainer(_env: Bindings): CompositionContext {
       new PostgresOrganizationRepository(),
       cache,
     );
+  const userRepo: UserRepository = new CachedUserRepository(
+    new PostgresUserRepository(),
+    cache,
+  );
 
   return {
     issueApiKey: new IssueApiKeyUseCase(apiKeyRepo),
@@ -100,5 +125,14 @@ export function buildContainer(_env: Bindings): CompositionContext {
       organizationRepo,
     ),
     deleteOrganization: new DeleteOrganizationUseCase(organizationRepo),
+
+    getUserById: new GetUserByIdUseCase(userRepo),
+    getUserByEmail: new GetUserByEmailUseCase(userRepo),
+    getUserByStewardId: new GetUserByStewardIdUseCase(userRepo),
+    getUserWithOrganization: new GetUserWithOrganizationUseCase(userRepo),
+    listUsersByOrganization: new ListUsersByOrganizationUseCase(userRepo),
+    createUser: new CreateUserUseCase(userRepo),
+    updateUser: new UpdateUserUseCase(userRepo),
+    deleteUser: new DeleteUserUseCase(userRepo),
   };
 }

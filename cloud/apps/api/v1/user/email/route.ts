@@ -12,8 +12,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { usersService } from "@/lib/services/users";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const updateEmailSchema = z.object({
@@ -27,13 +29,14 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.patch("/", async (c) => {
   try {
     const authed = await requireUserOrApiKey(c);
-    const fullUser = await usersService.getById(authed.id);
+    const fullUser = await c.var.deps.getUserById.execute(authed.id);
 
     if (fullUser?.email) {
       return c.json(
         {
           success: false,
-          error: "Email already set. Please contact support to change your email.",
+          error:
+            "Email already set. Please contact support to change your email.",
         },
         400,
       );
@@ -43,22 +46,28 @@ app.patch("/", async (c) => {
     const parsed = updateEmailSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "Invalid email address" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "Invalid email address",
+        },
         400,
       );
     }
 
     const lower = parsed.data.email.toLowerCase().trim();
 
-    const existingUser = await usersService.getByEmail(lower);
+    const existingUser = await c.var.deps.getUserByEmail.execute(lower);
     if (existingUser && existingUser.id !== authed.id) {
       return c.json(
-        { success: false, error: "This email is already in use by another account." },
+        {
+          success: false,
+          error: "This email is already in use by another account.",
+        },
         409,
       );
     }
 
-    await usersService.update(authed.id, {
+    await c.var.deps.updateUser.execute(authed.id, {
       email: lower,
       email_verified: false,
     });

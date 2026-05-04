@@ -14,7 +14,6 @@ import { dbRead } from "@/db/client";
 import { apps } from "@/db/schemas/apps";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { usersService } from "@/lib/services/users";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -26,7 +25,7 @@ app.get("/", async (c) => {
 
     // The Workers AuthedUser doesn't carry name/avatar/created_at — fetch the
     // full user row to match the Next response shape.
-    const fullUser = await usersService.getById(authed.id);
+    const fullUser = await c.var.deps.getUserById.execute(authed.id);
 
     const appId = c.req.header("X-App-Id") || c.req.header("x-app-id");
     let appInfo: { id: string; name: string } | null = null;

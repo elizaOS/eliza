@@ -6,8 +6,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { usersService } from "@/lib/services/users";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -19,10 +21,15 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (user.role !== "owner" && user.role !== "admin") {
-      return c.json({ success: false, error: "Only owners and admins can view members" }, 403);
+      return c.json(
+        { success: false, error: "Only owners and admins can view members" },
+        403,
+      );
     }
 
-    const members = await usersService.listByOrganization(user.organization_id);
+    const members = await c.var.deps.listUsersByOrganization.execute(
+      user.organization_id,
+    );
     return c.json({
       success: true,
       data: members.map((member) => ({

@@ -13,7 +13,6 @@ import { entitiesRepository, memoriesRepository } from "@/db/repositories";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { roomsService } from "@/lib/services/agents/rooms";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -29,7 +28,7 @@ async function resolveUserId(c: AppContext): Promise<string | null> {
     if (!token) return null;
     const session = await anonymousSessionsService.getByToken(token);
     if (!session) return null;
-    const user = await usersService.getById(session.user_id);
+    const user = await c.var.deps.getUserById.execute(session.user_id);
     if (!user || !user.is_anonymous) return null;
     return user.id;
   }
@@ -66,7 +65,9 @@ app.post("/", async (c) => {
     content: { text, source: "agent" },
   });
 
-  logger.info(`[Welcome API] Stored welcome message: ${messageId} in room ${roomId}`);
+  logger.info(
+    `[Welcome API] Stored welcome message: ${messageId} in room ${roomId}`,
+  );
   return c.json({ success: true, messageId: memory.id });
 });
 

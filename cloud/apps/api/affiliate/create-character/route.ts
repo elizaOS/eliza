@@ -20,7 +20,6 @@ import {
 } from "@/lib/api/cloud-worker-errors";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { charactersService } from "@/lib/services/characters/characters";
-import { usersService } from "@/lib/services/users";
 import type { ElizaCharacter } from "@/lib/types";
 import { getCorsHeaders } from "@/lib/utils/cors";
 import { logger } from "@/lib/utils/logger";
@@ -211,7 +210,7 @@ app.post("/", async (c) => {
 
     const affiliateOrg = await getOrCreateAffiliateOrg(c);
 
-    const anonymousUser = await usersService.create({
+    const anonymousUser = await c.var.deps.createUser.execute({
       name: character.name,
       email: `affiliate-${crypto.randomUUID()}@anonymous.elizacloud.ai`,
       organization_id: affiliateOrg.id,

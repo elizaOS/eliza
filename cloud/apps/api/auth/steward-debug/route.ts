@@ -5,7 +5,6 @@
 
 import { Hono } from "hono";
 import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
-import { usersService } from "@/lib/services/users";
 import { syncUserFromSteward } from "@/lib/steward-sync";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -15,7 +14,9 @@ const app = new Hono<AppEnv>();
 // without leaking its value. Returns first/last 2 chars + length, plus
 // where the value is sourced from. Remove after the auth flow is verified.
 app.get("/", (c) => {
-  const fromProcess = (process as unknown as { env: Record<string, string | undefined> })?.env;
+  const fromProcess = (
+    process as unknown as { env: Record<string, string | undefined> }
+  )?.env;
   const pSecret = fromProcess?.STEWARD_SESSION_SECRET ?? "";
   const cSecret = c.env.STEWARD_SESSION_SECRET ?? "";
   const fingerprint = (s: string) =>
@@ -38,7 +39,7 @@ app.post("/", async (c) => {
       return c.json({ error: "verification failed", step: "verify" });
     }
 
-    let user = await usersService.getByStewardId(claims.userId);
+    let user = await c.var.deps.getUserByStewardId.execute(claims.userId);
     let synced = false;
 
     if (!user) {
@@ -53,7 +54,8 @@ app.post("/", async (c) => {
         return c.json(
           {
             error: "sync failed",
-            message: syncErr instanceof Error ? syncErr.message : String(syncErr),
+            message:
+              syncErr instanceof Error ? syncErr.message : String(syncErr),
             claims: {
               userId: claims.userId,
               email: claims.email,
@@ -78,7 +80,10 @@ app.post("/", async (c) => {
       orgId: user?.organization_id,
     });
   } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    return c.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      500,
+    );
   }
 });
 

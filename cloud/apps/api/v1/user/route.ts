@@ -7,8 +7,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { usersService } from "@/lib/services/users";
+import type {
+  User as UserEntity,
+  UserWithOrganization as UserWithOrgEntity,
+} from "@/lib/domain/user/user";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type {
   CurrentUserDto,
   CurrentUserOrganizationDto,
@@ -23,7 +29,15 @@ const updateUserSchema = z.object({
   avatar: z.string().url().optional().or(z.literal("")),
   nickname: z.string().max(50).optional(),
   work_function: z
-    .enum(["developer", "designer", "product", "data", "marketing", "sales", "other"])
+    .enum([
+      "developer",
+      "designer",
+      "product",
+      "data",
+      "marketing",
+      "sales",
+      "other",
+    ])
     .optional(),
   preferences: z.string().max(1000).optional(),
   response_notifications: z.boolean().optional(),
@@ -34,13 +48,13 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
-type UserWithOrganization = NonNullable<
-  Awaited<ReturnType<typeof usersService.getWithOrganization>>
->;
-type UpdatedUser = NonNullable<Awaited<ReturnType<typeof usersService.update>>>;
+type UserWithOrganization = UserWithOrgEntity;
+type UpdatedUser = UserEntity;
 
 function toIsoString(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
 }
 
 function toIsoStringOrNull(value: Date | string | null): string | null {
@@ -113,7 +127,7 @@ function toCurrentUserDto(user: UserWithOrganization): CurrentUserDto {
 
 app.get("/", async (c) => {
   const authed = await requireUserOrApiKey(c);
-  const user = await usersService.getWithOrganization(authed.id);
+  const user = await c.var.deps.getUserWithOrganization.execute(authed.id);
   if (!user) throw NotFoundError("User not found");
 
   const data = toCurrentUserDto(user);
@@ -136,12 +150,16 @@ app.patch("/", async (c) => {
   }
   const validated = parsed.data;
 
-  const updated = await usersService.update(authed.id, {
+  const updated = await c.var.deps.updateUser.execute(authed.id, {
     ...(validated.name && { name: validated.name }),
     ...(validated.avatar !== undefined && { avatar: validated.avatar || null }),
     ...(validated.nickname !== undefined && { nickname: validated.nickname }),
-    ...(validated.work_function !== undefined && { work_function: validated.work_function }),
-    ...(validated.preferences !== undefined && { preferences: validated.preferences }),
+    ...(validated.work_function !== undefined && {
+      work_function: validated.work_function,
+    }),
+    ...(validated.preferences !== undefined && {
+      preferences: validated.preferences,
+    }),
     ...(validated.response_notifications !== undefined && {
       response_notifications: validated.response_notifications,
     }),

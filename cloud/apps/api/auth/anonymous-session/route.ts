@@ -17,10 +17,12 @@ import { nanoid } from "nanoid";
 import { dbRead } from "@/db/helpers";
 import { userIdentities } from "@/db/schemas/user-identities";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { createAnonymousUserAndSession } from "@/lib/services/anonymous-session-creator";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,7 +35,9 @@ function parsePositiveIntEnv(
 ): number {
   const n = Number.parseInt(value || String(defaultValue), 10);
   if (Number.isNaN(n) || n <= 0) {
-    logger.warn(`[anonymous-session] Invalid ${name}, using default: ${defaultValue}`);
+    logger.warn(
+      `[anonymous-session] Invalid ${name}, using default: ${defaultValue}`,
+    );
     return defaultValue;
   }
   return n;
@@ -65,7 +69,7 @@ app.post("/", async (c) => {
     if (cookieToken) {
       const session = await anonymousSessionsService.getByToken(cookieToken);
       if (session) {
-        const user = await usersService.getById(session.user_id);
+        const user = await c.var.deps.getUserById.execute(session.user_id);
         if (user) {
           const identity = await dbRead.query.userIdentities.findFirst({
             where: eq(userIdentities.user_id, user.id),

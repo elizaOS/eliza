@@ -8,7 +8,6 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { charactersService } from "@/lib/services/characters/characters";
-import { usersService } from "@/lib/services/users";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -35,11 +34,15 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
 
-    logger.info(`[Claim Affiliate Chars] Starting claim process for user ${user.id}`);
+    logger.info(
+      `[Claim Affiliate Chars] Starting claim process for user ${user.id}`,
+    );
 
     let sessionToken: string | undefined;
     try {
-      const body = (await c.req.json().catch(() => ({}))) as { sessionToken?: string };
+      const body = (await c.req.json().catch(() => ({}))) as {
+        sessionToken?: string;
+      };
       sessionToken = body.sessionToken;
     } catch {
       // No body or invalid JSON - that's okay
@@ -55,12 +58,16 @@ app.post("/", async (c) => {
     }> = [];
 
     // Get all rooms the user participates in
-    const userRoomIds = await participantsRepository.findRoomsByEntityId(user.id);
+    const userRoomIds = await participantsRepository.findRoomsByEntityId(
+      user.id,
+    );
 
     if (userRoomIds.length > 0) {
       // Get the rooms with their agentIds (characterIds)
       const rooms = await roomsRepository.findByIds(userRoomIds);
-      const characterIds = [...new Set(rooms.map((r) => r.agentId).filter(Boolean))] as string[];
+      const characterIds = [
+        ...new Set(rooms.map((r) => r.agentId).filter(Boolean)),
+      ] as string[];
 
       if (characterIds.length > 0) {
         // Get characters and check their owners
@@ -72,7 +79,7 @@ app.post("/", async (c) => {
           if (char.user_id === user.id) continue;
 
           // Check if owner is an anonymous/affiliate user
-          const owner = await usersService.getById(char.user_id);
+          const owner = await c.var.deps.getUserById.execute(char.user_id);
           if (
             owner &&
             (owner.is_anonymous === true ||
@@ -94,22 +101,30 @@ app.post("/", async (c) => {
 
     // Also find characters via session token if provided
     if (sessionToken) {
-      logger.info(`[Claim Affiliate Chars] Session token provided, looking up session...`);
+      logger.info(
+        `[Claim Affiliate Chars] Session token provided, looking up session...`,
+      );
 
       const session = await anonymousSessionsService.getByToken(sessionToken);
 
       if (session && !session.converted_at) {
-        const sessionOwner = await usersService.getById(session.user_id);
+        const sessionOwner = await c.var.deps.getUserById.execute(
+          session.user_id,
+        );
 
         if (
           sessionOwner &&
           sessionOwner.is_anonymous &&
           sessionOwner.email?.includes("@anonymous.elizacloud.ai")
         ) {
-          logger.info(`[Claim Affiliate Chars] Found affiliate session owner: ${sessionOwner.id}`);
+          logger.info(
+            `[Claim Affiliate Chars] Found affiliate session owner: ${sessionOwner.id}`,
+          );
 
           // Find characters owned by this anonymous user
-          const sessionCharacters = await userCharactersRepository.listByUser(sessionOwner.id);
+          const sessionCharacters = await userCharactersRepository.listByUser(
+            sessionOwner.id,
+          );
 
           for (const char of sessionCharacters) {
             // Only add if not already in the list and owned by the session owner
@@ -123,19 +138,25 @@ app.post("/", async (c) => {
                 ownerId: sessionOwner.id,
                 roomId: "", // No room association, but we'll claim via session
               });
-              logger.info(`[Claim Affiliate Chars] Added character from session: ${char.name}`);
+              logger.info(
+                `[Claim Affiliate Chars] Added character from session: ${char.name}`,
+              );
             }
           }
 
           // Mark session as converted to prevent future claims
           await anonymousSessionsService.markConverted(session.id);
-          logger.info(`[Claim Affiliate Chars] Marked session as converted: ${session.id}`);
+          logger.info(
+            `[Claim Affiliate Chars] Marked session as converted: ${session.id}`,
+          );
         }
       }
     }
 
     if (claimableCharacters.length === 0) {
-      logger.info(`[Claim Affiliate Chars] No claimable characters found for user ${user.id}`);
+      logger.info(
+        `[Claim Affiliate Chars] No claimable characters found for user ${user.id}`,
+      );
       return c.json({
         success: true,
         claimed: [],
@@ -169,7 +190,9 @@ app.post("/", async (c) => {
           id: char.characterId,
           name: char.characterName,
         });
-        logger.info(`[Claim Affiliate Chars] ✅ Claimed character: ${char.characterName}`);
+        logger.info(
+          `[Claim Affiliate Chars] ✅ Claimed character: ${char.characterName}`,
+        );
       } else {
         failedClaims.push({ id: char.characterId, reason: result.message });
         logger.warn(

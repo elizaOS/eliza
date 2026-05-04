@@ -10,9 +10,11 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { dbWrite } from "@/db/client";
 import { anonymousSessions, users } from "@/db/schemas";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -40,15 +42,24 @@ app.post("/", async (c) => {
 
   const session = await anonymousSessionsService.getByToken(sessionToken);
   if (!session) {
-    return c.json({ error: "Invalid session token", code: "SESSION_NOT_FOUND" }, 404);
+    return c.json(
+      { error: "Invalid session token", code: "SESSION_NOT_FOUND" },
+      404,
+    );
   }
   if (session.expires_at < new Date()) {
-    return c.json({ error: "Session has expired", code: "SESSION_EXPIRED" }, 410);
+    return c.json(
+      { error: "Session has expired", code: "SESSION_EXPIRED" },
+      410,
+    );
   }
 
-  let user = await usersService.getById(session.user_id);
+  let user = await c.var.deps.getUserById.execute(session.user_id);
   if (!user) {
-    logger.info("[Set Session] User not found, creating anonymous user for session:", session.id);
+    logger.info(
+      "[Set Session] User not found, creating anonymous user for session:",
+      session.id,
+    );
     const [newUser] = await dbWrite
       .insert(users)
       .values({

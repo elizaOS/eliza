@@ -1,7 +1,6 @@
 import { getCookie } from "hono/cookie";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
 import type { AppContext } from "@/types/cloud-worker-env";
 
 export const DEFAULT_AGENT_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
@@ -24,7 +23,7 @@ export async function resolveRoomUserId(
 
     const session = await anonymousSessionsService.getByToken(token);
     if (!session) return null;
-    const user = await usersService.getById(session.user_id);
+    const user = await c.var.deps.getUserById.execute(session.user_id);
     return user?.is_anonymous ? user.id : null;
   }
 }
