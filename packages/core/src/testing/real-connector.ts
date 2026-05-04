@@ -13,7 +13,6 @@
  */
 
 import path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 
 // Load .env
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");

@@ -293,7 +293,7 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
 
   try {
     return parseWorkflowResponse(response);
-  } catch (err) {
+  } catch (_err) {
     logger.error(
       { src: 'plugin:n8n-workflow:generation:fixErrors' },
       'fixWorkflowErrors response could not be parsed; keeping original workflow'

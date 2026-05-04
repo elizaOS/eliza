@@ -100,31 +100,37 @@ describe("computer-use compat routes", () => {
     }
   });
 
-  it("returns a truthful 404 when approval snapshot service is unavailable", async () => {
+  it("returns an empty snapshot when approval snapshot service is unavailable", async () => {
     harness = await startApiHarness(emptyState());
 
     const response = await fetch(
       `${harness.baseUrl}/api/computer-use/approvals`,
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      error: "Computer use service not available",
+      mode: "full_control",
+      pendingCount: 0,
+      pendingApprovals: [],
     });
   });
 
-  it("does not open an SSE stream when approval service is unavailable", async () => {
+  it("opens an empty SSE stream when approval service is unavailable", async () => {
     harness = await startApiHarness(emptyState());
 
     const response = await fetch(
       `${harness.baseUrl}/api/computer-use/approvals/stream`,
     );
 
-    expect(response.status).toBe(404);
-    expect(response.headers.get("content-type")).toContain("application/json");
-    await expect(response.json()).resolves.toEqual({
-      error: "Computer use service not available",
-    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const reader = response.body?.getReader();
+    expect(reader).toBeTruthy();
+    if (!reader) throw new Error("expected ReadableStreamDefaultReader");
+    const first = await reader.read();
+    await reader.cancel();
+    const text = new TextDecoder().decode(first.value);
+    expect(text).toContain('"pendingCount":0');
   });
 
   it("returns the service snapshot and updates approval mode when service is registered", async () => {

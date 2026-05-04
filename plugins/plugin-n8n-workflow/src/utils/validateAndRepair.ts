@@ -53,8 +53,6 @@ export interface RepairResult {
   errors: ValidationError[];
 }
 
-const LOG_SRC = 'plugin:n8n-workflow:utils:validate';
-
 // ─── Check 1 ────────────────────────────────────────────────────────────────
 
 /** Pick the closest-but-not-greater valid version. Falls back to the maximum
@@ -580,13 +578,21 @@ export function validateAndRepair(
 
   if (repairs.length > 0) {
     logger.info(
-      { src: LOG_SRC, repairCount: repairs.length, repairs },
+      {
+        src: 'plugin:n8n-workflow:utils:validate',
+        repairCount: repairs.length,
+        repairs,
+      },
       `validateAndRepair applied ${repairs.length} fix(es)`
     );
   }
   if (errors.length > 0) {
     logger.warn(
-      { src: LOG_SRC, errorCount: errors.length, errors },
+      {
+        src: 'plugin:n8n-workflow:utils:validate',
+        errorCount: errors.length,
+        errors,
+      },
       `validateAndRepair flagged ${errors.length} unrecoverable error(s) for retry loop`
     );
   }

@@ -184,8 +184,9 @@ export function selectLiveProvider(
 			const val = process.env[envVar]?.trim();
 			if (val) env[envVar] = val;
 		}
-		if (def.baseUrlEnvVar && process.env[def.baseUrlEnvVar]?.trim()) {
-			env[def.baseUrlEnvVar] = process.env[def.baseUrlEnvVar]!.trim();
+		if (def.baseUrlEnvVar) {
+			const baseUrlVal = process.env[def.baseUrlEnvVar]?.trim();
+			if (baseUrlVal) env[def.baseUrlEnvVar] = baseUrlVal;
 		}
 		env[def.smallModelEnvVar] = smallModel;
 		env[def.largeModelEnvVar] = largeModel;
@@ -246,8 +247,9 @@ export function requireLiveProvider(
 	if (!provider) {
 		const { test } = require("vitest");
 		test.skip("No LLM provider API key available");
+		throw new Error("No LLM provider API key available");
 	}
-	return provider!;
+	return provider;
 }
 
 /**
