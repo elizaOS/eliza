@@ -24,7 +24,7 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": true,
     "types": ["node"],
-    "ignoreDeprecations": "5.0"
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*.ts"]
 }
