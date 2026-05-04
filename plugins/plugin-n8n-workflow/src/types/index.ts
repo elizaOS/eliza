@@ -423,7 +423,7 @@ export interface DraftIntentResult {
   reason: string;
 }
 
-export interface WorkflowCreationResult extends Record<string, unknown> {
+export interface WorkflowCreationResult {
   id: string;
   name: string;
   active: boolean;

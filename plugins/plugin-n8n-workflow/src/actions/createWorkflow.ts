@@ -5,6 +5,7 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  type ProviderDataRecord,
   logger,
   type Memory,
   type State,
@@ -291,7 +292,6 @@ export const createWorkflowAction: Action & {
     'about the draft — including "yes", "ok", "deploy it", "cancel", or modification requests. ' +
     'Never reply with text only when a draft is pending.',
 
-  parameters: {},
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
@@ -396,7 +396,7 @@ export const createWorkflowAction: Action & {
             if (callback) {
               await callback({ text, success: true });
             }
-            return { success: true, data: result };
+            return { success: true, data: result as unknown as ProviderDataRecord };
           }
 
           case 'cancel': {

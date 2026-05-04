@@ -14,7 +14,7 @@ async function validate(
   _runtime: IAgentRuntime
 ): Promise<void> {
   try {
-    const workflow = req.body as N8nWorkflow;
+    const workflow = req.body as unknown as N8nWorkflow;
 
     if (!workflow?.nodes || !workflow?.connections) {
       res.status(400).json({ success: false, error: 'nodes and connections are required' });

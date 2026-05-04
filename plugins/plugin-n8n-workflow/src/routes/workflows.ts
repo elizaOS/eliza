@@ -40,7 +40,7 @@ async function createWorkflow(
   runtime: IAgentRuntime
 ): Promise<void> {
   try {
-    const { workflow, userId, activate } = req.body as {
+    const { workflow, userId, activate } = req.body as unknown as {
       workflow: N8nWorkflow;
       userId: string;
       activate?: boolean;
@@ -143,7 +143,7 @@ async function updateWorkflow(
       return;
     }
 
-    const { workflow, userId } = req.body as {
+    const { workflow, userId } = req.body as unknown as {
       workflow: N8nWorkflow;
       userId: string;
     };
