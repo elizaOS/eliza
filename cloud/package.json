@@ -317,7 +317,7 @@
     "multer": "2.1.1",
     "qs": "6.15.1",
     "tar": "7.5.13",
-    "undici": "6.23.0",
+    "undici": "6.25.0",
     "underscore": "1.13.8"
   },
   "overrides": {
