@@ -129,6 +129,7 @@ runs:
         npm_config_python: ${{ env.pythonLocation }}/bin/python3
 
     - name: Materialize bun npm package binary
+      if: ${{ runner.os != 'Windows' }}
       # The default install command uses --ignore-scripts so trustedDependencies
       # postinstalls don't run silently. The `bun` npm package ships a placeholder
       # binary that errors with "Bun's postinstall script was not run" until its
