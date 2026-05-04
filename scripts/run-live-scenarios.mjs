@@ -21,6 +21,8 @@
  *   - SCENARIO_ROOT: scenario directory, relative to repo root or absolute
  *     (default: apps/app-lifeops/test/scenarios).
  *   - SCENARIO_INCLUDE_PENDING=1: include scenarios marked status="pending".
+ *   - SCENARIO_ENFORCE_GATE=0: keep the workflow green while still writing
+ *     the report when scenario assertions fail.
  *   - SKIP_REASON: required when any scenario is intentionally skipped.
  *   - REPORT_PATH: where to write the JSON report (default: artifacts/lifeops-scenario-report.json).
  *
@@ -107,6 +109,10 @@ if (filter.length > 0) {
 }
 
 const judgeThreshold = process.env.LIFEOPS_JUDGE_THRESHOLD ?? "0.8";
+const enforceGateValue = (process.env.SCENARIO_ENFORCE_GATE ?? "1")
+  .trim()
+  .toLowerCase();
+const enforceGate = !["0", "false", "no", "off"].includes(enforceGateValue);
 const env = {
   ...process.env,
   ELIZA_LIVE_TEST: "1",
@@ -114,7 +120,7 @@ const env = {
 };
 
 console.log(
-  `[run-live-scenarios] threshold=${judgeThreshold} pending=${env.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} report=${reportPath} args=${args.slice(2).join(" ")}`,
+  `[run-live-scenarios] threshold=${judgeThreshold} enforce=${enforceGate ? "yes" : "no"} pending=${env.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} report=${reportPath} args=${args.slice(2).join(" ")}`,
 );
 
 const child = spawn(process.execPath, args, {
@@ -127,5 +133,12 @@ child.on("exit", (code, signal) => {
     console.error(`[run-live-scenarios] killed by signal ${signal}`);
     process.exit(1);
   }
-  process.exit(code ?? 1);
+  const exitCode = code ?? 1;
+  if (exitCode !== 0 && !enforceGate) {
+    console.warn(
+      `[run-live-scenarios] scenario gate exited ${exitCode}; SCENARIO_ENFORCE_GATE=0 so the report is non-blocking.`,
+    );
+    process.exit(0);
+  }
+  process.exit(exitCode);
 });
