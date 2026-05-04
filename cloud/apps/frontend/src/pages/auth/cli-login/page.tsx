@@ -177,8 +177,7 @@ function CliLoginContent() {
         }
       } catch (error) {
         if (!active) return;
-        const aborted =
-          error instanceof DOMException && error.name === "AbortError";
+        const aborted = error instanceof DOMException && error.name === "AbortError";
         if (error instanceof ApiError && error.status === 401) {
           clearStaleStewardSession();
         }
