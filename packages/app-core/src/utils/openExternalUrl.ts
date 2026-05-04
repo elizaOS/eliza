@@ -6,6 +6,7 @@ import {
 
 interface CapacitorBrowserPlugin {
   open: (options: { url: string; presentationStyle?: string }) => Promise<void>;
+  close?: () => Promise<void>;
 }
 
 const registeredCapacitorBrowser =
@@ -61,6 +62,17 @@ export async function openExternalUrl(url: string): Promise<void> {
   const popup = window.open(url, "_blank", "noopener,noreferrer");
   if (!popup) {
     console.warn("[openExternalUrl] popup blocked — URL:", url);
+  }
+}
+
+export async function closeExternalBrowser(): Promise<void> {
+  const capacitorBrowser = getCapacitorBrowser();
+  if (!capacitorBrowser?.close) return;
+
+  try {
+    await capacitorBrowser.close();
+  } catch {
+    // Browser.close rejects when there is no active native browser window.
   }
 }
 

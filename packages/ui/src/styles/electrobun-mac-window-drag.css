@@ -13,12 +13,12 @@
  */
 html.eliza-electrobun-frameless {
   /**
-   * Leading inset so the header nav (Chat, Apps, …) clears the traffic-light
-   * cluster. hiddenInset draws controls over the web view; ~68–80px is typical
-   * on Apple Silicon macOS (was 56px — still overlapped the lights).
+   * Leading inset so the header nav (Chat, Apps, ...) clears the traffic-light
+   * cluster while staying on the same vertical row. hiddenInset draws controls
+   * over the web view; ~68-80px is typical on Apple Silicon macOS.
    */
   --eliza-macos-frame-left-inset: 78px;
-  --eliza-macos-frame-top-inset: 26px;
+  --eliza-macos-frame-top-inset: 0px;
   --eliza-mobile-nav-offset: 0px;
 }
 
