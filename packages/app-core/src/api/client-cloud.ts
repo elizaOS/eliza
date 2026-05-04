@@ -1295,23 +1295,20 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   onProgress?.("creating", "Creating agent...");
 
   // Step 1: Create agent
-  const createRes = await fetch(
-    `${resolvedCloudApiBase}/api/v1/eliza/agents`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        agentName: name,
-        ...(bio?.length
-          ? {
-              agentConfig: {
-                bio,
-              },
-            }
-          : {}),
-      }),
-    },
-  );
+  const createRes = await fetch(`${resolvedCloudApiBase}/api/v1/eliza/agents`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      agentName: name,
+      ...(bio?.length
+        ? {
+            agentConfig: {
+              bio,
+            },
+          }
+        : {}),
+    }),
+  });
   if (!createRes.ok) {
     const err = await createRes.text().catch(() => "Unknown error");
     throw new Error(`Failed to create cloud agent: ${err}`);

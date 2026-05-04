@@ -216,14 +216,21 @@ export function applyResolutions(
       // Free-form clarification with no field to wire into. Record the user's
       // answer under draft._meta.userNotes so subsequent LLM iterations can
       // consume the context, but don't mutate the workflow itself.
-      const meta = ((draft as Record<string, unknown>)._meta ??= {}) as Record<
-        string,
-        unknown
-      >;
-      const notes = Array.isArray(meta.userNotes)
-        ? (meta.userNotes as string[])
-        : ((meta.userNotes =
-            meta.userNotes != null ? [String(meta.userNotes)] : []) as string[]);
+      const draftRecord = draft as Record<string, unknown>;
+      const existingMeta = draftRecord._meta;
+      const meta =
+        existingMeta && typeof existingMeta === "object"
+          ? (existingMeta as Record<string, unknown>)
+          : {};
+      draftRecord._meta = meta;
+
+      let notes: string[];
+      if (Array.isArray(meta.userNotes)) {
+        notes = meta.userNotes as string[];
+      } else {
+        notes = meta.userNotes != null ? [String(meta.userNotes)] : [];
+        meta.userNotes = notes;
+      }
       notes.push(r.value);
       continue;
     }
@@ -282,7 +289,10 @@ export function pruneResolvedClarifications(
         return false;
       }
       // Empty-paramPath object-form: also positional.
-      if ((typeof path !== "string" || path.length === 0) && toDropFreeForm > 0) {
+      if (
+        (typeof path !== "string" || path.length === 0) &&
+        toDropFreeForm > 0
+      ) {
         toDropFreeForm -= 1;
         return false;
       }

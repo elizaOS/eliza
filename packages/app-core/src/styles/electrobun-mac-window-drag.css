@@ -13,10 +13,10 @@
  */
 html.eliza-electrobun-frameless {
   /**
-   * Extra top inset so the first interactive row (shell toggle, header) sits below
-   * the traffic lights — hiddenInset draws them over the web view with no title bar.
+   * The app-provided titlebar sits on the same vertical row as the macOS
+   * traffic lights. The native layer handles the button placement.
    */
-  --eliza-macos-frame-top-inset: 26px;
+  --eliza-macos-frame-top-inset: 0px;
 }
 
 html.eliza-electrobun-frameless body {
