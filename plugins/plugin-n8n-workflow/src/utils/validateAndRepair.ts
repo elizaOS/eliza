@@ -20,7 +20,7 @@ import { logger } from '@elizaos/core';
 import type { N8nNode, N8nWorkflow, NodeDefinition, RuntimeContext } from '../types/index';
 import { loadOutputSchema, loadTriggerOutputSchema, parseExpressions } from './outputSchema';
 import { inferSyntheticOutputSchema } from './inferSyntheticOutputSchema';
-import { isCatalogClarification } from './clarification';
+import { isCatalogClarification, CATALOG_CLARIFICATION_SUFFIX } from './clarification';
 
 export type RepairKind =
   | 'typeVersionClamp'
@@ -439,7 +439,7 @@ function applyRequiredParameterPreflight(
       const params = (node.parameters ?? {}) as Record<string, unknown>;
       if (params[prop.name] === undefined || params[prop.name] === '') {
         clarifications.push(
-          `${node.name} (${node.type}) is missing required parameter "${prop.name}" — please provide this value or clarify your requirements`
+          `${node.name} (${node.type}) is missing required parameter "${prop.name}" ${CATALOG_CLARIFICATION_SUFFIX}`
         );
       }
     }
