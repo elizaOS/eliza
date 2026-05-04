@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { resolveBrowserStewardApiUrl } from "@/lib/steward-url";
+import { apiFetch } from "../../lib/api-client";
 import { resolveLoginReturnTo } from "./login-return-to";
 import { buildStewardOAuthAuthorizeUrl, type StewardOAuthProvider } from "./steward-oauth-url";
 import { StewardWalletProviders } from "./steward-wallet-providers";
@@ -103,15 +104,22 @@ export default function StewardLoginSection() {
   const hasOAuthProviders = Boolean(providers.google || providers.discord || providers.github);
 
   const setSessionCookie = useCallback(async (token: string, refreshToken?: string | null) => {
-    const response = await fetch("/api/auth/steward-session", {
+    // Use apiFetch instead of raw fetch so the request resolves to the
+    // direct Workers origin (https://api.elizacloud.ai) on production.
+    // Routing through the same-origin Pages Functions proxy would set
+    // Set-Cookie on www.elizacloud.ai, but every subsequent apiFetch call
+    // (e.g. /api/auth/cli-session/<id>/complete) goes cross-origin to
+    // api.elizacloud.ai and the host-only www cookie does not flow with
+    // it, which deadlocks the CLI login spinner at "Generating API Key".
+    const response = await apiFetch("/api/auth/steward-session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      skipAuth: true,
+      json: {
         token,
         refreshToken:
           refreshToken ??
           (typeof window !== "undefined" ? localStorage.getItem("steward_refresh_token") : null),
-      }),
+      },
     });
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
