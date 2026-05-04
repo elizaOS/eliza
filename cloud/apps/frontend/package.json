@@ -10,6 +10,7 @@
     "prerender": "node scripts/prerender.mjs",
     "preview": "vite preview --port 3000 --strictPort",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write src",
@@ -35,5 +36,10 @@
     "typescript": "^6.0.0",
     "vite": "^8.0.10"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.5"
+  }
 }
