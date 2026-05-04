@@ -117,7 +117,8 @@
     "typedoc": "0.28.19",
     "zod": "^4.3.6",
     "drizzle-orm": "0.45.2",
-    "@electric-sql/pglite": "^0.4.5"
+    "@electric-sql/pglite": "^0.4.5",
+    "@solana/web3.js": "1.98.4"
   },
   "overrides": {
     "@biomejs/biome": "2.4.14",
@@ -143,7 +144,8 @@
     "@electric-sql/pglite": "^0.4.5",
     "rimraf": "^6.0.1",
     "tsup": "8.5.1",
-    "viem": "2.48.8"
+    "viem": "2.48.8",
+    "@solana/web3.js": "1.98.4"
   },
   "patchedDependencies": {
     "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch",
