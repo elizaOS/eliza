@@ -25,7 +25,7 @@ export function isCatalogClarification(item: string | ClarificationRequest): boo
  * picker). Structured items pass through unchanged.
  */
 export function coerceClarificationRequests(
-  items: ReadonlyArray<string | ClarificationRequest> | undefined | null,
+  items: ReadonlyArray<string | ClarificationRequest> | undefined | null
 ): ClarificationRequest[] {
   if (!items || items.length === 0) {
     return [];

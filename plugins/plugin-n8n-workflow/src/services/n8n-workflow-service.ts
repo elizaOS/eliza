@@ -26,10 +26,7 @@ import {
 import { resolveCredentials } from '../utils/credentialResolver';
 import { validateAndRepair } from '../utils/validateAndRepair';
 import { fixWorkflowErrors } from '../utils/generation';
-import {
-  CATALOG_CLARIFICATION_SUFFIX,
-  isCatalogClarification,
-} from '../utils/clarification';
+import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from '../utils/clarification';
 import type {
   N8nWorkflow,
   N8nWorkflowResponse,
@@ -153,9 +150,7 @@ export class N8nWorkflowService extends Service {
         { src: 'plugin:n8n-workflow:service:main' },
         `Catalog validation: ${catalogWarnings.join(', ')}`
       );
-      const clarifications = catalogWarnings.map(
-        (w) => `${w} ${CATALOG_CLARIFICATION_SUFFIX}`
-      );
+      const clarifications = catalogWarnings.map((w) => `${w} ${CATALOG_CLARIFICATION_SUFFIX}`);
       workflow._meta.requiresClarification = [...nonCatalog, ...clarifications];
     } else {
       workflow._meta.requiresClarification = nonCatalog.length > 0 ? nonCatalog : undefined;
