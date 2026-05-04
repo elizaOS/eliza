@@ -202,7 +202,7 @@ export function applyResolutions(
   resolutions: ReadonlyArray<N8nClarificationResolution>,
 ): { ok: true } | { ok: false; error: string; paramPath?: string } {
   for (const r of resolutions) {
-    if (!r || typeof r.paramPath !== "string" || r.paramPath.length === 0) {
+    if (!r || typeof r.paramPath !== "string") {
       return { ok: false, error: "resolution missing paramPath" };
     }
     if (typeof r.value !== "string") {
@@ -211,6 +211,21 @@ export function applyResolutions(
         error: "resolution value must be a string",
         paramPath: r.paramPath,
       };
+    }
+    if (r.paramPath.length === 0) {
+      // Free-form clarification with no field to wire into. Record the user's
+      // answer under draft._meta.userNotes so subsequent LLM iterations can
+      // consume the context, but don't mutate the workflow itself.
+      const meta = ((draft as Record<string, unknown>)._meta ??= {}) as Record<
+        string,
+        unknown
+      >;
+      const notes = Array.isArray(meta.userNotes)
+        ? (meta.userNotes as string[])
+        : ((meta.userNotes =
+            meta.userNotes != null ? [String(meta.userNotes)] : []) as string[]);
+      notes.push(r.value);
+      continue;
     }
     try {
       setByDotPath(draft, r.paramPath, r.value);
@@ -228,20 +243,49 @@ export function applyResolutions(
 /**
  * Drop the resolved clarifications from the draft's `_meta` so the next
  * read of the draft does not re-prompt the user for the same parameter.
+ *
+ * Two pruning paths:
+ *  1. Object-form clarifications with paramPath → prune by paramPath match.
+ *  2. String-form clarifications (LLM emits free-form questions without a
+ *     paramPath) and object-form clarifications with empty paramPath →
+ *     prune positionally by `freeFormCount` (UI presents them in order, so
+ *     each free-form resolution consumes the next one).
+ *
+ * Positional-pruning contract: free-form items are dropped from the head of
+ * the stored list in order. The UI must therefore submit answers in the
+ * order they were presented, with no skipped or out-of-order items in a
+ * single batch — otherwise the wrong question gets pruned. If we ever need
+ * to support partial/interleaved submissions, switch the resolution payload
+ * to send the answered question text and match by value here instead.
  */
 export function pruneResolvedClarifications(
   draft: Record<string, unknown>,
   resolved: ReadonlySet<string>,
+  freeFormCount = 0,
 ): void {
   const meta = (draft as { _meta?: Record<string, unknown> })._meta;
   if (!meta || typeof meta !== "object") return;
   const list = meta.requiresClarification;
   if (!Array.isArray(list)) return;
+  let toDropFreeForm = freeFormCount;
   const remaining = list.filter((item) => {
-    if (typeof item === "string") return true;
+    if (typeof item === "string") {
+      if (toDropFreeForm > 0) {
+        toDropFreeForm -= 1;
+        return false;
+      }
+      return true;
+    }
     if (item && typeof item === "object") {
       const path = (item as { paramPath?: unknown }).paramPath;
-      if (typeof path === "string" && resolved.has(path)) return false;
+      if (typeof path === "string" && path.length > 0 && resolved.has(path)) {
+        return false;
+      }
+      // Empty-paramPath object-form: also positional.
+      if ((typeof path !== "string" || path.length === 0) && toDropFreeForm > 0) {
+        toDropFreeForm -= 1;
+        return false;
+      }
     }
     return true;
   });

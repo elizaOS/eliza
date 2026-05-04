@@ -133,6 +133,7 @@ function CliLoginContent() {
   const sessionId = searchParams.get("session");
   const [completion, setCompletion] = useState<CompletionState>({ status: "idle" });
   const lastSessionId = useRef(sessionId);
+  const completionFiredRef = useRef(false);
 
   useEffect(() => {
     if (lastSessionId.current === sessionId) {
@@ -140,13 +141,18 @@ function CliLoginContent() {
     }
 
     lastSessionId.current = sessionId;
+    completionFiredRef.current = false;
     setCompletion({ status: "idle" });
   }, [sessionId]);
 
   useEffect(() => {
-    if (!sessionId || !ready || !authenticated || completion.status !== "idle") {
+    if (!sessionId || !ready || !authenticated) {
       return;
     }
+    if (completionFiredRef.current) {
+      return;
+    }
+    completionFiredRef.current = true;
 
     let active = true;
 
@@ -199,7 +205,7 @@ function CliLoginContent() {
       clearTimeout(timeout);
       abort.abort();
     };
-  }, [authenticated, completion.status, ready, sessionId]);
+  }, [authenticated, ready, sessionId]);
 
   const pageState = getPageState({ authenticated, completion, ready, sessionId });
   const returnToQuery = searchParams.toString();
