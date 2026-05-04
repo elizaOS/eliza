@@ -1,7 +1,7 @@
 # Weekly EA + Connector Benchmark
 #
-# Runs the full 22 executive-assistant scenarios + 15 connector certification
-# scenarios through the live scenario runner and uploads a markdown + JSON
+# Runs the full executive-assistant and connector certification scenario
+# catalogs through the live scenario runner and uploads a markdown + JSON
 # benchmark report as an artifact. Same pass gate as live-scenarios.yml
 # (LIFEOPS_JUDGE_THRESHOLD, default 0.8).
 #
@@ -30,7 +30,7 @@
 #   Travel:   TRAVEL_BOOKING_API_KEY
 # Optional:
 #   LIFEOPS_JUDGE_THRESHOLD (workflow input, default 0.8)
-#   SCENARIO_FILTER (workflow input, empty = all 37)
+#   SCENARIO_FILTER (workflow input, empty = all cataloged benchmark scenarios)
 
 name: Benchmark (weekly)
 
@@ -41,7 +41,7 @@ on:
   workflow_dispatch:
     inputs:
       scenario_filter:
-        description: "Comma-separated scenario ids (empty = full 37)"
+        description: "Comma-separated scenario ids (empty = full benchmark catalog)"
         required: false
         type: string
         default: ""
