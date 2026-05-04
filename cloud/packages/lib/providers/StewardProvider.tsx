@@ -56,7 +56,7 @@ function isPlaywrightTestAuthEnabled(): boolean {
 const STEWARD_TOKEN_KEY = "steward_session_token";
 const STEWARD_REFRESH_TOKEN_KEY = "steward_refresh_token";
 const STEWARD_SESSION_ENDPOINT = "/api/auth/steward-session";
-const ELIZA_CLOUD_COOKIE_HOSTS = new Set(["elizacloud.ai", "www.elizacloud.ai"]);
+const ELIZA_CLOUD_COOKIE_HOSTS = new Set(["elizacloud.ai", "www.elizacloud.ai", "dev.elizacloud.ai"]);
 const ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT = "https://api.elizacloud.ai/api/auth/steward-session";
 
 export const LocalStewardAuthContext = createContext<ReturnType<typeof useStewardAuth> | null>(
