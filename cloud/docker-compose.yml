@@ -1,0 +1,69 @@
+# Local development services for eliza-cloud.
+#
+# Production uses Cloudflare R2 for object storage and Neon for Postgres; this
+# file exists only so contributors can run the cloud's "heavy payload" object
+# offload paths offline. The S3-compatible API is provided by self-hosted
+# Supabase Storage; the storage-api container speaks S3 at /storage/v1/s3.
+#
+# Start: docker compose up -d storage
+# Stop:  docker compose down
+# Wipe:  docker compose down -v
+
+services:
+  storage_db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: storage
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "54322:5432"
+    volumes:
+      - storage_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  storage:
+    image: supabase/storage-api:v1.58.4
+    restart: unless-stopped
+    depends_on:
+      storage_db:
+        condition: service_healthy
+    ports:
+      - "54321:5000"
+    environment:
+      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIn0.jbWg5J-NKTeVMzQS9Tjj0VfHN1oaA_yt2P9hM1Q8d_o
+      SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UifQ.h4y7lP4sStTvqAkdKfp5EpzWi5VHBhfJ0tHKk5cdZqM
+      AUTH_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      AUTH_JWT_ALGORITHM: HS256
+      DATABASE_URL: postgres://postgres:postgres@storage_db:5432/storage
+      DB_INSTALL_ROLES: "true"
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      POSTGREST_URL: http://storage_db:5432
+      FILE_SIZE_LIMIT: "524288000"
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: local
+      GLOBAL_S3_BUCKET: stub
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+      S3_PROTOCOL_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-eliza-cloud-local}
+      S3_PROTOCOL_ACCESS_KEY_SECRET: ${STORAGE_SECRET_ACCESS_KEY:-eliza-cloud-local-secret-please-change}
+      S3_PROTOCOL_PREFIX: /storage/v1
+      S3_PROTOCOL_NON_CANONICAL_HOST_HEADER: "true"
+      UPLOAD_FILE_SIZE_LIMIT: "524288000"
+    volumes:
+      - storage_data:/var/lib/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5000/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  storage_db_data:
+  storage_data:

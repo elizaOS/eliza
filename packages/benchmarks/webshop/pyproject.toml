@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elizaos-webshop"
+version = "2.0.0"
+description = "WebShop benchmark for ElizaOS - web interaction shopping evaluation"
+readme = "RESEARCH.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "elizaOS Contributors" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+  "elizaos>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.23.0",
+  "pytest-cov>=4.0.0",
+]
+# Optional: load tasks from HuggingFace datasets
+hf = [
+  "datasets>=2.0.0",
+]
+
+[project.scripts]
+webshop-bench = "elizaos_webshop.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["elizaos_webshop*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

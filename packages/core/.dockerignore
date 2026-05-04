@@ -1,0 +1,45 @@
+# CI / production dockerignore for `eliza/packages/app-core/deploy/Dockerfile.ci`.
+# Copy to the repo root as `.dockerignore` before `docker build` (context is `.`).
+# Pre-built `dist/` and `apps/app/dist/` are expected in the build context.
+
+.git
+.github
+.claude
+.devin
+.vscode
+.idea
+.eliza.ci-disabled
+.env
+.env.local
+.env.*.local
+node_modules/.cache
+packages/**/node_modules
+apps/**/node_modules
+eliza/packages/app-core/deploy/**/node_modules
+apps/app/android
+apps/app/ios
+apps/app/electrobun
+apps/app/screenshots
+apps/app/test-results
+apps/homepage
+apps/home
+apps/landing
+apps/chrome-extension
+apps/ui
+docs/
+coverage/
+dev.log
+install.sh
+install.ps1
+packaging/
+artifacts/
+.docker-home
+.tmp
+deploy/
+
+# Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
+eliza/packages/app-core/deploy/Dockerfile.cloud
+eliza/packages/app-core/deploy/Dockerfile.cloud-agent
+eliza/packages/app-core/deploy/Dockerfile.sandbox
+eliza/packages/app-core/deploy/Dockerfile.cloud.dockerignore
+!eliza/packages/app-core/deploy/Dockerfile.ci

@@ -1,0 +1,142 @@
+{
+  "name": "@elizaos/plugin-wallet",
+  "version": "2.0.0-alpha.536",
+  "description": "Unified non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/eliza-ai/eliza/tree/main/eliza/plugins/plugin-wallet",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eliza-ai/eliza.git",
+    "directory": "eliza/plugins/plugin-wallet"
+  },
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    },
+    "./sdk": {
+      "import": {
+        "types": "./dist/sdk/index.d.mts",
+        "default": "./dist/sdk/index.mjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "SDK-LICENSE"
+  ],
+  "scripts": {
+    "build": "tsdown --no-config src/index.ts --format esm --dts --clean -d dist && tsdown --no-config src/sdk/index.ts --format esm --dts --no-clean -d dist/sdk && mv dist/index-*.d.ts dist/index.d.ts 2>/dev/null || true && mv dist/sdk/index-*.d.ts dist/sdk/index.d.ts 2>/dev/null || true",
+    "check": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run --config ./vitest.config.ts",
+    "test:watch": "vitest --config ./vitest.config.ts",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "form-data": "4.0.5",
+    "whatwg-url": "^16.0.0"
+  },
+  "dependencies": {
+    "@elizaos/cloud-routing": "workspace:*",
+    "@lifi/data-types": "^6.0.0",
+    "@lifi/sdk": "^3.7.9",
+    "@lifi/types": "^17.18.0",
+    "@solana/spl-token": "0.4.14",
+    "@solana/spl-token-metadata": "^0.1.6",
+    "@solana/web3.js": "^1.98.4",
+    "bignumber.js": "^11.0.0",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3",
+    "viem": "^2.48.8",
+    "zod": "^4.4.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@elizaos/app-steward": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.21.0",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.18"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ELIZA_WALLET_BACKEND": {
+        "type": "string",
+        "required": false,
+        "description": "Wallet backend selection: 'local' | 'steward' | 'auto'. Default: auto (desktop=local, cloud/mobile=steward).",
+        "default": "auto"
+      },
+      "EVM_PRIVATE_KEY": {
+        "type": "string",
+        "required": false,
+        "sensitive": true,
+        "description": "EVM private key (32-byte hex, 0x-prefixed). Local backend only. Hydrated from OS keychain when available."
+      },
+      "SOLANA_PRIVATE_KEY": {
+        "type": "string",
+        "required": false,
+        "sensitive": true,
+        "description": "Solana private key, base58-encoded. Local backend only. Hydrated from OS keychain when available."
+      },
+      "STEWARD_API_URL": {
+        "type": "string",
+        "required": false,
+        "description": "Steward API base URL. Required when ELIZA_WALLET_BACKEND=steward."
+      },
+      "STEWARD_AGENT_ID": {
+        "type": "string",
+        "required": false,
+        "description": "Steward agent identifier. Required when ELIZA_WALLET_BACKEND=steward."
+      },
+      "STEWARD_AGENT_TOKEN": {
+        "type": "string",
+        "required": false,
+        "sensitive": true,
+        "description": "Steward agent bearer token. Required when ELIZA_WALLET_BACKEND=steward."
+      },
+      "STEWARD_TENANT_ID": {
+        "type": "string",
+        "required": false,
+        "description": "Steward tenant identifier (typically the user ID)."
+      }
+    }
+  },
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "wallet",
+    "non-custodial",
+    "evm",
+    "solana",
+    "erc-6551",
+    "x402",
+    "cctp",
+    "lifi",
+    "jupiter",
+    "raydium",
+    "orca",
+    "meteora",
+    "hyperliquid",
+    "polymarket",
+    "aave",
+    "morpho",
+    "clanker",
+    "lp-management",
+    "trading",
+    "automation"
+  ],
+  "packageType": "plugin"
+}

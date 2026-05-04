@@ -1,0 +1,57 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 772361a..c76814f 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -18,7 +18,7 @@ buildscript {
+ apply plugin: 'com.android.library'
+ 
+ android {
+-    namespace "ai.annadata.plugin.capacitor"
++    namespace = "ai.annadata.plugin.capacitor"
+     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
+     defaultConfig {
+         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
+@@ -35,21 +35,21 @@ android {
+     externalNativeBuild {
+         cmake {
+             path "src/main/CMakeLists.txt"
+-            version "3.22.1"
++            version = "3.22.1"
+             // Explicitly set NDK version to avoid Windows dependencies
+-            ndkVersion "29.0.13113456"
++            ndkVersion = "29.0.13113456"
+         }
+     }
+     
+     buildTypes {
+         release {
+             minifyEnabled false
+-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
++            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+         }
+     }
+     
+     lintOptions {
+-        abortOnError false
++        abortOnError = false
+     }
+     
+     compileOptions {
+diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
+index 0000000..0000001 100644
+--- a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
++++ b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
+@@ -315,8 +315,11 @@
+             System.loadLibrary(libraryName);
+             Log.i(TAG, "Successfully loaded llama-cpp native library: " + libraryName);
+         } catch (UnsatisfiedLinkError e) {
+-            Log.e(TAG, "Failed to load llama-cpp native library: " + e.getMessage());
+-            throw e;
++            // Don't re-throw — the plugin's static initializer would crash
++            // the entire host app even when llama-cpp isn't actually used.
++            // Native API calls will fail later with their own errors; that's
++            // the appropriate failure surface, not a process-level kill.
++            Log.e(TAG, "Failed to load llama-cpp native library (continuing without on-device inference): " + e.getMessage());
+         }
+     }
+ 

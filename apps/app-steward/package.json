@@ -1,0 +1,42 @@
+{
+  "name": "@elizaos/app-steward",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./plugin": "./src/plugin.ts",
+    "./types": "./src/types/index.ts",
+    "./types/*": "./src/types/*.ts",
+    "./api/*": "./src/api/*.ts",
+    "./services/*": "./src/services/*.ts",
+    "./security/*": "./src/security/*.ts",
+    "./routes/*": "./src/routes/*.ts",
+    "./actions/*": "./src/actions/*.ts",
+    "./browser-workspace-wallet": "./src/browser-workspace-wallet.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@simplewebauthn/browser": "^13.0.0",
+    "@solana/web3.js": "^1.98.4",
+    "@stwd/sdk": "^0.8.1",
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "ethers": "^6.16.0",
+    "lucide-react": "^1.0.0",
+    "viem": "^2.48.8"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

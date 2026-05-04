@@ -1,0 +1,77 @@
+{
+  "name": "@elizaos/plugin-sql",
+  "version": "2.0.0-alpha.1",
+  "description": "",
+  "type": "module",
+  "main": "typescript/dist/index.js",
+  "types": "typescript/dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "import": "./typescript/dist/index.js",
+      "default": "./typescript/dist/index.js"
+    },
+    "./schema": {
+      "types": "./typescript/schema/index.ts",
+      "import": "./typescript/schema/index.ts",
+      "default": "./typescript/schema/index.ts"
+    },
+    "./drizzle": {
+      "types": "./typescript/drizzle/index.ts",
+      "import": "./typescript/drizzle/index.ts",
+      "default": "./typescript/drizzle/index.ts"
+    },
+    "./types": {
+      "types": "./typescript/types.ts",
+      "import": "./typescript/types.ts",
+      "default": "./typescript/types.ts"
+    }
+  },
+  "files": [
+    "typescript/dist",
+    "README.md"
+  ],
+  "keywords": [],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-sql"
+  },
+  "scripts": {
+    "build": "cd typescript && bun run build.ts",
+    "dev": "cd typescript && bun --hot build.ts",
+    "test": "cd typescript && vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
+    "lint": "cd typescript && bun run lint",
+    "lint:check": "cd typescript && bun run lint:check",
+    "clean": "rm -rf typescript/dist .turbo node_modules",
+    "format": "cd typescript && bun run format",
+    "format:check": "cd typescript && bun run format:check",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:live": "bun run test:e2e"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.4.0",
+    "drizzle-orm": "0.45.2",
+    "pg": "^8.16.3",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.3",
+    "@types/pg": "^8.15.2",
+    "dotenv": "^17.2.3",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543",
+  "publishConfig": {
+    "access": "public"
+  }
+}

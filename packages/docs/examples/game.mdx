@@ -1,0 +1,86 @@
+---
+title: "Game Examples"
+description: "AI-powered and agentic games with elizaOS (TypeScript)"
+---
+
+Game examples live under `packages/examples/`. They use `AgentRuntime`, plugins, and (for LLM-backed demos) `ModelType` for decisions.
+
+## Text adventure (LLM)
+
+Dungeon crawl with AI-chosen actions.
+
+| Entry                         | Notes                          |
+| ----------------------------- | ------------------------------ |
+| `examples/text-adventure/game.ts` | Set `OPENAI_API_KEY`; use `LOG_LEVEL=fatal` for quiet logs |
+
+```bash
+cd examples/text-adventure
+cp .env.example .env   # add OPENAI_API_KEY
+bun install
+LOG_LEVEL=fatal bun run game.ts
+```
+
+---
+
+## Tic-tac-toe (no LLM)
+
+Minimax via custom model handlers — no API calls.
+
+```bash
+bun run examples/tic-tac-toe/game.ts
+```
+
+---
+
+## Game of life (no LLM)
+
+Multi-agent simulation with algorithmic decisions.
+
+```bash
+bun run examples/game-of-life/game.ts
+```
+
+---
+
+## Core pattern (text adventure)
+
+```typescript
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+const runtime = new AgentRuntime({
+  character: {
+    name: "Adventurer",
+    bio: "Exploring a dangerous dungeon.",
+    system: `You are playing a text adventure. Choose ONE action: move north, take sword, attack, …
+Respond with ONLY the command.`,
+  },
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+
+const decision = await runtime.useModel(ModelType.TEXT_SMALL, {
+  prompt: "You are in the entrance. Exits: north. What do you do?",
+  maxTokens: 50,
+  temperature: 0.3,
+});
+
+console.log(String(decision));
+
+await runtime.stop();
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Examples Overview" icon="grid-2" href="/examples/overview">
+    All examples
+  </Card>
+  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+    Extend the runtime for your game
+  </Card>
+</CardGroup>

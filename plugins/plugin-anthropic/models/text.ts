@@ -1,0 +1,478 @@
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  ModelTypeName,
+  TextStreamResult,
+} from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { generateText, streamText } from "ai";
+import { createAnthropicClientWithTopPSupport } from "../providers";
+import type { ModelName, ModelSize, ProviderOptions } from "../types";
+import { generateViaCli, streamViaCli } from "../utils/claude-cli";
+import {
+  getActionPlannerModel,
+  getAuthMode,
+  getCoTBudget,
+  getExperimentalTelemetry,
+  getLargeModel,
+  getMediumModel,
+  getMegaModel,
+  getNanoModel,
+  getReasoningLargeModel,
+  getReasoningSmallModel,
+  getResponseHandlerModel,
+  getSmallModel,
+} from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
+import { executeWithRetry, formatModelError } from "../utils/retry";
+
+type ChatAttachment = {
+  data: string | Uint8Array | URL;
+  mediaType: string;
+  filename?: string;
+};
+
+interface ResolvedTextParams {
+  readonly prompt: string;
+  readonly stopSequences: readonly string[];
+  readonly maxTokens: number;
+  readonly temperature: number | undefined;
+  readonly topP: number | undefined;
+  readonly frequencyPenalty: number;
+  readonly presencePenalty: number;
+  readonly providerOptions: ProviderOptions;
+}
+
+interface GenerateTextParamsWithProviderOptions extends GenerateTextParams {
+  attachments?: ChatAttachment[];
+  providerOptions?: ProviderOptions;
+}
+
+type AnthropicCacheControl = NonNullable<NonNullable<ProviderOptions["anthropic"]>["cacheControl"]>;
+
+interface AnthropicUsageWithCache {
+  promptTokens?: number;
+  completionTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+}
+
+const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
+const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as ModelTypeName;
+const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeName;
+const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
+  "RESPONSE_HANDLER") as ModelTypeName;
+const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+type TextModelType =
+  | typeof TEXT_NANO_MODEL_TYPE
+  | typeof ModelType.TEXT_SMALL
+  | typeof TEXT_MEDIUM_MODEL_TYPE
+  | typeof ModelType.TEXT_LARGE
+  | typeof TEXT_MEGA_MODEL_TYPE
+  | typeof RESPONSE_HANDLER_MODEL_TYPE
+  | typeof ACTION_PLANNER_MODEL_TYPE
+  | typeof TEXT_REASONING_SMALL_MODEL_TYPE
+  | typeof TEXT_REASONING_LARGE_MODEL_TYPE;
+type AnthropicTextPart = {
+  type: "text";
+  text: string;
+  cache_control?: {
+    type: "ephemeral";
+    ttl?: "5m" | "1h";
+  };
+};
+type AnthropicFilePart = {
+  type: "file";
+  data: string | Uint8Array | URL;
+  mediaType: string;
+  filename?: string;
+};
+type AnthropicUserContentPart = AnthropicTextPart | AnthropicFilePart;
+
+function isOpus4Model(modelName: ModelName): boolean {
+  return modelName.toLowerCase().includes("opus-4");
+}
+
+function buildUserContent(params: GenerateTextParamsWithProviderOptions) {
+  const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt }];
+
+  for (const attachment of params.attachments ?? []) {
+    content.push({
+      type: "file",
+      data: attachment.data,
+      mediaType: attachment.mediaType,
+      ...(attachment.filename ? { filename: attachment.filename } : {}),
+    });
+  }
+
+  return content;
+}
+
+function buildSegmentedUserContent(
+  params: GenerateTextParamsWithProviderOptions,
+  cacheControl?: AnthropicCacheControl
+) {
+  const content: AnthropicUserContentPart[] = [];
+
+  for (const segment of params.promptSegments ?? []) {
+    const textPart: AnthropicTextPart = {
+      type: "text",
+      text: segment.content,
+    };
+    if (segment.stable && cacheControl) {
+      textPart.cache_control = {
+        type: cacheControl.type,
+        ...(cacheControl.ttl ? { ttl: cacheControl.ttl } : {}),
+      };
+    }
+    content.push(textPart);
+  }
+
+  for (const attachment of params.attachments ?? []) {
+    content.push({
+      type: "file",
+      data: attachment.data,
+      mediaType: attachment.mediaType,
+      ...(attachment.filename ? { filename: attachment.filename } : {}),
+    });
+  }
+
+  return content;
+}
+
+function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl | undefined {
+  const ttlSetting = runtime.getSetting("ANTHROPIC_PROMPT_CACHE_TTL");
+  if (typeof ttlSetting === "string") {
+    const ttl = ttlSetting.trim().toLowerCase();
+    if (ttl === "5m" || ttl === "1h") {
+      return { type: "ephemeral", ttl };
+    }
+  }
+  return undefined;
+}
+
+function resolveTextParams(
+  params: GenerateTextParams,
+  modelName: ModelName,
+  cotBudget: number
+): ResolvedTextParams {
+  const prompt = params.prompt;
+  const stopSequences = params.stopSequences ?? [];
+  const frequencyPenalty = params.frequencyPenalty ?? 0.7;
+  const presencePenalty = params.presencePenalty ?? 0.7;
+
+  const hasTopP = params.topP !== undefined;
+  const hasTemperature = params.temperature !== undefined;
+
+  let temperature: number | undefined;
+  let topP: number | undefined;
+
+  if (hasTopP && hasTemperature) {
+    // Anthropic only supports one at a time; prefer temperature, drop topP
+    logger.warn(
+      "[Anthropic] Both temperature and topP provided; using temperature only (Anthropic API limitation)."
+    );
+    temperature = params.temperature;
+    topP = undefined;
+  } else if (hasTopP) {
+    topP = params.topP;
+    temperature = undefined;
+  } else {
+    temperature = params.temperature ?? 0.7;
+    topP = undefined;
+  }
+
+  // Opus 4.x only accepts temperature=1 (extended-thinking-capable models).
+  // Anthropic returns 400 "Invalid request data" otherwise.
+  if (isOpus4Model(modelName) && temperature !== undefined && temperature !== 1) {
+    temperature = 1;
+  }
+
+  const defaultMaxTokens = modelName.includes("-3-") ? 4096 : 8192;
+  // Cap output tokens at the model's hard limit. Opus 4.x = 32k, Sonnet 4.x = 64k.
+  // Callers (eliza runtime) sometimes pass the prompt context window (128k+) as
+  // maxTokens, which the API rejects with "Invalid request data".
+  const maxTokens = Math.min(
+    params.maxTokens ?? defaultMaxTokens,
+    isOpus4Model(modelName) ? 32_000 : 64_000
+  );
+
+  const rawProviderOptions = (params as GenerateTextParamsWithProviderOptions).providerOptions;
+  const baseProviderOptions: ProviderOptions = rawProviderOptions
+    ? {
+        ...rawProviderOptions,
+        anthropic: rawProviderOptions.anthropic ? { ...rawProviderOptions.anthropic } : undefined,
+      }
+    : {};
+
+  const providerOptions: ProviderOptions =
+    cotBudget > 0
+      ? {
+          ...baseProviderOptions,
+          anthropic: {
+            ...(baseProviderOptions.anthropic ?? {}),
+            thinking: { type: "enabled", budgetTokens: cotBudget },
+          },
+        }
+      : baseProviderOptions;
+
+  return {
+    prompt,
+    stopSequences,
+    maxTokens,
+    temperature,
+    topP,
+    frequencyPenalty,
+    presencePenalty,
+    providerOptions,
+  };
+}
+
+async function generateTextWithModel(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  modelName: ModelName,
+  modelSize: ModelSize,
+  modelType: TextModelType
+): Promise<string | TextStreamResult> {
+  if (getAuthMode(runtime) === "cli") {
+    if (params.stream) {
+      return streamViaCli(runtime, params.prompt, modelName, modelType, params.maxTokens);
+    }
+    const result = await generateViaCli(
+      runtime,
+      params.prompt,
+      modelName,
+      modelType,
+      params.maxTokens
+    );
+    return result.text;
+  }
+
+  const paramsWithAttachments = params as GenerateTextParamsWithProviderOptions;
+  const anthropic = createAnthropicClientWithTopPSupport(runtime);
+  const experimentalTelemetry = getExperimentalTelemetry(runtime);
+  const cotBudget = getCoTBudget(runtime, modelSize);
+
+  logger.log(`[Anthropic] Using ${modelType} model: ${modelName}`);
+
+  const resolved = resolveTextParams(params, modelName, cotBudget);
+  const runtimeCacheControl = getRuntimeCacheControl(runtime);
+  const providerOptions: ProviderOptions = {
+    ...resolved.providerOptions,
+    anthropic: {
+      ...(resolved.providerOptions.anthropic ?? {}),
+      ...(!resolved.providerOptions.anthropic?.cacheControl && runtimeCacheControl
+        ? { cacheControl: runtimeCacheControl }
+        : {}),
+    },
+  };
+  const segmentedPrompt =
+    Array.isArray(paramsWithAttachments.promptSegments) &&
+    paramsWithAttachments.promptSegments.length > 0;
+  const cacheControl = providerOptions.anthropic?.cacheControl;
+  const userContent =
+    segmentedPrompt || (paramsWithAttachments.attachments?.length ?? 0) > 0
+      ? segmentedPrompt
+        ? buildSegmentedUserContent(paramsWithAttachments, cacheControl)
+        : buildUserContent(paramsWithAttachments)
+      : undefined;
+  const anthropicOptions =
+    providerOptions.anthropic && segmentedPrompt
+      ? {
+          ...providerOptions.anthropic,
+          cacheControl: undefined,
+        }
+      : providerOptions.anthropic;
+  const anthropicProviderOptions = anthropicOptions ? { anthropic: anthropicOptions } : undefined;
+
+  const agentName = resolved.providerOptions.agentName;
+  const telemetryConfig = {
+    isEnabled: experimentalTelemetry,
+    functionId: agentName ? `agent:${agentName}` : undefined,
+    metadata: agentName ? { agentName } : undefined,
+  };
+
+  const generateParams = {
+    model: anthropic(modelName),
+    messages: [
+      {
+        role: "user" as const,
+        content: userContent ?? resolved.prompt,
+      },
+    ],
+    system: runtime.character.system ?? undefined,
+    temperature: resolved.temperature,
+    stopSequences: resolved.stopSequences as string[],
+    frequencyPenalty: resolved.frequencyPenalty,
+    presencePenalty: resolved.presencePenalty,
+    experimental_telemetry: telemetryConfig,
+    maxOutputTokens: resolved.maxTokens,
+    topP: resolved.topP,
+    ...(anthropicProviderOptions ? { providerOptions: anthropicProviderOptions } : {}),
+  };
+
+  const operationName = `${modelType} request using ${modelName}`;
+
+  if (params.stream) {
+    try {
+      const streamResult = streamText(generateParams);
+      return {
+        textStream: streamResult.textStream,
+        text: Promise.resolve(streamResult.text),
+        usage: Promise.resolve(streamResult.usage).then((usage) => {
+          if (!usage) {
+            return undefined;
+          }
+
+          emitModelUsageEvent(
+            runtime,
+            modelType,
+            resolved.prompt,
+            usage as AnthropicUsageWithCache
+          );
+          const promptTokens = usage.inputTokens ?? 0;
+          const completionTokens = usage.outputTokens ?? 0;
+
+          return {
+            promptTokens,
+            completionTokens,
+            totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
+          };
+        }),
+        finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+      };
+    } catch (error) {
+      throw formatModelError(operationName, error);
+    }
+  }
+
+  try {
+    const { text, usage } = await executeWithRetry(operationName, () =>
+      generateText(generateParams)
+    );
+
+    if (usage) {
+      emitModelUsageEvent(runtime, modelType, resolved.prompt, usage as AnthropicUsageWithCache);
+    }
+
+    return text;
+  } catch (error) {
+    throw formatModelError(operationName, error);
+  }
+}
+
+export async function handleTextSmall(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  const modelName = getSmallModel(runtime);
+  return generateTextWithModel(runtime, params, modelName, "small", ModelType.TEXT_SMALL);
+}
+
+export async function handleTextLarge(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  const modelName = getLargeModel(runtime);
+  return generateTextWithModel(runtime, params, modelName, "large", ModelType.TEXT_LARGE);
+}
+
+export async function handleTextNano(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  return generateTextWithModel(
+    runtime,
+    params,
+    getNanoModel(runtime),
+    "small",
+    TEXT_NANO_MODEL_TYPE
+  );
+}
+
+export async function handleTextMedium(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  return generateTextWithModel(
+    runtime,
+    params,
+    getMediumModel(runtime),
+    "large",
+    TEXT_MEDIUM_MODEL_TYPE
+  );
+}
+
+export async function handleTextMega(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  return generateTextWithModel(
+    runtime,
+    params,
+    getMegaModel(runtime),
+    "large",
+    TEXT_MEGA_MODEL_TYPE
+  );
+}
+
+export async function handleResponseHandler(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  return generateTextWithModel(
+    runtime,
+    params,
+    getResponseHandlerModel(runtime),
+    "small",
+    RESPONSE_HANDLER_MODEL_TYPE
+  );
+}
+
+export async function handleActionPlanner(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  return generateTextWithModel(
+    runtime,
+    params,
+    getActionPlannerModel(runtime),
+    "large",
+    ACTION_PLANNER_MODEL_TYPE
+  );
+}
+
+const TEXT_REASONING_SMALL_MODEL_TYPE = (ModelType.TEXT_REASONING_SMALL ??
+  "REASONING_SMALL") as ModelTypeName;
+const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE ??
+  "REASONING_LARGE") as ModelTypeName;
+
+export async function handleReasoningSmall(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  return generateTextWithModel(
+    runtime,
+    params,
+    getReasoningSmallModel(runtime),
+    "small",
+    TEXT_REASONING_SMALL_MODEL_TYPE
+  );
+}
+
+export async function handleReasoningLarge(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  return generateTextWithModel(
+    runtime,
+    params,
+    getReasoningLargeModel(runtime),
+    "large",
+    TEXT_REASONING_LARGE_MODEL_TYPE
+  );
+}

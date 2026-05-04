@@ -1,0 +1,13 @@
+{
+  "scenario_id": "final_stakeholder_summary",
+  "title": "Final Stakeholder Summary",
+  "category": "completion_summary",
+  "required_capabilities": [],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Task is done, give me the final summary for stakeholders.",
+      "expected_behaviors": ["final_summary_to_stakeholder"]
+    }
+  ]
+}

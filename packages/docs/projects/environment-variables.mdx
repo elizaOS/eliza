@@ -1,0 +1,176 @@
+---
+title: Environment Variables
+description: Server configuration environment variables for ElizaOS
+---
+
+This document describes the server configuration environment variables for ElizaOS.
+
+## Server Security & Authentication
+
+### ELIZA_SERVER_AUTH_TOKEN
+
+Controls API authentication for the ElizaOS server.
+
+```bash .env
+ELIZA_SERVER_AUTH_TOKEN=your-secret-token
+```
+
+**How it works:**
+
+- Set this as your server's required API key
+- External apps must send `X-API-KEY: your-secret-token` header when calling your `/api/*` endpoints
+- Server rejects requests with wrong/missing keys (401 Unauthorized)
+
+- **Default**: Unset (no authentication required)
+- **Security**: When unset, all API endpoints are publicly accessible
+- **CORS**: OPTIONS requests are always allowed for preflight
+
+**Example:**
+
+```bash
+# API call with authentication
+curl -H "X-API-KEY: mysecrettoken123" \
+     -H "Content-Type: application/json" \
+     http://localhost:3000/api/agents
+```
+
+## Web UI Control
+
+### ELIZA_UI_ENABLE
+
+Controls whether the web user interface is served by the server.
+
+- **Purpose**: Enable or disable the web UI for security and deployment flexibility
+- **Values**:
+  - `true` - Force enable UI
+  - `false` - Force disable UI
+- **Default Behavior**:
+  - Development (`NODE_ENV=development`): UI enabled
+  - Production (`NODE_ENV=production`): UI disabled for security
+- **Usage**:
+
+  ```bash
+  # Force enable in production
+  ELIZA_UI_ENABLE=true
+
+  # Force disable in development
+  ELIZA_UI_ENABLE=false
+
+  # Use automatic behavior
+  ELIZA_UI_ENABLE=
+  ```
+
+- **Security**: Disabling UI reduces attack surface by removing web interface
+- **API Access**: API endpoints remain available regardless of UI setting
+
+<Info>
+  When the UI is disabled, non-API routes return a 403 Forbidden response with a
+  message explaining that the web UI is disabled. The dashboard URL is only
+  shown on startup when the UI is enabled.
+</Info>
+
+## Environment Mode
+
+### NODE_ENV
+
+Controls the application environment and affects various behaviors including default UI settings and security policies.
+
+- **Values**: `development`, `production`
+- **Default**: `development`
+- **Effects**:
+  - CSP (Content Security Policy) configuration
+  - Default UI enable/disable behavior
+  - Error message verbosity
+  - Debugging features availability
+
+## Examples
+
+### Production Deployment (Secure)
+
+```bash .env
+NODE_ENV=production
+ELIZA_SERVER_AUTH_TOKEN=secure-random-token-here
+ELIZA_UI_ENABLE=false
+```
+
+### Development Setup (Convenient)
+
+```bash .env
+NODE_ENV=development
+# ELIZA_SERVER_AUTH_TOKEN=  # Unset for easy development
+# ELIZA_UI_ENABLE=         # Unset for automatic behavior (UI enabled)
+```
+
+### Headless API Server
+
+```bash .env
+ELIZA_SERVER_AUTH_TOKEN=api-only-token
+ELIZA_UI_ENABLE=false
+```
+
+### Public Web Application
+
+```bash .env
+NODE_ENV=production
+ELIZA_SERVER_AUTH_TOKEN=my-api-key
+ELIZA_UI_ENABLE=true
+```
+
+## Security Considerations
+
+<Warning>
+  **API Authentication**: In production, always set `ELIZA_SERVER_AUTH_TOKEN` to
+  prevent unauthorized access to your agent's API endpoints.
+</Warning>
+
+1. **Default Security**: In production mode with default settings:
+   - Web UI is disabled
+   - API endpoints are open (no authentication)
+   - This prevents accidental exposure of the dashboard but leaves APIs accessible
+
+2. **Recommended Production Setup**:
+   - Set `ELIZA_SERVER_AUTH_TOKEN` to a strong, random value
+   - Keep `ELIZA_UI_ENABLE=false` unless you need the web interface
+   - Use HTTPS in production (configure via reverse proxy)
+
+3. **Development Convenience**:
+   - Default settings optimize for easy development
+   - UI is enabled automatically
+   - No authentication required
+
+## Related Configuration
+
+For a complete list of all available environment variables including database connections, model providers, and plugin settings, see:
+
+- [Project Overview - Environment Configuration](/projects/overview#environment-configuration)
+- [`.env.example`](https://github.com/elizaos/eliza/blob/main/.env.example) in the repository - Template file showing all available environment variables with example values
+
+<Note>
+  **`.env` vs `.env.example`**: - `.env` - Your actual working environment file
+  with real secret values (never commit this file) - `.env.example` - Template
+  file with example/placeholder values (safe to commit as reference)
+</Note>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Deploy a Project" icon="rocket" href="/guides/deploy-a-project">
+    Learn to deploy your ElizaOS project securely
+  </Card>
+
+<Card
+  title="CLI Environment Commands"
+  icon="terminal"
+  href="/cli-reference/env"
+>
+  Manage environment variables with the CLI
+</Card>
+
+<Card title="REST Reference" icon="code" href="/rest-reference">
+  Explore the REST API that these variables protect
+</Card>
+
+  <Card title="Project Overview" icon="folder" href="/projects/overview">
+    Return to the complete project documentation
+  </Card>
+</CardGroup>
