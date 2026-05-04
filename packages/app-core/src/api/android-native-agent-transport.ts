@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { isAndroidLocalAgentUrl } from "../onboarding/local-agent-token";
-import { fetchAgentTransport, type AgentRequestTransport } from "./transport";
+import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 export interface NativeAgentRequestOptions {
   method?: string;

@@ -725,54 +725,49 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setSelectedProviderPanelId(activeProviderPanelId);
   }, [activeProviderPanelId]);
 
-  const apiProviderChoices = useMemo(
-    () => {
-      const pluginChoices = allAiProviders
-        .map((provider) => {
-          const option = getOnboardingProviderOption(
-            normalizeAiProviderPluginId(provider.id),
-          );
-          return option
-            ? {
-                id: option.id,
-                label: option.name,
-                provider,
-              }
-            : null;
-        })
-        .filter(
-          (choice): choice is NonNullable<typeof choice> => choice !== null,
+  const apiProviderChoices = useMemo(() => {
+    const pluginChoices = allAiProviders
+      .map((provider) => {
+        const option = getOnboardingProviderOption(
+          normalizeAiProviderPluginId(provider.id),
         );
-      const seen = new Set(pluginChoices.map((choice) => choice.id));
-      const accountManagedChoices = ONBOARDING_PROVIDER_CATALOG.filter(
-        (option) =>
-          option.authMode === "api-key" &&
-          getDirectAccountProviderForOnboardingProvider(option.id) &&
-          !seen.has(option.id),
-      ).map((option) => ({
-        id: option.id,
-        label: option.name,
-        provider: {
-          id: option.id,
-          name: option.name,
-          category: "ai-provider",
-          enabled: false,
-          configured: false,
-          parameters: [],
-        } satisfies PluginInfo,
-      }));
-      return [...pluginChoices, ...accountManagedChoices].sort(
-        (left, right) => {
-          const leftOrder =
-            getOnboardingProviderOption(left.id)?.order ?? Number.MAX_SAFE_INTEGER;
-          const rightOrder =
-            getOnboardingProviderOption(right.id)?.order ?? Number.MAX_SAFE_INTEGER;
-          return leftOrder - rightOrder;
-        },
+        return option
+          ? {
+              id: option.id,
+              label: option.name,
+              provider,
+            }
+          : null;
+      })
+      .filter(
+        (choice): choice is NonNullable<typeof choice> => choice !== null,
       );
-    },
-    [allAiProviders],
-  );
+    const seen = new Set(pluginChoices.map((choice) => choice.id));
+    const accountManagedChoices = ONBOARDING_PROVIDER_CATALOG.filter(
+      (option) =>
+        option.authMode === "api-key" &&
+        getDirectAccountProviderForOnboardingProvider(option.id) &&
+        !seen.has(option.id),
+    ).map((option) => ({
+      id: option.id,
+      label: option.name,
+      provider: {
+        id: option.id,
+        name: option.name,
+        category: "ai-provider",
+        enabled: false,
+        configured: false,
+        parameters: [],
+      } satisfies PluginInfo,
+    }));
+    return [...pluginChoices, ...accountManagedChoices].sort((left, right) => {
+      const leftOrder =
+        getOnboardingProviderOption(left.id)?.order ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder =
+        getOnboardingProviderOption(right.id)?.order ?? Number.MAX_SAFE_INTEGER;
+      return leftOrder - rightOrder;
+    });
+  }, [allAiProviders]);
 
   const selectedPanelProvider = useMemo(() => {
     if (

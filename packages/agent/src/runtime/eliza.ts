@@ -94,7 +94,7 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
-// @ts-ignore
+// @ts-expect-error
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
@@ -3234,9 +3234,7 @@ export async function startEliza(
     });
     accountPool.startAccountPoolKeepAlive();
   } catch (err) {
-    logger.debug(
-      `[eliza] Account pool bootstrap skipped: ${formatError(err)}`,
-    );
+    logger.debug(`[eliza] Account pool bootstrap skipped: ${formatError(err)}`);
   }
 
   // 2g. Apply subscription-based credentials (Claude Max, Codex Max).

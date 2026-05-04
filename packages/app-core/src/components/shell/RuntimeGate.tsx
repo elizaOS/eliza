@@ -244,6 +244,7 @@ export function RuntimeGate() {
     completeOnboarding,
     elizaCloudConnected,
     elizaCloudLoginBusy,
+    elizaCloudLoginError,
     handleCloudLogin,
     startupCoordinator,
     uiLanguage,
@@ -859,12 +860,12 @@ export function RuntimeGate() {
                 })
               )}
             </Button>
-            {error && (
+            {(error || elizaCloudLoginError) && (
               <p
                 style={{ fontFamily: MONO_FONT }}
                 className="text-3xs text-red-400"
               >
-                {error}
+                {error || elizaCloudLoginError}
               </p>
             )}
             <BackButton t={t} onClick={() => setSubView("chooser")} />
