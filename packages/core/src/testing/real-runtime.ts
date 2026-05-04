@@ -24,9 +24,9 @@ import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { configureLocalEmbeddingPlugin } from "../../../../agent/src/runtime/eliza";
 import {
-	selectLiveProvider,
 	type LiveProviderConfig,
 	type LiveProviderName,
+	selectLiveProvider,
 } from "./live-provider";
 
 export interface RealTestRuntimeOptions {
