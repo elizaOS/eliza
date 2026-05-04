@@ -73,6 +73,10 @@ export default defineConfig(({ mode }) => {
   const apiProxyTarget =
     process.env.VITE_API_PROXY_TARGET || process.env.PLAYWRIGHT_API_URL || "http://localhost:8787";
   const devServerPort = Number.parseInt(process.env.PORT || "3000", 10);
+  const allowedHosts = (process.env.VITE_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
 
   return {
     plugins: [
@@ -184,6 +188,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: Number.isFinite(devServerPort) ? devServerPort : 3000,
+      ...(allowedHosts.length ? { allowedHosts } : {}),
       proxy: {
         "/api": {
           target: apiProxyTarget,

@@ -29,13 +29,15 @@ The agent's job, not the SDK's. Common shapes:
 | Container hits `crash_loop` immediately | Image runs but exits non-zero on startup | Pull `getApiV1ContainersByIdLogs(id)`, surface the stderr to the human, pause. Common causes: missing env var, server bind issue, missing dependency in the image. |
 | `403 quota_exceeded` on container deploy | Org has hit `containers_per_org` | Tell the human; they need to remove a container or upgrade. |
 
-## Markup configuration (step 4)
+## Monetization configuration (step 4)
 
-Generally bulletproof since `inference_markup_percentage` is just a number on the apps table. Rare:
+Use `PUT /api/v1/apps/<appId>/monetization` with the current camelCase schema.
+Rare:
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `400 markup_out_of_range` | Markup outside the allowed bound (typically 0–50%) | Cap your value at the bound and retry. |
+| `400 markup_out_of_range` | Markup outside the allowed bound | Cap your value at the bound and retry. |
+| `404 resource_not_found` | Wrong app id or app owned by another org | Re-read the app id from the registration response; do not patch a guessed id. |
 
 ## Patch app_url + origins (step 5)
 

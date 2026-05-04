@@ -49,6 +49,7 @@ const PublicChat = lazyWithPreload(() => import("./pages/chat/[characterRef]/pag
 const AuthSuccess = lazyWithPreload(() => import("./pages/auth/success/page"));
 const AuthCliLogin = lazyWithPreload(() => import("./pages/auth/cli-login/page"));
 const AuthError = lazyWithPreload(() => import("./pages/auth/error/page"));
+const AuthEmailCallback = lazyWithPreload(() => import("./pages/auth/callback/email/page"));
 const AppAuthAuthorize = lazyWithPreload(() => import("./pages/app-auth/authorize/page"));
 
 const LoginLayout = lazyWithPreload(() => import("./pages/login/layout"));
@@ -246,6 +247,7 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
   { path: "/auth/success", preload: AuthSuccess.preload },
   { path: "/auth/cli-login", preload: AuthCliLogin.preload },
   { path: "/auth/error", preload: AuthError.preload },
+  { path: "/auth/callback/email", preload: AuthEmailCallback.preload },
   { path: "/app-auth/authorize", preload: AppAuthAuthorize.preload },
   { path: "/chat/:characterRef", preload: PublicChat.preload },
   { path: "/sandbox-proxy", preload: SandboxProxy.preload },
@@ -455,6 +457,14 @@ function App() {
           element={
             <Suspense fallback={<RouteChunkFallback />}>
               <AuthError />
+            </Suspense>
+          }
+        />
+        <Route
+          path="auth/callback/email"
+          element={
+            <Suspense fallback={<RouteChunkFallback />}>
+              <AuthEmailCallback />
             </Suspense>
           }
         />

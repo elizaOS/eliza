@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { dbRead } from "@/db/client";
 import { apps } from "@/db/schemas/apps";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
+import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -62,10 +63,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
     const redirectUri = new URL(request.url).searchParams.get("redirect_uri");
     if (redirectUri) {
-      const allowedOrigins = [
-        app.app_url,
-        ...((app.allowed_origins as string[] | null) ?? []).filter(Boolean),
-      ];
+      const allowedOrigins = await appsService.getAllowedOrigins(app);
 
       if (!isAllowedOrigin(allowedOrigins, redirectUri)) {
         return Response.json(

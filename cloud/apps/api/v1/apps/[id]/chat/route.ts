@@ -16,7 +16,15 @@ import {
   normalizeModelName,
 } from "@/lib/pricing";
 import { getProviderForModelWithFallback, withProviderFallback } from "@/lib/providers";
-import type { OpenAIChatMessage, OpenAIChatRequest } from "@/lib/providers/types";
+import {
+  getAiProviderConfigurationError,
+  hasLanguageModelProviderConfigured,
+} from "@/lib/providers/language-model";
+import type {
+  OpenAIChatMessage,
+  OpenAIChatRequest,
+  ProviderHttpError,
+} from "@/lib/providers/types";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
@@ -32,6 +40,74 @@ const COST_SAFETY_MULTIPLIER = 1.5;
 // Default estimated output tokens for cost pre-calculation
 // This is a reasonable average for chat completions
 const DEFAULT_ESTIMATED_OUTPUT_TOKENS = 500;
+
+function isProviderHttpError(error: unknown): error is ProviderHttpError {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "status" in error &&
+      typeof (error as { status?: unknown }).status === "number" &&
+      "error" in error,
+  );
+}
+
+function providerFailureResponse(error: unknown) {
+  if (isProviderHttpError(error)) {
+    const status = error.status;
+    return {
+      status,
+      body: {
+        error: {
+          message: error.error.message,
+          type:
+            error.error.type ??
+            (status === 402
+              ? "insufficient_quota"
+              : status === 429
+                ? "rate_limit_error"
+                : "api_error"),
+          code:
+            error.error.code ??
+            (status === 402
+              ? "provider_insufficient_credits"
+              : status === 429
+                ? "provider_rate_limited"
+                : "provider_error"),
+        },
+      },
+    };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("insufficient funds") ||
+    normalized.includes("insufficient credits") ||
+    (normalized.includes("credits") && normalized.includes("top up"))
+  ) {
+    return {
+      status: 402,
+      body: {
+        error: {
+          message,
+          type: "insufficient_quota",
+          code: "provider_insufficient_credits",
+        },
+      },
+    };
+  }
+
+  return {
+    status: 503,
+    body: {
+      error: {
+        message: "Service temporarily unavailable. Credits refunded.",
+        type: "api_error",
+        code: "provider_error",
+      },
+    },
+  };
+}
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -158,6 +234,21 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
     }
 
     const model = chatRequest.model;
+    if (!hasLanguageModelProviderConfigured(model)) {
+      return withCors(
+        Response.json(
+          {
+            error: {
+              message: getAiProviderConfigurationError(),
+              type: "service_unavailable",
+              code: "ai_provider_not_configured",
+            },
+          },
+          { status: 503 },
+        ),
+      );
+    }
+
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
     const isStreaming = chatRequest.stream ?? false;
@@ -257,12 +348,19 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
           : null,
       );
     } catch (providerError) {
+      const failure = providerFailureResponse(providerError);
+
       // Provider call failed - refund the reserved credits
       logger.error("[App Chat] Provider call failed, refunding credits", {
         appId,
         userId: user.id,
         reservedBaseCost,
-        error: providerError instanceof Error ? providerError.message : "Unknown error",
+        status: failure.status,
+        error: isProviderHttpError(providerError)
+          ? providerError.error.message
+          : providerError instanceof Error
+            ? providerError.message
+            : "Unknown error",
       });
 
       await appCreditsService.reconcileCredits({
@@ -274,18 +372,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
         metadata: { error: true, providerFailure: true },
       });
 
-      return withCors(
-        Response.json(
-          {
-            error: {
-              message: "Service temporarily unavailable. Credits refunded.",
-              type: "api_error",
-              code: "provider_error",
-            },
-          },
-          { status: 503 },
-        ),
-      );
+      return withCors(Response.json(failure.body, { status: failure.status }));
     }
 
     if (isStreaming) {

@@ -55,7 +55,7 @@ can audit them at `/dashboard/earnings`.
 | The `@elizaos/cloud-sdk` package | Already in your runtime (Agent packages it). |
 | A goal: what does the app DO? | Either the human told you, or you decided. Affects how you write the app's server code (chat? image-gen? tool-call agent?). |
 | A name for the app | Make one up if not given. Append a suffix on collision (the `/api/v1/apps/check-name` endpoint will tell you). |
-| Container registry credentials | The cloud needs to pull your image. Use the org's ECR setup (default), or any public registry. |
+| Container registry credentials | The cloud needs to pull your image. Push to GHCR, Docker Hub, or any registry the Cloud nodes can access. |
 
 You do NOT need: a description, a website URL, a markup % opinion, a
 custom domain, a separate affiliate code per app — defaults and
@@ -79,26 +79,29 @@ const { app, apiKey } = await cloud.routes.postApiV1Apps({
   },
 });
 
-// 2. SET the markup — this is what makes you actually earn.
-//    100% means every dollar of inference your users pay generates
-//    a dollar of earnings for your owner.
-await cloud.routes.patchApiV1AppsById({
-  pathParams: { id: app.id },
-  json: {
-    monetization_enabled: true,
-    inference_markup_percentage: input.markup ?? 100,
+// 2. ENABLE monetization — this is what makes you actually earn.
+await fetch(`${process.env.ELIZA_CLOUD_BASE_URL}/api/v1/apps/${app.id}/monetization`, {
+  method: "PUT",
+  headers: {
+    "x-api-key": process.env.ELIZAOS_CLOUD_API_KEY!,
+    "content-type": "application/json",
   },
+  body: JSON.stringify({
+    monetizationEnabled: true,
+    inferenceMarkupPercentage: input.markup ?? 100,
+    purchaseSharePercentage: 10,
+  }),
 });
 
 // 3. GENERATE the app code yourself.
-//    Reference: apps/edad-chat/server.ts in cloud-mini-apps —
-//    canonical pattern. Use the same SDK in the generated server:
-//    forward chats to cloud.routes.postApiV1Messages with
-//    `x-app-id: ${app.id}` so the markup gets attributed back to you.
+//    Reference: apps/edad-chat/server.ts in cloud-mini-apps shows the
+//    OAuth + same-origin proxy shape. For new apps, forward chats to
+//    cloud.routes.postApiV1AppsByIdChatRaw with pathParams { id: app.id }
+//    so the app-scoped markup is applied directly.
 
 // 4. BUILD + PUSH the Docker image.
 //    bun:1.2-alpine base. /health endpoint. expose port 3000.
-//    push to ECR (or any registry the cloud can pull from).
+//    push to GHCR, Docker Hub, or any registry the cloud can pull from.
 
 // 5. DEPLOY the container — this is your new home.
 const { container } = await cloud.createContainer({
@@ -107,9 +110,10 @@ const { container } = await cloud.createContainer({
   port: 3000,
   cpu: 256,
   memory: 512,
-  ecr_image_uri: pushedImageUri,
+  image: pushedImageUri,
   health_check_path: "/health",
   environment_vars: {
+    PORT: "3000",
     ELIZA_APP_ID: app.id,
     ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
   },

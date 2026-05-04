@@ -2,11 +2,11 @@ import { Alert, AlertDescription } from "@elizaos/cloud-ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
 import { AlertCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { resolveBrowserStewardApiUrl } from "@/lib/steward-url";
-import { apiFetch } from "../../lib/api-client";
+import { syncStewardSessionCookie } from "../../lib/steward-session";
 import { resolveLoginReturnTo } from "./login-return-to";
 import { buildStewardOAuthAuthorizeUrl, type StewardOAuthProvider } from "./steward-oauth-url";
 import { StewardWalletProviders } from "./steward-wallet-providers";
@@ -103,26 +103,6 @@ export default function StewardLoginSection() {
   const showWallets = hasAnyWalletProvider(providers);
   const hasOAuthProviders = Boolean(providers.google || providers.discord || providers.github);
 
-  const setSessionCookie = useCallback(async (token: string, refreshToken?: string | null) => {
-    const response = await apiFetch("/api/auth/steward-session", {
-      method: "POST",
-      skipAuth: true,
-      json: {
-        token,
-        refreshToken:
-          refreshToken ??
-          (typeof window !== "undefined" ? localStorage.getItem("steward_refresh_token") : null),
-      },
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(body?.error || "Could not establish a local Steward session");
-    }
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("steward-token-sync"));
-    }
-  }, []);
-
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
 
@@ -148,14 +128,14 @@ export default function StewardLoginSection() {
       console.warn("[steward] Failed to persist OAuth tokens", err);
     }
 
-    setSessionCookie(token, refreshToken)
+    syncStewardSessionCookie(token, refreshToken)
       .then(() => {
         setRedirectTo(resolveLoginReturnTo(searchParams));
       })
       .catch((sessionError) => {
         setCallbackError(getErrorMessage(sessionError, "Could not establish a local session"));
       });
-  }, [searchParams, setSessionCookie]);
+  }, [searchParams]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -168,7 +148,7 @@ export default function StewardLoginSection() {
       try {
         const session = auth.getSession();
         if (session?.token) {
-          await setSessionCookie(session.token);
+          await syncStewardSessionCookie(session.token);
           if (!cancelled) setRedirectTo(resolveLoginReturnTo(searchParams));
           return;
         }
@@ -176,7 +156,7 @@ export default function StewardLoginSection() {
         const refreshed = await auth.refreshSession();
         if (cancelled) return;
         if (refreshed?.token) {
-          await setSessionCookie(refreshed.token);
+          await syncStewardSessionCookie(refreshed.token);
           if (!cancelled) setRedirectTo(resolveLoginReturnTo(searchParams));
         }
       } catch (sessionError) {
@@ -191,7 +171,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [auth, searchParams, setSessionCookie]);
+  }, [auth, searchParams]);
 
   useEffect(() => {
     const errorCode = searchParams.get("error");
@@ -212,7 +192,7 @@ export default function StewardLoginSection() {
     navigate(qs ? `${pathname}?${qs}` : pathname, { replace: true });
   }, [pathname, searchParams, navigate]);
   async function handleSuccess(token: string, refreshToken?: string | null) {
-    await setSessionCookie(token, refreshToken);
+    await syncStewardSessionCookie(token, refreshToken);
     setStep("success");
     toast.success("Signed in!");
     setRedirectTo(resolveLoginReturnTo(searchParams));
