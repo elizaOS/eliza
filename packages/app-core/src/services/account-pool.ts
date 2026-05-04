@@ -691,8 +691,9 @@ export async function applyAccountPoolApiCredentials(
     const openAiCompatibleBase = activeProviderToken
       ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
       : undefined;
-    if (openAiCompatibleBase) {
-      process.env.OPENAI_API_KEY = activeProviderToken;
+    const token = activeProviderToken;
+    if (openAiCompatibleBase && token) {
+      process.env.OPENAI_API_KEY = token;
       process.env.OPENAI_BASE_URL = openAiCompatibleBase;
     }
   }
