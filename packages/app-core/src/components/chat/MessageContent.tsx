@@ -337,13 +337,18 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
   const regions: Array<{ start: number; end: number; segment: Segment }> = [];
 
   if (analysisMode) {
-    const XML_RE = /<(thought|analysis|reasoning|scratchpad|tool_calls?|tools?|action|providers?|response|text)\b[^>]*>([\s\S]*?)(?:<\/\1>|$)/gi;
+    const XML_RE =
+      /<(thought|analysis|reasoning|scratchpad|tool_calls?|tools?|action|providers?|response|text)\b[^>]*>([\s\S]*?)(?:<\/\1>|$)/gi;
     let m: RegExpExecArray | null = XML_RE.exec(targetText);
     while (m !== null) {
       regions.push({
         start: m.index,
         end: m.index + m[0].length,
-        segment: { kind: "analysis-xml", tag: m[1].toLowerCase(), content: m[2] },
+        segment: {
+          kind: "analysis-xml",
+          tag: m[1].toLowerCase(),
+          content: m[2],
+        },
       });
       m = XML_RE.exec(targetText);
     }
@@ -906,7 +911,10 @@ function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function MessageContent({ message, analysisMode = false }: MessageContentProps) {
+export function MessageContent({
+  message,
+  analysisMode = false,
+}: MessageContentProps) {
   const { sendActionMessage } = useApp();
 
   // Parse segments — memoize to avoid re-parsing on every render
@@ -963,7 +971,10 @@ export function MessageContent({ message, analysisMode = false }: MessageContent
               );
             case "analysis-xml":
               return (
-                <div key={segmentKey} className="my-2 border border-accent/20 rounded bg-accent/5 overflow-hidden">
+                <div
+                  key={segmentKey}
+                  className="my-2 border border-accent/20 rounded bg-accent/5 overflow-hidden"
+                >
                   <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
                     &lt;{seg.tag}&gt;
                   </div>
@@ -1008,20 +1019,32 @@ export function MessageContent({ message, analysisMode = false }: MessageContent
           </div>
         </div>
       )}
-      {analysisMode && message.actionCallbackHistory && message.actionCallbackHistory.length > 0 && (
-        <div className="my-2 border border-blue-500/20 rounded bg-blue-500/5 overflow-hidden">
-          <div className="bg-blue-500/10 px-3 py-1 text-xs font-mono font-bold text-blue-500 uppercase tracking-wider">
-            ACTION CALLBACK HISTORY
+      {analysisMode &&
+        message.actionCallbackHistory &&
+        message.actionCallbackHistory.length > 0 && (
+          <div className="my-2 border border-blue-500/20 rounded bg-blue-500/5 overflow-hidden">
+            <div className="bg-blue-500/10 px-3 py-1 text-xs font-mono font-bold text-blue-500 uppercase tracking-wider">
+              ACTION CALLBACK HISTORY
+            </div>
+            <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
+              {(() => {
+                const occurrence = new Map<string, number>();
+                return message.actionCallbackHistory.map((log) => {
+                  const n = occurrence.get(log) ?? 0;
+                  occurrence.set(log, n + 1);
+                  return (
+                    <div
+                      key={`${message.id}:action-callback:${n}:${log}`}
+                      className="break-words border-b border-blue-500/10 pb-1 last:border-0 last:pb-0"
+                    >
+                      {log}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
           </div>
-          <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
-            {message.actionCallbackHistory.map((log, idx) => (
-              <div key={idx} className="break-words border-b border-blue-500/10 pb-1 last:border-0 last:pb-0">
-                {log}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }

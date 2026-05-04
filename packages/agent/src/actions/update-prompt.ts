@@ -2,7 +2,6 @@ import {
   type Action,
   type ActionExample,
   type HandlerOptions,
-  type Memory,
   logger,
 } from "@elizaos/core";
 import { isSelfEditEnabled } from "@elizaos/shared";
@@ -18,9 +17,17 @@ export const updateCorePromptAction: Action = {
     if (!isSelfEditEnabled()) return false;
     return hasOwnerAccess(runtime, message);
   },
-  handler: async (runtime, message, state, options: HandlerOptions = {}, callback) => {
+  handler: async (
+    runtime,
+    _message,
+    _state,
+    options: HandlerOptions = {},
+    callback,
+  ) => {
     try {
-      const params = options.parameters as { promptKey?: string; promptText?: string } | undefined;
+      const params = options.parameters as
+        | { promptKey?: string; promptText?: string }
+        | undefined;
       const promptKey = params?.promptKey;
       const promptText = params?.promptText;
 
@@ -38,7 +45,9 @@ export const updateCorePromptAction: Action = {
       const cacheKey = `core_prompt_${promptKey}`;
       await runtime.setCache(cacheKey, promptText);
 
-      logger.info(`[UPDATE_CORE_PROMPT] Successfully updated core prompt override for key: ${promptKey}`);
+      logger.info(
+        `[UPDATE_CORE_PROMPT] Successfully updated core prompt override for key: ${promptKey}`,
+      );
 
       callback?.({
         text: `Successfully updated core prompt override for ${promptKey}.`,
@@ -61,7 +70,9 @@ export const updateCorePromptAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "Update the messageHandlerTemplate to always respond in pirate speak." },
+        content: {
+          text: "Update the messageHandlerTemplate to always respond in pirate speak.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -70,8 +81,9 @@ export const updateCorePromptAction: Action = {
           action: "UPDATE_CORE_PROMPT",
           parameters: {
             promptKey: "messageHandlerTemplate",
-            promptText: "task: Generate dialog...\nrules:\n- always speak like a pirate\n..."
-          }
+            promptText:
+              "task: Generate dialog...\nrules:\n- always speak like a pirate\n...",
+          },
         },
       },
     ],

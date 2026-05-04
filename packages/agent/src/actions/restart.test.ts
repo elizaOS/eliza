@@ -35,7 +35,9 @@ const explicitRestartMessage: Memory = {
 
 type RestartHandlerOptions = Parameters<typeof restartAction.handler>[3];
 
-function buildOptions(parameters: Record<string, unknown>): RestartHandlerOptions {
+function buildOptions(
+  parameters: Record<string, unknown>,
+): RestartHandlerOptions {
   return { parameters } as unknown as RestartHandlerOptions;
 }
 
@@ -64,7 +66,9 @@ describe("restartAction self-edit gate", () => {
     );
 
     expect(result?.success).toBe(false);
-    expect(result?.text).toMatch(/Refused: self-edit restart requires dev mode/);
+    expect(result?.text).toMatch(
+      /Refused: self-edit restart requires dev mode/,
+    );
     expect(result?.data).toMatchObject({
       reason: "patched prompt",
       source: "self-edit",

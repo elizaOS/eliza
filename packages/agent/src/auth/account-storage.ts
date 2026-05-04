@@ -17,8 +17,8 @@ import { logger } from "@elizaos/core";
 import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
-  isSubscriptionProvider,
   type AccountCredentialProvider,
+  isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
 } from "./types.js";

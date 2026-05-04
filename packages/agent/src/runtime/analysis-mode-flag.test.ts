@@ -134,7 +134,9 @@ describe("AnalysisModeFlagStore", () => {
 
 describe("isAnalysisModeAllowed", () => {
   it("explicit env opt-in wins", () => {
-    expect(isAnalysisModeAllowed({ MILADY_ENABLE_ANALYSIS_MODE: "1" })).toBe(true);
+    expect(isAnalysisModeAllowed({ MILADY_ENABLE_ANALYSIS_MODE: "1" })).toBe(
+      true,
+    );
     expect(
       isAnalysisModeAllowed({
         MILADY_ENABLE_ANALYSIS_MODE: "1",

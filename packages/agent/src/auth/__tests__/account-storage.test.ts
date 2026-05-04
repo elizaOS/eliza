@@ -163,7 +163,8 @@ describe("account-storage", () => {
   });
 
   it("stores direct API-key providers in the same per-account layout", async () => {
-    const { listAccounts, saveAccount, loadAccount } = await importFreshModule();
+    const { listAccounts, saveAccount, loadAccount } =
+      await importFreshModule();
     const provider: AccountCredentialProvider = "deepseek-api";
     const now = Date.now();
     saveAccount({
@@ -184,9 +185,9 @@ describe("account-storage", () => {
     expect(loadAccount(provider, "team")?.credentials.access).toBe(
       "sk-deepseek-test-1234567890",
     );
-    expect(
-      fs.existsSync(path.join(home, "auth", provider, "team.json")),
-    ).toBe(true);
+    expect(fs.existsSync(path.join(home, "auth", provider, "team.json"))).toBe(
+      true,
+    );
   });
 
   it("deleteAccount is idempotent", async () => {

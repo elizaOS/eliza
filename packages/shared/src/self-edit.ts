@@ -48,7 +48,9 @@ export const DEV_MODE_ENV = "MILADY_DEV_MODE";
  * `process.env`.
  */
 export function isSelfEditEnabled(
-  env: NodeJS.ProcessEnv | Record<string, string | undefined> = readProcessEnv(),
+  env:
+    | NodeJS.ProcessEnv
+    | Record<string, string | undefined> = readProcessEnv(),
 ): boolean {
   if (!isTruthyEnvValue(env[SELF_EDIT_ENABLE_ENV])) return false;
 
@@ -114,7 +116,9 @@ export function getSelfEditDeniedSuffixes(): readonly string[] {
   return DENIED_RELATIVE_SUFFIXES;
 }
 
-function readProcessEnv(): NodeJS.ProcessEnv | Record<string, string | undefined> {
+function readProcessEnv():
+  | NodeJS.ProcessEnv
+  | Record<string, string | undefined> {
   // `process` may not exist in browser builds; fall back to an empty record.
   if (typeof process === "undefined" || !process || !process.env) {
     return {};

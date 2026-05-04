@@ -1,4 +1,5 @@
 import {
+  Button,
   ChatAttachmentStrip,
   ChatComposer,
   ChatComposerShell,
@@ -32,8 +33,6 @@ import {
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useChatComposer } from "../../state/ChatComposerContext";
-
-import { Button } from "@elizaos/ui";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
@@ -519,7 +518,10 @@ export function ChatView({
           void copyToClipboard(text);
         }}
         renderMessageContent={(message) => (
-          <MessageContent message={message as ConversationMessage} analysisMode={analysisMode} />
+          <MessageContent
+            message={message as ConversationMessage}
+            analysisMode={analysisMode}
+          />
         )}
         typingIndicator={
           chatSending && !chatFirstTokenReceived ? (

@@ -5,7 +5,6 @@ import {
   type EvmSigningCapabilityKind,
   resolveEvmSigningCapability,
 } from "../services/evm-signing-capability.js";
-import { isStewardEvmBridgeActive } from "../services/external-bridge-state.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 

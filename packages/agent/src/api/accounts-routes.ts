@@ -46,17 +46,17 @@ import {
   subscribeFlow,
 } from "../auth/oauth-flow.js";
 import {
+  type AccountCredentialProvider,
   DIRECT_ACCOUNT_PROVIDER_ENV,
+  type DirectAccountProvider,
   isAccountCredentialProvider,
   isSubscriptionProvider,
-  type AccountCredentialProvider,
-  type DirectAccountProvider,
   type SubscriptionProvider,
 } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
 import {
   isLinkedAccountProviderId,
-  LinkedAccountConfig,
+  type LinkedAccountConfig,
   type LinkedAccountProviderId,
   type ServiceRouteAccountStrategy,
 } from "../contracts/service-routing.js";
@@ -381,13 +381,14 @@ function directProviderBaseUrl(providerId: DirectAccountProvider): string {
   switch (providerId) {
     case "anthropic-api":
       return (
-        process.env.ANTHROPIC_BASE_URL?.trim() ||
-        "https://api.anthropic.com/v1"
+        process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com/v1"
       );
     case "openai-api":
       return process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
     case "deepseek-api":
-      return process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com";
+      return (
+        process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com"
+      );
     case "zai-api":
       return (
         process.env.ZAI_BASE_URL?.trim() ||
@@ -903,11 +904,12 @@ async function handleTestAccount(
   const { res, json, error } = ctx;
   const subscription = asSubscriptionProvider(providerId);
   const direct = asDirectProvider(providerId);
-  if (!subscription && !direct) {
+  const tokenProvider = subscription ?? direct;
+  if (!tokenProvider) {
     error(res, `Test not supported for ${providerId}`, 501);
     return true;
   }
-  const accessToken = await getAccessToken(subscription ?? direct!, accountId);
+  const accessToken = await getAccessToken(tokenProvider, accountId);
   if (!accessToken) {
     json(res, { ok: false, error: "No credential available" });
     return true;
@@ -942,7 +944,8 @@ async function handleRefreshUsage(
   const { res, json, error } = ctx;
   const subscription = asSubscriptionProvider(providerId);
   const direct = asDirectProvider(providerId);
-  if (!subscription && !direct) {
+  const tokenProvider = subscription ?? direct;
+  if (!tokenProvider) {
     error(res, `Usage refresh not supported for ${providerId}`, 501);
     return true;
   }
@@ -952,7 +955,7 @@ async function handleRefreshUsage(
     error(res, "Account not found", 404);
     return true;
   }
-  const accessToken = await getAccessToken(subscription ?? direct!, accountId);
+  const accessToken = await getAccessToken(tokenProvider, accountId);
   if (!accessToken) {
     error(res, "No credential available", 400);
     return true;
@@ -965,7 +968,9 @@ async function handleRefreshUsage(
       health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
       healthDetail: {
         lastChecked: Date.now(),
-        ...(probe.ok ? {} : { lastError: probe.error ?? `HTTP ${probe.status}` }),
+        ...(probe.ok
+          ? {}
+          : { lastError: probe.error ?? `HTTP ${probe.status}` }),
       },
       usage: {
         ...(linked.usage ?? {}),

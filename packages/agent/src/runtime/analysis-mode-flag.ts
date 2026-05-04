@@ -62,7 +62,9 @@ export interface AnalysisModeOptions {
  * surrounding whitespace allowed) so normal conversation that mentions
  * "analysis" or "as you were" inside a sentence does not flip the flag.
  */
-export function parseAnalysisToken(text: string | undefined | null): AnalysisToken {
+export function parseAnalysisToken(
+  text: string | undefined | null,
+): AnalysisToken {
   if (typeof text !== "string") return null;
   if (ANALYSIS_TOKEN.test(text)) return "enable";
   if (AS_YOU_WERE_TOKEN.test(text)) return "disable";
@@ -149,7 +151,9 @@ export class AnalysisModeFlagStore {
  * attaching any sidecar. Sidecars contain raw thinking, evaluator
  * output, and prompt fragments — never forward to remote connectors.
  */
-export function isAnalysisModeAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isAnalysisModeAllowed(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
   if (env.MILADY_ENABLE_ANALYSIS_MODE === "1") return true;
   if (env.MILADY_ENABLE_ANALYSIS_MODE === "0") return false;
   return env.NODE_ENV === "development";

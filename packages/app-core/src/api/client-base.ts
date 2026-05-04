@@ -8,7 +8,6 @@
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
-import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import {
   clearElizaApiBase,
   clearElizaApiToken,
@@ -18,6 +17,7 @@ import {
   setElizaApiToken,
 } from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
+import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import type {
   ChatTokenUsage,
   ConnectionStateInfo,
@@ -28,10 +28,7 @@ import type {
   WsEventHandler,
 } from "./client-types";
 import { ApiError } from "./client-types";
-import {
-  fetchAgentTransport,
-  type AgentRequestTransport,
-} from "./transport";
+import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -294,8 +291,8 @@ export class ElizaClient {
       try {
         const transport =
           this.requestTransport === fetchAgentTransport
-            ? (await androidNativeAgentTransportForUrl(requestUrl)) ??
-              this.requestTransport
+            ? ((await androidNativeAgentTransportForUrl(requestUrl)) ??
+              this.requestTransport)
             : this.requestTransport;
         return await transport.request(requestUrl, requestInit, { timeoutMs });
       } catch (err) {
