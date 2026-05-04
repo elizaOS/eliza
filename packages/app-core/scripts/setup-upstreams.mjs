@@ -60,6 +60,14 @@ export const ELIZA_BUILD_STEPS = [
     args: ["run", "build"],
     label: "@elizaos/cloud-sdk",
   },
+  {
+    // plugin-streaming imports isCloudConnected from @elizaos/cloud-routing;
+    // without dist its tsup --dts pass fails with TS2307.
+    check: path.join("packages", "cloud-routing", "dist", "index.js"),
+    cwd: path.join("packages", "cloud-routing"),
+    args: ["run", "build"],
+    label: "@elizaos/cloud-routing",
+  },
 ];
 
 const PACKAGE_LINK_ROOTS = [
