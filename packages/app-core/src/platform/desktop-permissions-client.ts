@@ -12,7 +12,7 @@ type SystemPermissionId = Parameters<typeof appClient.getPermission>[0];
 type PermissionState = Awaited<ReturnType<typeof appClient.getPermission>>;
 type AllPermissionsState = Awaited<ReturnType<typeof appClient.getPermissions>>;
 
-const RUNTIME_PERMISSION_IDS = ["website-blocking"] as const;
+const RUNTIME_PERMISSION_IDS = ["website-blocking", "location"] as const;
 
 function isRuntimePermissionId(id: SystemPermissionId): boolean {
   return (RUNTIME_PERMISSION_IDS as readonly string[]).includes(id);

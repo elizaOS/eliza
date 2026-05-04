@@ -15,7 +15,7 @@ Read `references/sdk-flow.md` for the 6-step build flow with a self-contained co
 
 ## The survival-economics loop
 
-A Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so an app that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `app/api/cron/container-billing/route.ts`).
+A Milady-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so an app that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `app/api/cron/container-billing/route.ts`).
 
 This is why the skill exists: making money is how the agent stays online.
 
@@ -40,7 +40,7 @@ const { app, apiKey } = await cloud.routes.postApiV1Apps({
 
 Full code in `references/sdk-flow.md`. The skill assumes you have:
 
-- `ELIZAOS_CLOUD_API_KEY` in env (Eliza packages this for you)
+- `ELIZAOS_CLOUD_API_KEY` in env (Milady packages this for you)
 - `@elizaos/cloud-sdk` available (already a runtime dependency)
 - A goal and a name (make the name up if not given; collisions retry once with a 6-char suffix)
 

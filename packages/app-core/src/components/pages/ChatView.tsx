@@ -32,6 +32,8 @@ import {
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useChatComposer } from "../../state/ChatComposerContext";
+
+import { Button } from "@elizaos/ui";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
@@ -132,6 +134,8 @@ export function ChatView({
     setState,
     copyToClipboard,
     droppedFiles: rawDroppedFiles,
+    analysisMode,
+    setAnalysisMode,
     shareIngestNotice: rawShareIngestNotice,
     chatAgentVoiceMuted: agentVoiceMuted,
     selectedVrmIndex,
@@ -515,7 +519,7 @@ export function ChatView({
           void copyToClipboard(text);
         }}
         renderMessageContent={(message) => (
-          <MessageContent message={message as ConversationMessage} />
+          <MessageContent message={message as ConversationMessage} analysisMode={analysisMode} />
         )}
         typingIndicator={
           chatSending && !chatFirstTokenReceived ? (
@@ -585,6 +589,16 @@ export function ChatView({
               : t("chat.uncached", { defaultValue: "uncached" })}
         </div>
       ) : null}
+      <div className="flex justify-end pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs font-mono opacity-60 hover:opacity-100 transition-opacity"
+          onClick={() => setAnalysisMode(!analysisMode)}
+        >
+          [ {analysisMode ? "DISABLE" : "ENABLE"} ANALYSIS MODE ]
+        </Button>
+      </div>
       <input
         ref={fileInputRef}
         type="file"

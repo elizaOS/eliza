@@ -45,37 +45,77 @@ export function getAllOverlayApps(): OverlayApp[] {
 
 /**
  * Get overlay apps that are available on the current platform. Filters
- * out `androidOnly: true` apps when not running on Android. Used by the
- * apps catalog UI so iOS / desktop / web users don't see tiles that
- * launch into permanent error states.
+ * out `androidOnly: true` apps unless this is the MiladyOS Android build.
+ * Used by the apps catalog UI so stock Android, iOS, desktop, and web users
+ * don't see privileged OS-control tiles that launch into permanent error states.
  *
  * Platform detection: when `Capacitor.getPlatform()` is available it is
- * preferred; otherwise the user-agent is inspected. Tests can pass a
- * platform string explicitly.
+ * preferred; otherwise the user-agent is inspected. Tests can pass an
+ * explicit context.
  */
+export interface OverlayAppAvailabilityContext {
+  platform?: string;
+  miladyOS?: boolean;
+  userAgent?: string;
+}
+
 export function getAvailableOverlayApps(
-  platform: string = detectPlatformForCatalog(),
+  context:
+    | string
+    | OverlayAppAvailabilityContext = detectOverlayAvailabilityContext(),
 ): OverlayApp[] {
-  const isAndroid = platform === "android";
+  const availability =
+    typeof context === "string"
+      ? { platform: context, miladyOS: false }
+      : normalizeOverlayAvailabilityContext(context);
+  const canShowAndroidOnly =
+    availability.platform === "android" && availability.miladyOS === true;
   return getAllOverlayApps().filter(
-    (app) => isAndroid || app.androidOnly !== true,
+    (app) => canShowAndroidOnly || app.androidOnly !== true,
   );
 }
 
-function detectPlatformForCatalog(): string {
+function normalizeOverlayAvailabilityContext(
+  context: OverlayAppAvailabilityContext,
+): Required<OverlayAppAvailabilityContext> {
+  const userAgent =
+    context.userAgent ??
+    (typeof navigator !== "undefined" ? navigator.userAgent : "");
+  const platform = context.platform ?? detectPlatformForCatalog(userAgent);
+  return {
+    platform,
+    miladyOS:
+      context.miladyOS ??
+      (platform === "android" && hasMiladyOSMarker(userAgent)),
+    userAgent,
+  };
+}
+
+function detectOverlayAvailabilityContext(): Required<OverlayAppAvailabilityContext> {
+  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const platform = detectPlatformForCatalog(userAgent);
+  return {
+    platform,
+    miladyOS: platform === "android" && hasMiladyOSMarker(userAgent),
+    userAgent,
+  };
+}
+
+function detectPlatformForCatalog(userAgent: string): string {
   type CapacitorGlobal = {
     Capacitor?: { getPlatform?: () => string };
   };
   const cap = (globalThis as CapacitorGlobal).Capacitor;
   const fromCap = cap?.getPlatform?.();
   if (fromCap) return fromCap;
-  if (
-    typeof navigator !== "undefined" &&
-    /Android/i.test(navigator.userAgent)
-  ) {
+  if (/Android/i.test(userAgent)) {
     return "android";
   }
   return "web";
+}
+
+function hasMiladyOSMarker(userAgent: string): boolean {
+  return /\bMiladyOS\//.test(userAgent);
 }
 
 /** Check if an app name belongs to a registered overlay app. */

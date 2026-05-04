@@ -1,8 +1,8 @@
 /**
  * `getAvailableOverlayApps()` — pins the platform-gating behaviour for the
  * apps catalog. Apps marked `androidOnly: true` (WiFi, Contacts, Phone)
- * must drop off the catalog on iOS, desktop, and web; they appear only
- * when the host runtime is Android.
+ * must drop off the catalog on stock Android, iOS, desktop, and web; they
+ * appear only when the host runtime is the MiladyOS Android build.
  *
  * Note: the registry is module-global, so each test installs its own
  * fixture apps with unique names. Names are not cleared between tests
@@ -33,7 +33,7 @@ function makeApp(name: string, opts: { androidOnly?: boolean }): OverlayApp {
 }
 
 describe("getAvailableOverlayApps — androidOnly gating", () => {
-  it("includes android-only apps when platform is android", () => {
+  it("hides android-only apps on stock Android", () => {
     const cross = makeApp("test-cross-1", { androidOnly: false });
     const droid = makeApp("test-android-1", { androidOnly: true });
     registerOverlayApp(cross);
@@ -41,7 +41,21 @@ describe("getAvailableOverlayApps — androidOnly gating", () => {
 
     const names = getAvailableOverlayApps("android").map((a) => a.name);
     expect(names).toContain("test-cross-1");
-    expect(names).toContain("test-android-1");
+    expect(names).not.toContain("test-android-1");
+  });
+
+  it("includes android-only apps on MiladyOS Android", () => {
+    const cross = makeApp("test-cross-miladyos-1", { androidOnly: false });
+    const droid = makeApp("test-android-miladyos-1", { androidOnly: true });
+    registerOverlayApp(cross);
+    registerOverlayApp(droid);
+
+    const names = getAvailableOverlayApps({
+      platform: "android",
+      miladyOS: true,
+    }).map((a) => a.name);
+    expect(names).toContain("test-cross-miladyos-1");
+    expect(names).toContain("test-android-miladyos-1");
   });
 
   it("hides android-only apps on iOS", () => {

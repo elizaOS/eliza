@@ -11,6 +11,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { evaluateProactiveBlockOnBrowserFocus } from "../website-blocker/proactive-block-bridge.js";
 
 export interface BrowserSessionRegistration {
   readonly deviceId: string;
@@ -204,6 +205,7 @@ export async function recordBrowserFocusWindow(
       },
     ],
   });
+  await evaluateProactiveBlockOnBrowserFocus(runtime, { domain, deviceId: args.deviceId });
   return true;
 }
 

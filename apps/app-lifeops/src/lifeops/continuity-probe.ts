@@ -30,6 +30,29 @@ const execFileAsync = promisify(execFile);
 const CONTINUITY_LOOKBACK_MS = 15 * 60 * 1_000;
 const CONTINUITY_COMMAND_TIMEOUT_MS = 5_000;
 
+/**
+ * Injectable shell-runner used by the continuity probe. Defaults to a real
+ * `execFile`-backed runner; tests override this with a deterministic stub
+ * instead of touching `xcrun` / `system_profiler` on the developer machine.
+ */
+export interface ContinuityShellRunner {
+  run(
+    command: string,
+    args: readonly string[],
+    options: { timeoutMs: number; maxBuffer: number },
+  ): Promise<{ stdout: string }>;
+}
+
+const defaultContinuityShellRunner: ContinuityShellRunner = {
+  async run(command, args, options) {
+    const { stdout } = await execFileAsync(command, [...args], {
+      timeout: options.timeoutMs,
+      maxBuffer: options.maxBuffer,
+    });
+    return { stdout };
+  },
+};
+
 /** Shape of a single paired-iPhone presence observation. */
 interface PairedDevicePresence {
   deviceId: string;
@@ -84,12 +107,13 @@ function normalizeString(value: unknown): string | null {
 
 async function readDevicectlPairedIphones(
   nowIso: string,
+  shell: ContinuityShellRunner,
 ): Promise<PairedDevicePresence[]> {
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await shell.run(
       "xcrun",
       ["devicectl", "list", "devices", "--json-output", "-"],
-      { timeout: CONTINUITY_COMMAND_TIMEOUT_MS, maxBuffer: 512 * 1024 },
+      { timeoutMs: CONTINUITY_COMMAND_TIMEOUT_MS, maxBuffer: 512 * 1024 },
     );
     const parsed: unknown = JSON.parse(stdout);
     if (!isRecord(parsed)) return [];
@@ -142,12 +166,13 @@ async function readDevicectlPairedIphones(
 
 async function readBluetoothPairedIphones(
   nowIso: string,
+  shell: ContinuityShellRunner,
 ): Promise<PairedDevicePresence[]> {
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await shell.run(
       "system_profiler",
       ["SPBluetoothDataType", "-json"],
-      { timeout: CONTINUITY_COMMAND_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
+      { timeoutMs: CONTINUITY_COMMAND_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
     );
     const parsed: unknown = JSON.parse(stdout);
     if (!isRecord(parsed)) return [];
@@ -200,10 +225,16 @@ export async function probeContinuityDevices(args: {
   repository: LifeOpsRepository;
   agentId: string;
   now?: Date;
+  /**
+   * Optional shell runner override. Tests inject a stub to avoid spawning
+   * `xcrun` and `system_profiler` on the host machine.
+   */
+  shell?: ContinuityShellRunner;
 }): Promise<void> {
   if (process.platform !== "darwin") return;
   const now = args.now ?? new Date();
   const nowIso = now.toISOString();
+  const shell = args.shell ?? defaultContinuityShellRunner;
 
   // Skip if a Capacitor mobile-signals source has been active recently —
   // the iOS app is authoritative when it's running.
@@ -225,8 +256,8 @@ export async function probeContinuityDevices(args: {
   }
 
   const [devicectl, bluetooth] = await Promise.all([
-    readDevicectlPairedIphones(nowIso),
-    readBluetoothPairedIphones(nowIso),
+    readDevicectlPairedIphones(nowIso, shell),
+    readBluetoothPairedIphones(nowIso, shell),
   ]);
 
   // Merge by deviceId — devicectl wins over bluetooth for the same device.

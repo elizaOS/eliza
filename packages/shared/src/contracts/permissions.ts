@@ -8,7 +8,8 @@ export type SystemPermissionId =
   | "microphone"
   | "camera"
   | "shell"
-  | "website-blocking";
+  | "website-blocking"
+  | "location";
 
 export type PermissionStatus =
   | "granted"
@@ -49,6 +50,7 @@ export interface AllPermissionsState {
   camera: PermissionState;
   shell: PermissionState;
   "website-blocking": PermissionState;
+  location: PermissionState;
 }
 
 export interface PermissionManagerConfig {

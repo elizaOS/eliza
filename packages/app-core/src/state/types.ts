@@ -167,8 +167,9 @@ export const ONBOARDING_PERMISSION_LABELS: Record<SystemPermissionId, string> =
     "screen-recording": "Screen Recording",
     microphone: "Microphone",
     camera: "Camera",
-    shell: "Shell Access",
+    shell: "Full Disk Access",
     "website-blocking": "Website Blocking",
+    location: "Location",
   };
 
 import type { ActionNotice } from "./action-notice";
@@ -639,6 +640,9 @@ export interface AppState {
   commandActiveIndex: number;
   closeCommandPalette: () => void;
 
+  // Analysis Mode
+  analysisMode: boolean;
+
   // Emote picker
   emotePickerOpen: boolean;
 
@@ -984,6 +988,8 @@ export interface AppActions {
 
   // Generic state setter
   setState: <K extends keyof AppState>(key: K, value: AppState[K]) => void;
+
+  setAnalysisMode: (mode: boolean) => void;
 
   // Clipboard
   copyToClipboard: (text: string) => Promise<void>;

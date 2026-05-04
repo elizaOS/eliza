@@ -344,7 +344,7 @@ async function _computeFilteredActions(
   return filtered;
 }
 
-function determineFailureMode(args: {
+export function determineFailureMode(args: {
   pass: boolean;
   expected: string | null;
   actual: string | null;
@@ -352,8 +352,8 @@ function determineFailureMode(args: {
   filtered: string[];
   hadError: boolean;
 }): ActionFailureMode {
-  if (args.hadError) return "error";
   if (args.pass) return "passed";
+  if (args.hadError) return "error";
   const actualNorm = normalizeActionName(args.actual);
   const plannedNorm = normalizeActionName(args.planned);
   const expectedNorm = normalizeActionName(args.expected);
@@ -800,21 +800,26 @@ async function runSingleCaseWithRecording(
       tc.acceptableActions,
       { requireSuccessfulCompletion: true },
     );
-    const plannerPass = caseMatches(
-      planner.plannedAction,
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const startedPass = caseMatches(
-      startedAction,
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const executionPass = caseMatches(
-      completedAction,
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
+    const plannerPass =
+      tc.expectedAction === null
+        ? false
+        : caseMatches(
+            planner.plannedAction,
+            tc.expectedAction,
+            tc.acceptableActions,
+          );
+    const startedPass =
+      tc.expectedAction === null
+        ? false
+        : caseMatches(startedAction, tc.expectedAction, tc.acceptableActions);
+    const executionPass =
+      tc.expectedAction === null
+        ? false
+        : caseMatches(
+            completedAction,
+            tc.expectedAction,
+            tc.acceptableActions,
+          );
     const selectionPass = plannerPass || startedPass || executionPass;
     const failureMode = determineFailureMode({
       pass: selectionPass,

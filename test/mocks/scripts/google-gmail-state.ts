@@ -3,18 +3,18 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import {
+  getLifeOpsSimulatorPerson,
+  LIFEOPS_SIMULATOR_EMAILS,
+  LIFEOPS_SIMULATOR_OWNER,
+  type LifeOpsSimulatorEmail,
+} from "../fixtures/lifeops-simulator.ts";
+import {
   createGoogleCalendarMockState,
   type GoogleCalendarMockState,
   type GoogleCalendarRequestLedgerMetadata,
   googleCalendarDynamicFixture,
 } from "./google-calendar-state.ts";
 import { MockHttpError } from "./mock-http-error.ts";
-import {
-  getLifeOpsSimulatorPerson,
-  LIFEOPS_SIMULATOR_EMAILS,
-  LIFEOPS_SIMULATOR_OWNER,
-  type LifeOpsSimulatorEmail,
-} from "../fixtures/lifeops-simulator.ts";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -101,7 +101,15 @@ type GmailFixtureMessage = MessageResponse & {
   internalDateOffsetMs: number;
   headers: Array<{ name: string; value: string }>;
   bodyText: string;
+  attachments?: GmailFixtureAttachment[];
 };
+
+interface GmailFixtureAttachment {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  data: string;
+}
 
 const DEFAULT_GMAIL_ACCOUNT_ID = "work";
 
@@ -233,6 +241,35 @@ const GMAIL_FIXTURE_MESSAGES: GmailFixtureMessage[] = [
     bodyText: "Following up on the signed packet. Can you confirm receipt?\n",
   },
   {
+    id: "msg-vendor-packet-signed",
+    threadId: "thr-unresponded",
+    labelIds: ["INBOX", "UNREAD", "IMPORTANT"],
+    snippet: "Attached is the signed vendor packet.",
+    internalDateOffsetMs: -20 * 60 * 1000,
+    headers: [
+      { name: "From", value: "Vendor Ops <vendor@example.com>" },
+      { name: "To", value: "Owner <owner@example.test>" },
+      { name: "Subject", value: "Re: Signed vendor packet" },
+      { name: "Message-Id", value: "<vendor-packet-signed@example.com>" },
+      { name: "In-Reply-To", value: "<vendor-inbound@example.com>" },
+      {
+        name: "References",
+        value:
+          "<vendor-inbound@example.com> <vendor-sent@example.test> <vendor-packet-signed@example.com>",
+      },
+    ],
+    bodyText:
+      "Attached is the signed vendor packet. Please use this version for the diligence review.\n",
+    attachments: [
+      {
+        attachmentId: "att-vendor-packet-signed-pdf",
+        filename: "signed-vendor-packet.pdf",
+        mimeType: "application/pdf",
+        data: "Synthetic signed vendor packet PDF bytes for LifeOps fixture testing.\n",
+      },
+    ],
+  },
+  {
     id: "msg-home-lease",
     accountId: "home",
     threadId: "thr-home-lease",
@@ -327,6 +364,7 @@ type GmailMockMessage = Omit<GmailFixtureMessage, "internalDateOffsetMs"> & {
   historyId: string;
   deleted: boolean;
   raw?: string;
+  attachments?: GmailFixtureAttachment[];
 };
 
 interface GmailMockDraft {
@@ -368,12 +406,14 @@ export interface GmailDecodedSendMetadata {
 export interface GmailRequestLedgerMetadata {
   action: string;
   messageId?: string;
+  attachmentId?: string;
   threadId?: string;
   draftId?: string;
   ids?: string[];
   batchIds?: string[];
   addLabelIds?: string[];
   removeLabelIds?: string[];
+  query?: string;
   decodedSend?: GmailDecodedSendMetadata;
   runId?: string;
   historyId?: string;
@@ -474,6 +514,9 @@ export function createGoogleMockState(opts?: {
       internalDateMs: Date.now() + fixture.internalDateOffsetMs,
       headers: fixture.headers.map((header) => ({ ...header })),
       bodyText: fixture.bodyText,
+      attachments: fixture.attachments?.map((attachment) => ({
+        ...attachment,
+      })),
       historyId: "123456",
       deleted: false,
     });
@@ -536,6 +579,29 @@ function gmailFixtureResponse(
   message: GmailFixtureMessage | GmailMockMessage,
 ): JsonValue {
   const date = new Date(gmailFixtureInternalDate(message));
+  const bodyData = Buffer.from(message.bodyText, "utf8").toString("base64url");
+  const attachmentParts = (message.attachments ?? []).map(
+    (attachment, index) => ({
+      partId: String(index + 1),
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      headers: [
+        { name: "Content-Type", value: attachment.mimeType },
+        {
+          name: "Content-Disposition",
+          value: `attachment; filename="${attachment.filename}"`,
+        },
+      ],
+      body: {
+        attachmentId: attachment.attachmentId,
+        size: Buffer.byteLength(attachment.data, "utf8"),
+      },
+    }),
+  );
+  const headers = [
+    ...message.headers,
+    { name: "Date", value: formatHttpDate(date) },
+  ];
   return {
     id: message.id,
     threadId: message.threadId,
@@ -544,17 +610,34 @@ function gmailFixtureResponse(
     historyId: "historyId" in message ? message.historyId : "123456",
     internalDate: String(date.getTime()),
     sizeEstimate: message.bodyText.length,
-    payload: {
-      mimeType: "text/plain",
-      headers: [
-        ...message.headers,
-        { name: "Date", value: formatHttpDate(date) },
-      ],
-      body: {
-        data: Buffer.from(message.bodyText, "utf8").toString("base64url"),
-        size: message.bodyText.length,
-      },
-    },
+    payload:
+      attachmentParts.length > 0
+        ? {
+            mimeType: "multipart/mixed",
+            headers,
+            body: { size: 0 },
+            parts: [
+              {
+                partId: "0",
+                mimeType: "text/plain",
+                filename: "",
+                headers: [{ name: "Content-Type", value: "text/plain" }],
+                body: {
+                  data: bodyData,
+                  size: message.bodyText.length,
+                },
+              },
+              ...attachmentParts,
+            ],
+          }
+        : {
+            mimeType: "text/plain",
+            headers,
+            body: {
+              data: bodyData,
+              size: message.bodyText.length,
+            },
+          },
   };
 }
 
@@ -741,6 +824,9 @@ function gmailQueryMatches(
     message.snippet,
     message.bodyText,
     ...message.headers.map((header) => header.value),
+    ...(message.attachments ?? []).map(
+      (attachment) => `${attachment.filename} ${attachment.mimeType}`,
+    ),
     ...(message.labelIds ?? []),
   ]
     .join(" ")
@@ -1193,6 +1279,7 @@ function gmailListMessages(
   state: GoogleMockState,
   searchParams: URLSearchParams,
   selection: GmailAccountSelection,
+  ledgerEntry: GoogleMockLedgerEntry,
 ): DynamicFixtureResponse {
   const includeSpamTrash = searchParams.get("includeSpamTrash") === "true";
   const query = searchParams.get("q") ?? "";
@@ -1235,6 +1322,11 @@ function gmailListMessages(
         gmailFixtureInternalDate(right) - gmailFixtureInternalDate(left),
     );
   const page = filtered.slice(pageOffset, pageOffset + maxResults);
+  ledgerEntry.gmail = {
+    action: "messages.list",
+    ...(query ? { query } : {}),
+    ...(ledgerEntry.runId ? { runId: ledgerEntry.runId } : {}),
+  };
   return jsonFixture({
     messages: page.map((message) => ({
       id: message.id,
@@ -1487,7 +1579,7 @@ export function googleDynamicFixture(
   }
 
   if (method === "GET" && pathname === "/gmail/v1/users/me/messages") {
-    return gmailListMessages(state, searchParams, gmailSelection);
+    return gmailListMessages(state, searchParams, gmailSelection, ledgerEntry);
   }
 
   if (method === "GET" && pathname === "/gmail/v1/users/me/labels") {
@@ -1669,6 +1761,33 @@ export function googleDynamicFixture(
       ...(ledgerEntry.runId ? { runId: ledgerEntry.runId } : {}),
     };
     return jsonFixture(gmailFixtureResponse(message));
+  }
+
+  const attachmentPath =
+    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/attachments\/([^/]+)\/?$/.exec(
+      pathname,
+    );
+  if (method === "GET" && attachmentPath) {
+    const messageId = decodeURIComponent(attachmentPath[1] ?? "");
+    const attachmentId = decodeURIComponent(attachmentPath[2] ?? "");
+    const message = getMessageOrThrow(state, messageId, gmailSelection);
+    const attachment = message.attachments?.find(
+      (candidate) => candidate.attachmentId === attachmentId,
+    );
+    if (!attachment) {
+      return jsonError(404, "Requested entity was not found.");
+    }
+    ledgerEntry.gmail = {
+      action: "messages.attachments.get",
+      messageId,
+      attachmentId,
+      ...(ledgerEntry.runId ? { runId: ledgerEntry.runId } : {}),
+    };
+    return jsonFixture({
+      attachmentId,
+      size: Buffer.byteLength(attachment.data, "utf8"),
+      data: Buffer.from(attachment.data, "utf8").toString("base64url"),
+    });
   }
 
   const deleteMessageId = routeParam(

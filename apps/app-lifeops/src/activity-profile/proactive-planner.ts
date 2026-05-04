@@ -46,6 +46,24 @@ const INACTIVITY_SKIP_MS = 48 * 60 * 60 * 1000; // 48 hours
 const GOAL_CHECK_IN_COOLDOWN_DAYS = 3;
 
 /**
+ * Trailing window the social-overuse planner looks back over. The worker
+ * fetches `getSocialHabitSummary` over `[now - SOCIAL_OVERUSE_WINDOW_MINUTES,
+ * now]` and the planner trips when the windowed total clears the threshold.
+ */
+export const SOCIAL_OVERUSE_WINDOW_MINUTES = 90;
+/**
+ * Minimum total social-app minutes inside the trailing window required to
+ * fire a social_overuse_check intent.
+ */
+export const SOCIAL_OVERUSE_THRESHOLD_MINUTES = 60;
+/**
+ * Minimum gap between two consecutive social_overuse_check deliveries. The
+ * worker writes `socialOveruseCheckedAt` on every fire; the planner refuses
+ * to emit again until this much time has passed since the last write.
+ */
+export const SOCIAL_OVERUSE_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h
+
+/**
  * True if `firedAt` is set and the gap to `now` is shorter than the
  * once-per-day guard window. Future timestamps (firedAt > now) — which
  * shouldn't happen but indicate a clock glitch — are also treated as
@@ -122,6 +140,27 @@ export interface InboxDigestSlim {
     unreadCount: number;
   }>;
   highlights: InboxDigestHighlightSlim[];
+}
+
+// ── Social-overuse planning ──────────────────────────
+
+/**
+ * Per-service totals consumed by `planSocialOveruseCheck`. Maps directly
+ * onto `LifeOpsSocialHabitSummary.services`/`.sessions` entries: each entry
+ * is one labelled bucket of social-app dwell time inside the trailing
+ * window the worker fetched.
+ */
+export interface SocialServiceBucketSlim {
+  key: string;
+  label: string;
+  totalSeconds: number;
+}
+
+export interface SocialHabitSummarySlim {
+  /** Total social-bucket dwell seconds inside the trailing window. */
+  totalSeconds: number;
+  /** Per-service breakdown, sorted by `totalSeconds` descending. */
+  services: SocialServiceBucketSlim[];
 }
 
 // ── GM planning ───────────────────────────────────────
@@ -226,6 +265,39 @@ export function planGm(
 
 // ── GN planning ───────────────────────────────────────
 
+/**
+ * Plan a "good night" proactive action — the activity-feed counterpart to the
+ * authoritative night summary.
+ *
+ * Division of responsibility (intentional, do NOT consolidate without a
+ * design discussion — see review #10 P0.1 + wave-3 punt notes):
+ *
+ * - **Chat surface (the user-visible night summary):** owned by
+ *   `processSleepCycleCheckins` →
+ *   `CheckinService.runNightCheckin` (`apps/app-lifeops/src/lifeops/checkin/checkin-service.ts`).
+ *   That path collects briefing sections (X DMs, Gmail, GitHub, calendar,
+ *   contacts, promises, habit summaries, sleep recap), runs them through
+ *   `useModel(TEXT_LARGE, ...)`, and persists a `CheckinReport`. Anti-spam
+ *   is the once-per-local-day SQL gate against `life_checkin_reports`. The
+ *   resulting `lifeops-checkin` event is **not** in
+ *   `CHAT_SUPPRESSED_AUTONOMY_SOURCES`, so it lands in the active
+ *   conversation.
+ *
+ * - **Activity-feed surface (this function):** plans a `proactive-gn`
+ *   action with a hard-coded message stub for the activity timeline only.
+ *   The `proactive-gn` source **is** in `CHAT_SUPPRESSED_AUTONOMY_SOURCES`
+ *   (`packages/agent/src/api/server-helpers-swarm.ts`), so this never
+ *   posts to chat — it only powers the activity-feed widget. Anti-spam is
+ *   a separate 12h `firedRecently` timestamp gate (`firedToday.gnFiredAt`).
+ *
+ * Both paths are scheduled off the same `bedtimeTargetAt` source but
+ * diverge on window (3h vs 2h), gate (per-day SQL vs 12h timestamp),
+ * content (LLM briefing vs hard-coded stub), and chat-suppression. They
+ * are not redundant: the chat night summary is the user-visible artifact;
+ * this is feed-only telemetry. Future maintainers: a unifying sweep would
+ * need a routing-layer redesign (collapse the two sources, then choose a
+ * single content path), not just a delete here.
+ */
 export function planGn(
   profile: ActivityProfile,
   relativeTime: ProactiveRelativeTimeSlim | null,
@@ -495,6 +567,81 @@ export function planGoalCheckIns(
   });
 
   return candidates.slice(0, 1);
+}
+
+// ── Social-overuse check planning ────────────────────
+
+/**
+ * Decide whether to interrupt the user with a "you've been on {app} for a
+ * while, you good?" intent. Pure: takes a slim social-habit summary scoped
+ * to the trailing `SOCIAL_OVERUSE_WINDOW_MINUTES` and returns a single
+ * pending action when the threshold + cooldown are both satisfied.
+ *
+ * Scope (intentionally minimal — see §10 of the gap report for what's
+ * deferred): emits the proactive intent only. The follow-up reply turn
+ * (block-this/suggest-todo) is not implemented here.
+ */
+export function planSocialOveruseCheck(
+  profile: ActivityProfile,
+  socialSummary: SocialHabitSummarySlim,
+  firedToday: FiredActionsLog | null,
+  _timezone: string,
+  now?: Date,
+): ProactiveAction | null {
+  const currentTime = now ?? new Date();
+  if (profile.isCurrentlySleeping) {
+    return null;
+  }
+
+  const totalMinutes = socialSummary.totalSeconds / 60;
+  if (totalMinutes <= SOCIAL_OVERUSE_THRESHOLD_MINUTES) {
+    return null;
+  }
+
+  const lastFiredAt = firedToday?.socialOveruseCheckedAt;
+  if (typeof lastFiredAt === "number") {
+    const elapsedMs = currentTime.getTime() - lastFiredAt;
+    // Future timestamps shouldn't happen, but treat them as "still in
+    // cooldown" so a clock glitch never causes a re-fire.
+    if (elapsedMs < SOCIAL_OVERUSE_COOLDOWN_MS) {
+      return null;
+    }
+  }
+
+  const topService = pickTopSocialService(socialSummary.services);
+  const appName = topService?.label ?? "social media";
+  const roundedMinutes = Math.max(1, Math.round(totalMinutes));
+
+  const messageText =
+    `Hey — you've been on ${appName} for ${roundedMinutes}m in the last 90 min. ` +
+    `You good? Want me to suggest something from your todos, or block it for a bit?`;
+  const contextSummary =
+    `social_overuse_check: ${appName} ${roundedMinutes}m / ` +
+    `${SOCIAL_OVERUSE_WINDOW_MINUTES}m window ` +
+    `(threshold ${SOCIAL_OVERUSE_THRESHOLD_MINUTES}m)`;
+
+  return {
+    kind: "social_overuse_check",
+    scheduledFor: currentTime.getTime(),
+    targetPlatform: selectTargetPlatform(profile, true),
+    contextSummary,
+    messageText,
+    status: "pending",
+  };
+}
+
+function pickTopSocialService(
+  services: SocialServiceBucketSlim[],
+): SocialServiceBucketSlim | null {
+  let best: SocialServiceBucketSlim | null = null;
+  for (const entry of services) {
+    if (!entry || typeof entry.totalSeconds !== "number") continue;
+    if (entry.totalSeconds <= 0) continue;
+    if (!best || entry.totalSeconds > best.totalSeconds) {
+      best = entry;
+    }
+  }
+  return best;
 }
 
 // ── Platform selection ────────────────────────────────

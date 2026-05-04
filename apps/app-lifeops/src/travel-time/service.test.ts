@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   type CalendarEventLookupLike,
   GOOGLE_DISTANCE_MATRIX_URL,
+  type LocationProviderLike,
   type TravelTimeFetch,
   TravelTimeService,
   type TravelTimeUnavailableError,
@@ -208,5 +209,160 @@ describe("TravelTimeService", () => {
     await expect(service.computeBuffer({ eventId: "missing" })).rejects.toThrow(
       /not found/,
     );
+  });
+
+  describe("location-plugin fallback when origin is omitted", () => {
+    function captureFetchUrl(): {
+      capturedUrl: { value: string | null };
+      fetchImpl: TravelTimeFetch;
+    } {
+      const capturedUrl = { value: null as string | null };
+      const fetchImpl: TravelTimeFetch = async (url) => {
+        capturedUrl.value = url;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: "OK",
+            rows: [
+              {
+                elements: [
+                  {
+                    status: "OK",
+                    duration: { value: 720, text: "12 mins" },
+                  },
+                ],
+              },
+            ],
+          }),
+        };
+      };
+      return { capturedUrl, fetchImpl };
+    }
+
+    it("uses the Location plugin coords when permission is granted", async () => {
+      const { capturedUrl, fetchImpl } = captureFetchUrl();
+      const locationProvider: LocationProviderLike = {
+        async checkPermissions() {
+          return { location: "granted" };
+        },
+        async getCurrentPosition() {
+          return {
+            coords: { latitude: 37.7749, longitude: -122.4194 },
+          };
+        },
+      };
+      const service = new TravelTimeService(runtime, {
+        calendar: makeCalendar([makeEvent({})]),
+        fetchImpl,
+        getApiKey: () => "test-key",
+        locationProvider,
+      });
+      const result = await service.computeBuffer({ eventId: "evt-1" });
+      expect(result.method).toBe("maps-api");
+      expect(result.bufferMinutes).toBe(12);
+      expect(result.originAddress).toBe("37.7749,-122.4194");
+      expect(capturedUrl.value).toContain(
+        encodeURIComponent("37.7749,-122.4194"),
+      );
+    });
+
+    it("throws MISSING_ORIGIN when the user has denied location permission", async () => {
+      const locationProvider: LocationProviderLike = {
+        async checkPermissions() {
+          return { location: "denied" };
+        },
+        async getCurrentPosition() {
+          throw new Error("should not be called when permission is denied");
+        },
+      };
+      const service = new TravelTimeService(runtime, {
+        calendar: makeCalendar([makeEvent({})]),
+        getApiKey: () => "test-key",
+        locationProvider,
+      });
+      await expect(
+        service.computeBuffer({ eventId: "evt-1" }),
+      ).rejects.toMatchObject({
+        name: "TravelTimeUnavailableError",
+        code: "MISSING_ORIGIN",
+      } satisfies Partial<TravelTimeUnavailableError>);
+    });
+
+    it("throws MISSING_ORIGIN when the plugin returns no fix", async () => {
+      const locationProvider: LocationProviderLike = {
+        async checkPermissions() {
+          return { location: "granted" };
+        },
+        async getCurrentPosition() {
+          return null;
+        },
+      };
+      const service = new TravelTimeService(runtime, {
+        calendar: makeCalendar([makeEvent({})]),
+        getApiKey: () => "test-key",
+        locationProvider,
+      });
+      await expect(
+        service.computeBuffer({ eventId: "evt-1" }),
+      ).rejects.toMatchObject({
+        name: "TravelTimeUnavailableError",
+        code: "MISSING_ORIGIN",
+      } satisfies Partial<TravelTimeUnavailableError>);
+    });
+
+    it("throws MISSING_ORIGIN with provider context when getCurrentPosition rejects", async () => {
+      const locationProvider: LocationProviderLike = {
+        async checkPermissions() {
+          return { location: "granted" };
+        },
+        async getCurrentPosition() {
+          throw new Error("native bridge timeout");
+        },
+      };
+      const service = new TravelTimeService(runtime, {
+        calendar: makeCalendar([makeEvent({})]),
+        getApiKey: () => "test-key",
+        locationProvider,
+      });
+      await expect(
+        service.computeBuffer({ eventId: "evt-1" }),
+      ).rejects.toMatchObject({
+        name: "TravelTimeUnavailableError",
+        code: "MISSING_ORIGIN",
+        message: expect.stringContaining(
+          "location plugin failed during getCurrentPosition",
+        ),
+      });
+    });
+
+    it("prefers an explicit originAddress over the plugin", async () => {
+      let pluginCalls = 0;
+      const { fetchImpl } = captureFetchUrl();
+      const locationProvider: LocationProviderLike = {
+        async checkPermissions() {
+          pluginCalls += 1;
+          return { location: "granted" };
+        },
+        async getCurrentPosition() {
+          pluginCalls += 1;
+          return {
+            coords: { latitude: 0, longitude: 0 },
+          };
+        },
+      };
+      const service = new TravelTimeService(runtime, {
+        calendar: makeCalendar([makeEvent({})]),
+        fetchImpl,
+        getApiKey: () => "test-key",
+        locationProvider,
+      });
+      const result = await service.computeBuffer({
+        eventId: "evt-1",
+        originAddress: "100 Main St, San Francisco",
+      });
+      expect(result.originAddress).toBe("100 Main St, San Francisco");
+      expect(pluginCalls).toBe(0);
+    });
   });
 });

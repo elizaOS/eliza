@@ -59,7 +59,8 @@ beforeEach(() => {
       k.startsWith("ELIZA_HEALTHKIT") ||
       k.startsWith("ELIZA_GOOGLE_FIT") ||
       k === "ELIZA_TEST_HEALTH_BACKEND" ||
-      k === "ELIZA_BENCHMARK_USE_MOCKS"
+      k === "ELIZA_BENCHMARK_USE_MOCKS" ||
+      k === "ELIZA_MOCK_GOOGLE_BASE"
     ) {
       delete process.env[k];
     }
@@ -166,6 +167,39 @@ describe("getDataPoints", () => {
       ]);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("routes Google Fit aggregate calls through ELIZA_MOCK_GOOGLE_BASE", async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.ELIZA_GOOGLE_FIT_ACCESS_TOKEN = "token";
+    process.env.ELIZA_MOCK_GOOGLE_BASE = "http://localhost:9999";
+    const seenUrls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url =
+        typeof input === "string" || input instanceof URL
+          ? String(input)
+          : input.url;
+      seenUrls.push(url);
+      return new Response(JSON.stringify({ bucket: [{ dataset: [] }] }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    try {
+      await getDataPoints({
+        metric: "steps",
+        startAt: "2026-04-19T00:00:00.000Z",
+        endAt: "2026-04-19T23:59:59.999Z",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(seenUrls.length).toBeGreaterThan(0);
+    for (const url of seenUrls) {
+      expect(url).toContain("localhost:9999/fitness/v1");
+      expect(url).not.toContain("googleapis.com");
     }
   });
 });
