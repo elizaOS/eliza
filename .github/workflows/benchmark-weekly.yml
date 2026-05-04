@@ -102,8 +102,49 @@ jobs:
             cd packages/schemas && bunx buf generate
           fi
 
-      - name: Build package exports required by LifeOps
-        run: bun run --cwd plugins/plugin-telegram build
+      - name: Build benchmark runtime packages
+        # The benchmark executes TypeScript sources directly, but several
+        # workspace packages intentionally export dist/* entry points. Because
+        # dependency installation ignores postinstall scripts, build only the
+        # packages that the live scenario runtime imports through those exports.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          provider_package=""
+          if [ -n "${GROQ_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-groq"
+          elif [ -n "${OPENAI_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openai"
+          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-anthropic"
+          elif [ -n "${GOOGLE_GENERATIVE_AI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-google-genai"
+          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openrouter"
+          fi
+
+          package_dirs=(
+            plugins/plugin-sql
+            plugins/plugin-agent-skills
+            plugins/plugin-telegram
+            plugins/plugin-whatsapp
+            plugins/plugin-signal
+            plugins/plugin-imessage
+          )
+          if [ -n "$provider_package" ]; then
+            package_dirs+=("$provider_package")
+          fi
+
+          for package_dir in "${package_dirs[@]}"; do
+            echo "::group::Build ${package_dir}"
+            bun run --cwd "$package_dir" build
+            echo "::endgroup::"
+          done
 
       - name: Run benchmark harness
         id: run
