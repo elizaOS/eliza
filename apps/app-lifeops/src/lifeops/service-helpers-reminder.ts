@@ -439,6 +439,9 @@ export function definitionTriggersEnforcement(
     | undefined,
 ): boolean {
   if (!definition) return false;
+  if (definition.kind === "routine") {
+    return true;
+  }
   return definition.metadata?.enforceRoutineWindow === true;
 }
 
