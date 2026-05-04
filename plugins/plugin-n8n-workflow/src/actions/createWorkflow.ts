@@ -15,6 +15,7 @@ import type { N8nWorkflow, N8nConnections, WorkflowDraft } from '../types/index'
 import { UnsupportedIntegrationError } from '../types/index';
 import { classifyDraftIntent, formatActionResponse } from '../utils/generation';
 import { buildConversationContext } from '../utils/context';
+import { coerceClarificationRequests } from '../utils/clarification';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
 
@@ -433,7 +434,9 @@ export const createWorkflowAction: Action & {
 
             if (modifiedWorkflow._meta?.requiresClarification?.length) {
               const text = await formatActionResponse(runtime, 'CLARIFICATION', {
-                questions: modifiedWorkflow._meta.requiresClarification,
+                questions: coerceClarificationRequests(
+                  modifiedWorkflow._meta.requiresClarification
+                ).map((c) => c.question),
               });
               if (callback) {
                 await callback({ text, success: true });
@@ -585,7 +588,9 @@ async function generateAndPreview(
 
   if (workflow._meta?.requiresClarification?.length) {
     const text = await formatActionResponse(runtime, 'CLARIFICATION', {
-      questions: workflow._meta.requiresClarification,
+      questions: coerceClarificationRequests(workflow._meta.requiresClarification).map(
+        (c) => c.question
+      ),
     });
     if (callback) {
       await callback({ text, success: true });
