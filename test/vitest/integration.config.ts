@@ -11,6 +11,7 @@ import {
   getAgentSourceAliases,
   getAppCoreSourceAliases,
   getElizaCoreRolesEntry,
+  getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
   getSharedSourceAliases,
@@ -20,6 +21,7 @@ import {
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
+const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
@@ -54,7 +56,7 @@ const integrationResolveAlias: ModuleAlias[] = [
       packageName: "@elizaos/plugin-signal",
       options: {
         fallbackPath: path.join(
-          repoRoot,
+          elizaWorkspaceRoot,
           "plugins",
           "plugin-signal",
           "typescript",
@@ -69,7 +71,7 @@ const integrationResolveAlias: ModuleAlias[] = [
       options: {
         entryKind: "node",
         fallbackPath: path.join(
-          repoRoot,
+          elizaWorkspaceRoot,
           "plugins",
           "plugin-sql",
           "typescript",
@@ -82,7 +84,7 @@ const integrationResolveAlias: ModuleAlias[] = [
       packageName: "@elizaos/plugin-whatsapp",
       options: {
         fallbackPath: path.join(
-          repoRoot,
+          elizaWorkspaceRoot,
           "plugins",
           "plugin-whatsapp",
           "typescript",

@@ -164,6 +164,9 @@ Environment (CI / automation; flags override where noted):
   ELIZA_VITE_FORCE=1 / ELIZA_VITE_FORCE=1   Same as --vite-force
   ELIZA_DESKTOP_SCREENSHOT_SERVER=0     Disable screenshot dev server
   ELIZA_DESKTOP_DEV_LOG=0               Disable aggregated log file
+  ELIZA_DESKTOP_API_WATCH=0             Disable bun --watch for the API server
+  ELIZA_DESKTOP_PREWARM=0               Disable desktop startup API prewarming
+  ELIZA_DESKTOP_PREWARM_BLOCKING=1      Wait for API prewarming before Electrobun launch
   ELIZA_API_PORT / ELIZA_API_PORT / ELIZA_PORT   API port (first non-empty wins)
   ELIZA_PORT                            UI port (Vite dev)
 
@@ -405,6 +408,13 @@ function waitForPort(port, { timeout = 120_000, interval = 400 } = {}) {
 function envFlagEnabled(name) {
   const value = process.env[name]?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function envFlagDisabled(name) {
+  const value = process.env[name]?.trim().toLowerCase();
+  return (
+    value === "0" || value === "false" || value === "no" || value === "off"
+  );
 }
 
 async function waitForApiRoute(
@@ -729,10 +739,19 @@ async function launch() {
       ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
       : {}),
   };
+  const apiWatchEnabled = !envFlagDisabled("ELIZA_DESKTOP_API_WATCH");
+  const apiArgs = apiWatchEnabled
+    ? ["--watch", devServerEntry]
+    : [devServerEntry];
+  if (!apiWatchEnabled) {
+    console.log(
+      "[eliza] API file watcher disabled (ELIZA_DESKTOP_API_WATCH=0).",
+    );
+  }
 
   const apiSupervisor = createApiSupervisor({
     spawnChild: () =>
-      spawn(BUN_EXECUTABLE, ["--watch", devServerEntry], {
+      spawn(BUN_EXECUTABLE, apiArgs, {
         cwd: bundleRoot,
         env: extendNodePathEnv(
           { ...process.env, ...apiEnv, FORCE_COLOR: "1" },
@@ -776,7 +795,17 @@ async function launch() {
       );
       await waitForApiRuntimeReady(Number(apiPort));
       console.log("[eliza] Runtime ready.");
-      await warmApiRoutes(Number(apiPort));
+      if (envFlagEnabled("ELIZA_DESKTOP_PREWARM_BLOCKING")) {
+        await warmApiRoutes(Number(apiPort));
+      } else if (!envFlagDisabled("ELIZA_DESKTOP_PREWARM")) {
+        void warmApiRoutes(Number(apiPort)).catch((error) => {
+          console.warn(
+            `[eliza] Warning: desktop startup API prewarm failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+      }
     }
   }
 

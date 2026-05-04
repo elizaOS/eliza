@@ -87,6 +87,19 @@ const CAPACITOR_WEBVIEW_ORIGINS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Trusted native app schemes. Browsers cannot host arbitrary web pages at
+ * these origins; they are used by packaged/native app shells.
+ */
+const NATIVE_WEBVIEW_PROTOCOLS: ReadonlySet<string> = new Set([
+  "capacitor:",
+  "capacitor-electron:",
+  "ionic:",
+  "app:",
+  "tauri:",
+  "electrobun:",
+]);
+
+/**
  * URL.origin returns the literal string "null" for non-special schemes
  * (capacitor:, ionic:), so we compare protocol+host instead.
  */
@@ -111,6 +124,7 @@ export function isAllowedOrigin(
     const u = new URL(urlStr);
     const origin = originString(u);
     if (CAPACITOR_WEBVIEW_ORIGINS.has(origin)) return true;
+    if (NATIVE_WEBVIEW_PROTOCOLS.has(u.protocol)) return true;
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
     if (remoteOrigins.has(origin)) return true;
     const h = u.hostname.toLowerCase();

@@ -1,5 +1,6 @@
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +17,8 @@ if (!packageDirArg || assetPaths.length === 0) {
 
 const packageDir = path.resolve(repoRoot, packageDirArg);
 const distDir = path.join(packageDir, "dist");
+const COPY_RETRY_ATTEMPTS = 3;
+const COPY_RETRY_DELAY_MS = 100;
 const EXCLUDED_ASSET_DIRS = new Set([
   ".gradle",
   ".kotlin",
@@ -36,6 +39,37 @@ function shouldCopyAsset(src) {
     .some((segment) => EXCLUDED_ASSET_DIRS.has(segment));
 }
 
+function shouldRetryCopy(error, sourcePath, attempt) {
+  return (
+    attempt < COPY_RETRY_ATTEMPTS &&
+    error &&
+    typeof error === "object" &&
+    ["EBUSY", "ENOENT", "ENOTEMPTY"].includes(error.code) &&
+    existsSync(sourcePath)
+  );
+}
+
+async function copyAssetWithRetry(sourcePath, targetPath) {
+  let lastError;
+  for (let attempt = 1; attempt <= COPY_RETRY_ATTEMPTS; attempt++) {
+    try {
+      mkdirSync(path.dirname(targetPath), { recursive: true });
+      cpSync(sourcePath, targetPath, {
+        recursive: true,
+        filter: shouldCopyAsset,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryCopy(error, sourcePath, attempt)) {
+        break;
+      }
+      await sleep(COPY_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw lastError;
+}
+
 for (const assetPath of assetPaths) {
   const sourcePath = path.join(packageDir, assetPath);
   if (!existsSync(sourcePath)) {
@@ -45,6 +79,5 @@ for (const assetPath of assetPaths) {
 
   const relativeTarget = assetPath.replace(/^src\//, "");
   const targetPath = path.join(distDir, relativeTarget);
-  mkdirSync(path.dirname(targetPath), { recursive: true });
-  cpSync(sourcePath, targetPath, { recursive: true, filter: shouldCopyAsset });
+  await copyAssetWithRetry(sourcePath, targetPath);
 }

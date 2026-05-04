@@ -12,6 +12,7 @@ import {
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
 } from "../contracts/service-routing.js";
+import { buildCharacterFromConfig } from "../runtime/build-character-config.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
 
@@ -204,7 +205,6 @@ async function applyReloadedConfig(params: {
   // them to the live runtime. This propagates renames, system prompt
   // edits, bio/style updates, and topic/adjective changes.
   if (runtime) {
-    const { buildCharacterFromConfig } = await import("../runtime/eliza.js");
     const rebuilt = buildCharacterFromConfig(next);
     const character = runtime.character as unknown as Record<string, unknown>;
     const HOT_CHARACTER_FIELDS = [
