@@ -74,6 +74,15 @@ test("desktop titlebar keeps navigation clickable and title area draggable", asy
 
   const appsButton = page.getByTestId("header-nav-button-apps");
   await expect(appsButton).toBeVisible();
+  const titlebarBox = await titlebar.boundingBox();
+  const appsBox = await appsButton.boundingBox();
+  expect(titlebarBox, "Expected titlebar bounds").not.toBeNull();
+  expect(appsBox, "Expected app nav button bounds").not.toBeNull();
+  if (!titlebarBox || !appsBox) return;
+  expect(
+    appsBox.y - titlebarBox.y,
+    "Desktop nav should share the traffic-light titlebar row",
+  ).toBeLessThanOrEqual(4);
   await expect.poll(() => getAppRegion(appsButton)).toBe("no-drag");
   await clickLocatorAtVerticalFraction(page, appsButton, 0.18);
   await expect(page).toHaveURL(/\/apps$/);
