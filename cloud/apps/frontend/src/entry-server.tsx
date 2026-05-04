@@ -32,7 +32,7 @@ import { renderToString } from "react-dom/server";
 import { HelmetProvider, type HelmetServerState } from "react-helmet-async";
 // react-router-dom v7 unified the package: StaticRouter ships from the main
 // entry, not the legacy `react-router-dom/server` subpath (which v7 dropped).
-import { StaticRouter } from "react-router-dom";
+import { StaticRouter } from "react-router-dom/server";
 import { Toaster } from "sonner";
 import LandingPageRoute from "./pages/page";
 import "./globals.css";
