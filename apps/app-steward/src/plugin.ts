@@ -32,7 +32,6 @@ import { handleWalletBscCoreRoutes } from "./routes/wallet-bsc-core-routes";
 import { handleWalletCompatRoutes } from "./routes/wallet-compat-routes";
 import { handleWalletCoreRoutes } from "./routes/wallet-core-routes";
 import { handleWalletTradeCompatRoutes } from "./routes/wallet-trade-compat-routes";
-import { privyRoutes } from "./setup-routes-privy";
 
 // ---------------------------------------------------------------------------
 // Helper: build a CompatRuntimeState stub.  The compat handlers need a `state`
@@ -351,8 +350,6 @@ const stewardRoutes: Route[] = [
     rawPath: true,
     handler: stewardRouteHandler(handleWalletTradeCompatRoutes),
   },
-  // ── Privy wallet provisioning routes (extracted from server.ts) ─────────
-  ...privyRoutes,
 ];
 
 // ---------------------------------------------------------------------------

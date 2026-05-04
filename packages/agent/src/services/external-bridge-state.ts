@@ -15,20 +15,3 @@ export function setStewardEvmBridgeActive(active: boolean): void {
 export function isStewardEvmBridgeActive(): boolean {
   return stewardEvmBridgeActive;
 }
-
-function normalizeEnv(value: string | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-export function isPrivyWalletProvisioningEnabled(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  const appId =
-    normalizeEnv(env.PRIVY_APP_ID) ?? normalizeEnv(env.BABYLON_PRIVY_APP_ID);
-  const appSecret =
-    normalizeEnv(env.PRIVY_APP_SECRET) ??
-    normalizeEnv(env.BABYLON_PRIVY_APP_SECRET);
-  return Boolean(appId && appSecret);
-}

@@ -45,7 +45,6 @@ export * from "./StewardLogo.tsx";
 export * from "./StewardView";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
 export * from "./security/wallet-os-store-actions";
-export * from "./services/privy-wallets";
 export {
   loadStewardCredentials,
   type PersistedStewardCredentials,
