@@ -18,6 +18,8 @@
  *   - LIFEOPS_JUDGE_THRESHOLD: minimum LLM judge score (default 0.8). Forwarded
  *     to the CLI via LIFEOPS_LIVE_JUDGE_MIN_SCORE.
  *   - SCENARIO_FILTER: comma-separated scenario IDs (forwards as --scenario).
+ *   - SCENARIO_ROOT: scenario directory, relative to repo root or absolute
+ *     (default: apps/app-lifeops/test/scenarios).
  *   - SCENARIO_INCLUDE_PENDING=1: include scenarios marked status="pending".
  *   - SKIP_REASON: required when any scenario is intentionally skipped.
  *   - REPORT_PATH: where to write the JSON report (default: artifacts/lifeops-scenario-report.json).
@@ -49,6 +51,11 @@ const LIFEOPS_SCENARIO_ROOT = path.join(
   "test",
   "scenarios",
 );
+const scenarioRootInput = (process.env.SCENARIO_ROOT ?? "").trim();
+const scenarioRoot =
+  scenarioRootInput.length > 0
+    ? path.resolve(REPO_ROOT, scenarioRootInput)
+    : LIFEOPS_SCENARIO_ROOT;
 
 if (!existsSync(SCENARIO_CLI)) {
   console.error(
@@ -89,7 +96,7 @@ const args = [
   "tsx",
   SCENARIO_CLI,
   "run",
-  LIFEOPS_SCENARIO_ROOT,
+  scenarioRoot,
   "--report",
   reportPath,
   ...process.argv.slice(2),

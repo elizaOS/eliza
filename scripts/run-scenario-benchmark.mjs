@@ -89,6 +89,7 @@ const runnerEnv = {
   ...process.env,
   ELIZA_LIVE_TEST: "1",
   LIFEOPS_JUDGE_THRESHOLD: process.env.LIFEOPS_JUDGE_THRESHOLD ?? "0.8",
+  SCENARIO_ROOT: "test/scenarios",
   SCENARIO_FILTER: scenariosToRun.join(","),
   REPORT_PATH: REPORT_JSON,
 };
