@@ -682,8 +682,11 @@ describe("run-mobile-build", () => {
     );
 
     expect(iosPodfile).not.toContain("node_modules/.bun/");
-    expect(iosPodfile).toContain("../../../../app/node_modules/@capacitor/ios");
-    expect(iosPodfile).toContain("../../../../native-plugins/agent");
+    expect(iosPodfile).toContain("node_package_path('@capacitor/ios')");
+    expect(iosPodfile).toContain(
+      "node_package_path('@elizaos/capacitor-agent')",
+    );
+    expect(iosPodfile).not.toContain("../../../../native-plugins/agent");
     expect(iosPodfile).not.toContain("CapacitorStatusBar");
     expect(iosInfoPlist).not.toContain("armv7");
 
