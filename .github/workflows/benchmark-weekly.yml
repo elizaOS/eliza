@@ -102,6 +102,9 @@ jobs:
             cd packages/schemas && bunx buf generate
           fi
 
+      - name: Build package exports required by LifeOps
+        run: bun run --cwd plugins/plugin-telegram build
+
       - name: Run benchmark harness
         id: run
         env:
