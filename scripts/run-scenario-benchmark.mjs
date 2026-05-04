@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Weekly benchmark harness for the 22 executive-assistant scenarios and 15
- * connector certification scenarios.
+ * Weekly benchmark harness for the executive-assistant and connector
+ * certification scenarios.
  *
  * Loads scenario ids from the filesystem (test/scenarios/executive-assistant/
  * and test/scenarios/connector-certification/), invokes the
@@ -34,6 +34,10 @@ const CONNECTOR_DIR = path.join(
   "scenarios",
   "connector-certification",
 );
+const SCENARIO_FILE_GLOBS = [
+  "test/scenarios/executive-assistant/*.scenario.ts",
+  "test/scenarios/connector-certification/*.scenario.ts",
+];
 const REPORT_JSON = path.join(
   REPO_ROOT,
   "artifacts",
@@ -95,14 +99,18 @@ const runnerEnv = {
 };
 
 console.log(
-  `[benchmark] invoking scenario-runner for ${scenariosToRun.length} scenarios (threshold=${runnerEnv.LIFEOPS_JUDGE_THRESHOLD})`,
+  `[benchmark] invoking scenario-runner for ${scenariosToRun.length} scenarios (threshold=${runnerEnv.LIFEOPS_JUDGE_THRESHOLD}, globs=${SCENARIO_FILE_GLOBS.join(",")})`,
 );
 
-const result = spawnSync("node", ["scripts/run-live-scenarios.mjs"], {
-  cwd: REPO_ROOT,
-  env: runnerEnv,
-  stdio: "inherit",
-});
+const result = spawnSync(
+  "node",
+  ["scripts/run-live-scenarios.mjs", ...SCENARIO_FILE_GLOBS],
+  {
+    cwd: REPO_ROOT,
+    env: runnerEnv,
+    stdio: "inherit",
+  },
+);
 
 // Runner exits non-zero on failure; we still want to emit a report.
 const runnerExitCode = result.status ?? 1;
@@ -153,13 +161,13 @@ function renderMarkdown() {
     );
   }
   lines.push("");
-  lines.push("## EA scenarios (22)");
+  lines.push(`## EA scenarios (${eaScenarios.length})`);
   lines.push("");
   for (const entry of eaScenarios) {
     lines.push(`- \`${entry.id}\``);
   }
   lines.push("");
-  lines.push("## Connector scenarios (15)");
+  lines.push(`## Connector scenarios (${connectorScenarios.length})`);
   lines.push("");
   for (const entry of connectorScenarios) {
     lines.push(`- \`${entry.id}\``);
