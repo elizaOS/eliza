@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest --config vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

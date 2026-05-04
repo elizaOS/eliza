@@ -1,5 +1,4 @@
 export * from "../components/config-ui/config-renderer";
-export * from "./allowed-hosts";
 export {
   evaluateUiVisibility,
   getSupportedComponents,
@@ -8,6 +7,7 @@ export {
   UiRenderer,
   type UiRendererProps,
 } from "../components/config-ui/ui-renderer";
+export * from "./allowed-hosts";
 export * from "./app-config";
 export * from "./boot-config";
 export * from "./boot-config-react";

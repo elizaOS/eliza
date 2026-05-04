@@ -24,6 +24,9 @@ const PROVIDERS = [
   { label: "Groq", key: "GROQ_API_KEY", keyHint: "gsk_..." },
   { label: "xAI (Grok)", key: "XAI_API_KEY", keyHint: "xai-..." },
   { label: "OpenRouter", key: "OPENROUTER_API_KEY", keyHint: "sk-or-..." },
+  { label: "DeepSeek", key: "DEEPSEEK_API_KEY", keyHint: "sk-..." },
+  { label: "z.ai", key: "ZAI_API_KEY", keyHint: "" },
+  { label: "Kimi / Moonshot", key: "MOONSHOT_API_KEY", keyHint: "sk-..." },
   { label: "Mistral", key: "MISTRAL_API_KEY", keyHint: "" },
   {
     label: "Ollama (local, no key)",
@@ -192,6 +195,8 @@ export function hasModelKey(
     "PERPLEXITY_API_KEY",
     "ZAI_API_KEY",
     "Z_AI_API_KEY",
+    "MOONSHOT_API_KEY",
+    "KIMI_API_KEY",
     "AI_GATEWAY_API_KEY",
     "ELIZAOS_CLOUD_API_KEY",
     "OLLAMA_BASE_URL",

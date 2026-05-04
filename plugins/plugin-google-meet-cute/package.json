@@ -61,7 +61,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
     "lint": "echo 'lint skipped for plugin-google-meet-cute'",
     "postpack": "echo 'Successfully built plugin-google-meet-cute'",

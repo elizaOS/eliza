@@ -30,10 +30,10 @@ PODS:
     - Capacitor
 
 DEPENDENCIES:
-  - "Capacitor (from `../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios`)"
-  - "CapacitorBrowser (from `../../../../node_modules/.bun/@capacitor+browser@8.0.0+2a604cb248d57ff2/node_modules/@capacitor/browser`)"
-  - "CapacitorCordova (from `../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios`)"
-  - "CapacitorKeyboard (from `../../../../node_modules/.bun/@capacitor+keyboard@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/keyboard`)"
+  - "Capacitor (from `../../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios`)"
+  - "CapacitorBrowser (from `../../../../../node_modules/.bun/@capacitor+browser@8.0.0+2a604cb248d57ff2/node_modules/@capacitor/browser`)"
+  - "CapacitorCordova (from `../../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios`)"
+  - "CapacitorKeyboard (from `../../../../../node_modules/.bun/@capacitor+keyboard@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/keyboard`)"
   - ElizaosCapacitorAgent (from `../../../native-plugins/agent`)
   - ElizaosCapacitorAppblocker (from `../../../native-plugins/appblocker`)
   - ElizaosCapacitorCamera (from `../../../native-plugins/camera`)
@@ -48,13 +48,13 @@ DEPENDENCIES:
 
 EXTERNAL SOURCES:
   Capacitor:
-    :path: "../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios"
+    :path: "../../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios"
   CapacitorBrowser:
-    :path: "../../../../node_modules/.bun/@capacitor+browser@8.0.0+2a604cb248d57ff2/node_modules/@capacitor/browser"
+    :path: "../../../../../node_modules/.bun/@capacitor+browser@8.0.0+2a604cb248d57ff2/node_modules/@capacitor/browser"
   CapacitorCordova:
-    :path: "../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios"
+    :path: "../../../../../node_modules/.bun/@capacitor+ios@8.3.1+2a604cb248d57ff2/node_modules/@capacitor/ios"
   CapacitorKeyboard:
-    :path: "../../../../node_modules/.bun/@capacitor+keyboard@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/keyboard"
+    :path: "../../../../../node_modules/.bun/@capacitor+keyboard@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/keyboard"
   ElizaosCapacitorAgent:
     :path: "../../../native-plugins/agent"
   ElizaosCapacitorAppblocker:
@@ -95,6 +95,6 @@ SPEC CHECKSUMS:
   ElizaosCapacitorTalkmode: 16251b137c9faffa6d11c694992014105ef2bcd5
   ElizaosCapacitorWebsiteblocker: 537f9c3334cfcd52c490e4a8f61bd048d8276826
 
-PODFILE CHECKSUM: f37302a6da9ea6c8e93d891a530ee6b65ca00c37
+PODFILE CHECKSUM: c0b0848e9bc3186c62984bfdb2db39e103bbd624
 
 COCOAPODS: 1.16.2

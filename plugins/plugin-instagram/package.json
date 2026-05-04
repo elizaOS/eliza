@@ -29,7 +29,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",

@@ -12,7 +12,7 @@ import type { ServerState } from "./server-types.js";
 // Matches: "set up telegram", "configure discord plugin", "connect slack",
 // "help me with the openai plugin", etc.
 const PLUGIN_CONFIG_RE =
-  /\b(?:set\s*up|configure|connect|enable|install|setup)\b.*?\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|ollama)\b|\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|ollama)\b.*?\b(?:plugin|connector|set\s*up|configure|connect|enable|setup)\b/i;
+  /\b(?:set\s*up|configure|connect|enable|install|setup)\b.*?\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|moonshot|kimi|ollama)\b|\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|moonshot|kimi|ollama)\b.*?\b(?:plugin|connector|set\s*up|configure|connect|enable|setup)\b/i;
 
 const PLUGIN_PARAMS: Record<
   string,
@@ -78,6 +78,8 @@ const PLUGIN_PARAMS: Record<
   together: [{ key: "TOGETHER_API_KEY", label: "API Key", secret: true }],
   grok: [{ key: "XAI_API_KEY", label: "API Key", secret: true }],
   zai: [{ key: "ZAI_API_KEY", label: "API Key", secret: true }],
+  moonshot: [{ key: "MOONSHOT_API_KEY", label: "API Key", secret: true }],
+  kimi: [{ key: "MOONSHOT_API_KEY", label: "API Key", secret: true }],
   ollama: [
     {
       key: "OLLAMA_BASE_URL",

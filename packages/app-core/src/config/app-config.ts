@@ -16,7 +16,7 @@
  *   } satisfies AppConfig;
  */
 
-import { type BrandingConfig, DEFAULT_BRANDING } from "./branding";
+import { type BrandingConfig, DEFAULT_BRANDING } from "./branding.ts";
 
 export interface AppDesktopConfig {
   /** Reverse-domain bundle identifier (e.g. "com.elizaai.eliza") */

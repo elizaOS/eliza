@@ -29,12 +29,20 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import type { AccountCredentialRecord } from "@elizaos/agent/auth/account-storage";
 import {
-  getAccessToken as getSubscriptionAccessToken,
+  getAccessToken as getAccountAccessToken,
   listProviderAccounts,
 } from "@elizaos/agent/auth/credentials";
-import type { SubscriptionProvider } from "@elizaos/agent/auth/types";
+import {
+  ACCOUNT_CREDENTIAL_PROVIDER_IDS,
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+  DIRECT_ACCOUNT_PROVIDER_IDS,
+  isSubscriptionProvider,
+  type DirectAccountProvider,
+  type SubscriptionProvider,
+} from "@elizaos/agent/auth/types";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
@@ -55,10 +63,7 @@ export type Strategy =
   | "least-used"
   | "quota-aware";
 
-export type PoolProviderId =
-  | LinkedAccountProviderId
-  | "anthropic-api"
-  | "openai-api";
+export type PoolProviderId = LinkedAccountProviderId;
 
 export interface AccountPoolDeps {
   /** Read the current `LinkedAccountsConfig` (live). */
@@ -92,6 +97,22 @@ interface AffinityEntry {
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
+const DIRECT_PROVIDER_BY_BACKEND: Readonly<Record<string, DirectAccountProvider>> =
+  {
+    anthropic: "anthropic-api",
+    openai: "openai-api",
+    deepseek: "deepseek-api",
+    zai: "zai-api",
+    moonshot: "moonshot-api",
+  };
+
+const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
+  Partial<Record<DirectAccountProvider, string>>
+> = {
+  "moonshot-api": "https://api.moonshot.ai/v1",
+};
+
+const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
 
 export class AccountPool {
   private readonly deps: AccountPoolDeps;
@@ -418,7 +439,10 @@ function isPoolProviderId(value: string): value is PoolProviderId {
     value === "anthropic-subscription" ||
     value === "openai-codex" ||
     value === "anthropic-api" ||
-    value === "openai-api"
+    value === "openai-api" ||
+    value === "deepseek-api" ||
+    value === "zai-api" ||
+    value === "moonshot-api"
   );
 }
 
@@ -480,13 +504,9 @@ function recordToLinked(
 }
 
 function loadAllAccounts(): Record<string, LinkedAccountConfig> {
-  const subscriptionProviders: SubscriptionProvider[] = [
-    "anthropic-subscription",
-    "openai-codex",
-  ];
   const meta = readMetaStore();
   const out: Record<string, LinkedAccountConfig> = {};
-  for (const provider of subscriptionProviders) {
+  for (const provider of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
     const records = listProviderAccounts(provider);
     let priorityCounter = 0;
     const sorted = [...records].sort((a, b) => a.createdAt - b.createdAt);
@@ -616,6 +636,168 @@ export function getDefaultAccountPool(): AccountPool {
   return cachedDefaultPool;
 }
 
+export async function applyAccountPoolApiCredentials(opts: {
+  activeBackend?: string | null;
+} = {}): Promise<void> {
+  const pool = getDefaultAccountPool();
+  const activeProvider = opts.activeBackend
+    ? DIRECT_PROVIDER_BY_BACKEND[opts.activeBackend]
+    : undefined;
+  let activeProviderToken: string | null = null;
+
+  for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
+    const accounts = listProviderAccounts(providerId);
+    if (accounts.length === 0) continue;
+
+    const account =
+      (await pool.select({
+        providerId,
+        sessionKey: `env:${providerId}`,
+      })) ?? accounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
+    if (!account) continue;
+
+    const token = await getAccountAccessToken(providerId, account.id);
+    if (!token) continue;
+
+    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
+    process.env[envKey] = token;
+    if (activeProvider === providerId) {
+      activeProviderToken = token;
+    }
+    if (providerId === "zai-api") {
+      process.env.Z_AI_API_KEY ??= token;
+    }
+
+    const openAiCompatibleBase =
+      activeProvider === providerId
+        ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
+        : undefined;
+    if (openAiCompatibleBase) {
+      process.env.OPENAI_API_KEY = token;
+      process.env.OPENAI_BASE_URL = openAiCompatibleBase;
+    }
+  }
+
+  if (activeProvider && !activeProviderToken) {
+    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[activeProvider];
+    activeProviderToken = process.env[envKey]?.trim() || null;
+    if (!activeProviderToken && activeProvider === "zai-api") {
+      activeProviderToken = process.env.Z_AI_API_KEY?.trim() || null;
+    }
+    if (!activeProviderToken && activeProvider === "moonshot-api") {
+      activeProviderToken = process.env.KIMI_API_KEY?.trim() || null;
+    }
+    const openAiCompatibleBase =
+      activeProviderToken &&
+      OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider];
+    if (openAiCompatibleBase) {
+      process.env.OPENAI_API_KEY = activeProviderToken;
+      process.env.OPENAI_BASE_URL = openAiCompatibleBase;
+    }
+  }
+}
+
+export interface AccountPoolKeepAliveResult {
+  checked: number;
+  refreshed: number;
+  failed: number;
+}
+
+export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveResult> {
+  const pool = getDefaultAccountPool();
+  const result: AccountPoolKeepAliveResult = {
+    checked: 0,
+    refreshed: 0,
+    failed: 0,
+  };
+
+  for (const providerId of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
+    for (const record of listProviderAccounts(providerId)) {
+      result.checked += 1;
+
+      const token = await getAccountAccessToken(providerId, record.id);
+      if (!token) {
+        result.failed += 1;
+        await pool.markNeedsReauth(record.id, "No valid credential available");
+        continue;
+      }
+
+      if (!isSubscriptionProvider(providerId)) {
+        continue;
+      }
+
+      try {
+        await pool.refreshUsage(record.id, token, {
+          ...(record.organizationId
+            ? { codexAccountId: record.organizationId }
+            : {}),
+        });
+        result.refreshed += 1;
+      } catch (err) {
+        result.failed += 1;
+        const message = err instanceof Error ? err.message : String(err);
+        if (/401|403|invalid|unauthor/i.test(message)) {
+          await pool.markNeedsReauth(record.id, message);
+        } else if (/429|rate.?limit/i.test(message)) {
+          await pool.markRateLimited(
+            record.id,
+            Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
+            message,
+          );
+        } else {
+          await pool.markInvalid(record.id, message);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+let keepAliveRunning = false;
+
+export function startAccountPoolKeepAlive(
+  intervalMs: number = KEEP_ALIVE_INTERVAL_MS,
+): void {
+  const disabled = process.env.ELIZA_ACCOUNT_POOL_KEEPALIVE
+    ?.trim()
+    .toLowerCase();
+  if (
+    disabled === "0" ||
+    disabled === "false" ||
+    disabled === "no" ||
+    disabled === "off"
+  ) {
+    return;
+  }
+  if (keepAliveTimer) return;
+
+  const run = () => {
+    if (keepAliveRunning) return;
+    keepAliveRunning = true;
+    void sweepAccountPoolKeepAlive()
+      .catch((err) => {
+        logger.debug(`[AccountPool] keep-alive sweep failed: ${String(err)}`);
+      })
+      .finally(() => {
+        keepAliveRunning = false;
+      });
+  };
+
+  keepAliveTimer = setInterval(run, Math.max(60_000, intervalMs));
+  keepAliveTimer.unref?.();
+  run();
+}
+
+export function stopAccountPoolKeepAliveForTests(): void {
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+  keepAliveRunning = false;
+}
+
 /**
  * Install the `globalThis`-keyed shim that plugin-anthropic's
  * credential-store reads. Idempotent — repeated installs replace the
@@ -638,7 +820,7 @@ function installAnthropicShim(pool: AccountPool): void {
       return { id: account.id, expiresAt: Number.POSITIVE_INFINITY };
     },
     getAccessToken: (providerId, accountId) =>
-      getSubscriptionAccessToken(providerId, accountId),
+      getAccountAccessToken(providerId, accountId),
     markInvalid: (accountId, detail) => pool.markInvalid(accountId, detail),
     markRateLimited: (accountId, untilMs, detail) =>
       pool.markRateLimited(accountId, untilMs, detail),
@@ -655,7 +837,7 @@ function installOrchestratorShim(pool: AccountPool): void {
         sessionKey,
       });
       if (!account) return null;
-      const token = await getSubscriptionAccessToken(
+      const token = await getAccountAccessToken(
         "anthropic-subscription",
         account.id,
       );
@@ -699,6 +881,7 @@ export function createDefaultAccountPool(): AccountPool {
  * Resets the cached singleton. Test-only.
  */
 export function __resetDefaultAccountPoolForTests(): void {
+  stopAccountPoolKeepAliveForTests();
   cachedDefaultPool = null;
 }
 

@@ -22,7 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
-import { configureLocalEmbeddingPlugin } from "../../../../agent/src/runtime/eliza";
+import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import {
 	type LiveProviderConfig,
 	type LiveProviderName,
@@ -81,7 +81,7 @@ async function flushPendingTrajectoryWrites(
 ): Promise<void> {
 	try {
 		const { flushTrajectoryWrites } = await import(
-			"../../../../agent/src/runtime/trajectory-storage"
+			"../../../agent/src/runtime/trajectory-storage"
 		);
 		await flushTrajectoryWrites(runtime);
 	} catch {
@@ -149,7 +149,11 @@ export async function createRealTestRuntime(
 
 	if (options?.withLLM) {
 		try {
-			const pluginModule = await import("@elizaos/plugin-local-embedding");
+			const pluginModule = (await import(
+				"@elizaos/plugin-local-embedding"
+			)) as typeof import("@elizaos/plugin-local-embedding") & {
+				elizaPlugin?: Plugin;
+			};
 			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 			if (plugin) {
 				configureLocalEmbeddingPlugin(plugin);
@@ -200,7 +204,11 @@ export async function createRealTestRuntime(
 	// Register Discord plugin if requested and token available
 	if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
 		try {
-			const discordModule = await import("@elizaos/plugin-discord");
+			const discordModule = (await import(
+				"@elizaos/plugin-discord"
+			)) as typeof import("@elizaos/plugin-discord") & {
+				elizaPlugin?: Plugin;
+			};
 			const plugin = discordModule.default ?? discordModule.elizaPlugin;
 			if (plugin) {
 				await runtime.registerPlugin(plugin);
@@ -214,7 +222,11 @@ export async function createRealTestRuntime(
 	// Register Telegram plugin if requested and token available
 	if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
 		try {
-			const telegramModule = await import("@elizaos/plugin-telegram");
+			const telegramModule = (await import(
+				"@elizaos/plugin-telegram"
+			)) as typeof import("@elizaos/plugin-telegram") & {
+				elizaPlugin?: Plugin;
+			};
 			const plugin = telegramModule.default ?? telegramModule.elizaPlugin;
 			if (plugin) {
 				await runtime.registerPlugin(plugin);

@@ -475,6 +475,20 @@ export async function runFirstTimeSetup(
       hint: "sk-...",
     },
     {
+      id: "zai",
+      label: "z.ai",
+      envKey: "ZAI_API_KEY",
+      detectKeys: ["ZAI_API_KEY", "Z_AI_API_KEY"],
+      hint: "",
+    },
+    {
+      id: "moonshot",
+      label: "Kimi / Moonshot",
+      envKey: "MOONSHOT_API_KEY",
+      detectKeys: ["MOONSHOT_API_KEY", "KIMI_API_KEY"],
+      hint: "sk-...",
+    },
+    {
       id: "mistral",
       label: "Mistral",
       envKey: "MISTRAL_API_KEY",

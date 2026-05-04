@@ -662,18 +662,10 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
-            // Bearer auth on the loopback API is reserved for the case
-            // where the WebView wires up a token-fetch native binding;
-            // until that exists, requiring the token blocks the WebView
-            // from doing the initial /api/auth/status handshake (the
-            // WebView doesn't know the token yet, the agent rejects it,
-            // the UI sticks at "Initializing agent…"). Default OFF keeps
-            // Android consistent with desktop's loopback model — the
-            // WebView and agent share the same Linux UID, so any process
-            // that can hit loopback already has app-uid filesystem access.
-            // Setting ELIZA_REQUIRE_LOCAL_AUTH=1 still works once the
-            // WebView side is wired up; it's just no longer the default.
-            // agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "1");
+            // Android loopback is shared across apps. Require the per-boot
+            // bearer token; the Capacitor Agent plugin exposes it to the
+            // WebView before local-agent API calls are retried.
+            agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
             // WebView, so the runtime should always be ready to broker
