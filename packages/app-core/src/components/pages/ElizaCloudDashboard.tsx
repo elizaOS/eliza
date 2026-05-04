@@ -332,11 +332,19 @@ export function CloudDashboard() {
     };
   }, []);
 
+  // Refetch billing only when the cloud-connected flag flips. We deliberately
+  // exclude `fetchBillingData` from the dep array: its identity tracks `t`
+  // (i18n) and changes on every render, which would re-fire this effect every
+  // render and hammer `/api/cloud/billing/{summary,settings}` until Eliza
+  // Cloud rate-limits the keypair with 429s. The "fire once on connect" is
+  // the only intended behaviour; manual refresh + post-mutation refresh both
+  // call `fetchBillingData` directly elsewhere.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
     if (elizaCloudConnected) {
       void fetchBillingData();
     }
-  }, [elizaCloudConnected, fetchBillingData]);
+  }, [elizaCloudConnected]);
 
   // Drop cached billing on disconnect so we never show a stale balance.
   useEffect(() => {
