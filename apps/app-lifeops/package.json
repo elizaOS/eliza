@@ -44,8 +44,6 @@
   },
   "dependencies": {
     "@capacitor/core": "8.3.1",
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/core": "workspace:*",
@@ -71,6 +69,8 @@
     "jsdom": "^29.0.0"
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "react": "*"
   },
   "agentConfig": {

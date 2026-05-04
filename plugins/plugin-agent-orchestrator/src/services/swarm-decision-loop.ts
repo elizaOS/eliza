@@ -1747,9 +1747,11 @@ export async function handleBlocked(
         // mode accept all responsibility") exposes options 1 (No, exit) and 2
         // (Yes, I accept). The raw permission-fallback below presses Enter,
         // which resolves to option 1 and kills claude with exit code 1 before
-        // any work starts. Detect the prompt by text and send "2" directly.
+        // any work starts. Detect the prompt by text and send option 2 plus
+        // Enter through the key path so it behaves like the PTY auto-response
+        // rule instead of depending on send() newline semantics.
         knownRoutinePermissionPrompt
-        ? "2"
+        ? "keys:2,enter"
         : eventData.promptInfo?.canAutoRespond &&
             eventData.promptInfo?.type === "permission"
           ? "keys:enter"
