@@ -13,6 +13,13 @@ import {
   REMINDER_URGENCY_METADATA_KEY,
 } from "./service-constants.js";
 
+/**
+ * Canonical title for the seeded stretch routine. Exported so the
+ * reminder dispatch loop can apply stretch-specific gating (busy-day
+ * skip, walk-out reset) without grep-matching string literals.
+ */
+export const STRETCH_ROUTINE_TITLE = "Stretch";
+
 export interface RoutineSeedTemplate {
   /** Stable key used to deduplicate across seeding offers. */
   key: string;
@@ -77,12 +84,12 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
   },
   {
     key: "stretch",
-    title: "Stretch",
+    title: STRETCH_ROUTINE_TITLE,
     description: "Soft stretch nudges in the afternoon and evening",
     category: "health",
     request: {
       kind: "habit",
-      title: "Stretch",
+      title: STRETCH_ROUTINE_TITLE,
       cadence: {
         kind: "interval",
         everyMinutes: 360,

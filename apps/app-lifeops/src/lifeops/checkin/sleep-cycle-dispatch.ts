@@ -1,12 +1,15 @@
 import type {
   LifeOpsCircadianState,
+  LifeOpsPersonalBaseline,
   LifeOpsRegularityClass,
+  LifeOpsScheduleRegularity,
 } from "@elizaos/shared";
 import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../time.js";
 import { parseIsoMs } from "../time-util.js";
+import type { SleepRecap } from "./types.js";
 
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;
 export const NIGHT_CHECKIN_LEAD_MINUTES = 3 * 60;
@@ -183,4 +186,34 @@ export function shouldRunNightCheckinFromSleepCycle(args: {
     }
   }
   return false;
+}
+
+/**
+ * Project the four sleep-recap fields out of a merged schedule-state record
+ * (or any object exposing the same `baseline` / `regularity` shape) so the
+ * night-summary prompt can surface them. Returns null when neither a baseline
+ * nor a regularity reading is available — the prompt drops the recap
+ * section entirely in that case rather than printing "0/100" placeholders.
+ *
+ * Intentional design: `medianBedtimeLocalHour` and `medianSleepDurationMin`
+ * land as null when the baseline is null (fewer than 5 episodes recorded);
+ * `sri` and `regularityClass` always have defaults from the regularity
+ * scorer (`insufficient_data` + 0) so we surface them when we have anything
+ * to show.
+ */
+export function buildSleepRecapFromSchedule(
+  schedule: {
+    readonly baseline: LifeOpsPersonalBaseline | null;
+    readonly regularity: LifeOpsScheduleRegularity;
+  } | null,
+): SleepRecap | null {
+  if (!schedule) {
+    return null;
+  }
+  return {
+    medianBedtimeLocalHour: schedule.baseline?.medianBedtimeLocalHour ?? null,
+    medianSleepDurationMin: schedule.baseline?.medianSleepDurationMin ?? null,
+    sri: schedule.regularity.sri,
+    regularityClass: schedule.regularity.regularityClass,
+  };
 }

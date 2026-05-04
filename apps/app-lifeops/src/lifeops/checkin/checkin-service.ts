@@ -32,6 +32,7 @@ import type {
   RecentWin,
   RecordAcknowledgementRequest,
   RunCheckinRequest,
+  SleepRecap,
 } from "./types.js";
 
 /**
@@ -90,6 +91,88 @@ function logMissingOnce(key: string, message: string): void {
   if (loggedMissingSources.has(key)) return;
   loggedMissingSources.add(key);
   logger.info(`[CheckinService] ${message}`);
+}
+
+/**
+ * Format a `medianBedtimeLocalHour` (in [12, 36)) as a local HH:MM string.
+ * Hours >= 24 wrap into the next day, e.g. 24.5 → "00:30". Returns null when
+ * the input is null or non-finite — the prompt builder uses this to omit the
+ * bedtime line entirely rather than print a placeholder.
+ */
+function formatBedtimeHour(hour: number | null): string | null {
+  if (hour === null || !Number.isFinite(hour)) {
+    return null;
+  }
+  const wrapped = ((hour % 24) + 24) % 24;
+  const hh = Math.floor(wrapped);
+  const mm = Math.round((wrapped - hh) * 60);
+  // Round-up edge: 23.999... → 24:00 → wrap to 00:00.
+  const normHh = mm === 60 ? (hh + 1) % 24 : hh;
+  const normMm = mm === 60 ? 0 : mm;
+  return `${String(normHh).padStart(2, "0")}:${String(normMm).padStart(2, "0")}`;
+}
+
+function formatDurationMinutes(durationMin: number | null): string | null {
+  if (durationMin === null || !Number.isFinite(durationMin) || durationMin <= 0) {
+    return null;
+  }
+  const hours = Math.floor(durationMin / 60);
+  const minutes = Math.round(durationMin - hours * 60);
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h${minutes}m`;
+}
+
+/**
+ * Build the LLM prompt for a check-in summary. Exported for direct unit
+ * testing of prompt content (especially the night-only sleep recap section).
+ */
+export function buildCheckinSummaryPrompt(
+  report: Omit<CheckinReport, "summaryText">,
+): string {
+  const lines: string[] = [
+    report.kind === "morning"
+      ? "Write the owner's morning personal-assistant intro summary."
+      : "Write the owner's night personal-assistant closeout summary.",
+    "This is generated from LifeOps source data. Do not invent facts.",
+    "Rank for genuinely interesting, important, reply-needed, or schedule-changing items.",
+    "Include X/socials (timeline, mentions, DMs), inboxes/messages/Discord, Gmail, GitHub, calendar changes, completed work, contacts, promises, agreements, and follow-ups when present.",
+    "When a source is unavailable, say that source is unavailable in one compact clause instead of pretending it was empty.",
+    report.kind === "morning"
+      ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
+      : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
+    "Use short sections or tight bullets. No markdown table. No emojis.",
+  ];
+
+  if (report.kind === "night" && report.sleepRecap) {
+    const recap = report.sleepRecap;
+    const bedtime = formatBedtimeHour(recap.medianBedtimeLocalHour);
+    const duration = formatDurationMinutes(recap.medianSleepDurationMin);
+    const recapBullets: string[] = [];
+    if (bedtime !== null) {
+      recapBullets.push(`- typical bedtime: ${bedtime} local`);
+    }
+    if (duration !== null) {
+      recapBullets.push(`- typical sleep duration: ${duration}`);
+    }
+    recapBullets.push(`- sleep regularity index (SRI): ${recap.sri}/100`);
+    recapBullets.push(`- regularity class: ${recap.regularityClass}`);
+    lines.push(
+      "",
+      "Sleep recap (use these facts only — do not invent sleep numbers):",
+      ...recapBullets,
+      'Include a short "Sleep recap" section in the summary using these numbers when present. If `regularityClass` is `irregular` or `very_irregular`, suggest one concrete step toward consistency. If it is `insufficient_data`, say so plainly and skip recommendations.',
+    );
+  }
+
+  lines.push(
+    "",
+    "Report JSON:",
+    JSON.stringify(report),
+    "",
+    "Summary:",
+  );
+  return lines.join("\n");
 }
 
 /** Exposed for tests that want to reset the process-level once-log. */
@@ -1243,6 +1326,11 @@ export class CheckinService {
     const habitEscalationLevel = resolveHabitEscalationLevel(
       habitCollector.rows,
     );
+    // sleepRecap is night-only by design (the morning prompt does not surface
+    // sleep stats today). Drop it on morning runs even if a caller passes one
+    // in to keep the night/morning report shapes diverging on this field.
+    const sleepRecap: SleepRecap | null =
+      kind === "night" ? (request.sleepRecap ?? null) : null;
     const reportWithoutSummary = {
       reportId: newReportId(),
       kind,
@@ -1254,6 +1342,7 @@ export class CheckinService {
       habitSummaries: habitCollector.rows,
       habitEscalationLevel,
       briefingSections,
+      sleepRecap,
       collectorErrors: {
         overdueTodos: overdueTodos.error,
         todaysMeetings: todaysMeetings.error,
@@ -1291,24 +1380,7 @@ export class CheckinService {
     if (typeof runModel !== "function") {
       return fallback;
     }
-    const prompt = [
-      report.kind === "morning"
-        ? "Write the owner's morning personal-assistant intro summary."
-        : "Write the owner's night personal-assistant closeout summary.",
-      "This is generated from LifeOps source data. Do not invent facts.",
-      "Rank for genuinely interesting, important, reply-needed, or schedule-changing items.",
-      "Include X/socials (timeline, mentions, DMs), inboxes/messages/Discord, Gmail, GitHub, calendar changes, completed work, contacts, promises, agreements, and follow-ups when present.",
-      "When a source is unavailable, say that source is unavailable in one compact clause instead of pretending it was empty.",
-      report.kind === "morning"
-        ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
-        : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
-      "Use short sections or tight bullets. No markdown table. No emojis.",
-      "",
-      "Report JSON:",
-      JSON.stringify(report),
-      "",
-      "Summary:",
-    ].join("\n");
+    const prompt = buildCheckinSummaryPrompt(report);
     try {
       const response = await runModel(ModelType.TEXT_LARGE, {
         prompt,

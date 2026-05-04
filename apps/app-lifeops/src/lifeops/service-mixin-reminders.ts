@@ -61,6 +61,7 @@ import {
 import { CheckinService } from "./checkin/checkin-service.js";
 import { resolveCheckinSchedule } from "./checkin/schedule-resolver.js";
 import {
+  buildSleepRecapFromSchedule,
   shouldRunMorningCheckinFromSleepCycle,
   shouldRunNightCheckinFromSleepCycle,
 } from "./checkin/sleep-cycle-dispatch.js";
@@ -162,11 +163,17 @@ import {
   resolveReminderEscalationDelayMinutes,
   resolveReminderEscalationProfileDecision,
   resolveReminderReviewDelayMinutes,
+  isReminderBusyDay,
   shouldDeferReminderUntilComputerActive,
   shouldDeliverReminderForIntensity,
   shouldEscalateImmediately,
   withReminderPreferenceMetadata,
 } from "./service-helpers-reminder.js";
+import { STRETCH_ROUTINE_TITLE } from "./seed-routines.js";
+import {
+  pickStretchReminderCopy,
+  shouldStretchNow,
+} from "./stretch-decider.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -188,7 +195,11 @@ import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
 } from "./telemetry-retention.js";
-import { addMinutes, getZonedDateParts } from "./time.js";
+import {
+  addMinutes,
+  getWeekdayForLocalDate,
+  getZonedDateParts,
+} from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
@@ -540,6 +551,83 @@ function buildReminderBody(args: {
     parts.push(`Due: ${new Date(args.dueAt).toLocaleString()}`);
   }
   return parts.join("\n");
+}
+
+/** Identify a stretch routine reminder by its canonical seeded title. */
+function isStretchDefinition(
+  definition: Pick<LifeOpsTaskDefinition, "title"> | null,
+): boolean {
+  return definition?.title === STRETCH_ROUTINE_TITLE;
+}
+
+/** Day-of-year (1–366) for the given Date inside the supplied timezone. */
+function computeDayOfYear(date: Date, timezone: string): number {
+  const parts = getZonedDateParts(date, timezone);
+  const start = Date.UTC(parts.year, 0, 1);
+  const today = Date.UTC(parts.year, parts.month - 1, parts.day);
+  return Math.floor((today - start) / 86_400_000) + 1;
+}
+
+interface StretchReminderGateResult {
+  shouldSuppress: boolean;
+  bodyOverride?: string;
+}
+
+/**
+ * Stretch-specific dispatch gate. Returns `shouldSuppress: true` when
+ * the soft-self-care nudge should sit out this tick (busy day, weekend,
+ * late evening, or still inside the cooldown). When the nudge does
+ * fire, returns a deterministic copy variant via `bodyOverride` so the
+ * stretch body stops being the generic "Reminder: Stretch" line.
+ *
+ * No-op for any non-stretch reminder.
+ */
+function evaluateStretchReminderGate(args: {
+  definition: Pick<LifeOpsTaskDefinition, "title"> | null;
+  plan: Pick<LifeOpsReminderPlan, "id">;
+  existingAttempts: LifeOpsReminderAttempt[];
+  activityProfile: ReminderActivityProfileSnapshot | null;
+  ownerTimezone: string;
+  now: Date;
+}): StretchReminderGateResult {
+  if (!isStretchDefinition(args.definition)) {
+    return { shouldSuppress: false };
+  }
+  const planAttempts = args.existingAttempts.filter(
+    (attempt) =>
+      attempt.planId === args.plan.id &&
+      attempt.outcome === "delivered" &&
+      typeof attempt.attemptedAt === "string",
+  );
+  let lastStretchMs: number | null = null;
+  for (const attempt of planAttempts) {
+    const attemptedAt = attempt.attemptedAt;
+    if (typeof attemptedAt !== "string") continue;
+    const ms = Date.parse(attemptedAt);
+    if (!Number.isFinite(ms)) continue;
+    if (lastStretchMs === null || ms > lastStretchMs) {
+      lastStretchMs = ms;
+    }
+  }
+  const localParts = getZonedDateParts(args.now, args.ownerTimezone);
+  const dayOfWeek = getWeekdayForLocalDate(localParts);
+  const decision = shouldStretchNow({
+    nowMs: args.now.getTime(),
+    lastStretchMs,
+    // Walk-out / outside-detection signal lands when issue #13's
+    // location consumer is wired in. Until then we deliberately leave
+    // this null so the helper falls back to the cadence-only path.
+    lastWalkOutMs: null,
+    isBusyDay: isReminderBusyDay(args.activityProfile),
+    dayOfWeek,
+    hourOfDay: localParts.hour,
+  });
+  if (!decision.shouldFire) {
+    return { shouldSuppress: true };
+  }
+  const dayOfYear = computeDayOfYear(args.now, args.ownerTimezone);
+  const bodyOverride = pickStretchReminderCopy({ dayOfYear });
+  return { shouldSuppress: false, bodyOverride };
 }
 
 function buildReminderVoiceContext(runtime: IAgentRuntime): string {
@@ -4603,6 +4691,17 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         ) {
           continue;
         }
+        const stretchGate = evaluateStretchReminderGate({
+          definition,
+          plan,
+          existingAttempts,
+          activityProfile,
+          ownerTimezone,
+          now,
+        });
+        if (stretchGate.shouldSuppress) {
+          continue;
+        }
         const attempt = await this.dispatchReminderAttempt({
           plan,
           ownerType: "occurrence",
@@ -4628,6 +4727,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           }),
           timezone: ownerTimezone,
           definition,
+          bodyOverride: stretchGate.bodyOverride,
         });
         dueAttempts.push(attempt);
         if (isDeliveredReminderOutcome(attempt.outcome)) {
@@ -5025,6 +5125,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         sources: this,
       });
       const timezone = currentSchedule.timezone || resolveDefaultTimeZone();
+      // Surface sleep-baseline + regularity into the night summary prompt.
+      // Built once per scheduler tick from the same merged schedule record
+      // the dispatcher just consumed for trigger decisions. Morning runs
+      // ignore this field; the assignment below is night-only by design.
+      const sleepRecap = buildSleepRecapFromSchedule(currentSchedule);
       const dispatch = async (kind: "morning" | "night"): Promise<void> => {
         const alreadySent = await service.hasCheckinForLocalDay({
           kind,
@@ -5037,7 +5142,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         const report =
           kind === "morning"
             ? await service.runMorningCheckin({ now: args.now, timezone })
-            : await service.runNightCheckin({ now: args.now, timezone });
+            : await service.runNightCheckin({
+                now: args.now,
+                timezone,
+                sleepRecap,
+              });
         const routeMetadata = await this.buildOwnerContactRouteEventMetadata({
           purpose: "checkin",
           urgency: report.escalationLevel >= 2 ? "high" : "medium",

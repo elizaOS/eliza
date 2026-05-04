@@ -265,6 +265,39 @@ export function planGm(
 
 // ── GN planning ───────────────────────────────────────
 
+/**
+ * Plan a "good night" proactive action — the activity-feed counterpart to the
+ * authoritative night summary.
+ *
+ * Division of responsibility (intentional, do NOT consolidate without a
+ * design discussion — see review #10 P0.1 + wave-3 punt notes):
+ *
+ * - **Chat surface (the user-visible night summary):** owned by
+ *   `processSleepCycleCheckins` →
+ *   `CheckinService.runNightCheckin` (`apps/app-lifeops/src/lifeops/checkin/checkin-service.ts`).
+ *   That path collects briefing sections (X DMs, Gmail, GitHub, calendar,
+ *   contacts, promises, habit summaries, sleep recap), runs them through
+ *   `useModel(TEXT_LARGE, ...)`, and persists a `CheckinReport`. Anti-spam
+ *   is the once-per-local-day SQL gate against `life_checkin_reports`. The
+ *   resulting `lifeops-checkin` event is **not** in
+ *   `CHAT_SUPPRESSED_AUTONOMY_SOURCES`, so it lands in the active
+ *   conversation.
+ *
+ * - **Activity-feed surface (this function):** plans a `proactive-gn`
+ *   action with a hard-coded message stub for the activity timeline only.
+ *   The `proactive-gn` source **is** in `CHAT_SUPPRESSED_AUTONOMY_SOURCES`
+ *   (`packages/agent/src/api/server-helpers-swarm.ts`), so this never
+ *   posts to chat — it only powers the activity-feed widget. Anti-spam is
+ *   a separate 12h `firedRecently` timestamp gate (`firedToday.gnFiredAt`).
+ *
+ * Both paths are scheduled off the same `bedtimeTargetAt` source but
+ * diverge on window (3h vs 2h), gate (per-day SQL vs 12h timestamp),
+ * content (LLM briefing vs hard-coded stub), and chat-suppression. They
+ * are not redundant: the chat night summary is the user-visible artifact;
+ * this is feed-only telemetry. Future maintainers: a unifying sweep would
+ * need a routing-layer redesign (collapse the two sources, then choose a
+ * single content path), not just a delete here.
+ */
 export function planGn(
   profile: ActivityProfile,
   relativeTime: ProactiveRelativeTimeSlim | null,

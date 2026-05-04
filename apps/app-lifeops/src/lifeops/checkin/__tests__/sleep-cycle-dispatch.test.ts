@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSleepRecapFromSchedule,
   DEFAULT_IRREGULAR_BEDTIME_LOCAL,
   minutesUntilLocalBedtime,
   NIGHT_CHECKIN_LEAD_MINUTES,
@@ -211,6 +212,62 @@ describe("sleep-cycle check-in dispatch", () => {
 
     it("exposes a sensible default bedtime constant", () => {
       expect(DEFAULT_IRREGULAR_BEDTIME_LOCAL).toBe("23:00");
+    });
+  });
+
+  describe("buildSleepRecapFromSchedule", () => {
+    it("returns null when the schedule itself is null", () => {
+      expect(buildSleepRecapFromSchedule(null)).toBeNull();
+    });
+
+    it("projects baseline + regularity into a SleepRecap", () => {
+      const recap = buildSleepRecapFromSchedule({
+        baseline: {
+          medianBedtimeLocalHour: 23.5,
+          medianSleepDurationMin: 420,
+          medianWakeLocalHour: 6.5,
+          bedtimeStddevMin: 30,
+          wakeStddevMin: 25,
+          sampleCount: 14,
+          windowDays: 28,
+        },
+        regularity: {
+          sri: 82,
+          bedtimeStddevMin: 30,
+          wakeStddevMin: 25,
+          midSleepStddevMin: 27,
+          regularityClass: "regular",
+          sampleCount: 14,
+          windowDays: 28,
+        },
+      });
+      expect(recap).toEqual({
+        medianBedtimeLocalHour: 23.5,
+        medianSleepDurationMin: 420,
+        sri: 82,
+        regularityClass: "regular",
+      });
+    });
+
+    it("returns nulls for the baseline-derived fields when baseline is null but still surfaces regularity", () => {
+      const recap = buildSleepRecapFromSchedule({
+        baseline: null,
+        regularity: {
+          sri: 0,
+          bedtimeStddevMin: 0,
+          wakeStddevMin: 0,
+          midSleepStddevMin: 0,
+          regularityClass: "insufficient_data",
+          sampleCount: 0,
+          windowDays: 28,
+        },
+      });
+      expect(recap).toEqual({
+        medianBedtimeLocalHour: null,
+        medianSleepDurationMin: null,
+        sri: 0,
+        regularityClass: "insufficient_data",
+      });
     });
   });
 });

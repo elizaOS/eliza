@@ -145,8 +145,12 @@ export function useMiscUiState() {
     setEmotePickerOpen(false);
   }, []);
 
+  // ── Analysis Mode ───────────────────────────────────────────────────
+  const [analysisMode, setAnalysisMode] = useState(false);
+
   return {
     state: {
+      analysisMode,
       commandPaletteOpen,
       commandQuery,
       commandActiveIndex,
@@ -180,6 +184,7 @@ export function useMiscUiState() {
     },
     setActiveInboxChat,
     setActiveTerminalSessionId,
+    setAnalysisMode,
     setCommandQuery,
     setCommandActiveIndex,
     setEmotePickerOpen,
