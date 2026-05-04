@@ -1,10 +1,7 @@
 {
   "name": "@elizaos/scenario-schema",
   "version": "2.0.0-alpha.537",
-<<<<<<< HEAD
-=======
   "description": "Schema validation for elizaOS scenario test files (final-checks, action specs, etc.).",
->>>>>>> cfc0183e705ae487b1741d60e3f07d64ede8cb9f
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/elizaOS/eliza",
