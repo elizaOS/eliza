@@ -28,6 +28,14 @@ function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
 
 function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
   for (const [key, value] of Object.entries(entries)) {
+    // Skip unresolved vault sentinels. The boot-time vault hydration
+    // (resolveConfigEnvForProcess + applyCloudConfigToEnv) writes the resolved
+    // plaintext to process.env once at startup. Many services call
+    // loadElizaConfig() again later for unrelated reads; without this guard the
+    // sentinel literal `vault://KEY` would overwrite the real plaintext on
+    // every such call, and downstream `runtime.getSetting()` would hand the
+    // sentinel to consumers like plugin-elizacloud, producing 401s.
+    if (typeof value === "string" && value.startsWith("vault://")) continue;
     process.env[key] = value;
   }
 }
