@@ -36,6 +36,19 @@ import { GetOrganizationByStripeCustomerIdUseCase } from "@/lib/application/orga
 import { GetOrganizationWithUsersUseCase } from "@/lib/application/organization/get-organization-with-users";
 import { UpdateOrganizationUseCase } from "@/lib/application/organization/update-organization";
 import { UpdateOrganizationCreditBalanceUseCase } from "@/lib/application/organization/update-organization-credit-balance";
+import { CheckAppNameAvailabilityUseCase } from "@/lib/application/app/check-app-name-availability";
+import { GetAppAnalyticsUseCase } from "@/lib/application/app/get-app-analytics";
+import { GetAppByApiKeyIdUseCase } from "@/lib/application/app/get-app-by-api-key-id";
+import { GetAppByIdUseCase } from "@/lib/application/app/get-app-by-id";
+import { GetAppRecentRequestsUseCase } from "@/lib/application/app/get-app-recent-requests";
+import { GetAppRequestsOverTimeUseCase } from "@/lib/application/app/get-app-requests-over-time";
+import { GetAppRequestStatsUseCase } from "@/lib/application/app/get-app-request-stats";
+import { GetAppTopVisitorsUseCase } from "@/lib/application/app/get-app-top-visitors";
+import { GetAppTotalStatsUseCase } from "@/lib/application/app/get-app-total-stats";
+import { GetAppUsersUseCase } from "@/lib/application/app/get-app-users";
+import { ListAppsByOrganizationUseCase } from "@/lib/application/app/list-apps-by-organization";
+import { TrackAppPageViewUseCase } from "@/lib/application/app/track-app-page-view";
+import { UpdateAppUseCase } from "@/lib/application/app/update-app";
 import { CreateUserUseCase } from "@/lib/application/user/create-user";
 import { DeleteUserUseCase } from "@/lib/application/user/delete-user";
 import { GetUserByEmailUseCase } from "@/lib/application/user/get-user-by-email";
@@ -45,12 +58,15 @@ import { GetUserWithOrganizationUseCase } from "@/lib/application/user/get-user-
 import { ListUsersByOrganizationUseCase } from "@/lib/application/user/list-users-by-organization";
 import { UpdateUserUseCase } from "@/lib/application/user/update-user";
 import type { ApiKeyRepository } from "@/lib/domain/api-key/api-key-repository";
+import type { AppRepository } from "@/lib/domain/app/app-repository";
 import type { OrganizationRepository } from "@/lib/domain/organization/organization-repository";
 import type { UserRepository } from "@/lib/domain/user/user-repository";
 import { CachedApiKeyRepository } from "@/lib/infrastructure/cache/api-key/cached-api-key-repository";
+import { CachedAppRepository } from "@/lib/infrastructure/cache/app/cached-app-repository";
 import { CachedOrganizationRepository } from "@/lib/infrastructure/cache/organization/cached-organization-repository";
 import { CachedUserRepository } from "@/lib/infrastructure/cache/user/cached-user-repository";
 import { PostgresApiKeyRepository } from "@/lib/infrastructure/db/api-key/postgres-api-key-repository";
+import { PostgresAppRepository } from "@/lib/infrastructure/db/app/postgres-app-repository";
 import { PostgresOrganizationRepository } from "@/lib/infrastructure/db/organization/postgres-organization-repository";
 import { PostgresUserRepository } from "@/lib/infrastructure/db/user/postgres-user-repository";
 import type { Bindings } from "@/types/cloud-worker-env";
@@ -85,6 +101,21 @@ export interface CompositionContext {
   createUser: CreateUserUseCase;
   updateUser: UpdateUserUseCase;
   deleteUser: DeleteUserUseCase;
+
+  // ── App aggregate (Phase C.3) ─────────────────────────────────────────
+  getAppById: GetAppByIdUseCase;
+  getAppByApiKeyId: GetAppByApiKeyIdUseCase;
+  listAppsByOrganization: ListAppsByOrganizationUseCase;
+  checkAppNameAvailability: CheckAppNameAvailabilityUseCase;
+  updateApp: UpdateAppUseCase;
+  trackAppPageView: TrackAppPageViewUseCase;
+  getAppRequestStats: GetAppRequestStatsUseCase;
+  getAppRecentRequests: GetAppRecentRequestsUseCase;
+  getAppTopVisitors: GetAppTopVisitorsUseCase;
+  getAppRequestsOverTime: GetAppRequestsOverTimeUseCase;
+  getAppUsers: GetAppUsersUseCase;
+  getAppAnalytics: GetAppAnalyticsUseCase;
+  getAppTotalStats: GetAppTotalStatsUseCase;
 }
 
 export function buildContainer(_env: Bindings): CompositionContext {
@@ -99,6 +130,10 @@ export function buildContainer(_env: Bindings): CompositionContext {
     );
   const userRepo: UserRepository = new CachedUserRepository(
     new PostgresUserRepository(),
+    cache,
+  );
+  const appRepo: AppRepository = new CachedAppRepository(
+    new PostgresAppRepository(),
     cache,
   );
 
@@ -134,5 +169,19 @@ export function buildContainer(_env: Bindings): CompositionContext {
     createUser: new CreateUserUseCase(userRepo),
     updateUser: new UpdateUserUseCase(userRepo),
     deleteUser: new DeleteUserUseCase(userRepo),
+
+    getAppById: new GetAppByIdUseCase(appRepo),
+    getAppByApiKeyId: new GetAppByApiKeyIdUseCase(appRepo),
+    listAppsByOrganization: new ListAppsByOrganizationUseCase(appRepo),
+    checkAppNameAvailability: new CheckAppNameAvailabilityUseCase(appRepo),
+    updateApp: new UpdateAppUseCase(appRepo),
+    trackAppPageView: new TrackAppPageViewUseCase(appRepo),
+    getAppRequestStats: new GetAppRequestStatsUseCase(appRepo),
+    getAppRecentRequests: new GetAppRecentRequestsUseCase(appRepo),
+    getAppTopVisitors: new GetAppTopVisitorsUseCase(appRepo),
+    getAppRequestsOverTime: new GetAppRequestsOverTimeUseCase(appRepo),
+    getAppUsers: new GetAppUsersUseCase(appRepo),
+    getAppAnalytics: new GetAppAnalyticsUseCase(appRepo),
+    getAppTotalStats: new GetAppTotalStatsUseCase(appRepo),
   };
 }
