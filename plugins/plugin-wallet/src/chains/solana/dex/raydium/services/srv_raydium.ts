@@ -1,10 +1,22 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { type ClmmPoolInfo, Position, type PositionInfo } from "@raydium-io/raydium-sdk";
+import type { ClmmPoolInfo } from "@raydium-io/raydium-sdk";
 import type { Connection, PublicKey } from "@solana/web3.js";
 import type { JupiterQuoteResponse } from "../types.ts";
 
 type RaydiumRegisteredProvider = { name: string };
+type RaydiumPositionInfo = { id: PublicKey; [key: string]: unknown };
+
+const Position = {
+  getPositionsByOwner: unsupportedRaydiumPositionMethod,
+  create: unsupportedRaydiumPositionMethod,
+  close: unsupportedRaydiumPositionMethod,
+  update: unsupportedRaydiumPositionMethod,
+};
+
+function unsupportedRaydiumPositionMethod(): never {
+  throw new Error("Raydium position helpers are unavailable in the installed Raydium SDK");
+}
 
 export class RaydiumService extends Service {
   private isRunning = false;
@@ -427,7 +439,10 @@ export class RaydiumService extends Service {
     }
   }
 
-  async getPositions(connection: Connection, ownerAddress: PublicKey): Promise<PositionInfo[]> {
+  async getPositions(
+    connection: Connection,
+    ownerAddress: PublicKey
+  ): Promise<RaydiumPositionInfo[]> {
     try {
       const positions = await Position.getPositionsByOwner(connection, ownerAddress);
       return positions;
@@ -468,7 +483,7 @@ export class RaydiumService extends Service {
     }
   }
 
-  async closePosition(connection: Connection, positionInfo: PositionInfo, owner: PublicKey) {
+  async closePosition(connection: Connection, positionInfo: RaydiumPositionInfo, owner: PublicKey) {
     try {
       const closePositionTx = await Position.close({
         connection,
@@ -485,7 +500,7 @@ export class RaydiumService extends Service {
 
   async updatePosition(
     connection: Connection,
-    positionInfo: PositionInfo,
+    positionInfo: RaydiumPositionInfo,
     owner: PublicKey,
     liquidityDelta: bigint
   ) {

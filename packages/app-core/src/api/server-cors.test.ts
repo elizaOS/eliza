@@ -48,6 +48,15 @@ describe("server-cors", () => {
     it("allows https://localhost with a path", () => {
       expect(isAllowedOrigin("https://localhost/chat")).toBe(true);
     });
+
+    it("allows Electrobun desktop renderer origins", () => {
+      expect(isAllowedOrigin("electrobun://-")).toBe(true);
+    });
+
+    it("allows native app custom-scheme origins", () => {
+      expect(isAllowedOrigin("app://eliza")).toBe(true);
+      expect(isAllowedOrigin("tauri://localhost")).toBe(true);
+    });
   });
 
   describe("isAllowedOrigin — ELIZA_ALLOWED_ORIGINS", () => {
@@ -103,6 +112,10 @@ describe("server-cors", () => {
 
     it("returns false for empty string", () => {
       expect(isAllowedOrigin("")).toBe(false);
+    });
+
+    it("rejects unknown custom-scheme origins", () => {
+      expect(isAllowedOrigin("unknown-app://localhost")).toBe(false);
     });
   });
 

@@ -66,6 +66,12 @@
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },
+  "resolutions": {
+    "@noble/hashes": "2.2.0"
+  },
+  "overrides": {
+    "@noble/hashes": "2.2.0"
+  },
   "publishConfig": {
     "access": "public"
   },

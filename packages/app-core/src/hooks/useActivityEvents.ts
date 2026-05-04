@@ -68,16 +68,38 @@ function summarizeAssistantActivityEvent(data: Record<string, unknown>): {
 export function useActivityEvents() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const bufferRef = useRef<ActivityEvent[]>([]);
+  const flushHandleRef = useRef<number | null>(null);
 
-  const pushEvent = useCallback((entry: Omit<ActivityEvent, "id">) => {
-    const event: ActivityEvent = { ...entry, id: makeEventId() };
-    const buf = bufferRef.current;
-    buf.unshift(event);
-    if (buf.length > RING_BUFFER_CAP) {
-      buf.length = RING_BUFFER_CAP;
+  const cancelPendingFlush = useCallback(() => {
+    if (flushHandleRef.current === null) {
+      return;
     }
-    setEvents([...buf]);
+    cancelAnimationFrame(flushHandleRef.current);
+    flushHandleRef.current = null;
   }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushHandleRef.current !== null) {
+      return;
+    }
+    flushHandleRef.current = requestAnimationFrame(() => {
+      flushHandleRef.current = null;
+      setEvents([...bufferRef.current]);
+    });
+  }, []);
+
+  const pushEvent = useCallback(
+    (entry: Omit<ActivityEvent, "id">) => {
+      const event: ActivityEvent = { ...entry, id: makeEventId() };
+      const buf = bufferRef.current;
+      buf.unshift(event);
+      if (buf.length > RING_BUFFER_CAP) {
+        buf.length = RING_BUFFER_CAP;
+      }
+      scheduleFlush();
+    },
+    [scheduleFlush],
+  );
 
   useEffect(() => {
     const unbindPty = client.onWsEvent(
@@ -149,13 +171,15 @@ export function useActivityEvents() {
       unbindPty();
       unbindProactive();
       unbindAgent();
+      cancelPendingFlush();
     };
-  }, [pushEvent]);
+  }, [pushEvent, cancelPendingFlush]);
 
   const clearEvents = useCallback(() => {
     bufferRef.current = [];
+    cancelPendingFlush();
     setEvents([]);
-  }, []);
+  }, [cancelPendingFlush]);
 
   return { events, clearEvents } as const;
 }

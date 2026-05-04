@@ -553,18 +553,24 @@ test("automations overview empty state encourages creating tasks and workflows",
   await openAppPath(page, "/automations");
 
   await expect(page.getByTestId("automations-shell")).toBeVisible();
-  await expect(page.getByText("Build your first automation")).toBeVisible();
   await expect(
-    page.getByText(
-      "Workflows handle multi-step pipelines; tasks are simple prompts that run on a schedule or from an event.",
-    ),
+    page.getByPlaceholder("Describe a task or workflow…"),
   ).toBeVisible();
-  await expect(page.getByText("Task ideas")).toBeVisible();
-  await expect(page.getByText("Workflow ideas")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Node Catalog" }),
+    page.getByRole("button", { name: "Daily inbox digest" }),
   ).toBeVisible();
-  await expect(page.getByText("DRAFTS", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "GitHub issue triage" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Create task")).toBeVisible();
+  await expect(page.getByLabel("Create workflow")).toBeVisible();
+  await expect(page.getByTestId("automations-sidebar")).toContainText(
+    "No tasks",
+  );
+  await expect(page.getByTestId("automations-sidebar")).toContainText(
+    "No workflows",
+  );
+  await expect(page.getByText("Drafts in progress")).toHaveCount(0);
 });
 
 test("automations can create event tasks and inspect workflow data flow", async ({
@@ -582,9 +588,17 @@ test("automations can create event tasks and inspect workflow data flow", async 
 
   await openAppPath(page, "/automations");
 
-  await expect(page.getByText("TIMED")).toBeVisible();
-  await expect(page.getByText("EVENTS")).toBeVisible();
-  await expect(page.getByText("DRAFTS", { exact: true })).toHaveCount(0);
+  const sidebar = page.getByTestId("automations-sidebar");
+  await expect(sidebar.getByText("Tasks")).toBeVisible();
+  await expect(sidebar.getByText("Workflows")).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Message triage" }),
+  ).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Draft" })).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Message pipeline" }),
+  ).toBeVisible();
+  await expect(page.getByText("Drafts in progress")).toBeVisible();
 
   await page.getByRole("button", { name: "Message pipeline" }).first().click();
   await expect(page.getByText("Workflow graph")).toBeVisible();
@@ -645,7 +659,7 @@ test("workflow drafts generate from a prompt and drafts can be deleted", async (
     .poll(() => api.getDeletedConversationIds())
     .toContain("conversation-draft-existing");
 
-  await page.getByRole("button", { name: "New workflow" }).first().click();
+  await page.getByLabel("Create workflow").click();
   const workflowPrompt = page.locator("[data-workflow-prompt-input='true']");
   await expect(workflowPrompt).toBeVisible();
   await workflowPrompt.fill(

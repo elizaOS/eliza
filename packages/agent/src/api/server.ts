@@ -71,7 +71,7 @@ import {
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
-} from "../runtime/eliza.js";
+} from "../runtime/model-resolution.js";
 import {
   type ClassifyContext,
   createColdStrategy,

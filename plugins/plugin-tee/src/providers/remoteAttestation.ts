@@ -7,7 +7,7 @@ import {
 import {
   TappdClient,
   type TdxQuoteHashAlgorithms,
-  type GetQuoteResponse,
+  type TdxQuoteResponse,
 } from "@phala/dstack-sdk";
 import type {
   RemoteAttestationMessage,
@@ -38,7 +38,7 @@ export class PhalaRemoteAttestationProvider extends RemoteAttestationProvider {
     hashAlgorithm?: TdxQuoteHashAlgorithm,
   ): Promise<RemoteAttestationQuote> {
     try {
-      const tdxQuote: GetQuoteResponse = await this.client.tdxQuote(
+      const tdxQuote: TdxQuoteResponse = await this.client.tdxQuote(
         reportData,
         hashAlgorithm as TdxQuoteHashAlgorithms | undefined,
       );

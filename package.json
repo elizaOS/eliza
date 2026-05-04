@@ -124,7 +124,8 @@
     "zod": "^4.3.6",
     "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
-    "@solana/web3.js": "1.98.4"
+    "@solana/web3.js": "1.98.4",
+    "@noble/hashes": "2.2.0"
   },
   "overrides": {
     "@biomejs/biome": "2.4.14",
@@ -151,9 +152,11 @@
     "rimraf": "^6.0.1",
     "tsup": "8.5.1",
     "viem": "2.48.8",
-    "@solana/web3.js": "1.98.4"
+    "@solana/web3.js": "1.98.4",
+    "@noble/hashes": "2.2.0"
   },
   "patchedDependencies": {
+    "@orca-so/common-sdk@0.7.0": "patches/@orca-so%2Fcommon-sdk@0.7.0.patch",
     "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch"
   },

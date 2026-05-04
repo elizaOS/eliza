@@ -65,12 +65,18 @@ export * from "./providers/index.ts";
 
 // Import for local use
 import * as actions from "./actions/index.ts";
+import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
 /**
  * Advanced providers - extended context and state management
  */
 export const advancedProviders = [
+	providers.contactsProvider,
+	providers.factsProvider,
+	providers.followUpsProvider,
+	providers.knowledgeProvider,
+	providers.relationshipsProvider,
 	providers.roleProvider,
 	providers.settingsProvider,
 	experienceProvider,
@@ -83,6 +89,7 @@ export const advancedProviders = [
  * Advanced actions - extended agent capabilities
  */
 export const advancedActions = [
+	withCanonicalActionDocs(actions.createTaskAction),
 	withCanonicalActionDocs(actions.followRoomAction),
 	withCanonicalActionDocs(actions.generateImageAction),
 	withCanonicalActionDocs(actions.thinkAction),
@@ -119,6 +126,11 @@ export const advancedActions = [
  * Advanced evaluators - memory, relationships, experience learning, form, personality
  */
 export const advancedEvaluators = [
+	evaluators.factExtractorEvaluator,
+	evaluators.reflectionEvaluator,
+	evaluators.relationshipExtractionEvaluator,
+	evaluators.skillExtractionEvaluator,
+	evaluators.skillRefinementEvaluator,
 	experienceEvaluator,
 	formEvaluator,
 	characterEvolutionEvaluator,
