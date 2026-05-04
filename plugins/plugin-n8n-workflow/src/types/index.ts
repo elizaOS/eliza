@@ -34,7 +34,46 @@ export interface N8nWorkflow {
 export interface WorkflowMeta {
   assumptions?: string[];
   suggestions?: string[];
-  requiresClarification?: string[];
+  /**
+   * Accepts either legacy free-text strings (one question per item) or
+   * structured ClarificationRequest objects. Hosts that consume this field
+   * should run it through `coerceClarificationRequests` to normalize.
+   */
+  requiresClarification?: Array<string | ClarificationRequest>;
+}
+
+/**
+ * A structured request for additional information from the user before
+ * a workflow can be deployed. Lets the host render a quick-pick UI and
+ * patch the draft at the named param path on resolution, instead of
+ * regenerating the workflow with the LLM.
+ */
+export interface ClarificationRequest {
+  /**
+   * Semantic category of the missing value. Determines how the host
+   * renders the picker (channel/server/recipient pickers vs. free text).
+   */
+  kind: 'target_channel' | 'target_server' | 'recipient' | 'value' | 'free_text';
+  /**
+   * Connector platform this clarification belongs to (e.g. 'discord',
+   * 'slack', 'telegram', 'gmail'). Drives catalog source selection.
+   */
+  platform?: string;
+  /**
+   * Narrowing scope for catalog lookups. For Discord channel pickers,
+   * `scope.guildId` constrains the channel list to a single guild.
+   */
+  scope?: { guildId?: string };
+  /**
+   * Short, user-facing question rendered above the picker.
+   */
+  question: string;
+  /**
+   * JSON-style path into the draft workflow that points at the parameter
+   * the user's choice should populate. Supports dot and bracketed-string
+   * segments, e.g. `nodes["Discord Send"].parameters.channelId`.
+   */
+  paramPath: string;
 }
 
 export interface N8nNode {

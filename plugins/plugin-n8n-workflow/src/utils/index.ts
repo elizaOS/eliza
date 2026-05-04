@@ -29,3 +29,11 @@ export {
   fieldExistsInSchema,
   formatSchemaForPrompt,
 } from './outputSchema';
+
+// Clarification request normalization
+export {
+  CATALOG_CLARIFICATION_SUFFIX,
+  isCatalogClarification,
+  isCatalogClarificationString,
+  coerceClarificationRequests,
+} from './clarification';
