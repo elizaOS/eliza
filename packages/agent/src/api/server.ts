@@ -3528,7 +3528,6 @@ export async function startApiServer(opts?: {
         >();
 
         try {
-          // @ts-expect-error
           const streamMod = await import("@elizaos/plugin-streaming");
 
           if (

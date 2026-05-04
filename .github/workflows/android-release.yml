@@ -114,13 +114,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build web assets
+      - name: Prepare Android platform
         working-directory: packages/app
-        run: bun run build
-
-      - name: Sync Capacitor
-        working-directory: packages/app
-        run: bun run cap:sync:android
+        run: bun run build:android
 
       - name: Decode keystore
         run: |
@@ -131,12 +127,12 @@ jobs:
       - name: Build signed AAB
         working-directory: packages/app/android
         env:
-          ELIZA_VERSION_NAME: ${{ steps.version.outputs.name }}
-          ELIZA_VERSION_CODE: ${{ steps.version.outputs.code }}
-          ELIZA_KEYSTORE_PATH: /tmp/elizaos-upload.jks
-          ELIZA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ELIZA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ELIZA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.name }}
+          ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.code }}
+          ELIZAOS_KEYSTORE_PATH: /tmp/elizaos-upload.jks
+          ELIZAOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ELIZAOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew bundleRelease
@@ -197,7 +193,7 @@ jobs:
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
-          working-directory: packages/app/android
+          working-directory: packages/app-core/platforms/android
 
       - name: Decode Play Store service account key
         run: |
@@ -215,12 +211,12 @@ jobs:
           fi
 
       - name: Upload to Play Store
-        working-directory: packages/app/android
+        working-directory: packages/app-core/platforms/android
         env:
           PLAY_STORE_JSON_KEY: /tmp/play-store-key.json
         run: |
           bundle exec fastlane supply \
-            --aab ../../../aab/app-release.aab \
+            --aab "$GITHUB_WORKSPACE/aab/app-release.aab" \
             --track "${{ steps.track.outputs.track }}" \
             --json_key "$PLAY_STORE_JSON_KEY" \
             --package_name "ai.elizaos.app"

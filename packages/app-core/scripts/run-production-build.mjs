@@ -13,11 +13,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-// When invoked from eliza root via `bun run build`, __dirname is
-// eliza/packages/app-core/scripts — walk up to the eliza repo root.
-const rootDir = path.resolve(scriptDir, "..", "..", "..", "..");
+const rootDir = resolveRepoRootFromImportMeta(import.meta.url, {
+  fallbackToCwd: true,
+});
 const appDir = resolveMainAppDir(rootDir, "app");
 
 /** Real Node binary — when the script is started via `bun run`, process.execPath is Bun. */
