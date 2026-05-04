@@ -15,4 +15,3 @@ If the same user asks to retry the same domain after a partial success, call the
 same `/domains/buy` route once. It can recover local metadata for a domain that
 Cloudflare already registered and returns `alreadyRegistered` instead of
 charging again.
-

@@ -24,4 +24,3 @@ For destructive DNS edits:
 1. List current records first.
 2. Show the exact record name/type/content that will change.
 3. Ask for explicit confirmation before delete or broad replacement.
-
