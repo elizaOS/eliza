@@ -26,6 +26,7 @@ import {
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
+  closeExternalBrowser,
   confirmDesktopAction,
   isCloudStatusAuthenticated,
   navigatePreOpenedWindow,
@@ -523,6 +524,13 @@ export function useCloudState({
                 client.setBaseUrl(authenticatedCloudApiBase);
                 client.setToken(poll.token);
               }
+
+              try {
+                prePoppedWindow?.close();
+              } catch {
+                // Cross-origin — ignore.
+              }
+              void closeExternalBrowser();
 
               stopCloudLoginPolling();
               setElizaCloudConnected(true);

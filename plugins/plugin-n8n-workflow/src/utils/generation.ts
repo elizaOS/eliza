@@ -320,7 +320,9 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
  */
 function extractFirstBalancedJsonObject(text: string): unknown | null {
   for (let start = 0; start < text.length; start++) {
-    if (text[start] !== '{') continue;
+    if (text[start] !== '{') {
+      continue;
+    }
     let depth = 0;
     let inString = false;
     let escaped = false;
@@ -371,7 +373,7 @@ function parseWorkflowResponse(response: string): N8nWorkflow {
     // prose despite responseFormat: { type: 'json_object' }. Walk the cleaned
     // text and extract the first balanced JSON object that parses.
     const extracted = extractFirstBalancedJsonObject(cleaned);
-    if (extracted == null) {
+    if (extracted === null) {
       throw new Error(
         `Failed to parse workflow JSON: ${initialError instanceof Error ? initialError.message : String(initialError)}\n\nRaw response: ${response}`,
         { cause: initialError }

@@ -27,12 +27,16 @@ export function isCatalogClarification(item: string | ClarificationRequest): boo
 export function coerceClarificationRequests(
   items: ReadonlyArray<string | ClarificationRequest> | undefined | null,
 ): ClarificationRequest[] {
-  if (!items || items.length === 0) return [];
+  if (!items || items.length === 0) {
+    return [];
+  }
   const out: ClarificationRequest[] = [];
   for (const item of items) {
     if (typeof item === 'string') {
       const trimmed = item.trim();
-      if (trimmed.length === 0) continue;
+      if (trimmed.length === 0) {
+        continue;
+      }
       out.push({ kind: 'free_text', question: trimmed, paramPath: '' });
     } else if (item && typeof item === 'object' && typeof item.question === 'string') {
       out.push({

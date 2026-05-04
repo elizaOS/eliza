@@ -43,43 +43,51 @@ export const unpinMessage: Action = {
     "REMOVE_PIN",
   ],
   description: "Unpin a message from a Slack channel",
-        validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    	const __avTextRaw = typeof message?.content?.text === 'string' ? message.content.text : '';
-    	const __avText = __avTextRaw.toLowerCase();
-    	const __avKeywords = ['slack', 'unpin', 'message'];
-    	const __avKeywordOk =
-    		__avKeywords.length > 0 &&
-    		__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    	const __avRegex = new RegExp('\\b(?:slack|unpin|message)\\b', 'i');
-    	const __avRegexOk = __avRegex.test(__avText);
-    	const __avSource = String(message?.content?.source ?? message?.source ?? '');
-    	const __avExpectedSource = 'slack';
-    	const __avSourceOk = __avExpectedSource
-    		? __avSource === __avExpectedSource
-    		: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    	const __avOptions = options && typeof options === 'object' ? options : {};
-    	const __avInputOk =
-    		__avText.trim().length > 0 ||
-    		Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-    		Boolean(message?.content && typeof message.content === 'object');
-
-    	if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-    		return false;
-    	}
-
-    	const __avLegacyValidate = async (
-    _runtime: IAgentRuntime,
+  validate: async (
+    runtime: IAgentRuntime,
     message: Memory,
-    _state?: State,
+    state?: State,
+    options?: unknown,
   ): Promise<boolean> => {
-    return message.content.source === "slack";
-  };
-    	try {
-    		return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    	} catch {
-    		return false;
-    	}
-    },
+    const __avTextRaw =
+      typeof message?.content?.text === "string" ? message.content.text : "";
+    const __avText = __avTextRaw.toLowerCase();
+    const __avKeywords = ["slack", "unpin", "message"];
+    const __avKeywordOk =
+      __avKeywords.length > 0 &&
+      __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
+    const __avRegex = /\b(?:slack|unpin|message)\b/i;
+    const __avRegexOk = __avRegex.test(__avText);
+    const __avSource = String(
+      message?.content?.source ?? message?.metadata?.source ?? "",
+    );
+    const __avExpectedSource = "slack";
+    const __avSourceOk = __avExpectedSource
+      ? __avSource === __avExpectedSource
+      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
+    const __avOptions = options && typeof options === "object" ? options : {};
+    const __avInputOk =
+      __avText.trim().length > 0 ||
+      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
+      Boolean(message?.content && typeof message.content === "object");
+
+    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
+      return false;
+    }
+
+    const __avLegacyValidate = async (
+      _runtime: IAgentRuntime,
+      message: Memory,
+      _state?: State,
+    ): Promise<boolean> => {
+      return message.content.source === "slack";
+    };
+    try {
+      return Boolean(await __avLegacyValidate(runtime, message, state));
+    } catch {
+      return false;
+    }
+  },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -89,7 +97,7 @@ export const unpinMessage: Action = {
   ): Promise<ActionResult | undefined> => {
     const slackService = runtime.getService(SLACK_SERVICE_NAME) as SlackService;
 
-    if (!slackService || !slackService.client) {
+    if (!slackService?.client) {
       await callback?.({
         text: "Slack service is not available.",
         source: "slack",
@@ -124,7 +132,7 @@ export const unpinMessage: Action = {
       }
     }
 
-    if (!unpinInfo || !unpinInfo.messageTs) {
+    if (!unpinInfo?.messageTs) {
       runtime.logger.debug(
         { src: "plugin:slack:action:unpin-message" },
         "[SLACK_UNPIN_MESSAGE] Could not extract unpin info",
