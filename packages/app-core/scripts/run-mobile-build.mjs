@@ -1438,40 +1438,55 @@ function generatePodfile() {
   }
 
   const customPods = [
-    ["ElizaosCapacitorAgent", "agent"],
-    ["ElizaosCapacitorAppblocker", "appblocker"],
-    ["ElizaosCapacitorCamera", "camera"],
-    ["ElizaosCapacitorCanvas", "canvas"],
-    ["ElizaosCapacitorGateway", "gateway"],
-    ["ElizaosCapacitorLocation", "location"],
-    ["ElizaosCapacitorMobileSignals", "mobile-signals"],
-    ["ElizaosCapacitorScreencapture", "screencapture"],
-    ["ElizaosCapacitorSwabble", "swabble"],
-    ["ElizaosCapacitorTalkmode", "talkmode"],
-    ["ElizaosCapacitorWebsiteblocker", "websiteblocker"],
+    ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
+    ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
+    ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
+    ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
+    ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
+    ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
+    [
+      "ElizaosCapacitorMobileSignals",
+      "@elizaos/capacitor-mobile-signals",
+    ],
+    ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
+    ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
+    ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
+    [
+      "ElizaosCapacitorWebsiteblocker",
+      "@elizaos/capacitor-websiteblocker",
+    ],
   ];
 
   const lines = [
-    `  pod 'Capacitor', :path => '${iosPath}'`,
-    `  pod 'CapacitorCordova', :path => '${iosPath}'`,
+    `  pod 'Capacitor', :path => node_package_path('@capacitor/ios')`,
+    `  pod 'CapacitorCordova', :path => node_package_path('@capacitor/ios')`,
   ];
 
   for (const [name, pkg] of IOS_OFFICIAL_COMPATIBLE_PODS) {
     const p = resolvePackagePath(pkg, podfileDir);
-    if (p) lines.push(`  pod '${name}', :path => '${p}'`);
+    if (p) lines.push(`  pod '${name}', :path => node_package_path('${pkg}')`);
   }
 
-  const pluginsRel = path.relative(podfileDir, nativePluginsDir);
-  for (const [name, dir] of customPods) {
-    if (fs.existsSync(path.join(nativePluginsDir, dir))) {
-      lines.push(`  pod '${name}', :path => '${pluginsRel}/${dir}'`);
+  for (const [name, pkg] of customPods) {
+    if (resolvePackagePath(pkg, podfileDir)) {
+      lines.push(`  pod '${name}', :path => node_package_path('${pkg}')`);
     }
   }
 
   fs.writeFileSync(
     path.join(podfileDir, "Podfile"),
     `\
-require_relative '${iosPath}/scripts/pods_helpers'
+def node_package_path(package_name)
+  package_json = \`node --print "require.resolve('#{package_name}/package.json')"\`.strip
+  if package_json.empty?
+    raise "Unable to resolve #{package_name}; run bun install before pod install"
+  end
+  File.dirname(package_json)
+end
+
+capacitor_ios_path = node_package_path('@capacitor/ios')
+
+require_relative File.join(capacitor_ios_path, 'scripts/pods_helpers')
 
 platform :ios, '15.0'
 use_frameworks!
