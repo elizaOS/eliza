@@ -135,6 +135,7 @@ jobs:
           package_dirs=(
             plugins/plugin-sql
             plugins/plugin-agent-skills
+            plugins/plugin-pdf
             plugins/plugin-telegram
             plugins/plugin-whatsapp
             plugins/plugin-signal
