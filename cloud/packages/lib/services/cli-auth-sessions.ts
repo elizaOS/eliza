@@ -79,20 +79,8 @@ export class CliAuthSessionsService {
     }
 
     // Keep only one active CLI-login key per user to prevent key sprawl when
-    // the login flow is retried repeatedly. Deactivate both the current
-    // canonical name and legacy timestamped names ("CLI Login - ...").
+    // the login flow is retried repeatedly.
     await apiKeysService.deactivateUserKeysByName(userId, CLI_LOGIN_KEY_NAME);
-    const orgKeys = await apiKeysRepository.listByOrganization(organizationId);
-    for (const key of orgKeys) {
-      if (
-        key.user_id === userId &&
-        key.is_active &&
-        typeof key.name === "string" &&
-        key.name.startsWith(`${CLI_LOGIN_KEY_NAME} - `)
-      ) {
-        await apiKeysService.update(key.id, { is_active: false });
-      }
-    }
 
     // Generate API key for CLI usage
     const { apiKey, plainKey } = await apiKeysService.create({
