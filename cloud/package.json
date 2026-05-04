@@ -320,16 +320,14 @@
     "qs": "6.15.1",
     "tar": "7.5.13",
     "undici": "6.25.0",
-    "underscore": "1.13.8",
-    "@noble/hashes": "2.2.0"
+    "underscore": "1.13.8"
   },
   "overrides": {
     "@stwd/sdk": "0.8.1",
     "cpu-features": "empty-npm-package@1.0.0",
     "hono": "4.12.16",
     "@hono/node-server": "2.0.1",
-    "zod": "4.4.3",
-    "@noble/hashes": "2.2.0"
+    "zod": "4.4.3"
   },
   "patchedDependencies": {
     "x402@1.1.0": "packages/patches/x402@1.1.0.patch",
