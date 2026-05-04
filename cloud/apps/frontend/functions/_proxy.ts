@@ -22,5 +22,14 @@ export function resolveApiWorkerTarget(requestUrl: string, env: PagesProxyEnv): 
 
 export function proxyToApiWorker(context: PagesProxyContext): Promise<Response> {
   const target = resolveApiWorkerTarget(context.request.url, context.env);
-  return fetch(new Request(target, context.request));
+  const method = context.request.method.toUpperCase();
+
+  return fetch(
+    new Request(target, {
+      method,
+      headers: context.request.headers,
+      body: method === "GET" || method === "HEAD" ? undefined : context.request.body,
+      redirect: "manual",
+    }),
+  );
 }
