@@ -85,23 +85,35 @@ function extractTextFromChoice(value: unknown): string[] {
 /**
  * Recover text from Responses-style payloads, tolerating both the documented
  * `output_text` field and the common structured `output` item variants.
+ *
+ * Cloud responses sometimes carry the same body in BOTH `output_text` AND
+ * `output[]`/`choices[]`. Joining segments in that case duplicates the model
+ * output downstream (caller sees `…json{…}\n``````json{…}…`), which then
+ * trips JSON.parse with "Unrecognized token '`'" because of the run of
+ * backticks where the two copies meet. Prefer the first non-empty source
+ * instead of joining.
  */
 export function extractResponsesOutputText(data: unknown): string {
   const record = asRecord(data);
   if (!record) return "";
 
-  const segments: string[] = [];
-  if (typeof record.output_text === "string" && record.output_text) {
-    segments.push(record.output_text);
+  if (typeof record.output_text === "string" && record.output_text.trim()) {
+    return record.output_text;
   }
 
   if (Array.isArray(record.output)) {
-    segments.push(...record.output.flatMap(extractTextFromOutputItem));
+    const fromOutput = record.output
+      .flatMap(extractTextFromOutputItem)
+      .join("");
+    if (fromOutput.trim()) return fromOutput;
   }
 
   if (Array.isArray(record.choices)) {
-    segments.push(...record.choices.flatMap(extractTextFromChoice));
+    const fromChoices = record.choices
+      .flatMap(extractTextFromChoice)
+      .join("");
+    if (fromChoices.trim()) return fromChoices;
   }
 
-  return segments.join("");
+  return "";
 }
