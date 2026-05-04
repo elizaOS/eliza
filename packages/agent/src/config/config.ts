@@ -9,6 +9,7 @@ import {
 import JSON5 from "json5";
 import { readConfigEnvSync } from "../api/config-env.js";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.js";
+import { isVaultRef } from "../runtime/operations/vault-bridge.js";
 import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.js";
 import { resolveConfigIncludes } from "./includes.js";
 import { normalizeModelMetadataInConfig } from "./model-metadata.js";
@@ -35,7 +36,7 @@ function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
     // sentinel literal `vault://KEY` would overwrite the real plaintext on
     // every such call, and downstream `runtime.getSetting()` would hand the
     // sentinel to consumers like plugin-elizacloud, producing 401s.
-    if (typeof value === "string" && value.startsWith("vault://")) continue;
+    if (isVaultRef(value)) continue;
     process.env[key] = value;
   }
 }
