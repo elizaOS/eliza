@@ -15,7 +15,8 @@
     "eliza/packages/app-core/platforms/electrobun",
     "eliza/apps/*",
     "eliza/plugins/*",
-    "eliza/packages/*"
+    "eliza/packages/*",
+    "eliza/cloud/packages/sdk"
   ],
   "scripts": {
     "build": "bun run --cwd apps/app build",
