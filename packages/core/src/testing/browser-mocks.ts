@@ -105,7 +105,7 @@ export function createCanvas2DContext(): CanvasRenderingContext2D {
 		globalAlpha: 1,
 		fillStyle: "#000",
 		strokeStyle: "#000",
-	} as CanvasRenderingContext2D;
+	} as unknown as CanvasRenderingContext2D;
 }
 
 /**
@@ -114,7 +114,7 @@ export function createCanvas2DContext(): CanvasRenderingContext2D {
 export function installCanvasShims(): void {
 	if (typeof globalThis.HTMLCanvasElement === "undefined") return;
 	const prototype = globalThis.HTMLCanvasElement
-		.prototype as HTMLCanvasElement["prototype"] & {
+		.prototype as HTMLCanvasElement & {
 		[CANVAS_PATCH_MARK]?: boolean;
 	};
 	if (prototype[CANVAS_PATCH_MARK]) return;
@@ -146,7 +146,7 @@ export function installMediaElementShims(): void {
 	if (typeof globalThis.HTMLMediaElement === "undefined") return;
 
 	const prototype = globalThis.HTMLMediaElement
-		.prototype as HTMLMediaElement["prototype"] & {
+		.prototype as HTMLMediaElement & {
 		[MEDIA_PATCH_MARK]?: boolean;
 	};
 	if (!prototype[MEDIA_PATCH_MARK]) {

@@ -32,7 +32,7 @@
     "package.json"
   ],
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "workspace:*",
     "zod": "^4.4.2"
   },
   "devDependencies": {

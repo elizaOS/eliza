@@ -23,7 +23,7 @@
   },
   "scripts": {
     "dev": "bun --hot build.ts",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts --watch",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",

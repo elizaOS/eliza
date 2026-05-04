@@ -370,20 +370,48 @@ describe("handleAccountsRoutes", () => {
     expect(errorCalls[0].status).toBe(400);
   });
 
-  it("api-key for anthropic-api responds 501 (storage shape pending)", async () => {
-    const { ctx, errorCalls } = makeStubCtx({
+  it("api-key for direct providers round-trips through the pool", async () => {
+    const { ctx, jsonCalls, errorCalls } = makeStubCtx({
       method: "POST",
-      pathname: "/api/accounts/anthropic-api",
+      pathname: "/api/accounts/deepseek-api",
       config: {} as ElizaConfig,
       body: {
         source: "api-key",
-        label: "Direct",
-        apiKey: "sk-ant-api-12345678",
+        label: "DeepSeek Team",
+        apiKey: "sk-deepseek-api-12345678",
       },
     });
     expect(await handleAccountsRoutes(ctx)).toBe(true);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0].status).toBe(501);
+    expect(errorCalls).toEqual([]);
+    expect(jsonCalls[0].status).toBe(201);
+    const created = jsonCalls[0].body as {
+      id: string;
+      providerId: string;
+      label: string;
+    };
+    expect(created.providerId).toBe("deepseek-api");
+    expect(created.label).toBe("DeepSeek Team");
+
+    const list = makeStubCtx({
+      method: "GET",
+      pathname: "/api/accounts",
+      config: {} as ElizaConfig,
+    });
+    expect(await handleAccountsRoutes(list.ctx)).toBe(true);
+    const listBody = list.jsonCalls[0].body as {
+      providers: Array<{
+        providerId: string;
+        accounts: Array<{ id: string; hasCredential: boolean }>;
+      }>;
+    };
+    const deepseek = listBody.providers.find(
+      (p) => p.providerId === "deepseek-api",
+    );
+    expect(deepseek?.accounts).toHaveLength(1);
+    expect(deepseek?.accounts[0]).toMatchObject({
+      id: created.id,
+      hasCredential: true,
+    });
   });
 
   it("oauth/status streams synthetic flow updates over SSE", async () => {

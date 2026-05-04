@@ -31,6 +31,9 @@ export type ProviderId =
   | "openai-codex"
   | "anthropic"
   | "openai"
+  | "deepseek"
+  | "zai"
+  | "moonshot"
   | "grok"
   | "elizacloud"
   | "google"
@@ -297,6 +300,48 @@ const MISTRAL_PROVIDER: ProviderDefinition = {
   configureHref: "#ai-model",
 };
 
+const DEEPSEEK_PROVIDER: ProviderDefinition = {
+  id: "deepseek",
+  label: "DeepSeek API",
+  kind: "cloud-api",
+  description: "DeepSeek models via API key or linked account pool.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return apiKeyOrLinkedAccountState("deepseek-api", ["DEEPSEEK_API_KEY"]);
+  },
+  configureHref: "#ai-model",
+};
+
+const ZAI_PROVIDER: ProviderDefinition = {
+  id: "zai",
+  label: "z.ai API",
+  kind: "cloud-api",
+  description: "GLM models via z.ai API key or linked account pool.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return apiKeyOrLinkedAccountState("zai-api", [
+      "ZAI_API_KEY",
+      "Z_AI_API_KEY",
+    ]);
+  },
+  configureHref: "#ai-model",
+};
+
+const MOONSHOT_PROVIDER: ProviderDefinition = {
+  id: "moonshot",
+  label: "Kimi / Moonshot API",
+  kind: "cloud-api",
+  description: "Kimi models via Moonshot API key or linked account pool.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return apiKeyOrLinkedAccountState("moonshot-api", [
+      "MOONSHOT_API_KEY",
+      "KIMI_API_KEY",
+    ]);
+  },
+  configureHref: "#ai-model",
+};
+
 export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
   LOCAL_PROVIDER,
   DEVICE_BRIDGE_PROVIDER,
@@ -306,10 +351,31 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
   ELIZACLOUD_PROVIDER,
   ANTHROPIC_PROVIDER,
   OPENAI_PROVIDER,
+  DEEPSEEK_PROVIDER,
+  ZAI_PROVIDER,
+  MOONSHOT_PROVIDER,
   GOOGLE_PROVIDER,
   GROK_PROVIDER,
   MISTRAL_PROVIDER,
 ];
+
+function apiKeyOrLinkedAccountState(
+  providerId: "deepseek-api" | "zai-api" | "moonshot-api",
+  envKeys: readonly string[],
+): ProviderEnableState {
+  const hasEnv = envKeys.some((key) => process.env[key]?.trim());
+  if (hasEnv) return { enabled: true, reason: "API key set" };
+  const accounts = getDefaultAccountPool()
+    .list(providerId)
+    .filter((account) => account.enabled && account.health === "ok");
+  if (accounts.length === 0) {
+    return { enabled: false, reason: "No API key or linked account" };
+  }
+  return {
+    enabled: true,
+    reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
+  };
+}
 
 function subscriptionEnableState(providerId: ProviderId): ProviderEnableState {
   if (

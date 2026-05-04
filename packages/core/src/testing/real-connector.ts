@@ -148,11 +148,6 @@ export async function waitForDiscordMessage(
 	};
 
 	return new Promise((resolve) => {
-		const timeout = setTimeout(() => {
-			c.off("messageCreate", handler);
-			resolve(null);
-		}, timeoutMs);
-
 		const handler = (msg: {
 			channelId: string;
 			content: string;
@@ -161,9 +156,14 @@ export async function waitForDiscordMessage(
 			if (msg.channelId !== channelId) return;
 			if (fromBotOnly && !msg.author.bot) return;
 			clearTimeout(timeout);
-			c.off("messageCreate", handler);
+			c.off("messageCreate", handler as (...args: unknown[]) => void);
 			resolve(msg.content);
 		};
+
+		const timeout = setTimeout(() => {
+			c.off("messageCreate", handler as (...args: unknown[]) => void);
+			resolve(null);
+		}, timeoutMs);
 
 		c.on("messageCreate", handler);
 	});
@@ -245,6 +245,7 @@ export async function sendTestEmail(
 	}
 
 	try {
+		// @ts-expect-error - nodemailer is an optional peer dep for email tests
 		const nodemailer = await import("nodemailer");
 		const transport = nodemailer.createTransport({
 			host,

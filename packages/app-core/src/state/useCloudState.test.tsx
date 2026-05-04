@@ -9,6 +9,7 @@ const {
   getBootConfigMock,
   invokeDesktopBridgeRequestWithTimeoutMock,
   isElectrobunRuntimeMock,
+  navigatePreOpenedWindowMock,
   openExternalUrlMock,
   setBootConfigMock,
   yieldElizaHttpAfterNativeMessageBoxMock,
@@ -22,11 +23,14 @@ const {
     cloudLoginDirect: vi.fn(),
     cloudLoginPoll: vi.fn(),
     cloudLoginPollDirect: vi.fn(),
+    setBaseUrl: vi.fn(),
+    setToken: vi.fn(),
   },
   dispatchElizaCloudStatusUpdatedMock: vi.fn(),
   getBootConfigMock: vi.fn(() => ({})),
   invokeDesktopBridgeRequestWithTimeoutMock: vi.fn(),
   isElectrobunRuntimeMock: vi.fn(() => false),
+  navigatePreOpenedWindowMock: vi.fn(),
   openExternalUrlMock: vi.fn(),
   setBootConfigMock: vi.fn(),
   yieldElizaHttpAfterNativeMessageBoxMock: vi.fn(),
@@ -61,6 +65,7 @@ vi.mock("../utils", () => ({
     reason !== "api_key_present_not_authenticated" &&
     reason !== "api_key_present_runtime_not_started",
   openExternalUrl: openExternalUrlMock,
+  navigatePreOpenedWindow: navigatePreOpenedWindowMock,
   yieldElizaHttpAfterNativeMessageBox: yieldElizaHttpAfterNativeMessageBoxMock,
 }));
 
@@ -87,6 +92,10 @@ describe("useCloudState", () => {
       critical: false,
     });
     clientMock.cloudLoginPersist.mockResolvedValue({ ok: true });
+    clientMock.setBaseUrl.mockReturnValue(undefined);
+    clientMock.setToken.mockReturnValue(undefined);
+    getBootConfigMock.mockReturnValue({});
+    delete (globalThis as { Capacitor?: unknown }).Capacitor;
   });
 
   afterEach(() => {
@@ -202,5 +211,79 @@ describe("useCloudState", () => {
     expect(openExternalUrlMock).toHaveBeenCalledWith(
       "https://www.elizacloud.ai/auth/cli-login?session=session-1",
     );
+  });
+
+  it("uses direct Eliza Cloud auth on Capacitor native without a backend", async () => {
+    (
+      globalThis as { Capacitor?: { isNativePlatform: () => boolean } }
+    ).Capacitor = { isNativePlatform: () => true };
+    clientMock.getBaseUrl.mockReturnValue("");
+    clientMock.cloudLoginDirect.mockResolvedValue({
+      ok: true,
+      sessionId: "mobile-session-1",
+      browserUrl:
+        "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-1",
+    });
+
+    const { result } = renderHook(() => useCloudState(createParams()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(clientMock.cloudLoginDirect).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai",
+    );
+    expect(clientMock.cloudLogin).not.toHaveBeenCalled();
+    expect(clientMock.getCloudStatus).not.toHaveBeenCalled();
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-1",
+    );
+  });
+
+  it("keeps direct Eliza Cloud tokens client-side instead of persisting through a missing local backend", async () => {
+    (
+      globalThis as { Capacitor?: { isNativePlatform: () => boolean } }
+    ).Capacitor = { isNativePlatform: () => true };
+    clientMock.getBaseUrl.mockReturnValue("");
+    getBootConfigMock.mockReturnValue({
+      cloudApiBase: "https://www.elizacloud.ai",
+    });
+    clientMock.cloudLoginDirect.mockResolvedValue({
+      ok: true,
+      sessionId: "mobile-session-2",
+      browserUrl:
+        "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-2",
+    });
+    clientMock.cloudLoginPollDirect.mockResolvedValue({
+      status: "authenticated",
+      token: "eliza_mobile_key",
+      userId: "user-mobile",
+    });
+    let tick: (() => void) | null = null;
+    vi.mocked(window.setInterval).mockImplementation((callback) => {
+      tick = callback as () => void;
+      return 7 as never;
+    });
+
+    const { result } = renderHook(() => useCloudState(createParams()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+    await act(async () => {
+      tick?.();
+      await Promise.resolve();
+    });
+
+    expect(clientMock.cloudLoginPersist).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai",
+    );
+    expect(clientMock.setToken).toHaveBeenCalledWith("eliza_mobile_key");
+    await waitFor(() => {
+      expect(result.current.elizaCloudConnected).toBe(true);
+      expect(result.current.elizaCloudUserId).toBe("user-mobile");
+    });
   });
 });

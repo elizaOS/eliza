@@ -6,6 +6,7 @@
  */
 
 import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import {
   clearElizaApiBase,
@@ -319,11 +320,16 @@ export class ElizaClient {
       }
     };
 
-    const token = this.apiToken;
+    const token =
+      this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
     let res = await makeRequest(token);
-    if (res.status === 401 && !token) {
-      const retryToken = this.apiToken;
-      if (retryToken) {
+    if (res.status === 401) {
+      const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
+        requestUrl,
+        { force: true },
+      );
+      const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
+      if (retryToken && retryToken !== token) {
         res = await makeRequest(retryToken);
       }
     }

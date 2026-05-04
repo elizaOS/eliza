@@ -45,6 +45,12 @@ export async function runCli(argv: string[] = process.argv) {
   if (!process.env.ZAI_API_KEY?.trim() && process.env.Z_AI_API_KEY?.trim()) {
     process.env.ZAI_API_KEY = process.env.Z_AI_API_KEY;
   }
+  if (
+    !process.env.MOONSHOT_API_KEY?.trim() &&
+    process.env.KIMI_API_KEY?.trim()
+  ) {
+    process.env.MOONSHOT_API_KEY = process.env.KIMI_API_KEY;
+  }
 
   const { buildProgram } = await import("./program");
   const program = buildProgram();

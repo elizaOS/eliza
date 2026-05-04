@@ -57,6 +57,7 @@
     "./api/server-cloud-tts": "./src/api/server-cloud-tts.ts",
     "./config": "./src/config/index.ts",
     "./config/allowed-hosts": "./src/config/allowed-hosts.ts",
+    "./config/app-config": "./src/config/app-config.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./types": "./src/types/index.ts",
     "./events": "./src/events/index.ts",
@@ -141,7 +142,8 @@
     "./styles/brand-gold.css": "./src/styles/brand-gold.css",
     "./character-catalog": "./src/character-catalog.ts",
     "./test-support/test-helpers": "./src/test-support/test-helpers.ts",
-    "./test/live-agent/helpers/*": "./test/live-agent/helpers/*.ts"
+    "./test/live-agent/helpers/*": "./test/live-agent/helpers/*.ts",
+    "./package.json": "./package.json"
   },
   "peerDependencies": {
     "react": "^19.0.0",

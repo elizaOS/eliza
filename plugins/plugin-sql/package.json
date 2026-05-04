@@ -42,7 +42,7 @@
   "scripts": {
     "build": "cd typescript && bun run build.ts",
     "dev": "cd typescript && bun --hot build.ts",
-    "test": "cd typescript && vitest run --passWithNoTests",
+    "test": "cd typescript && vitest run",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "lint": "cd typescript && bun run lint",
     "lint:check": "cd typescript && bun run lint:check",
