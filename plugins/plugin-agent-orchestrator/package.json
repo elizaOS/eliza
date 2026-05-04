@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-alpha.537",
   "description": "Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY",
   "type": "module",
   "main": "dist/index.js",
