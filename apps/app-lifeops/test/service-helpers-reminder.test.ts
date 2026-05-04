@@ -480,11 +480,14 @@ describe("resolveContactRouteCandidates", () => {
 });
 
 describe("reminder escalation profiles", () => {
-  it("keeps the former routine voice behavior as typed default policy", () => {
+  it.each([
+    "morning_routine",
+    "routine",
+  ])("keeps the former routine voice behavior for %s as typed default policy", (kind) => {
     const state = buildReminderEnforcementState(
       new Date("2026-04-29T06:21:00.000Z"),
       "UTC",
-      { kind: "routine", metadata: {} },
+      { kind, metadata: {} },
       { voice: true },
     );
 
