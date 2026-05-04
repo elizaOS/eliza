@@ -5,6 +5,7 @@
         "lib": ["ESNext", "dom"],
         "module": "Preserve",
         "moduleResolution": "Bundler",
+        "ignoreDeprecations": "6.0",
         "strict": false,
         "esModuleInterop": true,
         "skipLibCheck": true,
