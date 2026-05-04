@@ -57,9 +57,9 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "bunx vitest run --config vitest.config.ts --passWithNoTests",
-    "test:unit": "bunx vitest run --config vitest.config.ts --dir __tests__/unit --passWithNoTests",
-    "test:integration": "bunx vitest run --config vitest.config.ts --dir __tests__/integration --passWithNoTests",
+    "test": "bunx vitest run --config vitest.config.ts",
+    "test:unit": "bunx vitest run --config vitest.config.ts --dir __tests__/unit",
+    "test:integration": "bunx vitest run --config vitest.config.ts --dir __tests__/integration",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

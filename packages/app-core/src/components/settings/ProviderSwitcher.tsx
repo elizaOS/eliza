@@ -41,8 +41,10 @@ import {
 } from "../../components/config-ui/config-renderer";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
+  getDirectAccountProviderForOnboardingProvider,
   getOnboardingProviderOption,
   isSubscriptionProviderSelectionId,
+  ONBOARDING_PROVIDER_CATALOG,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
@@ -510,14 +512,19 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const availableProviderIds = useMemo(
     () =>
       new Set(
-        allAiProviders
-          .map(
+        [
+          ...allAiProviders.map(
             (provider) =>
               getOnboardingProviderOption(
                 normalizeAiProviderPluginId(provider.id),
               )?.id,
-          )
-          .filter((id): id is NonNullable<typeof id> => id != null),
+          ),
+          ...ONBOARDING_PROVIDER_CATALOG.filter(
+            (option) =>
+              option.authMode === "api-key" &&
+              getDirectAccountProviderForOnboardingProvider(option.id),
+          ).map((option) => option.id),
+        ].filter((id): id is NonNullable<typeof id> => id != null),
       ),
     [allAiProviders],
   );
@@ -719,8 +726,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   }, [activeProviderPanelId]);
 
   const apiProviderChoices = useMemo(
-    () =>
-      allAiProviders
+    () => {
+      const pluginChoices = allAiProviders
         .map((provider) => {
           const option = getOnboardingProviderOption(
             normalizeAiProviderPluginId(provider.id),
@@ -735,7 +742,35 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         })
         .filter(
           (choice): choice is NonNullable<typeof choice> => choice !== null,
-        ),
+        );
+      const seen = new Set(pluginChoices.map((choice) => choice.id));
+      const accountManagedChoices = ONBOARDING_PROVIDER_CATALOG.filter(
+        (option) =>
+          option.authMode === "api-key" &&
+          getDirectAccountProviderForOnboardingProvider(option.id) &&
+          !seen.has(option.id),
+      ).map((option) => ({
+        id: option.id,
+        label: option.name,
+        provider: {
+          id: option.id,
+          name: option.name,
+          category: "ai-provider",
+          enabled: false,
+          configured: false,
+          parameters: [],
+        } satisfies PluginInfo,
+      }));
+      return [...pluginChoices, ...accountManagedChoices].sort(
+        (left, right) => {
+          const leftOrder =
+            getOnboardingProviderOption(left.id)?.order ?? Number.MAX_SAFE_INTEGER;
+          const rightOrder =
+            getOnboardingProviderOption(right.id)?.order ?? Number.MAX_SAFE_INTEGER;
+          return leftOrder - rightOrder;
+        },
+      );
+    },
     [allAiProviders],
   );
 
@@ -752,6 +787,10 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         ?.provider ?? null
     );
   }, [apiProviderChoices, visibleProviderPanelId]);
+  const selectedPanelAccountProvider = useMemo(
+    () => getDirectAccountProviderForOnboardingProvider(visibleProviderPanelId),
+    [visibleProviderPanelId],
+  );
 
   const getSubscriptionPanelStatus = useCallback(
     (providerId: SubscriptionProviderSelectionId) => {
@@ -1253,6 +1292,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   handlePluginConfigSave={handlePluginConfigSave}
                   loadPlugins={loadPlugins}
                 />
+                {selectedPanelAccountProvider ? (
+                  <AccountList providerId={selectedPanelAccountProvider} />
+                ) : null}
               </div>
             </div>
           ) : null}

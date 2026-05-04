@@ -6,6 +6,7 @@ import { isTruthyEnvValue } from "../env-utils.impl.js";
 import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,
+  LinkedAccountProviderId,
   ServiceRouteConfig,
   ServiceRoutingConfig,
 } from "./service-routing.js";
@@ -62,6 +63,7 @@ export type OnboardingProviderFamily =
   | "grok"
   | "groq"
   | "mistral"
+  | "moonshot"
   | "ollama"
   | "openai"
   | "openrouter"
@@ -78,6 +80,7 @@ export type OnboardingProviderId =
   | "grok"
   | "groq"
   | "mistral"
+  | "moonshot"
   | "ollama"
   | "openai"
   | "openai-subscription"
@@ -380,7 +383,30 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     group: "local",
     order: 150,
   },
+  {
+    id: "moonshot",
+    name: "Kimi / Moonshot",
+    envKey: "MOONSHOT_API_KEY",
+    pluginName: "@elizaos/plugin-openai",
+    keyPrefix: "sk-",
+    description: "Kimi models via Moonshot's OpenAI-compatible API.",
+    family: "moonshot",
+    authMode: "api-key",
+    group: "local",
+    order: 160,
+    supportsPrimaryModelOverride: true,
+  },
 ] as const satisfies ReadonlyArray<ProviderOption>;
+
+export const DIRECT_ACCOUNT_PROVIDER_BY_ONBOARDING_PROVIDER = {
+  anthropic: "anthropic-api",
+  openai: "openai-api",
+  deepseek: "deepseek-api",
+  zai: "zai-api",
+  moonshot: "moonshot-api",
+} as const satisfies Partial<
+  Record<OnboardingProviderId, LinkedAccountProviderId>
+>;
 
 export const ONBOARDING_CLOUD_PROVIDER_OPTIONS = [
   {
@@ -558,6 +584,10 @@ const ONBOARDING_PROVIDER_ALIASES: Record<string, OnboardingProviderId> = {
   together: "together",
   "z.ai": "zai",
   zai: "zai",
+  kimi: "moonshot",
+  moonshot: "moonshot",
+  moonshotai: "moonshot",
+  "moonshot-ai": "moonshot",
 };
 
 export function isSubscriptionProviderSelectionId(
@@ -674,6 +704,19 @@ export function getStoredOnboardingProviderId(
   const provider = getOnboardingProviderOption(providerId);
   if (!provider) return null;
   return provider.storedProvider ?? provider.id;
+}
+
+export function getDirectAccountProviderForOnboardingProvider(
+  providerId: unknown,
+): LinkedAccountProviderId | null {
+  const normalized = normalizeOnboardingProviderId(providerId);
+  if (!normalized) return null;
+  if (!(normalized in DIRECT_ACCOUNT_PROVIDER_BY_ONBOARDING_PROVIDER)) {
+    return null;
+  }
+  return DIRECT_ACCOUNT_PROVIDER_BY_ONBOARDING_PROVIDER[
+    normalized as keyof typeof DIRECT_ACCOUNT_PROVIDER_BY_ONBOARDING_PROVIDER
+  ];
 }
 
 export function sortOnboardingProviders(

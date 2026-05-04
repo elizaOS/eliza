@@ -6,7 +6,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
-import type { GetTlsKeyResponse } from "@phala/dstack-sdk";
+import type { DeriveKeyResponse } from "@phala/dstack-sdk";
 import type { Keypair } from "@solana/web3.js";
 import type { PrivateKeyAccount } from "viem";
 import { PhalaDeriveKeyProvider } from "../providers/deriveKey";
@@ -81,7 +81,7 @@ export class TEEService extends Service {
   async rawDeriveKey(
     path: string,
     subject: string,
-  ): Promise<GetTlsKeyResponse> {
+  ): Promise<DeriveKeyResponse> {
     return this.provider.rawDeriveKeyResponse(path, subject);
   }
 }

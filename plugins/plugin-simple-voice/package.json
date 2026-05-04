@@ -26,7 +26,7 @@
   },
   "scripts": {
     "dev": "tsc --watch",
-    "test": "vitest run src/__tests__/types.test.ts --config vitest.config.ts --passWithNoTests",
+    "test": "vitest run src/__tests__/types.test.ts --config vitest.config.ts",
     "lint": "echo \"Lint skipped for release\"",
     "typecheck": "echo \"Typecheck skipped for release\"",
     "clean": "rm -rf dist",

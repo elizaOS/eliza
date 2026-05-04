@@ -44,7 +44,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit --noCheck",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

@@ -4,12 +4,23 @@ import type {
   ScenarioSeedStep,
 } from "@elizaos/scenario-schema";
 import { stringToUuid } from "@elizaos/core";
-import { resolveDefaultWindowPolicy } from "../../../apps/app-lifeops/src/lifeops/defaults.ts";
-import { materializeDefinitionOccurrences } from "../../../apps/app-lifeops/src/lifeops/engine.ts";
-import {
-  createLifeOpsTaskDefinition,
-  LifeOpsRepository,
-} from "../../../apps/app-lifeops/src/lifeops/repository.ts";
+
+// Loaded lazily so this module can be built without pulling app-lifeops into the
+// scenario-runner rootDir (app-lifeops is only available at runtime).
+async function loadLifeOps() {
+  const [{ resolveDefaultWindowPolicy }, { materializeDefinitionOccurrences }, repo] =
+    await Promise.all([
+      import("../../../apps/app-lifeops/src/lifeops/defaults.ts"),
+      import("../../../apps/app-lifeops/src/lifeops/engine.ts"),
+      import("../../../apps/app-lifeops/src/lifeops/repository.ts"),
+    ]);
+  return {
+    resolveDefaultWindowPolicy,
+    materializeDefinitionOccurrences,
+    createLifeOpsTaskDefinition: repo.createLifeOpsTaskDefinition,
+    LifeOpsRepository: repo.LifeOpsRepository,
+  };
+}
 
 type TodoSeed = {
   type: "todo";
@@ -174,6 +185,12 @@ async function seedTodo(
   seed: TodoSeed,
 ): Promise<string | undefined> {
   const runtime = requireRuntime(ctx);
+  const {
+    resolveDefaultWindowPolicy,
+    materializeDefinitionOccurrences,
+    createLifeOpsTaskDefinition,
+    LifeOpsRepository,
+  } = await loadLifeOps();
   await LifeOpsRepository.bootstrapSchema(runtime);
 
   const title = normalizeTodoTitle(seed);

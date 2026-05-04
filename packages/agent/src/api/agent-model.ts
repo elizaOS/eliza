@@ -43,6 +43,7 @@ const ENV_PROVIDER_SIGNALS: ReadonlyArray<{
   { envVar: "MISTRAL_API_KEY", label: "mistral" },
   { envVar: "TOGETHER_API_KEY", label: "together" },
   { envVar: "ZAI_API_KEY", label: "zai" },
+  { envVar: "MOONSHOT_API_KEY", label: "moonshot" },
   { envVar: "OLLAMA_BASE_URL", label: "ollama" },
 ];
 

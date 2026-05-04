@@ -61,7 +61,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config ./vitest.config.ts --passWithNoTests __tests__/",
+    "test": "vitest run --config ./vitest.config.ts __tests__/",
     "test:ts": "vitest run --config ./vitest.config.ts __tests__/",
     "build": "bun run build.ts"
   },

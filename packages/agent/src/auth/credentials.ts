@@ -26,8 +26,10 @@ import { refreshAnthropicToken } from "./anthropic.js";
 import { refreshCodexToken } from "./openai-codex.js";
 import { accountRefreshMutex } from "./refresh-mutex.js";
 import {
+  type AccountCredentialProvider,
   type OAuthCredentials,
   type StoredCredentials,
+  isSubscriptionProvider,
   SUBSCRIPTION_PROVIDER_MAP,
   type SubscriptionProvider,
 } from "./types.js";
@@ -115,19 +117,19 @@ export function deleteCredentials(
  * Check if credentials exist and are not expired.
  */
 export function hasValidCredentials(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
   accountId: string = DEFAULT_ACCOUNT_ID,
 ): boolean {
-  const stored = loadCredentials(provider, accountId);
-  if (!stored) return false;
-  return stored.credentials.expires > Date.now();
+  const record = loadAccount(provider, accountId);
+  if (!record) return false;
+  return record.credentials.expires > Date.now();
 }
 
 /**
  * List all accounts configured for a provider.
  */
 export function listProviderAccounts(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
 ): AccountCredentialRecord[] {
   return listAccounts(provider);
 }
@@ -142,9 +144,16 @@ export function listProviderAccounts(
  * Returns `null` when no credentials are stored or the refresh fails.
  */
 export async function getAccessToken(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
   accountId: string = DEFAULT_ACCOUNT_ID,
 ): Promise<string | null> {
+  if (!isSubscriptionProvider(provider)) {
+    const direct = loadAccount(provider, accountId);
+    if (!direct) return null;
+    if (direct.credentials.expires <= Date.now()) return null;
+    return direct.credentials.access;
+  }
+
   const initial = loadCredentials(provider, accountId);
   if (!initial) return null;
 

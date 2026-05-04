@@ -2227,6 +2227,11 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     "GROQ_API_KEY",
     "XAI_API_KEY",
     "DEEPSEEK_API_KEY",
+    "ZAI_API_KEY",
+    "Z_AI_API_KEY",
+    "MOONSHOT_API_KEY",
+    "KIMI_API_KEY",
+    "OPENAI_BASE_URL",
     "OPENROUTER_API_KEY",
     // Google model defaults
     "GOOGLE_SMALL_MODEL",
@@ -3190,7 +3195,24 @@ export async function startEliza(
     }
   }
 
-  // 2f. Apply subscription-based credentials (Claude Max, Codex Max).
+  // 2f. Install the multi-account pool shims and apply selected direct API
+  //     accounts before plugin resolution snapshots process.env.
+  try {
+    const accountPool = await import("@elizaos/app-core/services/account-pool");
+    accountPool.getDefaultAccountPool();
+    await accountPool.applyAccountPoolApiCredentials({
+      activeBackend: resolveServiceRoutingInConfig(
+        config as Record<string, unknown>,
+      )?.llmText?.backend,
+    });
+    accountPool.startAccountPoolKeepAlive();
+  } catch (err) {
+    logger.debug(
+      `[eliza] Account pool bootstrap skipped: ${formatError(err)}`,
+    );
+  }
+
+  // 2g. Apply subscription-based credentials (Claude Max, Codex Max).
   //     Failure is non-fatal — the agent can still start with other providers.
   //     Config is NOT rolled back on failure; partial mutations may persist in
   //     the in-memory config but are not saved to disk until explicit save.
@@ -3203,7 +3225,7 @@ export async function startEliza(
     );
   }
 
-  // 2g. Cloud mode — if the user chose cloud during onboarding (or on a
+  // 2h. Cloud mode — if the user chose cloud during onboarding (or on a
   //     subsequent start with cloud config), skip local runtime setup and
   //     connect via the thin client instead.
   const deploymentTarget = resolveDeploymentTargetInConfig(
@@ -3218,7 +3240,7 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
-  // 2h. Pump N8N_HOST + N8N_API_KEY into process.env for
+  // 2i. Pump N8N_HOST + N8N_API_KEY into process.env for
   //     @elizaos/plugin-n8n-workflow. Must run BEFORE
   //     buildCharacterFromConfig — that function snapshots
   //     `process.env.N8N_*` into character.secrets, which is what
@@ -4164,6 +4186,23 @@ export async function startEliza(
           await autoFetchCloudGithubToken(
             freshConfig.cloud?.agentId?.trim() || agentId,
           );
+
+          try {
+            const accountPool = await import(
+              "@elizaos/app-core/services/account-pool"
+            );
+            accountPool.getDefaultAccountPool();
+            await accountPool.applyAccountPoolApiCredentials({
+              activeBackend: resolveServiceRoutingInConfig(
+                freshConfig as Record<string, unknown>,
+              )?.llmText?.backend,
+            });
+            accountPool.startAccountPoolKeepAlive();
+          } catch (poolErr) {
+            logger.debug(
+              `[eliza] Hot-reload: account pool bootstrap skipped: ${formatError(poolErr)}`,
+            );
+          }
 
           // Apply subscription-based credentials (Claude Max, Codex Max)
           // that may have been set up during onboarding.
