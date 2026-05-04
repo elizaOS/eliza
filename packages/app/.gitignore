@@ -1,3 +1,7 @@
+# Native shells: materialized from packages/app-core/platforms (cap:sync / mobile build).
+/ios/
+/android/
+
 # Android build output
 **/android/build/
 **/android/.gradle/

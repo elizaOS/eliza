@@ -211,7 +211,7 @@
     {
       "name": "electrobun",
       "globs": [
-        "packages/app/electrobun/**",
+        "packages/app-core/platforms/electrobun/**",
         "packages/app/playwright.electrobun.packaged.config.ts",
         "packages/app/test/electrobun-packaged/**"
       ],
