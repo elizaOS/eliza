@@ -302,6 +302,51 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
   }
 }
 
+/**
+ * Walk a string starting at every `{` opener, extract the first slice that
+ * yields a valid JSON object, and return that slice. Tolerates leading and
+ * trailing prose around the workflow JSON (which the LLM occasionally emits
+ * in spite of `responseFormat: { type: 'json_object' }`).
+ */
+function extractFirstBalancedJsonObject(text: string): string | null {
+  for (let start = 0; start < text.length; start++) {
+    if (text[start] !== '{') continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === '\\') {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === '{') {
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const candidate = text.slice(start, i + 1);
+          try {
+            JSON.parse(candidate);
+            return candidate;
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function parseWorkflowResponse(response: string): N8nWorkflow {
   // Strip markdown code fences (handles ```json, ```, with any whitespace/newlines)
   const cleaned = response
@@ -312,11 +357,18 @@ function parseWorkflowResponse(response: string): N8nWorkflow {
   let workflow: N8nWorkflow;
   try {
     workflow = JSON.parse(cleaned) as N8nWorkflow;
-  } catch (error) {
-    throw new Error(
-      `Failed to parse workflow JSON: ${error instanceof Error ? error.message : String(error)}\n\nRaw response: ${response}`,
-      { cause: error }
-    );
+  } catch (initialError) {
+    // Fence-strip + JSON.parse failed. The LLM may have wrapped the JSON in
+    // prose despite responseFormat: { type: 'json_object' }. Walk the cleaned
+    // text and extract the first balanced JSON object that parses.
+    const extracted = extractFirstBalancedJsonObject(cleaned);
+    if (!extracted) {
+      throw new Error(
+        `Failed to parse workflow JSON: ${initialError instanceof Error ? initialError.message : String(initialError)}\n\nRaw response: ${response}`,
+        { cause: initialError }
+      );
+    }
+    workflow = JSON.parse(extracted) as N8nWorkflow;
   }
 
   if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
