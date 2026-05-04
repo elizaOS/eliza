@@ -18,7 +18,7 @@
   "scripts": {
     "build": "bunx vite build",
     "dev": "vite",
-    "test": "vitest run src/__tests__/balancedTrustScore.test.ts src/__tests__/historicalPriceService.test.ts src/__tests__/service.test.ts",
+    "test": "vitest run",
     "clean": "rm -rf dist .turbo node_modules",
     "lint": "echo \"Lint skipped for release\"",
     "lint:check": "bun run lint",
