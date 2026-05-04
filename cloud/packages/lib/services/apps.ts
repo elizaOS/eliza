@@ -6,8 +6,10 @@ import crypto from "crypto";
 import { type App, type AppUser, appsRepository, type NewApp } from "@/db/repositories/apps";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
+import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { logger } from "@/lib/utils/logger";
 import { apiKeysService } from "./api-keys";
+import { managedDomainsService } from "./managed-domains";
 
 export class AppNameConflictError extends Error {
   constructor(
@@ -541,6 +543,15 @@ export class AppsService {
     return await appsRepository.getTotalStats(appId);
   }
 
+  async getAllowedOrigins(app: Pick<App, "id" | "app_url" | "allowed_origins">): Promise<string[]> {
+    const configured = [
+      app.app_url,
+      ...((app.allowed_origins as string[] | null | undefined) ?? []),
+    ].filter((origin): origin is string => Boolean(origin?.trim()));
+    const customDomainOrigins = await managedDomainsService.listVerifiedAppOrigins(app.id);
+    return [...new Set([...configured, ...customDomainOrigins])];
+  }
+
   async validateOrigin(appId: string, origin: string): Promise<boolean> {
     const app = await appsRepository.findById(appId);
 
@@ -548,20 +559,8 @@ export class AppsService {
       return false;
     }
 
-    const allowedOrigins = app.allowed_origins as string[];
-
-    if (allowedOrigins.includes("*")) {
-      return true;
-    }
-
-    return allowedOrigins.some((allowed) => {
-      if (allowed.includes("*")) {
-        const pattern = allowed.replace(/\*/g, ".*");
-        const regex = new RegExp(`^${pattern}$`);
-        return regex.test(origin);
-      }
-      return allowed === origin;
-    });
+    const allowedOrigins = await this.getAllowedOrigins(app);
+    return isAllowedOrigin(allowedOrigins, origin);
   }
 
   async regenerateApiKey(appId: string): Promise<string> {

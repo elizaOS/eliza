@@ -8,10 +8,10 @@
  *   served by the Node sidecar through their dedicated subroutes, so when
  *   requested via `include` the Worker echoes the same `not_yet_migrated`
  *   marker the dedicated routes use.
- * DELETE /api/v1/containers/[id] — 501. Tearing down a container requires
- *   the Hetzner-Docker SSH client (`ssh2`, Node-only).
- * PATCH  /api/v1/containers/[id] — 501. Restart / env / scale all go
- *   through the SSH client.
+ * DELETE /api/v1/containers/[id] — forwarded to the Node container control
+ *   plane. Tearing down a container requires the Hetzner-Docker SSH client.
+ * PATCH  /api/v1/containers/[id] — forwarded to the Node container control
+ *   plane. Restart / env / scale all go through the SSH client.
  *
  * The Node sidecar serves DELETE/PATCH; see `cloud/CONTAINERS_MIGRATION.md`.
  */
@@ -23,6 +23,7 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersService, getContainer } from "@/lib/services/containers";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { forwardToContainerControlPlane } from "../../_container-control-plane-forward";
 
 const app = new Hono<AppEnv>();
 
@@ -149,26 +150,24 @@ app.get("/", async (c) => {
   }
 });
 
-app.delete("/", (c) =>
-  c.json(
-    {
-      success: false,
-      error: "not_yet_migrated",
-      reason: "node-only dep: ssh2 (Hetzner-Docker tear-down). Sidecar serves DELETE.",
-    },
-    501,
-  ),
-);
+app.delete("/", async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+    return forwardToContainerControlPlane(c, user);
+  } catch (error) {
+    logger.error("[Containers API] delete forward error:", error);
+    return failureResponse(c, error);
+  }
+});
 
-app.patch("/", (c) =>
-  c.json(
-    {
-      success: false,
-      error: "not_yet_migrated",
-      reason: "node-only dep: ssh2 (Hetzner-Docker restart/setEnv/setScale). Sidecar serves PATCH.",
-    },
-    501,
-  ),
-);
+app.patch("/", async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+    return forwardToContainerControlPlane(c, user);
+  } catch (error) {
+    logger.error("[Containers API] patch forward error:", error);
+    return failureResponse(c, error);
+  }
+});
 
 export default app;

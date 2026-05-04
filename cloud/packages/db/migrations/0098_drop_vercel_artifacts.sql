@@ -14,7 +14,7 @@ ALTER TABLE "app_domains" DROP COLUMN IF EXISTS "vercel_project_id";
 ALTER TABLE "app_domains" DROP COLUMN IF EXISTS "vercel_domain_id";
 
 -- 2. agent_sandbox_backups: drop Vercel snapshot id.
-ALTER TABLE "agent_sandbox_backups" DROP COLUMN IF EXISTS "vercel_snapshot_id";
+ALTER TABLE IF EXISTS "agent_sandbox_backups" DROP COLUMN IF EXISTS "vercel_snapshot_id";
 
 -- 3. managed_domains: drop Vercel domain id.
 ALTER TABLE "managed_domains" DROP COLUMN IF EXISTS "vercel_domain_id";
@@ -29,7 +29,9 @@ DROP TABLE IF EXISTS "sandbox_template_snapshots";
 
 -- 5. managed_domains: drop "vercel" from registrar + nameserver_mode enums.
 -- Postgres can't remove enum values directly; rename the type, create a new
--- one without "vercel", swap the column over, and drop the old type.
+-- one without "vercel", swap the column over, and drop the old type. Preserve
+-- every non-vercel value already present so branch/test databases with newer
+-- registrar providers do not fail or lose provider state.
 
 -- Backfill any rows still on the legacy default before swapping types.
 UPDATE "managed_domains" SET "registrar" = 'external' WHERE "registrar"::text = 'vercel';
@@ -37,7 +39,18 @@ UPDATE "managed_domains" SET "nameserver_mode" = 'external' WHERE "nameserver_mo
 
 -- domain_registrar
 ALTER TYPE "domain_registrar" RENAME TO "domain_registrar_old";
-CREATE TYPE "domain_registrar" AS ENUM ('external');
+DO $$
+DECLARE
+  labels text;
+BEGIN
+  SELECT string_agg(quote_literal(enumlabel), ', ' ORDER BY enumsortorder)
+    INTO labels
+  FROM pg_enum
+  WHERE enumtypid = 'domain_registrar_old'::regtype
+    AND enumlabel <> 'vercel';
+
+  EXECUTE format('CREATE TYPE "domain_registrar" AS ENUM (%s)', labels);
+END $$;
 ALTER TABLE "managed_domains" ALTER COLUMN "registrar" DROP DEFAULT;
 ALTER TABLE "managed_domains"
   ALTER COLUMN "registrar" TYPE "domain_registrar"
@@ -47,7 +60,18 @@ DROP TYPE "domain_registrar_old";
 
 -- domain_nameserver_mode
 ALTER TYPE "domain_nameserver_mode" RENAME TO "domain_nameserver_mode_old";
-CREATE TYPE "domain_nameserver_mode" AS ENUM ('external');
+DO $$
+DECLARE
+  labels text;
+BEGIN
+  SELECT string_agg(quote_literal(enumlabel), ', ' ORDER BY enumsortorder)
+    INTO labels
+  FROM pg_enum
+  WHERE enumtypid = 'domain_nameserver_mode_old'::regtype
+    AND enumlabel <> 'vercel';
+
+  EXECUTE format('CREATE TYPE "domain_nameserver_mode" AS ENUM (%s)', labels);
+END $$;
 ALTER TABLE "managed_domains" ALTER COLUMN "nameserver_mode" DROP DEFAULT;
 ALTER TABLE "managed_domains"
   ALTER COLUMN "nameserver_mode" TYPE "domain_nameserver_mode"
