@@ -216,7 +216,7 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
     expect(authed.status).toBe(501);
   });
 
-  test("POST /api/v1/admin/docker-nodes/:nodeId/health-check is a 501 stub", async () => {
+  test("POST /api/v1/admin/docker-nodes/:nodeId/health-check forwards to the control plane", async () => {
     if (!shouldRun()) return;
     const unauthed = await api.post(`/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`);
     expectAuthGate(unauthed.status, "POST docker-nodes/:nodeId/health-check (unauth)");
@@ -226,7 +226,9 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
       undefined,
       { headers: bearerHeaders() },
     );
-    expect(authed.status).toBe(501);
+    expect(authed.status).toBe(503);
+    const body = (await authed.json()) as { code?: string };
+    expect(body.code).toBe("CONTAINER_CONTROL_PLANE_NOT_CONFIGURED");
   });
 
   test("POST /api/v1/admin/infrastructure/containers/actions is a 501 stub; rejects unauthenticated", async () => {
