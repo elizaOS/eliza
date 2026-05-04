@@ -9,7 +9,11 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DEFAULT_REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
+function resolveDefaultRepoRoot() {
+  return resolveRepoRootFromImportMeta(import.meta.url, {
+    fallbackToCwd: true,
+  });
+}
 const APP_CORE_SCRIPTS_DIR = __dirname;
 
 /**
@@ -88,7 +92,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function getRepoSetupLockPath(repoRoot = DEFAULT_REPO_ROOT) {
+export function getRepoSetupLockPath(repoRoot = resolveDefaultRepoRoot()) {
   return path.join(repoRoot, ".eliza-repo-setup.lock");
 }
 
@@ -180,7 +184,7 @@ export async function acquireRepoSetupLock(
   }
 }
 
-export async function runRepoSetup(repoRoot = DEFAULT_REPO_ROOT) {
+export async function runRepoSetup(repoRoot = resolveDefaultRepoRoot()) {
   const release = await acquireRepoSetupLock(getRepoSetupLockPath(repoRoot));
   try {
     for (const step of repoSetupSteps) {

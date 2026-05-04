@@ -344,6 +344,191 @@ describe("run-mobile-build", () => {
     ).toBe("android-capacitor\n");
   });
 
+  it("does not copy generated platform artifacts from template directories", () => {
+    const repoRoot = makeTempDir();
+    const appDir = path.join(repoRoot, "apps", "app");
+    const appCorePlatformsDir = path.join(
+      repoRoot,
+      "eliza",
+      "packages",
+      "app-core",
+      "platforms",
+    );
+
+    writeFile(
+      path.join(appCorePlatformsDir, "android", "build.gradle"),
+      "android-root\n",
+    );
+    writeFile(
+      path.join(appCorePlatformsDir, "android", "gradlew"),
+      "android-gradlew\n",
+    );
+    writeFile(
+      path.join(appCorePlatformsDir, "android", ".gradle", "cache.bin"),
+      "gradle-cache\n",
+    );
+    writeFile(
+      path.join(
+        appCorePlatformsDir,
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "public",
+        "index.html",
+      ),
+      "web-assets\n",
+    );
+    writeFile(
+      path.join(
+        appCorePlatformsDir,
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+        "agent-bundle.js",
+      ),
+      "agent-bundle\n",
+    );
+    writeFile(
+      path.join(
+        appCorePlatformsDir,
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "capacitor.config.json",
+      ),
+      "{}\n",
+    );
+    writeFile(
+      path.join(appCorePlatformsDir, "android", "app", "build", "output.bin"),
+      "android-build\n",
+    );
+    writeFile(
+      path.join(appCorePlatformsDir, "ios", "App", "Podfile"),
+      "ios-podfile\n",
+    );
+    writeFile(
+      path.join(appCorePlatformsDir, "ios", "App", "Pods", "Manifest.lock"),
+      "pods\n",
+    );
+    writeFile(
+      path.join(
+        appCorePlatformsDir,
+        "ios",
+        "App",
+        "App",
+        "public",
+        "index.html",
+      ),
+      "web-assets\n",
+    );
+    writeFile(
+      path.join(
+        appCorePlatformsDir,
+        "ios",
+        "App",
+        "App",
+        "capacitor.config.json",
+      ),
+      "{}\n",
+    );
+    writeFile(
+      path.join(
+        appCorePlatformsDir,
+        "ios",
+        "App",
+        "CapApp-SPM",
+        "Package.swift",
+      ),
+      "spm\n",
+    );
+
+    const androidCopied = syncPlatformTemplateFiles("android", {
+      repoRootValue: repoRoot,
+      appDirValue: appDir,
+      log: () => {},
+    });
+    const iosCopied = syncPlatformTemplateFiles("ios", {
+      repoRootValue: repoRoot,
+      appDirValue: appDir,
+      log: () => {},
+    });
+
+    expect(androidCopied).toEqual(["build.gradle", "gradlew"]);
+    expect(iosCopied).toEqual([path.join("App", "Podfile")]);
+    expect(
+      fs.existsSync(path.join(appDir, "android", ".gradle", "cache.bin")),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(
+          appDir,
+          "android",
+          "app",
+          "src",
+          "main",
+          "assets",
+          "public",
+          "index.html",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(
+          appDir,
+          "android",
+          "app",
+          "src",
+          "main",
+          "assets",
+          "agent",
+          "agent-bundle.js",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(
+          appDir,
+          "android",
+          "app",
+          "src",
+          "main",
+          "assets",
+          "capacitor.config.json",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(path.join(appDir, "android", "app", "build", "output.bin")),
+    ).toBe(false);
+    expect(
+      fs.existsSync(path.join(appDir, "ios", "App", "Pods", "Manifest.lock")),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(appDir, "ios", "App", "App", "public", "index.html"),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(appDir, "ios", "App", "App", "capacitor.config.json"),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(appDir, "ios", "App", "CapApp-SPM", "Package.swift"),
+      ),
+    ).toBe(false);
+  });
+
   it("repairs an incomplete generated iOS platform from shipped templates", () => {
     const repoRoot = makeTempDir();
     const appDir = path.join(repoRoot, "apps", "app");

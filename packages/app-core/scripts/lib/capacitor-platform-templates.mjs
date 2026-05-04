@@ -4,6 +4,81 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const defaultAppCoreRoot = path.resolve(__dirname, "..", "..");
+
+const SKIPPED_TEMPLATE_DIRS = new Set([
+  ".git",
+  ".gradle",
+  ".idea",
+  ".turbo",
+  ".cxx",
+  ".externalNativeBuild",
+  "build",
+  "DerivedData",
+  "node_modules",
+  "Pods",
+  "vendor",
+  "xcuserdata",
+]);
+
+const SKIPPED_TEMPLATE_FILES = new Set([
+  ".DS_Store",
+  "local.properties",
+  path.join("app", "src", "main", "assets", "capacitor.config.json"),
+  path.join("app", "src", "main", "assets", "capacitor.plugins.json"),
+  path.join("app", "src", "main", "res", "xml", "config.xml"),
+  path.join("App", "App", "capacitor.config.json"),
+  path.join("App", "App", "config.xml"),
+]);
+
+const SKIPPED_TEMPLATE_PREFIXES = [
+  path.join("app", "src", "main", "assets", "agent"),
+  path.join("app", "src", "main", "assets", "public"),
+  path.join("App", "App", "public"),
+  path.join("App", "CapApp-SPM"),
+  "capacitor-cordova-ios-plugins",
+];
+
+const SKIPPED_TEMPLATE_EXTENSIONS = new Set([
+  ".aab",
+  ".apk",
+  ".ap_",
+  ".class",
+  ".dex",
+  ".hprof",
+  ".iml",
+  ".jks",
+  ".keystore",
+  ".log",
+]);
+
+function hasSkippedPrefix(relPath) {
+  return SKIPPED_TEMPLATE_PREFIXES.some(
+    (prefix) =>
+      relPath === prefix || relPath.startsWith(`${prefix}${path.sep}`),
+  );
+}
+
+function shouldCopyTemplatePath(relPath) {
+  const segments = relPath.split(path.sep);
+  if (segments.some((segment) => SKIPPED_TEMPLATE_DIRS.has(segment))) {
+    return false;
+  }
+  if (SKIPPED_TEMPLATE_FILES.has(relPath) || hasSkippedPrefix(relPath)) {
+    return false;
+  }
+  const filename = segments.at(-1) ?? "";
+  if (
+    SKIPPED_TEMPLATE_FILES.has(filename) ||
+    SKIPPED_TEMPLATE_EXTENSIONS.has(path.extname(filename))
+  ) {
+    return false;
+  }
+  return true;
+}
 
 function collectTemplateFiles(root, dir = root) {
   if (!fs.existsSync(dir)) return [];
@@ -11,10 +86,12 @@ function collectTemplateFiles(root, dir = root) {
   const files = [];
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
+    const relPath = path.relative(root, fullPath);
+    if (!shouldCopyTemplatePath(relPath)) continue;
     if (entry.isDirectory()) {
       files.push(...collectTemplateFiles(root, fullPath));
     } else if (entry.isFile()) {
-      files.push(path.relative(root, fullPath));
+      files.push(relPath);
     }
   }
   return files;
@@ -56,7 +133,10 @@ function templateFilePriority(platform, relPath) {
  * @param {"ios"|"android"} platform
  * @param {{ repoRootValue: string }} options
  */
-export function resolvePlatformTemplateRoot(platform, { repoRootValue }) {
+export function resolvePlatformTemplateRoot(
+  platform,
+  { repoRootValue, appCoreRootValue = defaultAppCoreRoot },
+) {
   const candidates = [
     path.join(repoRootValue, "packages", "app-core", "platforms", platform),
     path.join(
@@ -67,6 +147,7 @@ export function resolvePlatformTemplateRoot(platform, { repoRootValue }) {
       "platforms",
       platform,
     ),
+    path.join(appCoreRootValue, "platforms", platform),
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
@@ -97,6 +178,7 @@ export function syncPlatformTemplateFiles(
     const targetPath = path.join(targetRoot, relPath);
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.copyFileSync(source, targetPath);
+    fs.chmodSync(targetPath, fs.statSync(source).mode & 0o777);
     copied.push(relPath);
   }
   if (copied.length > 0) {

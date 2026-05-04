@@ -141,7 +141,7 @@ function stubSingleShot(
 	let i = 0;
 	const calls = { count: 0 };
 	(service as unknown as Record<string, unknown>).runSingleShotCore =
-		async function () {
+		async () => {
 			calls.count++;
 			const next = queue[i++];
 			if (!next) {

@@ -68,6 +68,9 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: bun run cap:sync:ios
 
+      - name: Overlay iOS native files
+        run: node packages/app-core/scripts/run-mobile-build.mjs ios-overlay
+
       - name: Install CocoaPods
         working-directory: ${{ env.APP_DIR }}/ios/App
         run: pod install

@@ -54,6 +54,24 @@ export function resolveRepoRoot(startDir = process.cwd()) {
   }
 }
 
-export function resolveRepoRootFromImportMeta(importMetaUrl) {
-  return resolveRepoRoot(path.dirname(fileURLToPath(importMetaUrl)));
+export function resolveRepoRootFromCwd({ cwd = process.cwd() } = {}) {
+  try {
+    return resolveRepoRoot(cwd);
+  } catch {
+    return path.resolve(cwd);
+  }
+}
+
+export function resolveRepoRootFromImportMeta(
+  importMetaUrl,
+  { fallbackToCwd = false, cwd = process.cwd() } = {},
+) {
+  try {
+    return resolveRepoRoot(path.dirname(fileURLToPath(importMetaUrl)));
+  } catch (error) {
+    if (fallbackToCwd) {
+      return resolveRepoRootFromCwd({ cwd });
+    }
+    throw error;
+  }
 }

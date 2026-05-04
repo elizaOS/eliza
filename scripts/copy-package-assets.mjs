@@ -16,6 +16,25 @@ if (!packageDirArg || assetPaths.length === 0) {
 
 const packageDir = path.resolve(repoRoot, packageDirArg);
 const distDir = path.join(packageDir, "dist");
+const EXCLUDED_ASSET_DIRS = new Set([
+  ".gradle",
+  ".kotlin",
+  ".turbo",
+  "artifacts",
+  "build",
+  "dist",
+  "node_modules",
+]);
+
+function shouldCopyAsset(src) {
+  const relative = path.relative(packageDir, src);
+  if (!relative || relative.startsWith("..")) {
+    return true;
+  }
+  return !relative
+    .split(path.sep)
+    .some((segment) => EXCLUDED_ASSET_DIRS.has(segment));
+}
 
 for (const assetPath of assetPaths) {
   const sourcePath = path.join(packageDir, assetPath);
@@ -27,5 +46,5 @@ for (const assetPath of assetPaths) {
   const relativeTarget = assetPath.replace(/^src\//, "");
   const targetPath = path.join(distDir, relativeTarget);
   mkdirSync(path.dirname(targetPath), { recursive: true });
-  cpSync(sourcePath, targetPath, { recursive: true });
+  cpSync(sourcePath, targetPath, { recursive: true, filter: shouldCopyAsset });
 }
