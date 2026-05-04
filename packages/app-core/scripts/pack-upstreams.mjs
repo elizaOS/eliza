@@ -119,6 +119,19 @@ async function packUpstreams() {
     }
 
     console.log(`\n[pack-upstreams] === Packing ${pkgJson.name} ===`);
+    const sourceTarballPath = path.join(
+      ARTIFACTS_DIR,
+      packageTarballName(pkgJson),
+    );
+    if (
+      process.env.PACK_UPSTREAMS_FORCE !== "1" &&
+      existsSync(sourceTarballPath)
+    ) {
+      console.log(
+        `[pack-upstreams] Reusing existing tarball at ${sourceTarballPath}`,
+      );
+      continue;
+    }
 
     if (pkgJson.scripts?.build) {
       console.log(`[pack-upstreams] Building ${pkgJson.name}...`);

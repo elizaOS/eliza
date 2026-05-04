@@ -97,14 +97,15 @@ interface AffinityEntry {
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
-const DIRECT_PROVIDER_BY_BACKEND: Readonly<Record<string, DirectAccountProvider>> =
-  {
-    anthropic: "anthropic-api",
-    openai: "openai-api",
-    deepseek: "deepseek-api",
-    zai: "zai-api",
-    moonshot: "moonshot-api",
-  };
+const DIRECT_PROVIDER_BY_BACKEND: Readonly<
+  Record<string, DirectAccountProvider>
+> = {
+  anthropic: "anthropic-api",
+  openai: "openai-api",
+  deepseek: "deepseek-api",
+  zai: "zai-api",
+  moonshot: "moonshot-api",
+};
 
 const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
   Partial<Record<DirectAccountProvider, string>>
@@ -636,9 +637,9 @@ export function getDefaultAccountPool(): AccountPool {
   return cachedDefaultPool;
 }
 
-export async function applyAccountPoolApiCredentials(opts: {
-  activeBackend?: string | null;
-} = {}): Promise<void> {
+export async function applyAccountPoolApiCredentials(
+  opts: { activeBackend?: string | null } = {},
+): Promise<void> {
   const pool = getDefaultAccountPool();
   const activeProvider = opts.activeBackend
     ? DIRECT_PROVIDER_BY_BACKEND[opts.activeBackend]
@@ -687,9 +688,9 @@ export async function applyAccountPoolApiCredentials(opts: {
     if (!activeProviderToken && activeProvider === "moonshot-api") {
       activeProviderToken = process.env.KIMI_API_KEY?.trim() || null;
     }
-    const openAiCompatibleBase =
-      activeProviderToken &&
-      OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider];
+    const openAiCompatibleBase = activeProviderToken
+      ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
+      : undefined;
     if (openAiCompatibleBase) {
       process.env.OPENAI_API_KEY = activeProviderToken;
       process.env.OPENAI_BASE_URL = openAiCompatibleBase;
@@ -760,9 +761,8 @@ let keepAliveRunning = false;
 export function startAccountPoolKeepAlive(
   intervalMs: number = KEEP_ALIVE_INTERVAL_MS,
 ): void {
-  const disabled = process.env.ELIZA_ACCOUNT_POOL_KEEPALIVE
-    ?.trim()
-    .toLowerCase();
+  const disabled =
+    process.env.ELIZA_ACCOUNT_POOL_KEEPALIVE?.trim().toLowerCase();
   if (
     disabled === "0" ||
     disabled === "false" ||

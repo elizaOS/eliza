@@ -27,6 +27,10 @@ import type {
   WsEventHandler,
 } from "./client-types";
 import { ApiError } from "./client-types";
+import {
+  fetchAgentTransport,
+  type AgentRequestTransport,
+} from "./transport";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -46,6 +50,7 @@ export class ElizaClient {
   private _userSetBase: boolean;
   private _token: string | null;
   private readonly clientId: string;
+  private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
   private wsHandlers = new Map<string, Set<WsEventHandler>>();
   private wsSendQueue: string[] = [];
@@ -150,6 +155,11 @@ export class ElizaClient {
    */
   getRestAuthToken(): string | null {
     return this.apiToken;
+  }
+
+  setRequestTransport(transport: AgentRequestTransport | null): void {
+    this.requestTransport = transport ?? fetchAgentTransport;
+    this.disconnectWs();
   }
 
   setToken(token: string | null): void {
@@ -281,7 +291,7 @@ export class ElizaClient {
       };
 
       try {
-        return await fetch(requestUrl, requestInit);
+        return await this.requestTransport.request(requestUrl, requestInit);
       } catch (err) {
         if (timedOut) {
           throw new ApiError({

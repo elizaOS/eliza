@@ -241,6 +241,34 @@ describe("useCloudState", () => {
     );
   });
 
+  it("uses direct Eliza Cloud auth on Capacitor native when the API base is the bundled web origin", async () => {
+    (
+      globalThis as { Capacitor?: { isNativePlatform: () => boolean } }
+    ).Capacitor = { isNativePlatform: () => true };
+    clientMock.getBaseUrl.mockReturnValue("https://localhost");
+    clientMock.cloudLoginDirect.mockResolvedValue({
+      ok: true,
+      sessionId: "mobile-session-localhost",
+      browserUrl:
+        "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-localhost",
+    });
+
+    const { result } = renderHook(() => useCloudState(createParams()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(clientMock.cloudLoginDirect).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai",
+    );
+    expect(clientMock.cloudLogin).not.toHaveBeenCalled();
+    expect(clientMock.getCloudStatus).not.toHaveBeenCalled();
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-localhost",
+    );
+  });
+
   it("keeps direct Eliza Cloud tokens client-side instead of persisting through a missing local backend", async () => {
     (
       globalThis as { Capacitor?: { isNativePlatform: () => boolean } }
