@@ -232,6 +232,13 @@ export function allocatePort(min: number, max: number, excluded: Set<number>): n
   return port;
 }
 
+export function readDockerHostPortFromMetadata(metadata: unknown): number | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const hostPort = (metadata as Record<string, unknown>).hostPort;
+  if (typeof hostPort !== "number") return null;
+  return Number.isInteger(hostPort) && hostPort > 0 ? hostPort : null;
+}
+
 // ---------------------------------------------------------------------------
 // Container Naming & Paths
 // ---------------------------------------------------------------------------

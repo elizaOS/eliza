@@ -124,8 +124,7 @@
     "zod": "^4.3.6",
     "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
-    "@solana/web3.js": "1.98.4",
-    "@noble/hashes": "2.2.0"
+    "@solana/web3.js": "1.98.4"
   },
   "overrides": {
     "@biomejs/biome": "2.4.14",
@@ -152,8 +151,7 @@
     "rimraf": "^6.0.1",
     "tsup": "8.5.1",
     "viem": "2.48.8",
-    "@solana/web3.js": "1.98.4",
-    "@noble/hashes": "2.2.0"
+    "@solana/web3.js": "1.98.4"
   },
   "patchedDependencies": {
     "@orca-so/common-sdk@0.7.0": "patches/@orca-so%2Fcommon-sdk@0.7.0.patch",

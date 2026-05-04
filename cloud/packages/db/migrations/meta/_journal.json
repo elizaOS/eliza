@@ -708,6 +708,13 @@
       "when": 1777801700000,
       "tag": "0104_dexscreener_proxy_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1777801800000,
+      "tag": "0105_managed_domains_cloudflare_provider",
+      "breakpoints": true
     }
   ]
 }

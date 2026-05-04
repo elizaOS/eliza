@@ -40,6 +40,36 @@ export const containersEnv = {
     );
   },
 
+  /** Username used for Docker registry pulls on container nodes. */
+  registryUsername(): string | undefined {
+    return pick(
+      process.env.CONTAINERS_REGISTRY_USERNAME,
+      process.env.ELIZA_APP_IMAGE_REGISTRY_USERNAME,
+      process.env.GHCR_USERNAME,
+      process.env.GITHUB_ACTOR,
+    );
+  },
+
+  /** Token used for Docker registry pulls on container nodes. */
+  registryToken(): string | undefined {
+    return pick(
+      process.env.CONTAINERS_REGISTRY_TOKEN,
+      process.env.ELIZA_APP_IMAGE_REGISTRY_TOKEN,
+      process.env.GHCR_TOKEN,
+      process.env.GITHUB_TOKEN,
+      process.env.GH_TOKEN,
+      process.env.CR_PAT,
+    );
+  },
+
+  /** Filesystem path to a Docker registry token for container node pulls. */
+  registryTokenFile(): string | undefined {
+    return pick(
+      process.env.CONTAINERS_REGISTRY_TOKEN_FILE,
+      process.env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE,
+    );
+  },
+
   /**
    * Default agent image when a caller asks for the canonical Eliza agent
    * flavor without specifying a tag. Operators can pin a specific tag here

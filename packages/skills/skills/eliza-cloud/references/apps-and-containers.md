@@ -48,9 +48,9 @@ Do not default to a container just to get a backend if the built-in Cloud APIs a
 
 Current container flow in this repo:
 
-1. get temporary ECR credentials
-2. push a Docker image
-3. create a container with `ecr_image_uri`
+1. push a Docker image to GHCR, Docker Hub, or another registry Cloud can pull from
+2. create a container with the image reference in `image`
+3. set runtime env such as `PORT`, `ELIZA_APP_ID`, and the public Cloud URL
 4. poll status until it is running
 5. read logs/metrics or attach domains as needed
 

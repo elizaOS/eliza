@@ -130,9 +130,7 @@ afterEach(() => {
 describe("CliLoginContent — race condition on auth flicker", () => {
   it("renders success once the API resolves, even if auth flickered during the in-flight POST", async () => {
     render(
-      <MemoryRouter
-        initialEntries={["/auth/cli-login?session=test-session-id"]}
-      >
+      <MemoryRouter initialEntries={["/auth/cli-login?session=test-session-id"]}>
         <CliLoginPage />
       </MemoryRouter>,
     );

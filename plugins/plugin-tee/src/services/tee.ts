@@ -6,7 +6,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
-import type { DeriveKeyResponse } from "@phala/dstack-sdk";
+import type { GetTlsKeyResponse as DeriveKeyResponse } from "@phala/dstack-sdk";
 import type { Keypair } from "@solana/web3.js";
 import type { PrivateKeyAccount } from "viem";
 import { PhalaDeriveKeyProvider } from "../providers/deriveKey";
