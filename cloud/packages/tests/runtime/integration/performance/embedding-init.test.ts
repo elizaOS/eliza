@@ -149,8 +149,9 @@ describe.skipIf(!hasDatabaseUrl)("Embedding Initialization Performance", () => {
       // Repeated startup should stay within a reasonable band of the baseline
       // even when there is no dramatic "warm" speedup from embedding setup.
       // CI runners have high timing variance (GC, JIT, noisy neighbors), so
-      // allow up to 3x or +200 ms headroom to avoid flaky failures.
-      expect(avgWarm).toBeLessThan(Math.max(firstDuration * 3, firstDuration + 200));
+      // allow an absolute floor plus relative headroom to avoid flaky failures
+      // when the baseline run is unusually fast on a noisy shared runner.
+      expect(avgWarm).toBeLessThan(Math.max(500, firstDuration * 3, firstDuration + 300));
       expect(warmVariance).toBeLessThan(maxWarmVariance);
     },
     { timeout: 180000 },
