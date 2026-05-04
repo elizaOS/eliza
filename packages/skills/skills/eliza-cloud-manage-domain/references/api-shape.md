@@ -71,4 +71,3 @@ Delete:
 
 DNS CRUD only works for Cloudflare-registered domains managed by Cloud.
 External domains return 409 and must be edited at the user's DNS provider.
-

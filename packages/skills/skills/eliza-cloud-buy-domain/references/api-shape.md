@@ -73,4 +73,3 @@ needed unless the response includes a new `debited` object.
 
 Use this after an app build to offer one or two options. Prefer `.com`,
 `.io`, `.dev`, and `.app`, sorted by total yearly price.
-

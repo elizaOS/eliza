@@ -12,4 +12,3 @@ Use Cloud API state plus direct DNS/HTTP checks. Do not rely on search results
 or registrar landing pages for live status.
 
 Never detach a domain or delete DNS records without explicit confirmation.
-

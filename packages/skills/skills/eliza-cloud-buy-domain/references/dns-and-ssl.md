@@ -23,4 +23,3 @@ dig +short myapp.com
 
 Do not use registrar search pages or web snippets to decide whether a domain
 was bought. Use the Cloud API and direct DNS/HTTP checks.
-
