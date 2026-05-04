@@ -92,7 +92,7 @@ For frontend, ship a page that:
 1. Starts the Eliza Cloud app-auth flow with `/app-auth/authorize`
 2. Stores the returned user token after validating `state`
 3. Posts user prompts to your same-origin chat route with the user token
-3. Renders streaming responses
+4. Renders streaming responses
 
 The frontend can be served by the same container or by any static host pointing at the same domain — the cloud doesn't care.
 
