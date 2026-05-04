@@ -5,7 +5,7 @@
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,

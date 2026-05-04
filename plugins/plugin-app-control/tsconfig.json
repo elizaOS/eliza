@@ -8,7 +8,7 @@
 		"skipLibCheck": true,
 		"declaration": true,
 		"declarationMap": true,
-		"ignoreDeprecations": "5.0",
+		"ignoreDeprecations": "6.0",
 		"outDir": "./dist",
 		"rootDir": "../../../",
 		"lib": ["ES2022", "DOM"],
