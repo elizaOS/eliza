@@ -475,8 +475,11 @@ async function buildWeb() {
 async function ensurePlatform(platform) {
   const dir = platform === "android" ? androidDir : iosDir;
   if (!fs.existsSync(dir)) {
-    console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
-    await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+    const copied = syncPlatformTemplateFiles(platform);
+    if (copied.length === 0) {
+      console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
+      await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+    }
   }
   if (!isCapacitorPlatformReady(platform)) {
     syncPlatformTemplateFiles(platform);
@@ -693,13 +696,30 @@ export function injectAospAssetThinning(content) {
   return content;
 }
 
-function patchCapacitorBarcodeScannerGradle() {
-  const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
+const ANDROID_OFFICIAL_CAPACITOR_PACKAGES = [
+  "@capacitor/app",
+  "@capacitor/barcode-scanner",
+  "@capacitor/browser",
+  "@capacitor/haptics",
+  "@capacitor/keyboard",
+  "@capacitor/preferences",
+  "@capacitor/push-notifications",
+  "@capacitor/status-bar",
+];
+
+function patchInstalledCapacitorPluginGradleForAgp9(pkgName) {
+  const pkgRel = resolvePackagePath(pkgName, androidDir);
   if (!pkgRel) return;
   patchGradleFileForAgp9(
     path.resolve(androidDir, pkgRel, "android", "build.gradle"),
-    "@capacitor/barcode-scanner",
+    pkgName,
   );
+}
+
+function patchOfficialCapacitorGradleForAgp9() {
+  for (const pkgName of ANDROID_OFFICIAL_CAPACITOR_PACKAGES) {
+    patchInstalledCapacitorPluginGradleForAgp9(pkgName);
+  }
 }
 
 function patchLlamaCppCapacitorGradle() {
@@ -1738,7 +1758,7 @@ function patchAndroidGradle() {
     }
   }
 
-  patchCapacitorBarcodeScannerGradle();
+  patchOfficialCapacitorGradleForAgp9();
   patchLlamaCppCapacitorGradle();
   patchNativePluginGradleForAgp9();
 
