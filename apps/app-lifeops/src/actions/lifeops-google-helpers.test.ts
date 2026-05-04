@@ -9,12 +9,14 @@ vi.mock("@elizaos/agent/security/access", () => ({
   hasOwnerAccess: hasOwnerAccessMock,
 }));
 
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+let hasLifeOpsAccess: typeof import("./lifeops-google-helpers.js").hasLifeOpsAccess;
 
 describe("hasLifeOpsAccess", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     hasOwnerAccessMock.mockReset();
     hasOwnerAccessMock.mockResolvedValue(true);
+    ({ hasLifeOpsAccess } = await import("./lifeops-google-helpers.js"));
   });
 
   it("denies messages without a concrete sender", async () => {

@@ -3,8 +3,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+
+const helperDir = path.dirname(fileURLToPath(import.meta.url));
 
 export interface TestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
@@ -44,6 +47,36 @@ function getPendingTrajectoryWrites(service: unknown): Promise<void>[] {
   return Array.from(writeQueues.values()).filter(
     (pending): pending is Promise<void> => pending instanceof Promise,
   );
+}
+
+async function importPluginSql(): Promise<Plugin> {
+  try {
+    const { default: pluginSql } = await import("@elizaos/plugin-sql");
+    return pluginSql as Plugin;
+  } catch (packageError) {
+    const fallbackPath = path.resolve(
+      helperDir,
+      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+    );
+    try {
+      const { default: pluginSql } = await import(
+        pathToFileURL(fallbackPath).href
+      );
+      return pluginSql as Plugin;
+    } catch (fallbackError) {
+      const packageMessage =
+        packageError instanceof Error
+          ? packageError.message
+          : String(packageError);
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : String(fallbackError);
+      throw new Error(
+        `Failed to import @elizaos/plugin-sql. Package import: ${packageMessage}; fallback ${fallbackPath}: ${fallbackMessage}`,
+      );
+    }
+  }
 }
 
 async function flushPendingTrajectoryWrites(
@@ -94,8 +127,7 @@ export async function createTestRuntime(
     enableAutonomy: false,
   });
 
-  const { default: pluginSql } = await import("@elizaos/plugin-sql");
-  await runtime.registerPlugin(pluginSql);
+  await runtime.registerPlugin(await importPluginSql());
   for (const plugin of options?.plugins ?? []) {
     await runtime.registerPlugin(plugin);
   }

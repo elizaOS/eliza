@@ -149,3 +149,43 @@ describe("buildSpawnConfig", () => {
     expect(config.adapterConfig?.approvalPreset).toBeUndefined();
   });
 });
+
+describe("Claude bypass permission handling", () => {
+  it("selects the affirmative bypass option with explicit keys", async () => {
+    const captured: Array<{ sessionId: string; rule: AutoResponseRule }> = [];
+    const manager = {
+      addAutoResponseRule(sessionId: string, rule: AutoResponseRule) {
+        captured.push({ sessionId, rule });
+      },
+    };
+
+    await pushDefaultRules(
+      {
+        manager: manager as never,
+        usingBunWorker: false,
+        runtime: createRuntime(),
+        log: () => undefined,
+      },
+      "session-1",
+      "claude",
+    );
+
+    const bypassRule = captured.find(({ rule }) =>
+      /Claude Bypass Permissions dialog/i.test(rule.description ?? ""),
+    );
+
+    expect(bypassRule).toMatchObject({
+      sessionId: "session-1",
+      rule: {
+        responseType: "keys",
+        keys: ["2", "enter"],
+        safe: true,
+      },
+    });
+    expect(
+      bypassRule?.rule.pattern.test(
+        "WARNING: Bypass Permissions mode. Do you accept all responsibility?",
+      ),
+    ).toBe(true);
+  });
+});

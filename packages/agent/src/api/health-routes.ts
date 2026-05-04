@@ -12,6 +12,8 @@ import { resolveCloudApiKey } from "./wallet-rpc.js";
 interface PluginEntryLike {
   enabled: boolean;
   configured: boolean;
+  isActive?: boolean;
+  loadError?: string | null;
 }
 
 interface AgentStartupDiagnostics {
@@ -413,10 +415,10 @@ export async function handleHealthRoutes(
       ? Math.floor((Date.now() - state.startedAt) / 1000)
       : 0;
 
-    const loadedPlugins = state.plugins.filter((p) => p.enabled);
-    const failedPlugins = state.plugins.filter(
-      (p) => !p.enabled && !p.configured,
-    );
+    const loadedPluginCount = runtime?.plugins?.length
+      ? runtime.plugins.length
+      : state.plugins.filter((p) => p.enabled || p.isActive).length;
+    const failedPluginCount = state.plugins.filter((p) => p.loadError).length;
 
     let coordinatorStatus: "ok" | "not_wired" = "not_wired";
     try {
@@ -450,8 +452,8 @@ export async function handleHealthRoutes(
       runtime: runtime ? "ok" : "not_initialized",
       database: runtime ? "ok" : "unknown",
       plugins: {
-        loaded: loadedPlugins.length,
-        failed: failedPlugins.length,
+        loaded: loadedPluginCount,
+        failed: failedPluginCount,
       },
       coordinator: coordinatorStatus,
       connectors,
