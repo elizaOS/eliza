@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-skills",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-alpha.537",
   "description": "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure",
   "main": "dist/index.js",
   "type": "module",

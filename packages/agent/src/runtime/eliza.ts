@@ -3218,6 +3218,17 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
+  // 2h. Pump N8N_HOST + N8N_API_KEY into process.env for
+  //     @elizaos/plugin-n8n-workflow. Must run BEFORE
+  //     buildCharacterFromConfig — that function snapshots
+  //     `process.env.N8N_*` into character.secrets, which is what
+  //     `runtime.getSetting()` reads. Setting env after the snapshot would
+  //     leave the plugin with empty credentials.
+  await applyN8nConfigToEnv(
+    config,
+    config.cloud?.agentId?.trim() ?? "milady-runtime",
+  );
+
   // 3. Build elizaOS Character from Eliza config
   const character = buildCharacterFromConfig(config);
 
@@ -3298,13 +3309,9 @@ export async function startEliza(
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
 
-  // 5b. Pump N8N_HOST + N8N_API_KEY into process.env for
-  //     @elizaos/plugin-n8n-workflow. Must run AFTER applyCloudConfigToEnv
-  //     (2b above) and BEFORE plugin resolution so the n8n plugin's init()
-  //     reads populated env. The resolver mints a Cloud-scoped n8n token
-  //     when cloud is paired, and otherwise boots the local sidecar via
-  //     @elizaos/app-core/services/n8n-sidecar and waits for readiness.
-  await applyN8nConfigToEnv(config, config.cloud?.agentId?.trim() || agentId);
+  // 5b. (n8n env pump moved to step 2h, before buildCharacterFromConfig —
+  //     character.secrets is snapshotted from process.env at character-build
+  //     time, so the env must be populated before that runs.)
 
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
