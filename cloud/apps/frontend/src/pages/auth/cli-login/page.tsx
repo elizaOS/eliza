@@ -154,8 +154,6 @@ function CliLoginContent() {
     }
     completionFiredRef.current = true;
 
-    let active = true;
-
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), COMPLETE_TIMEOUT_MS);
 
@@ -178,11 +176,8 @@ function CliLoginContent() {
         const data = (await response.json()) as { keyPrefix: string };
         window.opener?.postMessage({ type: "eliza-cloud-auth-complete", sessionId }, "*");
 
-        if (active) {
-          setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
-        }
+        setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
       } catch (error) {
-        if (!active) return;
         const aborted = error instanceof DOMException && error.name === "AbortError";
         if (error instanceof ApiError && error.status === 401) {
           clearStaleStewardSession();
@@ -201,7 +196,6 @@ function CliLoginContent() {
     void completeCliLogin();
 
     return () => {
-      active = false;
       clearTimeout(timeout);
       if (!completionFiredRef.current) {
         abort.abort();
