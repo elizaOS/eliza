@@ -19,7 +19,7 @@ import {
   type Media,
   type UUID,
 } from "@elizaos/core";
-import { isPrivyWalletProvisioningEnabled } from "../services/external-bridge-state.js";
+
 import {
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,

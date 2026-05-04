@@ -638,7 +638,9 @@ const postGeneratedHandler = async ({
 	const optimizedResponseService = runtime.getService<OptimizedPromptService>(
 		OPTIMIZED_PROMPT_SERVICE,
 	);
+	const dynamicPrompt = await runtime.getCache<string>("core_prompt_messageHandlerTemplate");
 	const baselineResponseTemplate =
+		dynamicPrompt ||
 		runtime.character.templates?.messageHandlerTemplate ||
 		messageHandlerTemplate;
 	const prompt = composePromptFromState({
@@ -1384,7 +1386,6 @@ export const basicProviders = [
 	providers.evaluatorsProvider,
 	providers.providersProvider,
 	providers.recentMessagesProvider,
-	providers.timeProvider,
 	providers.uiContextProvider,
 	providers.worldProvider,
 ];

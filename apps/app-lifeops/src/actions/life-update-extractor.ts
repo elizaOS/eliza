@@ -1,5 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core";
+import { runExtractorPipeline } from "./extractor-pipeline.js";
 
 const VALID_CADENCE_KINDS = new Set([
   "once",
@@ -187,9 +188,6 @@ export async function extractUpdateFieldsWithLlm(args: {
 }): Promise<ExtractedUpdateFields> {
   const { runtime, intent, currentTitle, currentCadenceKind, currentWindows } =
     args;
-  if (typeof runtime.useModel !== "function") {
-    return { ...EMPTY_UPDATE_FIELDS };
-  }
 
   const prompt = [
     "The user wants to update an existing task/habit. Extract ONLY the fields they want to change.",
@@ -218,29 +216,22 @@ export async function extractUpdateFieldsWithLlm(args: {
     `User request: ${JSON.stringify(intent)}`,
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const raw = typeof result === "string" ? result : "";
-    const parsed = parseJSONObjectFromText(raw);
-    if (parsed) {
-      return buildUpdateFields(parsed);
-    }
-
-    const repairResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildRepairPrompt({
+  const { parsed } = await runExtractorPipeline({
+    runtime,
+    prompt,
+    parser: (raw) => {
+      const parsedObject = parseJSONObjectFromText(raw);
+      return parsedObject ? buildUpdateFields(parsedObject) : null;
+    },
+    buildRepairPrompt: (rawFirstPass) =>
+      buildRepairPrompt({
         intent,
         currentTitle,
         currentCadenceKind,
         currentWindows,
-        rawResponse: raw,
+        rawResponse: rawFirstPass,
       }),
-    });
-    const repairedRaw = typeof repairResult === "string" ? repairResult : "";
-    const repairedParsed = parseJSONObjectFromText(repairedRaw);
-    return repairedParsed
-      ? buildUpdateFields(repairedParsed)
-      : { ...EMPTY_UPDATE_FIELDS };
-  } catch {
-    return { ...EMPTY_UPDATE_FIELDS };
-  }
+  });
+
+  return parsed ?? { ...EMPTY_UPDATE_FIELDS };
 }

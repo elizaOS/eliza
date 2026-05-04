@@ -1,0 +1,166 @@
+{
+  "uuid": "00000000-0000-4000-8000-lifeopspresence",
+  "lastMigration": 33,
+  "name": "LifeOps Presence Signal Sources",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3011,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-lifeopspresence",
+      "type": "http",
+      "documentation": "HealthKit CLI sleep + biometrics summary mock — mirrors the JSON shape the helper at ELIZA_HEALTHKIT_CLI_PATH emits for the `daily` subcommand and feeds health-bridge.healthKitDailySummary.",
+      "method": "get",
+      "endpoint": "__mock/lifeops/presence/healthkit/daily",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-lifeopspresence",
+          "body": "{\"date\":\"2026-04-22\",\"steps\":8420,\"activeMinutes\":63,\"sleepHours\":7.4,\"heartRateAvg\":62,\"calories\":2180,\"distanceMeters\":6568,\"sleepStages\":[{\"stage\":\"in_bed\",\"startAt\":\"2026-04-21T23:25:00.000Z\",\"endAt\":\"2026-04-22T07:15:00.000Z\"},{\"stage\":\"core\",\"startAt\":\"2026-04-21T23:42:00.000Z\",\"endAt\":\"2026-04-22T03:10:00.000Z\"},{\"stage\":\"deep\",\"startAt\":\"2026-04-22T03:10:00.000Z\",\"endAt\":\"2026-04-22T04:05:00.000Z\"},{\"stage\":\"rem\",\"startAt\":\"2026-04-22T04:05:00.000Z\",\"endAt\":\"2026-04-22T05:30:00.000Z\"},{\"stage\":\"core\",\"startAt\":\"2026-04-22T05:30:00.000Z\",\"endAt\":\"2026-04-22T07:10:00.000Z\"},{\"stage\":\"awake\",\"startAt\":\"2026-04-22T07:10:00.000Z\",\"endAt\":\"2026-04-22T07:15:00.000Z\"}],\"biometrics\":{\"sampleAt\":\"2026-04-22T07:30:00.000Z\",\"heartRateBpm\":62,\"restingHeartRateBpm\":54,\"heartRateVariabilityMs\":71,\"respiratoryRate\":13,\"bloodOxygenPercent\":97}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000003-0000-4000-8000-lifeopspresence",
+      "type": "http",
+      "documentation": "ScreenTime per-app daily summaries mock — matches the LifeOpsScreenTimeDaily envelope ingested by service-mixin-screentime aggregation paths.",
+      "method": "get",
+      "endpoint": "__mock/lifeops/presence/screentime/daily",
+      "responses": [
+        {
+          "uuid": "00000004-0000-4000-8000-lifeopspresence",
+          "body": "{\"date\":\"2026-04-22\",\"items\":[{\"source\":\"app\",\"identifier\":\"com.tinyspeck.slackmacgap\",\"displayName\":\"Slack\",\"totalSeconds\":4980,\"sessionCount\":18},{\"source\":\"app\",\"identifier\":\"com.microsoft.VSCode\",\"displayName\":\"Visual Studio Code\",\"totalSeconds\":11460,\"sessionCount\":7},{\"source\":\"app\",\"identifier\":\"com.apple.MobileSMS\",\"displayName\":\"Messages\",\"totalSeconds\":1140,\"sessionCount\":22},{\"source\":\"website\",\"identifier\":\"github.com\",\"displayName\":\"github.com\",\"totalSeconds\":3600,\"sessionCount\":11},{\"source\":\"website\",\"identifier\":\"x.com\",\"displayName\":\"x.com\",\"totalSeconds\":1380,\"sessionCount\":6},{\"source\":\"app\",\"identifier\":\"com.apple.iphone.screen\",\"displayName\":\"iPhone Screen Time\",\"totalSeconds\":2820,\"sessionCount\":34}],\"totalSeconds\":25380,\"fetchedAt\":\"2026-04-22T20:00:00.000Z\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000005-0000-4000-8000-lifeopspresence",
+      "type": "http",
+      "documentation": "Mac IOUserActivity idle level + lock state mock — mirrors the JSON shape getPowerState in packages/app-core/platforms/electrobun/src/native/desktop.ts emits after parsing pmset / ioreg / CGSession output.",
+      "method": "get",
+      "endpoint": "__mock/lifeops/presence/desktop/power",
+      "responses": [
+        {
+          "uuid": "00000006-0000-4000-8000-lifeopspresence",
+          "body": "{\"observedAt\":\"2026-04-22T15:30:00.000Z\",\"platform\":\"darwin\",\"idleSeconds\":4,\"idleState\":\"active\",\"locked\":false,\"onBattery\":false,\"batteryPercent\":91,\"isCharging\":true,\"powerSource\":\"AC Power\",\"displaySleeping\":false,\"systemSleeping\":false,\"hidIdleTimeNs\":\"4000000000\",\"sessionId\":\"console-501\",\"loginwindowState\":\"unlocked\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000007-0000-4000-8000-lifeopspresence",
+      "type": "http",
+      "documentation": "Calendar busy window mock — read by sleep / awake fusion to surface meeting cadence as a presence signal. Mirrors the freebusy slice consumed by lifeops/google-calendar.ts when the awake-probability fusion adds calendar weighting.",
+      "method": "get",
+      "endpoint": "__mock/lifeops/presence/calendar/busy",
+      "responses": [
+        {
+          "uuid": "00000008-0000-4000-8000-lifeopspresence",
+          "body": "{\"timezone\":\"America/Los_Angeles\",\"windowStart\":\"2026-04-22T07:00:00.000Z\",\"windowEnd\":\"2026-04-23T07:00:00.000Z\",\"busy\":[{\"start\":\"2026-04-22T16:00:00.000Z\",\"end\":\"2026-04-22T16:30:00.000Z\",\"summary\":\"Standup\",\"calendarId\":\"primary\"},{\"start\":\"2026-04-22T18:30:00.000Z\",\"end\":\"2026-04-22T19:30:00.000Z\",\"summary\":\"Roadmap review\",\"calendarId\":\"primary\"},{\"start\":\"2026-04-22T20:30:00.000Z\",\"end\":\"2026-04-22T21:00:00.000Z\",\"summary\":\"1:1 with Moon\",\"calendarId\":\"primary\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000009-0000-4000-8000-lifeopspresence",
+      "type": "http",
+      "documentation": "Catalog of presence-day fixtures keyed by signal source. Returned to test harnesses so they can pre-flight which presence shapes are mocked.",
+      "method": "get",
+      "endpoint": "__mock/lifeops/presence/scenarios",
+      "responses": [
+        {
+          "uuid": "0000000a-0000-4000-8000-lifeopspresence",
+          "body": "{\"version\":\"2026-05-03\",\"scenario\":\"weekday-typical\",\"sampleCount\":24,\"activitySources\":[\"app_lifecycle\",\"page_visibility\",\"desktop_power\",\"desktop_interaction\",\"connector_activity\",\"imessage_outbound\",\"mobile_device\",\"mobile_health\"],\"healthSources\":[\"healthkit\",\"health_connect\",\"strava\",\"fitbit\",\"withings\",\"oura\"],\"transitions\":[{\"hour\":7,\"label\":\"wake\"},{\"hour\":12,\"label\":\"lunch_idle\"},{\"hour\":18,\"label\":\"gym\"},{\"hour\":23,\"label\":\"sleep\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ]
+}
