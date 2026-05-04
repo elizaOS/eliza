@@ -13,6 +13,26 @@ function getBrowserOrigin(): string | undefined {
   return typeof location?.origin === "string" ? location.origin : undefined;
 }
 
+function getBrowserHostname(): string | undefined {
+  const location = (globalThis as typeof globalThis & { location?: { hostname?: unknown } })
+    .location;
+  return typeof location?.hostname === "string" ? location.hostname.toLowerCase() : undefined;
+}
+
+/**
+ * Hostnames where the browser SPA is co-hosted with a Cloudflare Pages
+ * deployment that proxies `/steward/*` to the Workers API. We bypass the
+ * proxy and call `api.elizacloud.ai` directly so login keeps working
+ * even when the Pages Functions bundle is missing or broken (the SPA
+ * lives behind a CDN we do not always control).
+ */
+const ELIZA_CLOUD_PROXIED_HOSTS = new Set([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+]);
+const ELIZA_CLOUD_DIRECT_API = "https://api.elizacloud.ai";
+
 export type StewardUrlEnv = Record<string, unknown>;
 
 function envString(env: StewardUrlEnv, key: string): string | undefined {
@@ -23,6 +43,14 @@ function envString(env: StewardUrlEnv, key: string): string | undefined {
 export function resolveBrowserStewardApiUrl(origin?: string): string {
   if (isUsableUrl(process.env.NEXT_PUBLIC_STEWARD_API_URL)) {
     return trimTrailingSlash(process.env.NEXT_PUBLIC_STEWARD_API_URL);
+  }
+
+  // When the SPA is loaded from a known elizacloud.ai host, skip the
+  // same-origin Pages Functions proxy and hit the Workers API directly.
+  // The Workers API allowlists these origins for CORS + credentials.
+  const browserHost = getBrowserHostname();
+  if (browserHost && ELIZA_CLOUD_PROXIED_HOSTS.has(browserHost)) {
+    return `${ELIZA_CLOUD_DIRECT_API}${STEWARD_PREFIX}`;
   }
 
   const resolvedOrigin = origin || getBrowserOrigin();
