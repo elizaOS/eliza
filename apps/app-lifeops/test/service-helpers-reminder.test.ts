@@ -484,7 +484,7 @@ describe("reminder escalation profiles", () => {
     const state = buildReminderEnforcementState(
       new Date("2026-04-29T06:21:00.000Z"),
       "UTC",
-      { kind: "morning_routine", metadata: {} },
+      { kind: "routine", metadata: {} },
       { voice: true },
     );
 
