@@ -20,6 +20,7 @@ import { logger } from '@elizaos/core';
 import type { N8nNode, N8nWorkflow, NodeDefinition, RuntimeContext } from '../types/index';
 import { loadOutputSchema, loadTriggerOutputSchema, parseExpressions } from './outputSchema';
 import { inferSyntheticOutputSchema } from './inferSyntheticOutputSchema';
+import { isCatalogClarification } from './clarification';
 
 export type RepairKind =
   | 'typeVersionClamp'
@@ -449,8 +450,7 @@ function applyRequiredParameterPreflight(
   workflow._meta = workflow._meta ?? {};
   const existing = workflow._meta.requiresClarification ?? [];
   // Avoid duplicate-suffix clutter from prior catalog passes.
-  const SUFFIX = '— please provide this value or clarify your requirements';
-  const nonCatalog = existing.filter((c) => !c.endsWith(SUFFIX));
+  const nonCatalog = existing.filter((c) => !isCatalogClarification(c));
   workflow._meta.requiresClarification = [...nonCatalog, ...clarifications];
 }
 
