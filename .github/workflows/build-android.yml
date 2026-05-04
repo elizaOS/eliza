@@ -54,7 +54,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('packages/app/android/**/*.gradle*', 'packages/app/android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('packages/app-core/platforms/android/**/*.gradle*', 'packages/app-core/platforms/android/gradle/wrapper/gradle-wrapper.properties', 'packages/app/capacitor.config.ts') }}
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Install dependencies
@@ -70,7 +70,7 @@ jobs:
 
       - name: Sync Capacitor Android
         working-directory: ${{ env.APP_DIR }}
-        run: bunx capacitor sync android
+        run: bun run cap:sync:android
 
       - name: Override Gradle JDK path for CI
         working-directory: ${{ env.APP_DIR }}/android

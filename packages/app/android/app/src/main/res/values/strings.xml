@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">elizaOS</string>
-    <string name="title_activity_main">elizaOS</string>
-    <string name="package_name">ai.elizaos.app</string>
-    <string name="custom_url_scheme">elizaos</string>
-</resources>
