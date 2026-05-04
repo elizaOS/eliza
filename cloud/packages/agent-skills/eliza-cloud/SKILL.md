@@ -131,7 +131,7 @@ app-specific chat endpoint:
 - Browser starts sign-in at `/app-auth/authorize` with `app_id`, `redirect_uri`, and `state`.
 - Browser stores only the returned user token, never an owner API key.
 - Browser calls a same-origin proxy with `x-user-token`.
-- Proxy forwards to `/api/v1/apps/:id/chat` with `Authorization: Bearer <user_jwt>`, `x-app-id`, and optional `x-affiliate-code`.
+- Proxy forwards to `/api/v1/apps/:id/chat` with `Authorization: Bearer <user_jwt>` and optional `x-affiliate-code`; the app id belongs in the route path.
 - Enable monetization with `PUT /api/v1/apps/:id/monetization` using the current markup/share schema.
 
 Static-hosted apps do not need a Cloud container unless they have their own
