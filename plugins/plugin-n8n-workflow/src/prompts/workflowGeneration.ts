@@ -350,7 +350,9 @@ The host provides real values for the user's connectors in the optional \`## Run
 
 When the runtime gives you a Discord guild id or channel id, write it verbatim as a JSON string of digits — e.g. \`"123456789012345678"\` — NOT as an unquoted number. Discord snowflake ids exceed JavaScript's safe-integer range (~17–20 digits), and n8n's Discord node expects them as JSON strings. \`"#general"\` is NOT a valid \`channelId\`. When the runtime gives you the user's Gmail email, write the email.
 
-If a fact is genuinely missing AND the runtime did not provide it, add a question to \`_meta.requiresClarification\` rather than emitting a placeholder.
+**Display-name → id resolution is mandatory when a fact line covers it.** When the user names a server, channel, chat, or contact by display name (e.g. *Cozy Devs*, *#general*, *#alerts*), search the \`## Runtime Facts\` block for a matching entry and use the id from that fact line verbatim. Compare names case-insensitively and ignore a leading \`#\` on channel names. Never emit a placeholder, a guessed id, or the display name itself as the parameter value when a fact line resolves it. If the user said *"Cozy Devs"* and a fact reads \`Discord guild "Cozy Devs" (id 1234567890) channels: #general (id 9876543210), …\`, then \`guildId\` is \`"1234567890"\` and \`channelId\` for *#general* is \`"9876543210"\` — no exceptions.
+
+If a fact is genuinely missing AND the runtime did not provide it, do NOT guess. Emit a structured \`ClarificationRequest\` in \`_meta.requiresClarification\` (see "Handling Incomplete or Ambiguous Prompts" below) and stop populating the dependent node parameter rather than emitting a placeholder.
 
 ---
 
@@ -407,11 +409,33 @@ When the user prompt lacks specific details:
    - Critical parameters are missing AND cannot be reasonably inferred (e.g. "send data" — send where? what data?)
    - Multiple fundamentally different interpretations exist (e.g. "connect my CRM" — which CRM? what operation?)
    - The request names a service but gives no indication of what action to perform on it
+   - The user references a target (server, channel, chat, contact) by name OR generically (*"Discord"*, *"my channel"*) and \`## Runtime Facts\` does NOT contain a matching entry
 
 5. **Do NOT use \`requiresClarification\`** for:
    - Minor details that have sensible defaults (schedule frequency, email subject, timezone)
    - Preferences that can be changed later (formatting, specific field mappings)
    - Things you can reasonably infer from context
+   - Targets you can resolve directly from \`## Runtime Facts\` — those MUST be filled in, not asked about
+
+6. **Structured ClarificationRequest format (preferred when a specific node parameter is unresolved).** Each item in \`requiresClarification\` may be a free-text string OR an object of the form:
+
+\`\`\`json
+{
+  "kind": "target_channel" | "target_server" | "recipient" | "value" | "free_text",
+  "platform": "discord" | "slack" | "telegram" | "gmail" | "...",
+  "scope": { "guildId": "<numeric id>" },
+  "question": "Short user-facing question.",
+  "paramPath": "nodes[\"Discord Send\"].parameters.channelId"
+}
+\`\`\`
+
+  - Use \`kind: "target_server"\` when the platform is known but the server/guild/workspace is not.
+  - Use \`kind: "target_channel"\` when the server is known (set \`scope.guildId\` to the resolved guild id) but the specific channel is ambiguous or missing.
+  - Use \`kind: "recipient"\` for an unresolved DM target / email address.
+  - Use \`kind: "value"\` for any other unresolved scalar parameter.
+  - Use \`kind: "free_text"\` (or a plain string) when no specific node parameter maps to the missing information.
+  - \`paramPath\` MUST point at the exact JSON path inside the workflow draft where the user's choice should land. Use bracketed string syntax for keys with spaces or quotes (\`nodes["Discord Send"].parameters.channelId\`). Stop populating that parameter — leave it absent — so the host can patch it after the user picks.
+  - Always include a \`question\` short enough to fit above a row of buttons (≤ 60 chars when possible).
 
 **Examples:**
 
@@ -423,6 +447,33 @@ Prompt: "automate my business"
 
 Prompt: "connect Slack and Gmail"
 → Ambiguous action. \`requiresClarification: ["What should happen between Slack and Gmail? For example: forward emails to Slack, post Slack messages via email, etc."]\`. Still generate a best-guess workflow.
+
+Prompt: "post a daily reminder to Cozy Devs" (Runtime Facts has Cozy Devs guild with channels #general, #alerts)
+→ Server resolves to the Cozy Devs guild id, but channel is ambiguous. Use \`guildId\` from facts; leave \`channelId\` unset and emit:
+
+\`\`\`json
+{
+  "kind": "target_channel",
+  "platform": "discord",
+  "scope": { "guildId": "1234567890" },
+  "question": "Which channel in Cozy Devs?",
+  "paramPath": "nodes[\"Discord Send\"].parameters.channelId"
+}
+\`\`\`
+
+Prompt: "send me a daily reminder on Discord" (Runtime Facts lists user's Discord guilds)
+→ No specific server named. Emit a server-picker clarification first:
+
+\`\`\`json
+{
+  "kind": "target_server",
+  "platform": "discord",
+  "question": "Which Discord server should I post to?",
+  "paramPath": "nodes[\"Discord Send\"].parameters.guildId"
+}
+\`\`\`
+
+  Then a chained channel-picker clarification with \`scope.guildId\` and \`paramPath\` for \`channelId\`. Do not invent ids; the host will patch both after the user picks.
 
 ---
 
