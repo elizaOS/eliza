@@ -3,6 +3,7 @@
     "target": "ES2021",
     "module": "ESNext",
     "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "lib": ["ES2021.String"],
