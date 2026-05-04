@@ -1062,22 +1062,29 @@ export class HetznerContainersClient {
         ).trim();
 
         if (status === "healthy" || status === "running") {
+          const checkedAt = new Date();
           await dbWrite
             .update(containersTable)
             .set({
               status: "running",
-              last_deployed_at: new Date(),
-              updated_at: new Date(),
+              deployment_log: `Container is running on ${meta.nodeId}.`,
+              error_message: null,
+              last_deployed_at: checkedAt,
+              last_health_check: checkedAt,
+              updated_at: checkedAt,
             })
             .where(eq(containersTable.id, row.id));
           running += 1;
         } else if (status === "exited" || status === "dead") {
+          const checkedAt = new Date();
           await dbWrite
             .update(containersTable)
             .set({
               status: "failed",
+              deployment_log: `Container is ${status}.`,
               error_message: `Container is ${status}`,
-              updated_at: new Date(),
+              last_health_check: checkedAt,
+              updated_at: checkedAt,
             })
             .where(eq(containersTable.id, row.id));
           failed += 1;

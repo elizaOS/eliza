@@ -214,7 +214,16 @@ app.post("/api/v1/admin/docker-nodes/:nodeId/health-check", (c) =>
 app.post("/api/v1/containers", (c) =>
   handle(c, async (auth) => {
     const body = await readJsonObject(c);
-    const data = await client.createContainer(toCreateInput(body, auth));
+    const created = await client.createContainer(toCreateInput(body, auth));
+
+    await client.monitorInflight().catch((error) => {
+      console.warn(
+        "[container-control-plane] immediate deployment monitor failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+
+    const data = (await client.getContainer(created.id, auth.organizationId)) ?? created;
     return c.json(
       {
         success: true,
