@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -31,6 +32,19 @@ function run(command, args, options = {}) {
   if (result.status !== 0) {
     fail(`${rendered} failed with exit code ${result.status ?? 1}`);
   }
+}
+
+function runAllowFailure(command, args, options = {}) {
+  const rendered = [command, ...args].join(" ");
+  console.log(`[build-patched-electrobun-cli] ${rendered}`);
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+    ...options,
+  });
+  if (result.signal) {
+    fail(`${rendered} failed with signal ${result.signal}`);
+  }
+  return result.status ?? 1;
 }
 
 function resolveElectrobunDir() {
@@ -173,10 +187,129 @@ export function getTemplate() {
   );
 }
 
+function resolveBuildTarget(value) {
+  const normalized =
+    value ||
+    (process.platform === "win32"
+      ? "windows-x64"
+      : process.platform === "darwin"
+        ? `macos-${process.arch === "arm64" ? "arm64" : "x64"}`
+        : `linux-${process.arch === "arm64" ? "arm64" : "x64"}`);
+
+  switch (normalized) {
+    case "windows-x64":
+    case "win-x64":
+      return {
+        artifactName: "windows-x64",
+        bunTarget: "bun-windows-x64-baseline",
+        fallbackBunTarget: "bun-windows-x64",
+        executableName: "electrobun.exe",
+      };
+    case "macos-arm64":
+      return {
+        artifactName: normalized,
+        bunTarget: "bun-darwin-arm64",
+        executableName: "electrobun",
+      };
+    case "macos-x64":
+      return {
+        artifactName: normalized,
+        bunTarget: "bun-darwin-x64",
+        executableName: "electrobun",
+      };
+    case "linux-arm64":
+      return {
+        artifactName: normalized,
+        bunTarget: "bun-linux-arm64",
+        executableName: "electrobun",
+      };
+    case "linux-x64":
+      return {
+        artifactName: normalized,
+        bunTarget: "bun-linux-x64",
+        executableName: "electrobun",
+      };
+    default:
+      fail(`Unsupported Electrobun CLI build target: ${normalized}`);
+  }
+}
+
+function resolveTargetPaths(upstreamPackageDir, installedElectrobunDir, target) {
+  return {
+    BUILD_BINARY: path.join(
+      upstreamPackageDir,
+      "src",
+      "cli",
+      "build",
+      target.executableName,
+    ),
+    BUN_BINARY: path.join(installedElectrobunDir, "bin", target.executableName),
+    CACHE_BINARY: path.join(
+      installedElectrobunDir,
+      ".cache",
+      target.executableName,
+    ),
+  };
+}
+
+function buildPatchedCli(upstreamPackageDir, buildTarget, targetPaths, env) {
+  console.log(
+    `[electrobun-build] Bun entry: ${path.join(upstreamPackageDir, "src", "cli", "index.ts")}`,
+  );
+  console.log(
+    `[electrobun-build] Target ${buildTarget.artifactName}: ${buildTarget.bunTarget}`,
+  );
+
+  mkdirSync(path.dirname(targetPaths.BUILD_BINARY), { recursive: true });
+  const buildArgs = [
+    "build",
+    "src/cli/index.ts",
+    "--compile",
+    `--target=${buildTarget.bunTarget}`,
+    "--outfile",
+    targetPaths.BUILD_BINARY,
+  ];
+  const status = runAllowFailure("bun", buildArgs, {
+    cwd: upstreamPackageDir,
+    env,
+  });
+
+  if (status !== 0) {
+    if (!buildTarget.fallbackBunTarget) {
+      fail(`bun build failed with exit code ${status}`);
+    }
+
+    console.warn(
+      `[build-patched-electrobun-cli] Bun CLI build failed for ${buildTarget.bunTarget}; retrying with ${buildTarget.fallbackBunTarget}.`,
+    );
+    const fallbackStatus = runAllowFailure(
+      "bun",
+      buildArgs.map((arg) =>
+        arg === `--target=${buildTarget.bunTarget}`
+          ? `--target=${buildTarget.fallbackBunTarget}`
+          : arg,
+      ),
+      {
+        cwd: upstreamPackageDir,
+        env,
+      },
+    );
+    if (fallbackStatus !== 0) {
+      fail(`bun fallback build failed with exit code ${fallbackStatus}`);
+    }
+    console.log("[build-patched-electrobun-cli] Bun CLI fallback succeeded");
+  }
+
+  if (!existsSync(targetPaths.BUILD_BINARY)) {
+    fail(`Expected compiled CLI at ${targetPaths.BUILD_BINARY}`);
+  }
+}
+
 function main() {
   const installedElectrobunDir = process.argv[2]
     ? path.resolve(process.argv[2])
     : resolveElectrobunDir();
+  const buildTarget = resolveBuildTarget(process.argv[3]);
   const installedManifestPath = path.join(
     installedElectrobunDir,
     "package.json",
@@ -235,51 +368,44 @@ function main() {
     },
   });
 
-  run(
-    "bun",
-    [
-      "build",
-      "src/cli/index.ts",
-      "--compile",
-      "--target=bun-windows-x64-baseline",
-      "--outfile",
-      "src/cli/build/electrobun",
-    ],
-    {
-      cwd: upstreamPackageDir,
-      env: {
-        ...process.env,
-        BUN_INSTALL_CACHE_DIR: path.join(tempRoot, ".bun-install-cache"),
-      },
-    },
-  );
-
-  const compiledCliPath = path.join(
+  const buildEnv = {
+    ...process.env,
+    BUN_INSTALL_CACHE_DIR: path.join(tempRoot, ".bun-install-cache"),
+  };
+  const targetPaths = resolveTargetPaths(
     upstreamPackageDir,
-    "src",
-    "cli",
-    "build",
-    "electrobun.exe",
+    installedElectrobunDir,
+    buildTarget,
   );
-  if (!existsSync(compiledCliPath)) {
-    fail(`Expected compiled CLI at ${compiledCliPath}`);
-  }
+  buildPatchedCli(upstreamPackageDir, buildTarget, targetPaths, buildEnv);
 
+  const targetBinPath = targetPaths.BUN_BINARY;
+  const targetCachePath = targetPaths.CACHE_BINARY;
   const installedBinPath = path.join(
     installedElectrobunDir,
     "bin",
-    "electrobun.exe",
+    buildTarget.executableName,
   );
   const installedCachePath = path.join(
     installedElectrobunDir,
     ".cache",
-    "electrobun.exe",
+    buildTarget.executableName,
   );
+  if (
+    installedBinPath !== targetBinPath ||
+    installedCachePath !== targetCachePath
+  ) {
+    fail("Resolved Electrobun install paths are inconsistent.");
+  }
 
   mkdirSync(path.dirname(installedBinPath), { recursive: true });
   mkdirSync(path.dirname(installedCachePath), { recursive: true });
-  copyFileSync(compiledCliPath, installedBinPath);
-  copyFileSync(compiledCliPath, installedCachePath);
+  copyFileSync(targetPaths.BUILD_BINARY, installedBinPath);
+  copyFileSync(targetPaths.BUILD_BINARY, installedCachePath);
+  if (!buildTarget.executableName.endsWith(".exe")) {
+    chmodSync(installedBinPath, 0o755);
+    chmodSync(installedCachePath, 0o755);
+  }
 
   console.log(
     `[build-patched-electrobun-cli] Installed patched CLI to ${installedBinPath}`,
