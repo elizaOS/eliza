@@ -235,9 +235,9 @@ export function applyCloudConfigToEnv(
   return result;
 }
 
-export function applyN8nConfigToEnv(
+export async function applyN8nConfigToEnv(
   ...args: Parameters<typeof upstreamApplyN8nConfigToEnv>
-): ReturnType<typeof upstreamApplyN8nConfigToEnv> {
+): Promise<void> {
   syncBrandEnvAliases();
   // On mobile (iOS / Android) the local n8n sidecar cannot run — spawning a
   // child process via node:child_process is unavailable. Treat
@@ -250,13 +250,12 @@ export function applyN8nConfigToEnv(
       config?.n8n?.localEnabled === false
         ? config
         : { ...config, n8n: { ...(config.n8n ?? {}), localEnabled: false } };
-    const result = upstreamApplyN8nConfigToEnv(mobileConfig, agentId);
+    await upstreamApplyN8nConfigToEnv(mobileConfig, agentId);
     syncBrandEnvAliases();
-    return result;
+    return;
   }
-  const result = upstreamApplyN8nConfigToEnv(...args);
+  await upstreamApplyN8nConfigToEnv(...args);
   syncBrandEnvAliases();
-  return result;
 }
 
 async function ensureAutonomyBootstrapContext(

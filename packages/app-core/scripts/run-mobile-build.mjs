@@ -1402,6 +1402,7 @@ const IOS_PERMISSION_KEYS = [
 
 const IOS_OFFICIAL_COMPATIBLE_PODS = [
   ["CapacitorKeyboard", "@capacitor/keyboard"],
+  ["CapacitorBrowser", "@capacitor/browser"],
 ];
 
 const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set([

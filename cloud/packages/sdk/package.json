@@ -19,10 +19,14 @@
     "dist",
     "README.md"
   ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "audit:routes": "node scripts/audit-api-routes.mjs",
+    "prepublishOnly": "bun run build",
     "build": "bun run build.ts",
     "check:routes": "node scripts/generate-public-routes.mjs --check && node scripts/audit-api-routes.mjs",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",

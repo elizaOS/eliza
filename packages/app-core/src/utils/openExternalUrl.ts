@@ -3,7 +3,36 @@ import {
   invokeDesktopBridgeRequestWithTimeout,
 } from "../bridge/electrobun-rpc";
 
+interface CapacitorGlobal {
+  isNativePlatform?: () => boolean;
+}
+interface CapacitorBrowserPlugin {
+  open: (options: { url: string; presentationStyle?: string }) => Promise<void>;
+}
+
+function getCapacitorBrowser(): CapacitorBrowserPlugin | null {
+  if (typeof globalThis === "undefined") return null;
+  const cap = (
+    globalThis as unknown as {
+      Capacitor?: CapacitorGlobal & {
+        Plugins?: { Browser?: CapacitorBrowserPlugin };
+      };
+    }
+  ).Capacitor;
+  if (!cap?.isNativePlatform?.()) return null;
+  return cap.Plugins?.Browser ?? null;
+}
+
 export async function openExternalUrl(url: string): Promise<void> {
+  // Capacitor native (iOS WKWebView / Android WebView): use the Browser
+  // plugin. Avoids `window.open` which loses user-gesture context across
+  // awaits and is silently dropped by WKWebView.
+  const capacitorBrowser = getCapacitorBrowser();
+  if (capacitorBrowser) {
+    await capacitorBrowser.open({ url });
+    return;
+  }
+
   const bridged = await invokeDesktopBridgeRequestWithTimeout<void>({
     rpcMethod: "desktopOpenExternal",
     ipcChannel: "desktop:openExternal",
@@ -49,6 +78,11 @@ export async function openExternalUrl(url: string): Promise<void> {
  */
 export function preOpenWindow(): Window | null {
   if (getElectrobunRendererRpc() !== undefined) return null; // Desktop uses RPC
+  // Capacitor native: openExternalUrl uses the Browser plugin (no
+  // gesture-context dependency). Avoid window.open here because WKWebView's
+  // delegate would route "about:blank" to UIApplication.shared.open and
+  // briefly flash Safari before the real URL ever resolves.
+  if (getCapacitorBrowser()) return null;
   if (typeof window === "undefined" || typeof window.open !== "function")
     return null;
   // Open a blank window synchronously (preserves user-gesture context).

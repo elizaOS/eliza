@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-alpha.537",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -18,8 +18,15 @@
     "agent-framework"
   ],
   "main": "src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
@@ -28,7 +35,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales && node ../../scripts/prepare-package-dist.mjs packages/app-core --compiled-prefix=packages/app-core/src",
+    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales scripts test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core --compiled-prefix=packages/app-core/src",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "benchmark:server": "node --import tsx src/benchmark/server.ts"
   },
@@ -49,6 +56,7 @@
     "./api/compat-route-shared": "./src/api/compat-route-shared.ts",
     "./api/server-cloud-tts": "./src/api/server-cloud-tts.ts",
     "./config": "./src/config/index.ts",
+    "./config/allowed-hosts": "./src/config/allowed-hosts.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./types": "./src/types/index.ts",
     "./events": "./src/events/index.ts",
@@ -124,6 +132,7 @@
     "./services/steward-credentials": "./src/services/steward-credentials.ts",
     "./services/steward-sidecar": "./src/services/steward-sidecar.ts",
     "./services/steward-sidecar/*": "./src/services/steward-sidecar/*.ts",
+    "./services/n8n-sidecar": "./src/services/n8n-sidecar.ts",
     "./styles/base.css": "./src/styles/base.css",
     "./styles/xterm.css": "./src/styles/xterm.css",
     "./styles/onboarding-game.css": "./src/styles/onboarding-game.css",

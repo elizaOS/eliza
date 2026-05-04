@@ -27,6 +27,13 @@ const config: CapacitorConfig = {
       resize: "body",
       resizeOnFullScreen: true,
     },
+    // Patches `fetch`/`XMLHttpRequest` on native platforms to use the
+    // native HTTP stack (CFNetwork on iOS). Required for cross-origin
+    // requests like `https://www.elizacloud.ai/api/auth/cli-session` —
+    // those fail under WKWebView's CORS check from `capacitor://localhost`.
+    CapacitorHttp: {
+      enabled: true,
+    },
   },
   ios: {
     contentInset: "automatic",
