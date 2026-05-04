@@ -464,7 +464,7 @@ describe("run-mobile-build", () => {
     );
   });
 
-  it("keeps shipped platform templates on app-local capacitor packages", () => {
+  it("keeps shipped platform templates on repo-local Capacitor packages", () => {
     const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
     const iosTemplateRoot = resolvePlatformTemplateRoot("ios", {
       repoRootValue: repoRoot,
@@ -497,14 +497,16 @@ describe("run-mobile-build", () => {
     );
 
     expect(iosPodfile).not.toContain("node_modules/.bun/");
-    expect(iosPodfile).toContain("../../node_modules/@capacitor/ios");
+    expect(iosPodfile).toContain("../../../../app/node_modules/@capacitor/ios");
+    expect(iosPodfile).toContain("../../../../native-plugins/agent");
     expect(iosPodfile).not.toContain("CapacitorStatusBar");
     expect(iosInfoPlist).not.toContain("armv7");
 
     expect(androidSettings).not.toContain("node_modules/.bun/");
     expect(androidSettings).toContain(
-      "../node_modules/@capacitor/android/capacitor",
+      "../../../app/node_modules/@capacitor/android/capacitor",
     );
+    expect(androidSettings).toContain("../../../native-plugins/agent/android");
     expect(androidSettings).not.toContain("capacitor-status-bar");
 
     expect(androidBuild).not.toContain("capacitor-status-bar");

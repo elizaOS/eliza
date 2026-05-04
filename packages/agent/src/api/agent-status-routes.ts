@@ -1,8 +1,7 @@
 /**
  * Agent self-status and ERC-8004 registry inline routes.
  *
- * Extracted from server.ts to reduce file size. Privy wallet provisioning
- * routes were moved to @elizaos/app-steward (setup-routes-privy.ts).
+ * Extracted from server.ts to reduce file size.
  */
 
 import type http from "node:http";
@@ -272,9 +271,6 @@ export async function handleAgentStatusRoutes(
     });
     return true;
   }
-
-  // Privy wallet routes (/api/privy/*) are now provided by the
-  // @elizaos/app-steward plugin via the runtime route registry.
 
   // ═══════════════════════════════════════════════════════════════════════
   //  ERC-8004 Registry Routes

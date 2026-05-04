@@ -100,8 +100,8 @@ class AgentPlugin : Plugin() {
             ) {
                 continue
             }
-            val value = headers.optString(key, null)
-            if (value != null) {
+            val value = headers.opt(key) as? String
+            if (!value.isNullOrBlank()) {
                 connection.setRequestProperty(key, value)
             }
         }
