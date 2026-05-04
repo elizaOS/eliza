@@ -86,7 +86,7 @@ eliza/plugins/*/.eliza
 eliza/plugins/*/.elizadb-test
 packages/app/android
 packages/app/ios
-packages/app/electrobun
+packages/app-core/platforms/electrobun
 packages/app/.vite
 packages/app/screenshots
 packages/app/test-results

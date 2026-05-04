@@ -1,25 +1,27 @@
 #!/usr/bin/env node
 /**
- * Sync the host app's Vite `dist/` output into the Electrobun shell at
- * `<appDir>/electrobun/app/` so the desktop bundle picks up the latest web
- * assets.
+ * Sync the host app's Vite `dist/` into the canonical Electrobun shell at
+ * `packages/app-core/platforms/electrobun/app/` (not under the host app).
  *
- * Usage (from the consumer repo root):
- *   node eliza/packages/app-core/platforms/electrobun/scripts/sync-web-assets.mjs
+ * Usage:
+ *   node packages/app-core/platforms/electrobun/scripts/sync-web-assets.mjs
  *
- * Resolves the host app via the standard elizaOS layout, runs after
- * `bun run build:web` (or equivalent), and replaces the previous bundle
- * atomically.
+ * Resolves the host app via the standard elizaOS layout; run after
+ * `bun run build:web` (or equivalent).
  */
 import { cp, mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { resolveMainAppDir } from "../../../scripts/lib/app-dir.mjs";
+import {
+  resolveElectrobunDir,
+  resolveMainAppDir,
+} from "../../../scripts/lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "../../../scripts/lib/repo-root.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const appRoot = resolveMainAppDir(repoRoot, "app");
+const electrobunRoot = resolveElectrobunDir(repoRoot);
 const sourceDir = path.join(appRoot, "dist");
-const targetDir = path.join(appRoot, "electrobun", "app");
+const targetDir = path.join(electrobunRoot, "app");
 const LOG_PREFIX = "[Electrobun]";
 
 async function ensureDirExists(dir) {

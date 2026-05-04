@@ -50,7 +50,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ env.APP_DIR }}/ios/App/Pods
-          key: pods-${{ runner.os }}-${{ hashFiles('packages/app/ios/App/Podfile.lock') }}
+          key: pods-${{ runner.os }}-${{ hashFiles('packages/app-core/platforms/ios/App/Podfile', 'packages/app/capacitor.config.ts', 'packages/app/package.json') }}
           restore-keys: pods-${{ runner.os }}-
 
       - name: Install dependencies
@@ -66,7 +66,7 @@ jobs:
 
       - name: Sync Capacitor iOS
         working-directory: ${{ env.APP_DIR }}
-        run: bunx capacitor sync ios
+        run: bun run cap:sync:ios
 
       - name: Install CocoaPods
         working-directory: ${{ env.APP_DIR }}/ios/App

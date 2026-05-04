@@ -34,8 +34,8 @@ eliza/plugins/*/.elizadb-test
 # Exclude heavy app dirs not needed at runtime
 # (but keep package.json manifests that the deps stage needs for bun install)
 packages/app/android
-packages/app/electrobun
-!packages/app/electrobun/package.json
+packages/app-core/platforms/electrobun
+!packages/app-core/platforms/electrobun/package.json
 packages/app/.vite
 packages/app/src
 packages/app/public
