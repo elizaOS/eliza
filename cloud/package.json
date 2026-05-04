@@ -289,7 +289,7 @@
   },
   "resolutions": {
     "ai": "^6.0.48",
-    "zod": "4.4.2",
+    "zod": "4.4.3",
     "@elizaos/core": "alpha",
     "@stwd/react": "0.7.2",
     "@stwd/sdk": "0.8.1",
@@ -326,7 +326,7 @@
     "cpu-features": "empty-npm-package@1.0.0",
     "hono": "4.12.16",
     "@hono/node-server": "2.0.1",
-    "zod": "4.4.2"
+    "zod": "4.4.3"
   },
   "patchedDependencies": {
     "x402@1.1.0": "packages/patches/x402@1.1.0.patch",
