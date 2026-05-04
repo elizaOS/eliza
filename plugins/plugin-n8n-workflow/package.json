@@ -42,7 +42,7 @@
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-n8n-workflow#readme",
   "peerDependencies": {
-    "@elizaos/core": "1.7.2"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/config": "^1.7.2",
