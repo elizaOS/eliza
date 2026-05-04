@@ -369,7 +369,7 @@ function compactToonActionsBlock(
     }
     if (line === "") {
       const next = lines[consumed + 1];
-      if (next !== undefined && next.startsWith("- ")) {
+      if (next?.startsWith("- ")) {
         consumed += 1;
         continue;
       }

@@ -3,6 +3,7 @@
  * export/import, direct cloud auth, bug reports.
  */
 
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 import type {
@@ -119,6 +120,24 @@ function isDirectCloudBase(client: ElizaClient): boolean {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function generateCloudLoginSessionId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+      "",
+    );
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function shouldUseNativeCloudHttp(): boolean {
+  return Capacitor.isNativePlatform();
 }
 
 function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
@@ -1110,8 +1129,27 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   this: ElizaClient,
   cloudApiBase,
 ) {
-  const sessionId = globalThis.crypto.randomUUID();
+  const sessionId = generateCloudLoginSessionId();
   try {
+    if (shouldUseNativeCloudHttp()) {
+      const res = await CapacitorHttp.post({
+        url: `${cloudApiBase}/api/auth/cli-session`,
+        headers: { "Content-Type": "application/json" },
+        data: { sessionId },
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      });
+      if (res.status < 200 || res.status >= 300) {
+        return { ok: false, error: `Login failed (${res.status})` };
+      }
+      return {
+        ok: true,
+        sessionId,
+        browserUrl: `${cloudApiBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
+      };
+    }
+
     const res = await fetch(`${cloudApiBase}/api/auth/cli-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1139,6 +1177,37 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
   sessionId,
 ) {
   try {
+    if (shouldUseNativeCloudHttp()) {
+      const res = await CapacitorHttp.get({
+        url: `${cloudApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      });
+      if (res.status < 200 || res.status >= 300) {
+        if (res.status === 404) {
+          return {
+            status: "expired" as const,
+            error: "Auth session expired or not found",
+          };
+        }
+        return {
+          status: "error" as const,
+          error: `Poll failed (${res.status})`,
+        };
+      }
+      const data = res.data;
+      if (data.status === "authenticated" && data.apiKey) {
+        return {
+          status: "authenticated" as const,
+          organizationId: data.organizationId,
+          token: data.apiKey,
+          userId: data.userId,
+        };
+      }
+      return { status: data.status || "pending" };
+    }
+
     const res = await fetch(
       `${cloudApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
     );

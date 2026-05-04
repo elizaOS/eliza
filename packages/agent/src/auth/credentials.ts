@@ -27,9 +27,9 @@ import { refreshCodexToken } from "./openai-codex.js";
 import { accountRefreshMutex } from "./refresh-mutex.js";
 import {
   type AccountCredentialProvider,
+  isSubscriptionProvider,
   type OAuthCredentials,
   type StoredCredentials,
-  isSubscriptionProvider,
   SUBSCRIPTION_PROVIDER_MAP,
   type SubscriptionProvider,
 } from "./types.js";

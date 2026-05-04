@@ -1,9 +1,9 @@
 /** Provider logo mapping — maps AI provider IDs to their logo image paths. */
 
 export {
+  getDirectAccountProviderForOnboardingProvider,
   getOnboardingProviderFamily,
   getOnboardingProviderOption,
-  getDirectAccountProviderForOnboardingProvider,
   getStoredOnboardingProviderId,
   getStoredSubscriptionProvider,
   getSubscriptionProviderFamily,
