@@ -14,7 +14,7 @@
 		"exactOptionalPropertyTypes": false,
 		"noFallthroughCasesInSwitch": true,
 		"forceConsistentCasingInFileNames": true,
-		"ignoreDeprecations": "5.0",
+		"ignoreDeprecations": "6.0",
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"module": "ESNext",
