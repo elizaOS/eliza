@@ -10,6 +10,7 @@
   },
   "workspaces": [
     "apps/*",
+    "apps/app/electrobun",
     "eliza/packages/native-plugins/*",
     "eliza/packages/app-core/platforms/electrobun",
     "eliza/apps/*",

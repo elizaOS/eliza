@@ -49,6 +49,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^25.0.3",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "dotenv": "^17.2.3",
@@ -83,9 +84,13 @@
     "pluginParameters": {
       "API_KEY": {
         "type": "string",
-        "description": "API key for the service"
+        "description": "Secret API key for the service. Required at runtime; do not commit values."
+      },
+      "BASE_URL": {
+        "type": "string",
+        "description": "Base URL of the service the plugin talks to. Override per environment.",
+        "defaultValue": "https://api.example.com"
       }
     }
-  },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  }
 }
