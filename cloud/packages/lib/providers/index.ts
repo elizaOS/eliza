@@ -8,13 +8,14 @@
  */
 
 import { isGroqNativeModel, isVastNativeModel } from "@/lib/models";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { AnthropicDirectProvider } from "./anthropic-direct";
 import { GroqProvider } from "./groq";
 import { OpenAIDirectProvider } from "./openai-direct";
 import { OpenRouterProvider } from "./openrouter";
+import { getProviderKey, getRequiredProviderKey } from "./provider-env";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
+import { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 export { AnthropicDirectProvider } from "./anthropic-direct";
 // Note: anthropic-thinking parse helpers (parseAnthropicCotBudgetFromEnv, etc.) are exported
@@ -27,6 +28,7 @@ export { OpenAIDirectProvider } from "./openai-direct";
 export { OpenRouterProvider } from "./openrouter";
 export * from "./types";
 export { VastProvider } from "./vast";
+export { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 interface ProviderSingleton {
   apiKey: string;
@@ -37,16 +39,8 @@ let openRouterProviderInstance: ProviderSingleton | null = null;
 let groqProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: ProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
+let vercelAIGatewayProviderInstance: ProviderSingleton | null = null;
 let vastProviderInstance: { apiKey: string; baseUrl: string; provider: AIProvider } | null = null;
-
-function getRequiredProviderKey(envName: string): string {
-  const apiKey = getCloudAwareEnv()[envName]?.trim();
-  if (!apiKey) {
-    throw new Error(`${envName} environment variable is required`);
-  }
-
-  return apiKey;
-}
 
 /**
  * Gets the principal AI provider instance (OpenRouter).
@@ -68,7 +62,7 @@ export function getProvider(): AIProvider {
 }
 
 export function hasGroqProviderConfigured(): boolean {
-  return Boolean(getCloudAwareEnv().GROQ_API_KEY?.trim());
+  return Boolean(getProviderKey("GROQ_API_KEY"));
 }
 
 export function getGroqProvider(): AIProvider {
@@ -84,7 +78,7 @@ export function getGroqProvider(): AIProvider {
 }
 
 export function hasOpenRouterProviderConfigured(): boolean {
-  return Boolean(getCloudAwareEnv().OPENROUTER_API_KEY?.trim());
+  return Boolean(getProviderKey("OPENROUTER_API_KEY"));
 }
 
 export function getOpenRouterProvider(): AIProvider {
@@ -92,7 +86,7 @@ export function getOpenRouterProvider(): AIProvider {
 }
 
 function hasOpenAIDirectConfigured(): boolean {
-  return Boolean(getCloudAwareEnv().OPENAI_API_KEY?.trim());
+  return Boolean(getProviderKey("OPENAI_API_KEY"));
 }
 
 function getOpenAIDirectProvider(): AIProvider {
@@ -107,7 +101,7 @@ function getOpenAIDirectProvider(): AIProvider {
 }
 
 function hasAnthropicDirectConfigured(): boolean {
-  return Boolean(getCloudAwareEnv().ANTHROPIC_API_KEY?.trim());
+  return Boolean(getProviderKey("ANTHROPIC_API_KEY"));
 }
 
 function getAnthropicDirectProvider(): AIProvider {
@@ -122,8 +116,7 @@ function getAnthropicDirectProvider(): AIProvider {
 }
 
 export function hasVastProviderConfigured(): boolean {
-  const env = getCloudAwareEnv();
-  return Boolean(env.VAST_API_KEY?.trim() && env.VAST_BASE_URL?.trim());
+  return Boolean(getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL"));
 }
 
 export function getVastProvider(): AIProvider {
@@ -143,6 +136,33 @@ export function getVastProvider(): AIProvider {
   return vastProviderInstance.provider;
 }
 
+function getVercelAIGatewayApiKey(): string | null {
+  return getProviderKey("AI_GATEWAY_API_KEY") ?? getProviderKey("AIGATEWAY_API_KEY");
+}
+
+function getVercelAIGatewayBaseURL(): string | undefined {
+  return getProviderKey("AI_GATEWAY_BASE_URL") ?? undefined;
+}
+
+export function hasVercelAIGatewayProviderConfigured(): boolean {
+  return Boolean(getVercelAIGatewayApiKey());
+}
+
+export function getVercelAIGatewayProvider(): AIProvider {
+  const apiKey = getVercelAIGatewayApiKey();
+  if (!apiKey) {
+    throw new Error("AI_GATEWAY_API_KEY environment variable is required");
+  }
+
+  if (!vercelAIGatewayProviderInstance || vercelAIGatewayProviderInstance.apiKey !== apiKey) {
+    vercelAIGatewayProviderInstance = {
+      apiKey,
+      provider: new VercelAIGatewayProvider(apiKey, getVercelAIGatewayBaseURL()),
+    };
+  }
+  return vercelAIGatewayProviderInstance.provider;
+}
+
 export function getProviderForModel(model: string): AIProvider {
   if (isGroqNativeModel(model)) {
     return getGroqProvider();
@@ -150,6 +170,14 @@ export function getProviderForModel(model: string): AIProvider {
 
   if (isVastNativeModel(model)) {
     return getVastProvider();
+  }
+
+  if (hasOpenRouterProviderConfigured()) {
+    return getProvider();
+  }
+
+  if (hasVercelAIGatewayProviderConfigured()) {
+    return getVercelAIGatewayProvider();
   }
 
   return getProvider();
@@ -180,7 +208,7 @@ export function getProviderForModelWithFallback(model: string): {
     return { primary: getVastProvider(), fallback: null };
   }
 
-  const primary = getProvider();
+  const primary = hasOpenRouterProviderConfigured() ? getProvider() : getVercelAIGatewayProvider();
 
   if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
     return { primary, fallback: getOpenAIDirectProvider() };

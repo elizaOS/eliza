@@ -28,8 +28,8 @@ import { isHetznerCloudConfigured } from "@/lib/services/containers/hetzner-clou
 import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
 import { logger } from "@/lib/utils/logger";
 
-async function handleAutoscale(request: Request) {
-  const authError = verifyCronSecret(request, "[Node Autoscale]");
+async function handleAutoscale(request: Request, env?: AppEnv["Bindings"]) {
+  const authError = verifyCronSecret(request, "[Node Autoscale]", env);
   if (authError) return authError;
 
   const autoscaler = getNodeAutoscaler();
@@ -112,15 +112,15 @@ async function handleAutoscale(request: Request) {
   return Response.json({ success: true, data: result });
 }
 
-async function __hono_GET(request: Request) {
-  return handleAutoscale(request);
+async function __hono_GET(request: Request, env?: AppEnv["Bindings"]) {
+  return handleAutoscale(request, env);
 }
 
-async function __hono_POST(request: Request) {
-  return handleAutoscale(request);
+async function __hono_POST(request: Request, env?: AppEnv["Bindings"]) {
+  return handleAutoscale(request, env);
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.get("/", async (c) => __hono_GET(c.req.raw));
-__hono_app.post("/", async (c) => __hono_POST(c.req.raw));
+__hono_app.get("/", async (c) => __hono_GET(c.req.raw, c.env));
+__hono_app.post("/", async (c) => __hono_POST(c.req.raw, c.env));
 export default __hono_app;

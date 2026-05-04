@@ -1,24 +1,25 @@
-/**
- * Admin Docker Node Health Check API
- *
- * TODO(node-only): blocked from Workers due to `ssh2` (DockerSSHClient).
- * Health check SSHs into the node and runs `docker version`/`df`/`docker ps`.
- */
-
 import { Hono } from "hono";
-
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { forwardToContainerControlPlane } from "../../../../_container-control-plane-forward";
 
 const app = new Hono<AppEnv>();
 
-app.all("/*", (c) =>
-  c.json(
-    {
-      error: "not_yet_migrated",
-      reason: "DockerSSHClient (ssh2) is Node-only; needs Node sidecar",
-    },
-    501,
-  ),
-);
+app.post("/", async (c) => {
+  try {
+    const { user, role } = await requireAdmin(c);
+    if (role !== "super_admin") {
+      return c.json({ success: false, error: "Super admin access required" }, 403);
+    }
+    return forwardToContainerControlPlane(c, user);
+  } catch (error) {
+    logger.error("[Admin Docker Node Health Check] forward error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return failureResponse(c, error);
+  }
+});
 
 export default app;

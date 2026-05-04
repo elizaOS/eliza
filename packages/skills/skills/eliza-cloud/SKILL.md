@@ -25,7 +25,12 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 
 ## Default Build Flow
 
-For most app work:
+For new agent-built apps, defer to `build-monetized-app`: register a Cloud app,
+build and push a container image, deploy that container, enable monetization,
+patch the app URL/origins, and then offer a custom domain. Static hosting is
+only for legacy/local apps or edits to an existing static app.
+
+For existing app work:
 
 1. create or reuse an Eliza Cloud app
 2. capture the app's `appId` and API key
@@ -53,7 +58,7 @@ app-specific chat endpoint:
 - Browser starts sign-in at `/app-auth/authorize` with `app_id`, `redirect_uri`, and `state`.
 - Browser stores only the returned user token, never an owner API key.
 - Browser calls the app's same-origin proxy with `x-user-token`.
-- Proxy forwards to `/api/v1/apps/{id}/chat` with `Authorization: Bearer <user_jwt>`, `x-app-id`, and optional `x-affiliate-code`.
+- Proxy forwards to `/api/v1/apps/{id}/chat` with `Authorization: Bearer <user_jwt>` and optional `x-affiliate-code`.
 - Monetization uses `PUT /api/v1/apps/{id}/monetization` with markup/share fields.
 
 ## Important Reality Check
@@ -73,7 +78,7 @@ This is the catch-all skill for any user request about apps they already own. En
 | `list my containers` | `/api/v1/containers` | GET |
 | `change container tier / size` | `/api/v1/apps/{id}` (container fields) | PATCH |
 | `what are my earnings` | `/api/v1/apps/{id}/earnings` | GET |
-| `set markup percentage` | `/api/v1/apps/{id}/monetization` | PATCH |
+| `set markup percentage` | `/api/v1/apps/{id}/monetization` | PUT |
 | `show app analytics / usage` | `/api/v1/apps/{id}/analytics` | GET |
 | `regenerate my api key` | `/api/v1/apps/{id}/regenerate-api-key` | POST |
 | `manage app users` | `/api/v1/apps/{id}/users` | GET / POST |

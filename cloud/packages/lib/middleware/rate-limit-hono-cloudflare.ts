@@ -16,6 +16,13 @@ export interface RateLimitConfig {
 }
 
 function getRedis(env: Bindings): CompatibleRedis | null {
+  if (
+    env.REDIS_RATE_LIMITING === "false" ||
+    (env.CACHE_ENABLED === "false" && env.NODE_ENV !== "production")
+  ) {
+    return null;
+  }
+
   return buildRedisClient(env);
 }
 
@@ -132,9 +139,23 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     }
 
     const key = (config.keyGenerator ?? getDefaultKey)(c);
-    const result = await checkUpstash(redis, key, config.windowMs, config.maxRequests);
+    let result: CheckResult;
+    let policy = "redis";
 
-    const headers = rateLimitHeaders(config, result, "redis");
+    try {
+      result = await checkUpstash(redis, key, config.windowMs, config.maxRequests);
+    } catch (error) {
+      // Rate limiting is protective middleware. If its backing store is down
+      // or unreachable in local Worker dev, requests should fall open instead
+      // of turning application routes into 500s.
+      console.warn("[RateLimit] Redis unavailable; falling open", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      result = fallOpenResult(config);
+      policy = "redis-unavailable";
+    }
+
+    const headers = rateLimitHeaders(config, result, policy);
 
     if (!result.allowed) {
       return c.json(

@@ -41,11 +41,14 @@ const retried = await cloud.routes.postApiV1Apps({
 
 ## 2. Build and push the container image
 
-The agent's job, not the SDK's. Use the org's container registry creds (default ECR via cloud's per-org setup, or any public registry the agent has push access to). The image must:
+The agent's job, not the SDK's. Push to GHCR, Docker Hub, or any registry the
+Cloud container nodes can pull from. The current container API takes a full
+image reference in the `image` field; ECR credential vending is retired. The
+image must:
 
 - Listen on `$PORT` (cloud sets this at runtime)
 - Expose a `GET /health` endpoint that returns 200 quickly (the cloud's deploy step polls it before flipping the load balancer)
-- For chat-style apps, expose a server route that forwards user-bearing requests upstream to cloud's `/api/v1/messages` (or `/v1/chat/completions`) with the user's bearer token AND your affiliate code
+- For chat-style apps, expose a server route that forwards user-bearing requests upstream to cloud's `/api/v1/apps/<appId>/chat` with the user's bearer token
 
 The canonical reference for this shape is [`apps/edad-chat/server.ts` and `apps/edad-chat/api/proxy.ts`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) in `elizaOS/cloud-mini-apps`. Copy that pattern when your app is a chat shell.
 
@@ -63,17 +66,16 @@ export async function handleChat(req: Request): Promise<Response> {
 
   const body = await req.json();
 
-  // Forward to cloud /messages with the user's token AND our affiliate code.
-  // The user's balance is debited; the affiliate header is what credits us.
-  const upstream = await fetch(`${process.env.ELIZA_CLOUD_URL}/api/v1/messages`, {
-    method: "POST",
+  // Forward to the app-scoped chat endpoint with the user's token.
+  // The user's app balance is debited; the app's configured markup credits us.
+  const appId = process.env.ELIZA_APP_ID!;
+  const upstream = await cloud.routes.postApiV1AppsByIdChatRaw({
+    pathParams: { id: appId },
     headers: {
-      "content-type": "application/json",
-      authorization: userToken,
-      "x-affiliate-code": AFFILIATE,
-      "x-app-id": process.env.ELIZA_APP_ID!,
+      authorization: userToken.startsWith("Bearer ") ? userToken : `Bearer ${userToken}`,
+      ...(AFFILIATE ? { "x-affiliate-code": AFFILIATE } : {}),
     },
-    body: JSON.stringify(body),
+    json: body,
   });
 
   return new Response(upstream.body, {
@@ -85,10 +87,11 @@ export async function handleChat(req: Request): Promise<Response> {
 
 That's the full server-side surface. Add a `/health` route that returns 200 and you're done with step 2 from a code perspective.
 
-For frontend, ship a static page that:
+For frontend, ship a page that:
 
-1. Reads the user's intended-flow choice (sign in / paste API key / etc.)
-2. Posts user prompts to your chat route with the user-token in the `authorization` header
+1. Starts the Eliza Cloud app-auth flow with `/app-auth/authorize`
+2. Stores the returned user token after validating `state`
+3. Posts user prompts to your same-origin chat route with the user token
 3. Renders streaming responses
 
 The frontend can be served by the same container or by any static host pointing at the same domain — the cloud doesn't care.
@@ -96,42 +99,64 @@ The frontend can be served by the same container or by any static host pointing 
 ## 3. Deploy the container
 
 ```ts
-const container = await cloud.routes.postApiV1Containers({
+const created = await cloud.routes.postApiV1Containers({
   json: {
+    name: input.name,
+    project_name: input.slug,
     image: `<registry>/<repo>:<tag>`,
-    appId,
+    port: 3000,
+    desired_count: 1,
     cpu: 256,
     memory: 512,
-    env: { /* image-specific runtime vars */ },
+    health_check_path: "/health",
+    environment_vars: {
+      PORT: "3000",
+      ELIZA_APP_ID: appId,
+      ELIZA_CLOUD_URL: process.env.ELIZA_CLOUD_PUBLIC_URL ?? "https://www.elizacloud.ai",
+      ELIZA_AFFILIATE_CODE: process.env.ELIZA_AFFILIATE_CODE ?? "",
+    },
   },
 });
+const container = created.data;
 ```
 
-After `postApiV1Containers` returns, poll `getApiV1ContainersById(container.id)` until `status === "running"` and `load_balancer_url` is populated. Health-check failures here mean the image's server doesn't bind to `$PORT` correctly — pull `cloud.routes.getApiV1ContainersByIdLogs(container.id)` and surface to the human.
+After `postApiV1Containers` returns, poll `getApiV1ContainersById(container.id)`
+until the response has a usable `load_balancer_url` / `publicUrl`, then verify
+`GET <url>/health`. Health-check failures here mean the image's server doesn't
+bind to `$PORT` correctly — pull `cloud.routes.getApiV1ContainersByIdLogs` when
+the sidecar is available and surface the logs to the human.
 
 ## 4. Set markup
 
 ```ts
-await cloud.routes.patchApiV1AppsById({
-  appId,
-  json: {
-    inference_markup_percentage: 20,  // 20% markup on every cloud-SDK call routed through this app
+await fetch(`${process.env.ELIZA_CLOUD_BASE_URL}/api/v1/apps/${appId}/monetization`, {
+  method: "PUT",
+  headers: {
+    "x-api-key": process.env.ELIZAOS_CLOUD_API_KEY!,
+    "content-type": "application/json",
   },
+  body: JSON.stringify({
+    monetizationEnabled: true,
+    inferenceMarkupPercentage: 100,
+    purchaseSharePercentage: 10,
+  }),
 });
 ```
 
-Markup % is the lever that turns app activity into earnings. The active monetization model in the current schema is markup-based, NOT per-token pricing — older docs that describe per-token are stale; trust the current `apps` table schema.
+Markup % is the lever that turns app activity into earnings. Use the
+monetization endpoint above; older docs that patch `inference_markup_percentage`
+directly on the app row are stale.
 
-A 20% markup is a reasonable default for a v1 app. Higher kills retention; lower starves the survival loop. Tune later based on `redeemable_earnings_ledger` data.
+100% markup is the current default for agent-built v1 apps. Tune later from real usage and `redeemable_earnings_ledger` data.
 
 ## 5. Patch app_url + allowed_origins
 
 ```ts
 await cloud.routes.patchApiV1AppsById({
-  appId,
+  pathParams: { id: appId },
   json: {
-    app_url: container.load_balancer_url,
-    allowed_origins: [container.load_balancer_url],
+    app_url: container.load_balancer_url ?? container.publicUrl,
+    allowed_origins: [container.load_balancer_url ?? container.publicUrl],
   },
 });
 ```
@@ -145,7 +170,7 @@ Print the audit trail so the owner can verify + cash out:
 ```
 ✓ App:        https://www.elizacloud.ai/dashboard/apps/<APP_ID>
 ✓ Container:  <container.load_balancer_url>
-✓ Markup:     20%
+✓ Markup:     100%
 ✓ Survival:   earnings auto-fund hosting; agent stays alive while profitable
 → Cashout:    https://www.elizacloud.ai/dashboard/earnings (Redeem for elizaOS)
 ```

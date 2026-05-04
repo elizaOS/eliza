@@ -5,7 +5,7 @@ affiliate cut, deploy as a container, and have the container's hosting
 bill paid out of your accumulated app earnings before any cash credits
 get touched. Cashout to elizaOS tokens whenever you want.
 
-This is the same loop the [`edad-chat`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) reference app demonstrates.
+This is the same loop the [`edad-chat`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) reference app demonstrates. New app builds should use the app-scoped chat endpoint, `/api/v1/apps/<appId>/chat`, so creator markup is tied directly to the registered app.
 
 ---
 
@@ -65,13 +65,13 @@ At 100% markup, every dollar of inference your users pay generates a
 dollar of your redeemable earnings.
 
 Set it from the dashboard at `/dashboard/apps/<id>?tab=monetization`,
-or directly:
+or through the API:
 
-```sql
-UPDATE apps
-   SET monetization_enabled = true,
-       inference_markup_percentage = 100
- WHERE id = '<APP_ID>';
+```bash
+curl -X PUT "$ELIZA_CLOUD_BASE_URL/api/v1/apps/<APP_ID>/monetization" \
+  -H "x-api-key: $ELIZAOS_CLOUD_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"monetizationEnabled":true,"inferenceMarkupPercentage":100,"purchaseSharePercentage":10}'
 ```
 
 ### 3. (Optional) Create an affiliate code
@@ -93,30 +93,26 @@ users alike (see `packages/lib/services/ai-billing.ts:192,277`).
 >
 > Same transaction never runs both — they're separate revenue streams.
 
-### 4. Forward chats with the right headers
+### 4. Forward chats with the app-scoped endpoint
 
-Every `/api/v1/messages` request your app makes upstream needs:
+Every chat request your app makes upstream needs:
 
 | Header | Value |
 |---|---|
 | `Authorization` | `Bearer <user's Steward JWT>` |
-| `x-app-id` | your app's `id` from step 1 |
 | `x-affiliate-code` | (optional) the affiliate code from step 3 |
-| `anthropic-version` | `2023-06-01` |
 
 Hand-rolled fetch:
 
 ```ts
-const res = await fetch(`${CLOUD_URL}/api/v1/messages`, {
+const res = await fetch(`${CLOUD_URL}/api/v1/apps/${APP_ID}/chat`, {
   method: "POST",
   headers: {
     "content-type": "application/json",
     authorization: `Bearer ${userToken}`,
-    "x-app-id": APP_ID,
-    "x-affiliate-code": AFFILIATE_CODE,
-    "anthropic-version": "2023-06-01",
+    ...(AFFILIATE_CODE ? { "x-affiliate-code": AFFILIATE_CODE } : {}),
   },
-  body: JSON.stringify({ model, max_tokens, system, messages }),
+  body: JSON.stringify({ model, messages }),
 });
 ```
 
@@ -126,14 +122,11 @@ Same with the SDK (handles header composition + typed errors):
 const cloud = new ElizaCloudClient({
   baseUrl: CLOUD_URL,
   bearerToken: userToken,
-  defaultHeaders: {
-    "x-app-id": APP_ID,
-    "x-affiliate-code": AFFILIATE_CODE,
-    "anthropic-version": "2023-06-01",
-  },
 });
-const reply = await cloud.routes.postApiV1Messages({
-  json: { model, max_tokens, system, messages },
+const res = await cloud.routes.postApiV1AppsByIdChatRaw({
+  pathParams: { id: APP_ID },
+  headers: AFFILIATE_CODE ? { "x-affiliate-code": AFFILIATE_CODE } : undefined,
+  json: { model, messages },
 });
 ```
 
@@ -148,7 +141,7 @@ The minute you deploy your app on Eliza Cloud's container infra, the
 self-sustaining loop kicks in:
 
 ```bash
-# build + push to your registry (ECR or any registry the cloud can pull from)
+# build + push to GHCR, Docker Hub, or any registry the cloud can pull from
 docker build -t myapp:latest .
 docker push <registry>/myapp:latest
 
@@ -159,9 +152,10 @@ const container = await cloud.createContainer({
   port: 3000,
   cpu: 256,
   memory: 512,
-  ecr_image_uri: "<registry>/myapp:latest",
+  image: "<registry>/myapp:latest",
   health_check_path: "/health",
   environment_vars: {
+    PORT: "3000",
     ELIZA_APP_ID: app.id,
     ELIZA_AFFILIATE_CODE: "<your-affiliate-code>",
     ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
