@@ -8,29 +8,31 @@ import "../core-augmentation.js";
  * `runtime.getService("wallet-backend")`.
  */
 export class WalletBackendService extends Service {
-	static override serviceType = "wallet-backend";
+  static override serviceType = "wallet-backend";
 
-	override capabilityDescription =
-		"Unified wallet backend (EVM + Solana, local or Steward)";
+  override capabilityDescription =
+    "Unified wallet backend (EVM + Solana, local or Steward)";
 
-	private backend!: WalletBackend;
+  private backend!: WalletBackend;
 
-	constructor(runtime?: IAgentRuntime) {
-		super(runtime);
-	}
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime);
+  }
 
-	static override async start(runtime: IAgentRuntime): Promise<WalletBackendService> {
-		const backend = await resolveWalletBackend(runtime);
-		const svc = new WalletBackendService(runtime);
-		svc.backend = backend;
-		return svc;
-	}
+  static override async start(
+    runtime: IAgentRuntime,
+  ): Promise<WalletBackendService> {
+    const backend = await resolveWalletBackend(runtime);
+    const svc = new WalletBackendService(runtime);
+    svc.backend = backend;
+    return svc;
+  }
 
-	getWalletBackend(): WalletBackend {
-		return this.backend;
-	}
+  getWalletBackend(): WalletBackend {
+    return this.backend;
+  }
 
-	override async stop(): Promise<void> {
-		// No persistent connections for local / Steward HTTP clients today.
-	}
+  override async stop(): Promise<void> {
+    // No persistent connections for local / Steward HTTP clients today.
+  }
 }

@@ -41,8 +41,7 @@ export function buildStepMap(brand) {
   return {
     home: {
       label: "home",
-      drive: (adb, serial) =>
-        shell(adb, serial, "input keyevent KEYCODE_HOME"),
+      drive: (adb, serial) => shell(adb, serial, "input keyevent KEYCODE_HOME"),
       settleMs: 1500,
     },
     dialer: {

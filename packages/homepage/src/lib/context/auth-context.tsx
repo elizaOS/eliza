@@ -1,5 +1,3 @@
-
-
 import {
   createContext,
   useContext,
@@ -103,20 +101,33 @@ interface AuthContextValue {
    * Phone is required to prevent bot abuse and enable cross-platform (iMessage) linking.
    * If existingToken is provided, links Telegram to the existing account (session-based linking).
    */
-  loginWithTelegram: (data: TelegramAuthData, phoneNumber: string, existingToken?: string) => Promise<TelegramLoginResult>;
+  loginWithTelegram: (
+    data: TelegramAuthData,
+    phoneNumber: string,
+    existingToken?: string,
+  ) => Promise<TelegramLoginResult>;
   /**
    * Login with Discord OAuth2 code.
    * State is required for CSRF protection.
    * Phone is optional - enables cross-platform (iMessage) linking if provided.
    * If existingToken is provided, links Discord to the existing account (session-based linking).
    */
-  loginWithDiscord: (code: string, redirectUri: string, state: string, phoneNumber?: string, existingToken?: string) => Promise<DiscordLoginResult>;
+  loginWithDiscord: (
+    code: string,
+    redirectUri: string,
+    state: string,
+    phoneNumber?: string,
+    existingToken?: string,
+  ) => Promise<DiscordLoginResult>;
   /**
    * Login with WhatsApp ID.
    * User must first message the WhatsApp bot to be auto-provisioned.
    * If existingToken is provided, links WhatsApp to the existing account.
    */
-  loginWithWhatsApp: (whatsappId: string, existingToken?: string) => Promise<WhatsAppLoginResult>;
+  loginWithWhatsApp: (
+    whatsappId: string,
+    existingToken?: string,
+  ) => Promise<WhatsAppLoginResult>;
   /**
    * Link a phone number to the current user's account.
    * Enables cross-platform messaging with iMessage.
@@ -207,7 +218,7 @@ interface UserInfoResponse {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<ElizaAppUser | null>(null);
   const [organization, setOrganization] = useState<ElizaAppOrganization | null>(
-    null
+    null,
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -236,25 +247,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Fetch current user info
    * @param tokenOverride - Optional token to use instead of reading from storage
    */
-  const fetchUserInfo = useCallback(async (tokenOverride?: string): Promise<boolean> => {
-    const token = tokenOverride || getSessionToken();
-    if (!token) {
-      return false;
-    }
-
-    const data = await elizacloudFetch<UserInfoResponse>(
-      "/api/eliza-app/user/me",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+  const fetchUserInfo = useCallback(
+    async (tokenOverride?: string): Promise<boolean> => {
+      const token = tokenOverride || getSessionToken();
+      if (!token) {
+        return false;
       }
-    );
 
-    setUser(data.user);
-    setOrganization(data.organization);
-    return true;
-  }, [getSessionToken]);
+      const data = await elizacloudFetch<UserInfoResponse>(
+        "/api/eliza-app/user/me",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      setUser(data.user);
+      setOrganization(data.organization);
+      return true;
+    },
+    [getSessionToken],
+  );
 
   /**
    * Initialize auth state on mount
@@ -297,7 +311,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * this will link the Telegram account to that existing user.
    */
   const loginWithTelegram = useCallback(
-    async (data: TelegramAuthData, phoneNumber: string, existingToken?: string): Promise<TelegramLoginResult> => {
+    async (
+      data: TelegramAuthData,
+      phoneNumber: string,
+      existingToken?: string,
+    ): Promise<TelegramLoginResult> => {
       setIsLoading(true);
       setError(null);
 
@@ -317,7 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ...data,
               phone_number: phoneNumber,
             }),
-          }
+          },
         );
 
         if (!response.success) {
@@ -336,7 +354,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: true };
       } catch (err) {
         // Try to parse structured error from API response (elizacloudFetch throws with the response text)
-        const rawMessage = err instanceof Error ? err.message : "Authentication failed";
+        const rawMessage =
+          err instanceof Error ? err.message : "Authentication failed";
         let errorMessage = "Authentication failed";
         let errorCode: string | undefined;
         try {
@@ -355,7 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [setSessionToken, fetchUserInfo]
+    [setSessionToken, fetchUserInfo],
   );
 
   /**
@@ -364,7 +383,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Phone number is optional - enables cross-platform linking if provided.
    */
   const loginWithDiscord = useCallback(
-    async (code: string, redirectUri: string, state: string, phoneNumber?: string, existingToken?: string): Promise<DiscordLoginResult> => {
+    async (
+      code: string,
+      redirectUri: string,
+      state: string,
+      phoneNumber?: string,
+      existingToken?: string,
+    ): Promise<DiscordLoginResult> => {
       setIsLoading(true);
       setError(null);
 
@@ -386,7 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               state,
               ...(phoneNumber && { phone_number: phoneNumber }),
             }),
-          }
+          },
         );
 
         if (!response.success) {
@@ -405,7 +430,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: true };
       } catch (err) {
         // Try to parse structured error from API response (elizacloudFetch throws with the response text)
-        const rawMessage = err instanceof Error ? err.message : "Authentication failed";
+        const rawMessage =
+          err instanceof Error ? err.message : "Authentication failed";
         let errorMessage = "Authentication failed";
         let errorCode: string | undefined;
         try {
@@ -425,7 +451,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [setSessionToken, fetchUserInfo]
+    [setSessionToken, fetchUserInfo],
   );
 
   /**
@@ -433,7 +459,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * User must first message the WhatsApp bot to get auto-provisioned.
    */
   const loginWithWhatsApp = useCallback(
-    async (whatsappId: string, existingToken?: string): Promise<WhatsAppLoginResult> => {
+    async (
+      whatsappId: string,
+      existingToken?: string,
+    ): Promise<WhatsAppLoginResult> => {
       setIsLoading(true);
       setError(null);
 
@@ -449,7 +478,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             method: "POST",
             headers,
             body: JSON.stringify({ whatsapp_id: whatsappId }),
-          }
+          },
         );
 
         if (!response.success) {
@@ -475,7 +504,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [setSessionToken, fetchUserInfo]
+    [setSessionToken, fetchUserInfo],
   );
 
   /**
@@ -486,7 +515,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (phoneNumber: string): Promise<LinkPhoneResult> => {
       const token = getSessionToken();
       if (!token) {
-        return { success: false, error: "Not authenticated", errorCode: "UNAUTHORIZED" };
+        return {
+          success: false,
+          error: "Not authenticated",
+          errorCode: "UNAUTHORIZED",
+        };
       }
 
       try {
@@ -520,7 +553,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: message };
       }
     },
-    [getSessionToken, fetchUserInfo]
+    [getSessionToken, fetchUserInfo],
   );
 
   /**

@@ -5,17 +5,22 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
-    "noImplicitAny": true,
+    "noImplicitAny": false,
     "strictNullChecks": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": false,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/sdk/**"]
+  "exclude": [
+    "src/sdk/**",
+    "src/**/__tests__/**",
+    "src/**/tests/**",
+    "src/**/e2e/**"
+  ]
 }

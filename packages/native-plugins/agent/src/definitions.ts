@@ -21,6 +21,11 @@ export interface ChatResult {
   agentName: string;
 }
 
+export interface LocalAgentTokenResult {
+  available: boolean;
+  token: string | null;
+}
+
 export interface AgentPlugin {
   /** Start the agent runtime. Resolves when it's ready. */
   start(): Promise<AgentStatus>;
@@ -33,4 +38,7 @@ export interface AgentPlugin {
 
   /** Send a chat message and get the response. */
   chat(options: { text: string }): Promise<ChatResult>;
+
+  /** Read the per-boot bearer token for the bundled Android local agent. */
+  getLocalAgentToken?(): Promise<LocalAgentTokenResult>;
 }

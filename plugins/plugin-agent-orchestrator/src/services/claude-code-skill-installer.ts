@@ -40,26 +40,26 @@ import type { Logger } from "@elizaos/core";
  * silently when the bundler shape changes.
  */
 function resolveBundledSkillsRoot(): string | null {
-	try {
-		const here = fileURLToPath(import.meta.url);
-		let dir = dirname(here);
-		for (let i = 0; i < 5; i++) {
-			const candidate = join(dir, "assets", "claude-code-skills");
-			if (existsSync(candidate)) {
-				return candidate;
-			}
-			const parent = dirname(dir);
-			if (parent === dir) break;
-			dir = parent;
-		}
-		return null;
-	} catch {
-		return null;
-	}
+  try {
+    const here = fileURLToPath(import.meta.url);
+    let dir = dirname(here);
+    for (let i = 0; i < 5; i++) {
+      const candidate = join(dir, "assets", "claude-code-skills");
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function resolveClaudeSkillsDir(home: () => string = homedir): string {
-	return join(home(), ".claude", "skills");
+  return join(home(), ".claude", "skills");
 }
 
 /**
@@ -69,57 +69,57 @@ function resolveClaudeSkillsDir(home: () => string = homedir): string {
  * array means everything was already present or the source was missing).
  */
 export function ensureBundledClaudeCodeSkills(
-	logger: Pick<Logger, "info" | "warn">,
-	options: { home?: () => string } = {},
+  logger: Pick<Logger, "info" | "warn">,
+  options: { home?: () => string } = {},
 ): string[] {
-	const installed: string[] = [];
-	const sourceRoot = resolveBundledSkillsRoot();
-	if (!sourceRoot) {
-		// No bundled skills shipped — silent return is fine.
-		return installed;
-	}
+  const installed: string[] = [];
+  const sourceRoot = resolveBundledSkillsRoot();
+  if (!sourceRoot) {
+    // No bundled skills shipped — silent return is fine.
+    return installed;
+  }
 
-	let entries: string[];
-	try {
-		entries = readdirSync(sourceRoot);
-	} catch (err) {
-		logger.warn(
-			`[claude-code-skill-installer] could not list ${sourceRoot}: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		return installed;
-	}
+  let entries: string[];
+  try {
+    entries = readdirSync(sourceRoot);
+  } catch (err) {
+    logger.warn(
+      `[claude-code-skill-installer] could not list ${sourceRoot}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return installed;
+  }
 
-	const home = options.home ?? homedir;
-	const destRoot = resolveClaudeSkillsDir(home);
+  const home = options.home ?? homedir;
+  const destRoot = resolveClaudeSkillsDir(home);
 
-	for (const entry of entries) {
-		if (entry.startsWith(".")) continue;
-		const sourceDir = join(sourceRoot, entry);
-		try {
-			if (!statSync(sourceDir).isDirectory()) continue;
-		} catch {
-			continue;
-		}
+  for (const entry of entries) {
+    if (entry.startsWith(".")) continue;
+    const sourceDir = join(sourceRoot, entry);
+    try {
+      if (!statSync(sourceDir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
 
-		const destDir = join(destRoot, entry);
-		if (existsSync(destDir)) {
-			// Already there — leave any user customizations alone.
-			continue;
-		}
+    const destDir = join(destRoot, entry);
+    if (existsSync(destDir)) {
+      // Already there — leave any user customizations alone.
+      continue;
+    }
 
-		try {
-			mkdirSync(destRoot, { recursive: true });
-			cpSync(sourceDir, destDir, { recursive: true });
-			installed.push(entry);
-			logger.info(
-				`[claude-code-skill-installer] installed ${entry} → ${destDir}`,
-			);
-		} catch (err) {
-			logger.warn(
-				`[claude-code-skill-installer] failed to install ${entry}: ${err instanceof Error ? err.message : String(err)}`,
-			);
-		}
-	}
+    try {
+      mkdirSync(destRoot, { recursive: true });
+      cpSync(sourceDir, destDir, { recursive: true });
+      installed.push(entry);
+      logger.info(
+        `[claude-code-skill-installer] installed ${entry} → ${destDir}`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[claude-code-skill-installer] failed to install ${entry}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
-	return installed;
+  return installed;
 }

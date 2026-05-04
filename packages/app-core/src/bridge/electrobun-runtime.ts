@@ -47,5 +47,17 @@ export function isElectrobunRuntime(): boolean {
 }
 
 export function getBackendStartupTimeoutMs(): number {
-  return isElectrobunRuntime() ? 180_000 : 30_000;
+  if (isElectrobunRuntime()) return 180_000;
+  // ElizaOS runs the on-device agent in the same APK; cold-boot is
+  // ~30s PGlite migration + ~30s agent registration before the API is
+  // reachable, vs. <5s for cloud/remote backends. Use the same 3-minute
+  // budget as the desktop path so the splash poll loop catches it
+  // instead of dead-ending on a "Backend Timeout" card.
+  if (
+    typeof navigator !== "undefined" &&
+    /\bElizaOS\//.test(navigator.userAgent ?? "")
+  ) {
+    return 180_000;
+  }
+  return 30_000;
 }

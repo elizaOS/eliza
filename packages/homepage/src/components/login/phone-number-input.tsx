@@ -1,5 +1,3 @@
-
-
 import { useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";
@@ -134,10 +132,7 @@ export function PhoneNumberInput({
   return (
     <div className={styles.wrapper}>
       <label className={styles.label}>
-        <CountryFlag
-          countryCode={selectedCountry}
-          className={styles.flag}
-        />
+        <CountryFlag countryCode={selectedCountry} className={styles.flag} />
         <ChevronDown className={styles.chevron} />
         {/*
           The <select> is absolutely positioned over the label so

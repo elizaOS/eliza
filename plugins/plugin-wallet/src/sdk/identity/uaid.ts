@@ -14,20 +14,24 @@
  * @module identity/uaid
  */
 
-import type { AgentIdentity, AgentRegistrationFile, SupportedChain } from './erc8004.js';
-import type { Address } from 'viem';
+import type {
+  AgentIdentity,
+  AgentRegistrationFile,
+  SupportedChain,
+} from "./erc8004.js";
+import type { Address } from "viem";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Supported protocol types in the UAID ecosystem */
 export type UAIDProtocol =
-  | 'erc8004'
-  | 'a2a'
-  | 'openconvai'
-  | 'virtuals'
-  | 'x402'
-  | 'hedera'
-  | 'solana'
+  | "erc8004"
+  | "a2a"
+  | "openconvai"
+  | "virtuals"
+  | "x402"
+  | "hedera"
+  | "solana"
   | string;
 
 /** A parsed UAID with its component parts */
@@ -118,18 +122,18 @@ export interface RegisterUAIDParams {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const DEFAULT_BROKER_URL = 'https://hol.org/registry/api/v1';
+const DEFAULT_BROKER_URL = "https://hol.org/registry/api/v1";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_CACHE_TTL_MS = 300_000; // 5 minutes
 
 /** EVM chain IDs for UAID protocol mapping */
 const EVM_CHAIN_IDS: Record<SupportedChain, number> = {
-  'ethereum': 1,
-  'base': 8453,
-  'base-sepolia': 84532,
-  'arbitrum': 42161,
-  'arbitrum-sepolia': 421614,
-  'polygon': 137,
+  ethereum: 1,
+  base: 8453,
+  "base-sepolia": 84532,
+  arbitrum: 42161,
+  "arbitrum-sepolia": 421614,
+  polygon: 137,
 };
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
@@ -149,7 +153,10 @@ export class UAIDResolver {
   private readonly cache = new Map<string, CacheEntry>();
 
   constructor(config: UAIDResolverConfig = {}) {
-    this.brokerUrl = (config.brokerUrl ?? DEFAULT_BROKER_URL).replace(/\/+$/, '');
+    this.brokerUrl = (config.brokerUrl ?? DEFAULT_BROKER_URL).replace(
+      /\/+$/,
+      "",
+    );
     this.apiKey = config.apiKey;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.cacheTtlMs = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
@@ -184,12 +191,19 @@ export class UAIDResolver {
     }
 
     try {
-      const response = await this.brokerRequest('GET', `/agents/resolve?uaid=${encodeURIComponent(uaid)}`);
+      const response = await this.brokerRequest(
+        "GET",
+        `/agents/resolve?uaid=${encodeURIComponent(uaid)}`,
+      );
 
       if (!response.ok) {
         const result: UAIDResolution = {
-          resolved: false, uaid, identity: null, protocol: 'unknown',
-          registryVerified: false, error: `Registry returned ${response.status}`,
+          resolved: false,
+          uaid,
+          identity: null,
+          protocol: "unknown",
+          registryVerified: false,
+          error: `Registry returned ${response.status}`,
         };
         return result;
       }
@@ -197,19 +211,21 @@ export class UAIDResolver {
       const data = await response.json();
 
       const identity: UniversalAgentIdentity = {
-        agentId: String(data.agentId ?? data.nativeId ?? ''),
-        owner: data.owner ?? data.controller ?? '',
-        agentURI: data.agentURI ?? data.metadataUri ?? '',
-        paymentAddress: data.paymentAddress ?? data.agentWallet ?? '',
+        agentId: String(data.agentId ?? data.nativeId ?? ""),
+        owner: data.owner ?? data.controller ?? "",
+        agentURI: data.agentURI ?? data.metadataUri ?? "",
+        paymentAddress: data.paymentAddress ?? data.agentWallet ?? "",
         registrationFile: data.registrationFile ?? null,
-        protocol: data.protocol ?? 'unknown',
-        chain: data.chain ?? '',
+        protocol: data.protocol ?? "unknown",
+        chain: data.chain ?? "",
         uaid,
       };
 
       const result: UAIDResolution = {
-        resolved: true, uaid, identity,
-        protocol: data.protocol ?? 'unknown',
+        resolved: true,
+        uaid,
+        identity,
+        protocol: data.protocol ?? "unknown",
         chain: data.chain,
         trustScore: data.trustScore,
         registryVerified: data.verified ?? false,
@@ -218,12 +234,15 @@ export class UAIDResolver {
       // Cache the result
       this.cache.set(uaid, { result, expiresAt: Date.now() + this.cacheTtlMs });
       return result;
-
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       return {
-        resolved: false, uaid, identity: null, protocol: 'unknown',
-        registryVerified: false, error: `Resolution failed: ${message}`,
+        resolved: false,
+        uaid,
+        identity: null,
+        protocol: "unknown",
+        registryVerified: false,
+        error: `Resolution failed: ${message}`,
       };
     }
   }
@@ -237,36 +256,49 @@ export class UAIDResolver {
    */
   async search(
     query: string,
-    options?: { protocol?: UAIDProtocol; limit?: number; minTrustScore?: number }
+    options?: {
+      protocol?: UAIDProtocol;
+      limit?: number;
+      minTrustScore?: number;
+    },
   ): Promise<UAIDResolution[]> {
     try {
       const params = new URLSearchParams({ q: query });
-      if (options?.protocol) params.set('protocol', options.protocol);
-      if (options?.limit) params.set('limit', String(options.limit));
-      if (options?.minTrustScore) params.set('minTrust', String(options.minTrustScore));
+      if (options?.protocol) params.set("protocol", options.protocol);
+      if (options?.limit) params.set("limit", String(options.limit));
+      if (options?.minTrustScore)
+        params.set("minTrust", String(options.minTrustScore));
 
-      const response = await this.brokerRequest('GET', `/agents/search?${params}`);
+      const response = await this.brokerRequest(
+        "GET",
+        `/agents/search?${params}`,
+      );
       if (!response.ok) return [];
 
       const data = await response.json();
-      const results: UAIDResolution[] = (data.agents ?? []).map((agent: Record<string, unknown>) => ({
-        resolved: true,
-        uaid: agent.uaid as string,
-        identity: {
-          agentId: String(agent.agentId ?? agent.nativeId ?? ''),
-          owner: (agent.owner ?? agent.controller ?? '') as string,
-          agentURI: (agent.agentURI ?? agent.metadataUri ?? '') as string,
-          paymentAddress: (agent.paymentAddress ?? agent.agentWallet ?? '') as string,
-          registrationFile: (agent.registrationFile ?? null) as AgentRegistrationFile | null,
-          protocol: (agent.protocol ?? 'unknown') as UAIDProtocol,
-          chain: (agent.chain ?? '') as string,
+      const results: UAIDResolution[] = (data.agents ?? []).map(
+        (agent: Record<string, unknown>) => ({
+          resolved: true,
           uaid: agent.uaid as string,
-        },
-        protocol: (agent.protocol ?? 'unknown') as UAIDProtocol,
-        chain: agent.chain as string | undefined,
-        trustScore: agent.trustScore as number | undefined,
-        registryVerified: (agent.verified ?? false) as boolean,
-      }));
+          identity: {
+            agentId: String(agent.agentId ?? agent.nativeId ?? ""),
+            owner: (agent.owner ?? agent.controller ?? "") as string,
+            agentURI: (agent.agentURI ?? agent.metadataUri ?? "") as string,
+            paymentAddress: (agent.paymentAddress ??
+              agent.agentWallet ??
+              "") as string,
+            registrationFile: (agent.registrationFile ??
+              null) as AgentRegistrationFile | null,
+            protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
+            chain: (agent.chain ?? "") as string,
+            uaid: agent.uaid as string,
+          },
+          protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
+          chain: agent.chain as string | undefined,
+          trustScore: agent.trustScore as number | undefined,
+          registryVerified: (agent.verified ?? false) as boolean,
+        }),
+      );
 
       return results;
     } catch {
@@ -282,7 +314,10 @@ export class UAIDResolver {
    * Useful when you already have an on-chain identity and want to work
    * with the universal format (e.g., for cross-chain discovery).
    */
-  erc8004ToUniversal(identity: AgentIdentity, chain: SupportedChain): UniversalAgentIdentity {
+  erc8004ToUniversal(
+    identity: AgentIdentity,
+    chain: SupportedChain,
+  ): UniversalAgentIdentity {
     const chainId = EVM_CHAIN_IDS[chain];
     return {
       agentId: identity.agentId.toString(),
@@ -290,7 +325,7 @@ export class UAIDResolver {
       agentURI: identity.agentURI,
       paymentAddress: identity.agentWallet,
       registrationFile: identity.registrationFile,
-      protocol: 'erc8004',
+      protocol: "erc8004",
       chain: `eip155:${chainId}`,
       uaid: `uaid:aid:eip155:${chainId}:${identity.owner};uid=${identity.agentId};proto=erc8004`,
     };
@@ -302,7 +337,11 @@ export class UAIDResolver {
    * This creates the identifier — it does NOT register with the HOL registry.
    * Use registerERC8004Agent() to make the agent discoverable cross-chain.
    */
-  buildERC8004UAID(agentId: bigint, chain: SupportedChain, ownerAddress: Address): string {
+  buildERC8004UAID(
+    agentId: bigint,
+    chain: SupportedChain,
+    ownerAddress: Address,
+  ): string {
     const chainId = EVM_CHAIN_IDS[chain];
     return `uaid:aid:eip155:${chainId}:${ownerAddress};uid=${agentId};proto=erc8004`;
   }
@@ -320,26 +359,31 @@ export class UAIDResolver {
    */
   async registerERC8004Agent(params: RegisterUAIDParams): Promise<string> {
     if (!this.apiKey) {
-      throw new Error('UAIDResolver: API key required for registration. Get one at https://hol.org');
+      throw new Error(
+        "UAIDResolver: API key required for registration. Get one at https://hol.org",
+      );
     }
 
     const chainId = EVM_CHAIN_IDS[params.chain];
-    const uaid = `uaid:aid:eip155:${chainId}:${params.registryAddress ?? '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432'};uid=${params.agentId};proto=erc8004`;
+    const uaid = `uaid:aid:eip155:${chainId}:${params.registryAddress ?? "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"};uid=${params.agentId};proto=erc8004`;
 
-    const response = await this.brokerRequest('POST', '/agents/register', {
+    const response = await this.brokerRequest("POST", "/agents/register", {
       uaid,
-      protocol: 'erc8004',
+      protocol: "erc8004",
       chain: `eip155:${chainId}`,
       agentId: params.agentId.toString(),
       name: params.name,
       description: params.description,
       capabilities: params.capabilities ?? [],
-      registryAddress: params.registryAddress ?? '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432',
+      registryAddress:
+        params.registryAddress ?? "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
     });
 
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
-      throw new Error(`UAIDResolver: Registration failed (${response.status}): ${errorBody}`);
+      const errorBody = await response.text().catch(() => "");
+      throw new Error(
+        `UAIDResolver: Registration failed (${response.status}): ${errorBody}`,
+      );
     }
 
     const data = await response.json();
@@ -373,7 +417,7 @@ export class UAIDResolver {
         identity: null,
         trustScore: 0,
         protocol: resolution.protocol,
-        error: resolution.error ?? 'Agent not found in registry',
+        error: resolution.error ?? "Agent not found in registry",
       };
     }
 
@@ -393,22 +437,22 @@ export class UAIDResolver {
    * Format: `uaid:aid:<identifier>;uid=<unique-id>;proto=<protocol>[;nativeId=<id>]`
    */
   static parseUAID(uaid: string): ParsedUAID | null {
-    if (!uaid.startsWith('uaid:')) return null;
+    if (!uaid.startsWith("uaid:")) return null;
 
-    const parts = uaid.split(';');
-    const aidPart = parts.find(p => p.startsWith('uaid:aid:'));
-    const uidPart = parts.find(p => p.startsWith('uid='));
-    const protoPart = parts.find(p => p.startsWith('proto='));
-    const nativeIdPart = parts.find(p => p.startsWith('nativeId='));
+    const parts = uaid.split(";");
+    const aidPart = parts.find((p) => p.startsWith("uaid:aid:"));
+    const uidPart = parts.find((p) => p.startsWith("uid="));
+    const protoPart = parts.find((p) => p.startsWith("proto="));
+    const nativeIdPart = parts.find((p) => p.startsWith("nativeId="));
 
     if (!aidPart || !uidPart || !protoPart) return null;
 
     return {
       raw: uaid,
-      aid: aidPart.replace('uaid:aid:', ''),
-      uid: uidPart.replace('uid=', ''),
-      protocol: protoPart.replace('proto=', '') as UAIDProtocol,
-      nativeId: nativeIdPart?.replace('nativeId=', ''),
+      aid: aidPart.replace("uaid:aid:", ""),
+      uid: uidPart.replace("uid=", ""),
+      protocol: protoPart.replace("proto=", "") as UAIDProtocol,
+      nativeId: nativeIdPart?.replace("nativeId=", ""),
     };
   }
 
@@ -419,17 +463,21 @@ export class UAIDResolver {
 
   // ── Private ───────────────────────────────────────────────────────────────
 
-  private async brokerRequest(method: string, path: string, body?: unknown): Promise<Response> {
+  private async brokerRequest(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<Response> {
     const url = `${this.brokerUrl}${path}`;
     const headers: Record<string, string> = {
-      'Accept': 'application/json',
-      'User-Agent': 'agentwallet-sdk/uaid-resolver',
+      Accept: "application/json",
+      "User-Agent": "agentwallet-sdk/uaid-resolver",
     };
     if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
     if (body) {
-      headers['Content-Type'] = 'application/json';
+      headers["Content-Type"] = "application/json";
     }
 
     const controller = new AbortController();

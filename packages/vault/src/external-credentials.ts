@@ -52,7 +52,11 @@ export class BackendNotSignedInError extends Error {
 export type ExecFn = (
   cmd: string,
   args: readonly string[],
-  opts: { readonly env?: NodeJS.ProcessEnv; readonly timeoutMs?: number; readonly stdin?: string },
+  opts: {
+    readonly env?: NodeJS.ProcessEnv;
+    readonly timeoutMs?: number;
+    readonly stdin?: string;
+  },
 ) => Promise<{ readonly stdout: string; readonly stderr: string }>;
 
 // ── 1Password ─────────────────────────────────────────────────────────
@@ -68,7 +72,10 @@ interface OnePasswordListItem {
   readonly title?: string;
   readonly category?: string;
   readonly updated_at?: string;
-  readonly urls?: ReadonlyArray<{ readonly href?: string; readonly primary?: boolean }>;
+  readonly urls?: ReadonlyArray<{
+    readonly href?: string;
+    readonly primary?: boolean;
+  }>;
   readonly additional_information?: string;
 }
 
@@ -95,14 +102,7 @@ export async function listOnePasswordLogins(
   // and the CLI authenticates via the desktop app.
   const listOut = await exec(
     "op",
-    [
-      ...sessionArgs,
-      "item",
-      "list",
-      "--categories",
-      "Login",
-      "--format=json",
-    ],
+    [...sessionArgs, "item", "list", "--categories", "Login", "--format=json"],
     { timeoutMs: 10_000 },
   );
   const items = parseJsonArray<OnePasswordListItem>(listOut.stdout);
@@ -122,7 +122,10 @@ export async function listOnePasswordLogins(
     out.push({
       source: "1password",
       externalId: item.id,
-      title: typeof item.title === "string" && item.title.length > 0 ? item.title : item.id,
+      title:
+        typeof item.title === "string" && item.title.length > 0
+          ? item.title
+          : item.id,
       username,
       domain: url ? extractHostname(url) : null,
       url: url ?? null,
@@ -137,27 +140,24 @@ export async function revealOnePasswordLogin(
   exec: ExecFn,
   externalId: string,
 ): Promise<ExternalLoginReveal> {
-  if (!externalId) throw new TypeError("revealOnePasswordLogin: externalId required");
+  if (!externalId)
+    throw new TypeError("revealOnePasswordLogin: externalId required");
   const sessionArgs = await readOnePasswordSessionArgs(vault, exec);
 
   // `op item get <id> --format=json` includes the full `fields` array with
   // values for username/password/totp.
   const out = await exec(
     "op",
-    [
-      ...sessionArgs,
-      "item",
-      "get",
-      externalId,
-      "--format=json",
-    ],
+    [...sessionArgs, "item", "get", externalId, "--format=json"],
     { timeoutMs: 10_000 },
   );
   const item = parseJsonObject<OnePasswordEnrichedItem>(out.stdout);
 
   const username = pickOnePasswordUsername(item) ?? "";
   const password = pickOnePasswordField(item, "password") ?? "";
-  const totp = pickOnePasswordField(item, "one-time password") ?? pickOnePasswordField(item, "totp");
+  const totp =
+    pickOnePasswordField(item, "one-time password") ??
+    pickOnePasswordField(item, "totp");
   const url = pickPrimaryUrl(item.urls);
 
   if (!password) {
@@ -167,7 +167,10 @@ export async function revealOnePasswordLogin(
   const reveal: ExternalLoginReveal = {
     source: "1password",
     externalId: item.id,
-    title: typeof item.title === "string" && item.title.length > 0 ? item.title : item.id,
+    title:
+      typeof item.title === "string" && item.title.length > 0
+        ? item.title
+        : item.id,
     username,
     domain: url ? extractHostname(url) : null,
     url: url ?? null,
@@ -178,25 +181,39 @@ export async function revealOnePasswordLogin(
   return reveal;
 }
 
-function pickOnePasswordUsername(item: OnePasswordEnrichedItem | undefined): string | null {
+function pickOnePasswordUsername(
+  item: OnePasswordEnrichedItem | undefined,
+): string | null {
   if (!item?.fields) return null;
   // `purpose: "USERNAME"` is the canonical marker for the Login.username slot.
-  const byPurpose = item.fields.find((f) => f.purpose === "USERNAME" && typeof f.value === "string");
+  const byPurpose = item.fields.find(
+    (f) => f.purpose === "USERNAME" && typeof f.value === "string",
+  );
   if (byPurpose?.value) return byPurpose.value;
   // Fallback: label-based match for older CLIs.
-  const byLabel = item.fields.find((f) => f.label === "username" && typeof f.value === "string");
+  const byLabel = item.fields.find(
+    (f) => f.label === "username" && typeof f.value === "string",
+  );
   return byLabel?.value ?? null;
 }
 
-function pickOnePasswordField(item: OnePasswordEnrichedItem, label: string): string | null {
+function pickOnePasswordField(
+  item: OnePasswordEnrichedItem,
+  label: string,
+): string | null {
   if (!item.fields) return null;
   if (label === "password") {
-    const byPurpose = item.fields.find((f) => f.purpose === "PASSWORD" && typeof f.value === "string");
+    const byPurpose = item.fields.find(
+      (f) => f.purpose === "PASSWORD" && typeof f.value === "string",
+    );
     if (byPurpose?.value) return byPurpose.value;
   }
   const lowered = label.toLowerCase();
   const match = item.fields.find(
-    (f) => typeof f.label === "string" && f.label.toLowerCase() === lowered && typeof f.value === "string",
+    (f) =>
+      typeof f.label === "string" &&
+      f.label.toLowerCase() === lowered &&
+      typeof f.value === "string",
   );
   return match?.value ?? null;
 }
@@ -225,14 +242,10 @@ export async function listBitwardenLogins(
   // `bw list items` returns ALL items (logins, secure notes, cards, etc.).
   // Filter to type === 1 (login) on the JS side; bw doesn't accept a category
   // filter on the list command.
-  const out = await exec(
-    "bw",
-    ["list", "items"],
-    {
-      env: { ...process.env, BW_SESSION: session },
-      timeoutMs: 15_000,
-    },
-  );
+  const out = await exec("bw", ["list", "items"], {
+    env: { ...process.env, BW_SESSION: session },
+    timeoutMs: 15_000,
+  });
   const items = parseJsonArray<BitwardenItem>(out.stdout);
 
   const result: ExternalLoginListEntry[] = [];
@@ -242,8 +255,12 @@ export async function listBitwardenLogins(
     result.push({
       source: "bitwarden",
       externalId: item.id,
-      title: typeof item.name === "string" && item.name.length > 0 ? item.name : item.id,
-      username: typeof item.login.username === "string" ? item.login.username : "",
+      title:
+        typeof item.name === "string" && item.name.length > 0
+          ? item.name
+          : item.id,
+      username:
+        typeof item.login.username === "string" ? item.login.username : "",
       domain: url ? extractHostname(url) : null,
       url: url ?? null,
       updatedAt: parseDate(item.revisionDate),
@@ -257,17 +274,14 @@ export async function revealBitwardenLogin(
   exec: ExecFn,
   externalId: string,
 ): Promise<ExternalLoginReveal> {
-  if (!externalId) throw new TypeError("revealBitwardenLogin: externalId required");
+  if (!externalId)
+    throw new TypeError("revealBitwardenLogin: externalId required");
   const session = await readSessionToken(vault, "bitwarden");
 
-  const out = await exec(
-    "bw",
-    ["get", "item", externalId],
-    {
-      env: { ...process.env, BW_SESSION: session },
-      timeoutMs: 10_000,
-    },
-  );
+  const out = await exec("bw", ["get", "item", externalId], {
+    env: { ...process.env, BW_SESSION: session },
+    timeoutMs: 10_000,
+  });
   const item = parseJsonObject<BitwardenItem>(out.stdout);
   if (item.type !== 1 || !item.login) {
     throw new Error(`[bitwarden] item ${externalId} is not a login`);
@@ -280,8 +294,12 @@ export async function revealBitwardenLogin(
   return {
     source: "bitwarden",
     externalId: item.id,
-    title: typeof item.name === "string" && item.name.length > 0 ? item.name : item.id,
-    username: typeof item.login.username === "string" ? item.login.username : "",
+    title:
+      typeof item.name === "string" && item.name.length > 0
+        ? item.name
+        : item.id,
+    username:
+      typeof item.login.username === "string" ? item.login.username : "",
     domain: url ? extractHostname(url) : null,
     url: url ?? null,
     updatedAt: parseDate(item.revisionDate),
@@ -387,10 +405,14 @@ async function isOnePasswordDesktopActiveWithExec(
 }
 
 function pickPrimaryUrl(
-  urls: ReadonlyArray<{ readonly href?: string; readonly primary?: boolean }> | undefined,
+  urls:
+    | ReadonlyArray<{ readonly href?: string; readonly primary?: boolean }>
+    | undefined,
 ): string | null {
   if (!urls || urls.length === 0) return null;
-  const primary = urls.find((u) => u.primary === true && typeof u.href === "string");
+  const primary = urls.find(
+    (u) => u.primary === true && typeof u.href === "string",
+  );
   if (primary?.href) return primary.href;
   for (const u of urls) {
     if (typeof u.href === "string" && u.href.length > 0) return u.href;
@@ -426,7 +448,8 @@ function parseJsonArray<T>(raw: string): readonly T[] {
 
 function parseJsonObject<T>(raw: string): T {
   const trimmed = raw.trim();
-  if (trimmed.length === 0) throw new Error("expected JSON object, got empty output");
+  if (trimmed.length === 0)
+    throw new Error("expected JSON object, got empty output");
   const parsed: unknown = JSON.parse(trimmed);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("expected JSON object, got non-object");

@@ -633,8 +633,8 @@ export class DiscordService extends Service implements IDiscordService {
 				});
 				// now start login
 				client.login(token).catch((error) => {
-					this.runtime.logger.error(
-						`Failed to login to Discord: ${error instanceof Error ? error.message : String(error)}`,
+					this.runtime.logger.warn(
+						`Failed to login to Discord: ${error instanceof Error ? error.message : String(error)} — check your DISCORD_API_TOKEN`,
 					);
 					if (this.client) {
 						this.client.destroy().catch(() => {});
@@ -646,13 +646,13 @@ export class DiscordService extends Service implements IDiscordService {
 
 			// Attach error handler to prevent unhandled promise rejection
 			this.clientReadyPromise.catch((error) => {
-				this.runtime.logger.error(
+				this.runtime.logger.debug(
 					{
 						src: "plugin:discord",
 						agentId: this.runtime.agentId,
 						error: error instanceof Error ? error.message : String(error),
 					},
-					"Discord client ready promise rejected",
+					"Discord client ready promise rejected (already logged above)",
 				);
 				this._loginFailed = true;
 			});

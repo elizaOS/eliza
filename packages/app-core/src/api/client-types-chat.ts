@@ -459,9 +459,74 @@ export interface N8nWorkflowMissingCredentialsResponse {
   warning: "missing credentials";
 }
 
+/**
+ * Structured clarification request emitted by the plugin's workflow generator
+ * when a node parameter cannot be resolved from the runtime context. The host
+ * surfaces these as quick-pick buttons; on click the host calls
+ * `/api/n8n/workflows/resolve-clarification` with the chosen value, which
+ * patches the draft at `paramPath` and deploys — no LLM regeneration.
+ *
+ * Mirrors the plugin's `ClarificationRequest` (see
+ * @elizaos/plugin-n8n-workflow `src/types/index.ts`). Re-declared here to
+ * avoid a host → plugin import cycle.
+ */
+export interface N8nClarificationRequest {
+  kind:
+    | "target_channel"
+    | "target_server"
+    | "recipient"
+    | "value"
+    | "free_text";
+  platform?: string;
+  scope?: { guildId?: string };
+  question: string;
+  paramPath: string;
+}
+
+/** One server / workspace / contact-collection from a connector catalog. */
+export interface N8nClarificationTargetGroup {
+  platform: string;
+  groupId: string;
+  groupName: string;
+  targets: Array<{
+    id: string;
+    name: string;
+    kind: "channel" | "recipient" | "chat";
+  }>;
+}
+
+/**
+ * Returned by `POST /api/n8n/workflows/generate` when the LLM emitted one or
+ * more `ClarificationRequest`s and the host needs the user to pick a target
+ * before deploying. The `draft` is the unmodified workflow JSON from the
+ * plugin (with the unresolved parameters left absent); `catalog` is a
+ * snapshot of the relevant connector-target-catalog scoped to the
+ * platforms referenced by the clarifications.
+ */
+export interface N8nWorkflowNeedsClarificationResponse {
+  status: "needs_clarification";
+  draft: Record<string, unknown>;
+  clarifications: N8nClarificationRequest[];
+  catalog: N8nClarificationTargetGroup[];
+}
+
+/** Resolution payload sent to /api/n8n/workflows/resolve-clarification. */
+export interface N8nClarificationResolution {
+  paramPath: string;
+  value: string;
+}
+
+export interface N8nWorkflowResolveClarificationRequest {
+  draft: Record<string, unknown>;
+  resolutions: N8nClarificationResolution[];
+  name?: string;
+  workflowId?: string;
+}
+
 export type N8nWorkflowGenerateResponse =
   | N8nWorkflow
-  | N8nWorkflowMissingCredentialsResponse;
+  | N8nWorkflowMissingCredentialsResponse
+  | N8nWorkflowNeedsClarificationResponse;
 
 export function isMissingCredentialsResponse(
   res: N8nWorkflowGenerateResponse,
@@ -470,6 +535,19 @@ export function isMissingCredentialsResponse(
   return (
     candidate.warning === "missing credentials" &&
     Array.isArray(candidate.missingCredentials)
+  );
+}
+
+export function isNeedsClarificationResponse(
+  res: N8nWorkflowGenerateResponse,
+): res is N8nWorkflowNeedsClarificationResponse {
+  const candidate = res as N8nWorkflowNeedsClarificationResponse;
+  return (
+    candidate.status === "needs_clarification" &&
+    Array.isArray(candidate.clarifications) &&
+    Array.isArray(candidate.catalog) &&
+    typeof candidate.draft === "object" &&
+    candidate.draft !== null
   );
 }
 

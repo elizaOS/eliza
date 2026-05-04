@@ -9,16 +9,16 @@
  * Fallback: USDC_ADDRESSES from x402/types.ts.
  */
 
-import type { Address } from 'viem';
-import { getGlobalRegistry } from '../tokens/registry.js';
-import { USDC_ADDRESSES } from './types.js';
+import type { Address } from "viem";
+import { getGlobalRegistry } from "../tokens/registry.js";
+import { USDC_ADDRESSES } from "./types.js";
 
 /**
  * Network string format used in x402: "chainName:chainId" (e.g. "base:8453").
  * Returns the chainId portion as a number.
  */
 export function parseNetworkChainId(network: string): number | null {
-  const parts = network.split(':');
+  const parts = network.split(":");
   if (parts.length < 2) return null;
   const id = parseInt(parts[parts.length - 1], 10);
   return isNaN(id) ? null : id;
@@ -38,7 +38,10 @@ export function parseNetworkChainId(network: string): number | null {
  * @param network - Network string from the 402 response (e.g. "base:8453")
  * @returns Resolved contract address, or null if not found in registry
  */
-export function resolveAssetAddress(asset: string, network: string): Address | null {
+export function resolveAssetAddress(
+  asset: string,
+  network: string,
+): Address | null {
   const chainId = parseNetworkChainId(network);
   if (chainId == null) return null;
 
@@ -97,7 +100,7 @@ export function resolveAssetDecimals(asset: string, network: string): number {
  */
 export function buildSupportedAssets(
   networks: string[],
-  symbols: string[] = ['USDC', 'USDT', 'DAI', 'WETH'],
+  symbols: string[] = ["USDC", "USDT", "DAI", "WETH"],
 ): Record<string, Address[]> {
   const result: Record<string, Address[]> = {};
   const registry = getGlobalRegistry();
@@ -117,7 +120,10 @@ export function buildSupportedAssets(
 
     // Always include USDC from the existing USDC_ADDRESSES table as fallback
     const usdcFallback = USDC_ADDRESSES[network];
-    if (usdcFallback && !addrs.some(a => a.toLowerCase() === usdcFallback.toLowerCase())) {
+    if (
+      usdcFallback &&
+      !addrs.some((a) => a.toLowerCase() === usdcFallback.toLowerCase())
+    ) {
       addrs.push(usdcFallback);
     }
 

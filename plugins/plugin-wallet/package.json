@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-wallet",
-  "version": "0.1.0",
+  "version": "2.0.0-alpha.536",
   "description": "Unified non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
   "type": "module",
   "license": "MIT",
@@ -43,20 +43,21 @@
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
     "form-data": "4.0.5",
-    "whatwg-url": "7.1.0"
+    "whatwg-url": "^16.0.0"
   },
   "dependencies": {
-    "@lifi/data-types": "5.15.5",
+    "@elizaos/cloud-routing": "workspace:*",
+    "@lifi/data-types": "^6.0.0",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
     "@solana/spl-token": "0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",
-    "@solana/web3.js": "^1.98.4",
-    "bignumber.js": "9.3.0",
+    "@solana/web3.js": "1.98.4",
+    "bignumber.js": "^11.0.0",
     "bs58": "^6.0.0",
     "tweetnacl": "^1.0.3",
     "viem": "^2.48.8",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "publishConfig": {
     "access": "public"

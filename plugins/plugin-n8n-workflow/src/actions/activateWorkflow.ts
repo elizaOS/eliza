@@ -4,6 +4,7 @@ import {
   type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
+  type ProviderDataRecord,
   logger,
   type Memory,
   type State,
@@ -159,7 +160,7 @@ export const activateWorkflowAction: Action = {
           await callback({ text: responseText, success: true });
         }
 
-        return { success: true, data: result };
+        return { success: true, data: result as unknown as ProviderDataRecord };
       }
 
       // Fetch workflows directly from service

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-n8n-workflow",
-  "version": "1.2.12",
+  "version": "2.0.0-alpha.536",
   "description": "ElizaOS plugin for generating and managing n8n workflows from natural language",
   "type": "module",
   "main": "dist/index.js",
@@ -42,19 +42,19 @@
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-n8n-workflow#readme",
   "peerDependencies": {
-    "@elizaos/core": "1.7.2"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/config": "^1.7.2",
-    "@eslint/js": "^9",
+    "@eslint/js": "^10.0.0",
     "@types/bun": "^1.3.7",
     "@types/node": "^25.1.0",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "bun-types": "^1.3.8",
-    "eslint": "^9",
-    "n8n-nodes-base": "^1.121.12",
-    "prettier": "^3.8.1",
+    "eslint": "^10.0.0",
+    "n8n-nodes-base": "^2.0.0",
+    "prettier": "^3.8.3",
     "typescript": "^6.0.3"
   },
   "publishConfig": {
@@ -74,7 +74,7 @@
     }
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.1"

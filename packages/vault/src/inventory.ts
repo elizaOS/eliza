@@ -137,6 +137,10 @@ const PROVIDER_KEY_TO_ID: Readonly<Record<string, string>> = {
   GROQ_API_KEY: "groq",
   XAI_API_KEY: "grok",
   DEEPSEEK_API_KEY: "deepseek",
+  ZAI_API_KEY: "zai",
+  Z_AI_API_KEY: "zai",
+  MOONSHOT_API_KEY: "moonshot",
+  KIMI_API_KEY: "moonshot",
   MISTRAL_API_KEY: "mistral",
   TOGETHER_API_KEY: "together",
   GOOGLE_GENERATIVE_AI_API_KEY: "gemini",
@@ -155,6 +159,8 @@ const PROVIDER_KEY_PATTERNS: ReadonlyArray<RegExp> = [
   /^GROQ_API_KEY$/,
   /^XAI_API_KEY$/,
   /^DEEPSEEK_API_KEY$/,
+  /^Z_?AI_API_KEY$/,
+  /^(?:MOONSHOT|KIMI)_API_KEY$/,
   /^MISTRAL_API_KEY$/,
   /^TOGETHER_API_KEY$/,
   /^GOOGLE_(?:GENERATIVE_AI_)?API_KEY$/,
@@ -171,13 +177,16 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = {
   groq: "Groq",
   grok: "xAI Grok",
   deepseek: "DeepSeek",
+  zai: "z.ai",
+  moonshot: "Kimi / Moonshot",
   mistral: "Mistral",
   together: "Together",
   gemini: "Gemini",
 };
 
 function defaultLabel(key: string, providerId: string | null): string {
-  if (providerId && PROVIDER_LABELS[providerId]) return PROVIDER_LABELS[providerId]!;
+  if (providerId && PROVIDER_LABELS[providerId])
+    return PROVIDER_LABELS[providerId]!;
   return key;
 }
 
@@ -251,7 +260,10 @@ export async function setEntryMeta(
  * removing the underlying value(s) and profile entries — this only
  * touches `_meta.<key>`.
  */
-export async function removeEntryMeta(vault: Vault, key: string): Promise<void> {
+export async function removeEntryMeta(
+  vault: Vault,
+  key: string,
+): Promise<void> {
   const metaKey = `${META_PREFIX}${key}`;
   if (await vault.has(metaKey)) {
     await vault.remove(metaKey);
@@ -408,12 +420,15 @@ function parseMetaRecord(
       const profile: VaultEntryProfile = {
         id: rec.id,
         label,
-        ...(typeof rec.createdAt === "number" ? { createdAt: rec.createdAt } : {}),
+        ...(typeof rec.createdAt === "number"
+          ? { createdAt: rec.createdAt }
+          : {}),
       };
       profiles.push(profile);
     }
     if (profiles.length > 0) {
-      (out as { profiles: ReadonlyArray<VaultEntryProfile> }).profiles = profiles;
+      (out as { profiles: ReadonlyArray<VaultEntryProfile> }).profiles =
+        profiles;
     }
   }
   return out;

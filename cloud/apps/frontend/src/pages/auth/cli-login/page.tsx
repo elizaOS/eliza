@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { clearStaleStewardSession } from "@/lib/providers/StewardProvider";
+import { ApiError, apiFetch } from "../../../lib/api-client";
+
+const COMPLETE_TIMEOUT_MS = 30_000;
 
 type CompletionState =
   | { status: "idle" }
@@ -147,30 +150,24 @@ function CliLoginContent() {
 
     let active = true;
 
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), COMPLETE_TIMEOUT_MS);
+
     async function completeCliLogin() {
       setCompletion({ status: "completing" });
 
       try {
-        const response = await fetch(`/api/auth/cli-session/${sessionId}/complete`, {
+        // apiFetch attaches the steward Bearer token from localStorage and
+        // sets credentials:"include" so the steward-token cookie reaches the
+        // Worker — the cli-login page may be opened in SafariViewController,
+        // where same-origin defaults aren't reliable across the Pages→Worker
+        // proxy hop. apiFetch throws ApiError on non-2xx; the catch handles
+        // 401 + everything else.
+        const response = await apiFetch(`/api/auth/cli-session/${sessionId}/complete`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          json: {},
+          signal: abort.signal,
         });
-
-        if (!response.ok) {
-          const errorData = (await response.json()) as { error?: string };
-          if (response.status === 401) {
-            clearStaleStewardSession();
-          }
-          if (active) {
-            setCompletion({
-              status: "error",
-              errorMessage: errorData.error || "Failed to complete authentication",
-            });
-          }
-          return;
-        }
 
         const data = (await response.json()) as { keyPrefix: string };
         window.opener?.postMessage({ type: "eliza-cloud-auth-complete", sessionId }, "*");
@@ -179,12 +176,19 @@ function CliLoginContent() {
           setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
         }
       } catch (error) {
-        if (active) {
-          setCompletion({
-            status: "error",
-            errorMessage: getErrorMessage(error, "Network error. Please try again."),
-          });
+        if (!active) return;
+        const aborted = error instanceof DOMException && error.name === "AbortError";
+        if (error instanceof ApiError && error.status === 401) {
+          clearStaleStewardSession();
         }
+        setCompletion({
+          status: "error",
+          errorMessage: aborted
+            ? "The cloud took too long to respond. Please try again."
+            : error instanceof ApiError
+              ? error.message
+              : getErrorMessage(error, "Network error. Please try again."),
+        });
       }
     }
 
@@ -192,6 +196,8 @@ function CliLoginContent() {
 
     return () => {
       active = false;
+      clearTimeout(timeout);
+      abort.abort();
     };
   }, [authenticated, completion.status, ready, sessionId]);
 

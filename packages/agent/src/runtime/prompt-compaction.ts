@@ -289,9 +289,19 @@ export function compactCodingExamplesForIntent(prompt: string): string {
 }
 
 /**
- * Context-aware action formatting. Replaces the <actions>...</actions>
- * block in the prompt with a version where only intent-relevant actions
- * have full <params> — the rest are stubs with just name + description.
+ * Context-aware action formatting. Replaces the available-actions block in
+ * the prompt with a version where only intent-relevant actions keep full
+ * parameter detail — the rest are stubs with just name + description.
+ *
+ * Supports two prompt encodings:
+ *   - TOON (current default): the actions provider emits
+ *       actions[N]:
+ *       - ACTION: description
+ *         aliases[..]: ...
+ *         tags[..]: ...
+ *         params[..]: ...
+ *         example: ...
+ *   - XML (legacy): <actions><action><name>..</name>...</action>...</actions>
  *
  * If no intents are detected (general chat), only universal actions
  * (REPLY, NONE, IGNORE) keep full params — all others are stubbed.
@@ -309,7 +319,116 @@ export function compactActionsForIntent(prompt: string): string {
   // are always preserved, so the LLM can still select the right action; it
   // just won't see detailed param schemas until the user triggers a known intent.
 
-  // Find the first <actions>...</actions> block (the Available Actions section)
+  const intentCategories = detectIntentCategories(prompt);
+  // When no specific intent is detected, it's general chat — only universal
+  // actions (REPLY, NONE, IGNORE) need full detail. All other actions get
+  // stubs so the LLM knows they exist but doesn't waste context on params.
+  const fullParamActions = buildFullParamActionSet(intentCategories);
+
+  // Try TOON-format first (current default), then fall back to XML for
+  // legacy prompts that still emit <actions>...</actions> blocks.
+  const toonCompacted = compactToonActionsBlock(prompt, fullParamActions);
+  if (toonCompacted !== null) return toonCompacted;
+  return compactXmlActionsBlock(prompt, fullParamActions);
+}
+
+/**
+ * Locate and compact a TOON-formatted "Available Actions" block. Returns
+ * `null` if no TOON block is found, so the caller can try XML.
+ */
+function compactToonActionsBlock(
+  prompt: string,
+  fullParamActions: Set<string>,
+): string | null {
+  // The actions provider emits "actions[N]:\n- NAME: desc\n  params[..]: ...".
+  // Anchor on that header line.
+  const headerRe = /^actions\[\d+\]:[ \t]*$/m;
+  const headerMatch = headerRe.exec(prompt);
+  if (!headerMatch) return null;
+
+  const blockStart = headerMatch.index;
+  const headerLine = headerMatch[0];
+  const bodyStart = blockStart + headerLine.length;
+
+  // Walk forward consuming action entries (`- NAME: ...`) and their
+  // two-space-indented continuation lines. Stop at the first non-indented
+  // non-entry line that isn't part of an entry.
+  const remainder = prompt.slice(bodyStart);
+  const lines = remainder.split("\n");
+
+  let consumed = 0;
+  if (lines.length > 0 && lines[0] === "") {
+    consumed = 1;
+  }
+
+  while (consumed < lines.length) {
+    const line = lines[consumed];
+    if (line.startsWith("- ") || line.startsWith("  ")) {
+      consumed += 1;
+      continue;
+    }
+    if (line === "") {
+      const next = lines[consumed + 1];
+      if (next !== undefined && next.startsWith("- ")) {
+        consumed += 1;
+        continue;
+      }
+      break;
+    }
+    break;
+  }
+
+  const bodyLines = lines.slice(0, consumed);
+  const blockEnd = bodyStart + bodyLines.join("\n").length;
+
+  type ToonAction = { name: string; entryLines: string[] };
+  const entries: ToonAction[] = [];
+  let current: ToonAction | null = null;
+  for (const line of bodyLines) {
+    if (line.startsWith("- ")) {
+      if (current) entries.push(current);
+      const nameMatch = /^- ([A-Z0-9_]+):/.exec(line);
+      const name = nameMatch?.[1] ?? "";
+      current = { name, entryLines: [line] };
+    } else if (current && (line.startsWith("  ") || line === "")) {
+      current.entryLines.push(line);
+    }
+  }
+  if (current) entries.push(current);
+
+  if (entries.length === 0) return null;
+
+  const compactedEntries = entries.map((entry) => {
+    if (!entry.name || fullParamActions.has(entry.name)) {
+      return entry.entryLines.join("\n");
+    }
+    // Stub: keep only `- NAME: description`; drop continuation lines.
+    return entry.entryLines[0];
+  });
+
+  while (
+    compactedEntries.length > 0 &&
+    compactedEntries[compactedEntries.length - 1] === ""
+  ) {
+    compactedEntries.pop();
+  }
+
+  const compactedBody = compactedEntries.join("\n");
+  const before = prompt.slice(0, bodyStart);
+  const after = prompt.slice(blockEnd);
+  const separator = bodyLines.length > 0 && bodyLines[0] === "" ? "\n" : "";
+  return `${before}${separator}${compactedBody}${after}`;
+}
+
+/**
+ * Legacy XML compaction: locate a `<actions>...</actions>` block and stub
+ * non-relevant `<action>` entries. Returns the original prompt unchanged
+ * when no XML block is present.
+ */
+function compactXmlActionsBlock(
+  prompt: string,
+  fullParamActions: Set<string>,
+): string {
   const actionsStart = prompt.indexOf("<actions>");
   if (actionsStart === -1) return prompt;
   const actionsEnd = prompt.indexOf("</actions>", actionsStart);
@@ -320,13 +439,6 @@ export function compactActionsForIntent(prompt: string): string {
     actionsEnd,
   );
 
-  const intentCategories = detectIntentCategories(prompt);
-  // When no specific intent is detected, it's general chat — only universal
-  // actions (REPLY, NONE, IGNORE) need full detail. All other actions get
-  // stubs so the LLM knows they exist but doesn't waste context on params.
-  const fullParamActions = buildFullParamActionSet(intentCategories);
-
-  // Parse individual <action>...</action> blocks
   const actionRegex = /<action>([\s\S]*?)<\/action>/g;
   const compactedActions: string[] = [];
 
@@ -338,10 +450,8 @@ export function compactActionsForIntent(prompt: string): string {
     const actionName = nameMatch[1].trim();
 
     if (fullParamActions.has(actionName)) {
-      // Keep full action with params
       compactedActions.push(`  <action>${actionInner}</action>`);
     } else {
-      // Stub: name + description only, strip <params>
       const descMatch = actionInner.match(
         /<description>([\s\S]*?)<\/description>/,
       );

@@ -3,7 +3,10 @@ import { ModelType } from "@elizaos/core";
 
 const elizaKeywords = [
   { pattern: /\bmother\b/i, response: "Tell me more about your family." },
-  { pattern: /\bfather\b/i, response: "How does that make you feel about your father?" },
+  {
+    pattern: /\bfather\b/i,
+    response: "How does that make you feel about your father?",
+  },
   { pattern: /\bfeel\b/i, response: "Do you often feel this way?" },
   { pattern: /\bthink\b/i, response: "Why do you think that?" },
   { pattern: /\bwant\b/i, response: "What would it mean if you got that?" },
@@ -11,12 +14,21 @@ const elizaKeywords = [
     pattern: /\bsad\b/i,
     response: "I'm sorry to hear you're feeling sad. Can you tell me more?",
   },
-  { pattern: /\bhappy\b/i, response: "That's wonderful! What's making you happy?" },
+  {
+    pattern: /\bhappy\b/i,
+    response: "That's wonderful! What's making you happy?",
+  },
   { pattern: /\byes\b/i, response: "You seem certain. Why is that?" },
   { pattern: /\bno\b/i, response: "Why not?" },
-  { pattern: /\bwhy\b/i, response: "That's a good question. What do you think?" },
+  {
+    pattern: /\bwhy\b/i,
+    response: "That's a good question. What do you think?",
+  },
   { pattern: /\bhow\b/i, response: "What approach would you suggest?" },
-  { pattern: /\bwhat\b/i, response: "Let me think about that. What does it mean to you?" },
+  {
+    pattern: /\bwhat\b/i,
+    response: "Let me think about that. What does it mean to you?",
+  },
   { pattern: /\bcan\b/i, response: "What makes you ask about that?" },
   { pattern: /\byou\b/i, response: "We were talking about you, not me." },
   { pattern: /\bI am\b/i, response: "How long have you been like that?" },
@@ -47,7 +59,10 @@ function generateElizaResponse(input: string): string {
   return "Please go on.";
 }
 
-async function handle(runtime: IAgentRuntime, params: GenerateTextParams): Promise<string> {
+async function handle(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+): Promise<string> {
   const input = extractUserMessage(params.prompt);
   const reply = generateElizaResponse(input);
 

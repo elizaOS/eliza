@@ -22,9 +22,10 @@ async function listNodes(
     const limit = validateLimit(req.query?.limit, 20, 100);
 
     if (!q) {
-      res
-        .status(400)
-        .json({ success: false, error: 'q parameter is required (comma-separated keywords)' });
+      res.status(400).json({
+        success: false,
+        error: 'q parameter is required (comma-separated keywords)',
+      });
       return;
     }
 

@@ -123,6 +123,20 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		example: "sk-xxxxxxxxxxxxxxxxxxxx",
 	},
 
+	ZAI_API_KEY: {
+		pattern: /^[a-zA-Z0-9._-]{20,}$/,
+		description: "z.ai API key must be at least 20 characters",
+		minLength: 20,
+		example: "xxxxxxxxxxxxxxxxxxxx",
+	},
+
+	MOONSHOT_API_KEY: {
+		pattern: /^sk-[a-zA-Z0-9._-]{20,}$/,
+		description: 'Moonshot API key must start with "sk-"',
+		minLength: 20,
+		example: "sk-xxxxxxxxxxxxxxxxxxxx",
+	},
+
 	// ─────────────────────────────────────────────────────────────────────────────
 	// Channel/Platform Tokens
 	// ─────────────────────────────────────────────────────────────────────────────

@@ -10,7 +10,6 @@
 
 import { errorResponse, handleChat, handleHealth } from "./lib/runtime.ts";
 
-
 /**
  * Main Edge Function handler
  */

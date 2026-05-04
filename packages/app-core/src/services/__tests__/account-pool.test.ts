@@ -172,6 +172,24 @@ describe("AccountPool selection", () => {
     expect(picked?.id).toBe("b");
   });
 
+  it("selects direct API-key provider accounts", async () => {
+    const deps = mkDeps([
+      mkAccount("deepseek-a", {
+        providerId: "deepseek-api",
+        source: "api-key",
+        priority: 1,
+      }),
+      mkAccount("deepseek-b", {
+        providerId: "deepseek-api",
+        source: "api-key",
+        priority: 0,
+      }),
+    ]);
+    const pool = new AccountPool(deps);
+    const picked = await pool.select({ providerId: "deepseek-api" });
+    expect(picked?.id).toBe("deepseek-b");
+  });
+
   it("keeps same account IDs separate across subscription providers", async () => {
     const deps = mkDeps([
       mkAccount("default", {

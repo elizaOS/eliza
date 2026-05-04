@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-browser",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Eliza app-browser: desktop browser workspace control, Steward wallet actions, and (eventually) browser UI exported for the dashboard.",
   "main": "./src/index.ts",
@@ -64,5 +63,8 @@
     "app": {
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

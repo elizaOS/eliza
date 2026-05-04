@@ -62,7 +62,10 @@ function hasValidApiKey(envKey: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-async function loadLLMPlugin(): Promise<{ plugin: Plugin; providerName: string } | null> {
+async function loadLLMPlugin(): Promise<{
+  plugin: Plugin;
+  providerName: string;
+} | null> {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
       try {

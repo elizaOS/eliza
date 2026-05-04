@@ -1,19 +1,20 @@
 """
 Terminal-Bench Runner
 
-Orchestrates the full Terminal-Bench evaluation pipeline.
+Orchestrates the full Terminal-Bench evaluation pipeline. Every task is
+solved by the elizaOS TypeScript benchmark bridge
+(``packages/app-core/src/benchmark/server.ts``); the legacy Python
+``AgentRuntime`` path has been removed.
 """
 
 import asyncio
 import json
 import logging
-import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
-from elizaos_terminal_bench.agent import TerminalAgent
 from elizaos_terminal_bench.dataset import TerminalBenchDataset
 from elizaos_terminal_bench.environment import TerminalEnvironment
 from elizaos_terminal_bench.evaluator import (
@@ -30,28 +31,22 @@ from elizaos_terminal_bench.types import (
     TerminalTask,
 )
 
-if TYPE_CHECKING:
-    from elizaos.runtime import AgentRuntime
-
 logger = logging.getLogger(__name__)
 
 
 class TerminalBenchRunner:
-    """Orchestrates Terminal-Bench benchmark evaluation."""
+    """Orchestrates Terminal-Bench benchmark evaluation via the elizaOS TS bridge."""
 
     def __init__(
         self,
-        runtime: Optional["AgentRuntime"] = None,
         config: Optional[TerminalBenchConfig] = None,
     ):
         """
         Initialize the benchmark runner.
 
         Args:
-            runtime: Optional ElizaOS runtime for LLM access
             config: Benchmark configuration (uses defaults if not provided)
         """
-        self.runtime = runtime
         self.config = config or TerminalBenchConfig()
 
         self.dataset: Optional[TerminalBenchDataset] = None
@@ -269,101 +264,29 @@ class TerminalBenchRunner:
             finally:
                 await env.stop()
 
-        # Choose agent based on configuration
-        if self.config.use_eliza_agent:
-            # Full ElizaOS agent with message_service, actions, providers
-            return await self._run_with_eliza_agent(task)
-        else:
-            # Standalone agent with direct API calls
-            return await self._run_with_standalone_agent(task)
+        return await self._run_with_bridge(task)
 
-    async def _run_with_eliza_agent(self, task: TerminalTask) -> TerminalBenchResult:
-        """Run task with full ElizaOS agent (canonical)."""
-        # Route to the TS benchmark bridge if BENCHMARK_MODEL_PROVIDER=eliza.
-        # This is set by the CLI when --model-provider eliza is used.
-        use_bridge = (os.environ.get("BENCHMARK_MODEL_PROVIDER", "").lower() == "eliza")
+    async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
+        """Run task by routing decisions through the elizaOS TS benchmark bridge."""
+        from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
 
-        from elizaos_terminal_bench.eliza_agent import ElizaTerminalAgent
-
-        # Create environment
         env = TerminalEnvironment(
             image=task.docker_image,
             timeout_seconds=task.timeout_seconds,
             network_mode="bridge" if task.network_enabled else "none",
         )
 
+        agent: Optional[ElizaBridgeTerminalAgent] = None
         try:
             await env.start(task)
 
-            if use_bridge:
-                from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
-
-                agent = ElizaBridgeTerminalAgent(
-                    environment=env,
-                    max_iterations=self.config.max_iterations,
-                    model_name=self.config.model_name,
-                    verbose=self.config.verbose,
-                )
-            else:
-                # Create ElizaOS agent
-                agent = ElizaTerminalAgent(
-                    environment=env,
-                    max_iterations=self.config.max_iterations,
-                    model_name=self.config.model_name,
-                    temperature=self.config.temperature,
-                    verbose=self.config.verbose,
-                )
-
-            result = await asyncio.wait_for(
-                agent.solve_task(task),
-                timeout=self.config.timeout_per_task_seconds,
-            )
-            return result
-
-        except asyncio.TimeoutError:
-            logger.warning(f"Task {task.task_id} timed out")
-            return TerminalBenchResult(
-                task_id=task.task_id,
-                success=False,
-                commands_executed=0,
-                total_execution_time_ms=0,
-                test_output="",
-                error_message=f"Task timed out after {self.config.timeout_per_task_seconds}s",
-                category=task.category,
-                difficulty=task.difficulty,
+            agent = ElizaBridgeTerminalAgent(
+                environment=env,
+                max_iterations=self.config.max_iterations,
+                model_name=self.config.model_name,
+                verbose=self.config.verbose,
             )
 
-        except Exception as e:
-            logger.error(f"Error running task {task.task_id} with Eliza agent: {e}")
-            return TerminalBenchResult(
-                task_id=task.task_id,
-                success=False,
-                commands_executed=0,
-                total_execution_time_ms=0,
-                test_output="",
-                error_message=str(e),
-                category=task.category,
-                difficulty=task.difficulty,
-            )
-
-        finally:
-            await env.stop()
-            if "agent" in locals():
-                await agent.cleanup()
-
-    async def _run_with_standalone_agent(self, task: TerminalTask) -> TerminalBenchResult:
-        """Run task with standalone agent (direct API calls)."""
-        # Create agent for this task
-        agent = TerminalAgent(
-            runtime=self.runtime,
-            environment=None,  # Agent will create its own
-            max_iterations=self.config.max_iterations,
-            model_name=self.config.model_name,
-            temperature=self.config.temperature,
-            verbose=self.config.verbose,
-        )
-
-        try:
             result = await asyncio.wait_for(
                 agent.solve_task(task),
                 timeout=self.config.timeout_per_task_seconds,
@@ -397,7 +320,9 @@ class TerminalBenchRunner:
             )
 
         finally:
-            await agent.close()
+            await env.stop()
+            if agent is not None:
+                await agent.cleanup()
 
     def _create_empty_report(self) -> TerminalBenchReport:
         """Create an empty report for when no tasks are run."""
@@ -540,21 +465,19 @@ class TerminalBenchRunner:
 
 
 async def run_terminal_bench(
-    runtime: Optional["AgentRuntime"] = None,
     config: Optional[TerminalBenchConfig] = None,
     use_sample_tasks: bool = True,
 ) -> TerminalBenchReport:
     """
-    Convenience function to run Terminal-Bench evaluation.
+    Convenience function to run Terminal-Bench evaluation through the bridge.
 
     Args:
-        runtime: Optional ElizaOS runtime
         config: Optional configuration
         use_sample_tasks: Use sample tasks for testing
 
     Returns:
         TerminalBenchReport with results
     """
-    runner = TerminalBenchRunner(runtime=runtime, config=config)
+    runner = TerminalBenchRunner(config=config)
     await runner.setup(use_sample_tasks=use_sample_tasks)
     return await runner.run()

@@ -22,13 +22,11 @@ export type CliOptions = {
 export type EnvConfig = {
   readonly privateKey: string;
   readonly clobApiUrl: string;
-  readonly creds:
-    | {
-        readonly key: string;
-        readonly secret: string;
-        readonly passphrase: string;
-      }
-    | null;
+  readonly creds: {
+    readonly key: string;
+    readonly secret: string;
+    readonly passphrase: string;
+  } | null;
   readonly signatureType?: number;
   readonly funderAddress?: string;
 };
@@ -57,7 +55,13 @@ export type EnvFile = {
   readonly values: Record<string, string>;
 };
 
-const LLM_PROVIDER_ORDER = ["openai", "anthropic", "gemini", "groq", "grok"] as const;
+const LLM_PROVIDER_ORDER = [
+  "openai",
+  "anthropic",
+  "gemini",
+  "groq",
+  "grok",
+] as const;
 
 const LLM_PROVIDER_KEYS: Record<LlmProvider, readonly string[]> = {
   openai: ["OPENAI_API_KEY"],
@@ -84,13 +88,19 @@ function normalizeEnvValue(value: string | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (trimmed.length === 0) return null;
-  if (trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "undefined") {
+  if (
+    trimmed.toLowerCase() === "null" ||
+    trimmed.toLowerCase() === "undefined"
+  ) {
     return null;
   }
   return trimmed;
 }
 
-export function parseArgs(argv: readonly string[]): { command: Command; options: CliOptions } {
+export function parseArgs(argv: readonly string[]): {
+  command: Command;
+  options: CliOptions;
+} {
   const [rawCommand, ...rest] = argv;
   const command = (rawCommand ?? "chat") as Command;
 
@@ -137,7 +147,8 @@ export function parseArgs(argv: readonly string[]): { command: Command; options:
       const v = rest[i + 1];
       if (typeof v === "string") {
         const parsed = Number(v);
-        if (Number.isFinite(parsed) && parsed > 0) mutable.iterations = Math.floor(parsed);
+        if (Number.isFinite(parsed) && parsed > 0)
+          mutable.iterations = Math.floor(parsed);
         i += 1;
       }
       continue;
@@ -155,7 +166,8 @@ export function parseArgs(argv: readonly string[]): { command: Command; options:
       const v = rest[i + 1];
       if (typeof v === "string") {
         const parsed = Number(v);
-        if (Number.isFinite(parsed) && parsed > 0) mutable.maxPages = Math.floor(parsed);
+        if (Number.isFinite(parsed) && parsed > 0)
+          mutable.maxPages = Math.floor(parsed);
         i += 1;
       }
       continue;
@@ -210,18 +222,20 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
 
   if (typeof privateKeyRaw !== "string") {
     throw new Error(
-      "Missing private key. Set EVM_PRIVATE_KEY (recommended) or POLYMARKET_PRIVATE_KEY."
+      "Missing private key. Set EVM_PRIVATE_KEY (recommended) or POLYMARKET_PRIVATE_KEY.",
     );
   }
 
   const privateKey = PrivateKeySchema.parse(privateKeyRaw);
 
   const clobApiUrlRaw =
-    options.clobApiUrl ?? process.env.CLOB_API_URL ?? "https://clob.polymarket.com";
+    options.clobApiUrl ??
+    process.env.CLOB_API_URL ??
+    "https://clob.polymarket.com";
   const clobApiUrl = z.string().url().parse(clobApiUrlRaw);
 
   const signatureTypeRaw = normalizeEnvValue(
-    process.env.POLYMARKET_SIGNATURE_TYPE ?? process.env.CLOB_SIGNATURE_TYPE
+    process.env.POLYMARKET_SIGNATURE_TYPE ?? process.env.CLOB_SIGNATURE_TYPE,
   );
   const signatureType =
     signatureTypeRaw !== null
@@ -238,13 +252,15 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
     normalizeEnvValue(
       process.env.POLYMARKET_FUNDER_ADDRESS ??
         process.env.POLYMARKET_FUNDER ??
-        process.env.CLOB_FUNDER_ADDRESS
+        process.env.CLOB_FUNDER_ADDRESS,
     ) ?? undefined;
 
   const key = normalizeEnvValue(process.env.CLOB_API_KEY);
-  const secret = normalizeEnvValue(process.env.CLOB_API_SECRET ?? process.env.CLOB_SECRET);
+  const secret = normalizeEnvValue(
+    process.env.CLOB_API_SECRET ?? process.env.CLOB_SECRET,
+  );
   const passphrase = normalizeEnvValue(
-    process.env.CLOB_API_PASSPHRASE ?? process.env.CLOB_PASS_PHRASE
+    process.env.CLOB_API_PASSPHRASE ?? process.env.CLOB_PASS_PHRASE,
   );
 
   console.log("🔍 env check:", {
@@ -255,7 +271,9 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
   });
 
   const creds =
-    typeof key === "string" && typeof secret === "string" && typeof passphrase === "string"
+    typeof key === "string" &&
+    typeof secret === "string" &&
+    typeof passphrase === "string"
       ? {
           key: z.string().min(1).parse(key),
           secret: z.string().min(1).parse(secret),
@@ -269,7 +287,7 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
 
   if (options.execute && creds === null) {
     throw new Error(
-      "Missing CLOB API credentials for --execute. Set CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE."
+      "Missing CLOB API credentials for --execute. Set CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE.",
     );
   }
 
@@ -293,7 +311,10 @@ function parseEnvValue(raw: string): string {
   if (trimmed.length === 0) return "";
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
     const inner = trimmed.slice(1, -1);
-    return inner.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    return inner
+      .replace(/\\n/g, "\n")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
   }
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1);
@@ -303,7 +324,10 @@ function parseEnvValue(raw: string): string {
 
 function formatEnvValue(value: string): string {
   if (!/[\s#"'\\]/.test(value)) return value;
-  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n");
   return `"${escaped}"`;
 }
 
@@ -363,7 +387,7 @@ export async function readEnvFile(envPath: string): Promise<EnvFile> {
 export async function writeEnvFile(
   envPath: string,
   existingLines: readonly EnvLine[],
-  updates: Record<string, string>
+  updates: Record<string, string>,
 ): Promise<void> {
   const pending = new Map(Object.entries(updates));
   const nextLines: EnvLine[] = existingLines.map((line) => {
@@ -397,10 +421,10 @@ export function applyEnvValues(values: Record<string, string>): void {
 }
 
 export function resolveLlmProvider(
-  getValue: (key: string) => string | undefined
+  getValue: (key: string) => string | undefined,
 ): LlmProvider | null {
   const explicit = normalizeEnvValue(
-    getValue("ELIZA_LLM_PROVIDER") ?? getValue("LLM_PROVIDER")
+    getValue("ELIZA_LLM_PROVIDER") ?? getValue("LLM_PROVIDER"),
   );
   if (explicit) {
     if (LLM_PROVIDER_ORDER.includes(explicit as LlmProvider)) {
@@ -420,9 +444,11 @@ export function resolveLlmProvider(
 
 export function resolveLlmModel(
   provider: LlmProvider | null,
-  getValue: (key: string) => string | undefined
+  getValue: (key: string) => string | undefined,
 ): string | null {
-  const explicit = normalizeEnvValue(getValue("ELIZA_LLM_MODEL") ?? getValue("LLM_MODEL"));
+  const explicit = normalizeEnvValue(
+    getValue("ELIZA_LLM_MODEL") ?? getValue("LLM_MODEL"),
+  );
   if (explicit) return explicit;
   if (!provider) return null;
   for (const key of LLM_MODEL_KEYS[provider]) {

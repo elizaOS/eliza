@@ -370,7 +370,11 @@ export function validateOutputReferences(workflow: N8nWorkflow): OutputRefValida
 
   const schemaCache = new Map<
     string,
-    { schema: SchemaContent; fields: string[]; node: N8nWorkflow['nodes'][0] } | null
+    {
+      schema: SchemaContent;
+      fields: string[];
+      node: N8nWorkflow['nodes'][0];
+    } | null
   >();
 
   function getSourceSchema(sourceName: string) {
@@ -391,7 +395,11 @@ export function validateOutputReferences(workflow: N8nWorkflow): OutputRefValida
       schemaCache.set(sourceName, null);
       return null;
     }
-    const entry = { schema: schemaResult.schema, fields: schemaResult.fields, node: sourceNode };
+    const entry = {
+      schema: schemaResult.schema,
+      fields: schemaResult.fields,
+      node: sourceNode,
+    };
     schemaCache.set(sourceName, entry);
     return entry;
   }

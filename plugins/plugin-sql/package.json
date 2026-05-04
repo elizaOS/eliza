@@ -1,6 +1,5 @@
 {
   "name": "@elizaos/plugin-sql",
-  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "",
   "type": "module",
@@ -43,7 +42,7 @@
   "scripts": {
     "build": "cd typescript && bun run build.ts",
     "dev": "cd typescript && bun --hot build.ts",
-    "test": "cd typescript && vitest run --passWithNoTests",
+    "test": "cd typescript && vitest run",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "lint": "cd typescript && bun run lint",
     "lint:check": "cd typescript && bun run lint:check",
@@ -54,22 +53,29 @@
     "test:live": "bun run test:e2e"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.3.3",
+    "@electric-sql/pglite": "^0.4.0",
+    "@neondatabase/serverless": "^1.1.0",
     "drizzle-orm": "0.45.2",
     "pg": "^8.16.3",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.11",
+    "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.3",
     "@types/pg": "^8.15.2",
+    "@types/ws": "^8.18.1",
     "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.8",
     "typescript": "^6.0.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },
-  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543",
+  "publishConfig": {
+    "access": "public"
+  }
 }

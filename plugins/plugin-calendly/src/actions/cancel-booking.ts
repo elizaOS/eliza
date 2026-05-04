@@ -95,8 +95,7 @@ export const cancelBookingAction: Action = {
   parameters: [
     {
       name: "confirmed",
-      description:
-        "Must be true to cancel the Calendly event after preview.",
+      description: "Must be true to cancel the Calendly event after preview.",
       required: false,
       schema: { type: "boolean", default: false },
     },

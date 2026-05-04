@@ -22,6 +22,7 @@ import {
   Connection,
   PublicKey,
   SystemProgram,
+  type TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
@@ -214,7 +215,7 @@ export default {
         const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
         const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
 
-        const instructions = [];
+        const instructions: TransactionInstruction[] = [];
 
         const recipientATAInfo = await connection.getAccountInfo(recipientATA);
         if (!recipientATAInfo) {

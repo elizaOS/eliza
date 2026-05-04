@@ -168,7 +168,9 @@ describe("lifeOpsMutateAction", () => {
   it("requires structured params for direct reminder_create", async () => {
     const result = await runMutateAction(
       { content: { text: "create reminder" } } as Memory,
-      { parameters: { subaction: "reminder_create", title: "Missing cadence" } },
+      {
+        parameters: { subaction: "reminder_create", title: "Missing cadence" },
+      },
     );
 
     expect(result).toMatchObject({

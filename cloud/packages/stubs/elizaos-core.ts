@@ -155,6 +155,19 @@ export const MemoryType = {
   CUSTOM: "custom",
 } as const;
 
+export const createMessageMemory = (params: Record<string, unknown>) => {
+  const now = Date.now();
+  return {
+    ...params,
+    createdAt: now,
+    metadata: {
+      type: MemoryType.MESSAGE,
+      timestamp: now,
+      scope: params.agentId ? "private" : "shared",
+    },
+  };
+};
+
 export type IAgentRuntime = unknown;
 export type Plugin = unknown;
 export type Action = unknown;
@@ -196,6 +209,7 @@ const target = {
   getTokenForProvider,
   trimTokens,
   truncateToCompleteSentence,
+  createMessageMemory,
 };
 
 const proxy = new Proxy(target, {

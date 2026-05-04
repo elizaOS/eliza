@@ -17,15 +17,18 @@
  * Usage: bun run scripts/crawl-triggers-static.ts
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const N8N_NODES_PATH = path.join(__dirname, '../node_modules/n8n-nodes-base/dist/nodes');
-const CACHE_DIR = path.join(__dirname, '../.cache/openapi');
+const N8N_NODES_PATH = path.join(
+  __dirname,
+  "../node_modules/n8n-nodes-base/dist/nodes",
+);
+const CACHE_DIR = path.join(__dirname, "../.cache/openapi");
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,19 +40,19 @@ interface SchemaProperty {
 }
 
 interface TriggerOutputSchema {
-  type: 'object';
+  type: "object";
   properties: Record<string, SchemaProperty>;
 }
 
 interface TriggerSchemaEntry {
-  triggerType: 'webhook' | 'polling' | 'unknown';
+  triggerType: "webhook" | "polling" | "unknown";
   serviceName: string | null;
   openApiSource: string | null;
   schemaSource: string | null; // How we found the schema (path match, event schema, etc.)
   hasTransformation: boolean;
   transformationFunction: string | null;
   outputSchema: TriggerOutputSchema | null;
-  confidence: 'high' | 'medium' | 'low';
+  confidence: "high" | "medium" | "low";
   reason?: string;
 }
 
@@ -110,8 +113,8 @@ interface ApisGuruEntry {
       openapiVer: string;
       info: {
         title: string;
-        'x-providerName'?: string;
-        'x-serviceName'?: string;
+        "x-providerName"?: string;
+        "x-serviceName"?: string;
       };
     }
   >;
@@ -124,18 +127,18 @@ let cachedGuruIndex: ApisGuruIndex | null = null;
 async function loadApisGuruIndex(): Promise<ApisGuruIndex> {
   if (cachedGuruIndex) return cachedGuruIndex;
 
-  const cachePath = path.join(CACHE_DIR, 'apis-guru-index.json');
+  const cachePath = path.join(CACHE_DIR, "apis-guru-index.json");
   if (fs.existsSync(cachePath)) {
     const stat = fs.statSync(cachePath);
     const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
     if (ageHours < 24) {
-      cachedGuruIndex = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      cachedGuruIndex = JSON.parse(fs.readFileSync(cachePath, "utf-8"));
       return cachedGuruIndex!;
     }
   }
 
-  console.log('Fetching APIs.guru index...');
-  const response = await fetch('https://api.apis.guru/v2/list.json');
+  console.log("Fetching APIs.guru index...");
+  const response = await fetch("https://api.apis.guru/v2/list.json");
   cachedGuruIndex = (await response.json()) as ApisGuruIndex;
 
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -145,14 +148,19 @@ async function loadApisGuruIndex(): Promise<ApisGuruIndex> {
   return cachedGuruIndex!;
 }
 
-async function fetchOpenApiSpec(apisGuruKey: string): Promise<OpenApiSpec | null> {
+async function fetchOpenApiSpec(
+  apisGuruKey: string,
+): Promise<OpenApiSpec | null> {
   const index = await loadApisGuruIndex();
   const entry = index[apisGuruKey];
   if (!entry) return null;
 
-  const cachePath = path.join(CACHE_DIR, `${apisGuruKey.replace(/[/:]/g, '_')}.json`);
+  const cachePath = path.join(
+    CACHE_DIR,
+    `${apisGuruKey.replace(/[/:]/g, "_")}.json`,
+  );
   if (fs.existsSync(cachePath)) {
-    return JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+    return JSON.parse(fs.readFileSync(cachePath, "utf-8"));
   }
 
   const version = entry.versions[entry.preferred];
@@ -177,19 +185,19 @@ function extractApiDomains(triggerPath: string): string[] {
   const domains: string[] = [];
 
   // Read trigger file
-  const triggerCode = fs.readFileSync(triggerPath, 'utf-8');
+  const triggerCode = fs.readFileSync(triggerPath, "utf-8");
 
   // Read GenericFunctions.js from same and parent directories
   const dir = path.dirname(triggerPath);
   const genericPaths = [
-    path.join(dir, 'GenericFunctions.js'),
-    path.join(dir, '..', 'GenericFunctions.js'),
+    path.join(dir, "GenericFunctions.js"),
+    path.join(dir, "..", "GenericFunctions.js"),
   ];
 
   let allCode = triggerCode;
   for (const gp of genericPaths) {
     if (fs.existsSync(gp)) {
-      allCode += '\n' + fs.readFileSync(gp, 'utf-8');
+      allCode += "\n" + fs.readFileSync(gp, "utf-8");
     }
   }
 
@@ -199,11 +207,11 @@ function extractApiDomains(triggerPath: string): string[] {
     const domain = match[1];
     // Skip n8n.io, docs, icons, cdn
     if (
-      domain.includes('n8n.io') ||
-      domain.includes('docs.') ||
-      domain.includes('cdn.') ||
-      domain.includes('icon') ||
-      domain.includes('support.')
+      domain.includes("n8n.io") ||
+      domain.includes("docs.") ||
+      domain.includes("cdn.") ||
+      domain.includes("icon") ||
+      domain.includes("support.")
     ) {
       continue;
     }
@@ -220,7 +228,7 @@ function extractApiDomains(triggerPath: string): string[] {
  * E.g., "/gmail/v1/users/me/messages" or "/v1/events"
  */
 function extractApiEndpoints(triggerPath: string): string[] {
-  const triggerCode = fs.readFileSync(triggerPath, 'utf-8');
+  const triggerCode = fs.readFileSync(triggerPath, "utf-8");
   const endpoints: string[] = [];
 
   // Pattern: apiRequest('GET', '/some/path')
@@ -247,15 +255,15 @@ function extractApiEndpoints(triggerPath: string): string[] {
 function domainToApisGuruKey(
   domain: string,
   endpoints: string[],
-  index: ApisGuruIndex
+  index: ApisGuruIndex,
 ): string | null {
   // Try direct match: "api.stripe.com" → "stripe.com"
-  const baseDomain = domain.replace(/^(api|www|app)\./, '');
+  const baseDomain = domain.replace(/^(api|www|app)\./, "");
 
   if (index[baseDomain]) return baseDomain;
 
   // For googleapis.com, use the endpoint to determine the service
-  if (baseDomain === 'googleapis.com') {
+  if (baseDomain === "googleapis.com") {
     for (const ep of endpoints) {
       // /gmail/v1/... → googleapis.com:gmail
       const serviceMatch = ep.match(/^\/(\w+)\//);
@@ -278,10 +286,10 @@ function domainToApisGuruKey(
 // ─── Schema Extraction ──────────────────────────────────────────────────────
 
 function resolveRef(spec: OpenApiSpec, ref: string): OpenApiSchemaObj | null {
-  const parts = ref.replace('#/', '').split('/');
+  const parts = ref.replace("#/", "").split("/");
   let current: unknown = spec;
   for (const part of parts) {
-    if (typeof current !== 'object' || current === null) return null;
+    if (typeof current !== "object" || current === null) return null;
     current = (current as Record<string, unknown>)[part];
   }
   return (current as OpenApiSchemaObj) ?? null;
@@ -290,7 +298,7 @@ function resolveRef(spec: OpenApiSpec, ref: string): OpenApiSchemaObj | null {
 function extractSchemaProperties(
   spec: OpenApiSpec,
   schema: OpenApiSchemaObj,
-  depth = 0
+  depth = 0,
 ): Record<string, SchemaProperty> {
   if (depth > 4) return {};
 
@@ -325,28 +333,32 @@ function extractSchemaProperties(
   return result;
 }
 
-function convertProperty(spec: OpenApiSpec, prop: OpenApiSchemaObj, depth: number): SchemaProperty {
-  if (depth > 4) return { type: 'unknown' };
+function convertProperty(
+  spec: OpenApiSpec,
+  prop: OpenApiSchemaObj,
+  depth: number,
+): SchemaProperty {
+  if (depth > 4) return { type: "unknown" };
 
   if (prop.$ref) {
     const resolved = resolveRef(spec, prop.$ref);
-    if (!resolved) return { type: 'unknown' };
+    if (!resolved) return { type: "unknown" };
     return convertProperty(spec, resolved, depth);
   }
 
-  const type = prop.type ?? 'unknown';
+  const type = prop.type ?? "unknown";
 
-  if (type === 'object' && prop.properties) {
+  if (type === "object" && prop.properties) {
     return {
-      type: 'object',
+      type: "object",
       description: prop.description,
       properties: extractSchemaProperties(spec, prop, depth),
     };
   }
 
-  if (type === 'array' && prop.items) {
+  if (type === "array" && prop.items) {
     return {
-      type: 'array',
+      type: "array",
       description: prop.description,
       items: convertProperty(spec, prop.items, depth + 1),
     };
@@ -361,14 +373,14 @@ function convertProperty(spec: OpenApiSpec, prop: OpenApiSchemaObj, depth: numbe
  */
 function extractSchemaFromEndpoint(
   spec: OpenApiSpec,
-  endpoints: string[]
+  endpoints: string[],
 ): { schema: TriggerOutputSchema; source: string } | null {
   const specPaths = spec.paths;
   if (!specPaths) return null;
 
   for (const endpoint of endpoints) {
     // Normalize: replace template vars ${xxx} with {xxx}
-    const normalized = endpoint.replace(/\$\{[^}]+\}/g, '{id}');
+    const normalized = endpoint.replace(/\$\{[^}]+\}/g, "{id}");
 
     for (const [specPath, methods] of Object.entries(specPaths)) {
       // Match paths: /gmail/v1/users/{userId}/messages/{id}
@@ -376,16 +388,17 @@ function extractSchemaFromEndpoint(
       if (!pathsMatch(normalized, specPath)) continue;
 
       const methodObj = methods as Record<string, OpenApiMethodObj>;
-      const getMethod = methodObj['get'] ?? methodObj['post'];
+      const getMethod = methodObj["get"] ?? methodObj["post"];
       if (!getMethod?.responses) continue;
 
-      const resp200 = getMethod.responses['200'] ?? getMethod.responses['201'];
+      const resp200 = getMethod.responses["200"] ?? getMethod.responses["201"];
       if (!resp200) continue;
 
       // OpenAPI 3.x: content.application/json.schema
       let responseSchema: OpenApiSchemaObj | null = null;
       if (resp200.content) {
-        const jsonContent = resp200.content['application/json'] ?? resp200.content['*/*'];
+        const jsonContent =
+          resp200.content["application/json"] ?? resp200.content["*/*"];
         responseSchema = jsonContent?.schema ?? null;
       }
       // Swagger 2.0: schema directly on response
@@ -398,7 +411,7 @@ function extractSchemaFromEndpoint(
       const properties = extractSchemaProperties(spec, responseSchema);
       if (Object.keys(properties).length > 0) {
         return {
-          schema: { type: 'object', properties },
+          schema: { type: "object", properties },
           source: `path:${specPath}`,
         };
       }
@@ -413,8 +426,8 @@ function extractSchemaFromEndpoint(
  * "/gmail/v1/users/me/messages/{id}" matches "/gmail/v1/users/{userId}/messages/{id}"
  */
 function pathsMatch(n8nPath: string, specPath: string): boolean {
-  const n8nParts = n8nPath.split('/').filter(Boolean);
-  const specParts = specPath.split('/').filter(Boolean);
+  const n8nParts = n8nPath.split("/").filter(Boolean);
+  const specParts = specPath.split("/").filter(Boolean);
 
   if (n8nParts.length !== specParts.length) return false;
 
@@ -422,9 +435,9 @@ function pathsMatch(n8nPath: string, specPath: string): boolean {
     const n8n = n8nParts[i];
     const spec = specParts[i];
     // Template params match anything
-    if (spec.startsWith('{') || n8n.startsWith('{')) continue;
+    if (spec.startsWith("{") || n8n.startsWith("{")) continue;
     // "me" matches "{userId}" equivalent
-    if (n8n === 'me' && spec.startsWith('{')) continue;
+    if (n8n === "me" && spec.startsWith("{")) continue;
     if (n8n !== spec) return false;
   }
 
@@ -436,18 +449,18 @@ function pathsMatch(n8nPath: string, specPath: string): boolean {
  * Searches components/schemas for patterns like "event", "webhook_event", etc.
  */
 function extractEventSchema(
-  spec: OpenApiSpec
+  spec: OpenApiSpec,
 ): { schema: TriggerOutputSchema; source: string } | null {
   const schemas = spec.components?.schemas ?? spec.definitions ?? {};
 
   // Priority order: look for event-related schema names
   const candidates = [
-    'event',
-    'Event',
-    'WebhookEvent',
-    'webhook_event',
-    'EventResponse',
-    'Webhook',
+    "event",
+    "Event",
+    "WebhookEvent",
+    "webhook_event",
+    "EventResponse",
+    "Webhook",
   ];
 
   for (const candidate of candidates) {
@@ -457,7 +470,7 @@ function extractEventSchema(
     const properties = extractSchemaProperties(spec, schema);
     if (Object.keys(properties).length > 0) {
       return {
-        schema: { type: 'object', properties },
+        schema: { type: "object", properties },
         source: `schema:${candidate}`,
       };
     }
@@ -465,11 +478,14 @@ function extractEventSchema(
 
   // Fallback: case-insensitive search
   for (const [name, schema] of Object.entries(schemas)) {
-    if (/^(webhook_?)?event$/i.test(name) || /^event_?(payload|data|body)$/i.test(name)) {
+    if (
+      /^(webhook_?)?event$/i.test(name) ||
+      /^event_?(payload|data|body)$/i.test(name)
+    ) {
       const properties = extractSchemaProperties(spec, schema);
       if (Object.keys(properties).length > 0) {
         return {
-          schema: { type: 'object', properties },
+          schema: { type: "object", properties },
           source: `schema:${name}`,
         };
       }
@@ -491,7 +507,7 @@ function findTriggerFiles(): string[] {
       const stat = fs.statSync(filePath);
       if (stat.isDirectory()) {
         walk(filePath);
-      } else if (file.endsWith('Trigger.node.js') && !file.includes('.map')) {
+      } else if (file.endsWith("Trigger.node.js") && !file.includes(".map")) {
         triggers.push(filePath);
       }
     }
@@ -502,18 +518,21 @@ function findTriggerFiles(): string[] {
 }
 
 function getNodeType(filePath: string): string {
-  const fileName = path.basename(filePath, '.node.js');
+  const fileName = path.basename(filePath, ".node.js");
   const nodeName = fileName.charAt(0).toLowerCase() + fileName.slice(1);
   return `n8n-nodes-base.${nodeName}`;
 }
 
-function detectTriggerType(content: string): 'webhook' | 'polling' | 'unknown' {
-  const hasWebhook = /async\s+webhook\s*\(/.test(content) || /webhook\s*\(\s*\)\s*{/.test(content);
-  const hasPoll = /async\s+poll\s*\(/.test(content) || /poll\s*\(\s*\)\s*{/.test(content);
+function detectTriggerType(content: string): "webhook" | "polling" | "unknown" {
+  const hasWebhook =
+    /async\s+webhook\s*\(/.test(content) ||
+    /webhook\s*\(\s*\)\s*{/.test(content);
+  const hasPoll =
+    /async\s+poll\s*\(/.test(content) || /poll\s*\(\s*\)\s*{/.test(content);
 
-  if (hasWebhook) return 'webhook';
-  if (hasPoll) return 'polling';
-  return 'unknown';
+  if (hasWebhook) return "webhook";
+  if (hasPoll) return "polling";
+  return "unknown";
 }
 
 // ─── Transformation Detection ───────────────────────────────────────────────
@@ -525,7 +544,10 @@ interface TransformationResult {
   fieldsAdded: Record<string, SchemaProperty>;
 }
 
-function detectTransformations(triggerPath: string, triggerCode: string): TransformationResult {
+function detectTransformations(
+  triggerPath: string,
+  triggerCode: string,
+): TransformationResult {
   const noTransform: TransformationResult = {
     hasTransformation: false,
     functionName: null,
@@ -546,10 +568,10 @@ function detectTransformations(triggerPath: string, triggerCode: string): Transf
   if (!transformName) return noTransform;
 
   const dir = path.dirname(triggerPath);
-  const genericPath = path.join(dir, 'GenericFunctions.js');
+  const genericPath = path.join(dir, "GenericFunctions.js");
   if (!fs.existsSync(genericPath)) return noTransform;
 
-  const genericCode = fs.readFileSync(genericPath, 'utf-8');
+  const genericCode = fs.readFileSync(genericPath, "utf-8");
   const result: TransformationResult = {
     hasTransformation: true,
     functionName: transformName,
@@ -568,8 +590,8 @@ function detectTransformations(triggerPath: string, triggerCode: string): Transf
   // Detect field additions: item.fieldName = ...
   for (const match of genericCode.matchAll(/item\.(\w+)\s*=/g)) {
     const field = match[1];
-    if (field !== 'json' && !result.fieldsAdded[field]) {
-      result.fieldsAdded[field] = { type: 'unknown' };
+    if (field !== "json" && !result.fieldsAdded[field]) {
+      result.fieldsAdded[field] = { type: "unknown" };
     }
   }
 
@@ -579,22 +601,24 @@ function detectTransformations(triggerPath: string, triggerCode: string): Transf
     const metadataMatch = triggerCode.match(/metadataHeaders\s*=\s*\[(.*?)\]/s);
     if (metadataMatch) {
       const headers =
-        metadataMatch[1].match(/['"](\w+)['"]/g)?.map((h) => h.replace(/['"]/g, '')) ?? [];
+        metadataMatch[1]
+          .match(/['"](\w+)['"]/g)
+          ?.map((h) => h.replace(/['"]/g, "")) ?? [];
       for (const header of headers) {
-        result.fieldsAdded[header] = { type: 'string' };
+        result.fieldsAdded[header] = { type: "string" };
       }
     }
   }
 
   // Labels transformation: item.labels = labels.filter(...)
   if (/item\.labels\s*=/.test(genericCode)) {
-    result.fieldsAdded['labels'] = {
-      type: 'array',
+    result.fieldsAdded["labels"] = {
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         properties: {
-          id: { type: 'string' },
-          name: { type: 'string' },
+          id: { type: "string" },
+          name: { type: "string" },
         },
       },
     };
@@ -605,10 +629,10 @@ function detectTransformations(triggerPath: string, triggerCode: string): Transf
 
 function applyTransformations(
   schema: TriggerOutputSchema,
-  transformations: TransformationResult
+  transformations: TransformationResult,
 ): TriggerOutputSchema {
   const result: TriggerOutputSchema = {
-    type: 'object',
+    type: "object",
     properties: { ...schema.properties },
   };
 
@@ -626,14 +650,14 @@ function applyTransformations(
 // ─── Main Crawler ───────────────────────────────────────────────────────────
 
 async function crawlTriggers(): Promise<TriggerSchemaIndex> {
-  console.log('Finding trigger files...');
+  console.log("Finding trigger files...");
   const triggerFiles = findTriggerFiles();
   console.log(`Found ${triggerFiles.length} triggers\n`);
 
   const guruIndex = await loadApisGuruIndex();
 
   const result: TriggerSchemaIndex = {
-    version: '2.0.0',
+    version: "2.0.0",
     generatedAt: new Date().toISOString(),
     triggers: {},
     stats: {
@@ -648,13 +672,13 @@ async function crawlTriggers(): Promise<TriggerSchemaIndex> {
 
   for (const filePath of triggerFiles) {
     const nodeType = getNodeType(filePath);
-    const triggerCode = fs.readFileSync(filePath, 'utf-8');
+    const triggerCode = fs.readFileSync(filePath, "utf-8");
     const triggerType = detectTriggerType(triggerCode);
 
     console.log(`${nodeType} (${triggerType})`);
 
-    if (triggerType === 'webhook') result.stats.webhook++;
-    else if (triggerType === 'polling') result.stats.polling++;
+    if (triggerType === "webhook") result.stats.webhook++;
+    else if (triggerType === "polling") result.stats.polling++;
     else result.stats.unknown++;
 
     // Step 1: Extract API domains and endpoints from code
@@ -677,26 +701,26 @@ async function crawlTriggers(): Promise<TriggerSchemaIndex> {
       if (spec) {
         openApiSource = apisGuruKey;
 
-        if (triggerType === 'polling' && endpoints.length > 0) {
+        if (triggerType === "polling" && endpoints.length > 0) {
           // Polling: match endpoint path → response schema
           const pathResult = extractSchemaFromEndpoint(spec, endpoints);
           if (pathResult) {
             outputSchema = pathResult.schema;
             schemaSource = pathResult.source;
             console.log(
-              `  -> ${pathResult.source} (${Object.keys(outputSchema.properties).length} fields)`
+              `  -> ${pathResult.source} (${Object.keys(outputSchema.properties).length} fields)`,
             );
           }
         }
 
-        if (!outputSchema && triggerType === 'webhook') {
+        if (!outputSchema && triggerType === "webhook") {
           // Webhook: find event/webhook schema
           const eventResult = extractEventSchema(spec);
           if (eventResult) {
             outputSchema = eventResult.schema;
             schemaSource = eventResult.source;
             console.log(
-              `  -> ${eventResult.source} (${Object.keys(outputSchema.properties).length} fields)`
+              `  -> ${eventResult.source} (${Object.keys(outputSchema.properties).length} fields)`,
             );
           }
         }
@@ -706,19 +730,23 @@ async function crawlTriggers(): Promise<TriggerSchemaIndex> {
         }
       }
     } else if (domains.length > 0) {
-      console.log(`  -> Domains found [${domains.slice(0, 3).join(', ')}] but no APIs.guru match`);
+      console.log(
+        `  -> Domains found [${domains.slice(0, 3).join(", ")}] but no APIs.guru match`,
+      );
     }
 
     // Step 3: Detect and apply transformations
     const transformations = detectTransformations(filePath, triggerCode);
     if (transformations.hasTransformation) {
       console.log(
-        `  -> Transform: ${transformations.functionName} (-${transformations.fieldsRemoved.length} +${Object.keys(transformations.fieldsAdded).length})`
+        `  -> Transform: ${transformations.functionName} (-${transformations.fieldsRemoved.length} +${Object.keys(transformations.fieldsAdded).length})`,
       );
 
       if (outputSchema) {
         outputSchema = applyTransformations(outputSchema, transformations);
-        console.log(`  -> After transform: ${Object.keys(outputSchema.properties).length} fields`);
+        console.log(
+          `  -> After transform: ${Object.keys(outputSchema.properties).length} fields`,
+        );
       }
     }
 
@@ -734,12 +762,12 @@ async function crawlTriggers(): Promise<TriggerSchemaIndex> {
       hasTransformation: transformations.hasTransformation,
       transformationFunction: transformations.functionName,
       outputSchema,
-      confidence: hasSchema ? 'high' : 'low',
+      confidence: hasSchema ? "high" : "low",
       reason: hasSchema
         ? undefined
         : !apisGuruKey
-          ? 'No APIs.guru match'
-          : 'No schema found in spec',
+          ? "No APIs.guru match"
+          : "No schema found in spec",
     };
   }
 
@@ -749,23 +777,32 @@ async function crawlTriggers(): Promise<TriggerSchemaIndex> {
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
 crawlTriggers().then((result) => {
-  console.log('\n══════════════════════════════════════');
+  console.log("\n══════════════════════════════════════");
   console.log(`Total: ${result.stats.total}`);
   console.log(`With schema: ${result.stats.withSchema}`);
   console.log(`Without schema: ${result.stats.withoutSchema}`);
   console.log(
-    `Webhook: ${result.stats.webhook} | Polling: ${result.stats.polling} | Unknown: ${result.stats.unknown}`
+    `Webhook: ${result.stats.webhook} | Polling: ${result.stats.polling} | Unknown: ${result.stats.unknown}`,
   );
 
-  const outputPath = path.join(__dirname, '../src/data/triggerSchemaIndex.json');
+  const outputPath = path.join(
+    __dirname,
+    "../src/data/triggerSchemaIndex.json",
+  );
   fs.writeFileSync(outputPath, JSON.stringify(result, null, 2));
   console.log(`\nSaved to ${outputPath}`);
 
-  const withSchema = Object.entries(result.triggers).filter(([, v]) => v.outputSchema);
+  const withSchema = Object.entries(result.triggers).filter(
+    ([, v]) => v.outputSchema,
+  );
   console.log(`\nTriggers with schemas (${withSchema.length}):`);
   for (const [name, entry] of withSchema) {
-    const fieldCount = entry.outputSchema ? Object.keys(entry.outputSchema.properties).length : 0;
-    const transform = entry.hasTransformation ? ' [transformed]' : '';
-    console.log(`  ${name}: ${fieldCount} fields via ${entry.schemaSource}${transform}`);
+    const fieldCount = entry.outputSchema
+      ? Object.keys(entry.outputSchema.properties).length
+      : 0;
+    const transform = entry.hasTransformation ? " [transformed]" : "";
+    console.log(
+      `  ${name}: ${fieldCount} fields via ${entry.schemaSource}${transform}`,
+    );
   }
 });

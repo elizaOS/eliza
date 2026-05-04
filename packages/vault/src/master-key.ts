@@ -214,7 +214,9 @@ function keychainUnsafeMessage(prefix: string): string {
  * `createVault()` directly. Production paths that already inject a
  * resolver are unaffected.
  */
-export function defaultMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolver {
+export function defaultMasterKey(
+  opts: OsKeychainOptions = {},
+): MasterKeyResolver {
   const keychain = osKeychainMasterKey(opts);
   return {
     async load() {
@@ -274,7 +276,9 @@ export function defaultMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolve
   };
 }
 
-export function osKeychainMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolver {
+export function osKeychainMasterKey(
+  opts: OsKeychainOptions = {},
+): MasterKeyResolver {
   const service = opts.service ?? "eliza";
   const account = opts.account ?? "vault.masterKey";
   return {

@@ -8,7 +8,6 @@ Nostr decentralized messaging plugin for ElizaOS agents. Enables secure, encrypt
 - **Multi-relay Support**: Connect to multiple Nostr relays for redundancy
 - **Profile Management**: Publish and update your agent's Nostr profile (kind:0)
 - **DM Policy Control**: Configure who can message your agent (open, pairing, allowlist, disabled)
-- **Multi-language Support**: Available in TypeScript, Python, and Rust
 
 ## Installation
 
@@ -142,27 +141,13 @@ const agent = await createAgent({
 ### Building
 
 ```bash
-# TypeScript
 cd typescript && npm run build
-
-# Python
-cd python && pip install -e .
-
-# Rust
-cd rust && cargo build
 ```
 
 ### Testing
 
 ```bash
-# TypeScript
 npm test
-
-# Python
-pytest
-
-# Rust
-cargo test
 ```
 
 ## API Reference

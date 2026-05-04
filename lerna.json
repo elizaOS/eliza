@@ -2,7 +2,11 @@
   "version": "2.0.0-alpha.537",
   "packages": [
     "packages/*",
-    "plugins/*"
+    "packages/native-plugins/*",
+    "packages/app-core/platforms/*",
+    "plugins/*",
+    "apps/*",
+    "cloud/packages/sdk"
   ],
   "npmClient": "bun",
   "command": {
@@ -17,11 +21,7 @@
         "release/*",
         "new-beginnings"
       ],
-      "ignoreChanges": [
-        "**/*.md",
-        "**/test/**",
-        "**/__tests__/**"
-      ],
+      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
       "verifyAccess": false
     },
     "version": {

@@ -11,7 +11,10 @@ import {
 } from "./app";
 import { elizaClassicXmlPlugin } from "./elizaClassicXmlPlugin";
 
-function makeReq(headers: Record<string, string>, rawBody: string): HeaderReader {
+function makeReq(
+  headers: Record<string, string>,
+  rawBody: string,
+): HeaderReader {
   return {
     rawBody,
     header: (name: string) => headers[name.toLowerCase()],
@@ -38,7 +41,8 @@ describe("roblox bridge helpers", () => {
     const secret = "s3cr3t";
     const rawBody = JSON.stringify({ hello: "world" });
     const sig =
-      "sha256=" + crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+      "sha256=" +
+      crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
     const req = makeReq({ "x-eliza-signature": sig }, rawBody);
     expect(verifySharedSecret(req, secret)).toBe(true);
   });
@@ -52,16 +56,20 @@ describe("roblox bridge helpers", () => {
 
   it("validates required chat fields", () => {
     expect(() =>
-      assertValidChatBody({ playerId: 1, playerName: "A", text: "hi" })
+      assertValidChatBody({ playerId: 1, playerName: "A", text: "hi" }),
     ).not.toThrow();
     expect(() =>
-      assertValidChatBody({ playerId: Number.NaN, playerName: "A", text: "hi" })
+      assertValidChatBody({
+        playerId: Number.NaN,
+        playerName: "A",
+        text: "hi",
+      }),
     ).toThrow();
     expect(() =>
-      assertValidChatBody({ playerId: 1, playerName: "", text: "hi" })
+      assertValidChatBody({ playerId: 1, playerName: "", text: "hi" }),
     ).toThrow();
     expect(() =>
-      assertValidChatBody({ playerId: 1, playerName: "A", text: "" })
+      assertValidChatBody({ playerId: 1, playerName: "A", text: "" }),
     ).toThrow();
   });
 
@@ -96,7 +104,12 @@ describe("roblox bridge helpers", () => {
       const resp = await fetch(`http://127.0.0.1:${port}/roblox/chat`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ playerId: 1, playerName: "A", text: "hi", jobId: "j" }),
+        body: JSON.stringify({
+          playerId: 1,
+          playerName: "A",
+          text: "hi",
+          jobId: "j",
+        }),
       });
       expect(resp.status).toBe(200);
       const json = (await resp.json()) as { reply: string };
@@ -110,7 +123,7 @@ describe("roblox bridge helpers", () => {
   it("elizaClassicXmlPlugin returns <response> XML", async () => {
     const out = await elizaClassicXmlPlugin.models?.TEXT_LARGE?.(
       {} as import("@elizaos/core").IAgentRuntime,
-      { prompt: "You: hello" }
+      { prompt: "You: hello" },
     );
     expect(typeof out).toBe("string");
     expect(out).toContain("<response>");
@@ -118,4 +131,3 @@ describe("roblox bridge helpers", () => {
     expect(out).toContain("</response>");
   });
 });
-

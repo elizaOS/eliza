@@ -12,8 +12,7 @@ import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts"
 import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import { cleanForChat } from "../../../plugins/plugin-agent-orchestrator/src/services/ansi-utils.ts";
 
-const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
 type CommandResult = {

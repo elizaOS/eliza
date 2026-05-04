@@ -16,10 +16,7 @@
  *
  * The dialog is provider-aware: OAuth-only providers
  * (`anthropic-subscription`, `openai-codex`) skip the chooser screen.
- * Direct API providers (`anthropic-api`, `openai-api`) show only the
- * API-key form. The server still 501s on POST for the api-key path on
- * subscription providers, so the chooser is mostly forward-looking
- * defence against future shapes.
+ * Direct API providers show only the API-key form.
  */
 
 import type {
@@ -101,6 +98,18 @@ function providerDisplayName(
     case "openai-api":
       return t("accounts.provider.openaiApi", {
         defaultValue: "OpenAI API",
+      });
+    case "deepseek-api":
+      return t("accounts.provider.deepseekApi", {
+        defaultValue: "DeepSeek API",
+      });
+    case "zai-api":
+      return t("accounts.provider.zaiApi", {
+        defaultValue: "z.ai API",
+      });
+    case "moonshot-api":
+      return t("accounts.provider.moonshotApi", {
+        defaultValue: "Kimi / Moonshot API",
       });
     default:
       return providerId;
@@ -452,8 +461,7 @@ export function AddAccountDialog({
                 provider: providerDisplayName(providerId, t),
               })}
             </Button>
-            {/* API-key path is intentionally hidden for subscription
-                providers — the server 501s on POST for them today. */}
+            {/* API-key path is intentionally hidden for subscription providers. */}
           </div>
         ) : null}
 

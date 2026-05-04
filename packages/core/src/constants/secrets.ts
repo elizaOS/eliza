@@ -60,6 +60,14 @@ export const SECRET_KEY_ALIASES: Record<string, string> = {
 	OPENROUTER_KEY: "OPENROUTER_API_KEY",
 	OPENROUTER_TOKEN: "OPENROUTER_API_KEY",
 
+	// z.ai aliases
+	Z_AI_API_KEY: "ZAI_API_KEY",
+	ZAI_KEY: "ZAI_API_KEY",
+
+	// Moonshot/Kimi aliases
+	KIMI_API_KEY: "MOONSHOT_API_KEY",
+	MOONSHOT_KEY: "MOONSHOT_API_KEY",
+
 	// Mistral aliases
 	MISTRAL_KEY: "MISTRAL_API_KEY",
 	MISTRAL_TOKEN: "MISTRAL_API_KEY",
@@ -103,6 +111,8 @@ export const CANONICAL_SECRET_KEYS = [
 	"FIREWORKS_API_KEY",
 	"PERPLEXITY_API_KEY",
 	"DEEPSEEK_API_KEY",
+	"ZAI_API_KEY",
+	"MOONSHOT_API_KEY",
 
 	// Channel/Platform Tokens
 	"DISCORD_BOT_TOKEN",
@@ -160,6 +170,8 @@ export const MODEL_PROVIDER_SECRETS: Record<string, string> = {
 	fireworks: "FIREWORKS_API_KEY",
 	perplexity: "PERPLEXITY_API_KEY",
 	deepseek: "DEEPSEEK_API_KEY",
+	zai: "ZAI_API_KEY",
+	moonshot: "MOONSHOT_API_KEY",
 
 	// Local inference (checks for URL instead of API key)
 	ollama: "OLLAMA_BASE_URL",

@@ -20,14 +20,14 @@
 
 export const STELLAR_NETWORK = {
   pubnet: {
-    horizonUrl: 'https://horizon.stellar.org',
-    networkPassphrase: 'Public Global Stellar Network ; September 2015',
-    chainId: 'stellar:pubnet',
+    horizonUrl: "https://horizon.stellar.org",
+    networkPassphrase: "Public Global Stellar Network ; September 2015",
+    chainId: "stellar:pubnet",
   },
   testnet: {
-    horizonUrl: 'https://horizon-testnet.stellar.org',
-    networkPassphrase: 'Test SDF Network ; September 2015',
-    chainId: 'stellar:testnet',
+    horizonUrl: "https://horizon-testnet.stellar.org",
+    networkPassphrase: "Test SDF Network ; September 2015",
+    chainId: "stellar:testnet",
   },
 } as const;
 
@@ -38,18 +38,18 @@ export const STELLAR_NETWORK = {
  */
 export const STELLAR_USDC = {
   pubnet: {
-    code: 'USDC',
-    issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+    code: "USDC",
+    issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
   },
   testnet: {
-    code: 'USDC',
-    issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    code: "USDC",
+    issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
   },
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type StellarNetwork = 'pubnet' | 'testnet';
+export type StellarNetwork = "pubnet" | "testnet";
 
 export interface StellarPaymentConfig {
   /** Which Stellar network to use */
@@ -113,8 +113,9 @@ export class StellarX402Adapter {
   private horizonUrl: string;
 
   constructor(config: StellarPaymentConfig = {}) {
-    this.network = config.network ?? 'pubnet';
-    this.horizonUrl = config.horizonUrl ?? STELLAR_NETWORK[this.network].horizonUrl;
+    this.network = config.network ?? "pubnet";
+    this.horizonUrl =
+      config.horizonUrl ?? STELLAR_NETWORK[this.network].horizonUrl;
   }
 
   /**
@@ -128,18 +129,20 @@ export class StellarX402Adapter {
     amount?: string;
     resource?: string;
   } {
-    const chains = headers['x-payment-chains'] ?? headers['X-Payment-Chains'] ?? '';
+    const chains =
+      headers["x-payment-chains"] ?? headers["X-Payment-Chains"] ?? "";
     const chainId = STELLAR_NETWORK[this.network].chainId;
 
-    if (!chains.includes(chainId) && !chains.includes('stellar')) {
+    if (!chains.includes(chainId) && !chains.includes("stellar")) {
       return { supported: false };
     }
 
     return {
       supported: true,
-      destination: headers['x-payment-destination'] ?? headers['X-Payment-Destination'],
-      amount: headers['x-payment-amount'] ?? headers['X-Payment-Amount'],
-      resource: headers['x-payment-resource'] ?? headers['X-Payment-Resource'],
+      destination:
+        headers["x-payment-destination"] ?? headers["X-Payment-Destination"],
+      amount: headers["x-payment-amount"] ?? headers["X-Payment-Amount"],
+      resource: headers["x-payment-resource"] ?? headers["X-Payment-Resource"],
     };
   }
 
@@ -151,15 +154,17 @@ export class StellarX402Adapter {
    *
    * Returns the XDR-encoded transaction envelope for signing and submission.
    */
-  async buildPaymentTransaction(request: StellarPaymentRequest): Promise<string> {
+  async buildPaymentTransaction(
+    request: StellarPaymentRequest,
+  ): Promise<string> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let StellarSdk: any;
     try {
       // @ts-expect-error — @stellar/stellar-sdk is an optional peer dependency
-      StellarSdk = await import('@stellar/stellar-sdk');
+      StellarSdk = await import("@stellar/stellar-sdk");
     } catch {
       throw new Error(
-        'Stellar support requires @stellar/stellar-sdk: npm install @stellar/stellar-sdk'
+        "Stellar support requires @stellar/stellar-sdk: npm install @stellar/stellar-sdk",
       );
     }
 
@@ -167,18 +172,21 @@ export class StellarX402Adapter {
     const usdcAsset = STELLAR_USDC[request.network ?? this.network];
 
     // Load source account sequence number from Horizon
-    const account = await this._loadAccount(request.sourcePublicKey, networkConfig.horizonUrl);
+    const account = await this._loadAccount(
+      request.sourcePublicKey,
+      networkConfig.horizonUrl,
+    );
 
     const stellarAccount = new StellarSdk.Account(
       request.sourcePublicKey,
-      account.sequence
+      account.sequence,
     );
 
     const asset = new StellarSdk.Asset(usdcAsset.code, usdcAsset.issuer);
 
     const memoText = request.resource
       ? request.resource.slice(0, 28) // Stellar memo max 28 bytes
-      : 'x402-payment';
+      : "x402-payment";
 
     const transaction = new StellarSdk.TransactionBuilder(stellarAccount, {
       fee: StellarSdk.BASE_FEE,
@@ -189,7 +197,7 @@ export class StellarX402Adapter {
           destination: request.destination,
           asset,
           amount: request.amount,
-        })
+        }),
       )
       .addMemo(StellarSdk.Memo.text(memoText))
       .setTimeout(300) // 5 minute window
@@ -206,17 +214,19 @@ export class StellarX402Adapter {
 
     const body = new URLSearchParams({ tx: signedXdr }).toString();
     const resp = await fetch(`${networkConfig.horizonUrl}/transactions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
     });
 
     if (!resp.ok) {
       const err = await resp.text();
-      throw new Error(`Stellar transaction failed: ${resp.status} ${err.slice(0, 200)}`);
+      throw new Error(
+        `Stellar transaction failed: ${resp.status} ${err.slice(0, 200)}`,
+      );
     }
 
-    const result = await resp.json() as {
+    const result = (await resp.json()) as {
       hash: string;
       ledger: number;
       successful: boolean;
@@ -232,16 +242,16 @@ export class StellarX402Adapter {
 
   private async _loadAccount(
     publicKey: string,
-    horizonUrl: string
+    horizonUrl: string,
   ): Promise<{ sequence: string }> {
     const resp = await fetch(`${horizonUrl}/accounts/${publicKey}`);
     if (!resp.ok) {
       throw new Error(
         `Cannot load Stellar account ${publicKey}: ${resp.status}. ` +
-        `Ensure the account exists and has a USDC trustline established.`
+          `Ensure the account exists and has a USDC trustline established.`,
       );
     }
-    const data = await resp.json() as { sequence: string };
+    const data = (await resp.json()) as { sequence: string };
     return { sequence: data.sequence };
   }
 
@@ -272,14 +282,16 @@ export async function stellarX402Pay(params: {
   /** Network to use */
   network?: StellarNetwork;
 }): Promise<StellarPaymentResult> {
-  const adapter = new StellarX402Adapter({ network: params.network ?? 'pubnet' });
+  const adapter = new StellarX402Adapter({
+    network: params.network ?? "pubnet",
+  });
 
   const details = adapter.parseX402Response(params.responseHeaders);
   if (!details.supported) {
-    throw new Error('This endpoint does not support Stellar x402 payments');
+    throw new Error("This endpoint does not support Stellar x402 payments");
   }
   if (!details.destination || !details.amount) {
-    throw new Error('x402 response missing destination or amount headers');
+    throw new Error("x402 response missing destination or amount headers");
   }
 
   const xdr = await adapter.buildPaymentTransaction({
@@ -287,7 +299,7 @@ export async function stellarX402Pay(params: {
     amount: details.amount,
     sourcePublicKey: params.sourcePublicKey,
     resource: details.resource,
-    network: params.network ?? 'pubnet',
+    network: params.network ?? "pubnet",
   });
 
   const signedXdr = await params.sign(xdr);

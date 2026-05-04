@@ -9,10 +9,7 @@ import type {
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { FileActionParams, FileActionResult } from "../types.js";
-import {
-  resolveActionParams,
-  toComputerUseActionResult,
-} from "./helpers.js";
+import { resolveActionParams, toComputerUseActionResult } from "./helpers.js";
 
 function formatFileResultText(result: FileActionResult): string {
   if (!result.success) {

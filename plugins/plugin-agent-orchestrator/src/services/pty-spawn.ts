@@ -32,38 +32,37 @@ const CODEX_KEEP_CURRENT_MODEL_NEVER_RULE_PATTERN_SOURCE =
 const CODEX_KEEP_CURRENT_MODEL_RULE_PATTERN_SOURCE =
   "keep\\s+current\\s+model[\\s\\S]*(?:efficient\\s+model|less\\s+capable|faster|rate\\s+limit|switching\\s+models)|(?:efficient\\s+model|less\\s+capable|faster|rate\\s+limit|switching\\s+models)[\\s\\S]*keep\\s+current\\s+model";
 
-const CODEX_ADAPTER_RULE_OVERRIDES: NonNullable<
-  SpawnConfig["ruleOverrides"]
-> = {
-  [CODEX_UPDATE_RULE_PATTERN_SOURCE]: {
-    response: "",
-    responseType: "keys",
-    keys: ["2", "enter"],
-    description: 'Skip Codex CLI update prompt (option 2: "Skip")',
-    once: true,
-  },
-  [CODEX_KEEP_CURRENT_MODEL_NEVER_RULE_PATTERN_SOURCE]: {
-    response: "",
-    responseType: "keys",
-    keys: ["3", "enter"],
-    description:
-      "Keep the current Codex model and hide future model-switch reminders",
-  },
-  [CODEX_KEEP_CURRENT_MODEL_RULE_PATTERN_SOURCE]: {
-    response: "",
-    responseType: "keys",
-    keys: ["2", "enter"],
-    description:
-      "Keep the current Codex model when a routine model-switch reminder appears",
-  },
-  [CODEX_TRUST_RULE_PATTERN_SOURCE]: {
-    response: "",
-    responseType: "keys",
-    keys: ["1", "enter"],
-    description: 'Trust Codex workspace prompt (option 1: "Yes, continue")',
-    once: true,
-  },
-};
+const CODEX_ADAPTER_RULE_OVERRIDES: NonNullable<SpawnConfig["ruleOverrides"]> =
+  {
+    [CODEX_UPDATE_RULE_PATTERN_SOURCE]: {
+      response: "",
+      responseType: "keys",
+      keys: ["2", "enter"],
+      description: 'Skip Codex CLI update prompt (option 2: "Skip")',
+      once: true,
+    },
+    [CODEX_KEEP_CURRENT_MODEL_NEVER_RULE_PATTERN_SOURCE]: {
+      response: "",
+      responseType: "keys",
+      keys: ["3", "enter"],
+      description:
+        "Keep the current Codex model and hide future model-switch reminders",
+    },
+    [CODEX_KEEP_CURRENT_MODEL_RULE_PATTERN_SOURCE]: {
+      response: "",
+      responseType: "keys",
+      keys: ["2", "enter"],
+      description:
+        "Keep the current Codex model when a routine model-switch reminder appears",
+    },
+    [CODEX_TRUST_RULE_PATTERN_SOURCE]: {
+      response: "",
+      responseType: "keys",
+      keys: ["1", "enter"],
+      description: 'Trust Codex workspace prompt (option 1: "Yes, continue")',
+      once: true,
+    },
+  };
 
 /**
  * Symbol-keyed shim contract installed by app-core's AccountPool. The

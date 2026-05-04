@@ -162,8 +162,7 @@ export const manageInventoryAction: Action = {
   parameters: [
     {
       name: "confirmed",
-      description:
-        "Must be true to adjust Shopify inventory after preview.",
+      description: "Must be true to adjust Shopify inventory after preview.",
       required: false,
       schema: { type: "boolean", default: false },
     },
@@ -287,7 +286,8 @@ export const manageInventoryAction: Action = {
         const levels = await svc.checkInventory(inventoryItemId);
         const locationId =
           levels[0]?.location.id ?? (await svc.listLocations())[0]?.id;
-        const locationName = levels[0]?.location.name ?? "first active location";
+        const locationName =
+          levels[0]?.location.name ?? "first active location";
         if (!locationId) {
           await callback?.({
             text: "No locations found in the store to adjust inventory against.",

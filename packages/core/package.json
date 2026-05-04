@@ -1,7 +1,24 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.0-alpha.537",
-	"description": "",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+	"homepage": "https://github.com/elizaOS/eliza",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/elizaOS/eliza.git",
+		"directory": "packages/core"
+	},
+	"keywords": [
+		"elizaos",
+		"agent",
+		"runtime",
+		"ai",
+		"llm",
+		"plugins"
+	],
+	"engines": {
+		"node": ">=24.0.0"
+	},
 	"type": "module",
 	"main": "./dist/index.node.js",
 	"module": "./dist/index.node.js",
@@ -59,6 +76,7 @@
 	],
 	"scripts": {
 		"prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate); [ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts",
+		"prepublishOnly": "bun run build",
 		"build": "bun run build.ts",
 		"build:node": "bun run build.ts --node-only",
 		"build:watch": "bun run build.ts --watch",
@@ -124,7 +142,7 @@
 		"unpdf": "^1.4.0",
 		"uuid": "^14.0.0",
 		"yaml": "^2.7.0",
-		"zod": "^4.3.6"
+		"zod": "^4.4.2"
 	},
 	"publishConfig": {
 		"access": "public"

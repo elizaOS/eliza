@@ -18,13 +18,6 @@ RLMs represent a breakthrough in long-context processing that:
 - **Official Implementation**: [github.com/alexzhang13/rlm](https://github.com/alexzhang13/rlm)
 
 ## Installation
-
-### Python
-
-```bash
-cd plugins/plugin-rlm/python
-pip install -e .
-
 # Optional: Install RLM backend
 pip install git+https://github.com/alexzhang13/rlm.git
 ```
@@ -36,14 +29,6 @@ cd plugins/plugin-rlm
 npm install
 npm run build
 ```
-
-### Rust
-
-```bash
-cd plugins/plugin-rlm/rust
-cargo build
-```
-
 ## Configuration
 
 The plugin reads configuration from environment variables:
@@ -113,12 +98,6 @@ export GEMINI_API_KEY=...
 ```
 
 ## Usage
-
-### Python
-
-```python
-from elizaos_plugin_rlm import plugin, RLMClient
-
 # The plugin is auto-loaded by elizaOS runtime
 # Or use the client directly:
 client = RLMClient()
@@ -137,17 +116,6 @@ const client = new RLMClient();
 const result = await client.infer("Process this very long text...");
 console.log(result.text);
 ```
-
-### Rust
-
-```rust
-use elizaos_plugin_rlm::{RLMClient, RLMConfig};
-
-let client = RLMClient::from_env()?;
-let result = client.infer("Process this very long text...".into(), None).await;
-println!("{}", result.text);
-```
-
 ## Model Types
 
 The plugin registers handlers for the following model types:
@@ -167,33 +135,14 @@ The plugin registers handlers for the following model types:
 ```
 plugins/plugin-rlm/
 ├── README.md                    # This file
-├── python/
-│   ├── pyproject.toml           # Python package config
-│   ├── elizaos_plugin_rlm/
-│   │   ├── __init__.py          # Package exports
-│   │   ├── client.py            # RLMClient wrapper
-│   │   ├── plugin.py            # Plugin definition
-│   │   └── server.py            # IPC server for TS/Rust
-│   └── tests/
-│       ├── test_plugin.py       # Unit tests
-│       └── test_integration.py  # Integration tests
-├── typescript/
-│   ├── package.json
-│   ├── types.ts                 # TypeScript types
-│   ├── client.ts                # RLMClient (IPC to Python)
-│   ├── index.ts                 # Plugin definition
-│   └── __tests__/
-│       ├── plugin.test.ts       # Unit tests
-│       └── integration.test.ts  # Integration tests
-└── rust/
-    ├── Cargo.toml
-    ├── src/
-    │   ├── lib.rs               # Plugin + exports
-    │   ├── client.rs            # RLMClient (IPC)
-    │   ├── types.rs             # Rust types
-    │   └── error.rs             # Error handling
-    └── tests/
-        └── integration_tests.rs # Rust tests
+└── typescript/
+    ├── package.json
+    ├── types.ts                 # TypeScript types
+    ├── client.ts                # RLMClient
+    ├── index.ts                 # Plugin definition
+    └── __tests__/
+        ├── plugin.test.ts       # Unit tests
+        └── integration.test.ts  # Integration tests
 ```
 
 ### Cross-Language Design
@@ -210,28 +159,9 @@ All implementations fall back to **stub mode** when the RLM backend is unavailab
 
 When the RLM backend is not installed or unavailable, the plugin operates in stub mode:
 
-```python
-# Stub response format
-{
-    "text": "[RLM STUB] RLM backend not available",
-    "metadata": {
-        "stub": true
-    }
-}
-```
-
 This allows the plugin to be loaded and used without the RLM dependency for testing and development purposes.
 
 ## Testing
-
-### Python
-
-```bash
-cd plugins/plugin-rlm/python
-pip install -e ".[dev]"
-pytest tests/
-```
-
 ### TypeScript
 
 ```bash
@@ -239,14 +169,6 @@ cd plugins/plugin-rlm
 npm install
 npm test
 ```
-
-### Rust
-
-```bash
-cd plugins/plugin-rlm/rust
-cargo test
-```
-
 ## How RLM Works
 
 RLMs treat long prompts as external objects stored in a Python REPL environment. Instead of feeding the entire input to the model, the LM:
@@ -260,20 +182,6 @@ RLMs treat long prompts as external objects stored in a Python REPL environment.
 This approach addresses "context rot" - the degradation of model performance as prompt length increases.
 
 ### Example: Long Context Processing
-
-```python
-# Traditional approach (fails with long context)
-response = llm.completion(very_long_context + query)
-
-# RLM approach (handles arbitrarily long context)
-response = rlm.completion(very_long_context + query)
-# RLM internally:
-# 1. Stores context in REPL environment
-# 2. Peeks at structure
-# 3. Greps for relevant portions
-# 4. Recursively processes chunks
-# 5. Aggregates final answer
-```
 
 ## Performance
 

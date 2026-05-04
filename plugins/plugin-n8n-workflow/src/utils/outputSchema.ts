@@ -3,8 +3,8 @@
  * Uses pre-crawled schemaIndex.json with full schema content.
  */
 import type { ExpressionRef, SchemaContent } from '../types/index';
-import schemaIndex from '../data/schemaIndex.json' assert { type: 'json' };
-import triggerSchemaIndex from '../data/triggerSchemaIndex.json' assert { type: 'json' };
+import schemaIndex from '../data/schemaIndex.json' with { type: 'json' };
+import triggerSchemaIndex from '../data/triggerSchemaIndex.json' with { type: 'json' };
 
 type SchemasByResource = Record<string, Record<string, SchemaContent>>;
 
@@ -21,7 +21,9 @@ interface SchemaIndex {
 
 const SCHEMA_INDEX = schemaIndex as unknown as SchemaIndex;
 const TRIGGER_SCHEMAS = (
-  triggerSchemaIndex as unknown as { triggers: Record<string, { outputSchema: SchemaContent }> }
+  triggerSchemaIndex as unknown as {
+    triggers: Record<string, { outputSchema: SchemaContent }>;
+  }
 ).triggers;
 
 export interface OutputSchemaResult {

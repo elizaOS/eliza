@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-form",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Eliza app-form: conversational forms as guardrails for guided user journeys (lazy-loaded native app plugin).",
   "main": "./src/index.ts",
@@ -22,5 +21,8 @@
     "app": {
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

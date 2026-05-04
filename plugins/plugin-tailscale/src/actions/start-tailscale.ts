@@ -114,7 +114,10 @@ export const startTailscaleAction: Action = {
   },
   examples: [
     [
-      { name: 'user', content: { text: 'Start a tailscale tunnel on port 8080' } },
+      {
+        name: 'user',
+        content: { text: 'Start a tailscale tunnel on port 8080' },
+      },
       {
         name: 'assistant',
         content: {

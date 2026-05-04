@@ -1,18 +1,6 @@
 # @elizaos/plugin-anthropic
 
-A multi-language Anthropic Claude API client for elizaOS, providing text generation, streaming, image description, and structured JSON object generation capabilities.
-
-## 🌐 Multi-Language Support
-
-This plugin is implemented in three languages for maximum flexibility:
-
-| Language   | Package                     | Registry  |
-| ---------- | --------------------------- | --------- |
-| TypeScript | `@elizaos/plugin-anthropic` | npm       |
-| Rust       | `elizaos-plugin-anthropic`  | crates.io |
-| Python     | `elizaos-plugin-anthropic`  | PyPI      |
-
-All implementations share the same API design and behavior.
+Anthropic Claude API client for elizaOS, providing text generation, streaming, image description, and structured JSON object generation capabilities.
 
 ## Features
 
@@ -47,42 +35,6 @@ const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
   schema: { type: "object" },
 });
 ```
-
-### Rust
-
-```rust
-use elizaos_plugin_anthropic::{AnthropicClient, AnthropicConfig, TextGenerationParams};
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = AnthropicConfig::from_env()?;
-    let client = AnthropicClient::new(config)?;
-
-    let params = TextGenerationParams::new("Explain quantum computing")
-        .with_max_tokens(1024)
-        .with_temperature(0.7);
-
-    let response = client.generate_text_large(params).await?;
-    println!("Response: {}", response.text);
-    Ok(())
-}
-```
-
-### Python
-
-```python
-import asyncio
-from elizaos_plugin_anthropic import AnthropicClient, AnthropicConfig
-
-async def main():
-    config = AnthropicConfig.from_env()
-    async with AnthropicClient(config) as client:
-        response = await client.generate_text_large("Explain quantum computing")
-        print(f"Response: {response.text}")
-
-asyncio.run(main())
-```
-
 ## Installation
 
 ### TypeScript (npm)
@@ -92,20 +44,6 @@ npm install @elizaos/plugin-anthropic
 # or
 bun add @elizaos/plugin-anthropic
 ```
-
-### Rust (Cargo)
-
-```toml
-[dependencies]
-elizaos-plugin-anthropic = "1.0"
-```
-
-### Python (pip)
-
-```bash
-pip install elizaos-plugin-anthropic
-```
-
 ## Configuration
 
 All implementations use the same environment variables:
@@ -202,27 +140,11 @@ plugin-anthropic/
 ### Running Tests
 
 ```bash
-# TypeScript
 cd typescript
 npx vitest
 
 # With integration tests (requires API key)
 ANTHROPIC_API_KEY=your-key npx vitest
-
-# Rust
-cd rust
-cargo test
-
-# With integration tests
-ANTHROPIC_API_KEY=your-key cargo test -- --ignored
-
-# Python
-cd python
-pip install -e ".[dev]"
-pytest
-
-# With integration tests
-ANTHROPIC_API_KEY=your-key pytest -m integration
 ```
 
 ### Building
@@ -230,43 +152,3 @@ ANTHROPIC_API_KEY=your-key pytest -m integration
 ```bash
 # TypeScript
 bun run build
-
-# Rust (native library)
-cd rust && cargo build --release
-
-# Rust (WASM)
-cd rust && wasm-pack build --target web --out-dir pkg/web
-
-# Python (wheel)
-cd python && pip install build && python -m build
-```
-
-## Error Handling
-
-All implementations follow a **fail-fast** philosophy:
-
-- **No try-catch blocks** that swallow errors
-- **No fallback modes** or mock modes
-- **Immediate validation** of all inputs
-- **Clear error messages** with actionable information
-
-### Error Types
-
-| Error                   | Description                        |
-| ----------------------- | ---------------------------------- |
-| `ApiKeyError`           | API key missing or invalid         |
-| `ConfigError`           | Configuration problem              |
-| `RateLimitError`        | Rate limit exceeded (retryable)    |
-| `ApiError`              | API returned an error              |
-| `JsonGenerationError`   | Failed to parse JSON from response |
-| `InvalidParameterError` | Invalid parameter provided         |
-| `NetworkError`          | Network connectivity issue         |
-| `TimeoutError`          | Request timed out                  |
-
-## License
-
-MIT - see [LICENSE](./LICENSE)
-
-## Contributing
-
-See the [elizaOS contributing guide](https://github.com/elizaos/eliza/blob/main/CONTRIBUTING.md).

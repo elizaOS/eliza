@@ -302,48 +302,6 @@ def _score_from_swebench_orchestrated_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_gaia_orchestrated_json(data: JSONValue) -> ScoreExtraction:
-    root = expect_dict(data, ctx="gaia_orchestrated:root")
-    metrics_obj = get_optional(root, "metrics")
-    if isinstance(metrics_obj, dict):
-        overall_raw = metrics_obj.get("overall_accuracy")
-        if isinstance(overall_raw, (int, float)):
-            overall = float(overall_raw)
-            return ScoreExtraction(
-                score=overall,
-                unit="ratio",
-                higher_is_better=True,
-                metrics={
-                    "overall_accuracy": overall,
-                    "provider_scores": metrics_obj.get("provider_scores") or {},
-                },
-            )
-
-    matrix = get_optional(root, "matrix")
-    if isinstance(matrix, dict):
-        cells = matrix.get("cells")
-        if isinstance(cells, dict):
-            cell_scores = []
-            for cell_data in cells.values():
-                if isinstance(cell_data, dict):
-                    raw = cell_data.get("accuracy")
-                    if isinstance(raw, (int, float)):
-                        cell_scores.append(float(raw))
-            if cell_scores:
-                overall = sum(cell_scores) / len(cell_scores)
-                return ScoreExtraction(
-                    score=overall,
-                    unit="ratio",
-                    higher_is_better=True,
-                    metrics={
-                        "overall_accuracy": overall,
-                        "matrix_cells": len(cell_scores),
-                    },
-                )
-
-    raise ValueError("gaia_orchestrated: unable to determine overall accuracy")
-
-
 def _score_from_orchestrator_lifecycle_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="orchestrator_lifecycle:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="orchestrator_lifecycle:root"), ctx="orchestrator_lifecycle:metrics")
@@ -866,74 +824,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--quick-test")
         return args
 
-    def _gaia_orchestrated_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        args = [
-            python,
-            "-m",
-            "elizaos_gaia.cli",
-            "--output",
-            str(output_dir),
-            "--orchestrated",
-        ]
-        if model.provider:
-            args.extend(["--provider", model.provider])
-        if model.model:
-            args.extend(["--model", model.model])
-        if model.temperature is not None:
-            args.extend(["--temperature", str(model.temperature)])
-
-        dataset = extra.get("dataset")
-        if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
-            args.extend(["--dataset", dataset])
-        elif not os.getenv("HF_TOKEN"):
-            args.extend(["--dataset", "sample"])
-        dataset_path = extra.get("dataset_path")
-        if isinstance(dataset_path, str) and dataset_path.strip():
-            args.extend(["--dataset-path", dataset_path.strip()])
-        max_questions = extra.get("max_questions")
-        if isinstance(max_questions, int) and max_questions > 0:
-            args.extend(["--max-questions", str(max_questions)])
-        else:
-            args.extend(["--max-questions", "5"])
-
-        execution_mode = extra.get("execution_mode")
-        if isinstance(execution_mode, str) and execution_mode in {
-            "orchestrated",
-            "direct_shell",
-        }:
-            args.extend(["--execution-mode", execution_mode])
-
-        providers = extra.get("providers")
-        if isinstance(providers, list):
-            provider_values = [str(p) for p in providers if str(p).strip()]
-            if provider_values:
-                args.extend(["--providers", *provider_values])
-
-        if extra.get("matrix") is True:
-            args.append("--matrix")
-        orchestrator_model = extra.get("orchestrator_model")
-        if isinstance(orchestrator_model, str) and orchestrator_model.strip():
-            args.extend(["--orchestrator-model", orchestrator_model.strip()])
-        required_caps = extra.get("required_capabilities")
-        if isinstance(required_caps, list) and required_caps:
-            args.extend(["--required-capabilities", ",".join(str(c) for c in required_caps)])
-        elif isinstance(required_caps, str) and required_caps.strip():
-            args.extend(["--required-capabilities", required_caps.strip()])
-        if extra.get("strict_capabilities") is True:
-            args.append("--strict-capabilities")
-        return args
-
     def _gaia_result(output_dir: Path) -> Path:
         # Prefer latest file if present; otherwise grab any latest json under model subdir.
         try:
             return find_latest_file(output_dir, glob_pattern="**/gaia-results-latest.json")
         except FileNotFoundError:
             return find_latest_file(output_dir, glob_pattern="**/gaia-results_*.json")
-
-    def _gaia_orchestrated_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="**/gaia-orchestrated-*.json")
 
     def _tau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [
@@ -1747,20 +1643,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_gaia_cmd,
             locate_result=_gaia_result,
             extract_score=_score_from_gaia_json,
-        ),
-        BenchmarkDefinition(
-            id="gaia_orchestrated",
-            display_name="GAIA (Orchestrated)",
-            description="GAIA benchmark with orchestrator/direct-shell provider matrix",
-            cwd_rel="benchmarks/gaia",
-            requirements=BenchmarkRequirements(
-                env_vars=("GROQ_API_KEY",),
-                paths=(),
-                notes="Runs GAIA through orchestrated and direct_shell control planes with provider matrix support.",
-            ),
-            build_command=_gaia_orchestrated_cmd,
-            locate_result=_gaia_orchestrated_result,
-            extract_score=_score_from_gaia_orchestrated_json,
         ),
         BenchmarkDefinition(
             id="tau_bench",

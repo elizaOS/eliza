@@ -195,24 +195,6 @@ Examples:
         help="Don't save results to files",
     )
     parser.add_argument(
-        "--mock",
-        action="store_true",
-        help="Use mock agent (for testing benchmark infrastructure)",
-    )
-    parser.add_argument(
-        "--provider",
-        type=str,
-        choices=["python", "eliza"],
-        default="python",
-        help=(
-            "Agent backend. 'python' (default) uses the in-process elizaOS "
-            "Python runtime. 'eliza' routes the planning loop through the "
-            "TypeScript benchmark server via eliza_adapter.realm.ElizaREALMAgent. "
-            "When 'eliza' is selected the eliza_adapter.ElizaServerManager will "
-            "auto-spawn the TS server unless ELIZA_BENCH_URL is set."
-        ),
-    )
-    parser.add_argument(
         "--check-env",
         action="store_true",
         help="Check environment for API keys and exit",
@@ -271,9 +253,9 @@ def print_leaderboard() -> None:
 
 
 def check_environment() -> dict[str, bool]:
-    """Check environment for API keys and ElizaOS availability."""
+    """Check environment for API keys and the eliza TS bench server."""
     results: dict[str, bool] = {}
-    
+
     # Check API keys
     api_keys = [
         ("OPENAI_API_KEY", "OpenAI"),
@@ -281,75 +263,29 @@ def check_environment() -> dict[str, bool]:
         ("GOOGLE_GENERATIVE_AI_API_KEY", "Google Generative AI"),
         ("GROQ_API_KEY", "Groq"),
     ]
-    
+
     print("\n🔑 API Key Status:")
     for env_var, name in api_keys:
         has_key = bool(os.environ.get(env_var))
         results[env_var] = has_key
         status = "✅ Found" if has_key else "❌ Not set"
         print(f"   {name}: {status}")
-    
-    # Check ElizaOS availability
-    print("\n📦 ElizaOS Status:")
-    import importlib.util
 
-    if importlib.util.find_spec("elizaos.runtime") is not None:
-        results["elizaos"] = True
-        print("   Core runtime: ✅ Available")
+    # Check eliza TS bridge server
+    print("\n🌉 Eliza TS Bridge:")
+    bench_url = os.environ.get("ELIZA_BENCH_URL")
+    if bench_url:
+        results["eliza_bench_url"] = True
+        print(f"   ELIZA_BENCH_URL: ✅ {bench_url}")
     else:
-        results["elizaos"] = False
-        print("   Core runtime: ❌ Not installed")
-    
-    # Check model plugins
-    plugins = [
-        ("elizaos_plugin_openai", "OpenAI Plugin"),
-        ("elizaos_plugin_anthropic", "Anthropic Plugin"),
-        ("elizaos_plugin_google_genai", "Google Plugin"),
-        ("elizaos_plugin_ollama", "Ollama Plugin"),
-        ("elizaos_plugin_groq", "Groq Plugin"),
-    ]
-    
-    print("\n🔌 Model Plugins:")
-    for module, name in plugins:
-        try:
-            __import__(module)
-            results[module] = True
-            print(f"   {name}: ✅ Installed")
-        except ImportError:
-            results[module] = False
-            print(f"   {name}: ❌ Not installed")
+        results["eliza_bench_url"] = False
+        print("   ELIZA_BENCH_URL: ❌ unset (will auto-spawn ElizaServerManager)")
 
-    # Check trajectory logger plugin
-    print("\n📊 Training Export:")
-    try:
-        __import__("elizaos_plugin_trajectory_logger")
-        results["trajectory_logger"] = True
-        print("   Trajectory Logger: ✅ Installed (ART/GRPO export available)")
-    except ImportError:
-        results["trajectory_logger"] = False
-        print("   Trajectory Logger: ❌ Not installed (install elizaos-plugin-trajectory-logger for training export)")
-    
-    # Summary
     print("\n📋 Summary:")
-    has_runtime = results.get("elizaos", False)
-
-    # Compatibility notes:
-    # - OpenAI has a Python ElizaOS runtime plugin wrapper in this repo
-    # - Anthropic/Groq Python packages currently provide clients/types but not runtime plugin wrappers
-    openai_ready = bool(results.get("OPENAI_API_KEY")) and bool(
-        results.get("elizaos_plugin_openai")
-    )
-    ollama_ready = bool(results.get("elizaos_plugin_ollama"))
-
-    if has_runtime and openai_ready:
-        print("   ✅ Ready for LLM-based benchmarking (OpenAI)!")
-    elif has_runtime and ollama_ready:
-        print("   ✅ Ready for LLM-based benchmarking (Ollama)!")
-    elif has_runtime:
-        print("   ⚠️  ElizaOS available but no compatible model plugin detected.")
-        if results.get("ANTHROPIC_API_KEY") or results.get("GROQ_API_KEY"):
-            print("   ℹ️  Note: Anthropic/Groq keys detected, but Python runtime plugin wrappers are not available yet.")
-        print("   → Benchmark will run in heuristic/mock mode unless OpenAI/Ollama is configured.")
+    if any(results.get(k) for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY")):
+        print("   ✅ At least one LLM provider key detected — ready for live runs.")
+    else:
+        print("   ⚠️  No LLM provider keys detected. Set GROQ_API_KEY/OPENAI_API_KEY/ANTHROPIC_API_KEY.")
     else:
         print("   ⚠️  ElizaOS not available - will use heuristic/mock mode")
     
@@ -451,49 +387,44 @@ def print_results_summary(report: REALMReport) -> None:
 async def run_benchmark(
     config: REALMConfig,
     verbose: bool = False,
-    use_mock: bool = False,
     enable_trajectory_logging: bool = True,
-    provider: str = "python",
 ) -> REALMReport:
-    """Run the benchmark."""
+    """Run the benchmark via the eliza TS bridge."""
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    from eliza_adapter import ElizaREALMAgent, ElizaServerManager
+
     eliza_server = None
-    agent: object | None = None
+    if not os.environ.get("ELIZA_BENCH_URL"):
+        eliza_server = ElizaServerManager()
+        eliza_server.start()
+        client = eliza_server.client
+    else:
+        from eliza_adapter import ElizaClient
 
-    if provider == "eliza":
-        # Route the planning loop through the TS benchmark server.
-        from eliza_adapter import ElizaREALMAgent, ElizaServerManager
+        client = ElizaClient()
+        client.wait_until_ready(timeout=120)
 
-        if not os.environ.get("ELIZA_BENCH_URL"):
-            eliza_server = ElizaServerManager()
-            eliza_server.start()
-            client = eliza_server.client
-        else:
-            from eliza_adapter import ElizaClient
-
-            client = ElizaClient()
-            client.wait_until_ready(timeout=120)
-
-        agent = ElizaREALMAgent(
-            client=client,
-            max_steps=config.max_steps,
-            execution_model=config.execution_model,
-            enable_adaptation=config.enable_adaptation,
-        )
+    agent = ElizaREALMAgent(
+        client=client,
+        max_steps=config.max_steps,
+        execution_model=config.execution_model,
+        enable_adaptation=config.enable_adaptation,
+    )
 
     runner = REALMRunner(
         config,
-        use_mock=use_mock,
-        enable_trajectory_logging=enable_trajectory_logging,
         agent=agent,
+        enable_trajectory_logging=enable_trajectory_logging,
     )
 
     try:
         report = await runner.run_benchmark()
     finally:
-        await runner.agent.close()
+        close = getattr(runner.agent, "close", None)
+        if callable(close):
+            await close()
         if eliza_server is not None:
             eliza_server.stop()
 
@@ -540,15 +471,14 @@ def main() -> int:
         report = asyncio.run(run_benchmark(
             config,
             args.verbose,
-            args.mock,
             enable_trajectory_logging=enable_traj_logging,
-            provider=args.provider,
         ))
 
         if args.json:
-            # Output as JSON
+            # Output as JSON — agent isn't used here, just need a runner instance
+            # to call _report_to_dict
             from benchmarks.realm.runner import REALMRunner
-            runner = REALMRunner(config)
+            runner = REALMRunner(config, agent=object())
             results_dict = runner._report_to_dict(report)
             print(json.dumps(results_dict, indent=2, default=str))
         else:
@@ -556,12 +486,6 @@ def main() -> int:
 
             if not args.no_save:
                 print(f"\n📁 Full results saved to: {config.output_dir}/")
-                if not args.no_trajectory_logging:
-                    try:
-                        __import__("elizaos_plugin_trajectory_logger")
-                        print(f"   📊 Training trajectories exported (ART/GRPO formats)")
-                    except ImportError:
-                        pass
 
             print("\n✅ Benchmark completed successfully!")
 

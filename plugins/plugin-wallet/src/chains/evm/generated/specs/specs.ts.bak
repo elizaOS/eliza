@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider/evaluator docs for plugin-evm.
+ * Auto-generated canonical action/provider/evaluator docs for plugin-wallet evm chain.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 

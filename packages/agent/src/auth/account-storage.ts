@@ -15,12 +15,18 @@ import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { writeJsonAtomicSync } from "../utils/atomic-json.js";
-import type { OAuthCredentials, SubscriptionProvider } from "./types.js";
+import {
+  ACCOUNT_CREDENTIAL_PROVIDER_IDS,
+  isSubscriptionProvider,
+  type AccountCredentialProvider,
+  type OAuthCredentials,
+  type SubscriptionProvider,
+} from "./types.js";
 
 export interface AccountCredentialRecord {
   /** accountId, e.g. "default" or a uuid */
   id: string;
-  providerId: SubscriptionProvider;
+  providerId: AccountCredentialProvider;
   /** user-facing name (e.g. "Personal", "Work") */
   label: string;
   source: "oauth" | "api-key";
@@ -46,7 +52,7 @@ function authRoot(): string {
   );
 }
 
-function providerDir(provider: SubscriptionProvider): string {
+function providerDir(provider: AccountCredentialProvider): string {
   return path.join(authRoot(), provider);
 }
 
@@ -55,13 +61,13 @@ function legacyProviderFile(provider: SubscriptionProvider): string {
 }
 
 function accountFile(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
   accountId: string,
 ): string {
   return path.join(providerDir(provider), `${accountId}.json`);
 }
 
-function ensureProviderDir(provider: SubscriptionProvider): void {
+function ensureProviderDir(provider: AccountCredentialProvider): void {
   const dir = providerDir(provider);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -83,6 +89,9 @@ function isAccountCredentialRecord(
   return (
     typeof v.id === "string" &&
     typeof v.providerId === "string" &&
+    (ACCOUNT_CREDENTIAL_PROVIDER_IDS as readonly string[]).includes(
+      v.providerId,
+    ) &&
     typeof v.label === "string" &&
     (v.source === "oauth" || v.source === "api-key") &&
     typeof v.credentials === "object" &&
@@ -193,12 +202,14 @@ function ensureMigrationOnce(): void {
 }
 
 export function listAccounts(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
 ): AccountCredentialRecord[] {
   ensureMigrationOnce();
   // Run provider-specific migration too in case a new provider was
   // added after the first global pass.
-  migrateProvider(provider);
+  if (isSubscriptionProvider(provider)) {
+    migrateProvider(provider);
+  }
 
   const dir = providerDir(provider);
   if (!fs.existsSync(dir)) return [];
@@ -236,11 +247,13 @@ export function listAccounts(
 }
 
 export function loadAccount(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
   accountId: string,
 ): AccountCredentialRecord | null {
   ensureMigrationOnce();
-  migrateProvider(provider);
+  if (isSubscriptionProvider(provider)) {
+    migrateProvider(provider);
+  }
 
   const file = accountFile(provider, accountId);
   let raw: string;
@@ -285,7 +298,7 @@ export function saveAccount(record: AccountCredentialRecord): void {
 }
 
 export function deleteAccount(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
   accountId: string,
 ): void {
   const file = accountFile(provider, accountId);
@@ -300,7 +313,7 @@ export function deleteAccount(
 }
 
 export function touchAccount(
-  provider: SubscriptionProvider,
+  provider: AccountCredentialProvider,
   accountId: string,
 ): void {
   const existing = loadAccount(provider, accountId);

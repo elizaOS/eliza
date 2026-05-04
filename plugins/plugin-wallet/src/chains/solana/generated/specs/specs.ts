@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider/evaluator docs for plugin-solana.
+ * Auto-generated canonical action/provider/evaluator docs for plugin-wallet solana chain.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 

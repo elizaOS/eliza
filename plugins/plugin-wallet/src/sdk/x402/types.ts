@@ -10,7 +10,7 @@
  * https://developers.circle.com/stablecoins/usdc-contract-addresses
  */
 // x402 protocol types — compatible with @x402/core spec
-import type { Address, Hash } from 'viem';
+import type { Address, Hash } from "viem";
 
 // ─── x402 Protocol Types (from coinbase/x402 spec) ───
 
@@ -23,11 +23,11 @@ export interface X402ResourceInfo {
 
 /** Payment requirements returned in 402 response PAYMENT-REQUIRED header */
 export interface X402PaymentRequirements {
-  scheme: string;           // e.g. "exact"
-  network: string;          // e.g. "base:8453"
-  asset: string;            // token contract address (e.g. USDC on Base)
-  amount: string;           // amount in smallest unit (e.g. "1000000" = 1 USDC)
-  payTo: string;            // recipient address
+  scheme: string; // e.g. "exact"
+  network: string; // e.g. "base:8453"
+  asset: string; // token contract address (e.g. USDC on Base)
+  amount: string; // amount in smallest unit (e.g. "1000000" = 1 USDC)
+  payTo: string; // recipient address
   maxTimeoutSeconds: number;
   extra: Record<string, unknown>;
 }
@@ -46,7 +46,7 @@ export interface X402PaymentPayload {
   x402Version: number;
   resource: X402ResourceInfo;
   accepted: X402PaymentRequirements;
-  payload: Record<string, unknown>;  // scheme-specific (e.g. tx hash, signature)
+  payload: Record<string, unknown>; // scheme-specific (e.g. tx hash, signature)
   extensions?: Record<string, unknown>;
 }
 
@@ -104,7 +104,10 @@ export interface X402ClientConfig {
   /** Whether to auto-pay 402 responses (default: true) */
   autoPay?: boolean;
   /** Callback before payment — return false to reject */
-  onBeforePayment?: (req: X402PaymentRequirements, url: string) => Promise<boolean> | boolean;
+  onBeforePayment?: (
+    req: X402PaymentRequirements,
+    url: string,
+  ) => Promise<boolean> | boolean;
   /** Callback after payment */
   onPaymentComplete?: (log: X402TransactionLog) => void;
 }
@@ -122,30 +125,30 @@ export interface X402ClientConfig {
  */
 export const USDC_ADDRESSES: Record<string, Address> = {
   // Testnets
-  'base-sepolia:84532': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  "base-sepolia:84532": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   // Mainnets
-  'base:8453':          '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-  'ethereum:1':         '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-  'arbitrum:42161':     '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-  'polygon:137':        '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
-  'optimism:10':        '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-  'avalanche:43114':    '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
-  'unichain:130':       '0x078D782b760474a361dDA0AF3839290b0EF57AD6',
-  'linea:59144':        '0x176211869cA2b568f2A7D4EE941E073a821EE1ff',
-  'sonic:146':          '0x29219dd400f2Bf60E5a23d13Be72B486D4038894',
-  'worldchain:480':     '0x79A02482A880bCE3B13e09Da970dC34db4CD24d1',
+  "base:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "ethereum:1": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "arbitrum:42161": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  "polygon:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+  "optimism:10": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+  "avalanche:43114": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+  "unichain:130": "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
+  "linea:59144": "0x176211869cA2b568f2A7D4EE941E073a821EE1ff",
+  "sonic:146": "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+  "worldchain:480": "0x79A02482A880bCE3B13e09Da970dC34db4CD24d1",
 } as const;
 
 /** Default supported networks (all mainnet chains) */
 export const DEFAULT_SUPPORTED_NETWORKS = [
-  'base:8453',
-  'ethereum:1',
-  'arbitrum:42161',
-  'polygon:137',
-  'optimism:10',
-  'avalanche:43114',
-  'unichain:130',
-  'linea:59144',
-  'sonic:146',
-  'worldchain:480',
+  "base:8453",
+  "ethereum:1",
+  "arbitrum:42161",
+  "polygon:137",
+  "optimism:10",
+  "avalanche:43114",
+  "unichain:130",
+  "linea:59144",
+  "sonic:146",
+  "worldchain:480",
 ] as const;

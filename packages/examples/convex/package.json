@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "elizaOS agent running on Convex — messages processed via messageService.handleMessage with real-time persistence",
   "type": "module",
-  "private": true,
   "scripts": {
     "dev": "npx convex dev",
     "start": "npx convex dev",
@@ -19,7 +18,7 @@
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "convex": "^1.25.2",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.0.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
@@ -28,6 +27,6 @@
     "typescript": "^6.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   }
 }

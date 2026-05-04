@@ -97,7 +97,9 @@ export function loadBrandConfig(configPath) {
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`Brand config ${resolved} is not valid JSON: ${err.message}`);
+    throw new Error(
+      `Brand config ${resolved} is not valid JSON: ${err.message}`,
+    );
   }
   for (const field of REQUIRED_FIELDS) {
     if (typeof parsed[field] !== "string" || parsed[field].length === 0) {

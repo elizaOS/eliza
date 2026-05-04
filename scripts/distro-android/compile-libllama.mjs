@@ -97,7 +97,12 @@ function defaultAssetsDir(brand) {
 
 function defaultCacheDir(brand) {
   const cacheName = brand.cacheDirName ?? `${brand.brand}-android-agent`;
-  return path.join(os.homedir(), ".cache", cacheName, `llama-cpp-${LLAMA_CPP_TAG}`);
+  return path.join(
+    os.homedir(),
+    ".cache",
+    cacheName,
+    `llama-cpp-${LLAMA_CPP_TAG}`,
+  );
 }
 
 export function parseSubArgs(argv, brand) {

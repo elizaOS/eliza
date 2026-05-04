@@ -125,8 +125,8 @@
     "actions": ["enable", "configure"]
   },
   "resources": {
-    "homepage": "https://github.com/elizaos-plugins/plugin-evm#readme",
-    "repository": "https://github.com/elizaos-plugins/plugin-evm"
+    "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-wallet#readme",
+    "repository": "https://github.com/elizaOS/eliza"
   },
   "dependsOn": [],
   "kind": "plugin",

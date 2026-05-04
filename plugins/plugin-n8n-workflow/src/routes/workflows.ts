@@ -40,7 +40,7 @@ async function createWorkflow(
   runtime: IAgentRuntime
 ): Promise<void> {
   try {
-    const { workflow, userId, activate } = req.body as {
+    const { workflow, userId, activate } = req.body as unknown as {
       workflow: N8nWorkflow;
       userId: string;
       activate?: boolean;
@@ -143,7 +143,7 @@ async function updateWorkflow(
       return;
     }
 
-    const { workflow, userId } = req.body as {
+    const { workflow, userId } = req.body as unknown as {
       workflow: N8nWorkflow;
       userId: string;
     };
@@ -283,5 +283,9 @@ export const workflowRoutes: Route[] = [
   { type: 'PUT', path: '/workflows/:id', handler: updateWorkflow },
   { type: 'DELETE', path: '/workflows/:id', handler: deleteWorkflow },
   { type: 'POST', path: '/workflows/:id/activate', handler: activateWorkflow },
-  { type: 'POST', path: '/workflows/:id/deactivate', handler: deactivateWorkflow },
+  {
+    type: 'POST',
+    path: '/workflows/:id/deactivate',
+    handler: deactivateWorkflow,
+  },
 ];

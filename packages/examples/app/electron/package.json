@@ -1,6 +1,5 @@
 {
   "name": "@elizaos/example-app-electron-workspace",
-  "private": true,
   "type": "module",
   "version": "2.0.0-alpha",
   "scripts": {

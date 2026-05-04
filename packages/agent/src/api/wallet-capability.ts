@@ -1,11 +1,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
-import { isStewardEvmBridgeActive } from "../services/external-bridge-state.js";
 import {
   type EvmSigningCapability,
   type EvmSigningCapabilityKind,
   resolveEvmSigningCapability,
 } from "../services/evm-signing-capability.js";
+import { isStewardEvmBridgeActive } from "../services/external-bridge-state.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 

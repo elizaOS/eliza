@@ -280,7 +280,11 @@ export function validateProductLayer(vendorDir, brand) {
   // because Soong looks under the overlay root for `LOCAL_RESOURCE_DIR`
   // (frameworks/base/core/res/res), not for a directory called
   // "framework-res".
-  assertIncludes(common, `vendor/${brand.brand}/overlays`, brand.commonMakefile);
+  assertIncludes(
+    common,
+    `vendor/${brand.brand}/overlays`,
+    brand.commonMakefile,
+  );
   assertFile(
     path.join(
       vendorDir,
@@ -311,7 +315,11 @@ export function validateProductLayer(vendorDir, brand) {
     `${brand.commonMakefile} PRODUCT_COPY_FILES`,
   );
   assertIncludes(common, "BOARD_VENDOR_SEPOLICY_DIRS", brand.commonMakefile);
-  assertIncludes(common, `vendor/${brand.brand}/sepolicy`, brand.commonMakefile);
+  assertIncludes(
+    common,
+    `vendor/${brand.brand}/sepolicy`,
+    brand.commonMakefile,
+  );
   if (common.includes("PermissionController")) {
     fail(
       `${brand.commonMakefile} still references a PermissionController overlay; role defaults live in framework-res strings.`,
@@ -321,7 +329,11 @@ export function validateProductLayer(vendorDir, brand) {
   // Per-Pixel templates exist and follow the same <BRAND>_PIXEL_CODENAME contract.
   const pixelMakefile = `${brand.pixelMakefilePrefix}_pixel_phone.mk`;
   const pixelTemplate = read(path.join(vendorDir, "products", pixelMakefile));
-  assertIncludes(pixelTemplate, `${brand.envPrefix}_PIXEL_CODENAME`, pixelMakefile);
+  assertIncludes(
+    pixelTemplate,
+    `${brand.envPrefix}_PIXEL_CODENAME`,
+    pixelMakefile,
+  );
   assertIncludes(
     pixelTemplate,
     `vendor/${brand.brand}/${brand.commonMakefile}`,
@@ -354,9 +366,7 @@ export function validateProductLayer(vendorDir, brand) {
 
   // Lint the init script syntactically — typos here only show up at
   // boot otherwise.
-  const initIssues = lintInitRc(
-    path.join(vendorDir, "init", brand.initRcName),
-  );
+  const initIssues = lintInitRc(path.join(vendorDir, "init", brand.initRcName));
   const initErrors = initIssues.filter((i) => !i.soft);
   if (initErrors.length > 0) {
     fail(
@@ -598,7 +608,11 @@ function validateApkManifest(manifest, brand) {
     "MainActivity",
   );
 
-  const dialActivity = manifestComponentBlock(manifest, "activity", fq("DialActivity"));
+  const dialActivity = manifestComponentBlock(
+    manifest,
+    "activity",
+    fq("DialActivity"),
+  );
   assertCountAtLeast(
     dialActivity,
     "android.intent.action.DIAL",
@@ -653,7 +667,11 @@ function validateApkManifest(manifest, brand) {
     cls("InCallService"),
   );
 
-  const smsReceiver = manifestComponentBlock(manifest, "receiver", fq("SmsReceiver"));
+  const smsReceiver = manifestComponentBlock(
+    manifest,
+    "receiver",
+    fq("SmsReceiver"),
+  );
   assertManifestBlockIncludes(
     smsReceiver,
     "android.permission.BROADCAST_SMS",
@@ -665,7 +683,11 @@ function validateApkManifest(manifest, brand) {
     cls("SmsReceiver"),
   );
 
-  const mmsReceiver = manifestComponentBlock(manifest, "receiver", fq("MmsReceiver"));
+  const mmsReceiver = manifestComponentBlock(
+    manifest,
+    "receiver",
+    fq("MmsReceiver"),
+  );
   assertManifestBlockIncludes(
     mmsReceiver,
     "android.permission.BROADCAST_WAP_PUSH",
@@ -719,7 +741,11 @@ function validateApkManifest(manifest, brand) {
     cls("SmsComposeActivity"),
   );
 
-  const bootReceiver = manifestComponentBlock(manifest, "receiver", fq("BootReceiver"));
+  const bootReceiver = manifestComponentBlock(
+    manifest,
+    "receiver",
+    fq("BootReceiver"),
+  );
   assertManifestBlockIncludes(
     bootReceiver,
     "android.intent.action.LOCKED_BOOT_COMPLETED",

@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-defense-of-the-agents",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Eliza app integration for Defense of the Agents.",
   "main": "./src/index.ts",
@@ -61,5 +60,8 @@
         "detailPanelId": "defense-agent-control"
       }
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

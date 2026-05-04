@@ -18,34 +18,34 @@
 
 export const SOLANA_TOKENS = {
   // Native SOL (special: no mint address, use null or SystemProgram)
-  SOL:  null as null, // native, not a mint
+  SOL: null as null, // native, not a mint
 
   // USDC on Solana mainnet — Circle official
-  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
 
   // USDT on Solana — Tether official
-  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
 
   // Raydium
-  RAY:  '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
+  RAY: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
 
   // Serum (now Openbook predecessor token)
-  SRM:  'SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt',
+  SRM: "SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt",
 
   // Bonk memecoin
-  BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+  BONK: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
 
   // JitoSOL — Jito staked SOL
-  JITOSOL: 'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn',
+  JITOSOL: "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
 
   // mSOL — Marinade staked SOL
-  MSOL: 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So',
+  MSOL: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
 
   // Wrapped BTC on Solana (Portal/Wormhole)
-  WBTC: '3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh',
+  WBTC: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
 
   // Wrapped ETH on Solana (Portal/Wormhole)
-  WETH: '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs',
+  WETH: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
 } as const;
 
 export type SolanaTokenSymbol = keyof typeof SOLANA_TOKENS;
@@ -59,23 +59,24 @@ export interface SolanaTokenInfo {
 
 /** Known decimals for Solana tokens */
 export const SOLANA_TOKEN_DECIMALS: Record<SolanaTokenSymbol, number> = {
-  SOL:     9,
-  USDC:    6,
-  USDT:    6,
-  RAY:     6,
-  SRM:     6,
-  BONK:    5,
+  SOL: 9,
+  USDC: 6,
+  USDT: 6,
+  RAY: 6,
+  SRM: 6,
+  BONK: 5,
   JITOSOL: 9,
-  MSOL:    9,
-  WBTC:    8,
-  WETH:    8,
+  MSOL: 9,
+  WBTC: 8,
+  WETH: 8,
 };
 
 // ─── Dynamic import helper ────────────────────────────────────────────────────
 
 // ─── Base58 decode (built-in, no extra dependency) ───────────────────────────
 
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const BASE58_ALPHABET =
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 function base58Decode(str: string): Uint8Array {
   const bytes: number[] = [0];
@@ -95,7 +96,7 @@ function base58Decode(str: string): Uint8Array {
   }
   // Add leading zeros for leading '1' chars
   for (const char of str) {
-    if (char !== '1') break;
+    if (char !== "1") break;
     bytes.push(0);
   }
   return new Uint8Array(bytes.reverse());
@@ -105,11 +106,11 @@ function base58Decode(str: string): Uint8Array {
 async function loadSolanaWeb3(): Promise<any> {
   try {
     // @ts-ignore — @solana/web3.js is an optional peer dependency
-    const mod = await import('@solana/web3.js');
+    const mod = await import("@solana/web3.js");
     return mod;
   } catch {
     throw new Error(
-      'SolanaWallet requires @solana/web3.js. Install it: npm install @solana/web3.js'
+      "SolanaWallet requires @solana/web3.js. Install it: npm install @solana/web3.js",
     );
   }
 }
@@ -118,11 +119,11 @@ async function loadSolanaWeb3(): Promise<any> {
 async function loadSplToken(): Promise<any> {
   try {
     // @ts-expect-error — @solana/spl-token is an optional peer dependency
-    const mod = await import('@solana/spl-token');
+    const mod = await import("@solana/spl-token");
     return mod;
   } catch {
     throw new Error(
-      'SolanaWallet SPL token operations require @solana/spl-token. Install it: npm install @solana/spl-token'
+      "SolanaWallet SPL token operations require @solana/spl-token. Install it: npm install @solana/spl-token",
     );
   }
 }
@@ -139,8 +140,8 @@ export interface SolanaWalletConfig {
 }
 
 export interface SolBalanceResult {
-  rawBalance: bigint;  // lamports
-  sol: string;         // human-readable SOL
+  rawBalance: bigint; // lamports
+  sol: string; // human-readable SOL
 }
 
 export interface SplBalanceResult {
@@ -167,14 +168,14 @@ export class SolanaWallet {
   private _keypair: any = null;
 
   constructor(config: SolanaWalletConfig = {}) {
-    this.rpcUrl = config.rpcUrl ?? 'https://api.mainnet-beta.solana.com';
+    this.rpcUrl = config.rpcUrl ?? "https://api.mainnet-beta.solana.com";
     this.config = config;
   }
 
   private async getConnection() {
     if (this._connection) return this._connection;
     const { Connection } = await loadSolanaWeb3();
-    this._connection = new Connection(this.rpcUrl, 'confirmed');
+    this._connection = new Connection(this.rpcUrl, "confirmed");
     return this._connection;
   }
 
@@ -196,7 +197,9 @@ export class SolanaWallet {
       }
       this._keypair = Keypair.fromSecretKey(decoded);
     } else {
-      throw new Error('SolanaWallet: no private key provided. Set keypairBytes or privateKeyBase58 in config.');
+      throw new Error(
+        "SolanaWallet: no private key provided. Set keypairBytes or privateKeyBase58 in config.",
+      );
     }
 
     return this._keypair;
@@ -226,7 +229,7 @@ export class SolanaWallet {
 
     const lamports = await connection.getBalance(pubkey);
     const rawBalance = BigInt(lamports);
-    const sol = (lamports / 1e9).toFixed(9).replace(/\.?0+$/, '');
+    const sol = (lamports / 1e9).toFixed(9).replace(/\.?0+$/, "");
 
     return { rawBalance, sol };
   }
@@ -255,7 +258,10 @@ export class SolanaWallet {
     const mintPubkey = new PublicKey(mintAddress);
 
     // Get associated token account
-    const ata = await splToken.getAssociatedTokenAddress(mintPubkey, ownerPubkey);
+    const ata = await splToken.getAssociatedTokenAddress(
+      mintPubkey,
+      ownerPubkey,
+    );
 
     let rawBalance = 0n;
     let decimals = 9;
@@ -271,7 +277,10 @@ export class SolanaWallet {
       // Token account doesn't exist — balance is 0
     }
 
-    const humanBalance = (Number(rawBalance) / 10 ** decimals).toFixed(decimals).replace(/\.?0+$/, '') || '0';
+    const humanBalance =
+      (Number(rawBalance) / 10 ** decimals)
+        .toFixed(decimals)
+        .replace(/\.?0+$/, "") || "0";
 
     return { mint: mintAddress, rawBalance, humanBalance, decimals };
   }
@@ -288,11 +297,11 @@ export class SolanaWallet {
     const keypair = await this.getKeypair();
 
     let lamports: bigint;
-    if (typeof amount === 'string') {
+    if (typeof amount === "string") {
       // Parse SOL string (9 decimals)
-      const parts = amount.split('.');
-      const intPart = BigInt(parts[0] || '0');
-      const fracStr = (parts[1] ?? '').padEnd(9, '0').slice(0, 9);
+      const parts = amount.split(".");
+      const intPart = BigInt(parts[0] || "0");
+      const fracStr = (parts[1] ?? "").padEnd(9, "0").slice(0, 9);
       lamports = intPart * 1_000_000_000n + BigInt(fracStr);
     } else {
       lamports = amount;
@@ -303,10 +312,12 @@ export class SolanaWallet {
         fromPubkey: keypair.publicKey,
         toPubkey: new PublicKey(to),
         lamports: Number(lamports),
-      })
+      }),
     );
 
-    const signature = await sendAndConfirmTransaction(connection, transaction, [keypair]);
+    const signature = await sendAndConfirmTransaction(connection, transaction, [
+      keypair,
+    ]);
     return { signature };
   }
 
@@ -337,11 +348,11 @@ export class SolanaWallet {
 
     // Parse amount
     let rawAmount: bigint;
-    if (typeof amount === 'string') {
-      const parts = amount.split('.');
-      const intPart = BigInt(parts[0] || '0');
-      const fracStr = (parts[1] ?? '').padEnd(decimals, '0').slice(0, decimals);
-      rawAmount = intPart * (10n ** BigInt(decimals)) + BigInt(fracStr);
+    if (typeof amount === "string") {
+      const parts = amount.split(".");
+      const intPart = BigInt(parts[0] || "0");
+      const fracStr = (parts[1] ?? "").padEnd(decimals, "0").slice(0, decimals);
+      rawAmount = intPart * 10n ** BigInt(decimals) + BigInt(fracStr);
     } else {
       rawAmount = amount;
     }
@@ -353,7 +364,10 @@ export class SolanaWallet {
     );
 
     // Get or create recipient's associated token account
-    const toAta = await splToken.getAssociatedTokenAddress(mintPubkey, toPubkey);
+    const toAta = await splToken.getAssociatedTokenAddress(
+      mintPubkey,
+      toPubkey,
+    );
 
     // Build instructions
     const instructions: any[] = [];
@@ -367,33 +381,42 @@ export class SolanaWallet {
           toAta,
           toPubkey,
           mintPubkey,
-        )
+        ),
       );
     }
 
     // Transfer instruction
     instructions.push(
-      splToken.createTransferInstruction(fromAta, toAta, keypair.publicKey, rawAmount)
+      splToken.createTransferInstruction(
+        fromAta,
+        toAta,
+        keypair.publicKey,
+        rawAmount,
+      ),
     );
 
     const { Transaction, sendAndConfirmTransaction } = await loadSolanaWeb3();
     const transaction = new Transaction().add(...instructions);
 
-    const signature = await sendAndConfirmTransaction(connection, transaction, [keypair]);
+    const signature = await sendAndConfirmTransaction(connection, transaction, [
+      keypair,
+    ]);
     return { signature };
   }
 
   /**
    * List all SPL token accounts for the wallet.
    */
-  async listSplTokenAccounts(): Promise<Array<{ mint: string; amount: bigint; decimals: number }>> {
+  async listSplTokenAccounts(): Promise<
+    Array<{ mint: string; amount: bigint; decimals: number }>
+  > {
     const splToken = await loadSplToken();
     const connection = await this.getConnection();
     const keypair = await this.getKeypair();
 
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
       keypair.publicKey,
-      { programId: splToken.TOKEN_PROGRAM_ID }
+      { programId: splToken.TOKEN_PROGRAM_ID },
     );
 
     return tokenAccounts.value.map((acc: any) => {

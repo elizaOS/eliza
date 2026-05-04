@@ -475,7 +475,8 @@ async function getAIMove(session: GameSession): Promise<number> {
   );
 
   const textToParse =
-    typeof result.responseContent?.text === "string" && result.responseContent.text
+    typeof result.responseContent?.text === "string" &&
+    result.responseContent.text
       ? result.responseContent.text
       : agentText;
 

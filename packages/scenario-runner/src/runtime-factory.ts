@@ -15,18 +15,29 @@ import {
   createCharacter,
   logger,
 } from "@elizaos/core";
-import { seedLifeOpsSimulatorRuntime } from "../../../../eliza/test/mocks/helpers/lifeops-simulator.ts";
-import { prepareMockedTestEnvironment } from "../../../../eliza/test/mocks/helpers/mock-runtime.ts";
-import { seedBenchmarkLifeOpsFixtures } from "../../../../eliza/test/mocks/helpers/seed-benchmark-fixtures.ts";
-import {
-  seedGoogleConnectorGrant,
-  seedXConnectorGrant,
-} from "../../../../eliza/test/mocks/helpers/seed-grants.ts";
+
 import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
 } from "../../app-core/test/helpers/live-provider.ts";
+// Test helpers loaded lazily so the build rootDir stays within src/.
+async function loadTestMocks() {
+  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants] =
+    await Promise.all([
+      import("../../../../eliza/test/mocks/helpers/mock-runtime.ts"),
+      import("../../../../eliza/test/mocks/helpers/lifeops-simulator.ts"),
+      import("../../../../eliza/test/mocks/helpers/seed-benchmark-fixtures.ts"),
+      import("../../../../eliza/test/mocks/helpers/seed-grants.ts"),
+    ]);
+  return {
+    prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,
+    seedLifeOpsSimulatorRuntime: lifeopsSimulator.seedLifeOpsSimulatorRuntime,
+    seedBenchmarkLifeOpsFixtures: benchmarkFixtures.seedBenchmarkLifeOpsFixtures,
+    seedGoogleConnectorGrant: grants.seedGoogleConnectorGrant,
+    seedXConnectorGrant: grants.seedXConnectorGrant,
+  };
+}
 
 export interface RuntimeFactoryResult {
   runtime: AgentRuntime;
@@ -121,6 +132,13 @@ export async function createScenarioRuntime(
       "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY.",
     );
   }
+  const {
+    prepareMockedTestEnvironment,
+    seedLifeOpsSimulatorRuntime,
+    seedBenchmarkLifeOpsFixtures,
+    seedGoogleConnectorGrant,
+    seedXConnectorGrant,
+  } = await loadTestMocks();
   const mockedEnvironment = await prepareMockedTestEnvironment({
     seedLifeOpsSimulator: true,
   });

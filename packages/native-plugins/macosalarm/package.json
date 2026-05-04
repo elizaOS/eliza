@@ -21,7 +21,24 @@
     "scripts/",
     "bin/"
   ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/native-plugins/macosalarm"
+  },
+  "keywords": [
+    "elizaos",
+    "macos",
+    "alarm",
+    "notifications",
+    "swift"
+  ],
   "scripts": {
+    "prepublishOnly": "bun run build",
     "build": "tsc -p tsconfig.json && node scripts/build-helper.mjs",
     "build:ts": "tsc -p tsconfig.json",
     "build:helper": "node scripts/build-helper.mjs",
@@ -48,5 +65,8 @@
     "platformDetails": {
       "darwin": "Swift CLI helper using UNUserNotificationCenter. Non-darwin platforms receive macos-only failures."
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

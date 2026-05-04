@@ -1121,3 +1121,355 @@ describe("n8n POST /api/n8n/workflows/generate", () => {
     expect(getWorkflow).not.toHaveBeenCalled();
   });
 });
+
+// ── Clarification roundtrip ─────────────────────────────────────────────────
+//
+// generateWorkflowDraft may emit `_meta.requiresClarification` instead of
+// (or in addition to) the parameters the user asked about. The route MUST
+// detect that, skip deploy, and return a `needs_clarification` envelope so
+// the UI can render a quick-pick. /resolve-clarification then patches the
+// draft and either deploys or returns the next pending clarification.
+
+interface MockCatalogLike {
+  listGroups: ReturnType<typeof vi.fn>;
+}
+
+function runtimeWithWorkflowAndCatalog(
+  service: Partial<MockGenerateService>,
+  catalog?: MockCatalogLike,
+): AgentRuntime {
+  return {
+    getService: vi.fn((name: string) => {
+      if (name === "n8n_workflow") return service;
+      if (name === "connector_target_catalog") return catalog ?? null;
+      return null;
+    }),
+  } as unknown as AgentRuntime;
+}
+
+describe("n8n /generate clarification short-circuit", () => {
+  it("returns needs_clarification + catalog snapshot when the draft has structured clarifications", async () => {
+    const draft = {
+      name: "Daily reminder",
+      nodes: [
+        {
+          name: "Discord Send",
+          type: "n8n-nodes-base.discord",
+          parameters: { guildId: "g-cozy" },
+        },
+      ],
+      connections: {},
+      _meta: {
+        requiresClarification: [
+          {
+            kind: "target_channel",
+            platform: "discord",
+            scope: { guildId: "g-cozy" },
+            question: "Which channel in Cozy Devs?",
+            paramPath: 'nodes["Discord Send"].parameters.channelId',
+          },
+        ],
+      },
+    };
+    const generateWorkflowDraft = vi.fn(async () => draft);
+    const deployWorkflow = vi.fn();
+    const getWorkflow = vi.fn();
+    const listGroups = vi.fn(async () => [
+      {
+        platform: "discord",
+        groupId: "g-cozy",
+        groupName: "Cozy Devs",
+        targets: [
+          { id: "c1", name: "general", kind: "channel" },
+          { id: "c2", name: "alerts", kind: "channel" },
+        ],
+      },
+    ]);
+    const runtime = runtimeWithWorkflowAndCatalog(
+      { generateWorkflowDraft, deployWorkflow, getWorkflow },
+      { listGroups },
+    );
+
+    const { handled, status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/generate",
+      runtime,
+      agentId: "agent-abc",
+      body: { prompt: "post a daily reminder to Cozy Devs" },
+    });
+
+    expect(handled).toBe(true);
+    expect(status).toBe(200);
+    expect(payload).toMatchObject({
+      status: "needs_clarification",
+      clarifications: [expect.objectContaining({ kind: "target_channel" })],
+      catalog: [
+        expect.objectContaining({ groupId: "g-cozy", groupName: "Cozy Devs" }),
+      ],
+    });
+    expect(deployWorkflow).not.toHaveBeenCalled();
+    expect(getWorkflow).not.toHaveBeenCalled();
+    expect(listGroups).toHaveBeenCalledWith({ platform: "discord" });
+  });
+
+  it("normalizes legacy string clarifications into free_text and skips catalog lookup when no platform is set", async () => {
+    const draft = {
+      name: "Vague",
+      nodes: [],
+      connections: {},
+      _meta: { requiresClarification: ["Which services?"] },
+    };
+    const generateWorkflowDraft = vi.fn(async () => draft);
+    const deployWorkflow = vi.fn();
+    const listGroups = vi.fn(async () => []);
+    const runtime = runtimeWithWorkflowAndCatalog(
+      {
+        generateWorkflowDraft,
+        deployWorkflow,
+        getWorkflow: vi.fn(),
+      },
+      { listGroups },
+    );
+
+    const { payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/generate",
+      runtime,
+      body: { prompt: "automate something" },
+    });
+
+    expect(payload).toMatchObject({
+      status: "needs_clarification",
+      clarifications: [
+        { kind: "free_text", question: "Which services?", paramPath: "" },
+      ],
+      catalog: [],
+    });
+    expect(listGroups).not.toHaveBeenCalled();
+    expect(deployWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("falls back to empty catalog when the catalog service is not registered", async () => {
+    const draft = {
+      _meta: {
+        requiresClarification: [
+          {
+            kind: "target_channel",
+            platform: "discord",
+            question: "Which channel?",
+            paramPath: "nodes[0].parameters.channelId",
+          },
+        ],
+      },
+    };
+    const runtime = runtimeWithWorkflowAndCatalog(
+      {
+        generateWorkflowDraft: vi.fn(async () => draft),
+        deployWorkflow: vi.fn(),
+        getWorkflow: vi.fn(),
+      },
+      undefined,
+    );
+    const { payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/generate",
+      runtime,
+      body: { prompt: "x" },
+    });
+    expect(payload).toMatchObject({
+      status: "needs_clarification",
+      catalog: [],
+    });
+  });
+});
+
+describe("n8n POST /api/n8n/workflows/resolve-clarification", () => {
+  function makeDraftWithChannel() {
+    return {
+      name: "Daily reminder",
+      nodes: [
+        {
+          name: "Discord Send",
+          parameters: { guildId: "g-cozy" },
+        },
+      ],
+      connections: {},
+      _meta: {
+        requiresClarification: [
+          {
+            kind: "target_channel",
+            platform: "discord",
+            scope: { guildId: "g-cozy" },
+            question: "Which channel?",
+            paramPath: "nodes[0].parameters.channelId",
+          },
+        ],
+      },
+    };
+  }
+
+  it("patches the draft, prunes the resolved clarification, and deploys", async () => {
+    const draft = makeDraftWithChannel();
+    const deployed = {
+      id: "wf-789",
+      name: "Daily reminder",
+      active: false,
+      missingCredentials: [],
+    };
+    const full = { ...deployed, nodes: draft.nodes, connections: {} };
+    const deployWorkflow = vi.fn(async () => deployed);
+    const getWorkflow = vi.fn(async () => full);
+    const runtime = runtimeWithWorkflowAndCatalog({
+      generateWorkflowDraft: vi.fn(),
+      deployWorkflow,
+      getWorkflow,
+    });
+
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/resolve-clarification",
+      runtime,
+      agentId: "agent-abc",
+      body: {
+        draft,
+        resolutions: [
+          {
+            paramPath: "nodes[0].parameters.channelId",
+            value: "c-alerts",
+          },
+        ],
+      },
+    });
+
+    expect(status).toBe(200);
+    expect(payload).toEqual(full);
+    expect(deployWorkflow).toHaveBeenCalledTimes(1);
+    const deployedDraft = deployWorkflow.mock.calls[0][0] as {
+      nodes: Array<{ parameters: Record<string, string> }>;
+      _meta?: { requiresClarification?: unknown };
+    };
+    expect(deployedDraft.nodes[0].parameters.channelId).toBe("c-alerts");
+    expect(deployedDraft._meta?.requiresClarification).toBeUndefined();
+  });
+
+  it("rejects an empty resolutions array", async () => {
+    const runtime = runtimeWithWorkflowAndCatalog({
+      generateWorkflowDraft: vi.fn(),
+      deployWorkflow: vi.fn(),
+      getWorkflow: vi.fn(),
+    });
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/resolve-clarification",
+      runtime,
+      body: { draft: { nodes: [] }, resolutions: [] },
+    });
+    expect(status).toBe(400);
+    expect(payload).toMatchObject({ error: "resolutions required" });
+  });
+
+  it("rejects a malformed paramPath with the offending path echoed", async () => {
+    const runtime = runtimeWithWorkflowAndCatalog({
+      generateWorkflowDraft: vi.fn(),
+      deployWorkflow: vi.fn(),
+      getWorkflow: vi.fn(),
+    });
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/resolve-clarification",
+      runtime,
+      body: {
+        draft: { nodes: [] },
+        resolutions: [{ paramPath: "nodes[", value: "x" }],
+      },
+    });
+    expect(status).toBe(400);
+    expect(payload).toMatchObject({ paramPath: "nodes[" });
+  });
+
+  it("returns the next pending clarification instead of deploying when more remain", async () => {
+    const draft = {
+      nodes: [{ name: "Discord Send", parameters: {} }],
+      connections: {},
+      _meta: {
+        requiresClarification: [
+          {
+            kind: "target_server",
+            platform: "discord",
+            question: "Which server?",
+            paramPath: "nodes[0].parameters.guildId",
+          },
+          {
+            kind: "target_channel",
+            platform: "discord",
+            question: "Which channel?",
+            paramPath: "nodes[0].parameters.channelId",
+          },
+        ],
+      },
+    };
+    const listGroups = vi.fn(async () => [
+      {
+        platform: "discord",
+        groupId: "g-cozy",
+        groupName: "Cozy Devs",
+        targets: [{ id: "c1", name: "general", kind: "channel" }],
+      },
+    ]);
+    const deployWorkflow = vi.fn();
+    const runtime = runtimeWithWorkflowAndCatalog(
+      {
+        generateWorkflowDraft: vi.fn(),
+        deployWorkflow,
+        getWorkflow: vi.fn(),
+      },
+      { listGroups },
+    );
+
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/resolve-clarification",
+      runtime,
+      body: {
+        draft,
+        resolutions: [
+          {
+            paramPath: "nodes[0].parameters.guildId",
+            value: "g-cozy",
+          },
+        ],
+      },
+    });
+
+    expect(status).toBe(200);
+    expect(payload).toMatchObject({
+      status: "needs_clarification",
+      clarifications: [expect.objectContaining({ kind: "target_channel" })],
+    });
+    expect(deployWorkflow).not.toHaveBeenCalled();
+    // The patched draft should have the resolved guildId baked in for the
+    // next round.
+    const echoed = (
+      payload as {
+        draft: { nodes: Array<{ parameters: Record<string, string> }> };
+      }
+    ).draft;
+    expect(echoed.nodes[0].parameters.guildId).toBe("g-cozy");
+  });
+
+  it("rejects requests without a draft", async () => {
+    const runtime = runtimeWithWorkflowAndCatalog({
+      generateWorkflowDraft: vi.fn(),
+      deployWorkflow: vi.fn(),
+      getWorkflow: vi.fn(),
+    });
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/resolve-clarification",
+      runtime,
+      body: { resolutions: [{ paramPath: "x", value: "y" }] },
+    });
+    expect(status).toBe(400);
+    expect(payload).toMatchObject({ error: "draft required" });
+  });
+});

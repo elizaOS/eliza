@@ -4,12 +4,17 @@ import { z } from "zod";
 export const googleMeetConfigSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_REDIRECT_URI: z.string().default("http://localhost:3000/oauth2callback"),
+  GOOGLE_REDIRECT_URI: z
+    .string()
+    .default("http://localhost:3000/oauth2callback"),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),
-  GOOGLE_MEET_DEFAULT_DURATION_MINUTES: z.union([z.number(), z.string()]).transform(val => 
-    typeof val === 'string' ? parseInt(val, 10) : val
-  ).default(60),
-  GOOGLE_MEET_DEFAULT_ACCESS_TYPE: z.enum(['OPEN', 'TRUSTED', 'RESTRICTED']).default('OPEN'),
+  GOOGLE_MEET_DEFAULT_DURATION_MINUTES: z
+    .union([z.number(), z.string()])
+    .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+    .default(60),
+  GOOGLE_MEET_DEFAULT_ACCESS_TYPE: z
+    .enum(["OPEN", "TRUSTED", "RESTRICTED"])
+    .default("OPEN"),
 });
 
 export type GoogleMeetConfig = z.infer<typeof googleMeetConfigSchema>;
@@ -43,14 +48,14 @@ export interface Transcript {
   timestamp: Date;
   confidence: number;
   startTime?: number; // Start time in seconds
-  endTime?: number;   // End time in seconds
+  endTime?: number; // End time in seconds
 }
 
 export enum MeetingStatus {
   WAITING = "waiting",
-  ACTIVE = "active", 
+  ACTIVE = "active",
   ENDED = "ended",
-  ERROR = "error"
+  ERROR = "error",
 }
 
 // Report types
@@ -82,7 +87,7 @@ export interface GoogleMeetAPIServiceState {
 
 // Action parameters
 export interface CreateMeetingParams {
-  accessType?: 'OPEN' | 'TRUSTED' | 'RESTRICTED';
+  accessType?: "OPEN" | "TRUSTED" | "RESTRICTED";
   title?: string;
 }
 

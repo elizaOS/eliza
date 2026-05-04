@@ -7,7 +7,10 @@
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
-import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
+import type {
+  EventCallback,
+  ListenerEntry as BaseListenerEntry,
+} from "../../../shared-types.js";
 import type {
   CanvasColor,
   CanvasDrawBatchCommand,

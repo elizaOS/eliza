@@ -30,4 +30,6 @@ export const API_KEY_PREFIX_HINTS: Readonly<Record<string, ApiKeyPrefixHint>> =
     GROQ_API_KEY: { prefix: "gsk_", label: "Groq" },
     XAI_API_KEY: { prefix: "xai-", label: "xAI" },
     OPENROUTER_API_KEY: { prefix: "sk-or-", label: "OpenRouter" },
+    DEEPSEEK_API_KEY: { prefix: "sk-", label: "DeepSeek" },
+    MOONSHOT_API_KEY: { prefix: "sk-", label: "Kimi / Moonshot" },
   };

@@ -17,6 +17,7 @@ import {
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  Spinner,
   StatusBadge,
   StatusDot,
   Textarea,
@@ -67,9 +68,13 @@ import {
   type AutomationItem as CatalogAutomationItem,
   type Conversation,
   isMissingCredentialsResponse,
+  isNeedsClarificationResponse,
+  type N8nClarificationRequest,
+  type N8nClarificationTargetGroup,
   type N8nStatusResponse,
   type N8nWorkflow,
   type N8nWorkflowMissingCredential,
+  type N8nWorkflowNeedsClarificationResponse,
   type N8nWorkflowWriteRequest,
   type TriggerSummary,
   type WorkbenchTask,
@@ -89,6 +94,7 @@ import { formatDateTime, formatDurationMs } from "../../utils/format";
 // (warning: "reexported through module ... while both modules are
 // dependencies of each other"); the direct import skips it.
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { ChoiceWidget } from "../chat/widgets/ChoiceWidget";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
   AppWorkspaceChrome,
@@ -979,26 +985,31 @@ function useAutomationsViewController() {
     }
   };
 
-  const onDeleteTrigger = async () => {
-    if (!editingId) return;
+  const onDeleteTrigger = async (triggerId?: string, displayName?: string) => {
+    const targetId = triggerId ?? editingId;
+    if (!targetId) return;
     const confirmed = await confirmDesktopAction({
       title: t("heartbeatsview.deleteTitle"),
-      message: t("heartbeatsview.deleteMessage", { name: form.displayName }),
+      message: t("heartbeatsview.deleteMessage", {
+        name: displayName ?? form.displayName,
+      }),
       confirmLabel: t("common.delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
     });
     if (!confirmed) return;
 
-    const deleted = await deleteTrigger(editingId);
+    const deleted = await deleteTrigger(targetId);
     if (!deleted) return;
 
-    if (selectedItemId === `trigger:${editingId}`) {
+    if (selectedItemId === `trigger:${targetId}`) {
       setSelectedItemId(null);
       setSelectedItemKind(null);
     }
     await refreshAutomations();
-    closeEditor();
+    if (targetId === editingId) {
+      closeEditor();
+    }
   };
 
   const onDeleteTask = async (taskId: string) => {
@@ -1670,6 +1681,188 @@ function TaskForm() {
         )}
       </div>
     </PagePanel>
+  );
+}
+
+/**
+ * Render a single clarification ("Which channel in Cozy Devs?") with a row
+ * of quick-pick buttons drawn from the catalog. Falls back to a hint when
+ * the catalog has no entries for the clarification's platform/scope (e.g.
+ * the user only configured Discord but the LLM asked about Slack), since
+ * the user has nothing to pick from in that case.
+ */
+function ClarificationPanel({
+  state,
+  onChoose,
+  onDismiss,
+}: {
+  state: {
+    response: N8nWorkflowNeedsClarificationResponse;
+    currentIndex: number;
+    busy: boolean;
+    error?: string;
+  };
+  onChoose: (paramPath: string, value: string) => void;
+  onDismiss: () => void;
+}) {
+  const current = state.response.clarifications[state.currentIndex];
+  if (!current) return null;
+
+  const options = optionsForClarification(state.response.catalog, current);
+  // Used as React key so chained clarifications (e.g. target_server →
+  // target_channel) force a fresh ChoiceWidget instance instead of inheriting
+  // the previous pick's locked/disabled internal state. Also doubled as the
+  // widget's data id.
+  const choiceId = `n8n-clarification-${current.paramPath || "free-text"}`;
+
+  return (
+    <PagePanel
+      variant="padded"
+      className="mb-4 border border-accent/40 bg-accent/5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-2 min-w-0 flex-1">
+          <p className="text-sm font-semibold text-txt">{current.question}</p>
+          {state.response.clarifications.length > 1 ? (
+            <p className="text-2xs text-muted">
+              Step {state.currentIndex + 1} of{" "}
+              {state.response.clarifications.length}
+            </p>
+          ) : null}
+          {options.length > 0 ? (
+            <ChoiceWidget
+              key={choiceId}
+              id={choiceId}
+              scope="n8n-clarification"
+              options={options}
+              onChoose={(value) => {
+                if (state.busy) return;
+                onChoose(current.paramPath, value);
+              }}
+            />
+          ) : (
+            <ClarificationFreeTextInput
+              key={choiceId}
+              busy={state.busy}
+              onSubmit={(value) => onChoose(current.paramPath, value)}
+              placeholderHint={current.platform}
+            />
+          )}
+          {state.error ? (
+            <p className="text-2xs text-danger">{state.error}</p>
+          ) : null}
+          {state.busy ? (
+            <p className="text-2xs text-muted">Applying choice…</p>
+          ) : null}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted hover:text-txt"
+          onClick={onDismiss}
+          disabled={state.busy}
+        >
+          Cancel
+        </Button>
+      </div>
+    </PagePanel>
+  );
+}
+
+/**
+ * Filter the catalog snapshot down to the picker options for one
+ * clarification. Channel pickers narrow to a single guild via
+ * `scope.guildId`. Server pickers list one entry per group. Free-text and
+ * value clarifications fall back to a text input (returns []).
+ */
+function optionsForClarification(
+  catalog: ReadonlyArray<N8nClarificationTargetGroup>,
+  clarification: N8nClarificationRequest,
+): Array<{ value: string; label: string }> {
+  const platform = clarification.platform;
+  if (!platform) return [];
+  const groups = catalog.filter((g) => g.platform === platform);
+  if (groups.length === 0) return [];
+
+  switch (clarification.kind) {
+    case "target_server":
+      return groups.map((g) => ({
+        value: g.groupId,
+        label: g.groupName,
+      }));
+    case "target_channel": {
+      const guildId = clarification.scope?.guildId;
+      const scoped = guildId
+        ? groups.filter((g) => g.groupId === guildId)
+        : groups;
+      const out: Array<{ value: string; label: string }> = [];
+      for (const g of scoped) {
+        for (const t of g.targets) {
+          if (t.kind !== "channel") continue;
+          // When we have multiple guilds in scope, prefix the label so the
+          // user can disambiguate same-named channels.
+          const label =
+            scoped.length > 1 ? `${g.groupName}/#${t.name}` : `#${t.name}`;
+          out.push({ value: t.id, label });
+        }
+      }
+      return out;
+    }
+    case "recipient": {
+      const out: Array<{ value: string; label: string }> = [];
+      for (const g of groups) {
+        for (const t of g.targets) {
+          if (t.kind !== "recipient") continue;
+          out.push({ value: t.id, label: t.name });
+        }
+      }
+      return out;
+    }
+    default:
+      return [];
+  }
+}
+
+function ClarificationFreeTextInput({
+  busy,
+  onSubmit,
+  placeholderHint,
+}: {
+  busy: boolean;
+  onSubmit: (value: string) => void;
+  placeholderHint?: string;
+}) {
+  const [value, setValue] = useState("");
+  const trimmed = value.trim();
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (busy || trimmed.length === 0) return;
+        onSubmit(trimmed);
+      }}
+      className="mt-1 flex items-center gap-2"
+    >
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={
+          placeholderHint
+            ? `Enter a value for ${placeholderHint}…`
+            : "Type your answer…"
+        }
+        disabled={busy}
+        className="h-8 text-xs"
+      />
+      <Button
+        type="submit"
+        size="sm"
+        variant="outline"
+        disabled={busy || trimmed.length === 0}
+      >
+        Apply
+      </Button>
+    </form>
   );
 }
 
@@ -2424,6 +2617,125 @@ function OverviewListItem({
   );
 }
 
+function HeroEmptyState({
+  ideas,
+  onSubmit,
+  drafts,
+  onSelectDraft,
+  onDeleteDraft,
+  t,
+}: {
+  ideas: AutomationExample[];
+  onSubmit: (text: string) => void;
+  drafts: AutomationItem[];
+  onSelectDraft: (item: AutomationItem) => void;
+  onDeleteDraft?: (item: AutomationItem) => void | Promise<void>;
+  t: AutomationsViewController["t"];
+}) {
+  const [value, setValue] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const submit = useCallback(() => {
+    const text = value.trim();
+    if (text.length === 0) return;
+    setValue("");
+    onSubmit(text);
+  }, [onSubmit, value]);
+
+  const handleChipSelect = useCallback((idea: AutomationExample) => {
+    setValue(idea.prompt);
+    textareaRef.current?.focus();
+  }, []);
+
+  const canSubmit = value.trim().length > 0;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-10">
+      <div className="w-full max-w-[560px] space-y-3">
+        <div className="relative">
+          <Textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="Describe a task or workflow…"
+            rows={2}
+            variant="form"
+            className="resize-none pr-12"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-2 right-2 h-7 w-7 p-0"
+            onClick={submit}
+            disabled={!canSubmit}
+            aria-label="Submit"
+          >
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {ideas.map((idea) => (
+            <button
+              key={idea.label}
+              type="button"
+              onClick={() => handleChipSelect(idea)}
+              className="rounded-full border border-border/50 bg-bg-accent px-2.5 py-1 text-xs text-txt transition-colors hover:border-accent/40 hover:bg-accent/5"
+            >
+              {idea.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {drafts.length > 0 && (
+        <div className="w-full max-w-[560px]">
+          <DetailSection title="Drafts in progress">
+            <div className="divide-y divide-border/20">
+              {drafts.map((item) => (
+                <div key={item.id} className="flex items-stretch gap-1">
+                  <div className="min-w-0 flex-1">
+                    <OverviewListItem
+                      onClick={() => onSelectDraft(item)}
+                      title={getOverviewDisplayTitle(item)}
+                      badge="Draft"
+                      meta={formatRelativePast(item.updatedAt, t)}
+                      detail={
+                        item.description.trim() ||
+                        "Open it and keep shaping it in the sidebar agent."
+                      }
+                      tone="warning"
+                    />
+                  </div>
+                  {onDeleteDraft && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto w-8 shrink-0 self-center text-muted hover:bg-danger/10 hover:text-danger"
+                      onClick={() => void onDeleteDraft(item)}
+                      aria-label="Delete draft"
+                      title="Delete draft"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </DetailSection>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: reserved for future dashboard view
 function AutomationsDashboard({
   items,
   onSelectItem,
@@ -2931,10 +3243,12 @@ function AutomationDraftPane({
   automation,
   onSeedPrompt,
   onDeleteDraft,
+  isGenerating,
 }: {
   automation: AutomationItem;
   onSeedPrompt: (prompt: string) => void;
   onDeleteDraft: (item: AutomationItem) => Promise<void>;
+  isGenerating?: boolean;
 }) {
   const chatChrome = useAppWorkspaceChatChrome();
 
@@ -2948,6 +3262,20 @@ function AutomationDraftPane({
 
   return (
     <div className="space-y-4 px-4 pt-6">
+      {isGenerating && (
+        <div className="flex items-start gap-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
+          <Spinner className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-txt">
+              Building your workflow…
+            </div>
+            <div className="mt-0.5 text-xs text-muted">
+              Generations usually take 10–30 seconds. Hooking up connectors,
+              picking nodes, and wiring the graph.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-txt">
@@ -3227,6 +3555,7 @@ function TriggerAutomationDetailPane({
     openEditTrigger,
     onRunSelectedTrigger,
     onToggleTriggerEnabled,
+    onDeleteTrigger,
     loadTriggerRuns,
     triggerRunsById,
     setForm,
@@ -3328,6 +3657,14 @@ function TriggerAutomationDetailPane({
               label="Compile to Workflow"
               onClick={() => void onPromoteToWorkflow(automation)}
               icon={<GitBranch className="h-3.5 w-3.5" />}
+            />
+            <IconAction
+              label={t("common.delete")}
+              onClick={() =>
+                void onDeleteTrigger(trigger.id, trigger.displayName)
+              }
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              tone="danger"
             />
           </>
         }
@@ -4218,6 +4555,18 @@ function AutomationsLayout() {
   const [missingCredentials, setMissingCredentials] = useState<
     N8nWorkflowMissingCredential[] | null
   >(null);
+  // Active clarification state — populated when /generate or
+  // /resolve-clarification returns `needs_clarification`. The draft is the
+  // unmodified workflow JSON the route returned; clarifications drive the
+  // ChoiceWidget renders below; catalog supplies the picker options;
+  // currentIndex chains successive pickers (server-then-channel etc.) by
+  // surfacing one clarification at a time.
+  const [clarification, setClarification] = useState<{
+    response: N8nWorkflowNeedsClarificationResponse;
+    currentIndex: number;
+    busy: boolean;
+    error?: string;
+  } | null>(null);
   const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null);
   const [workflowOpsBusy, setWorkflowOpsBusy] = useState(false);
   const [activeWorkflowConversation, setActiveWorkflowConversation] =
@@ -4576,6 +4925,7 @@ function AutomationsLayout() {
       setWorkflowOpsBusy(true);
       setPageNotice(null);
       setMissingCredentials(null);
+      setClarification(null);
       try {
         const result = await client.generateN8nWorkflow({
           prompt,
@@ -4585,6 +4935,14 @@ function AutomationsLayout() {
         });
         if (isMissingCredentialsResponse(result)) {
           setMissingCredentials(result.missingCredentials);
+          return null;
+        }
+        if (isNeedsClarificationResponse(result)) {
+          setClarification({
+            response: result,
+            currentIndex: 0,
+            busy: false,
+          });
           return null;
         }
         if (conversation) {
@@ -4603,6 +4961,70 @@ function AutomationsLayout() {
     },
     [bindConversationToWorkflow, ctx, selectWorkflowById],
   );
+
+  // Resolve one clarification by posting the picked value to
+  // /resolve-clarification. The route either returns the next pending
+  // clarification (chained pickers) or a fully-deployed workflow.
+  const resolveClarificationChoice = useCallback(
+    async (paramPath: string, value: string): Promise<void> => {
+      setClarification((prev) =>
+        prev ? { ...prev, busy: true, error: undefined } : prev,
+      );
+      try {
+        const draftRecord = clarification?.response.draft as
+          | (Record<string, unknown> & { id?: string; name?: string })
+          | undefined;
+        if (!draftRecord) {
+          setClarification((prev) => (prev ? { ...prev, busy: false } : prev));
+          return;
+        }
+        const result = await client.resolveN8nClarification({
+          draft: draftRecord,
+          resolutions: [{ paramPath, value }],
+        });
+        if (isMissingCredentialsResponse(result)) {
+          setClarification(null);
+          setMissingCredentials(result.missingCredentials);
+          return;
+        }
+        if (isNeedsClarificationResponse(result)) {
+          setClarification({
+            response: result,
+            currentIndex: 0,
+            busy: false,
+          });
+          return;
+        }
+        // Successful deploy — refresh, select, and clear the panel. Wrap
+        // the post-deploy refresh in its own try so that a refresh failure
+        // surfaces via pageNotice instead of being swallowed by the outer
+        // catch (which would no-op once clarification is null).
+        setClarification(null);
+        try {
+          await ctx.refreshAutomations();
+          selectWorkflowById(result.id);
+        } catch (refreshErr) {
+          const message =
+            refreshErr instanceof Error
+              ? refreshErr.message
+              : String(refreshErr);
+          setPageNotice(
+            `Workflow deployed but the automations list could not refresh: ${message}`,
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setClarification((prev) =>
+          prev ? { ...prev, busy: false, error: message } : prev,
+        );
+      }
+    },
+    [clarification, ctx, selectWorkflowById],
+  );
+
+  const dismissClarification = useCallback(() => {
+    setClarification(null);
+  }, []);
 
   const createWorkflowDraft = useCallback(
     async (options?: { initialPrompt?: string; title?: string }) => {
@@ -4705,6 +5127,7 @@ function AutomationsLayout() {
     openCreateTask();
   }, [openCreateTask, showAutomationsList]);
 
+  // biome-ignore lint/correctness/noUnusedVariables: reserved for seeded task creation
   const openSeededTask = useCallback(
     (idea: AutomationExample) => {
       showAutomationsList();
@@ -5272,7 +5695,7 @@ function AutomationsLayout() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setTab("settings");
+                        setTab("connectors");
                         dispatchFocusConnector(
                           providerFromCredType(cred.credType),
                         );
@@ -5295,6 +5718,14 @@ function AutomationsLayout() {
             </div>
           </PagePanel>
         )}
+
+        {clarification ? (
+          <ClarificationPanel
+            state={clarification}
+            onChoose={resolveClarificationChoice}
+            onDismiss={dismissClarification}
+          />
+        ) : null}
 
         {(pageNotice || combinedError) && (
           <PagePanel
@@ -5362,28 +5793,22 @@ function AutomationsLayout() {
         ) : activeSubpage === "node-catalog" ? (
           <AutomationNodeCatalogPane nodes={automationNodes} />
         ) : showDashboard ? (
-          <AutomationsDashboard
-            items={ctx.allItems}
-            onSelectItem={selectItem}
-            onCreateTask={handleZeroStateNewTask}
-            onCreateWorkflow={() => void createWorkflowDraft()}
-            onDescribeAutomation={handleDescribeAutomation}
-            onUseIdea={(idea) => {
-              if (idea.kind === "workflow") {
-                void createWorkflowDraft({
-                  title: idea.label,
-                  initialPrompt: idea.prompt,
-                });
-                return;
-              }
-              openSeededTask(idea);
-            }}
+          <HeroEmptyState
+            ideas={AUTOMATION_DRAFT_EXAMPLES}
+            onSubmit={(text) =>
+              void createWorkflowDraft({ initialPrompt: text })
+            }
+            drafts={ctx.allItems.filter((item) => item.isDraft).slice(0, 4)}
+            onSelectDraft={selectItem}
+            onDeleteDraft={handleDeleteDraft}
+            t={t}
           />
         ) : resolvedSelectedItem?.type === "automation_draft" ? (
           <AutomationDraftPane
             automation={resolvedSelectedItem}
             onSeedPrompt={(prompt) => prefillPageChat(prompt, { select: true })}
             onDeleteDraft={handleDeleteDraft}
+            isGenerating={workflowOpsBusy}
           />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane
