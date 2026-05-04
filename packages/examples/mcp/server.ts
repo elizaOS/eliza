@@ -156,7 +156,9 @@ async function handleChat(message: string, userId?: string): Promise<string> {
 
 function getAgentInfo(): { name: string; bio: string; capabilities: string[] } {
   const bio = CHARACTER.bio;
-  const bioStr = Array.isArray(bio) ? bio.join(" ") : (bio ?? "An AI assistant");
+  const bioStr = Array.isArray(bio)
+    ? bio.join(" ")
+    : (bio ?? "An AI assistant");
   return {
     name: CHARACTER.name,
     bio: bioStr,

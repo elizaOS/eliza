@@ -1,5 +1,5 @@
-declare module '@elizaos/plugin-auto-trader' {
-  import type { Plugin, Service } from '@elizaos/core';
+declare module "@elizaos/plugin-auto-trader" {
+  import type { Plugin, Service } from "@elizaos/core";
 
   export interface TradingPosition {
     id: string;

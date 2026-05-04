@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-calendly",
-  "version": "0.1.0",
+  "version": "2.0.0-alpha.536",
   "description": "Calendly integration plugin for elizaOS agents — event types, scheduled events, cancellations, and booking-link handoff via Calendly v2 API",
   "type": "module",
   "main": "dist/index.js",

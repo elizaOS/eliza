@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-farcaster",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -39,12 +39,12 @@
     "@neynar/nodejs-sdk": "^3.34.0",
     "lru-cache": "^11.1.0",
     "typescript": "^6.0.3",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.11",
+    "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "vitest": "^4.0.0"
   },
   "scripts": {
@@ -53,8 +53,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "npx -y vitest@4.0.18 run --passWithNoTests",
-    "test:unit": "npx -y vitest@4.0.18 run __tests__ --passWithNoTests",
+    "test": "npx -y vitest@4.0.18 run",
+    "test:unit": "npx -y vitest@4.0.18 run __tests__",
     "test:integration": "echo 'No integration tests'",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

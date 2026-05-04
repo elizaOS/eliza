@@ -110,6 +110,33 @@ function resolveLocalRepoRoot(repo: string): string | undefined {
   return path.resolve(repo);
 }
 
+function isShallowGitRepo(repoRoot: string): boolean {
+  if (!fs.existsSync(path.join(repoRoot, ".git"))) {
+    return false;
+  }
+  try {
+    const result = execFileSync(
+      "git",
+      ["rev-parse", "--is-shallow-repository"],
+      { cwd: repoRoot, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    return result.trim() === "true";
+  } catch {
+    return false;
+  }
+}
+
+function resolveReferenceRepoRoot(repo: string): string | undefined {
+  const localRepoRoot = resolveLocalRepoRoot(repo);
+  if (!localRepoRoot) {
+    return undefined;
+  }
+  if (isShallowGitRepo(localRepoRoot)) {
+    return undefined;
+  }
+  return localRepoRoot;
+}
+
 function isBinaryFile(filePath: string, buffer: Buffer): boolean {
   if (BINARY_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
     return true;
@@ -550,8 +577,12 @@ export function hydrateGitSubmoduleWorkspace(options: {
       }
     }
 
-    if (localSubmoduleRoot) {
-      command.push("--reference", localSubmoduleRoot);
+    const referenceRoot =
+      localSubmoduleRoot && !isShallowGitRepo(localSubmoduleRoot)
+        ? localSubmoduleRoot
+        : undefined;
+    if (referenceRoot) {
+      command.push("--reference", referenceRoot);
     }
     command.push(submodulePath);
     execFileSync(
@@ -584,9 +615,9 @@ export function initializeGitSubmodule(options: {
   }
 
   const args = ["submodule", "add", "--depth", "1"];
-  const localRepoRoot = resolveLocalRepoRoot(options.repo);
-  if (localRepoRoot) {
-    args.push("--reference", localRepoRoot);
+  const referenceRoot = resolveReferenceRepoRoot(options.repo);
+  if (referenceRoot) {
+    args.push("--reference", referenceRoot);
   }
   if (options.branch?.trim()) {
     args.push("-b", options.branch.trim());
@@ -621,7 +652,7 @@ export function updateGitSubmodule(options: {
     return;
   }
 
-  const localRepoRoot = resolveLocalRepoRoot(options.repo);
+  const referenceRoot = resolveReferenceRepoRoot(options.repo);
   execFileSync(
     "git",
     withOptionalFileProtocol(options.repo, [
@@ -629,7 +660,7 @@ export function updateGitSubmodule(options: {
       "update",
       "--init",
       "--remote",
-      ...(localRepoRoot ? ["--reference", localRepoRoot] : []),
+      ...(referenceRoot ? ["--reference", referenceRoot] : []),
       options.submodulePath,
     ]),
     { cwd: options.projectRoot, stdio: "inherit" },

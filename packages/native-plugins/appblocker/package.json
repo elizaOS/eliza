@@ -29,7 +29,8 @@
   ],
   "scripts": {
     "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist"
+    "clean": "rimraf ./dist",
+    "prepublishOnly": "npm run build"
   },
   "author": "elizaOS",
   "license": "MIT",
@@ -49,13 +50,13 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
+    "@capacitor/core": "^8.3.1",
     "rimraf": "^6.0.0",
-    "rollup": "^4.0.0",
+    "rollup": "^4.60.2",
     "typescript": "^6.0.0"
   },
   "peerDependencies": {
-    "@capacitor/core": "^8.0.0"
+    "@capacitor/core": "^8.3.1"
   },
   "publishConfig": {
     "access": "public"

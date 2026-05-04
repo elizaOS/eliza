@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-training",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -66,5 +65,8 @@
     "app": {
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

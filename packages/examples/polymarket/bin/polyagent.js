@@ -12,7 +12,7 @@ const tsxBin = path.join(
   "..",
   "node_modules",
   ".bin",
-  process.platform === "win32" ? "tsx.cmd" : "tsx"
+  process.platform === "win32" ? "tsx.cmd" : "tsx",
 );
 
 const child = spawn(tsxBin, [entry, ...process.argv.slice(2)], {

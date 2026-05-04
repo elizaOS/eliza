@@ -5,6 +5,7 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  type ProviderDataRecord,
   logger,
   type Memory,
   type State,
@@ -80,8 +81,12 @@ function buildPreviewData(workflow: N8nWorkflow): Record<string, unknown> {
     })),
     flow: buildFlowChain(workflow.connections),
     credentials: [...creds],
-    ...(workflow._meta?.assumptions?.length && { assumptions: workflow._meta.assumptions }),
-    ...(workflow._meta?.suggestions?.length && { suggestions: workflow._meta.suggestions }),
+    ...(workflow._meta?.assumptions?.length && {
+      assumptions: workflow._meta.assumptions,
+    }),
+    ...(workflow._meta?.suggestions?.length && {
+      suggestions: workflow._meta.suggestions,
+    }),
   };
 }
 
@@ -164,7 +169,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow now...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow now...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -174,7 +182,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -184,7 +195,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -194,7 +208,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Workflow draft cancelled.', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Workflow draft cancelled.',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -217,7 +234,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -227,7 +247,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow now.', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow now.',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -237,7 +260,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
 ];
@@ -265,8 +291,6 @@ export const createWorkflowAction: Action & {
     'IMPORTANT: When a workflow draft is pending, this action MUST be used for ANY user response ' +
     'about the draft — including "yes", "ok", "deploy it", "cancel", or modification requests. ' +
     'Never reply with text only when a draft is pending.',
-
-  parameters: {},
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
@@ -371,7 +395,7 @@ export const createWorkflowAction: Action & {
             if (callback) {
               await callback({ text, success: true });
             }
-            return { success: true, data: result };
+            return { success: true, data: result as unknown as ProviderDataRecord };
           }
 
           case 'cancel': {
@@ -521,7 +545,9 @@ export const createWorkflowAction: Action & {
         `Failed to create workflow: ${errorMessage}`
       );
 
-      const text = await formatActionResponse(runtime, 'ERROR', { error: errorMessage });
+      const text = await formatActionResponse(runtime, 'ERROR', {
+        error: errorMessage,
+      });
       if (callback) {
         await callback({ text, success: false });
       }

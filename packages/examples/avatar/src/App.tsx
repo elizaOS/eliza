@@ -411,9 +411,7 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setMessages((prev) =>
-        prev.filter((m) => m.visibleUntil > now),
-      );
+      setMessages((prev) => prev.filter((m) => m.visibleUntil > now));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -446,9 +444,7 @@ export default function App() {
 
   // Get visible messages for chat bubble display
   const now = Date.now();
-  const visibleMessages = messages.filter(
-    (m) => m.visibleUntil > now,
-  );
+  const visibleMessages = messages.filter((m) => m.visibleUntil > now);
 
   return (
     <div className="app-fullpage">

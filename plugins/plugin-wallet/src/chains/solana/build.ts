@@ -6,7 +6,7 @@ import { rm } from "node:fs/promises";
 async function build(): Promise<void> {
   const totalStart = Date.now();
 
-  console.log("🔨 Building @elizaos/plugin-solana...\n");
+  console.log("🔨 Building @elizaos/plugin-wallet solana chain...\n");
 
   if (existsSync("dist")) {
     await rm("dist", { recursive: true, force: true });

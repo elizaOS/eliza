@@ -71,13 +71,16 @@ export async function extractKeywords(
       { src: 'plugin:n8n-workflow:generation:keywords', error: errMsg },
       `Keyword extraction LLM call failed: ${errMsg}`
     );
-    throw new Error(`Keyword extraction failed: ${errMsg}`);
+    throw new Error(`Keyword extraction failed: ${errMsg}`, { cause: error });
   }
 
   // Validate structure
   if (!result || !result.keywords || !Array.isArray(result.keywords)) {
     logger.error(
-      { src: 'plugin:n8n-workflow:generation:keywords', result: JSON.stringify(result) },
+      {
+        src: 'plugin:n8n-workflow:generation:keywords',
+        result: JSON.stringify(result),
+      },
       'Invalid keyword extraction response structure'
     );
     throw new Error('Invalid keyword extraction response: missing or invalid keywords array');
@@ -211,7 +214,10 @@ ${userMessage}`,
       { src: 'plugin:n8n-workflow:generation:intent' },
       `Invalid intent from LLM: ${JSON.stringify(result)}, re-showing preview`
     );
-    return { intent: 'show_preview', reason: 'Could not classify intent — re-showing preview' };
+    return {
+      intent: 'show_preview',
+      reason: 'Could not classify intent — re-showing preview',
+    };
   }
 
   return result;
@@ -239,7 +245,9 @@ export async function fixWorkflowErrors(
   }>,
   relevantNodes: NodeDefinition[]
 ): Promise<N8nWorkflow> {
-  if (errors.length === 0) return workflow;
+  if (errors.length === 0) {
+    return workflow;
+  }
   const errorBlock = errors
     .map((e, i) => {
       const av = e.availableFields?.length
@@ -288,7 +296,7 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
   } catch (err) {
     logger.error(
       { src: 'plugin:n8n-workflow:generation:fixErrors' },
-      `fixWorkflowErrors response could not be parsed; keeping original workflow`
+      'fixWorkflowErrors response could not be parsed; keeping original workflow'
     );
     return workflow;
   }
@@ -306,7 +314,8 @@ function parseWorkflowResponse(response: string): N8nWorkflow {
     workflow = JSON.parse(cleaned) as N8nWorkflow;
   } catch (error) {
     throw new Error(
-      `Failed to parse workflow JSON: ${error instanceof Error ? error.message : String(error)}\n\nRaw response: ${response}`
+      `Failed to parse workflow JSON: ${error instanceof Error ? error.message : String(error)}\n\nRaw response: ${response}`,
+      { cause: error }
     );
   }
 
@@ -518,7 +527,11 @@ export async function formatActionResponse(
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error(
-      { src: 'plugin:n8n-workflow:generation:format', error: errMsg, responseType },
+      {
+        src: 'plugin:n8n-workflow:generation:format',
+        error: errMsg,
+        responseType,
+      },
       `formatActionResponse LLM call failed: ${errMsg}`
     );
     // Return a fallback message so the action can still communicate with the user
@@ -606,7 +619,11 @@ export async function correctFieldReferences(
         });
 
         const cleaned = (corrected as string).trim();
-        return { original: ref.expression, corrected: cleaned, nodeName: ref.nodeName };
+        return {
+          original: ref.expression,
+          corrected: cleaned,
+          nodeName: ref.nodeName,
+        };
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         logger.warn(
@@ -786,7 +803,10 @@ export async function correctParameterNames(
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         logger.warn(
-          { src: 'plugin:n8n-workflow:generation:paramCorrection', error: errMsg },
+          {
+            src: 'plugin:n8n-workflow:generation:paramCorrection',
+            error: errMsg,
+          },
           `Failed to correct parameters for node "${detection.nodeName}": ${errMsg}`
         );
         return null;

@@ -12,10 +12,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 
-const LOCALE_DIR = path.join(
-  repoRoot,
-  "packages/app-core/src/i18n/locales",
-);
+const LOCALE_DIR = path.join(repoRoot, "packages/app-core/src/i18n/locales");
 const SCAN_DIRS = [
   path.join(repoRoot, "packages/app-core/src"),
   path.join(repoRoot, "packages/ui/src"),

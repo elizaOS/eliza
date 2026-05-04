@@ -175,13 +175,6 @@ The plugin emits the following events:
 2. Verify device is properly set up
 3. Check for key verification requirements
 
-## Multi-language Support
-
-This plugin supports:
-- **TypeScript** - Full implementation with matrix-js-sdk
-- **Python** - Full implementation with matrix-nio
-- **Rust** - Full implementation with matrix-sdk
-
 ## License
 
 MIT

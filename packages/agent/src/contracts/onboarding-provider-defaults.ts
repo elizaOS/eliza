@@ -178,6 +178,19 @@ export const DEFAULT_ONBOARDING_PROVIDER_OPTIONS = [
     group: "local",
     order: 150,
   },
+  {
+    id: "moonshot",
+    name: "Kimi / Moonshot",
+    envKey: "MOONSHOT_API_KEY",
+    pluginName: "@elizaos/plugin-openai",
+    keyPrefix: "sk-",
+    description: "Kimi models via Moonshot's OpenAI-compatible API.",
+    family: "moonshot",
+    authMode: "api-key",
+    group: "local",
+    order: 160,
+    supportsPrimaryModelOverride: true,
+  },
 ] as const satisfies ReadonlyArray<ProviderOption>;
 
 let builtInProviderOptionsRegistered = false;

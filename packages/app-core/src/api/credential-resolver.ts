@@ -16,6 +16,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getAccessToken, listProviderAccounts } from "@elizaos/agent";
+import {
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+  type DirectAccountProvider,
+} from "@elizaos/agent/auth/types";
 import { logger } from "@elizaos/core";
 import { getDefaultAccountPool } from "../services/account-pool.js";
 
@@ -172,9 +176,39 @@ const CREDENTIAL_SOURCES: CredentialSource[] = [
     providerId: "zai",
     envVar: "ZAI_API_KEY",
     authType: "api-key",
-    resolve: () => process.env.ZAI_API_KEY?.trim() || null,
+    resolve: () =>
+      process.env.ZAI_API_KEY?.trim() ||
+      process.env.Z_AI_API_KEY?.trim() ||
+      null,
+  },
+  {
+    providerId: "moonshot",
+    envVar: "MOONSHOT_API_KEY",
+    authType: "api-key",
+    resolve: () =>
+      process.env.MOONSHOT_API_KEY?.trim() ||
+      process.env.KIMI_API_KEY?.trim() ||
+      null,
   },
 ];
+
+const DIRECT_ACCOUNT_PROVIDER_BY_REQUEST: Readonly<
+  Record<string, DirectAccountProvider>
+> = {
+  anthropic: "anthropic-api",
+  "anthropic-api": "anthropic-api",
+  openai: "openai-api",
+  "openai-api": "openai-api",
+  deepseek: "deepseek-api",
+  "deepseek-api": "deepseek-api",
+  zai: "zai-api",
+  "z.ai": "zai-api",
+  "zai-api": "zai-api",
+  moonshot: "moonshot-api",
+  kimi: "moonshot-api",
+  moonshotai: "moonshot-api",
+  "moonshot-api": "moonshot-api",
+};
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -250,6 +284,33 @@ export async function resolveProviderCredentialMulti(
             envVar,
             apiKey: token,
             authType: "subscription",
+          };
+        }
+      }
+    }
+  }
+  const directProvider = DIRECT_ACCOUNT_PROVIDER_BY_REQUEST[providerId];
+  if (directProvider) {
+    const accounts = listProviderAccounts(directProvider);
+    if (accounts.length > 0) {
+      const pool = getDefaultAccountPool();
+      const account = await pool.select({
+        providerId: directProvider,
+        sessionKey: opts?.sessionKey,
+        exclude: opts?.exclude,
+      });
+      if (account) {
+        const token = await getAccessToken(directProvider, account.id);
+        if (token) {
+          const envVar = DIRECT_ACCOUNT_PROVIDER_ENV[directProvider];
+          logger.info(
+            `[credential-resolver] Multi-account: serving ${providerId} from "${account.label}" (${account.id})`,
+          );
+          return {
+            providerId,
+            envVar,
+            apiKey: token,
+            authType: "api-key",
           };
         }
       }

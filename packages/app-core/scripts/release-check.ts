@@ -47,7 +47,7 @@ const autonomousElizaPathCandidates = [
   "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
 const homepageReleaseDataPathCandidates = [
-  "packages/homepage/src/generated/release-data.ts",
+  "apps/homepage/src/generated/release-data.ts",
 ] as const;
 
 function resolveExistingPath(candidates: readonly string[]) {
@@ -58,7 +58,7 @@ function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
 const requiredWorkflowSnippets = [
-  'BUN_VERSION: "1.3.11"',
+  'BUN_VERSION: "1.3.13"',
   "workflow_call:",
   "name: Validate Release Inputs",
   "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json.",
@@ -67,8 +67,8 @@ const requiredWorkflowSnippets = [
   "run: bun run test:regression-matrix:release",
   "name: Run heavy E2E regression suite",
   "run: bun run test:e2e:heavy",
-  "name: Run cloud live regression suite",
-  "run: bun run test:live:cloud",
+  "name: Run optional cloud live regression suite",
+  "if bun run test:live:cloud 2>&1 | tee \"$log_file\"; then",
   "name: Restore build metadata after test rebuilds",
   "name: Release readiness checks",
   // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub Actions expression
@@ -93,7 +93,7 @@ const requiredWorkflowSnippets = [
   "name: Ensure avatar assets",
   "node eliza/packages/app-core/scripts/ensure-avatars.mjs",
   "name: Prepare Whisper model artifact",
-  "bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh base.en",
+  "bash eliza/packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh base.en",
   "name: Upload Whisper model artifact",
   "name: whisper-model-base-en",
   "Install quiet macOS packaging wrappers",
@@ -109,7 +109,7 @@ const requiredWorkflowSnippets = [
   "node eliza/packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper",
   "Inject version.json into bundle (Windows)",
   "Inject version.json into bundle (macOS / Linux)",
-  '"identifier":"com.elizaai.eliza"',
+  '"identifier":"ai.elizaos.Eliza"',
   "Stage standard macOS release app",
   "packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
   "retry_stapler_validate()",
@@ -124,13 +124,13 @@ const requiredWorkflowSnippets = [
   "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe",
   "Start-Process -FilePath $installer",
   "Extract Windows app bundle for Inno Setup",
-  '$extractDir = "C:\\m"',
+  '$extractDir = "C:\\e"',
   "eliza-dist/entry.js found",
   "Build Inno Setup installer",
   "packaging/inno/build-inno.ps1",
-  '-BuildDir "C:\\m"',
+  '-BuildDir "C:\\e"',
   "Verify Windows public installer looks complete",
-  'Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
+  'Get-ChildItem -Path "eliza/packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
   "$minimumBytes = 50MB",
   "packages/app-core/platforms/electrobun/artifacts/*.exe",
   "name: Prepare public canary Windows installer artifact",
@@ -144,7 +144,7 @@ const requiredWorkflowSnippets = [
   "Prepared public canary installer artifact:",
   "name: Upload public canary installer artifact",
   "name: electrobun-$" + "{{ matrix.platform.artifact-name }}-public-installer",
-  "path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
+  "path: eliza/packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
   "name: Collect public release files",
   '-name "ElizaOSApp-Setup-*.exe" -o \\',
   '-name "ElizaOSApp-Setup-*.exe.zip" -o \\',
@@ -156,30 +156,32 @@ const requiredWorkflowSnippets = [
   "DMG attach attempt $attempt/5 failed",
   "name: Resolve electrobun package dir",
   "id: resolve-electrobun",
-  'const workspacePackageJson = path.resolve("packages/app-core/platforms/electrobun/package.json");',
+  'const workspacePackageJson = path.resolve("eliza/packages/app-core/platforms/electrobun/package.json");',
   'const entryPath = req.resolve("electrobun");',
   "Could not find electrobun package.json starting from",
   "Resolved unexpected package at",
-  'echo "package-dir=$package_dir" >> "$GITHUB_OUTPUT"',
-  'echo "cache-dir=$package_dir/.cache" >> "$GITHUB_OUTPUT"',
-  "path: $" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
-  "name: Build patched Electrobun CLI for Windows",
+  'echo "package-dir=$package_dir"',
+  'echo "cache-dir=$package_dir/.cache"',
+  "$" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
+  "name: Build patched Electrobun CLI",
   'node eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs "$' +
     '{{ steps.resolve-electrobun.outputs.package-dir }}"',
+  '"${{ matrix.platform.artifact-name }}"',
   "node eliza/packages/app-core/scripts/desktop-build.mjs package --env=$" +
     "{{ needs.prepare.outputs.env }}",
   "ELIZA_ELECTROBUN_NOTARIZE: 0",
   'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
   'ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER: "1"',
-  "ELIZA_TEST_WINDOWS_INSTALL_DIR: $" + "{{ runner.temp }}\\mi",
+  "ELIZA_TEST_WINDOWS_INSTALL_DIR: $" + "{{ runner.temp }}\\el",
   "name: Run Windows clean installer proof",
   "verify-windows-installer-proof.ps1",
-  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\mi-proof",
+  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-proof",
   "name: Upload Windows installer proof artifact",
-  "path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
+  "path: eliza/packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
   "if: always() && matrix.platform.os == 'windows'",
   "ANTHROPIC_API_KEY: $" + "{{ secrets.ANTHROPIC_API_KEY }}",
-  "ELIZAOS_CLOUD_API_KEY: $" + "{{ secrets.ELIZAOS_CLOUD_API_KEY }}",
+  "ELIZAOS_CLOUD_API_KEY: $" +
+    "{{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
   "ELIZAOS_CLOUD_BASE_URL: $" + "{{ secrets.ELIZAOS_CLOUD_BASE_URL }}",
   "bun run test:desktop:packaged:windows",
   'Write-Error "Packaged Windows smoke test exited with code $LASTEXITCODE."',
@@ -191,7 +193,11 @@ const _requiredPatchedElectrobunCliSnippets = [
   'writeGitHubEnv("ELECTROBUN_RCEDIT_PACKAGE_JSON", resolvedRceditPackageJson);',
   'const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
   'const overrideEntry = overrideRequire.resolve("rcedit");',
-  "--target=bun-windows-x64-baseline",
+  "function resolveBuildTarget(value) {",
+  "--target=${buildTarget.bunTarget}",
+  "[electrobun-build] Bun entry:",
+  "targetPaths.BUN_BINARY",
+  "Bun CLI fallback succeeded",
   "const installedBinPath = path.join(",
   "const installedCachePath = path.join(",
 ];
@@ -239,7 +245,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "1.3.11"',
+  'BUN_VERSION: "1.3.13"',
   "name: Release Workflow Contract",
   "bun install --ignore-scripts",
   "bun run postinstall",
@@ -257,7 +263,7 @@ const forbiddenElectrobunPrWorkflowSnippets = [
 const requiredElectrobunConfigSnippets = [
   'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',
   'postWrap: "scripts/postwrap-diagnostics.ts"',
-  "process.env.ELIZA_ELECTROBUN_NOTARIZE ??",
+  "process.env.ELIZA_ELECTROBUN_NOTARIZE !==",
   "[repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json`",
   "[repoPackageJsonPath]: `${runtimeDistDir}/package.json`",
 ];
@@ -924,18 +930,46 @@ function assertMacArtifactStagerLooksCorrect() {
     "stage-macos-release-artifacts.sh",
   );
   const requiredSnippets = [
-    'find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst"',
+    'for tarball_pattern in "*-macos-*.app.tar.zst" "*-macos-*.app.tar.gz" "*-macos-*.tar.gz"; do',
+    'tar --zstd -xf "$TARBALL_PATH" -C "$EXTRACT_DIR"',
+    'tar -xzf "$TARBALL_PATH" -C "$EXTRACT_DIR"',
+    'TARBALL_BASENAME="$(basename "$TARBALL_PATH")"',
     "no macOS updater tarball found",
     'DIRECT_LAUNCHER_SOURCE="$SCRIPT_DIR/macos-direct-launcher.c"',
     'codesign -d --entitlements :- "$STAGED_APP_PATH"',
     "/usr/bin/clang \\",
     'install -m 0755 "$TMP_LAUNCHER_PATH" "$LAUNCHER_PATH"',
-    `--options runtime "\${entitlement_args[@]}" "$LAUNCHER_PATH"`,
-    `--options runtime "\${entitlement_args[@]}" "$STAGED_APP_PATH"`,
+    "retry_codesign() {",
+    "retry_notarytool_submit() {",
+    "retry_notarytool_wait() {",
+    "retry_notarytool_log() {",
+    '"$macos_code_dir/libasar.dylib"',
+    'sign_nested_macos_runtime_targets() {',
+    'runtime_resources_dir="$STAGED_APP_PATH/Contents/Resources/app/eliza-dist"',
+    'file "$candidate_path"',
+    '*Mach-O*)',
+    'find "$runtime_resources_dir" -type f -print0',
+    'sign_nested_macos_runtime_targets',
+    'sign_macos_runtime_target "$LAUNCHER_PATH"',
+    'retry_codesign "${app_sign_args[@]}" "$STAGED_APP_PATH"',
     'codesign --verify --deep --strict --verbose=2 "$STAGED_APP_PATH"',
     "hdiutil create \\",
+    'NOTARY_SUBMIT_ATTEMPTS="${ELECTROBUN_NOTARY_SUBMIT_ATTEMPTS:-3}"',
+    'NOTARY_SUBMIT_RETRY_DELAY_SECONDS="${ELECTROBUN_NOTARY_SUBMIT_RETRY_DELAY_SECONDS:-30}"',
+    'if ! retry_notarytool_submit "$NOTARY_SUBMIT_OUTPUT_PATH" "$NOTARY_SUBMIT_ATTEMPTS" "$NOTARY_SUBMIT_RETRY_DELAY_SECONDS"; then',
     '"$REAL_XCRUN" notarytool submit \\',
-    'retry_command 8 20 xcrun stapler staple "$TEMP_DMG_PATH"',
+    'NOTARY_WAIT_ATTEMPTS="${ELECTROBUN_NOTARY_WAIT_ATTEMPTS:-3}"',
+    'NOTARY_WAIT_RETRY_DELAY_SECONDS="${ELECTROBUN_NOTARY_WAIT_RETRY_DELAY_SECONDS:-60}"',
+    'if ! retry_notarytool_wait "$NOTARY_WAIT_OUTPUT_PATH" "$NOTARY_WAIT_ATTEMPTS" "$NOTARY_WAIT_RETRY_DELAY_SECONDS"; then',
+    "retry_notarytool_log >&2 || true",
+    'STAPLER_ATTEMPTS="${ELECTROBUN_STAPLER_ATTEMPTS:-12}"',
+    'STAPLER_DELAY_SECONDS="${ELECTROBUN_STAPLER_DELAY_SECONDS:-30}"',
+    'if ! retry_command "$STAPLER_ATTEMPTS" "$STAPLER_DELAY_SECONDS" xcrun stapler staple "$TEMP_DMG_PATH"; then',
+    '  if [[ "${ELECTROBUN_REQUIRE_STAPLED_DMG:-0}" == "1" ]]; then',
+    '    exit 1',
+    '  fi',
+    '  echo "stage-macos-release-artifacts: notarization accepted but stapler ticket was not available; continuing without stapled DMG" >&2',
+    'fi',
     'mv "$TEMP_DMG_PATH" "$FINAL_DMG_PATH"',
   ];
   const missing = requiredSnippets.filter(
@@ -1294,9 +1328,9 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     process.exit(1);
   }
 
-  if (!releaseDataSource.includes("/packages/homepage/public/")) {
+  if (!releaseDataSource.includes("/apps/homepage/public/")) {
     console.error(
-      "release-check: generated homepage release data must point homepageAssetBaseUrl at /packages/homepage/public/.",
+      "release-check: generated homepage release data must point homepageAssetBaseUrl at /apps/homepage/public/.",
     );
     process.exit(1);
   }

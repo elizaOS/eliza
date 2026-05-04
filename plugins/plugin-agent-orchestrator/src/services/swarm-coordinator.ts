@@ -322,6 +322,9 @@ function inferProviderSource(
   if (framework.id === "pi") {
     return framework.installed ? "local-cli" : null;
   }
+  if (framework.id === "opencode") {
+    return framework.installed ? "local-cli" : null;
+  }
   return framework.authReady ? "credentials" : null;
 }
 
@@ -518,9 +521,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
   /** Inject a callback (from server.ts) to route events through Eliza's pipeline. */
   setAgentDecisionCallback(cb: AgentDecisionCallback): void {
     this.agentDecisionCb = cb;
-    this.log(
-      "Agent decision callback wired, events will route through Eliza",
-    );
+    this.log("Agent decision callback wired, events will route through Eliza");
   }
 
   /** Return the agent decision callback (if wired). */

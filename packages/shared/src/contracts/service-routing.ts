@@ -36,7 +36,10 @@ export type LinkedAccountProviderId =
   | "anthropic-subscription"
   | "openai-codex"
   | "anthropic-api"
-  | "openai-api";
+  | "openai-api"
+  | "deepseek-api"
+  | "zai-api"
+  | "moonshot-api";
 
 export type LinkedAccountAccountSource = "oauth" | "api-key";
 
@@ -373,14 +376,17 @@ export const normalizeLinkedAccountConfig = normalizeLinkedAccountFlagConfig;
  */
 export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
 
-function isLinkedAccountProviderId(
+export function isLinkedAccountProviderId(
   value: unknown,
 ): value is LinkedAccountProviderId {
   return (
     value === "anthropic-subscription" ||
     value === "openai-codex" ||
     value === "anthropic-api" ||
-    value === "openai-api"
+    value === "openai-api" ||
+    value === "deepseek-api" ||
+    value === "zai-api" ||
+    value === "moonshot-api"
   );
 }
 

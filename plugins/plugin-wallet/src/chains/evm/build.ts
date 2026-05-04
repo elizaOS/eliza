@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 async function runBuild(): Promise<boolean> {
-  console.log("Building @elizaos/plugin-evm...");
+  console.log("Building @elizaos/plugin-wallet evm chain...");
 
   const distDir = join(process.cwd(), "dist");
 

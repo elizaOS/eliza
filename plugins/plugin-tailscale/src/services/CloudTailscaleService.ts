@@ -14,9 +14,25 @@ const authKeyResponseSchema = z.object({
 
 type AuthKeyResponse = z.infer<typeof authKeyResponseSchema>;
 
+interface CloudFetchInit {
+  method: 'POST';
+  headers: Record<string, string>;
+  body: string;
+}
+
+interface CloudFetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json(): Promise<unknown>;
+  text(): Promise<string>;
+}
+
+type CloudFetch = (url: string, init: CloudFetchInit) => Promise<CloudFetchResponse>;
+
 export interface CloudTailscaleServiceOptions {
   /** Override fetch impl for tests. */
-  fetch?: typeof fetch;
+  fetch?: CloudFetch;
   /** Override CLI runner for tests. */
   cliRunner?: (
     cmd: string,
@@ -48,12 +64,16 @@ function defaultCliRunner(cmd: string, args: string[]): Promise<SpawnResult> {
   });
 }
 
+async function defaultFetch(url: string, init: CloudFetchInit): Promise<CloudFetchResponse> {
+  return normalizeFetchResponse(await fetch(url, init));
+}
+
 export class CloudTailscaleService extends Service implements ITunnelService {
   static override serviceType = 'tunnel';
   readonly capabilityDescription =
     'Provides Tailscale tunnel functionality via Eliza Cloud — auth keys are minted server-side and the local CLI joins the tailnet.';
 
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: CloudFetch;
   private readonly cliRunner: (cmd: string, args: string[]) => Promise<SpawnResult>;
 
   private tunnelUrl: string | null = null;
@@ -64,7 +84,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
 
   constructor(runtime?: IAgentRuntime, options: CloudTailscaleServiceOptions = {}) {
     super(runtime);
-    this.fetchImpl = options.fetch ?? fetch;
+    this.fetchImpl = options.fetch ?? defaultFetch;
     this.cliRunner = options.cliRunner ?? defaultCliRunner;
   }
 
@@ -227,7 +247,36 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-async function safeReadText(response: Response): Promise<string> {
+async function safeReadText(response: CloudFetchResponse): Promise<string> {
   const text = await response.text().catch(() => '');
   return text.slice(0, 500);
+}
+
+function normalizeFetchResponse(value: unknown): CloudFetchResponse {
+  if (!isRecord(value)) {
+    throw new Error('Cloud Tailscale fetch returned a non-object response');
+  }
+
+  const { ok, status, statusText, json, text } = value;
+  if (
+    typeof ok !== 'boolean' ||
+    typeof status !== 'number' ||
+    typeof statusText !== 'string' ||
+    typeof json !== 'function' ||
+    typeof text !== 'function'
+  ) {
+    throw new Error('Cloud Tailscale fetch response is missing required fields');
+  }
+
+  return {
+    ok,
+    status,
+    statusText,
+    json: async () => json.call(value),
+    text: async () => String(await text.call(value)),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

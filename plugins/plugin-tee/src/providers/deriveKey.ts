@@ -5,7 +5,7 @@ import {
   type Memory,
   type Provider,
 } from "@elizaos/core";
-import { type DeriveKeyResponse, TappdClient } from "@phala/dstack-sdk";
+import { type GetTlsKeyResponse, TappdClient } from "@phala/dstack-sdk";
 import { Keypair } from "@solana/web3.js";
 import { keccak256 } from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
@@ -55,7 +55,7 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
 
     try {
-      const response: DeriveKeyResponse = await this.client.deriveKey(
+      const response: GetTlsKeyResponse = await this.client.deriveKey(
         path,
         subject,
       );
@@ -70,10 +70,10 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
   }
 
-  async rawDeriveKeyResponse(
+  async rawGetTlsKeyResponse(
     path: string,
     subject: string,
-  ): Promise<DeriveKeyResponse> {
+  ): Promise<GetTlsKeyResponse> {
     if (!path || !subject) {
       throw new Error("Path and subject are required for key derivation");
     }
@@ -126,7 +126,7 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
 
     try {
-      const derivedKey: DeriveKeyResponse = await this.client.deriveKey(
+      const derivedKey: GetTlsKeyResponse = await this.client.deriveKey(
         path,
         subject,
       );

@@ -375,9 +375,11 @@ describe("installSkillCallbackBridge", () => {
     expect(useSkillHandler).not.toHaveBeenCalled();
     expect(ownerInboxHandler).toHaveBeenCalledTimes(1);
     expect(
-      (ownerInboxHandler.mock.calls[0]?.[3] as {
-        parameters?: Record<string, unknown>;
-      }).parameters,
+      (
+        ownerInboxHandler.mock.calls[0]?.[3] as {
+          parameters?: Record<string, unknown>;
+        }
+      ).parameters,
     ).toMatchObject({
       subaction: "search",
       channel: "gmail",
@@ -394,7 +396,9 @@ describe("installSkillCallbackBridge", () => {
   it("rejects lifeops-context when no session allow-list grant exists", async () => {
     const pty = createFakePty();
     const useSkillHandler = vi.fn();
-    const runtime = createRuntime({ useSkillHandler: useSkillHandler as never });
+    const runtime = createRuntime({
+      useSkillHandler: useSkillHandler as never,
+    });
     const allowList = createSkillSessionAllowList();
 
     installSkillCallbackBridge({
@@ -411,8 +415,12 @@ describe("installSkillCallbackBridge", () => {
     expect(useSkillHandler).not.toHaveBeenCalled();
     expect(pty.sendToSession).toHaveBeenCalledTimes(1);
     const [, replyText] = pty.sendToSession.mock.calls[0];
-    expect(replyText).toContain("--- USE_SKILL response (lifeops-context, error) ---");
-    expect(replyText).toContain("only available when the parent explicitly recommends it");
+    expect(replyText).toContain(
+      "--- USE_SKILL response (lifeops-context, error) ---",
+    );
+    expect(replyText).toContain(
+      "only available when the parent explicitly recommends it",
+    );
   });
 
   it("reports the scratchpad app-level broker gap when no scratchpad action is available", async () => {

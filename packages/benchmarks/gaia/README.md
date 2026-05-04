@@ -75,19 +75,19 @@ async def main():
 asyncio.run(main())
 ```
 
-### Integration with ElizaOS
+### Integration with the elizaOS TS bridge
+
+All runs are routed through the elizaOS TypeScript benchmark bridge
+(`packages/app-core/src/benchmark/server.ts`). The GAIARunner spawns the
+bridge automatically when `ELIZA_BENCH_URL` is unset; otherwise it
+reuses the URL/token from the environment. The Python `AgentRuntime`
+path has been removed.
 
 ```python
-from elizaos.runtime import AgentRuntime
 from elizaos_gaia import GAIAConfig, GAIARunner
 
-# Create ElizaOS runtime with your plugins
-runtime = AgentRuntime(...)
-await runtime.initialize()
-
-# Run benchmark with ElizaOS agent
-config = GAIAConfig(model_name="gpt-4")
-runner = GAIARunner(config, runtime=runtime)
+config = GAIAConfig(model_name="claude-sonnet-4-6")
+runner = GAIARunner(config)
 results = await runner.run_benchmark()
 ```
 

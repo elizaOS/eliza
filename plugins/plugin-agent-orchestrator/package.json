@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "0.6.2-alpha.0",
+  "version": "2.0.0-alpha.537",
   "description": "Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY",
   "type": "module",
   "main": "dist/index.js",
@@ -37,7 +37,7 @@
     "pty-manager": "1.11.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.9",
+    "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
     "bun-types": "latest",
@@ -51,5 +51,8 @@
     "drizzle-orm": "^0.45.1",
     "pty-console": "0.3.1",
     "pty-state-capture": "0.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

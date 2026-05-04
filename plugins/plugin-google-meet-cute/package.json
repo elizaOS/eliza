@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-google-meet-cute",
   "description": "Google Meet integration plugin for ElizaOS - manage meetings, get participant info, and access meeting artifacts via Google Meet REST API",
-  "version": "1.5.0",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -44,24 +44,24 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@google-apps/meet": "^0.7.0",
-    "axios": "^1.7.9",
-    "google-auth-library": "^9.7.0",
+    "axios": "^1.16.0",
+    "google-auth-library": "^10.0.0",
     "uuid": "^14.0.0",
-    "zod": "^4.0.10"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@types/bun": "^1.2.18",
     "@types/node": "^24.0.14",
-    "@types/uuid": "^10.0.0",
-    "prettier": "^3.6.2",
-    "tsup": "^8.0.2",
+    "@types/uuid": "^11.0.0",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
     "lint": "echo 'lint skipped for plugin-google-meet-cute'",
     "postpack": "echo 'Successfully built plugin-google-meet-cute'",

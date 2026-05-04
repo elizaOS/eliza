@@ -9,28 +9,28 @@
  * - src/data/triggerSchemaIndex.json (trigger output schemas, requires N8N_HOST + N8N_API_KEY)
  */
 
-import { $ } from 'bun';
+import { $ } from "bun";
 
 async function main() {
-  console.log('=== Crawling n8n-nodes-base ===\n');
+  console.log("=== Crawling n8n-nodes-base ===\n");
 
-  console.log('1/3: Crawling node definitions...');
+  console.log("1/3: Crawling node definitions...");
   await $`bun run scripts/crawl-nodes.ts`;
 
-  console.log('\n2/3: Crawling output schemas...');
+  console.log("\n2/3: Crawling output schemas...");
   await $`bun run scripts/crawl-output-schemas.ts`;
 
-  console.log('\n3/3: Capturing trigger schemas...');
+  console.log("\n3/3: Capturing trigger schemas...");
   if (process.env.N8N_HOST && process.env.N8N_API_KEY) {
     await $`bun run scripts/crawl-triggers-live.ts --from-existing`;
   } else {
-    console.log('   Skipped (N8N_HOST / N8N_API_KEY not set)');
+    console.log("   Skipped (N8N_HOST / N8N_API_KEY not set)");
   }
 
-  console.log('\n=== Done ===');
+  console.log("\n=== Done ===");
 }
 
 main().catch((err) => {
-  console.error('Crawl failed:', err);
+  console.error("Crawl failed:", err);
   process.exit(1);
 });

@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/configbench",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "description": "Configuration & Secrets Security Benchmark for @elizaos/core secrets and built-in plugin-manager",
   "main": "src/index.ts",

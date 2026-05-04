@@ -48,7 +48,10 @@ async function main(): Promise<void> {
       name: "get_agent_info",
       arguments: {},
     });
-    const infoContent = infoResult.content as Array<{ type: string; text?: string }>;
+    const infoContent = infoResult.content as Array<{
+      type: string;
+      text?: string;
+    }>;
     if (infoContent[0]?.type === "text" && infoContent[0].text) {
       const info = JSON.parse(infoContent[0].text);
       console.log(`   Name: ${info.name}`);
@@ -70,7 +73,10 @@ async function main(): Promise<void> {
         name: "chat",
         arguments: { message },
       });
-      const chatContent = chatResult.content as Array<{ type: string; text?: string }>;
+      const chatContent = chatResult.content as Array<{
+        type: string;
+        text?: string;
+      }>;
       if (chatContent[0]?.type === "text" && chatContent[0].text) {
         console.log(`   Agent: ${chatContent[0].text}`);
       }

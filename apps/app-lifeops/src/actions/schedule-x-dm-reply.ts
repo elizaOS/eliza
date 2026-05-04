@@ -204,8 +204,7 @@ export const scheduleXDmReplyAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text:
-            "Schedule an X DM to devfriend at tomorrow 9am: thanks for the intro.",
+          text: "Schedule an X DM to devfriend at tomorrow 9am: thanks for the intro.",
         },
       },
       {

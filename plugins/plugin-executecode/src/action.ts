@@ -247,9 +247,7 @@ export const executeCodeAction: Action = {
       );
     } catch (err) {
       scriptError = err instanceof Error ? err : new Error(String(err));
-      coreLogger.warn(
-        `${LOG_PREFIX} script failed: ${scriptError.message}`,
-      );
+      coreLogger.warn(`${LOG_PREFIX} script failed: ${scriptError.message}`);
     }
 
     await annotateActiveTrajectoryStep(runtime, {

@@ -28,6 +28,12 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import {
+  createDiscordSourceCache,
+  type DiscordSourceCache,
+  fetchDiscordEnumeration,
+  formatDiscordEnumerationAsFacts,
+} from "./discord-target-source";
 
 const SERVICE_TYPE = "n8n_runtime_context_provider";
 
@@ -176,14 +182,6 @@ const CRED_TYPE_FACTS: Record<
   },
 };
 
-/** Cache TTL for upstream REST lookups (Discord guilds/channels). */
-const FACT_CACHE_TTL_MS = 5 * 60 * 1000;
-
-interface CachedFacts {
-  expiresAt: number;
-  facts: string[];
-}
-
 /**
  * Subset of the cred provider's resolve() return values. We only check
  * whether a cred type is actually satisfiable (`credential_data`) vs not
@@ -212,6 +210,12 @@ export interface ElizaN8nRuntimeContextProviderOptions {
   fetchImpl?: typeof fetch;
   /** Test injection seam — defaults to Date.now. */
   now?: () => number;
+  /**
+   * Optional shared Discord enumeration cache. When supplied, the catalog
+   * service can pass the same instance so a `generate` then a quick-pick
+   * `resolve-clarification` round-trip uses one REST window instead of two.
+   */
+  discordCache?: DiscordSourceCache;
 }
 
 export interface ElizaN8nRuntimeContextProviderHandle {
@@ -272,97 +276,23 @@ export function startElizaN8nRuntimeContextProvider(
 
   // Per-token Discord cache. Discord guilds + channels rarely change; a
   // 5-minute window is plenty for dogfood and avoids hammering REST during a
-  // generate→modify regeneration burst.
-  const discordCache = new Map<string, CachedFacts>();
+  // generate→modify regeneration burst. Shared with the catalog service when
+  // the host wires both off the same instance.
+  const discordCache: DiscordSourceCache =
+    options.discordCache ?? createDiscordSourceCache();
 
   /**
-   * Enumerate the Discord bot's guilds and (text) channels. Returns one
-   * compact fact line per guild. Network failures degrade to an empty array.
+   * Enumerate the Discord bot's guilds and text channels via the shared
+   * source, then format the structured result as the LLM-facing fact lines.
    */
   const fetchDiscordFacts = async (botToken: string): Promise<string[]> => {
-    const cached = discordCache.get(botToken);
-    if (cached && cached.expiresAt > now()) {
-      return cached.facts;
-    }
-    try {
-      const headers = { Authorization: `Bot ${botToken}` };
-      const guildsRes = await fetchImpl(
-        "https://discord.com/api/v10/users/@me/guilds",
-        { headers },
-      );
-      if (!guildsRes.ok) {
-        runtime.logger.warn?.(
-          {
-            src: "n8n-runtime-context-provider",
-            status: guildsRes.status,
-          },
-          "Discord guilds REST returned non-ok",
-        );
-        const facts: string[] = [];
-        discordCache.set(botToken, {
-          expiresAt: now() + FACT_CACHE_TTL_MS,
-          facts,
-        });
-        return facts;
-      }
-      const guilds = (await guildsRes.json()) as Array<{
-        id: string;
-        name: string;
-      }>;
-      const facts: string[] = [];
-      for (const guild of guilds) {
-        try {
-          const channelsRes = await fetchImpl(
-            `https://discord.com/api/v10/guilds/${guild.id}/channels`,
-            { headers },
-          );
-          if (!channelsRes.ok) {
-            facts.push(
-              `Discord guild "${guild.name}" (id ${guild.id}) — channels not enumerable (status ${channelsRes.status}).`,
-            );
-            continue;
-          }
-          const channels = (await channelsRes.json()) as Array<{
-            id: string;
-            name: string;
-            type: number;
-          }>;
-          // type === 0 is GUILD_TEXT, the only kind n8n's Discord node posts to.
-          const textChannels = channels
-            .filter((c) => c.type === 0)
-            .map((c) => `#${c.name} (${c.id})`)
-            .join(", ");
-          facts.push(
-            textChannels.length > 0
-              ? `Discord guild "${guild.name}" (id ${guild.id}) channels: ${textChannels}.`
-              : `Discord guild "${guild.name}" (id ${guild.id}) — no text channels visible to the bot.`,
-          );
-        } catch (err) {
-          runtime.logger.warn?.(
-            {
-              src: "n8n-runtime-context-provider",
-              guildId: guild.id,
-              err: err instanceof Error ? err.message : String(err),
-            },
-            "Discord channels REST threw",
-          );
-        }
-      }
-      discordCache.set(botToken, {
-        expiresAt: now() + FACT_CACHE_TTL_MS,
-        facts,
-      });
-      return facts;
-    } catch (err) {
-      runtime.logger.warn?.(
-        {
-          src: "n8n-runtime-context-provider",
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "Discord guilds REST threw",
-      );
-      return [];
-    }
+    const enumeration = await fetchDiscordEnumeration(botToken, {
+      fetchImpl,
+      now,
+      cache: discordCache,
+      logger: { warn: runtime.logger.warn?.bind(runtime.logger) },
+    });
+    return formatDiscordEnumerationAsFacts(enumeration);
   };
 
   /**

@@ -16,6 +16,7 @@ import {
 } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../state";
+import { preOpenWindow } from "../../utils";
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
@@ -248,7 +249,7 @@ export function ConfigPageView({
   const cloudStatusProps = {
     connected: elizaCloudConnected,
     loginBusy: elizaCloudLoginBusy,
-    onLogin: () => void handleCloudLogin(),
+    onLogin: () => void handleCloudLogin(preOpenWindow()),
   };
 
   const legacyRpcChains = walletConfig?.legacyCustomChains ?? [];
@@ -456,7 +457,7 @@ export function ConfigPageView({
                 variant="default"
                 size="sm"
                 className="text-xs font-bold"
-                onClick={() => void handleCloudLogin()}
+                onClick={() => void handleCloudLogin(preOpenWindow())}
                 disabled={elizaCloudLoginBusy}
               >
                 {elizaCloudLoginBusy

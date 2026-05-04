@@ -46,7 +46,7 @@ function isPostView(
 
 function isReplyWithPostViews(
 	reply: AppBskyFeedDefs.ReplyRef | null | undefined,
-): reply is {
+): reply is AppBskyFeedDefs.ReplyRef & {
 	root: AppBskyFeedDefs.PostView;
 	parent: AppBskyFeedDefs.PostView;
 } {

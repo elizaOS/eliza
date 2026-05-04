@@ -18,12 +18,12 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
+    "@types/node": "^22.19.17",
     "@types/ws": "^8.5.10",
     "tsx": "^4.6.2",
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   }
 }

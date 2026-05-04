@@ -34,14 +34,14 @@ function getXPostUrl(): string {
 function percentEncode(value: string): string {
   return encodeURIComponent(value).replace(
     /[!'()*]/g,
-    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
 
 function buildSignatureBaseString(
   method: string,
   url: string,
-  params: Record<string, string>
+  params: Record<string, string>,
 ): string {
   const sorted = Object.keys(params)
     .sort()
@@ -49,7 +49,7 @@ function buildSignatureBaseString(
     .join("&");
 
   return `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(
-    sorted
+    sorted,
   )}`;
 }
 
@@ -84,7 +84,7 @@ function buildOAuth1AuthorizationHeader(args: {
   const baseString = buildSignatureBaseString(method, url, oauthParams);
   const signingKey = buildSigningKey(
     credentials.apiSecretKey,
-    credentials.accessTokenSecret
+    credentials.accessTokenSecret,
   );
   oauthParams.oauth_signature = signOAuth1(baseString, signingKey);
 
@@ -92,7 +92,7 @@ function buildOAuth1AuthorizationHeader(args: {
     .sort()
     .map(
       (key) =>
-        `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`
+        `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`,
     )
     .join(", ");
 
@@ -131,7 +131,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readStringField(
   record: Record<string, unknown>,
-  key: string
+  key: string,
 ): string | undefined {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
@@ -154,7 +154,7 @@ function readXApiErrors(value: unknown): XApiError[] | undefined {
 }
 
 function readXErrorPayloadFields(
-  record: Record<string, unknown>
+  record: Record<string, unknown>,
 ): Pick<XPostPayload, "detail" | "errors" | "title"> {
   return {
     detail: readStringField(record, "detail"),
@@ -187,7 +187,7 @@ function parseXDmPayload(rawPayload: unknown): XDmPayload | null {
     ? {
         dm_conversation_id: readStringField(
           rawPayload.data,
-          "dm_conversation_id"
+          "dm_conversation_id",
         ),
         dm_event_id: readStringField(rawPayload.data, "dm_event_id"),
       }
@@ -200,7 +200,7 @@ function parseXDmPayload(rawPayload: unknown): XDmPayload | null {
 }
 
 export function readXPosterCredentialsFromEnv(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
 ): XPosterCredentials | null {
   const apiKey = env.TWITTER_API_KEY?.trim();
   const apiSecretKey = env.TWITTER_API_SECRET_KEY?.trim();
@@ -282,7 +282,7 @@ export async function postToX(args: {
           statusCode: response.status,
           category,
         },
-        `[lifeops] X post failed: ${errorMessage}`
+        `[lifeops] X post failed: ${errorMessage}`,
       );
       span.failure({
         statusCode: response.status,
@@ -325,7 +325,7 @@ export async function postToX(args: {
         operation: "x_post",
         err: error instanceof Error ? error : undefined,
       },
-      `[lifeops] X post failed: ${errorMessage}`
+      `[lifeops] X post failed: ${errorMessage}`,
     );
     span.failure({
       error,
@@ -357,7 +357,7 @@ export interface XDmResult {
 
 function getXDmUrl(participantId: string): string {
   return `${getXBaseUrl()}/2/dm_conversations/with/${encodeURIComponent(
-    participantId
+    participantId,
   )}/messages`;
 }
 

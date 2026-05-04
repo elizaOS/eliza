@@ -28,6 +28,7 @@ import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
   confirmDesktopAction,
   isCloudStatusAuthenticated,
+  navigatePreOpenedWindow,
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
@@ -37,6 +38,7 @@ import {
 const ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS = 1000;
 const ELIZA_CLOUD_LOGIN_TIMEOUT_MS = 300_000;
 const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
+const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -80,18 +82,65 @@ function isSameOriginLocalHttpBackend(): boolean {
   );
 }
 
+function isCapacitorNativeRuntime(): boolean {
+  if (typeof globalThis === "undefined") return false;
+  const capacitor = (
+    globalThis as {
+      Capacitor?: {
+        isNativePlatform?: () => boolean;
+      };
+    }
+  ).Capacitor;
+  return Boolean(capacitor?.isNativePlatform?.());
+}
+
+function originsMatch(left: string, right: string): boolean {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+function isConfiguredCloudSiteBase(baseUrl: string): boolean {
+  const configuredCloudBase =
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+  if (originsMatch(baseUrl, configuredCloudBase)) return true;
+
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "elizacloud.ai" || host === "www.elizacloud.ai";
+  } catch {
+    return false;
+  }
+}
+
+function isCapacitorAssetBase(baseUrl: string): boolean {
+  if (!isCapacitorNativeRuntime()) return false;
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.pathname !== "/" || parsed.search || parsed.hash) return false;
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.toLowerCase() === "localhost" &&
+      parsed.port === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 function hasCloudLoginBackend(): boolean {
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
-  return Boolean(explicitBase) || isSameOriginLocalHttpBackend();
-}
-
-function formatCloudLoginPersistError(cause: unknown): string {
-  const detail =
-    cause instanceof Error && cause.message.trim().length > 0
-      ? ` ${cause.message.trim()}`
-      : "";
-  return `Eliza Cloud login completed, but Eliza could not save the cloud session locally.${detail}`;
+  if (explicitBase) {
+    return (
+      !isConfiguredCloudSiteBase(explicitBase) &&
+      !isCapacitorAssetBase(explicitBase)
+    );
+  }
+  if (isCapacitorNativeRuntime()) return false;
+  return isSameOriginLocalHttpBackend();
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -292,204 +341,233 @@ export function useCloudState({
     return isConnected;
   }, []);
 
-  const handleCloudLogin = useCallback(async () => {
-    if (
-      isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
-    ) {
-      return;
-    }
-    if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) return;
-    elizaCloudLoginBusyRef.current = true;
-    setElizaCloudLoginBusy(true);
-    setElizaCloudLoginError(null);
-    elizaCloudPreferDisconnectedUntilLoginRef.current = false;
-
-    // Determine if we should use direct cloud auth (no local backend) or
-    // go through the local agent's proxy.
-    const hasBackend = hasCloudLoginBackend();
-    const cloudApiBase =
-      getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
-    const useDirectAuth = !hasBackend;
-
-    if (hasBackend) {
-      const cloudStatus = await client.getCloudStatus().catch(() => null);
-      const alreadyAuthenticated = isCloudStatusAuthenticated(
-        Boolean(cloudStatus?.connected),
-        cloudStatus?.reason,
-      );
-      if (alreadyAuthenticated) {
-        await pollCloudCredits();
-        await loadWalletConfig().catch(() => undefined);
-        setElizaCloudLoginError(null);
-        setActionNotice("Already connected to Eliza Cloud.", "info", 4000);
-        elizaCloudLoginBusyRef.current = false;
-        setElizaCloudLoginBusy(false);
-        return;
-      }
-    }
-
-    try {
-      let resp: {
-        ok: boolean;
-        browserUrl?: string;
-        sessionId?: string;
-        error?: string;
-      };
-      if (useDirectAuth) {
-        resp = await client.cloudLoginDirect(cloudApiBase);
-      } else {
-        resp = await client.cloudLogin();
-      }
-      if (!resp.ok) {
-        setElizaCloudLoginError(
-          resp.error || "Failed to start Eliza Cloud login",
-        );
-        elizaCloudLoginBusyRef.current = false;
-        setElizaCloudLoginBusy(false);
-        return;
-      }
-
-      // Open the login URL in the system browser.
-      if (resp.browserUrl) {
+  const handleCloudLogin = useCallback(
+    async (prePoppedWindow: Window | null = null) => {
+      if (
+        isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
+      ) {
         try {
-          await openExternalUrl(resp.browserUrl);
+          prePoppedWindow?.close();
         } catch {
-          // Popup was blocked — show a clickable link so the user can open it.
-          setElizaCloudLoginError(
-            `Open this link to log in: ${resp.browserUrl}`,
-          );
+          // Cross-origin — ignore.
+        }
+        return;
+      }
+      if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) {
+        try {
+          prePoppedWindow?.close();
+        } catch {
+          // Cross-origin — ignore.
+        }
+        return;
+      }
+      elizaCloudLoginBusyRef.current = true;
+      setElizaCloudLoginBusy(true);
+      setElizaCloudLoginError(null);
+      elizaCloudPreferDisconnectedUntilLoginRef.current = false;
+
+      // Determine if we should use direct cloud auth (no local backend) or
+      // go through the local agent's proxy.
+      const hasBackend = hasCloudLoginBackend();
+      const cloudApiBase =
+        getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
+      const useDirectAuth = !hasBackend;
+
+      if (hasBackend) {
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        const alreadyAuthenticated = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+        if (alreadyAuthenticated) {
+          try {
+            prePoppedWindow?.close();
+          } catch {
+            // Cross-origin — ignore.
+          }
+          await pollCloudCredits();
+          await loadWalletConfig().catch(() => undefined);
+          setElizaCloudLoginError(null);
+          setActionNotice("Already connected to Eliza Cloud.", "info", 4000);
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          return;
         }
       }
 
-      const sessionId = resp.sessionId ?? "";
-
-      let pollInFlight = false;
-      let consecutivePollErrors = 0;
-      const pollDeadline = Date.now() + ELIZA_CLOUD_LOGIN_TIMEOUT_MS;
-      const stopCloudLoginPolling = (error: string | null = null) => {
-        if (elizaCloudLoginPollTimer.current !== null) {
-          clearInterval(elizaCloudLoginPollTimer.current);
-          elizaCloudLoginPollTimer.current = null;
+      try {
+        let resp: {
+          ok: boolean;
+          browserUrl?: string;
+          sessionId?: string;
+          error?: string;
+        };
+        if (useDirectAuth) {
+          resp = await client.cloudLoginDirect(cloudApiBase);
+        } else {
+          resp = await client.cloudLogin();
         }
-        elizaCloudLoginBusyRef.current = false;
-        setElizaCloudLoginBusy(false);
-        if (error !== null) {
-          setElizaCloudLoginError(error);
-        }
-      };
-
-      // Start polling
-      elizaCloudLoginPollTimer.current = window.setInterval(async () => {
-        if (!elizaCloudLoginPollTimer.current || pollInFlight) return;
-        if (Date.now() >= pollDeadline) {
-          stopCloudLoginPolling(
-            "Eliza Cloud login timed out. Please try again.",
+        if (!resp.ok) {
+          try {
+            prePoppedWindow?.close();
+          } catch {
+            // Cross-origin — ignore.
+          }
+          setElizaCloudLoginError(
+            resp.error || "Failed to start Eliza Cloud login",
           );
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
           return;
         }
 
-        pollInFlight = true;
-        try {
-          if (!elizaCloudLoginPollTimer.current) return;
-          let poll: {
-            status: string;
-            organizationId?: string;
-            token?: string;
-            userId?: string;
-            error?: string;
-          };
-          if (useDirectAuth) {
-            poll = await client.cloudLoginPollDirect(cloudApiBase, sessionId);
+        // Open the login URL in the system browser. On Capacitor iOS the
+        // pre-opened window preserves the user-gesture context so WKWebView
+        // routes the URL out to Safari instead of dropping it silently.
+        if (resp.browserUrl) {
+          if (prePoppedWindow) {
+            navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl);
           } else {
-            poll = await client.cloudLoginPoll(sessionId);
-          }
-          if (!elizaCloudLoginPollTimer.current) return;
-
-          consecutivePollErrors = 0;
-          if (poll.status === "authenticated") {
-            if (poll.token && typeof window !== "undefined") {
-              (
-                globalThis as Record<string, unknown>
-              ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
-              // Also update boot config so subsequent reads use the resolved cloud base.
-              const cfg = getBootConfig();
-              setBootConfig({ ...cfg, cloudApiBase });
+            try {
+              await openExternalUrl(resp.browserUrl);
+            } catch {
+              setElizaCloudLoginError(
+                `Open this link to log in: ${resp.browserUrl}`,
+              );
             }
-
-            if (useDirectAuth) {
-              if (!poll.token) {
-                stopCloudLoginPolling(
-                  "Eliza Cloud login completed, but the cloud session did not return an API key.",
-                );
-                return;
-              }
-              try {
-                await client.cloudLoginPersist(poll.token, {
-                  organizationId: poll.organizationId,
-                  userId: poll.userId,
-                });
-              } catch (cause) {
-                stopCloudLoginPolling(formatCloudLoginPersistError(cause));
-                return;
-              }
-            }
-
-            stopCloudLoginPolling();
-            setElizaCloudConnected(true);
-            setElizaCloudLoginError(null);
-            if (poll.userId) {
-              setElizaCloudUserId(poll.userId);
-            }
-
-            setActionNotice(
-              "Logged in to Eliza Cloud successfully.",
-              "success",
-              6000,
-            );
-
-            // The backend owns the cloud-wallet bind + runtime reload now.
-            // Startup/ws recovery will rehydrate wallet + cloud state once the
-            // restart completes, so avoid kicking off a second client restart.
-          } else if (poll.status === "expired" || poll.status === "error") {
-            stopCloudLoginPolling(
-              poll.error ?? "Login session expired. Please try again.",
-            );
           }
-        } catch (pollErr) {
-          console.error("Eliza Cloud login poll error:", pollErr);
-          if (!elizaCloudLoginPollTimer.current) return;
-
-          consecutivePollErrors += 1;
-          if (
-            consecutivePollErrors >= ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS
-          ) {
-            const detail =
-              pollErr instanceof Error && pollErr.message
-                ? ` Last error: ${pollErr.message}`
-                : "";
-            stopCloudLoginPolling(
-              `Eliza Cloud login check failed after repeated errors.${detail}`,
-            );
+        } else {
+          try {
+            prePoppedWindow?.close();
+          } catch {
+            // Cross-origin — ignore.
           }
-        } finally {
-          pollInFlight = false;
         }
-      }, ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS);
-    } catch (err) {
-      setElizaCloudLoginError(
-        err instanceof Error ? err.message : "Eliza Cloud login failed",
-      );
-      elizaCloudLoginBusyRef.current = false;
-      setElizaCloudLoginBusy(false);
-    }
-  }, [
-    elizaCloudConnected,
-    elizaCloudLoginBusy,
-    elizaCloudStatusReason,
-    setActionNotice,
-    pollCloudCredits,
-    loadWalletConfig,
-  ]);
+
+        const sessionId = resp.sessionId ?? "";
+
+        let pollInFlight = false;
+        let consecutivePollErrors = 0;
+        const pollDeadline = Date.now() + ELIZA_CLOUD_LOGIN_TIMEOUT_MS;
+        const stopCloudLoginPolling = (error: string | null = null) => {
+          if (elizaCloudLoginPollTimer.current !== null) {
+            clearInterval(elizaCloudLoginPollTimer.current);
+            elizaCloudLoginPollTimer.current = null;
+          }
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          if (error !== null) {
+            setElizaCloudLoginError(error);
+          }
+        };
+
+        // Start polling
+        elizaCloudLoginPollTimer.current = window.setInterval(async () => {
+          if (!elizaCloudLoginPollTimer.current || pollInFlight) return;
+          if (Date.now() >= pollDeadline) {
+            stopCloudLoginPolling(
+              "Eliza Cloud login timed out. Please try again.",
+            );
+            return;
+          }
+
+          pollInFlight = true;
+          try {
+            if (!elizaCloudLoginPollTimer.current) return;
+            let poll: {
+              status: string;
+              organizationId?: string;
+              token?: string;
+              userId?: string;
+              error?: string;
+            };
+            if (useDirectAuth) {
+              poll = await client.cloudLoginPollDirect(cloudApiBase, sessionId);
+            } else {
+              poll = await client.cloudLoginPoll(sessionId);
+            }
+            if (!elizaCloudLoginPollTimer.current) return;
+
+            consecutivePollErrors = 0;
+            if (poll.status === "authenticated") {
+              if (poll.token && typeof window !== "undefined") {
+                (
+                  globalThis as Record<string, unknown>
+                ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
+                // Also update boot config so subsequent reads use the resolved cloud base.
+                const cfg = getBootConfig();
+                setBootConfig({ ...cfg, cloudApiBase });
+              }
+
+              if (useDirectAuth) {
+                if (!poll.token) {
+                  stopCloudLoginPolling(
+                    "Eliza Cloud login completed, but the cloud session did not return an API key.",
+                  );
+                  return;
+                }
+                client.setBaseUrl(cloudApiBase);
+                client.setToken(poll.token);
+              }
+
+              stopCloudLoginPolling();
+              setElizaCloudConnected(true);
+              setElizaCloudLoginError(null);
+              if (poll.userId) {
+                setElizaCloudUserId(poll.userId);
+              }
+
+              setActionNotice(
+                "Logged in to Eliza Cloud successfully.",
+                "success",
+                6000,
+              );
+
+              // The backend owns the cloud-wallet bind + runtime reload now.
+              // Startup/ws recovery will rehydrate wallet + cloud state once the
+              // restart completes, so avoid kicking off a second client restart.
+            } else if (poll.status === "expired" || poll.status === "error") {
+              stopCloudLoginPolling(
+                poll.error ?? "Login session expired. Please try again.",
+              );
+            }
+          } catch (pollErr) {
+            console.error("Eliza Cloud login poll error:", pollErr);
+            if (!elizaCloudLoginPollTimer.current) return;
+
+            consecutivePollErrors += 1;
+            if (
+              consecutivePollErrors >= ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS
+            ) {
+              const detail =
+                pollErr instanceof Error && pollErr.message
+                  ? ` Last error: ${pollErr.message}`
+                  : "";
+              stopCloudLoginPolling(
+                `Eliza Cloud login check failed after repeated errors.${detail}`,
+              );
+            }
+          } finally {
+            pollInFlight = false;
+          }
+        }, ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS);
+      } catch (err) {
+        setElizaCloudLoginError(
+          err instanceof Error ? err.message : "Eliza Cloud login failed",
+        );
+        elizaCloudLoginBusyRef.current = false;
+        setElizaCloudLoginBusy(false);
+      }
+    },
+    [
+      elizaCloudConnected,
+      elizaCloudLoginBusy,
+      elizaCloudStatusReason,
+      setActionNotice,
+      pollCloudCredits,
+      loadWalletConfig,
+    ],
+  );
 
   // Keep forward ref in sync so handleOnboardingNext can call it.
   handleCloudLoginRef.current = handleCloudLogin;

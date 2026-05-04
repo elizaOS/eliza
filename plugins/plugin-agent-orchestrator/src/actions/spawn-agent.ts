@@ -34,11 +34,14 @@ import type { PTYService } from "../services/pty-service.js";
 import { getCoordinator } from "../services/pty-service.js";
 import {
   type CodingAgentType,
+  isOpencodeAgentType,
   isPiAgentType,
   normalizeAgentType,
   type SessionInfo,
+  toOpencodeCommand,
   toPiCommand,
 } from "../services/pty-types.js";
+import { buildOpencodeSpawnConfig } from "../services/agent-credentials.js";
 import { looksLikeTaskAgentRequest } from "../services/task-agent-frameworks.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { CodingWorkspaceService } from "../services/workspace-service.js";
@@ -79,7 +82,10 @@ function summarizeSpawnError(message: string): string {
   }
   // Long, multi-line errors are usually drivers attaching SQL or stack
   // traces. Keep the first non-empty line and cap length.
-  const firstLine = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  const firstLine = message
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
   const candidate = firstLine ?? message;
   return candidate.length > 200 ? `${candidate.slice(0, 197)}...` : candidate;
 }
@@ -275,8 +281,13 @@ export const spawnAgentAction: Action = {
       }));
     const agentType = normalizeAgentType(rawAgentType);
     const piRequested = isPiAgentType(rawAgentType);
+    const opencodeRequested = isOpencodeAgentType(rawAgentType);
     const baseTask = preserveUserPromptInTask(task, userText);
-    const initialTask = piRequested ? toPiCommand(baseTask) : baseTask;
+    const initialTask = piRequested
+      ? toPiCommand(baseTask)
+      : opencodeRequested
+        ? toOpencodeCommand(baseTask)
+        : baseTask;
 
     // Resolve workdir: explicit param > state from PROVISION_WORKSPACE > most recent workspace > cwd
     let workdir = (params?.workdir as string) ?? (content.workdir as string);
@@ -421,9 +432,9 @@ export const spawnAgentAction: Action = {
 
     try {
       // Check if the agent CLI is installed (for non-shell agents)
-      if (agentType !== "shell" && agentType !== "pi") {
+      if (agentType !== "shell" && !piRequested && !opencodeRequested) {
         const [preflight] = await ptyService.checkAvailableAgents([
-          agentType as Exclude<CodingAgentType, "shell" | "pi">,
+          agentType as Exclude<CodingAgentType, "shell" | "pi" | "opencode">,
         ]);
         if (preflight && !preflight.installed) {
           if (callback) {
@@ -495,9 +506,9 @@ export const spawnAgentAction: Action = {
         // doesn't propagate through the spawn env allowlist, so without
         // this the PTY child blocks on the login prompt forever.
         if (!spawnEnv.CLAUDE_CODE_OAUTH_TOKEN) {
-          const fallbackOauth = runtime.getSetting(
-            "CLAUDE_CODE_OAUTH_TOKEN",
-          ) as string | undefined;
+          const fallbackOauth = runtime.getSetting("CLAUDE_CODE_OAUTH_TOKEN") as
+            | string
+            | undefined;
           if (fallbackOauth?.trim()) {
             spawnEnv.CLAUDE_CODE_OAUTH_TOKEN = fallbackOauth;
             spawnEnv.ANTHROPIC_AUTH_TOKEN = fallbackOauth;
@@ -506,6 +517,27 @@ export const spawnAgentAction: Action = {
             );
           }
         }
+      }
+
+      if (opencodeRequested) {
+        const opencodeSpawnConfig = buildOpencodeSpawnConfig(runtime);
+        if (!opencodeSpawnConfig) {
+          if (callback) {
+            await callback({
+              text:
+                "OpenCode is selected but no model provider is configured. " +
+                "Set PARALLAX_LLM_PROVIDER=cloud and pair an Eliza Cloud key, " +
+                "or set PARALLAX_OPENCODE_LOCAL=1 to use a local OpenAI-compatible model server.",
+            });
+          }
+          return { success: false, error: "OPENCODE_NO_PROVIDER" };
+        }
+        spawnEnv.OPENCODE_CONFIG_CONTENT = opencodeSpawnConfig.configContent;
+        spawnEnv.OPENCODE_DISABLE_AUTOUPDATE = "1";
+        spawnEnv.OPENCODE_DISABLE_TERMINAL_TITLE = "1";
+        logger.info(
+          `[SPAWN_AGENT] OpenCode provider: ${opencodeSpawnConfig.providerLabel} (model=${opencodeSpawnConfig.model})`,
+        );
       }
 
       const sessionMetadata = {
@@ -564,7 +596,10 @@ export const spawnAgentAction: Action = {
                 "subprocess stderr: invalid_grant",
               );
             } else {
-              shim.markInvalid(accountId, "subprocess stderr: 401/unauthorized");
+              shim.markInvalid(
+                accountId,
+                "subprocess stderr: 401/unauthorized",
+              );
             }
             unsubscribe();
           },
@@ -636,7 +671,11 @@ export const spawnAgentAction: Action = {
         text: "",
         data: {
           sessionId: session.id,
-          agentType: piRequested ? "pi" : session.agentType,
+          agentType: piRequested
+            ? "pi"
+            : opencodeRequested
+              ? "opencode"
+              : session.agentType,
           workdir: session.workdir,
           status: session.status,
           suppressActionResultClipboard: true,

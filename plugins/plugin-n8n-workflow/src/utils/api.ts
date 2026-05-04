@@ -276,8 +276,13 @@ export class N8nApiClient {
       const response = await fetch(`${this.baseUrl}/types/nodes.json`, {
         headers: { 'X-N8N-API-KEY': this.apiKey },
       });
-      if (!response.ok) return null;
-      const data = (await response.json()) as Array<{ name?: string; version?: number | number[] }>;
+      if (!response.ok) {
+        return null;
+      }
+      const data = (await response.json()) as Array<{
+        name?: string;
+        version?: number | number[];
+      }>;
       // n8n's `/types/nodes.json` lists ONE ENTRY PER VERSIONED-NODE CLASS,
       // not one entry per node type. e.g. Gmail appears twice: once with
       // `version: [2, 2.1]` (the modern class) and once with `version: 1`
@@ -287,18 +292,26 @@ export class N8nApiClient {
       // regression, observed in Session 21 dogfood).
       const acc = new Map<string, Set<number>>();
       for (const entry of data) {
-        if (typeof entry?.name !== 'string') continue;
+        if (typeof entry?.name !== 'string') {
+          continue;
+        }
         const versions = Array.isArray(entry.version)
           ? entry.version.filter((v): v is number => typeof v === 'number')
           : typeof entry.version === 'number'
             ? [entry.version]
             : [];
-        if (versions.length === 0) continue;
+        if (versions.length === 0) {
+          continue;
+        }
         const set = acc.get(entry.name) ?? new Set<number>();
-        for (const v of versions) set.add(v);
+        for (const v of versions) {
+          set.add(v);
+        }
         acc.set(entry.name, set);
       }
-      if (acc.size === 0) return null;
+      if (acc.size === 0) {
+        return null;
+      }
       const out = new Map<string, number[]>();
       for (const [name, set] of acc) {
         out.set(

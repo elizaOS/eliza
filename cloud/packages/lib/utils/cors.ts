@@ -7,6 +7,13 @@ const ALLOWED_ORIGINS = [
   "https://www.eliza.ai",
   "https://elizacloud.ai",
   "https://www.elizacloud.ai",
+  "https://milady.ai",
+  "https://www.milady.ai",
+  // Capacitor native shells (iOS WKWebView / Android WebView). The
+  // Eliza + Milady mobile apps load from these custom schemes and
+  // call public auth endpoints directly from the WebView.
+  "capacitor://localhost",
+  "http://localhost",
 ].filter(Boolean) as string[];
 
 export function getCorsHeaders(origin: string | null): Record<string, string> {

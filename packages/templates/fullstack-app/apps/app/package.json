@@ -1,7 +1,6 @@
 {
   "name": "__APP_PACKAGE_NAME__",
   "version": "2.0.0-alpha.87",
-  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +30,7 @@
   "dependencies": {
     "@capacitor/android": "^8.0.2",
     "@capacitor/app": "^8.0.1",
-    "@capacitor/core": "^8.0.2",
+    "@capacitor/core": "^8.3.1",
     "@capacitor/ios": "^8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",

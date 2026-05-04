@@ -1,7 +1,7 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 
 // =============================================================================
-// Type Definitions (mirrors @elizaos/plugin-lp-manager)
+// Type Definitions (mirrors @elizaos/plugin-wallet's LP types)
 // =============================================================================
 
 interface TokenBalance {
@@ -496,7 +496,9 @@ export class LpMonitoringService extends Service {
     }
 
     const rebalancable = positions.filter((p) => p.rebalancable);
-    const balances = await this.vaultService.getBalances(profile.vaultPublicKey);
+    const balances = await this.vaultService.getBalances(
+      profile.vaultPublicKey,
+    );
     const opportunities = await this.yieldService.findBestYieldOpportunities(
       userId,
       rebalancable.map((p) => p.position),

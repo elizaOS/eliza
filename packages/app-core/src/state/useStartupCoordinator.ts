@@ -16,10 +16,11 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { isElectrobunRuntime } from "../bridge";
-import { isNative } from "../platform";
+import { isElizaOS, isNative } from "../platform";
 import { loadPersistedOnboardingComplete } from "./persistence";
 import {
   createDesktopPolicy,
+  createElizaOSPolicy,
   createMobilePolicy,
   createWebPolicy,
   INITIAL_STARTUP_STATE,
@@ -86,6 +87,10 @@ export interface StartupCoordinatorHandle {
 
 function detectPlatformPolicy(): PlatformPolicy {
   if (isElectrobunRuntime()) return createDesktopPolicy();
+  // ElizaOS check must come before the generic mobile branch — both are
+  // native, but ElizaOS bundles the on-device agent and needs the longer
+  // backend timeout (vanilla mobile is cloud-only with a fast-fail budget).
+  if (isElizaOS()) return createElizaOSPolicy();
   if (isNative) return createMobilePolicy();
   return createWebPolicy();
 }

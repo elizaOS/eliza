@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "Tic-tac-toe game with perfect AI using minimax algorithm - no LLM required",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run game.ts",
     "dev": "bun --watch run game.ts",
@@ -21,6 +20,6 @@
     "typescript": "^6.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   }
 }

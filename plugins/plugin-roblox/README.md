@@ -9,7 +9,6 @@ Roblox plugin for elizaOS v2.0.0 - Enables AI agents to communicate with Roblox 
 - **Player Management**: Look up player information by ID or username
 - **Game Actions**: Execute custom actions in-game
 - **Experience Info**: Retrieve game metadata and statistics
-- **Multi-Language**: Available in TypeScript, Rust, and Python
 
 ## Installation
 
@@ -20,20 +19,6 @@ npm install @elizaos/plugin-roblox
 # or
 bun add @elizaos/plugin-roblox
 ```
-
-### Rust
-
-```toml
-[dependencies]
-elizaos-plugin-roblox = "2.0"
-```
-
-### Python
-
-```bash
-pip install elizaos-plugin-roblox
-```
-
 ## Quick Start
 
 ### TypeScript (elizaOS)
@@ -208,71 +193,7 @@ plugin-roblox/
 ```bash
 # TypeScript
 bun run build
-
-# Rust
-bun run build:rust
-
-# Python
-pip install -e "python/[dev]"
-```
-
-### Testing
-
-```bash
 # TypeScript
 bun run test
-
-# Rust
-bun run test:rust
-
-# Python
-cd python && pytest
-```
-
-### Linting
-
-```bash
 # TypeScript
 bun run lint
-
-# Rust
-bun run lint:rust
-
-# Python
-bun run lint:python
-```
-
-## API Reference
-
-### TypeScript
-
-See [typescript/](./typescript/) for the full TypeScript API.
-
-### Rust
-
-See [rust/README.md](./rust/README.md) for the Rust API documentation.
-
-### Python
-
-See [python/README.md](./python/README.md) for the Python API documentation.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests (`bun run test`)
-5. Submit a pull request
-
-## License
-
-MIT
-
-## Related Links
-
-- [Roblox Open Cloud API](https://create.roblox.com/docs/cloud)
-- [elizaOS Documentation](https://elizaos.ai/docs)
-- [Plugin Architecture Guide](.cursor/rules/elizaos/elizaos_client_plugins.mdc)
-
-
-

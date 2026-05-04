@@ -17,8 +17,15 @@
     "design-system"
   ],
   "main": "src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",

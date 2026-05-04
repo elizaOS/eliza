@@ -7,7 +7,7 @@
  * is done in integer domain to avoid floating point precision errors.
  */
 
-import type { Address } from 'viem';
+import type { Address } from "viem";
 
 /** Minimal token info required for formatting */
 export interface TokenInfo {
@@ -31,23 +31,23 @@ export interface TokenInfo {
  * toRaw("0.001", 8) // → 100000n  (0.001 WBTC)
  */
 export function toRaw(amount: string | bigint, decimals: number): bigint {
-  if (typeof amount === 'bigint') return amount;
+  if (typeof amount === "bigint") return amount;
 
   const str = amount.trim();
-  if (!str || str === '0') return 0n;
+  if (!str || str === "0") return 0n;
 
   // Validate: only digits and one optional decimal point, optional leading minus
   if (!/^-?\d+(\.\d+)?$/.test(str)) {
     throw new Error(`toRaw: invalid amount string "${amount}"`);
   }
 
-  const negative = str.startsWith('-');
+  const negative = str.startsWith("-");
   const abs = negative ? str.slice(1) : str;
 
-  const dotIndex = abs.indexOf('.');
+  const dotIndex = abs.indexOf(".");
   if (dotIndex === -1) {
     // Integer amount
-    const result = BigInt(abs) * (10n ** BigInt(decimals));
+    const result = BigInt(abs) * 10n ** BigInt(decimals);
     return negative ? -result : result;
   }
 
@@ -58,12 +58,11 @@ export function toRaw(amount: string | bigint, decimals: number): bigint {
   if (fracPart.length > decimals) {
     fracPart = fracPart.slice(0, decimals); // truncate (floor for positive amounts)
   } else {
-    fracPart = fracPart.padEnd(decimals, '0');
+    fracPart = fracPart.padEnd(decimals, "0");
   }
 
   const raw =
-    BigInt(intPart || '0') * (10n ** BigInt(decimals)) +
-    BigInt(fracPart);
+    BigInt(intPart || "0") * 10n ** BigInt(decimals) + BigInt(fracPart);
 
   return negative ? -raw : raw;
 }
@@ -91,10 +90,10 @@ export function toHuman(amount: bigint, decimals: number): string {
   const fracRaw = abs % divisor;
 
   // Pad fractional part to `decimals` digits
-  const fracStr = fracRaw.toString().padStart(decimals, '0');
+  const fracStr = fracRaw.toString().padStart(decimals, "0");
 
   // Trim trailing zeros but keep at least one decimal digit
-  const trimmed = fracStr.replace(/0+$/, '') || '0';
+  const trimmed = fracStr.replace(/0+$/, "") || "0";
 
   const result = `${intPart}.${trimmed}`;
   return negative ? `-${result}` : result;
@@ -114,15 +113,15 @@ export function toHuman(amount: bigint, decimals: number): string {
  */
 export function formatBalance(
   amount: bigint,
-  token: Pick<TokenInfo, 'symbol' | 'decimals'>,
+  token: Pick<TokenInfo, "symbol" | "decimals">,
   displayDecimals?: number,
 ): string {
   const human = toHuman(amount, token.decimals);
   const maxDisplay = displayDecimals ?? (token.decimals <= 6 ? 2 : 4);
 
   // Parse the human string and reformat to maxDisplay decimal places
-  const [intPart, fracPart = ''] = human.split('.');
-  const padded = fracPart.padEnd(maxDisplay, '0').slice(0, maxDisplay);
+  const [intPart, fracPart = ""] = human.split(".");
+  const padded = fracPart.padEnd(maxDisplay, "0").slice(0, maxDisplay);
 
   // If all fraction digits are zero, still show them for consistent formatting
   return `${intPart}.${padded} ${token.symbol}`;
@@ -136,6 +135,6 @@ export function formatBalance(
  * @param decimals - Required only when amount is a string
  */
 export function parseAmount(amount: string | bigint, decimals: number): bigint {
-  if (typeof amount === 'bigint') return amount;
+  if (typeof amount === "bigint") return amount;
   return toRaw(amount, decimals);
 }

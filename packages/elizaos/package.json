@@ -1,6 +1,10 @@
 {
   "name": "elizaos",
+<<<<<<< HEAD
   "version": "2.0.0-alpha.537",
+=======
+  "version": "2.0.0-alpha.536",
+>>>>>>> cfc0183e705ae487b1741d60e3f07d64ede8cb9f
   "description": "elizaOS CLI - Create and upgrade elizaOS project templates",
   "type": "module",
   "bin": {
@@ -56,7 +60,10 @@
   },
   "homepage": "https://elizaos.ai",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   },
-  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2",
+  "publishConfig": {
+    "access": "public"
+  }
 }

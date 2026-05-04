@@ -1,4 +1,5 @@
-// @ts-nocheck
+// @ts-nocheck — Cypress support scaffolding generated from the plugin
+// template; type-checks against runtime-only Cypress globals.
 /// <reference types="cypress" />
 /// <reference types="@cypress/react" />
 

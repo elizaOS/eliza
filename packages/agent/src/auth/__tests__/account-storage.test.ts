@@ -12,7 +12,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { OAuthCredentials, SubscriptionProvider } from "../types.js";
+import type {
+  AccountCredentialProvider,
+  OAuthCredentials,
+  SubscriptionProvider,
+} from "../types.js";
 
 const ORIGINAL_ELIZA_HOME = process.env.ELIZA_HOME;
 
@@ -156,6 +160,33 @@ describe("account-storage", () => {
   it("loadAccount returns null for missing accounts", async () => {
     const { loadAccount } = await importFreshModule();
     expect(loadAccount("openai-codex", "nope")).toBeNull();
+  });
+
+  it("stores direct API-key providers in the same per-account layout", async () => {
+    const { listAccounts, saveAccount, loadAccount } = await importFreshModule();
+    const provider: AccountCredentialProvider = "deepseek-api";
+    const now = Date.now();
+    saveAccount({
+      id: "team",
+      providerId: provider,
+      label: "Team",
+      source: "api-key",
+      credentials: {
+        access: "sk-deepseek-test-1234567890",
+        refresh: "",
+        expires: Number.MAX_SAFE_INTEGER,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(listAccounts(provider)).toHaveLength(1);
+    expect(loadAccount(provider, "team")?.credentials.access).toBe(
+      "sk-deepseek-test-1234567890",
+    );
+    expect(
+      fs.existsSync(path.join(home, "auth", provider, "team.json")),
+    ).toBe(true);
   });
 
   it("deleteAccount is idempotent", async () => {

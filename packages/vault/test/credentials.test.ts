@@ -63,9 +63,7 @@ describe("credentials — round-trip", () => {
   });
 
   it("returns null for a missing login", async () => {
-    expect(
-      await getSavedLogin(test.vault, "missing.com", "noone"),
-    ).toBeNull();
+    expect(await getSavedLogin(test.vault, "missing.com", "noone")).toBeNull();
   });
 
   it("preserves optional otpSeed and notes", async () => {
@@ -211,12 +209,8 @@ describe("credentials — delete", () => {
       password: "p2",
     });
     await deleteSavedLogin(test.vault, "github.com", "alice");
-    expect(
-      await getSavedLogin(test.vault, "github.com", "alice"),
-    ).toBeNull();
-    expect(
-      await getSavedLogin(test.vault, "github.com", "bob"),
-    ).not.toBeNull();
+    expect(await getSavedLogin(test.vault, "github.com", "alice")).toBeNull();
+    expect(await getSavedLogin(test.vault, "github.com", "bob")).not.toBeNull();
   });
 
   it("is idempotent", async () => {

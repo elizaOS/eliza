@@ -245,8 +245,7 @@ export async function main(argv = process.argv.slice(2)) {
   await syncToAospMain(syncArgs);
 
   const validateArgs = [...brandConfigArgs];
-  if (args.sourceVendor)
-    validateArgs.push("--vendor-dir", args.sourceVendor);
+  if (args.sourceVendor) validateArgs.push("--vendor-dir", args.sourceVendor);
   validateArgs.push("--aosp-root", args.aospRoot);
   await validateMain(validateArgs);
 

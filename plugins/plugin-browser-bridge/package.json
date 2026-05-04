@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/plugin-browser-bridge",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
   "type": "module",
   "description": "Agent Browser Bridge plugin: schema, contracts, routes, and packaging utilities for Chrome/Safari browser companions. Generic counterpart to LifeOps' workflow-bound browser sessions.",
   "main": "./src/index.ts",
@@ -32,5 +31,8 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

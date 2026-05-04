@@ -1,5 +1,3 @@
-
-
 import { useRef, useState, useCallback, useEffect } from "react";
 import type {
   ButtonHTMLAttributes,
@@ -23,21 +21,36 @@ import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import VideoCall from "@/components/VideoCall";
 
-type SpringAnimatedStyle = Record<string, string | number | boolean | null | undefined | object>;
-type AnimatedHtmlProps<T extends HTMLElement> = Omit<HTMLAttributes<T>, "style"> & {
+type SpringAnimatedStyle = Record<
+  string,
+  string | number | boolean | null | undefined | object
+>;
+type AnimatedHtmlProps<T extends HTMLElement> = Omit<
+  HTMLAttributes<T>,
+  "style"
+> & {
   style?: SpringAnimatedStyle;
 };
-type AnimatedButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "style"> & {
+type AnimatedButtonProps = Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "style"
+> & {
   style?: SpringAnimatedStyle;
 };
 type AnimatedSvgProps<T extends SVGElement> = Omit<SVGProps<T>, "style"> & {
   style?: SpringAnimatedStyle;
 };
 
-const AnimatedSpan = animated.span as ComponentType<AnimatedHtmlProps<HTMLSpanElement>>;
-const AnimatedDiv = animated.div as ComponentType<AnimatedHtmlProps<HTMLDivElement>>;
+const AnimatedSpan = animated.span as ComponentType<
+  AnimatedHtmlProps<HTMLSpanElement>
+>;
+const AnimatedDiv = animated.div as ComponentType<
+  AnimatedHtmlProps<HTMLDivElement>
+>;
 const AnimatedButton = animated.button as ComponentType<AnimatedButtonProps>;
-const AnimatedSvg = animated.svg as ComponentType<AnimatedSvgProps<SVGSVGElement>>;
+const AnimatedSvg = animated.svg as ComponentType<
+  AnimatedSvgProps<SVGSVGElement>
+>;
 const AnimatedG = animated.g as ComponentType<AnimatedSvgProps<SVGGElement>>;
 
 // Get all countries from libphonenumber-js
@@ -808,19 +821,28 @@ export default function Leaderboard() {
                 const fallbackTimeout = setTimeout(() => {
                   navigate("/get-started");
                 }, 1500);
-                
+
                 // If page becomes hidden (native app opened), cancel fallback
                 const handleVisibilityChange = () => {
                   if (document.hidden) {
                     clearTimeout(fallbackTimeout);
-                    document.removeEventListener("visibilitychange", handleVisibilityChange);
+                    document.removeEventListener(
+                      "visibilitychange",
+                      handleVisibilityChange,
+                    );
                   }
                 };
-                document.addEventListener("visibilitychange", handleVisibilityChange);
-                
+                document.addEventListener(
+                  "visibilitychange",
+                  handleVisibilityChange,
+                );
+
                 // Cleanup after 2 seconds regardless
                 setTimeout(() => {
-                  document.removeEventListener("visibilitychange", handleVisibilityChange);
+                  document.removeEventListener(
+                    "visibilitychange",
+                    handleVisibilityChange,
+                  );
                 }, 2000);
               }}
               show={showUI}
@@ -985,7 +1007,13 @@ export default function Leaderboard() {
                     }
                   }
                 }}
-                placeholder={tryPlatform === "telegram" ? "Message" : tryPlatform === "discord" ? "Message #general" : ""}
+                placeholder={
+                  tryPlatform === "telegram"
+                    ? "Message"
+                    : tryPlatform === "discord"
+                      ? "Message #general"
+                      : ""
+                }
                 className={`flex-1 bg-transparent text-lg outline-none resize-none py-1.5 max-h-80 leading-snug scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] ${tryPlatform === "discord" ? "text-white placeholder-[#72767d] caret-white" : tryPlatform === "telegram" ? "text-black placeholder-neutral-400 caret-[#2AABEE]" : "text-black caret-green-600"}`}
               />
             </div>

@@ -81,24 +81,28 @@ export async function runHelper(
   const payload = `${JSON.stringify(request)}\n`;
   proc.stdin.end(payload);
 
-  const exitCode = await new Promise<number | null>((resolvePromise, rejectPromise) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (options.timeoutMs && options.timeoutMs > 0) {
-      timer = setTimeout(() => {
-        rejectPromise(
-          new Error(`macosalarm helper timed out after ${options.timeoutMs}ms`),
-        );
-      }, options.timeoutMs);
-    }
-    proc.on("error", (err: Error) => {
-      if (timer) clearTimeout(timer);
-      rejectPromise(err);
-    });
-    proc.on("close", (code: number | null) => {
-      if (timer) clearTimeout(timer);
-      resolvePromise(code);
-    });
-  });
+  const exitCode = await new Promise<number | null>(
+    (resolvePromise, rejectPromise) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      if (options.timeoutMs && options.timeoutMs > 0) {
+        timer = setTimeout(() => {
+          rejectPromise(
+            new Error(
+              `macosalarm helper timed out after ${options.timeoutMs}ms`,
+            ),
+          );
+        }, options.timeoutMs);
+      }
+      proc.on("error", (err: Error) => {
+        if (timer) clearTimeout(timer);
+        rejectPromise(err);
+      });
+      proc.on("close", (code: number | null) => {
+        if (timer) clearTimeout(timer);
+        resolvePromise(code);
+      });
+    },
+  );
 
   const stdout = Buffer.concat(stdoutChunks).toString("utf8").trim();
   const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
@@ -113,9 +117,14 @@ export async function runHelper(
     );
   }
 
-  const lastLine = stdout.split("\n").filter((line) => line.length > 0).pop();
+  const lastLine = stdout
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .pop();
   if (!lastLine) {
-    throw new Error(`macosalarm helper produced empty response (exit=${exitCode})`);
+    throw new Error(
+      `macosalarm helper produced empty response (exit=${exitCode})`,
+    );
   }
 
   const parsed = JSON.parse(lastLine) as MacosAlarmHelperResponse;

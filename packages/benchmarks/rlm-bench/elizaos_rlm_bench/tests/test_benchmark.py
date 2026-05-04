@@ -312,7 +312,8 @@ class TestRunner:
 
     @pytest.mark.asyncio
     async def test_runner_eliza_mode_requires_runtime(self) -> None:
-        """Test eliza mode raises without runtime."""
+        """'eliza' mode is dispatched outside RLMBenchRunner — calling
+        run_task('eliza') directly must raise."""
         from elizaos_rlm_bench.runner import RLMBenchRunner
 
         config = RLMBenchConfig(context_lengths=[1000])
@@ -320,8 +321,7 @@ class TestRunner:
 
         task = runner.generator.generate_s_niah_task(1000, 0.5)
 
-        # Eliza mode without runtime should raise
-        with pytest.raises(RuntimeError, match="No Eliza runtime configured"):
+        with pytest.raises(RuntimeError, match="dispatched via the TS bridge"):
             await runner.run_task(task, mode="eliza")
 
     @pytest.mark.asyncio
@@ -336,214 +336,6 @@ class TestRunner:
 
         with pytest.raises(ValueError, match="Unknown mode"):
             await runner.run_task(task, mode="nonexistent")
-
-
-class TestElizaPlugin:
-    """Tests for the Eliza benchmark plugin."""
-
-    def test_session_lifecycle(self) -> None:
-        """Test RLMBenchSession set/get/clear lifecycle."""
-        from elizaos_rlm_bench.eliza_plugin import RLMBenchSession
-
-        session = RLMBenchSession()
-
-        # Initially empty
-        assert session.get_task() is None
-        assert session.get_evaluation() is None
-        assert session.get_response() == ""
-
-        # Set a task
-        session.set_task(
-            task_id="test-1",
-            context="The secret is ALPHA-7.",
-            question="What is the secret?",
-            expected_answer="ALPHA-7",
-            bench_type="s_niah",
-            context_length_tokens=100,
-        )
-
-        task = session.get_task()
-        assert task is not None
-        assert task.task_id == "test-1"
-        assert task.context == "The secret is ALPHA-7."
-        assert task.question == "What is the secret?"
-        assert task.expected_answer == "ALPHA-7"
-        assert task.bench_type == "s_niah"
-        assert task.context_length_tokens == 100
-
-        # Record response
-        session.record_response("ALPHA-7")
-        assert session.get_response() == "ALPHA-7"
-
-        # Latency should be positive
-        assert session.get_latency_ms() > 0
-
-        # Clear
-        session.clear()
-        assert session.get_task() is None
-        assert session.get_response() == ""
-
-    def test_session_evaluation_recording(self) -> None:
-        """Test evaluation recording in session."""
-        from elizaos_rlm_bench.eliza_plugin import (
-            RLMBenchEvaluation,
-            RLMBenchSession,
-        )
-
-        session = RLMBenchSession()
-
-        evaluation = RLMBenchEvaluation(
-            task_id="test-1",
-            predicted_answer="ALPHA-7",
-            expected_answer="ALPHA-7",
-            exact_match=True,
-            contains_answer=True,
-            semantic_similarity=1.0,
-            is_correct=True,
-            latency_ms=50.0,
-        )
-
-        session.record_evaluation(evaluation)
-        retrieved = session.get_evaluation()
-        assert retrieved is not None
-        assert retrieved.task_id == "test-1"
-        assert retrieved.is_correct is True
-        assert retrieved.exact_match is True
-
-    def test_global_session_management(self) -> None:
-        """Test get/set global benchmark session."""
-        from elizaos_rlm_bench.eliza_plugin import (
-            RLMBenchSession,
-            get_benchmark_session,
-            set_benchmark_session,
-        )
-
-        # get_benchmark_session creates a default session
-        session1 = get_benchmark_session()
-        assert session1 is not None
-
-        # set_benchmark_session overrides
-        session2 = RLMBenchSession()
-        set_benchmark_session(session2)
-        assert get_benchmark_session() is session2
-
-        # Clean up
-        set_benchmark_session(session1)
-
-    def test_plugin_creation(self) -> None:
-        """Test get_rlm_bench_plugin returns valid plugin."""
-        from elizaos_rlm_bench.eliza_plugin import get_rlm_bench_plugin
-
-        plugin = get_rlm_bench_plugin()
-
-        assert plugin.name == "rlmBench"
-        assert len(plugin.providers) == 1
-        assert plugin.providers[0].name == "RLM_CONTEXT"
-        assert len(plugin.evaluators) == 1
-        assert plugin.evaluators[0].name == "RLM_BENCH_EVALUATOR"
-        assert len(plugin.actions) == 0  # Uses bootstrap REPLY
-
-    @pytest.mark.asyncio
-    async def test_provider_returns_empty_without_task(self) -> None:
-        """Test provider returns empty when no task is set."""
-        from unittest.mock import MagicMock
-
-        from elizaos_rlm_bench.eliza_plugin import (
-            RLMBenchSession,
-            rlm_bench_provider_get,
-            set_benchmark_session,
-        )
-
-        # Set a clean session with no task
-        session = RLMBenchSession()
-        set_benchmark_session(session)
-
-        runtime = MagicMock()
-        message = MagicMock()
-        state = MagicMock()
-
-        result = await rlm_bench_provider_get(runtime, message, state)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_provider_injects_context(self) -> None:
-        """Test provider injects context when task is active."""
-        from unittest.mock import MagicMock
-
-        from elizaos_rlm_bench.eliza_plugin import (
-            RLMBenchSession,
-            rlm_bench_provider_get,
-            set_benchmark_session,
-        )
-
-        session = RLMBenchSession()
-        session.set_task(
-            task_id="ctx-test",
-            context="The vault code is XYZ789.",
-            question="What is the vault code?",
-            expected_answer="XYZ789",
-            bench_type="s_niah",
-        )
-        set_benchmark_session(session)
-
-        runtime = MagicMock()
-        message = MagicMock()
-        state = MagicMock()
-
-        result = await rlm_bench_provider_get(runtime, message, state)
-
-        assert "vault code is XYZ789" in result.text
-        assert "RLM Benchmark Context" in result.text
-        assert result.values["benchmark_task_id"] == "ctx-test"
-        assert result.values["benchmark_question"] == "What is the vault code?"
-        assert result.values["benchmark_has_context"] is True
-
-    @pytest.mark.asyncio
-    async def test_evaluator_validates_active_task(self) -> None:
-        """Test evaluator validate returns True when task is active."""
-        from unittest.mock import MagicMock
-
-        from elizaos_rlm_bench.eliza_plugin import (
-            RLMBenchSession,
-            rlm_bench_evaluator_validate,
-            set_benchmark_session,
-        )
-
-        session = RLMBenchSession()
-        session.set_task(
-            task_id="val-test",
-            context="...",
-            question="?",
-            expected_answer="A",
-        )
-        set_benchmark_session(session)
-
-        runtime = MagicMock()
-        message = MagicMock()
-
-        result = await rlm_bench_evaluator_validate(runtime, message)
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_evaluator_validates_no_task(self) -> None:
-        """Test evaluator validate returns False when no task is active."""
-        from unittest.mock import MagicMock
-
-        from elizaos_rlm_bench.eliza_plugin import (
-            RLMBenchSession,
-            rlm_bench_evaluator_validate,
-            set_benchmark_session,
-        )
-
-        session = RLMBenchSession()
-        set_benchmark_session(session)
-
-        runtime = MagicMock()
-        message = MagicMock()
-
-        result = await rlm_bench_evaluator_validate(runtime, message)
-        assert result is False
 
 
 class TestReporting:

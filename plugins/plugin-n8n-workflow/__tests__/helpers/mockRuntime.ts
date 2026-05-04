@@ -1,5 +1,5 @@
-import { mock } from 'bun:test';
-import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+import { mock } from "bun:test";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
 type MockFn = ReturnType<typeof mock>;
 
@@ -24,21 +24,23 @@ export function createUseModelMock(schemaResult?: Record<string, unknown>) {
     if (opts?.schema) return Promise.resolve(schemaResult || {});
 
     // Text calls (response formatting) — extract and return the data section
-    const prompt = (opts?.prompt || '') as string;
-    const dataIdx = prompt.lastIndexOf('\n\n{');
+    const prompt = (opts?.prompt || "") as string;
+    const dataIdx = prompt.lastIndexOf("\n\n{");
     if (dataIdx !== -1) return Promise.resolve(prompt.slice(dataIdx + 2));
 
-    return Promise.resolve('');
+    return Promise.resolve("");
   });
 }
 
-export function createMockRuntime(options: MockRuntimeOptions = {}): IAgentRuntime {
+export function createMockRuntime(
+  options: MockRuntimeOptions = {},
+): IAgentRuntime {
   const services = options.services || {};
   const settings = options.settings || {};
   const cache: Record<string, unknown> = options.cache || {};
 
   return {
-    agentId: options.agentId || 'agent-001',
+    agentId: options.agentId || "agent-001",
     getService: mock((type: string) => services[type] || null),
     getSetting: mock((key: string) => settings[key] ?? null),
     useModel: options.useModel || createUseModelMock(),
@@ -56,11 +58,11 @@ export function createMockRuntime(options: MockRuntimeOptions = {}): IAgentRunti
 
 export function createMockMessage(overrides?: Partial<Memory>): Memory {
   return {
-    id: 'msg-001',
-    entityId: 'user-001',
-    agentId: 'agent-001',
-    roomId: 'room-001',
-    content: { text: 'Test message' },
+    id: "msg-001",
+    entityId: "user-001",
+    agentId: "agent-001",
+    roomId: "room-001",
+    content: { text: "Test message" },
     createdAt: Date.now(),
     ...overrides,
   } as Memory;
@@ -70,20 +72,22 @@ export function createMockState(overrides?: Partial<State>): State {
   return {
     data: {},
     values: {},
-    text: '',
+    text: "",
     ...overrides,
   } as State;
 }
 
 export function createMockCallback() {
-  return mock((_response: { text: string; success?: boolean }) => Promise.resolve([]));
+  return mock((_response: { text: string; success?: boolean }) =>
+    Promise.resolve([]),
+  );
 }
 
 /**
  * Helper to get the last callback result with both text and success status
  */
 export function getLastCallbackResult(
-  callback: MockFn
+  callback: MockFn,
 ): { text: string; success?: boolean } | undefined {
   const calls = (callback as any).mock.calls;
   if (calls.length === 0) return undefined;

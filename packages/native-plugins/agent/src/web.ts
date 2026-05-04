@@ -1,5 +1,10 @@
 import { WebPlugin } from "@capacitor/core";
-import type { AgentPlugin, AgentStatus, ChatResult } from "./definitions";
+import type {
+  AgentPlugin,
+  AgentStatus,
+  ChatResult,
+  LocalAgentTokenResult,
+} from "./definitions";
 
 interface ElizaWindow extends Window {
   __ELIZA_API_BASE__?: string;
@@ -196,5 +201,13 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       return { text: "Agent API not available", agentName: "System" };
     }
     return this.chatViaConversation(options.text);
+  }
+
+  async getLocalAgentToken(): Promise<LocalAgentTokenResult> {
+    const token = this.apiToken();
+    return {
+      available: Boolean(token),
+      token,
+    };
   }
 }

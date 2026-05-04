@@ -91,26 +91,14 @@ async def main():
 asyncio.run(main())
 ```
 
-### Using with ElizaOS Runtime
+### Bridge integration
 
-```python
-from elizaos.runtime import AgentRuntime
-from elizaos_terminal_bench import TerminalBenchRunner
-
-async def run_with_runtime():
-    # Initialize ElizaOS runtime
-    runtime = AgentRuntime()
-    await runtime.initialize()
-    
-    # Create runner with runtime
-    runner = TerminalBenchRunner(runtime=runtime)
-    await runner.setup()
-    
-    # Run benchmark
-    report = await runner.run()
-    
-    await runtime.stop()
-```
+All runs are routed through the elizaOS TypeScript benchmark bridge
+(`packages/app-core/src/benchmark/server.ts`). The CLI spawns the bridge
+automatically when `ELIZA_BENCH_URL` is unset, and `TerminalBenchRunner`
+delegates per-task decision-making to `ElizaBridgeTerminalAgent` (in
+`eliza_adapter.terminal_bench`). The Python `AgentRuntime` path has
+been removed.
 
 ## Configuration Options
 

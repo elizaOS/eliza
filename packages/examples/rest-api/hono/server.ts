@@ -72,7 +72,9 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
       if (process.env.OPENAI_API_KEY) {
         plugins.push(openaiPlugin);
       } else {
-        console.log("💡 No OPENAI_API_KEY found, using elizaClassicPlugin for responses");
+        console.log(
+          "💡 No OPENAI_API_KEY found, using elizaClassicPlugin for responses",
+        );
         plugins.push(elizaClassicPlugin);
       }
 
@@ -91,7 +93,10 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
       console.error("❌ Failed to initialize elizaOS runtime:", message);
 
       // Check if it's a recoverable error
-      if (message.includes("Extension bundle not found") || message.includes("migrations")) {
+      if (
+        message.includes("Extension bundle not found") ||
+        message.includes("migrations")
+      ) {
         console.log("⚠️ Database initialization issue.");
         console.log("💡 Falling back to classic ELIZA mode.");
         useClassicFallback = true;
@@ -173,10 +178,13 @@ app.post("/chat", async (c) => {
   const rt = await getRuntime();
 
   if (!rt) {
-    return c.json({
-      error: "Runtime not initialized",
-      details: initError,
-    }, 503);
+    return c.json(
+      {
+        error: "Runtime not initialized",
+        details: initError,
+      },
+      503,
+    );
   }
 
   const userId = (clientUserId || uuidv4()) as UUID;
@@ -208,16 +216,12 @@ app.post("/chat", async (c) => {
   // Process message through the canonical elizaOS pipeline
   let responseText = "";
 
-  await rt.messageService?.handleMessage(
-    rt,
-    messageMemory,
-    async (content) => {
-      if (content?.text) {
-        responseText += content.text;
-      }
-      return [];
-    },
-  );
+  await rt.messageService?.handleMessage(rt, messageMemory, async (content) => {
+    if (content?.text) {
+      responseText += content.text;
+    }
+    return [];
+  });
 
   return c.json({
     response: responseText || "I processed your message but have no response.",
@@ -239,7 +243,9 @@ getRuntime().then((rt) => {
     console.log(`📚 Endpoints:`);
     console.log(`   GET  /       - Agent info`);
     console.log(`   GET  /health - Health check`);
-    console.log(`   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`);
+    console.log(
+      `   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`,
+    );
   }
 });
 

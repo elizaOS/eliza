@@ -90,7 +90,9 @@ for (const [packageName, packageJsonPath] of packages) {
   });
 
   if (!rawTags) {
-    console.log(`- skip ${packageName} (${packageJsonPath}): no dist-tags found`);
+    console.log(
+      `- skip ${packageName} (${packageJsonPath}): no dist-tags found`,
+    );
     continue;
   }
 
@@ -98,13 +100,17 @@ for (const [packageName, packageJsonPath] of packages) {
   try {
     tags = JSON.parse(rawTags);
   } catch (_error) {
-    console.log(`- skip ${packageName} (${packageJsonPath}): invalid dist-tags`);
+    console.log(
+      `- skip ${packageName} (${packageJsonPath}): invalid dist-tags`,
+    );
     continue;
   }
 
   const sourceVersion = tags[sourceTag];
   if (!sourceVersion) {
-    console.log(`- skip ${packageName} (${packageJsonPath}): no ${sourceTag} tag`);
+    console.log(
+      `- skip ${packageName} (${packageJsonPath}): no ${sourceTag} tag`,
+    );
     continue;
   }
 

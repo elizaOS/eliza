@@ -22,11 +22,6 @@ interface AccountListProps {
   providerId: LinkedAccountProviderId;
 }
 
-const SUBSCRIPTION_PROVIDERS = new Set<LinkedAccountProviderId>([
-  "anthropic-subscription",
-  "openai-codex",
-]);
-
 export function AccountList({ providerId }: AccountListProps) {
   const { t } = useApp();
   const accounts = useAccounts();
@@ -44,13 +39,6 @@ export function AccountList({ providerId }: AccountListProps) {
         : [],
     [providerEntry],
   );
-
-  const subscriptionProvider = SUBSCRIPTION_PROVIDERS.has(providerId);
-  // The accounts API currently 501s on POST for *-api providers (the
-  // credential-storage layer doesn't yet write API-key records for
-  // those). The pool / GET still work for any pre-existing entries, so
-  // render the list either way and gate the Add button.
-  const addDisabled = !subscriptionProvider;
 
   const handleMove = useCallback(
     async (accountId: string, direction: "up" | "down") => {
@@ -123,16 +111,7 @@ export function AccountList({ providerId }: AccountListProps) {
             type="button"
             variant="default"
             size="sm"
-            disabled={addDisabled}
             onClick={() => setAddDialogOpen(true)}
-            title={
-              addDisabled
-                ? t("accounts.add.disabledHint", {
-                    defaultValue:
-                      "API-key accounts for this provider are not yet supported.",
-                  })
-                : undefined
-            }
             className="h-8 gap-1 px-2.5 text-xs"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />

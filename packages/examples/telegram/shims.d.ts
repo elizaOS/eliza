@@ -4,4 +4,3 @@ declare module "@elizaos/plugin-telegram" {
   const telegramPlugin: Plugin;
   export default telegramPlugin;
 }
-

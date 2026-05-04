@@ -52,7 +52,10 @@ export function createGoogleClient(runtime: IAgentRuntime) {
   return createVertex({ project, location });
 }
 
-export function createModelForName(runtime: IAgentRuntime, modelName: string): LanguageModel {
+export function createModelForName(
+  runtime: IAgentRuntime,
+  modelName: string,
+): LanguageModel {
   const provider = detectProvider(modelName);
   if (provider === "google") {
     return createGoogleClient(runtime)(modelName);

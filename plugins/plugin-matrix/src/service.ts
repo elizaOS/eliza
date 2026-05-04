@@ -5,8 +5,8 @@
  */
 
 import { type EventPayload, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { RoomMessageEventContent } from "matrix-js-sdk";
 import * as sdk from "matrix-js-sdk";
-import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events.js";
 import {
   getMatrixLocalpart,
   type IMatrixService,

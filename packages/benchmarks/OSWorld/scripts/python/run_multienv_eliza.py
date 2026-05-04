@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Run OSWorld benchmark with the Eliza agent.
+Run OSWorld benchmark with the Eliza bridge agent.
 
-Uses Eliza's message_service.handle_message() for all decision-making.
-Supports both single-task and multi-env parallel execution.
+Routes ALL decision-making through the elizaOS TypeScript benchmark
+bridge (``packages/app-core/src/benchmark/server.ts``); the legacy
+Python ``AgentRuntime`` path has been removed.
 
 Usage:
     # Single task (Chrome - Enable Do Not Track)
@@ -42,23 +43,14 @@ import json
 import logging
 import os
 import sys
-import time
 
 # Ensure the OSWorld root is on the Python path
 OSWORLD_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if OSWORLD_ROOT not in sys.path:
     sys.path.insert(0, OSWORLD_ROOT)
 
-# Ensure protobuf generated modules are importable (Eliza Python package)
-_generated_dir = os.path.normpath(os.path.join(
-    OSWORLD_ROOT, "..", "..", "eliza", "packages", "python",
-    "elizaos", "types", "generated",
-))
-if os.path.isdir(_generated_dir) and _generated_dir not in sys.path:
-    sys.path.insert(0, _generated_dir)
-
 from desktop_env.desktop_env import DesktopEnv
-from lib_run_single import run_single_example, setup_logger
+from lib_run_single import run_single_example
 
 logger = logging.getLogger("osworld.eliza.runner")
 
@@ -108,31 +100,6 @@ def parse_args() -> argparse.Namespace:
                         help="Number of parallel VMs")
     parser.add_argument("--sleep_after_execution", type=float, default=3.0,
                         help="Sleep after each action execution")
-
-    # API keys
-    parser.add_argument("--groq_api_key", type=str, default=None,
-                        help="Groq API key (or set GROQ_API_KEY env var)")
-
-    # Eliza TS bridge mode (replaces Python AgentRuntime path)
-    parser.add_argument(
-        "--use_bridge",
-        action="store_true",
-        default=True,
-        help=(
-            "Route decision-making through the elizaOS TypeScript "
-            "benchmark bridge instead of the Python AgentRuntime. "
-            "Default: enabled (the Python runtime path is being removed)."
-        ),
-    )
-    parser.add_argument(
-        "--use_python_runtime",
-        action="store_true",
-        help=(
-            "Force the legacy Python AgentRuntime decision loop "
-            "(takes precedence over --use_bridge). The Python runtime "
-            "is being removed; this flag is for short-term comparisons only."
-        ),
-    )
 
     return parser.parse_args()
 
@@ -185,52 +152,28 @@ def load_tasks(args: argparse.Namespace) -> list[dict[str, object]]:
 
 
 def create_eliza_agent(args: argparse.Namespace) -> object:
-    """Create and initialize the Eliza OSWorld agent.
+    """Create and initialize the elizaOS bridge OSWorld agent.
 
-    Selects between the legacy Python ``AgentRuntime`` agent and the
-    ``ElizaBridgeOSWorldAgent`` (which routes through the elizaOS TS
-    benchmark bridge). The Python runtime path is being removed; the
-    bridge is the default.
+    All decision-making is routed through the elizaOS TypeScript
+    benchmark bridge — the legacy Python ``AgentRuntime`` path has been
+    removed.
     """
-    use_bridge = args.use_bridge and not args.use_python_runtime
-    if use_bridge:
-        # Spawn the bridge server if no remote URL was provided.
-        if not os.environ.get("ELIZA_BENCH_URL"):
-            from eliza_adapter.server_manager import ElizaServerManager
+    if not os.environ.get("ELIZA_BENCH_URL"):
+        from eliza_adapter.server_manager import ElizaServerManager
 
-            mgr = ElizaServerManager()
-            mgr.start()
-            os.environ["ELIZA_BENCH_TOKEN"] = mgr.token
-            os.environ.setdefault(
-                "ELIZA_BENCH_URL", f"http://localhost:{mgr.port}"
-            )
-
-        from eliza_adapter.osworld import ElizaBridgeOSWorldAgent
-
-        agent = ElizaBridgeOSWorldAgent(
-            platform="ubuntu",
-            model=args.model,
-            max_tokens=args.max_tokens,
-            temperature=args.temperature,
-            action_space=args.action_space,
-            observation_type=args.observation_type,
-            max_trajectory_length=args.max_trajectory_length,
-            a11y_tree_max_tokens=args.a11y_tree_max_tokens,
-            max_steps=args.max_steps,
-            client_password="password",
-            screen_width=1920,
-            screen_height=1080,
+        mgr = ElizaServerManager()
+        mgr.start()
+        os.environ["ELIZA_BENCH_TOKEN"] = mgr.token
+        os.environ.setdefault(
+            "ELIZA_BENCH_URL", f"http://localhost:{mgr.port}"
         )
-        asyncio.run(agent.async_init())
-        return agent
 
-    from mm_agents.eliza_agent import ElizaOSWorldAgent
+    from eliza_adapter.osworld import ElizaBridgeOSWorldAgent
 
-    agent = ElizaOSWorldAgent(
+    agent = ElizaBridgeOSWorldAgent(
         platform="ubuntu",
         model=args.model,
         max_tokens=args.max_tokens,
-        top_p=0.9,
         temperature=args.temperature,
         action_space=args.action_space,
         observation_type=args.observation_type,
@@ -238,14 +181,10 @@ def create_eliza_agent(args: argparse.Namespace) -> object:
         a11y_tree_max_tokens=args.a11y_tree_max_tokens,
         max_steps=args.max_steps,
         client_password="password",
-        groq_api_key=args.groq_api_key or os.environ.get("GROQ_API_KEY"),
         screen_width=1920,
         screen_height=1080,
     )
-
-    # Initialize async runtime
     asyncio.run(agent.async_init())
-
     return agent
 
 

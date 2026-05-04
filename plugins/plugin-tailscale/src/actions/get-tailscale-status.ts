@@ -63,7 +63,10 @@ export const getTailscaleStatusAction: Action = {
   },
   examples: [
     [
-      { name: 'user', content: { text: 'What is the tailscale tunnel status?' } },
+      {
+        name: 'user',
+        content: { text: 'What is the tailscale tunnel status?' },
+      },
       {
         name: 'assistant',
         content: {

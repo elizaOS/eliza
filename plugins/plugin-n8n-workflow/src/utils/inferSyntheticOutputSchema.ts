@@ -34,12 +34,18 @@ function inferSummarizeFields(node: N8nNode): string[] | null {
   const fields = (node.parameters as Record<string, unknown> | undefined)?.fieldsToSummarize as
     | { values?: Array<{ aggregation?: string; field?: string }> }
     | undefined;
-  if (!fields?.values || !Array.isArray(fields.values)) return null;
+  if (!fields?.values || !Array.isArray(fields.values)) {
+    return null;
+  }
   const out: string[] = [];
   for (const entry of fields.values) {
-    if (typeof entry?.aggregation !== 'string' || typeof entry?.field !== 'string') continue;
+    if (typeof entry?.aggregation !== 'string' || typeof entry?.field !== 'string') {
+      continue;
+    }
     const prefix = SUMMARIZE_AGG_PREFIX[entry.aggregation];
-    if (!prefix) continue;
+    if (!prefix) {
+      continue;
+    }
     out.push(`${prefix}_${entry.field}`);
   }
   return out.length > 0 ? out : null;
@@ -50,7 +56,9 @@ function inferSummarizeFields(node: N8nNode): string[] | null {
  *  (legacy Set node). */
 function inferSetFields(node: N8nNode): string[] | null {
   const params = node.parameters as Record<string, unknown> | undefined;
-  if (!params) return null;
+  if (!params) {
+    return null;
+  }
 
   // Modern Set / EditFields shape: assignments.assignments[i].name
   const modern = params.assignments as { assignments?: Array<{ name?: string }> } | undefined;
@@ -58,7 +66,9 @@ function inferSetFields(node: N8nNode): string[] | null {
     const names = modern.assignments
       .map((a) => a?.name)
       .filter((n): n is string => typeof n === 'string' && n.length > 0);
-    if (names.length > 0) return names;
+    if (names.length > 0) {
+      return names;
+    }
   }
 
   // Legacy Set shape: values.{string,number,boolean}[i].name
@@ -66,12 +76,18 @@ function inferSetFields(node: N8nNode): string[] | null {
   if (legacy && typeof legacy === 'object') {
     const names: string[] = [];
     for (const arr of Object.values(legacy)) {
-      if (!Array.isArray(arr)) continue;
+      if (!Array.isArray(arr)) {
+        continue;
+      }
       for (const v of arr) {
-        if (typeof v?.name === 'string' && v.name.length > 0) names.push(v.name);
+        if (typeof v?.name === 'string' && v.name.length > 0) {
+          names.push(v.name);
+        }
       }
     }
-    if (names.length > 0) return names;
+    if (names.length > 0) {
+      return names;
+    }
   }
 
   return null;
@@ -112,7 +128,9 @@ function inferGmailSimpleFields(node: N8nNode): string[] | null {
   const params = node.parameters as Record<string, unknown> | undefined;
   // simple=true is the default in n8n's Gmail node. Treat both `true` and
   // `undefined` as simple-mode unless explicitly disabled.
-  if (params?.simple === false) return null;
+  if (params?.simple === false) {
+    return null;
+  }
   return GMAIL_SIMPLE_MODE_FIELDS;
 }
 

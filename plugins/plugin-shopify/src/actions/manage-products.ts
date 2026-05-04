@@ -206,7 +206,8 @@ export const manageProductsAction: Action = {
 
     const text =
       typeof message.content?.text === "string" ? message.content.text : "";
-    const intent = readProductIntent(options) ?? (await classifyIntent(runtime, text));
+    const intent =
+      readProductIntent(options) ?? (await classifyIntent(runtime, text));
 
     if (!intent) {
       await callback?.({
@@ -298,7 +299,10 @@ export const manageProductsAction: Action = {
         ].join("\n");
         if (!isConfirmed(options)) {
           await callback?.({ text: preview });
-          return confirmationRequired(preview, { intent, productId: target.id });
+          return confirmationRequired(preview, {
+            intent,
+            productId: target.id,
+          });
         }
 
         const updated = await svc.updateProduct(target.id, updateInput);

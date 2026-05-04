@@ -13,10 +13,15 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["android/src/main/", "android/build.gradle", "dist/"],
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/"
+  ],
   "scripts": {
     "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist"
+    "clean": "rimraf ./dist",
+    "prepublishOnly": "npm run build"
   },
   "license": "MIT",
   "capacitor": {
@@ -26,20 +31,26 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
+    "@capacitor/core": "^8.3.1",
     "rimraf": "^6.0.0",
-    "rollup": "^4.0.0",
+    "rollup": "^4.60.2",
     "typescript": "^6.0.0"
   },
   "peerDependencies": {
-    "@capacitor/core": "^8.0.0"
+    "@capacitor/core": "^8.3.1"
   },
   "elizaos": {
-    "platforms": ["browser", "node"],
+    "platforms": [
+      "browser",
+      "node"
+    ],
     "runtime": "both",
     "platformDetails": {
       "browser": "Web fallback throws — Wi-Fi is only available on Android.",
       "android": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

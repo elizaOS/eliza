@@ -217,12 +217,6 @@ class TerminalBenchConfig:
     verbose: bool = False
     dry_run: bool = False
     oracle: bool = False
-    
-    # Agent mode
-    # When True, uses the full ElizaOS runtime with message_service.handle_message(),
-    # actions, providers, and evaluators. When False, uses standalone agent with
-    # direct OpenAI API calls.
-    use_eliza_agent: bool = True
 
 
 # Leaderboard scores as of December 2025

@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-contacts",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
   "main": "./src/index.ts",
@@ -36,5 +35,8 @@
       "androidOnly": true,
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

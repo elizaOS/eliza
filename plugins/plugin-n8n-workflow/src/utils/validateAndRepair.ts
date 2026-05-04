@@ -61,9 +61,13 @@ const LOG_SRC = 'plugin:n8n-workflow:utils:validate';
  *  when all valid versions are smaller than the requested one (LLM picked
  *  a higher number — clamp down). */
 function clampTypeVersion(requested: number, validVersions: number[]): number | null {
-  if (validVersions.length === 0) return null;
+  if (validVersions.length === 0) {
+    return null;
+  }
   const sorted = [...validVersions].sort((a, b) => a - b);
-  if (sorted.includes(requested)) return null; // already valid
+  if (sorted.includes(requested)) {
+    return null;
+  } // already valid
   // Highest version ≤ requested, else highest available.
   const candidates = sorted.filter((v) => v <= requested);
   return candidates.length > 0 ? candidates[candidates.length - 1] : sorted[sorted.length - 1];
@@ -90,7 +94,9 @@ function applyTypeVersionClamp(
     if (catalogNumeric.length > 0) {
       const runtimeSet = new Set(runtime);
       validVersions = catalogNumeric.filter((v) => runtimeSet.has(v));
-      if (validVersions.length === 0) validVersions = runtime; // catalog drift — trust runtime
+      if (validVersions.length === 0) {
+        validVersions = runtime;
+      } // catalog drift — trust runtime
     } else {
       validVersions = runtime;
     }
@@ -98,9 +104,13 @@ function applyTypeVersionClamp(
     validVersions = catalogNumeric;
   }
 
-  if (validVersions.length === 0) return;
+  if (validVersions.length === 0) {
+    return;
+  }
   const clamped = clampTypeVersion(node.typeVersion, validVersions);
-  if (clamped === null) return;
+  if (clamped === null) {
+    return;
+  }
   const source = runtime ? 'runtime∩catalog' : 'catalog';
   repairs.push({
     kind: 'typeVersionClamp',
@@ -123,17 +133,25 @@ interface CredentialDef {
  *  doesn't already set one), back-fill it. Closes the Gmail-missing-auth
  *  bug surfaced in Session 20 dogfood. */
 function applyAuthenticationBackfill(node: N8nNode, def: NodeDefinition, repairs: Repair[]): void {
-  if (!node.credentials) return;
+  if (!node.credentials) {
+    return;
+  }
   const attachedTypes = Object.keys(node.credentials);
-  if (attachedTypes.length !== 1) return; // ambiguous → leave alone
+  if (attachedTypes.length !== 1) {
+    return;
+  } // ambiguous → leave alone
   const [credType] = attachedTypes;
 
   const defCreds = (def.credentials ?? []) as CredentialDef[];
   const credDef = defCreds.find((c) => c.name === credType);
-  if (!credDef) return;
+  if (!credDef) {
+    return;
+  }
 
   const authOpts = credDef.displayOptions?.show?.authentication;
-  if (!authOpts || authOpts.length !== 1) return;
+  if (!authOpts || authOpts.length !== 1) {
+    return;
+  }
 
   const requiredAuth = authOpts[0];
   const params = (node.parameters ?? {}) as Record<string, unknown>;
@@ -181,7 +199,9 @@ function buildUpstreamMap(workflow: N8nWorkflow): Map<string, string[]> {
 function knownOutputFieldsForNode(node: N8nNode): string[] | null {
   // 1. Synthetic / parameter-aware schemas (Summarize, Set, Gmail simple-mode)
   const synthetic = inferSyntheticOutputSchema(node);
-  if (synthetic !== null) return synthetic;
+  if (synthetic !== null) {
+    return synthetic;
+  }
 
   // 2. Static output-schema catalog (Gmail non-simple, Slack, Discord etc.)
   if (
@@ -189,13 +209,17 @@ function knownOutputFieldsForNode(node: N8nNode): string[] | null {
     typeof node.parameters?.operation === 'string'
   ) {
     const schema = loadOutputSchema(node.type, node.parameters.resource, node.parameters.operation);
-    if (schema) return schema.fields;
+    if (schema) {
+      return schema.fields;
+    }
   }
 
   // 3. Trigger schemas (gmailTrigger, etc.) — respect simple flag
   if (node.type.toLowerCase().includes('trigger')) {
     const triggerSchema = loadTriggerOutputSchema(node.type, node.parameters);
-    if (triggerSchema) return triggerSchema.fields;
+    if (triggerSchema) {
+      return triggerSchema.fields;
+    }
   }
 
   return null;
@@ -211,12 +235,18 @@ function validateOutputFieldReferences(
 ): void {
   const upstream = buildUpstreamMap(workflow);
   const nodeByName = new Map<string, N8nNode>();
-  for (const n of workflow.nodes) nodeByName.set(n.name, n);
+  for (const n of workflow.nodes) {
+    nodeByName.set(n.name, n);
+  }
 
   for (const node of workflow.nodes) {
-    if (!node.parameters || typeof node.parameters !== 'object') continue;
+    if (!node.parameters || typeof node.parameters !== 'object') {
+      continue;
+    }
     const refs = parseExpressions(node.parameters as Record<string, unknown>);
-    if (refs.length === 0) continue;
+    if (refs.length === 0) {
+      continue;
+    }
 
     for (const ref of refs) {
       // Determine which upstream node's output this reference reads from.
@@ -233,14 +263,22 @@ function validateOutputFieldReferences(
           continue;
         }
       }
-      if (!sourceNode) continue;
+      if (!sourceNode) {
+        continue;
+      }
 
       const fields = knownOutputFieldsForNode(sourceNode);
-      if (!fields) continue; // unknowable schema → skip
+      if (!fields) {
+        continue;
+      } // unknowable schema → skip
 
       const topField = ref.path[0];
-      if (!topField) continue;
-      if (fields.includes(topField)) continue; // exact match
+      if (!topField) {
+        continue;
+      }
+      if (fields.includes(topField)) {
+        continue;
+      } // exact match
 
       // Case-insensitive deterministic correction
       const ciMatch = fields.find((f) => f.toLowerCase() === topField.toLowerCase());
@@ -320,29 +358,45 @@ function applyAggregationSourceFieldFix(
 ): void {
   const upstream = buildUpstreamMap(workflow);
   const nodeByName = new Map<string, N8nNode>();
-  for (const n of workflow.nodes) nodeByName.set(n.name, n);
+  for (const n of workflow.nodes) {
+    nodeByName.set(n.name, n);
+  }
 
   for (const node of workflow.nodes) {
-    if (node.type !== 'n8n-nodes-base.summarize') continue;
+    if (node.type !== 'n8n-nodes-base.summarize') {
+      continue;
+    }
 
     const params = node.parameters as Record<string, unknown> | undefined;
     const fts = params?.fieldsToSummarize as
       | { values?: Array<{ aggregation?: string; field?: string }> }
       | undefined;
     const values = fts?.values;
-    if (!Array.isArray(values) || values.length === 0) continue;
+    if (!Array.isArray(values) || values.length === 0) {
+      continue;
+    }
 
     const parents = upstream.get(node.name) ?? [];
-    if (parents.length !== 1) continue; // ambiguous → skip (don't false-error)
+    if (parents.length !== 1) {
+      continue;
+    } // ambiguous → skip (don't false-error)
     const sourceNode = nodeByName.get(parents[0]);
-    if (!sourceNode) continue;
+    if (!sourceNode) {
+      continue;
+    }
 
     const fields = knownOutputFieldsForNode(sourceNode);
-    if (!fields) continue; // unknowable schema → skip
+    if (!fields) {
+      continue;
+    } // unknowable schema → skip
 
     for (const entry of values) {
-      if (typeof entry?.field !== 'string' || entry.field.length === 0) continue;
-      if (fields.includes(entry.field)) continue; // exact match
+      if (typeof entry?.field !== 'string' || entry.field.length === 0) {
+        continue;
+      }
+      if (fields.includes(entry.field)) {
+        continue;
+      } // exact match
       const ciMatch = fields.find((f) => f.toLowerCase() === entry.field!.toLowerCase());
       if (ciMatch) {
         const oldField = entry.field;
@@ -376,9 +430,13 @@ function applyRequiredParameterPreflight(
   const clarifications: string[] = [];
   for (const node of workflow.nodes) {
     const def = defByType.get(node.type);
-    if (!def) continue;
+    if (!def) {
+      continue;
+    }
     for (const prop of def.properties ?? []) {
-      if (!prop.required) continue;
+      if (!prop.required) {
+        continue;
+      }
       const params = (node.parameters ?? {}) as Record<string, unknown>;
       if (params[prop.name] === undefined || params[prop.name] === '') {
         clarifications.push(
@@ -387,7 +445,9 @@ function applyRequiredParameterPreflight(
       }
     }
   }
-  if (clarifications.length === 0) return;
+  if (clarifications.length === 0) {
+    return;
+  }
   workflow._meta = workflow._meta ?? {};
   const existing = workflow._meta.requiresClarification ?? [];
   // Avoid duplicate-suffix clutter from prior catalog passes.
@@ -437,7 +497,9 @@ function deduplicateNodeNames(workflow: N8nWorkflow, repairs: Repair[]): void {
 // ─── Check 6 ────────────────────────────────────────────────────────────────
 
 function dropDanglingEdges(workflow: N8nWorkflow, repairs: Repair[]): void {
-  if (!workflow.connections) return;
+  if (!workflow.connections) {
+    return;
+  }
   const nodeNames = new Set(workflow.nodes.map((n) => n.name));
   for (const fromName of Object.keys(workflow.connections)) {
     const outputs = workflow.connections[fromName];
@@ -447,7 +509,7 @@ function dropDanglingEdges(workflow: N8nWorkflow, repairs: Repair[]): void {
       repairs.push({
         kind: 'droppedDanglingEdge',
         node: fromName,
-        detail: `dropped connections entry for non-existent node`,
+        detail: 'dropped connections entry for non-existent node',
       });
       continue;
     }

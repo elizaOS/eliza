@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-nvidiacloud",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.536",
   "description": "NVIDIA NIM cloud model provider for elizaOS agents.",
   "type": "module",
   "main": "dist/index.js",
@@ -30,14 +30,14 @@
   "devDependencies": {
     "@types/json-schema": "^7.0.15",
     "@types/node": "24.12.2",
-    "prettier": "3.6.2",
+    "prettier": "^3.8.3",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
     "vitest": "4.1.5"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^3.25.76 || ^4.1.8"
+    "zod": "^4.4.2"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",

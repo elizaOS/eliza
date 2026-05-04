@@ -56,7 +56,7 @@ import {
   type UiTheme,
   useApp,
 } from "../../state";
-import { resolveAppAssetUrl } from "../../utils";
+import { preOpenWindow, resolveAppAssetUrl } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 
@@ -679,8 +679,9 @@ export function RuntimeGate() {
   }, [subView, cloudStage, finishAsCloud, provisionAndConnect, t]);
 
   const handleLogin = useCallback(async () => {
+    const win = preOpenWindow();
     setError(null);
-    await handleCloudLogin();
+    await handleCloudLogin(win);
   }, [handleCloudLogin]);
 
   const handleRefreshAgents = useCallback(() => {

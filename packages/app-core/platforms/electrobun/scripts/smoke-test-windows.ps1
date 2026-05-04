@@ -808,7 +808,7 @@ try {
       # Method 2: curl.exe (ships with Windows 10+, uses its own network stack).
       if (-not $healthy) {
         try {
-          $curlResult = & "$env:SystemRoot\System32\curl.exe" -s -o NUL -w "%{http_code}" $uri --connect-timeout 3 --noproxy "127.0.0.1" 2>$null
+          $curlResult = & "$env:SystemRoot\System32\curl.exe" -s -o NUL -w "%{http_code}" $uri --connect-timeout 3 --max-time 5 --noproxy "127.0.0.1" 2>$null
           if ($curlResult -eq "200" -or $curlResult -eq "401") {
             $healthy = $true
             $healthCheckMethod = "curl.exe"

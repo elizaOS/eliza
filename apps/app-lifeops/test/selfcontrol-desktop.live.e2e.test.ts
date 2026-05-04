@@ -8,12 +8,10 @@ import { afterAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import { req } from "../../../packages/app-core/test/helpers/http";
 
-const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const CI_ENABLED = /^(1|true)$/i.test(process.env.CI ?? "");
-const HEADLESS_DESKTOP_SMOKE =
-  process.env.ELIZA_DESKTOP_HEADLESS_SMOKE === "1";
+const HEADLESS_DESKTOP_SMOKE = process.env.ELIZA_DESKTOP_HEADLESS_SMOKE === "1";
 const WATCH_DESKTOP_SUPPORTED =
   process.platform === "darwin" &&
   (!CI_ENABLED || process.env.ELIZA_LIVE_DESKTOP_WATCH_TEST === "1");

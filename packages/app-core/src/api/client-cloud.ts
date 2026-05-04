@@ -3,6 +3,7 @@
  * export/import, direct cloud auth, bug reports.
  */
 
+import { getBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -45,6 +46,44 @@ import type {
 // ---------------------------------------------------------------------------
 
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
+const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+
+type DirectCloudAgent = {
+  id?: string;
+  agentId?: string;
+  agentName?: string;
+  name?: string;
+  status?: string;
+  databaseStatus?: string;
+  database_status?: string;
+  bridgeUrl?: string | null;
+  bridge_url?: string | null;
+  webUiUrl?: string | null;
+  web_ui_url?: string | null;
+  containerUrl?: string | null;
+  errorMessage?: string | null;
+  error_message?: string | null;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  lastHeartbeatAt?: string | null;
+  last_heartbeat_at?: string | null;
+  agentConfig?: Record<string, unknown>;
+  agent_config?: Record<string, unknown>;
+};
+
+type DirectCloudJob = {
+  id?: string;
+  type?: string;
+  status?: string;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  attempts?: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
+};
 
 function isCloudRouteNotFound(error: unknown): error is ApiError {
   return (
@@ -52,6 +91,109 @@ function isCloudRouteNotFound(error: unknown): error is ApiError {
     "status" in error &&
     (error as ApiError).status === 404
   );
+}
+
+function originsMatch(left: string, right: string): boolean {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+function isDirectCloudBase(client: ElizaClient): boolean {
+  const baseUrl = client.getBaseUrl().trim();
+  if (!baseUrl) return false;
+
+  const configuredCloudBase =
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+  if (originsMatch(baseUrl, configuredCloudBase)) return true;
+
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "elizacloud.ai" || host === "www.elizacloud.ai";
+  } catch {
+    return false;
+  }
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
+  const id = stringOrNull(input.agentId) ?? stringOrNull(input.id) ?? "";
+  const agentName =
+    stringOrNull(input.agentName) ?? stringOrNull(input.name) ?? id;
+  const bridgeUrl = input.bridgeUrl ?? input.bridge_url ?? null;
+  const webUiUrl = input.webUiUrl ?? input.web_ui_url ?? null;
+  const createdAt =
+    stringOrNull(input.createdAt) ??
+    stringOrNull(input.created_at) ??
+    new Date(0).toISOString();
+  const updatedAt =
+    stringOrNull(input.updatedAt) ??
+    stringOrNull(input.updated_at) ??
+    createdAt;
+
+  return {
+    agent_id: id,
+    agent_name: agentName,
+    node_id: null,
+    container_id: null,
+    headscale_ip: null,
+    bridge_url: bridgeUrl,
+    web_ui_url: webUiUrl,
+    status: stringOrNull(input.status) ?? "unknown",
+    agent_config: input.agentConfig ?? input.agent_config ?? {},
+    created_at: createdAt,
+    updated_at: updatedAt,
+    containerUrl: input.containerUrl ?? bridgeUrl ?? "",
+    webUiUrl,
+    database_status:
+      stringOrNull(input.databaseStatus) ??
+      stringOrNull(input.database_status) ??
+      "unknown",
+    error_message: input.errorMessage ?? input.error_message ?? null,
+    last_heartbeat_at: input.lastHeartbeatAt ?? input.last_heartbeat_at ?? null,
+  };
+}
+
+function toCloudCompatJob(input: DirectCloudJob): CloudCompatJob {
+  const status: CloudCompatJob["status"] = (() => {
+    switch (input.status) {
+      case "completed":
+      case "failed":
+      case "retrying":
+        return input.status;
+      case "in_progress":
+      case "processing":
+        return "processing";
+      default:
+        return "queued";
+    }
+  })();
+  const id = stringOrNull(input.id) ?? "";
+  const createdAt = stringOrNull(input.createdAt) ?? new Date(0).toISOString();
+  const completedAt = input.completedAt ?? null;
+
+  return {
+    jobId: id,
+    type: stringOrNull(input.type) ?? "agent_provision",
+    status,
+    data: {},
+    result: input.result ?? null,
+    error: input.error ?? null,
+    createdAt,
+    startedAt: input.startedAt ?? null,
+    completedAt,
+    retryCount: input.attempts ?? 0,
+    id,
+    name: stringOrNull(input.type) ?? "agent_provision",
+    state: status,
+    created_on: createdAt,
+    completed_on: completedAt,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -452,6 +594,18 @@ ElizaClient.prototype.cloudDisconnect = async function (this: ElizaClient) {
 ElizaClient.prototype.getCloudCompatAgents = async function (
   this: ElizaClient,
 ) {
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: DirectCloudAgent[];
+      error?: string;
+    }>("/api/v1/eliza/agents");
+    return {
+      success: response.success,
+      data: (response.data ?? []).map(toCloudCompatAgent),
+    };
+  }
+
   return this.fetch("/api/cloud/compat/agents");
 };
 
@@ -459,6 +613,39 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   this: ElizaClient,
   opts,
 ) {
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: {
+        id?: string;
+        agentName?: string;
+        status?: string;
+      };
+      error?: string;
+    }>("/api/v1/eliza/agents", {
+      method: "POST",
+      body: JSON.stringify({
+        agentName: opts.agentName,
+        ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
+        ...(opts.environmentVars
+          ? { environmentVars: opts.environmentVars }
+          : {}),
+      }),
+    });
+    const agentId = response.data?.id ?? "";
+    return {
+      success: response.success,
+      data: {
+        agentId,
+        agentName: response.data?.agentName ?? opts.agentName,
+        jobId: "",
+        status: response.data?.status ?? "pending",
+        nodeId: null,
+        message: response.success ? "Agent created" : (response.error ?? ""),
+      },
+    };
+  }
+
   return this.fetch("/api/cloud/compat/agents", {
     method: "POST",
     body: JSON.stringify(opts),
@@ -477,6 +664,14 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
+  if (isDirectCloudBase(this)) {
+    return this.fetch(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
+      { method: "POST" },
+      { allowNonOk: true },
+    );
+  }
+
   return this.fetch(
     `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/provision`,
     { method: "POST" },
@@ -488,6 +683,18 @@ ElizaClient.prototype.getCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: DirectCloudAgent;
+      error?: string;
+    }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}`);
+    return {
+      success: response.success,
+      data: toCloudCompatAgent(response.data ?? { id: agentId }),
+    };
+  }
+
   return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`);
 };
 
@@ -784,6 +991,18 @@ ElizaClient.prototype.getCloudCompatJobStatus = async function (
   this: ElizaClient,
   jobId,
 ) {
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: DirectCloudJob;
+      error?: string;
+    }>(`/api/v1/jobs/${encodeURIComponent(jobId)}`);
+    return {
+      success: response.success,
+      data: toCloudCompatJob(response.data ?? { id: jobId }),
+    };
+  }
+
   return this.fetch(`/api/cloud/compat/jobs/${encodeURIComponent(jobId)}`);
 };
 
@@ -950,10 +1169,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
   }
 };
 
-ElizaClient.prototype.provisionCloudSandbox = async function (
-  this: ElizaClient,
-  options,
-) {
+ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -963,31 +1179,62 @@ ElizaClient.prototype.provisionCloudSandbox = async function (
   onProgress?.("creating", "Creating agent...");
 
   // Step 1: Create agent
-  const createRes = await fetch(`${cloudApiBase}/api/v1/app/agents`, {
+  const createRes = await fetch(`${cloudApiBase}/api/v1/eliza/agents`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ name, bio }),
+    body: JSON.stringify({
+      agentName: name,
+      ...(bio?.length
+        ? {
+            agentConfig: {
+              bio,
+            },
+          }
+        : {}),
+    }),
   });
   if (!createRes.ok) {
     const err = await createRes.text().catch(() => "Unknown error");
     throw new Error(`Failed to create cloud agent: ${err}`);
   }
-  const createData = (await createRes.json()) as { id: string };
-  const agentId = createData.id;
+  const createData = (await createRes.json()) as {
+    data?: { id?: string };
+    id?: string;
+  };
+  const agentId = createData.data?.id ?? createData.id;
+  if (!agentId) {
+    throw new Error("Failed to create cloud agent: missing agent id");
+  }
 
   onProgress?.("provisioning", "Provisioning sandbox environment...");
 
   // Step 2: Start provisioning
   const provisionRes = await fetch(
-    `${cloudApiBase}/api/v1/app/agents/${agentId}/provision`,
+    `${cloudApiBase}/api/v1/eliza/agents/${agentId}/provision`,
     { method: "POST", headers },
   );
   if (!provisionRes.ok) {
     const err = await provisionRes.text().catch(() => "Unknown error");
     throw new Error(`Failed to start provisioning: ${err}`);
   }
-  const provisionData = (await provisionRes.json()) as { jobId: string };
-  const jobId = provisionData.jobId;
+  const provisionData = (await provisionRes.json()) as {
+    data?: {
+      jobId?: string;
+      bridgeUrl?: string | null;
+    };
+    jobId?: string;
+    bridgeUrl?: string | null;
+  };
+  const immediateBridgeUrl =
+    provisionData.data?.bridgeUrl ?? provisionData.bridgeUrl ?? null;
+  if (immediateBridgeUrl) {
+    onProgress?.("ready", "Sandbox ready!");
+    return { bridgeUrl: immediateBridgeUrl, agentId };
+  }
+  const jobId = provisionData.data?.jobId ?? provisionData.jobId;
+  if (!jobId) {
+    throw new Error("Failed to start provisioning: missing job id");
+  }
 
   // Step 3: Poll job status
   const deadline = Date.now() + 120_000;
@@ -1000,23 +1247,29 @@ ElizaClient.prototype.provisionCloudSandbox = async function (
     if (!jobRes.ok) continue;
 
     const jobData = (await jobRes.json()) as {
-      status: string;
+      data?: {
+        status?: string;
+        result?: { bridgeUrl?: string };
+        error?: string;
+      };
+      status?: string;
       result?: { bridgeUrl?: string };
       error?: string;
     };
+    const status = jobData.data?.status ?? jobData.status;
+    const result = jobData.data?.result ?? jobData.result;
+    const error = jobData.data?.error ?? jobData.error;
 
-    if (jobData.status === "completed" && jobData.result?.bridgeUrl) {
+    if (status === "completed" && result?.bridgeUrl) {
       onProgress?.("ready", "Sandbox ready!");
-      return { bridgeUrl: jobData.result.bridgeUrl, agentId };
+      return { bridgeUrl: result.bridgeUrl as string, agentId };
     }
 
-    if (jobData.status === "failed") {
-      throw new Error(
-        `Provisioning failed: ${jobData.error ?? "Unknown error"}`,
-      );
+    if (status === "failed") {
+      throw new Error(`Provisioning failed: ${error ?? "Unknown error"}`);
     }
 
-    onProgress?.("provisioning", `Status: ${jobData.status}...`);
+    onProgress?.("provisioning", `Status: ${status ?? "pending"}...`);
   }
 
   throw new Error("Provisioning timed out after 2 minutes");

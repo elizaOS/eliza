@@ -63,6 +63,7 @@ export const MODEL_KEY_VARS = [
   { key: "COHERE_API_KEY", label: "Cohere" },
   { key: "PERPLEXITY_API_KEY", label: "Perplexity" },
   { key: "ZAI_API_KEY", alias: "Z_AI_API_KEY", label: "Zai" },
+  { key: "MOONSHOT_API_KEY", alias: "KIMI_API_KEY", label: "Kimi / Moonshot" },
   {
     key: "AI_GATEWAY_API_KEY",
     alias: "AIGATEWAY_API_KEY",

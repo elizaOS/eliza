@@ -2,7 +2,6 @@
   "name": "@elizaos/example-lp-manager",
   "version": "2.0.0-alpha",
   "type": "module",
-  "private": true,
   "description": "Autonomous LP management agent for Solana and EVM DEXes with automatic rebalancing",
   "scripts": {
     "start": "bun run src/agent.ts",
@@ -12,15 +11,15 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-lp-manager": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
+    "@types/node": "^22.19.17",
     "bun-types": "latest",
     "typescript": "^6.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   }
 }
