@@ -161,7 +161,7 @@ export class BrokerAuthProvider
       );
     }
 
-    const url = baseUrl.replace(/\/+$/, "") + "/token";
+    const url = `${baseUrl.replace(/\/+$/, "")}/token`;
     const response = await fetch(url, {
       method: "GET",
       headers: {
