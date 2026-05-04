@@ -1,6 +1,8 @@
 import { WebPlugin } from "@capacitor/core";
 import type {
   AgentPlugin,
+  AgentRequestOptions,
+  AgentRequestResult,
   AgentStatus,
   ChatResult,
   LocalAgentTokenResult,
@@ -208,6 +210,30 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     return {
       available: Boolean(token),
       token,
+    };
+  }
+
+  async request(options: AgentRequestOptions): Promise<AgentRequestResult> {
+    if (!options.path?.startsWith("/")) {
+      throw new Error("Agent.request path must start with /");
+    }
+    const res = await fetch(`${this.apiBase()}${options.path}`, {
+      method: options.method ?? "GET",
+      headers: {
+        ...this.authHeaders(),
+        ...options.headers,
+      },
+      body: options.body ?? undefined,
+    });
+    const headers: Record<string, string> = {};
+    res.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    return {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+      body: await res.text(),
     };
   }
 }

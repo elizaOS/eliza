@@ -8,6 +8,7 @@
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
+import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import {
   clearElizaApiBase,
   clearElizaApiToken,
@@ -291,7 +292,12 @@ export class ElizaClient {
       };
 
       try {
-        return await this.requestTransport.request(requestUrl, requestInit);
+        const transport =
+          this.requestTransport === fetchAgentTransport
+            ? (await androidNativeAgentTransportForUrl(requestUrl)) ??
+              this.requestTransport
+            : this.requestTransport;
+        return await transport.request(requestUrl, requestInit, { timeoutMs });
       } catch (err) {
         if (timedOut) {
           throw new ApiError({

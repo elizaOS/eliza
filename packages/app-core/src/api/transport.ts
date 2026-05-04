@@ -1,5 +1,9 @@
 export interface AgentRequestTransport {
-  request(url: string, init: RequestInit): Promise<Response>;
+  request(
+    url: string,
+    init: RequestInit,
+    context?: { timeoutMs?: number },
+  ): Promise<Response>;
 }
 
 export const fetchAgentTransport: AgentRequestTransport = {
