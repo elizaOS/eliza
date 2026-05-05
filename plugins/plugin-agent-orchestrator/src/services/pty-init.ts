@@ -276,11 +276,18 @@ export async function initializePTYManager(
       reasonOrCode?: string | number,
       signal?: string | number,
     ): Promise<void> => {
+      const metadata =
+        typeof sessionOrId === "string"
+          ? ctx.sessionMetadata.get(sessionOrId)
+          : undefined;
       const session =
         typeof sessionOrId === "string"
           ? ({
               id: sessionOrId,
-              type: "codex",
+              type:
+                typeof metadata?.agentType === "string"
+                  ? metadata.agentType
+                  : "unknown",
               status: "stopped",
             } as WorkerSessionHandle)
           : sessionOrId;

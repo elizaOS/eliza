@@ -1,7 +1,14 @@
+import { mkdtemp, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { splitAgentSpecsParam } from "../actions/coding-task-handlers.js";
 import { shouldSuppressCodexExecPtyManagerEvent } from "../services/pty-service.js";
+import {
+  type SessionIOContext,
+  stopSession as stopSessionIO,
+} from "../services/pty-session-io.js";
 import { buildSpawnConfig } from "../services/pty-spawn.js";
 
 const require = createRequire(import.meta.url);
@@ -128,6 +135,31 @@ describe("shouldSuppressCodexExecPtyManagerEvent", () => {
         data: { source: "pty_manager" },
       }),
     ).toBe(false);
+  });
+});
+
+describe("stopSession", () => {
+  it("removes temporary Codex exec output directories during teardown", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "codex-output-test-"));
+    await writeFile(join(outputDir, "last-message.txt"), "done", "utf-8");
+    const metadata = new Map<string, Record<string, unknown>>([
+      ["session-1", { codexExecOutputDir: outputDir }],
+    ]);
+    const ctx = {
+      manager: {
+        get: () => ({ id: "session-1" }),
+        kill: async () => undefined,
+      },
+      usingBunWorker: true,
+      sessionOutputBuffers: new Map(),
+      taskResponseMarkers: new Map(),
+      outputUnsubscribers: new Map(),
+    } as unknown as SessionIOContext;
+
+    await stopSessionIO(ctx, "session-1", metadata, new Map(), () => undefined);
+
+    await expect(stat(outputDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(metadata.has("session-1")).toBe(false);
   });
 });
 
