@@ -175,7 +175,7 @@ end-to-end planner round-trip against the bundled GGUF.
   `apps/app/android/app/src/main/assets/agent/`.
 - `eliza/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/`
   — upstream Java sources (`ElizaAgentService`, `ElizaBootReceiver`, etc.)
-  that the overlay step copies into `com.miladyai.milady` package.
+  that the overlay step copies into `ai.elizaos.eliza` package.
 - `eliza/packages/agent/src/runtime/aosp-llama-adapter.ts` — runtime
   adapter that registers the AOSP `eliza_llama_*` shim symbols when
   `ELIZA_LOCAL_LLAMA=1`.

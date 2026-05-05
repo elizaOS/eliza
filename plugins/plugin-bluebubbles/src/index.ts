@@ -10,13 +10,19 @@ import { logger } from "@elizaos/core";
 import { sendMessageAction, sendReactionAction } from "./actions/index.js";
 import { chatContextProvider } from "./providers/index.js";
 import { BlueBubblesService } from "./service.js";
+import {
+	blueBubblesSetupRoutes,
+	resolveBlueBubblesWebhookPath,
+} from "./setup-routes.js";
 
 export * from "./constants.js";
 // Re-export types and service
 export * from "./types.js";
 export {
 	BlueBubblesService,
+	blueBubblesSetupRoutes,
 	chatContextProvider,
+	resolveBlueBubblesWebhookPath,
 	sendMessageAction,
 	sendReactionAction,
 };
@@ -31,6 +37,7 @@ const blueBubblesPlugin: Plugin = {
 	services: [BlueBubblesService],
 	actions: [sendMessageAction, sendReactionAction],
 	providers: [chatContextProvider],
+	routes: blueBubblesSetupRoutes,
 	tests: [],
 
 	init: async (

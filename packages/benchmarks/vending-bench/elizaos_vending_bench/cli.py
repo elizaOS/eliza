@@ -108,7 +108,7 @@ Examples:
     run_parser.add_argument(
         "--provider",
         type=str,
-        choices=["openai", "anthropic", "groq", "heuristic", "eliza"],
+        choices=["openai", "anthropic", "groq", "heuristic", "eliza", "vllm"],
         default="heuristic",
         help=(
             "LLM provider (default: heuristic). 'eliza' routes through the "
@@ -268,6 +268,33 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             logger.warning("Groq/OpenAI provider not available, falling back to heuristic")
         except ValueError as e:
             logger.warning(f"Groq provider not configured ({e}), falling back to heuristic")
+
+    elif args.provider == "vllm":
+        # vLLM exposes an OpenAI-compatible /v1 API. The orchestrator sets
+        # OPENAI_BASE_URL/VLLM_BASE_URL and provides a dummy key for local servers.
+        try:
+            import os
+
+            from elizaos_vending_bench.providers.openai import OpenAIProvider
+
+            api_key = args.api_key or os.getenv("VLLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("VLLM_API_KEY or OPENAI_API_KEY not set")
+            base_url = (
+                os.getenv("VLLM_BASE_URL")
+                or os.getenv("OPENAI_BASE_URL")
+                or "http://127.0.0.1:8001/v1"
+            )
+            llm_provider = OpenAIProvider(
+                api_key=api_key,
+                model=args.model,
+                base_url=base_url,
+            )
+            logger.info(f"Using vLLM provider at {base_url} with model {args.model}")
+        except ImportError:
+            logger.warning("vLLM/OpenAI provider not available, falling back to heuristic")
+        except ValueError as e:
+            logger.warning(f"vLLM provider not configured ({e}), falling back to heuristic")
 
     # Run benchmark
     runner = VendingBenchRunner(config, llm_provider)

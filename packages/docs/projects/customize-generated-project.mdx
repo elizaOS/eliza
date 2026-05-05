@@ -22,7 +22,7 @@ Set the project identity in `apps/app/app.config.ts`:
 ```typescript
 const config = {
   appName: "Milady",
-  appId: "com.miladyai.milady",
+  appId: "ai.elizaos.eliza",
   orgName: "milady-ai",
   repoName: "milady",
   cliName: "milady",
@@ -51,7 +51,7 @@ Native shells need stable identifiers:
 
 ```typescript
 desktop: {
-  bundleId: "com.miladyai.milady",
+  bundleId: "ai.elizaos.eliza",
   urlScheme: "milady",
 },
 ```
@@ -134,7 +134,7 @@ aosp: {
   vendorDir: "milady",
   variantName: "MiladyOS",
   productName: "milady",
-  packageName: "com.miladyai.milady",
+  packageName: "ai.elizaos.eliza",
   appName: "Milady",
   commonMk: "vendor/milady/milady_common.mk",
   modelSourceLabel: "milady-download",
@@ -157,7 +157,7 @@ Keep root scripts product-oriented. Milady exposes commands like:
   "scripts": {
     "dev": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=milady",
     "build": "node scripts/run-eliza-app-core-script.mjs run-production-build.mjs",
-    "build:desktop": "ELIZA_APP_NAME=Milady ELIZA_APP_ID=com.miladyai.milady ELIZA_NAMESPACE=milady node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
+    "build:desktop": "ELIZA_APP_NAME=Milady ELIZA_APP_ID=ai.elizaos.eliza ELIZA_NAMESPACE=milady node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
     "test": "bun run verify:secrets && node eliza/packages/app-core/test/scripts/test-runner.mjs"
   }
 }

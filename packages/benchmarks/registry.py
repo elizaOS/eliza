@@ -552,6 +552,26 @@ def _score_from_social_alpha_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_trust_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from the trust/security benchmark results."""
+    root = expect_dict(data, ctx="trust:root")
+    overall = expect_float(
+        get_required(root, "overall_f1", ctx="trust:root"),
+        ctx="trust:overall_f1",
+    )
+    return ScoreExtraction(
+        score=overall,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_f1": overall,
+            "false_positive_rate": get_optional(root, "false_positive_rate") or 0,
+            "total_tests": get_optional(root, "total_tests") or 0,
+            "handler_name": get_optional(root, "handler_name") or "",
+        },
+    )
+
+
 def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from WebShop benchmark results."""
     root = expect_dict(data, ctx="webshop:root")
@@ -1033,6 +1053,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             runs = extra.get("num_runs")
         if isinstance(runs, int) and runs > 0:
             args.extend(["--runs", str(runs)])
+        days = extra.get("days")
+        if not isinstance(days, int):
+            days = extra.get("max_days_per_run")
+        if isinstance(days, int) and days > 0:
+            args.extend(["--days", str(days)])
         return args
 
     def _vending_result(output_dir: Path) -> Path:
@@ -1662,6 +1687,39 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _social_alpha_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="benchmark_results_*.json")
 
+    def _trust_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        handler_raw = extra.get("handler")
+        handler = handler_raw if isinstance(handler_raw, str) and handler_raw.strip() else "oracle"
+        args = [
+            python,
+            repo("benchmarks/trust/run_benchmark.py"),
+            "--handler",
+            handler,
+            "--output",
+            str(output_dir / "trust-results.json"),
+        ]
+        if handler == "eliza":
+            if model.provider:
+                args.extend(["--model-provider", model.provider])
+            if model.model:
+                args.extend(["--model", model.model])
+        categories = extra.get("categories")
+        if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
+            args.extend(["--categories", *cast(list[str], categories)])
+        difficulty = extra.get("difficulty")
+        if isinstance(difficulty, list) and all(isinstance(x, str) for x in difficulty):
+            args.extend(["--difficulty", *cast(list[str], difficulty)])
+        tags = extra.get("tags")
+        if isinstance(tags, list) and all(isinstance(x, str) for x in tags):
+            args.extend(["--tags", *cast(list[str], tags)])
+        threshold = extra.get("threshold")
+        if isinstance(threshold, (int, float)):
+            args.extend(["--threshold", str(float(threshold))])
+        return args
+
+    def _trust_result(output_dir: Path) -> Path:
+        return output_dir / "trust-results.json"
+
     # WebShop - product-search/purchase benchmark with Eliza agent
     def _webshop_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for WebShop benchmark.
@@ -2237,6 +2295,24 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_social_alpha_cmd,
             locate_result=_social_alpha_result,
             extract_score=_score_from_social_alpha_json,
+        ),
+        BenchmarkDefinition(
+            id="trust",
+            display_name="Trust",
+            description="Agent trust/security detection benchmark",
+            cwd_rel="benchmarks/trust",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/trust/elizaos_trust_bench",),
+                notes=(
+                    "Defaults to the oracle handler for deterministic no-key smoke runs. "
+                    "Set handler=random for a baseline or handler=eliza/handler=eliza-bridge "
+                    "for agent-backed runs; those paths require their runtime/provider setup."
+                ),
+            ),
+            build_command=_trust_cmd,
+            locate_result=_trust_result,
+            extract_score=_score_from_trust_json,
         ),
         BenchmarkDefinition(
             id="webshop",
