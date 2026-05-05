@@ -48,9 +48,14 @@ import sys
 OSWORLD_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if OSWORLD_ROOT not in sys.path:
     sys.path.insert(0, OSWORLD_ROOT)
+BENCHMARKS_ROOT = os.path.dirname(OSWORLD_ROOT)
+ELIZA_ADAPTER_ROOT = os.path.join(BENCHMARKS_ROOT, "eliza-adapter")
+if ELIZA_ADAPTER_ROOT not in sys.path:
+    sys.path.insert(0, ELIZA_ADAPTER_ROOT)
 
 from desktop_env.desktop_env import DesktopEnv
 from lib_run_single import run_single_example
+from lib_results_logger import log_task_error
 
 logger = logging.getLogger("osworld.eliza.runner")
 
@@ -100,6 +105,8 @@ def parse_args() -> argparse.Namespace:
                         help="Number of parallel VMs")
     parser.add_argument("--sleep_after_execution", type=float, default=3.0,
                         help="Sleep after each action execution")
+    parser.add_argument("--dry_run", action="store_true",
+                        help="Run one cheap in-process smoke task without starting VMs or the Eliza server")
 
     return parser.parse_args()
 
@@ -188,13 +195,66 @@ def create_eliza_agent(args: argparse.Namespace) -> object:
     return agent
 
 
+class _DryRunController:
+    def start_recording(self) -> None:
+        pass
+
+    def end_recording(self, _path: str) -> None:
+        pass
+
+
+class _DryRunEnv:
+    vm_ip = "127.0.0.1"
+
+    def __init__(self) -> None:
+        self.controller = _DryRunController()
+        self._step_count = 0
+
+    def reset(self, task_config: dict[str, object] | None = None) -> dict[str, object]:
+        self._step_count = 0
+        return self._get_obs()
+
+    def _get_obs(self) -> dict[str, object]:
+        return {
+            "screenshot": b"dry-run-screenshot",
+            "accessibility_tree": "role\tname\nbutton\tOK",
+            "terminal": None,
+            "instruction": "dry run",
+        }
+
+    def step(self, action: str, sleep_after_execution: float = 0.0) -> tuple[dict[str, object], float, bool, dict[str, object]]:
+        self._step_count += 1
+        return self._get_obs(), 0.0, True, {
+            "dry_run": True,
+            "action": action,
+            "sleep_after_execution": sleep_after_execution,
+        }
+
+    def evaluate(self) -> float:
+        return 1.0
+
+    def close(self) -> None:
+        pass
+
+
+class _DryRunAgent:
+    def reset(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def predict(self, instruction: str, obs: dict[str, object]) -> tuple[str, list[str]]:
+        return (
+            f"Dry run handled instruction: {instruction}",
+            ["pyautogui.press('esc')"],
+        )
+
+
 def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
     """Run the OSWorld benchmark with the Eliza agent."""
     tasks = load_tasks(args)
     logger.info("Loaded %d tasks", len(tasks))
 
     # Create agent
-    agent = create_eliza_agent(args)
+    agent = _DryRunAgent() if args.dry_run else create_eliza_agent(args)
 
     # Create environment
     env_kwargs = {
@@ -209,7 +269,11 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
     if args.region:
         env_kwargs["region"] = args.region
 
-    env = DesktopEnv(**env_kwargs)
+    env = _DryRunEnv() if args.dry_run else DesktopEnv(**env_kwargs)
+    if args.dry_run:
+        import lib_run_single
+
+        lib_run_single.time.sleep = lambda _seconds: None
 
     # Results
     scores: list[float] = []
@@ -262,6 +326,12 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
 
         except Exception as e:
             logger.error("Task %s failed with error: %s", task_id, e, exc_info=True)
+            with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
+                f.write("0.0\n")
+            with open(os.path.join(example_result_dir, "traj.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps({"Error": str(e)}))
+                f.write("\n")
+            log_task_error(task, str(e), example_result_dir, args)
             results.append({
                 "task_id": task_id,
                 "domain": domain,

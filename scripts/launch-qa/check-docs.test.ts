@@ -91,31 +91,56 @@ describe("docs gate", () => {
 
   it("checks launchdocs under the package docs tree", async () => {
     const repoRoot = await makeRepo();
-    await fs.mkdir(path.join(repoRoot, "packages", "docs", "launchdocs"), {
-      recursive: true,
-    });
+    await fs.mkdir(
+      path.join(repoRoot, "packages", "docs", "docs", "launchdocs"),
+      {
+        recursive: true,
+      },
+    );
     await fs.writeFile(
-      path.join(repoRoot, "packages", "docs", "launchdocs", "review.md"),
+      path.join(
+        repoRoot,
+        "packages",
+        "docs",
+        "docs",
+        "launchdocs",
+        "review.md",
+      ),
       "# Review\n\nRun `bun run dev`.\n",
     );
 
     const result = checkDocs({ repoRoot, scope: "launchdocs" });
 
     expect(result.ok).toBe(true);
-    expect(result.checkedFiles).toEqual(["packages/docs/launchdocs/review.md"]);
+    expect(result.checkedFiles).toEqual([
+      "packages/docs/docs/launchdocs/review.md",
+    ]);
+  });
+
+  it("fails launchdocs scope when no launch files are present", async () => {
+    const repoRoot = await makeRepo();
+
+    const result = checkDocs({ repoRoot, scope: "launchdocs" });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        type: "no-docs",
+      }),
+    );
   });
 
   it("resolves docs-site absolute links under packages/docs", async () => {
     const repoRoot = await makeRepo();
-    await fs.mkdir(path.join(repoRoot, "packages", "docs", "apps"), {
+    await fs.mkdir(path.join(repoRoot, "packages", "docs", "docs", "apps"), {
       recursive: true,
     });
     await fs.writeFile(
-      path.join(repoRoot, "packages", "docs", "apps", "desktop.md"),
+      path.join(repoRoot, "packages", "docs", "docs", "apps", "desktop.md"),
       "# Desktop\n",
     );
     await fs.writeFile(
-      path.join(repoRoot, "packages", "docs", "index.md"),
+      path.join(repoRoot, "packages", "docs", "docs", "index.md"),
       "# Docs\n\nSee [desktop](/apps/desktop).\n",
     );
 
@@ -126,11 +151,18 @@ describe("docs gate", () => {
 
   it("resolves moved relative docs links under packages/docs", async () => {
     const repoRoot = await makeRepo();
-    await fs.mkdir(path.join(repoRoot, "packages", "docs", "guides"), {
+    await fs.mkdir(path.join(repoRoot, "packages", "docs", "docs", "guides"), {
       recursive: true,
     });
     await fs.writeFile(
-      path.join(repoRoot, "packages", "docs", "guides", "onboarding.md"),
+      path.join(
+        repoRoot,
+        "packages",
+        "docs",
+        "docs",
+        "guides",
+        "onboarding.md",
+      ),
       "# Onboarding\n",
     );
     await fs.writeFile(
