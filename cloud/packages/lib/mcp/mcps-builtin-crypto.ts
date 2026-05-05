@@ -3,18 +3,20 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { logger } from "@/lib/utils/logger";
 
 const COINGECKO = "https://api.coingecko.com/api/v3";
 
 export function registerCryptoMcpTools(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "get_price",
-    "Current spot price for a CoinGecko coin id (e.g. bitcoin, ethereum).",
     {
-      coin: z.string().describe("CoinGecko id, e.g. bitcoin"),
-      currency: z.string().optional().default("usd").describe("Fiat or crypto vs currency"),
+      description: "Current spot price for a CoinGecko coin id (e.g. bitcoin, ethereum).",
+      inputSchema: {
+        coin: z.string().describe("CoinGecko id, e.g. bitcoin"),
+        currency: z.string().optional().default("usd").describe("Fiat or crypto vs currency"),
+      },
     },
     async ({ coin, currency }) => {
       const vs = currency.toLowerCase();
@@ -42,11 +44,13 @@ export function registerCryptoMcpTools(server: McpServer): void {
     },
   );
 
-  server.tool(
+  server.registerTool(
     "get_market_data",
-    "Market summary for a coin id (price, volume, caps).",
     {
-      coin: z.string().describe("CoinGecko id, e.g. ethereum"),
+      description: "Market summary for a coin id (price, volume, caps).",
+      inputSchema: {
+        coin: z.string().describe("CoinGecko id, e.g. ethereum"),
+      },
     },
     async ({ coin }) => {
       const url = new URL(`${COINGECKO}/coins/${encodeURIComponent(coin.toLowerCase())}`);

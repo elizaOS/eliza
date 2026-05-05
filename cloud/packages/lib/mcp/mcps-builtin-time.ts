@@ -3,7 +3,7 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 const TIMEZONE_ALIASES: Record<string, string> = {
   EST: "America/New_York",
@@ -28,16 +28,18 @@ function isValidTimezone(tz: string): boolean {
 }
 
 export function registerTimeMcpTools(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "get_current_time",
-    "Get the current date and time in various formats for any timezone.",
     {
-      timezone: z
-        .string()
-        .optional()
-        .default("UTC")
-        .describe("IANA timezone or alias (e.g. 'PST', 'JST')"),
-      format: z.enum(["iso", "unix", "readable", "all"]).optional().default("all"),
+      description: "Get the current date and time in various formats for any timezone.",
+      inputSchema: {
+        timezone: z
+          .string()
+          .optional()
+          .default("UTC")
+          .describe("IANA timezone or alias (e.g. 'PST', 'JST')"),
+        format: z.enum(["iso", "unix", "readable", "all"]).optional().default("all"),
+      },
     },
     async ({ timezone = "UTC", format = "all" }) => {
       const tz = resolveTimezone(timezone);

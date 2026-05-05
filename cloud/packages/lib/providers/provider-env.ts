@@ -1,5 +1,9 @@
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 
+export function readProviderEnvValue(envName: string): string | null {
+  return getCloudAwareEnv()[envName]?.trim() || null;
+}
+
 function isPlaceholderProviderKey(value: string | undefined): boolean {
   if (!value) return true;
   const normalized = value.trim().toLowerCase();
@@ -15,8 +19,8 @@ function isPlaceholderProviderKey(value: string | undefined): boolean {
 }
 
 export function getProviderKey(envName: string): string | null {
-  const apiKey = getCloudAwareEnv()[envName]?.trim();
-  return isPlaceholderProviderKey(apiKey) ? null : (apiKey ?? null);
+  const apiKey = readProviderEnvValue(envName);
+  return isPlaceholderProviderKey(apiKey ?? undefined) ? null : apiKey;
 }
 
 export function getRequiredProviderKey(envName: string): string {

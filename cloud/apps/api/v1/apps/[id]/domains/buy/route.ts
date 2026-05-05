@@ -186,16 +186,35 @@ app.post("/", async (c) => {
 
     // 4. fetch the registered domain to get zone_id
     const reg = await fetchRegisteredDomainForRecovery(domain, appId, "post-register");
-    const result = await persistAndAssignCloudflareDomain({
-      organizationId: user.organization_id,
-      appId,
-      appUrl: appRow.app_url,
-      domain,
-      cloudflareRegistrationId: registrationId,
-      purchasePriceCents: price.totalUsdCents,
-      renewalPriceCents: renewalPrice.totalUsdCents,
-      registered: reg,
-    });
+    let result: Awaited<ReturnType<typeof persistAndAssignCloudflareDomain>>;
+    try {
+      result = await persistAndAssignCloudflareDomain({
+        organizationId: user.organization_id,
+        appId,
+        appUrl: appRow.app_url,
+        domain,
+        cloudflareRegistrationId: registrationId,
+        purchasePriceCents: price.totalUsdCents,
+        renewalPriceCents: renewalPrice.totalUsdCents,
+        registered: reg,
+      });
+    } catch (err) {
+      try {
+        await creditsService.refundCredits({
+          organizationId: user.organization_id,
+          amount: price.totalUsdCents / 100,
+          description: `${debitDescription} (refund: persistence failed)`,
+          metadata: { ...debitMetadata, type: "domain_purchase_refund" },
+        });
+      } catch (refundError) {
+        logger.error("[Domains Buy] refund failed after persistence error", {
+          appId,
+          domain,
+          error: extractErrorMessage(refundError),
+        });
+      }
+      throw err;
+    }
 
     return c.json({
       success: true,
@@ -320,6 +339,8 @@ async function configureDomainDns(input: {
     return;
   }
 
+  // CNAME creation is best-effort: concurrent buy/recovery requests can race
+  // here, and the domain remains registered even if DNS setup needs retrying.
   const records = await cloudflareDnsService.listRecords(input.zoneId).catch((err) => {
     logger.warn("[Domains Buy] DNS record lookup failed before CNAME setup", {
       appId: input.appId,

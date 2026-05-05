@@ -243,9 +243,7 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
         .then(async (res) => {
           if (res.ok) {
             window.dispatchEvent(
-              new CustomEvent("steward-token-sync", {
-                detail: { token, userId: user?.id },
-              }),
+              new CustomEvent("steward-token-sync", { detail: { userId: user?.id } }),
             );
             return;
           }

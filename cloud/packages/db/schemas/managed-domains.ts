@@ -5,7 +5,7 @@
  * Supports assignment to apps, containers, agents, and MCPs.
  */
 
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -218,7 +218,9 @@ export const managedDomains = pgTable(
     expiresIdx: index("managed_domains_expires_idx").on(table.expiresAt),
     contentScanIdx: index("managed_domains_content_scan_idx").on(table.lastContentScanAt),
     suspendedIdx: index("managed_domains_suspended_idx").on(table.suspendedAt),
-    cloudflareZoneIdx: index("managed_domains_cloudflare_zone_idx").on(table.cloudflareZoneId),
+    cloudflareZoneIdx: index("managed_domains_cloudflare_zone_idx")
+      .on(table.cloudflareZoneId)
+      .where(sql`${table.cloudflareZoneId} IS NOT NULL`),
   }),
 );
 

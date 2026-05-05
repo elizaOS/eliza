@@ -318,7 +318,12 @@ function toProviderHttpError(error: unknown): ProviderHttpError {
     };
   }
 
-  if (normalized.includes("not found") || normalized.includes("model")) {
+  if (
+    normalized.includes("model not found") ||
+    normalized.includes("unknown model") ||
+    normalized.includes("invalid model") ||
+    (normalized.includes("not found") && normalized.includes("model"))
+  ) {
     return {
       status: 404,
       error: {

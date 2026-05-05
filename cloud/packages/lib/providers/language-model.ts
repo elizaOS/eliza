@@ -3,7 +3,7 @@ import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getGroqApiModelId, isGroqNativeModel } from "@/lib/models";
 import { toOpenRouterModelId } from "./model-id-translation";
-import { getProviderKey } from "./provider-env";
+import { getProviderKey, readProviderEnvValue } from "./provider-env";
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
 let openAIClient: ReturnType<typeof createOpenAI> | null = null;
@@ -49,7 +49,7 @@ function getVercelAIGatewayApiKey(): string | null {
 }
 
 function getVercelAIGatewayBaseURL(): string | undefined {
-  return getProviderKey("AI_GATEWAY_BASE_URL") ?? undefined;
+  return readProviderEnvValue("AI_GATEWAY_BASE_URL") ?? undefined;
 }
 
 function getOpenRouterClient() {
@@ -88,9 +88,10 @@ function getVercelAIGatewayClient() {
       throw new Error("AI_GATEWAY_API_KEY environment variable is required");
     }
 
+    const baseURL = getVercelAIGatewayBaseURL();
     vercelAIGatewayClient = createGatewayProvider({
       apiKey,
-      ...(getVercelAIGatewayBaseURL() ? { baseURL: getVercelAIGatewayBaseURL() } : {}),
+      ...(baseURL ? { baseURL } : {}),
     });
   }
 

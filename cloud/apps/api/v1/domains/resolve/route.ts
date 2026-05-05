@@ -46,6 +46,7 @@ app.get("/", async (c) => {
     return c.json({ success: false, error: "Mapped app is not active" }, 404);
   }
 
+  c.header("Cache-Control", "public, max-age=30");
   return c.json({
     success: true,
     domain,
@@ -53,7 +54,6 @@ app.get("/", async (c) => {
       id: appRow.id,
       name: appRow.name,
       slug: appRow.slug,
-      appUrl: appRow.app_url,
     },
   });
 });

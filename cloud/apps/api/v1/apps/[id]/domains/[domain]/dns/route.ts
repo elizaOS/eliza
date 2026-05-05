@@ -10,18 +10,14 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { cloudflareDnsService } from "@/lib/services/cloudflare-dns";
-import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-
-const RecordTypes = ["A", "AAAA", "CNAME", "TXT", "MX", "SRV", "CAA"] as const;
+import type { AppEnv } from "@/types/cloud-worker-env";
+import { DNS_RECORD_TYPES, loadCloudflareManagedDomain } from "./context";
 
 const CreateRecordSchema = z.object({
-  type: z.enum(RecordTypes),
+  type: z.enum(DNS_RECORD_TYPES),
   name: z.string().min(1).max(255),
   content: z.string().min(1).max(2048),
   ttl: z.number().int().min(1).max(86400).optional(),
@@ -31,36 +27,12 @@ const CreateRecordSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-async function loadCloudflareManagedDomain(c: AppContext) {
-  const user = await requireUserOrApiKeyWithOrg(c);
-  const appId = c.req.param("id");
-  const domainParam = c.req.param("domain");
-  if (!appId || !domainParam) return { error: "missing path params", status: 400 as const };
-
-  const appRow = await appsService.getById(appId);
-  if (!appRow || appRow.organization_id !== user.organization_id) {
-    return { error: "App not found", status: 404 as const };
-  }
-
-  const md = await managedDomainsService.getDomainByName(decodeURIComponent(domainParam));
-  if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
-    return { error: "Domain not attached to this app", status: 404 as const };
-  }
-  if (md.registrar !== "cloudflare" || !md.cloudflareZoneId) {
-    return {
-      error: "DNS records on external domains must be edited at your existing DNS provider",
-      status: 409 as const,
-    };
-  }
-  return { user, app: appRow, appId, domain: md };
-}
-
 app.get("/", async (c) => {
   try {
     const ctx = await loadCloudflareManagedDomain(c);
     if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    const records = await cloudflareDnsService.listRecords(ctx.domain.cloudflareZoneId as string);
+    const records = await cloudflareDnsService.listRecords(ctx.zoneId);
     return c.json({ success: true, domain: ctx.domain.domain, records });
   } catch (error) {
     logger.error("[Domains DNS GET] list failed", { error: extractErrorMessage(error) });
@@ -81,10 +53,7 @@ app.post("/", async (c) => {
       );
     }
 
-    const created = await cloudflareDnsService.createRecord(
-      ctx.domain.cloudflareZoneId as string,
-      parsed.data,
-    );
+    const created = await cloudflareDnsService.createRecord(ctx.zoneId, parsed.data);
     logger.info("[Domains DNS POST] record added", {
       appId: ctx.appId,
       domain: ctx.domain.domain,

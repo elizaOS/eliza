@@ -7,19 +7,14 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { cloudflareDnsService } from "@/lib/services/cloudflare-dns";
-import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-
-const RecordTypes = ["A", "AAAA", "CNAME", "TXT", "MX", "SRV", "CAA"] as const;
+import type { AppEnv } from "@/types/cloud-worker-env";
+import { loadCloudflareManagedDomainRecord } from "../context";
 
 const PatchRecordSchema = z
   .object({
-    type: z.enum(RecordTypes).optional(),
     name: z.string().min(1).max(255).optional(),
     content: z.string().min(1).max(2048).optional(),
     ttl: z.number().int().min(1).max(86400).optional(),
@@ -30,42 +25,12 @@ const PatchRecordSchema = z
 
 const app = new Hono<AppEnv>();
 
-async function loadCloudflareManagedDomain(c: AppContext) {
-  const user = await requireUserOrApiKeyWithOrg(c);
-  const appId = c.req.param("id");
-  const domainParam = c.req.param("domain");
-  const recordId = c.req.param("recordId");
-  if (!appId || !domainParam || !recordId) {
-    return { error: "missing path params", status: 400 as const };
-  }
-
-  const appRow = await appsService.getById(appId);
-  if (!appRow || appRow.organization_id !== user.organization_id) {
-    return { error: "App not found", status: 404 as const };
-  }
-
-  const md = await managedDomainsService.getDomainByName(decodeURIComponent(domainParam));
-  if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
-    return { error: "Domain not attached to this app", status: 404 as const };
-  }
-  if (md.registrar !== "cloudflare" || !md.cloudflareZoneId) {
-    return {
-      error: "DNS records on external domains must be edited at your existing DNS provider",
-      status: 409 as const,
-    };
-  }
-  return { user, appId, domain: md, recordId };
-}
-
 app.get("/", async (c) => {
   try {
-    const ctx = await loadCloudflareManagedDomain(c);
+    const ctx = await loadCloudflareManagedDomainRecord(c);
     if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    const rec = await cloudflareDnsService.getRecord(
-      ctx.domain.cloudflareZoneId as string,
-      ctx.recordId,
-    );
+    const rec = await cloudflareDnsService.getRecord(ctx.zoneId, ctx.recordId);
     return c.json({ success: true, record: rec });
   } catch (error) {
     logger.error("[Domains DNS GET one] failed", { error: extractErrorMessage(error) });
@@ -75,7 +40,7 @@ app.get("/", async (c) => {
 
 app.patch("/", async (c) => {
   try {
-    const ctx = await loadCloudflareManagedDomain(c);
+    const ctx = await loadCloudflareManagedDomainRecord(c);
     if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const parsed = PatchRecordSchema.safeParse(await c.req.json());
@@ -86,11 +51,7 @@ app.patch("/", async (c) => {
       );
     }
 
-    const updated = await cloudflareDnsService.updateRecord(
-      ctx.domain.cloudflareZoneId as string,
-      ctx.recordId,
-      parsed.data,
-    );
+    const updated = await cloudflareDnsService.updateRecord(ctx.zoneId, ctx.recordId, parsed.data);
     logger.info("[Domains DNS PATCH] updated", {
       appId: ctx.appId,
       domain: ctx.domain.domain,
@@ -105,10 +66,10 @@ app.patch("/", async (c) => {
 
 app.delete("/", async (c) => {
   try {
-    const ctx = await loadCloudflareManagedDomain(c);
+    const ctx = await loadCloudflareManagedDomainRecord(c);
     if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    await cloudflareDnsService.deleteRecord(ctx.domain.cloudflareZoneId as string, ctx.recordId);
+    await cloudflareDnsService.deleteRecord(ctx.zoneId, ctx.recordId);
     logger.info("[Domains DNS DELETE] removed", {
       appId: ctx.appId,
       domain: ctx.domain.domain,

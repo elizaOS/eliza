@@ -46,6 +46,7 @@ app.post("/", async (c) => {
           const persisted = await managedDomainsService.syncStatus({
             domainId: md.id,
             status: live.status === "active" ? "active" : md.status,
+            verified: live.status === "active" ? true : undefined,
             isLive: live.status === "active",
             healthCheckError: null,
           });

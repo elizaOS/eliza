@@ -12,7 +12,7 @@ import { AnthropicDirectProvider } from "./anthropic-direct";
 import { GroqProvider } from "./groq";
 import { OpenAIDirectProvider } from "./openai-direct";
 import { OpenRouterProvider } from "./openrouter";
-import { getProviderKey, getRequiredProviderKey } from "./provider-env";
+import { getProviderKey, getRequiredProviderKey, readProviderEnvValue } from "./provider-env";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
 import { VercelAIGatewayProvider } from "./vercel-ai-gateway";
@@ -141,7 +141,7 @@ function getVercelAIGatewayApiKey(): string | null {
 }
 
 function getVercelAIGatewayBaseURL(): string | undefined {
-  return getProviderKey("AI_GATEWAY_BASE_URL") ?? undefined;
+  return readProviderEnvValue("AI_GATEWAY_BASE_URL") ?? undefined;
 }
 
 export function hasVercelAIGatewayProviderConfigured(): boolean {
@@ -180,7 +180,7 @@ export function getProviderForModel(model: string): AIProvider {
     return getVercelAIGatewayProvider();
   }
 
-  return getProvider();
+  throw new Error("OPENROUTER_API_KEY or AI_GATEWAY_API_KEY environment variable is required");
 }
 
 /**

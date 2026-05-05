@@ -31,6 +31,6 @@ export async function syncStewardSessionCookie(
   }
 
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("steward-token-sync", { detail: { token } }));
+    window.dispatchEvent(new CustomEvent("steward-token-sync"));
   }
 }

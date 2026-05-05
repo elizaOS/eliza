@@ -3,7 +3,7 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { logger } from "@/lib/utils/logger";
 
 interface GeocodeItem {
@@ -48,13 +48,15 @@ async function geocode(query: string): Promise<GeocodeItem | null> {
 }
 
 export function registerWeatherMcpTools(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "get_current_weather",
-    "Current weather for a place name or explicit latitude/longitude.",
     {
-      location: z.string().optional().describe("City or region name, e.g. 'Berlin'"),
-      latitude: z.number().optional(),
-      longitude: z.number().optional(),
+      description: "Current weather for a place name or explicit latitude/longitude.",
+      inputSchema: {
+        location: z.string().optional().describe("City or region name, e.g. 'Berlin'"),
+        latitude: z.number().optional(),
+        longitude: z.number().optional(),
+      },
     },
     async ({ location, latitude, longitude }) => {
       let lat = latitude;
@@ -121,11 +123,13 @@ export function registerWeatherMcpTools(server: McpServer): void {
     },
   );
 
-  server.tool(
+  server.registerTool(
     "search_location",
-    "Resolve a place name to coordinates (Open-Meteo geocoding).",
     {
-      query: z.string().describe("Place name"),
+      description: "Resolve a place name to coordinates (Open-Meteo geocoding).",
+      inputSchema: {
+        query: z.string().describe("Place name"),
+      },
     },
     async ({ query }) => {
       const hit = await geocode(query.trim());
