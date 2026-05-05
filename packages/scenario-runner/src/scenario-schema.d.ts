@@ -39,7 +39,7 @@ declare module "@elizaos/scenario-schema" {
 
   /**
    * Approval queue lifecycle states. Mirrors the shape WS6 is formalizing in
-   * `apps/app-lifeops/src/lifeops/approval-queue.types.ts`. Kept here as a
+   * `plugins/app-lifeops/src/lifeops/approval-queue.types.ts`. Kept here as a
    * narrow string-literal union so scenario assertions can assert without a
    * runtime dependency on WS6 source.
    */

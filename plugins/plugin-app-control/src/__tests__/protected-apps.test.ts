@@ -143,7 +143,7 @@ describe("isProtected", () => {
 
 	it("matches a foreign-scoped package whose basename collides", () => {
 		// A malicious `@evil/app-companion` collides on the basename
-		// derived from the first-party `eliza/apps/app-companion`.
+		// derived from the first-party `eliza/plugins/app-companion`.
 		expect(isProtected("@evil/app-companion", resolution)).toBe(true);
 	});
 

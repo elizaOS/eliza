@@ -1,4 +1,4 @@
-# TODO 17: Optimize prompts
+# Launch Readiness 17: Prompt Optimization
 
 ## Current state
 
@@ -31,15 +31,15 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 - `packages/core/src/services/optimized-prompt.ts:1` loads optimized prompt artifacts from `~/.eliza/optimized-prompts/<task>/`.
 - `packages/core/src/services/optimized-prompt.ts:323` chooses the newest artifact by `generatedAt`; the file header documents an mtime tie-break, but the reviewed implementation does not implement that tie-break.
 - `packages/core/src/services/optimized-prompt-resolver.ts:28` resolves optimized prompts and injects few-shot examples when present.
-- `apps/app-training/src/core/trajectory-task-datasets.ts:154` classifies planner examples from hints and output shape.
-- `apps/app-training/src/core/trajectory-task-datasets.ts:209` infers `action_planner` from broad hints including `action` and `runtime_use_model`, which may over-include non-planner model calls.
-- `apps/app-training/src/optimizers/scoring.ts:76` scores action-planner outputs by exact match on the first action name only.
-- `apps/app-training/src/core/training-orchestrator.ts:354` uses `multiStepDecisionTemplate` as the baseline for `action_planner`.
-- `apps/app-training/src/services/training-trigger.ts:503` auto-bootstraps only `should_respond` and `action_planner`.
+- `plugins/app-training/src/core/trajectory-task-datasets.ts:154` classifies planner examples from hints and output shape.
+- `plugins/app-training/src/core/trajectory-task-datasets.ts:209` infers `action_planner` from broad hints including `action` and `runtime_use_model`, which may over-include non-planner model calls.
+- `plugins/app-training/src/optimizers/scoring.ts:76` scores action-planner outputs by exact match on the first action name only.
+- `plugins/app-training/src/core/training-orchestrator.ts:354` uses `multiStepDecisionTemplate` as the baseline for `action_planner`.
+- `plugins/app-training/src/services/training-trigger.ts:503` auto-bootstraps only `should_respond` and `action_planner`.
 - `scripts/benchmark-to-training-dataset.mjs:1` converts action benchmark trajectories to planner JSONL.
 - `scripts/optimize-action-planner.mjs:1` runs native planner optimization over that benchmark dataset.
-- `apps/app-training/datasets/action_planner_from_benchmark.meta.json:1` records a 2026-04-19 benchmark-derived dataset with 66 rows, 63 pass, 3 fail.
-- `apps/app-training/datasets/action_planner_from_benchmark.jsonl:1` contains XML-era planner prompts/responses, including "Return only XML" style instructions rather than current generated TOON-only prompt style.
+- `plugins/app-training/datasets/action_planner_from_benchmark.meta.json:1` records a 2026-04-19 benchmark-derived dataset with 66 rows, 63 pass, 3 fail.
+- `plugins/app-training/datasets/action_planner_from_benchmark.jsonl:1` contains XML-era planner prompts/responses, including "Return only XML" style instructions rather than current generated TOON-only prompt style.
 - `packages/app-core/action-benchmark-report.md:1` reports action-selection benchmark accuracy of 96.2% planner/selection accuracy and 70.5% execution accuracy.
 - `test_output/terminal-bench-20260503_080436.md:1` contains a terminal-bench artifact with 2 tasks, 0 passed, 0 commands, and 0 tokens, so it is not useful evidence for prompt optimization quality.
 
@@ -47,7 +47,7 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 
 - Ran `bunx vitest run src/__tests__/prompt-compression.test.ts src/__tests__/optimized-prompt-service.test.ts src/__tests__/planner-preamble.test.ts` in `packages/core`: 3 files, 24 tests passed.
 - Ran `bunx vitest run src/runtime/prompt-optimization.test.ts src/runtime/aosp-llama-adapter.test.ts` in `packages/agent`: 2 files, 30 tests passed.
-- Ran `bunx vitest run test/training-trigger.test.ts` in `apps/app-training`: 1 file, 17 tests passed.
+- Ran `bunx vitest run test/training-trigger.test.ts` in `plugins/app-training`: 1 file, 17 tests passed.
 - Verified that TOON parsing, optimized prompt service behavior, prompt-budget preservation, token usage enrichment, and planner preamble tests have bounded coverage.
 - Verified the benchmark-derived planner dataset exists locally and has 66 JSONL rows matching its metadata.
 - Verified the checked-in benchmark report records planner/selection success separately from execution success.
@@ -69,14 +69,14 @@ The optimization system is not yet aligned end-to-end. The source prompt files u
 ### P1
 
 - Generated prompt code and source prompt files are out of sync. `packages/core/src/prompts.ts:456` contains many launch-critical planner rules that are absent from `packages/prompts/prompts/message_handler.txt:1`; `packages/core/src/prompts.ts:519` similarly differs from `packages/prompts/prompts/multi_step_decision.txt:1`. A prompt regeneration could silently remove durable-task, provider, N8N, and action-selection rules.
-- The optimizer target does not fully match the hot planner path. The primary single-turn planner uses optimized task `response` at `packages/core/src/services/message.ts:5613`, while automated training bootstraps `action_planner` at `apps/app-training/src/services/training-trigger.ts:503` and uses `multiStepDecisionTemplate` as the `action_planner` baseline at `apps/app-training/src/core/training-orchestrator.ts:354`. This can make "Optimize action planner" improve the multi-step loop while missing the main planner prompt used for normal messages.
+- The optimizer target does not fully match the hot planner path. The primary single-turn planner uses optimized task `response` at `packages/core/src/services/message.ts:5613`, while automated training bootstraps `action_planner` at `plugins/app-training/src/services/training-trigger.ts:503` and uses `multiStepDecisionTemplate` as the `action_planner` baseline at `plugins/app-training/src/core/training-orchestrator.ts:354`. This can make "Optimize action planner" improve the multi-step loop while missing the main planner prompt used for normal messages.
 
 ### P2
 
 - `preferredEncapsulation: "toon"` is not explicitly honored by `dynamicPromptExecFromState`. `packages/core/src/runtime.ts:5605` handles JSON/XML preferences but not TOON, so the multi-step planner request at `packages/core/src/services/message.ts:6783` may not actually get TOON unless the global default is already TOON.
-- The current benchmark-derived planner dataset appears stale relative to current prompts. `apps/app-training/datasets/action_planner_from_benchmark.jsonl:1` uses XML-era instructions and responses, while the generated planner prompts now instruct TOON-only output. Optimizing against that dataset risks training the model toward old formatting and old parameter style.
-- Planner optimization scoring is too shallow. `apps/app-training/src/optimizers/scoring.ts:76` exact-matches the first action name but ignores provider selection, parameter validity, action ordering, `simple`, `text`, execution success, and whether the model used an invalid or stale action surface.
-- Trajectory task inference may contaminate planner datasets. `apps/app-training/src/core/trajectory-task-datasets.ts:209` treats broad hints like `action` and `runtime_use_model` as `action_planner`, which can include action-handler model calls that are not planner decisions.
+- The current benchmark-derived planner dataset appears stale relative to current prompts. `plugins/app-training/datasets/action_planner_from_benchmark.jsonl:1` uses XML-era instructions and responses, while the generated planner prompts now instruct TOON-only output. Optimizing against that dataset risks training the model toward old formatting and old parameter style.
+- Planner optimization scoring is too shallow. `plugins/app-training/src/optimizers/scoring.ts:76` exact-matches the first action name but ignores provider selection, parameter validity, action ordering, `simple`, `text`, execution success, and whether the model used an invalid or stale action surface.
+- Trajectory task inference may contaminate planner datasets. `plugins/app-training/src/core/trajectory-task-datasets.ts:209` treats broad hints like `action` and `runtime_use_model` as `action_planner`, which can include action-handler model calls that are not planner decisions.
 - Token accounting is incomplete. Core trajectory logging records prompts and responses but not prompt/completion token counts, while agent-level enrichment depends on provider usage events or fallback estimation. This weakens prompt-efficiency optimization and regression detection.
 
 ### P3

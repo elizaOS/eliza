@@ -1,4 +1,4 @@
-# TODO 7 - Android Build and QA Review
+# Launch Readiness 07: Android Build And QA
 
 ## Current state
 
@@ -46,7 +46,7 @@ The AOSP distro tree exists under `packages/os/android/vendor/eliza`, imports `E
 
 ## What I could not validate
 
-- I did not run `bun run build:android`, Gradle, Android Studio, emulator, Cuttlefish, or AOSP `m`. Those steps write/generate many files and can be long-running.
+- I did not run `bun run --cwd packages/app build:android`, Gradle, Android Studio, emulator, Cuttlefish, or AOSP `m`. Those steps write/generate many files and can be long-running.
 - I did not produce or inspect an APK/AAB, so I could not validate actual manifest merge output, asset thinning, APK size, R8/proguard behavior, signing, bundle splits, or Play upload.
 - I did not boot a physical Android device, emulator, or Cuttlefish image, so I could not validate foreground service permissions, Doze/background survival, local agent startup, logcat/SELinux/seccomp behavior, default role assignment, mDNS discovery, notification UX, camera/mic/location/runtime permission prompts, or actual llama performance.
 - I did not test real Eliza Cloud credentials, Play Store credentials, Android keystore credentials, Firebase/google-services push configuration, or remote desktop gateway credentials.
@@ -63,7 +63,7 @@ The AOSP distro tree exists under `packages/os/android/vendor/eliza`, imports `E
 - SDK check via shell listing:
   - Result: Android build-tools 33.0.2, 34.0.0, 35.0.0, and 36.0.0 are installed locally.
 - `bun run build:android:system`
-  - Result: failed quickly with `error: Script not found "build:android:system"`.
+  - Result: superseded by current code; this script now exists at the repo root and in `packages/app/package.json`.
 - `bun test packages/app-core/scripts/run-mobile-build.test.ts packages/app-core/scripts/lib/stage-android-agent.test.ts packages/app-core/test/onboarding/mobile-runtime-mode.test.ts packages/app-core/src/api/android-native-agent-transport.test.ts packages/app-core/src/runtime/mobile-local-inference-gate.test.ts packages/app/test/ios-runtime.test.ts packages/app-core/src/services/local-inference/device-bridge.test.ts packages/app-core/src/runtime/ensure-local-inference-handler.test.ts`
   - Result: failed only in `mobile-runtime-mode.test.ts` because that file is Vitest/jsdom-only and the direct Bun runner had no `window`; the other selected Android/mobile tests completed as passing before the failure summary.
 - `bunx vitest run packages/app-core/test/onboarding/mobile-runtime-mode.test.ts --config packages/app-core/vitest.config.ts`
@@ -79,7 +79,7 @@ The AOSP distro tree exists under `packages/os/android/vendor/eliza`, imports `E
 
 ### P1
 
-- AOSP rebuild command is missing. `scripts/distro-android/brand.eliza.json:15` points distro rebuilds at `bun run build:android:system`, and `scripts/distro-android/build-aosp.mjs:197-240` uses that command for `--rebuild-privileged-apk`, but no matching package script exists. `bun run build:android:system` fails immediately. This blocks the documented/default AOSP privileged APK rebuild path unless callers manually invoke `node packages/app-core/scripts/run-mobile-build.mjs android-system`.
+- Superseded: the AOSP rebuild command now exists as `bun run build:android:system` at the repo root and in `packages/app/package.json`. The remaining launch risk is validating the generated privileged APK inside Cuttlefish/AOSP rather than script discovery.
 - Cloud-hybrid/device-bridge embeddings are mismatched. The agent-side bridge sends `embed` and registers an embedding-capable loader (`packages/app-core/src/services/local-inference/device-bridge.ts:84-112`, `packages/app-core/src/services/local-inference/device-bridge.ts:800-861`, `packages/app-core/src/services/local-inference/device-bridge.ts:1034-1060`), and `ensureLocalInferenceHandler` registers `TEXT_EMBEDDING` when the loader exposes `embed` (`packages/app-core/src/runtime/ensure-local-inference-handler.ts:429-457`). The mobile device-side client only handles `load`, `unload`, `generate`, and `ping`, and has no `embed` inbound/result handling (`packages/native-plugins/llama/src/device-bridge-client.ts:28-71`, `packages/native-plugins/llama/src/device-bridge-client.ts:214-296`). Any cloud-hybrid/local-embeddings request routed to a mobile device can time out.
 
 ### P2

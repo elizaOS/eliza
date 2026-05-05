@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DEV_MODE_ENV,
-  SELF_EDIT_ENABLE_ENV,
   getSelfEditDeniedSuffixes,
   isSelfEditEnabled,
   isSelfEditPathDenied,
+  SELF_EDIT_ENABLE_ENV,
 } from "../src/self-edit";
 
 describe("isSelfEditEnabled", () => {
@@ -131,9 +131,9 @@ describe("isSelfEditPathDenied", () => {
 
   it("denies anything under a .git directory", () => {
     expect(isSelfEditPathDenied("/Users/me/repo/.git/HEAD")).toBe(true);
-    expect(
-      isSelfEditPathDenied("/Users/me/repo/.git/objects/ab/cdef"),
-    ).toBe(true);
+    expect(isSelfEditPathDenied("/Users/me/repo/.git/objects/ab/cdef")).toBe(
+      true,
+    );
     expect(
       isSelfEditPathDenied("/Users/me/repo/eliza/.git/refs/heads/main"),
     ).toBe(true);
@@ -152,12 +152,12 @@ describe("isSelfEditPathDenied", () => {
       ),
     ).toBe(false);
     expect(
-      isSelfEditPathDenied(
-        "/Users/me/repo/apps/app-lifeops/src/index.ts",
-      ),
+      isSelfEditPathDenied("/Users/me/repo/plugins/app-lifeops/src/index.ts"),
     ).toBe(false);
     expect(
-      isSelfEditPathDenied("/Users/me/repo/eliza/packages/shared/src/restart-other.ts"),
+      isSelfEditPathDenied(
+        "/Users/me/repo/eliza/packages/shared/src/restart-other.ts",
+      ),
     ).toBe(false);
   });
 
@@ -166,7 +166,9 @@ describe("isSelfEditPathDenied", () => {
       isSelfEditPathDenied("/Users/me/repo/eliza/packages/agent/src/.gitkeep"),
     ).toBe(false);
     expect(
-      isSelfEditPathDenied("/Users/me/repo/eliza/packages/agent/src/foo.gitignore"),
+      isSelfEditPathDenied(
+        "/Users/me/repo/eliza/packages/agent/src/foo.gitignore",
+      ),
     ).toBe(false);
   });
 
@@ -176,9 +178,7 @@ describe("isSelfEditPathDenied", () => {
         "C:\\Users\\me\\repo\\eliza\\packages\\shared\\src\\self-edit.ts",
       ),
     ).toBe(true);
-    expect(
-      isSelfEditPathDenied("C:\\Users\\me\\repo\\.git\\HEAD"),
-    ).toBe(true);
+    expect(isSelfEditPathDenied("C:\\Users\\me\\repo\\.git\\HEAD")).toBe(true);
   });
 
   it("does not deny lookalike suffixes that are not full segment matches", () => {

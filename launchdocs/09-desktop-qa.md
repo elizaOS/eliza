@@ -1,4 +1,4 @@
-# TODO 9 - Desktop QA Review
+# Launch Readiness 09: Desktop QA
 
 ## Current state
 

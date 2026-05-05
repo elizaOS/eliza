@@ -26,15 +26,15 @@ describe("templates-manifest.json", () => {
     expect(
       manifest.templates.map((template: { id: string }) => template.id),
     ).toEqual(expect.arrayContaining(["plugin", "project"]));
-    expect(getTemplateById("fullstack-app")?.id).toBe("project");
+    expect(getTemplateById("project")?.id).toBe("project");
   });
 
   test("packaged templates directory contains the expected source templates", () => {
     expect(fs.existsSync(path.join(PACKAGE_ROOT, "templates", "plugin"))).toBe(
       true,
     );
-    expect(
-      fs.existsSync(path.join(PACKAGE_ROOT, "templates", "fullstack-app")),
-    ).toBe(true);
+    expect(fs.existsSync(path.join(PACKAGE_ROOT, "templates", "project"))).toBe(
+      true,
+    );
   });
 });

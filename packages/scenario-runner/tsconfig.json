@@ -46,6 +46,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "../../apps/app-companion/src/ambient-modules.d.ts"
+    "../../plugins/app-companion/src/ambient-modules.d.ts"
   ]
 }

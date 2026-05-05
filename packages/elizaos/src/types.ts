@@ -1,4 +1,4 @@
-export type TemplateId = "plugin" | "project" | "fullstack-app";
+export type TemplateId = "plugin" | "project";
 
 export interface TemplateUpstream {
   path: string;

@@ -118,12 +118,23 @@ function walkPackageJsons(dir) {
   return files;
 }
 
-function collectDocs(repoRoot) {
+function collectDocs(repoRoot, scope = "all") {
   const files = new Set();
-  for (const dirName of ["docs", "launchdocs"]) {
+  const dirs =
+    scope === "launchdocs"
+      ? ["launchdocs"]
+      : scope === "docs"
+        ? ["docs"]
+        : ["docs", "launchdocs"];
+
+  for (const dirName of dirs) {
     for (const filePath of walkMarkdownFiles(path.join(repoRoot, dirName))) {
       files.add(filePath);
     }
+  }
+
+  if (scope === "launchdocs") {
+    return [...files].sort((left, right) => left.localeCompare(right));
   }
 
   const rootReadme = path.join(repoRoot, "README.md");
@@ -306,7 +317,12 @@ function normalizeCwd(repoRoot, docFile, cwdPart) {
   if (stripped === ".") {
     return inferPackageDir(repoRoot, docFile);
   }
-  return path.resolve(path.dirname(docFile), stripped);
+  const docRel = rel(repoRoot, docFile);
+  const commandBase =
+    docRel.startsWith("docs/") || docRel.startsWith("launchdocs/")
+      ? repoRoot
+      : path.dirname(docFile);
+  return path.resolve(commandBase, stripped);
 }
 
 function findNearestScriptDir(cwd, scriptsByDir, repoRoot) {
@@ -423,7 +439,7 @@ export function checkDocs(options = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? defaultRepoRoot);
   const docFiles =
     options.docFiles?.map((filePath) => path.resolve(repoRoot, filePath)) ??
-    collectDocs(repoRoot);
+    collectDocs(repoRoot, options.scope ?? "all");
   const contentByFile = new Map();
   for (const filePath of docFiles) {
     contentByFile.set(filePath, fs.readFileSync(filePath, "utf8"));
@@ -460,8 +476,14 @@ function printHuman(result) {
 }
 
 function parseArgs(argv) {
+  const scope =
+    argv
+      .find((arg) => arg.startsWith("--scope="))
+      ?.slice("--scope=".length) ??
+    (argv.includes("--launchdocs-only") ? "launchdocs" : undefined);
   return {
     json: argv.includes("--json"),
+    scope,
     repoRoot:
       argv
         .find((arg) => arg.startsWith("--repo-root="))
@@ -471,7 +493,7 @@ function parseArgs(argv) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
-  const result = checkDocs({ repoRoot: args.repoRoot });
+  const result = checkDocs({ repoRoot: args.repoRoot, scope: args.scope });
   if (args.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {

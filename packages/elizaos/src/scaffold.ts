@@ -280,7 +280,7 @@ export function resolveTemplateSourceDir(options: {
   templatesDir: string;
 }): string {
   const sourceTemplateId =
-    options.template.id === "project" ? "fullstack-app" : options.template.id;
+    options.template.id === "project" ? "project" : options.template.id;
   return path.join(options.templatesDir, sourceTemplateId);
 }
 

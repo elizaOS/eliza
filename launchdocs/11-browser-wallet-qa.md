@@ -1,4 +1,4 @@
-# TODO 11 QA: browser and wallet
+# Launch Readiness 11: Browser And Wallet QA
 
 ## Current state
 
@@ -15,7 +15,7 @@ Wallet/settings surface has too much launch-irrelevant and potentially misleadin
 ## Evidence reviewed with file refs
 
 - `packages/app-core/src/components/pages/page-scoped-conversations.ts:112` defines Browser chat copy; `:115-116` tells the agent to use watch mode, prefer realistic browser subactions, narrate before concrete actions, and never auto-sign.
-- `apps/app-browser/src/action.ts:1060-1077` exposes the `MANAGE_ELIZA_BROWSER_WORKSPACE` action; `:1081-1135` enumerates many browser subactions but omits `realistic-click`, `realistic-fill`, and `realistic-upload` even though those are used by launchpad automation.
+- `plugins/app-browser/src/action.ts:1060-1077` exposes the `MANAGE_ELIZA_BROWSER_WORKSPACE` action; `:1081-1135` enumerates many browser subactions but omits `realistic-click`, `realistic-fill`, and `realistic-upload` even though those are used by launchpad automation.
 - `packages/agent/src/services/browser-workspace.ts:152-156` selects desktop mode only when the browser workspace bridge is configured; `:190-245` and `:248-295` open and navigate tabs through web state or desktop bridge; `:398-461` executes normalized browser commands.
 - `packages/agent/src/services/browser-workspace-desktop.ts:93-129` makes eval/snapshot desktop-only; `:131-155` starts the desktop command script path. Search evidence shows `realistic-click`, `realistic-fill`, and `realistic-upload` are implemented in this desktop path.
 - `packages/app-core/src/components/pages/BrowserWorkspaceView.tsx:774-1083` handles wallet requests from desktop webviews, including EVM connect/accounts/chain/sign/send and Solana connect/sign/send with host consent.
@@ -23,13 +23,13 @@ Wallet/settings surface has too much launch-irrelevant and potentially misleadin
 - `packages/app-core/src/utils/browser-tabs-renderer-registry.ts:477-488` explains the injected wallet provider shims; `:505-533` sends wallet requests to the host; `:536-595` installs `window.ethereum`; `:596-737` installs the Phantom-shaped Solana provider.
 - `packages/app-core/src/components/pages/useBrowserWorkspaceWalletBridge.ts:46-58` validates postMessage origins for web iframe wallet bridge responses; `:82-115` normalizes EVM transaction requests; `:150-199` dispatches EVM and Solana wallet bridge methods; `:201-250` routes Solana transaction requests to the client.
 - `packages/app-core/src/components/pages/browser-workspace-wallet.ts:156-175` resolves wallet mode; `:208-225` marks Steward mode EVM signing available and marks Solana transaction signing available when a Solana address exists; `:228-257` marks local signing availability from wallet config.
-- `apps/app-steward/src/routes/wallet-browser-compat-routes.ts:403-406` detects local EVM/Solana private keys; `:442-481` only supports browser Solana message/transaction signing with a local Solana key; `:484-537` supports EVM browser transactions through Steward or local key.
+- `plugins/app-steward/src/routes/wallet-browser-compat-routes.ts:403-406` detects local EVM/Solana private keys; `:442-481` only supports browser Solana message/transaction signing with a local Solana key; `:484-537` supports EVM browser transactions through Steward or local key.
 - `packages/agent/src/api/wallet-routes.ts:765-826` returns wallet config/status and sets `solanaSigningAvailable` true when the primary Solana wallet is cloud or a local Solana key exists.
 - `packages/agent/src/api/wallet-capability.ts:193-264` computes wallet execution status; `:230-245` can set a cloud-view-only blocked reason, but `:259-260` computes `executionReady` without checking that blocked reason or signer kind.
 - `packages/agent/src/actions/launchpad-launch.ts:45-49` only supports `four-meme`, `four-meme:testnet`, `flap-sh`, and `flap-sh:testnet`; `:95-99` describes BNB launchpad automation; `:181-192` runs the selected launchpad profile.
 - `packages/agent/src/services/launchpads/profiles/flap-sh.ts:1-20` documents flap.sh as a BNB Chain EVM flow with best-effort selectors; `:25-78` defines the mainnet steps, including `connectWallet`, form fill, image upload, `Launch` click, `confirmTx`, and BscScan wait.
 - `packages/agent/src/services/launchpads/launchpad-engine.ts:10-13` says dry run stops before clicking submit; `:95-145` maps launchpad steps to browser commands; `:209-219` actually stops only when it reaches `confirmTx`, after the preceding submit click step has already run.
-- `apps/browser-bridge/src/protocol.ts:55-64`, `apps/browser-bridge/src/dom-actions.ts:67-99`, and `apps/browser-bridge/entrypoints/background.ts:582-694` show the external browser extension can open/navigate/click/type/submit/read, but it does not inject Eliza wallet providers.
+- `packages/browser-bridge/src/protocol.ts:55-64`, `packages/browser-bridge/src/dom-actions.ts:67-99`, and `packages/browser-bridge/entrypoints/background.ts:582-694` show the external browser extension can open/navigate/click/type/submit/read, but it does not inject Eliza wallet providers.
 - `packages/app-core/src/components/pages/ConfigPageView.tsx:196-282` shows RPC/API key settings, including Birdeye inside the Solana RPC provider section.
 - `packages/app-core/src/components/settings/WalletKeysSection.tsx:183-225` duplicates local vault wallet-key management in Settings and prompts for env-var private key names; `:283-315` displays arbitrary wallet entries and raw key labels.
 - Repository search for `pump.fun`, `pumpfun`, and `pump fun` in app/agent source found no launchpad profile or buy automation for pump.fun. Hits were unrelated streaming/binance-skill references plus a BrowserWorkspaceView test fixture title.
@@ -43,7 +43,7 @@ Wallet/settings surface has too much launch-irrelevant and potentially misleadin
 - flap.sh has a BNB/EVM launchpad profile and is plausibly wired to the desktop browser wallet flow, subject to live selector QA and the dry-run blocker below.
 - The external browser bridge can drive an already-open real browser profile for navigation/click/type/read operations, but it does not make the Eliza wallet available to third-party dapps.
 - I attempted a targeted test command:
-  `bun test packages/app-core/src/utils/browser-tab-kit.test.ts packages/app-core/src/components/pages/browser-wallet-consent-format.test.ts apps/browser-bridge/src/browser-bridge-runtime.test.ts packages/agent/src/services/launchpads/launchpad-engine.test.ts packages/agent/src/actions/launchpad-launch.test.ts`
+  `bun test packages/app-core/src/utils/browser-tab-kit.test.ts packages/app-core/src/components/pages/browser-wallet-consent-format.test.ts packages/browser-bridge/src/browser-bridge-runtime.test.ts packages/agent/src/services/launchpads/launchpad-engine.test.ts packages/agent/src/actions/launchpad-launch.test.ts`
   It failed under direct `bun test` because suites expect Vitest/jsdom helpers such as `vi.stubGlobal`, `vi.mocked`, and `document`. I did not treat this as product validation.
 
 ## What I could not validate
@@ -63,8 +63,8 @@ Wallet/settings surface has too much launch-irrelevant and potentially misleadin
 ### P1
 
 - No pump.fun buy path exists. `packages/agent/src/actions/launchpad-launch.ts:45-49` supports only four.meme and flap.sh. Current code cannot honestly claim side chat can buy a token on pump.fun.
-- Browser Solana signing state is misleading. `packages/app-core/src/components/pages/browser-workspace-wallet.ts:208-225` and `packages/agent/src/api/wallet-routes.ts:823-825` can advertise Solana transaction signing from Steward/cloud state, but `apps/app-steward/src/routes/wallet-browser-compat-routes.ts:459-481` only signs browser Solana transactions with local `SOLANA_PRIVATE_KEY`.
-- External browser bridge cannot expose the Eliza wallet to sites. It can drive a Chrome/Safari profile, but `apps/browser-bridge/src/protocol.ts:55-64` and `apps/browser-bridge/src/dom-actions.ts:67-99` only cover basic DOM actions. Any dapp buy flow through that bridge depends on a separate wallet extension already installed and logged in.
+- Browser Solana signing state is misleading. `packages/app-core/src/components/pages/browser-workspace-wallet.ts:208-225` and `packages/agent/src/api/wallet-routes.ts:823-825` can advertise Solana transaction signing from Steward/cloud state, but `plugins/app-steward/src/routes/wallet-browser-compat-routes.ts:459-481` only signs browser Solana transactions with local `SOLANA_PRIVATE_KEY`.
+- External browser bridge cannot expose the Eliza wallet to sites. It can drive a Chrome/Safari profile, but `packages/browser-bridge/src/protocol.ts:55-64` and `packages/browser-bridge/src/dom-actions.ts:67-99` only cover basic DOM actions. Any dapp buy flow through that bridge depends on a separate wallet extension already installed and logged in.
 - Launchpad wallet picker support is incomplete. `LaunchpadStep` has `providerOption`, but `packages/agent/src/services/launchpads/launchpad-engine.ts:112-117` ignores it and only clicks the connect button. Sites that require choosing Eliza/MetaMask/Phantom can stall.
 
 ### P2
@@ -73,7 +73,7 @@ Wallet/settings surface has too much launch-irrelevant and potentially misleadin
 - Web iframe mode is not sufficient for third-party dapps. `packages/app-core/src/components/pages/BrowserWorkspaceView.tsx:2357-2428` renders sandboxed iframes and posts readiness, but normal dapps will look for injected providers and many launchpad pages will block framing.
 - `packages/agent/src/api/wallet-capability.ts:259-260` can report `executionReady` without checking the `cloud-view-only` signer block computed at `:230-245`, which can make settings/status overstate readiness.
 - The Solana shim is best-effort. `packages/app-core/src/utils/browser-tabs-renderer-registry.ts:603-610` throws on `publicKey.toBytes`, and `:714-721` returns signed transaction bytes rather than a transaction object. Some Solana dapps may expect Phantom-compatible object behavior.
-- Browser action schema and prompt are inconsistent with launchpad automation. The page prompt recommends realistic subactions and the engine uses them, but `apps/app-browser/src/action.ts:1081-1135` omits them from the public action enum.
+- Browser action schema and prompt are inconsistent with launchpad automation. The page prompt recommends realistic subactions and the engine uses them, but `plugins/app-browser/src/action.ts:1081-1135` omits them from the public action enum.
 
 ### P3
 

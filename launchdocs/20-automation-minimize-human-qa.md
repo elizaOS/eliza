@@ -72,7 +72,7 @@ These still need a human for final judgment or real credentials, but automation 
 - Local model suites: `packages/app-core/src/services/local-inference/*.test.ts`, `packages/app-core/src/runtime/mobile-local-inference-gate.test.ts`.
 - Remote/auth foundations: `packages/app-core/src/api/auth-pairing-compat-routes.test.ts`, `packages/app-core/src/api/auth/*`, `packages/app-core/test/live-agent/*`.
 - Computer Use foundations: `plugins/plugin-computeruse/src/__tests__/*`, `packages/app-core/src/api/computer-use-compat-routes.test.ts`, `packages/app-core/src/components/shell/ComputerUseApprovalOverlay.test.tsx`.
-- LifeOps foundations: `apps/app-lifeops/test/*`, `apps/app-lifeops/src/routes/lifeops-routes.test.ts`, `apps/app-lifeops/src/hooks/useGoogleLifeOpsConnector.test.ts`.
+- LifeOps foundations: `plugins/app-lifeops/test/*`, `plugins/app-lifeops/src/routes/lifeops-routes.test.ts`, `plugins/app-lifeops/src/hooks/useGoogleLifeOpsConnector.test.ts`.
 - Scenario and prompt tooling: `scripts/run-live-scenarios.mjs`, `scripts/run-scenario-benchmark.mjs`, app-training tests, and trajectory services.
 
 ## Recommended Launch Gate Shape

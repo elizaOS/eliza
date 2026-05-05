@@ -42,6 +42,8 @@
     "@elizaos/core": "__ELIZAOS_VERSION__",
     "@tanstack/react-query": "^5.90.16",
     "clsx": "^2.1.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.18",
     "vite": "^8.0.0",

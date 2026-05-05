@@ -1,4 +1,4 @@
-# TODO 19: Local Models
+# Launch Readiness 19: Local Models
 
 Worker: 19  
 Date: 2026-05-04  
@@ -22,7 +22,7 @@ Runtime routing is unified through a top-priority router. `ensureLocalInferenceH
 
 Mobile support is real but only unit-validated here. `@elizaos/capacitor-llama` wraps `llama-cpp-capacitor`, loads GGUF paths with GPU layers, generates text, supports optional embeddings, and registers as `localInferenceLoader` (`capacitor-llama-adapter.ts:192-360`). The app starts a mobile device bridge in `cloud-hybrid` or `local` modes (`packages/app/src/main.tsx:779-835`). Mobile runtime boot gates local inference on `ELIZA_DEVICE_BRIDGE_ENABLED=1` or `ELIZA_LOCAL_LLAMA=1` (`mobile-local-inference-gate.ts:1-26`).
 
-Training has both local-ish prompt optimization and cloud fine-tuning paths. The privacy filter redacts handles, privacy-level private contacts, credentials, and coordinates before export (`privacy-filter.ts:1-17`, `privacy-filter.ts:83-129`, `privacy-filter.ts:241-260`). `native` training is not model-weight fine-tuning; it runs local optimizer loops over JSONL datasets through runtime `useModel` and writes optimized prompts (`apps/app-training/src/backends/native.ts:1-17`, `native.ts:73-190`). Dataset generation and Vertex orchestration require Anthropic/OpenAI teacher keys unless a training data path or roleplay input is provided (`training-routes.ts:581-620`, `training-routes.ts:981-1115`). Vertex tuning is explicitly Gemini/Google Cloud (`training-routes.ts:885-927`).
+Training has both local-ish prompt optimization and cloud fine-tuning paths. The privacy filter redacts handles, privacy-level private contacts, credentials, and coordinates before export (`privacy-filter.ts:1-17`, `privacy-filter.ts:83-129`, `privacy-filter.ts:241-260`). `native` training is not model-weight fine-tuning; it runs local optimizer loops over JSONL datasets through runtime `useModel` and writes optimized prompts (`plugins/app-training/src/backends/native.ts:1-17`, `native.ts:73-190`). Dataset generation and Vertex orchestration require Anthropic/OpenAI teacher keys unless a training data path or roleplay input is provided (`training-routes.ts:581-620`, `training-routes.ts:981-1115`). Vertex tuning is explicitly Gemini/Google Cloud (`training-routes.ts:885-927`).
 
 ## Evidence
 
@@ -35,7 +35,7 @@ Training has both local-ish prompt optimization and cloud fine-tuning paths. The
 - Runtime local loader registration: `packages/app-core/src/runtime/ensure-local-inference-handler.ts:335-460`.
 - Router/policy: `packages/app-core/src/services/local-inference/router-handler.ts:121-165`, `packages/app-core/src/services/local-inference/routing-policy.ts:153-210`.
 - Mobile adapter/device bridge: `packages/native-plugins/llama/src/capacitor-llama-adapter.ts:192-360`, `packages/app/src/main.tsx:779-835`, `packages/app-core/src/runtime/mobile-local-inference-gate.ts:1-26`.
-- Training privacy/native/cloud split: `apps/app-training/src/core/privacy-filter.ts:1-17`, `apps/app-training/src/backends/native.ts:1-17`, `apps/app-training/src/routes/training-routes.ts:581-620`, `training-routes.ts:885-927`, `training-routes.ts:981-1115`.
+- Training privacy/native/cloud split: `plugins/app-training/src/core/privacy-filter.ts:1-17`, `plugins/app-training/src/backends/native.ts:1-17`, `plugins/app-training/src/routes/training-routes.ts:581-620`, `training-routes.ts:885-927`, `training-routes.ts:981-1115`.
 
 ## What I Validated
 
@@ -105,7 +105,7 @@ None found in the bounded review.
    The policy docs say "try local first; if it fails ... fall through" (`routing-policy.ts:16-17`), but the router picks one provider and rethrows any handler error (`router-handler.ts:154-165`). If the assigned local model is corrupt, unloaded incorrectly, missing a native binding, times out, or device bridge is disconnected, a user on `prefer-local` can get hard failures instead of cloud/subscription fallback. This is a launch-risk mismatch between UX wording and behavior.
 
 2. **Training "Import to Ollama" appears to be a no-op in the inspected service.**  
-   `TrainingService.importModelToOllama` only finds a model and returns it; it does not create an Ollama Modelfile, call Ollama, copy/export an adapter, or validate a resulting local model (`apps/app-training/src/services/training-service.ts:141-149`). The API route validates loopback `ollamaUrl` and calls this method (`training-routes.ts:449-477`), and docs/UI can imply a complete import/activation flow. If this is the production service path, the feature is not launch-complete.
+   `TrainingService.importModelToOllama` only finds a model and returns it; it does not create an Ollama Modelfile, call Ollama, copy/export an adapter, or validate a resulting local model (`plugins/app-training/src/services/training-service.ts:141-149`). The API route validates loopback `ollamaUrl` and calls this method (`training-routes.ts:449-477`), and docs/UI can imply a complete import/activation flow. If this is the production service path, the feature is not launch-complete.
 
 ### P2
 

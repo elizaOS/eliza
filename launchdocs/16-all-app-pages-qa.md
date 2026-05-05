@@ -1,4 +1,4 @@
-# TODO 16 - All App Pages QA
+# Launch Readiness 16: All App Pages QA
 
 ## Current state
 
@@ -59,11 +59,11 @@ Default catalog visibility is intentionally narrow:
 
 Route-bearing app packages reviewed:
 
-- Game/session apps: `apps/app-2004scape/src/routes.ts:1811`, `apps/app-babylon/src/routes.ts:535`, `apps/app-clawville/src/routes.ts:836`, `apps/app-defense-of-the-agents/src/routes.ts:2068`, `apps/app-scape/src/routes.ts:882`, `apps/app-hyperscape/src/routes.ts`.
-- Utility/native route apps: `apps/app-screenshare/src/routes.ts:119`, `apps/app-training/src/setup-routes.ts:23-94`, `apps/app-knowledge/src/setup-routes.ts:18-66`.
-- Plugin route loaders: `apps/app-shopify/src/register-routes.ts:1-6`, `apps/app-vincent/src/register-routes.ts:1-6`, `apps/app-polymarket/src/register-routes.ts:1-6`, `apps/app-hyperliquid/src/register-routes.ts:1-6`, `apps/app-steward/src/register-routes.ts:1-6`.
+- Game/session apps: `plugins/app-2004scape/src/routes.ts:1811`, `plugins/app-babylon/src/routes.ts:535`, `plugins/app-clawville/src/routes.ts:836`, `plugins/app-defense-of-the-agents/src/routes.ts:2068`, `plugins/app-scape/src/routes.ts:882`, `plugins/app-hyperscape/src/routes.ts`.
+- Utility/native route apps: `plugins/app-screenshare/src/routes.ts:119`, `plugins/app-training/src/setup-routes.ts:23-94`, `plugins/app-knowledge/src/setup-routes.ts:18-66`.
+- Plugin route loaders: `plugins/app-shopify/src/register-routes.ts:1-6`, `plugins/app-vincent/src/register-routes.ts:1-6`, `plugins/app-polymarket/src/register-routes.ts:1-6`, `plugins/app-hyperliquid/src/register-routes.ts:1-6`, `plugins/app-steward/src/register-routes.ts:1-6`.
 
-Android-only overlay apps declare `androidOnly: true` in their overlay definitions: Phone (`apps/app-phone/src/components/phone-app.ts:14-26`), Contacts (`apps/app-contacts/src/components/contacts-app.ts:14-26`), and WiFi (`apps/app-wifi/src/components/wifi-app.ts:14-26`). The overlay API comment says these should be hidden on stock Android, iOS, desktop, and web, with filtering performed by `getAvailableOverlayApps()` (`packages/app-core/src/components/apps/overlay-app-api.ts:41-52`).
+Android-only overlay apps declare `androidOnly: true` in their overlay definitions: Phone (`plugins/app-phone/src/components/phone-app.ts:14-26`), Contacts (`plugins/app-contacts/src/components/contacts-app.ts:14-26`), and WiFi (`plugins/app-wifi/src/components/wifi-app.ts:14-26`). The overlay API comment says these should be hidden on stock Android, iOS, desktop, and web, with filtering performed by `getAvailableOverlayApps()` (`packages/app-core/src/components/apps/overlay-app-api.ts:41-52`).
 
 ### Button and action inventory
 
@@ -84,7 +84,7 @@ Mobile deep links route to chat, phone, messages, contacts, LifeOps, settings, a
 - Main render branches: `packages/app-core/src/App.tsx:375-550`, `packages/app-core/src/App.tsx:835-885`, `packages/app-core/src/App.tsx:1168-1205`.
 - Apps catalog, filters, and launch paths: `packages/app-core/src/components/apps/internal-tool-apps.ts:22-211`, `packages/app-core/src/components/apps/helpers.ts:43-90`, `packages/app-core/src/components/apps/helpers.ts:172-300`, `packages/app-core/src/components/apps/helpers.ts:317-360`, `packages/app-core/src/components/pages/AppsView.tsx:113-129`, `packages/app-core/src/components/pages/AppsView.tsx:426-497`, `packages/app-core/src/components/pages/AppsView.tsx:710-889`.
 - App details and details-first decision logic: `packages/app-core/src/components/pages/AppDetailsView.tsx:82-127`, `packages/app-core/src/components/pages/AppDetailsView.tsx:293-427`, `packages/app-core/src/components/pages/AppDetailsView.tsx:494-620`, `packages/app-core/src/components/pages/AppDetailsView.tsx:777-800`.
-- Overlay registry and Android-only platform contract: `packages/app-core/src/components/apps/overlay-app-registry.ts:31-75`, `packages/app-core/src/components/apps/catalog-loader.ts:13-45`, `packages/app-core/src/components/apps/overlay-app-api.ts:41-52`, `apps/app-phone/src/components/phone-app.ts:14-26`, `apps/app-contacts/src/components/contacts-app.ts:14-26`, `apps/app-wifi/src/components/wifi-app.ts:14-26`.
+- Overlay registry and Android-only platform contract: `packages/app-core/src/components/apps/overlay-app-registry.ts:31-75`, `packages/app-core/src/components/apps/catalog-loader.ts:13-45`, `packages/app-core/src/components/apps/overlay-app-api.ts:41-52`, `plugins/app-phone/src/components/phone-app.ts:14-26`, `plugins/app-contacts/src/components/contacts-app.ts:14-26`, `plugins/app-wifi/src/components/wifi-app.ts:14-26`.
 - Desktop window shells and app-window renderer: `packages/app-core/src/platform/window-shell.ts:4-95`, `packages/app-core/src/shell/DetachedShellRoot.tsx:88-124`, `packages/app-core/src/shell/DetachedShellRoot.tsx:167-223`, `packages/app-core/src/shell/AppWindowRenderer.tsx:1-10`, `packages/app-core/src/shell/AppWindowRenderer.tsx:88-123`, `packages/app-core/src/shell/AppWindowRenderer.tsx:174-193`, `packages/app-core/src/shell/AppWindowRenderer.tsx:203-343`, `packages/app-core/src/shell/AppWindowRenderer.tsx:412-489`.
 - Existing targeted tests: `packages/app-core/src/navigation/index.test.ts`, `packages/app-core/src/components/apps/catalog-coverage.test.ts`, `packages/app-core/src/components/apps/overlay-app-registry.test.ts`, `packages/app-core/test/components/apps/overlay-app-registry-android-only.test.ts`, `packages/app-core/src/components/pages/AppsView.test.tsx`, `packages/app-core/src/components/shell/Header.test.tsx`, `packages/app-core/platforms/electrobun/src/surface-windows.test.ts`, `packages/app-core/platforms/electrobun/src/application-menu.test.ts`.
 

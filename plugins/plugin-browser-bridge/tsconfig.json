@@ -39,10 +39,10 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
-      "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
-      "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
-      "@elizaos/app-companion": ["../../apps/app-companion/src/index.ts"],
-      "@elizaos/app-companion/*": ["../../apps/app-companion/src/*"],
+      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
+      "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
+      "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],
@@ -52,6 +52,6 @@
     }
   },
   "exclude": ["src/**/*.test.ts"],
-  "include": ["src", "../../apps/app-companion/src/ambient-modules.d.ts"],
+  "include": ["src", "../../plugins/app-companion/src/ambient-modules.d.ts"],
   "references": []
 }

@@ -1,4 +1,10 @@
-# TODO 3 Docs v2 readiness review
+# Launch Readiness 03: Docs V2
+
+## Second-Pass Status (2026-05-05)
+
+- Superseded: the root README Node-version finding is fixed; it now says Node v24+.
+- Still open: public docs still contain Node 22+ requirements, stale `@elizaos/app` CLI instructions, missing desktop scripts/spec references, and `elizaos deploy` commands that do not exist in the current CLI.
+- Launch gate: `node scripts/launch-qa/check-docs.mjs --scope=launchdocs --json` now validates launchdocs links and documented `bun run` commands, but the broader docs tree still fails and needs a separate cleanup pass.
 
 Worker: 03
 Date: 2026-05-04
@@ -38,7 +44,7 @@ Install and package docs:
 - `packages/app/README.md:45-55` says `npm install -g @elizaos/app`, `bunx @elizaos/app setup`, and `npx @elizaos/app setup`, but `packages/app/package.json:1-28` has no `bin` field.
 - `packages/app/README.md:72-74` documents `eliza onboard --install-daemon` and `eliza agent --message`, but current `eliza` CLI help did not list `onboard` or `agent`.
 - `packages/app/README.md:79` says Node.js `>= 22`, inconsistent with Node 24 requirements.
-- `packages/app/README.md:93-98` says run desktop from `packages/app` using `bun run build:desktop` and `bun run dev:desktop`; `packages/app/package.json:5-28` has no `build:desktop` or `dev:desktop` scripts.
+- `packages/app/README.md:93-98` says run desktop from `packages/app` using `build:desktop` and `dev:desktop`; `packages/app/package.json:5-28` has no matching scripts.
 
 Mobile and desktop docs:
 
@@ -51,7 +57,7 @@ Mobile and desktop docs:
 - `docs/apps/desktop-local-development.md:75`, `docs/apps/desktop-local-development.md:83-91`, and `docs/apps/desktop-local-development.md:203-204` reference `packages/app/electrobun`, but the actual Electrobun package is `packages/app-core/platforms/electrobun`.
 - `packages/app-core/platforms/electrobun/package.json:2-14` confirms actual package name and scripts including `build:native-effects`.
 - `packages/app-core/platforms/electrobun/README.md:21-23` says `cd apps/app/electrobun`, which is stale.
-- `docs/apps/desktop-local-development.md:152-156` documents `bun run desktop:stack-status`; I found `packages/app-core/scripts/desktop-stack-status.mjs`, but no root `desktop:stack-status` script.
+- `docs/apps/desktop-local-development.md:152-156` documents a `desktop:stack-status` script; I found `packages/app-core/scripts/desktop-stack-status.mjs`, but no matching root script.
 - `docs/apps/desktop-local-development.md:182-184` links two missing Playwright specs. `packages/app/test/ui-smoke/ui-smoke.spec.ts` exists; `settings-chat-companion.spec.ts` and `packaged-hash.spec.ts` do not.
 
 Cloud/homepage docs:

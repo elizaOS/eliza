@@ -156,7 +156,7 @@ function main() {
       "create",
       "deferred-project",
       "--template",
-      "fullstack-app",
+      "project",
       "--yes",
       "--skip-upstream",
     ]);

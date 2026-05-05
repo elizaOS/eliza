@@ -2,9 +2,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   persistConfiguredOwnerName,
   updateLifeOpsOwnerProfile,
-} from "../../../apps/app-lifeops/src/lifeops/owner-profile.ts";
-import { ROUTINE_SEED_TEMPLATES } from "../../../apps/app-lifeops/src/lifeops/seed-routines.ts";
-import { LifeOpsService } from "../../../apps/app-lifeops/src/lifeops/service.ts";
+} from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
+import { ROUTINE_SEED_TEMPLATES } from "../../../plugins/app-lifeops/src/lifeops/seed-routines.ts";
+import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
 import { ensureLifeOpsSchema } from "./seed-grants.ts";
 
 const TEST_USER_PROFILE_NAME = "Eliza Test Owner";

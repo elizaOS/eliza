@@ -31,7 +31,7 @@ describe("TemplatesManifest", () => {
       repoUrl: "https://github.com/elizaos/eliza",
       templates: [
         {
-          aliases: ["fullstack-app"],
+          aliases: ["project"],
           description: "Project workspace",
           id: "project",
           kind: "project",
@@ -45,7 +45,7 @@ describe("TemplatesManifest", () => {
 
     expect(manifest.templates).toHaveLength(1);
     expect(manifest.templates[0]?.id).toBe("project");
-    expect(manifest.templates[0]?.aliases).toContain("fullstack-app");
+    expect(manifest.templates[0]?.aliases).toContain("project");
   });
 });
 

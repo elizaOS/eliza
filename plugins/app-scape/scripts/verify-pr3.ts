@@ -15,8 +15,8 @@
  *      perception frame. Controlled by `SCAPE_PR3_LIVE=1`.
  *
  * Run:
- *   bun eliza/apps/app-scape/scripts/verify-pr3.ts
- *   SCAPE_PR3_LIVE=1 BOT_SDK_TOKEN=dev-secret bun eliza/apps/app-scape/scripts/verify-pr3.ts
+ *   bun eliza/plugins/app-scape/scripts/verify-pr3.ts
+ *   SCAPE_PR3_LIVE=1 BOT_SDK_TOKEN=dev-secret bun eliza/plugins/app-scape/scripts/verify-pr3.ts
  */
 
 import appScapePlugin, {

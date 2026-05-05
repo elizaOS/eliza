@@ -66,9 +66,9 @@ describe("template value builders", () => {
     ).toBe(true);
   });
 
-  test("resolves the canonical project template to the fullstack source tree", () => {
+  test("resolves the canonical project template source tree", () => {
     const template: TemplateDefinition = {
-      aliases: ["fullstack-app"],
+      aliases: ["project"],
       description: "Project",
       id: "project",
       kind: "project",
@@ -82,7 +82,7 @@ describe("template value builders", () => {
         template,
         templatesDir: "/templates",
       }),
-    ).toBe(path.join("/templates", "fullstack-app"));
+    ).toBe(path.join("/templates", "project"));
   });
 });
 
@@ -227,7 +227,7 @@ describe("managed file upgrades", () => {
         "config/conflict.txt": sha256("old\n"),
         "config/safe.txt": sha256("old\n"),
       },
-      templateId: "fullstack-app",
+      templateId: "project",
       templateVersion: 1,
       updatedAt: "2026-04-14T00:00:00.000Z",
       values: {},

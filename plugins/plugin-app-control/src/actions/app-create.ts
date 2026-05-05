@@ -12,7 +12,7 @@
  *     `cancel`, the dispatcher's validate sees the intent task + the
  *     keyword, the dispatcher routes back here, and we resolve the choice.
  *  3. Create-new path — extract a kebab-case name + display name via the
- *     LLM, copy the min-app template, then dispatch a coding agent via
+ *     LLM, copy the min-project template, then dispatch a coding agent via
  *     CREATE_TASK with the AppVerificationService validator.
  *  4. Edit path — same dispatch, but workdir is the existing app's source
  *     directory.
@@ -37,7 +37,7 @@ import type { InstalledAppInfo } from "../types.js";
 
 export const APP_CREATE_INTENT_TAG = "app-create-intent";
 
-const TEMPLATE_RELATIVE_PATH = "eliza/templates/min-app";
+const TEMPLATE_RELATIVE_PATH = "eliza/templates/min-project";
 const APPS_RELATIVE_PATH = "eliza/apps";
 const NAME_PLACEHOLDER = "__APP_NAME__";
 const DISPLAY_NAME_PLACEHOLDER = "__APP_DISPLAY_NAME__";
@@ -425,7 +425,7 @@ function buildCreatePrompt(
 		`You are building a brand-new Eliza app called "${displayName}".`,
 		`The user's intent: ${intent}`,
 		"",
-		`The app source directory is ${workdir}. It has already been scaffolded from the min-app template.`,
+		`The app source directory is ${workdir}. It has already been scaffolded from the min-project template.`,
 		"Work in that source directory, not in the task agent's scratch directory.",
 		"Read SCAFFOLD.md in the source directory for layout and conventions. The completion line below is canonical if SCAFFOLD.md disagrees.",
 		"Edit and add files as needed to implement the user's intent.",

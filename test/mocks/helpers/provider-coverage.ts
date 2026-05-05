@@ -54,9 +54,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/google-calendar-mock.test.ts",
-      "apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "apps/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
-      "apps/app-lifeops/test/scenarios/calendar-llm-eval-mutations.scenario.ts",
+      "plugins/app-lifeops/test/lifeops-simulator.test.ts",
+      "plugins/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
+      "plugins/app-lifeops/test/scenarios/calendar-llm-eval-mutations.scenario.ts",
     ],
   },
   {
@@ -82,9 +82,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/google-mock-fidelity.test.ts",
-      "apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "apps/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
-      "apps/app-lifeops/test/scenarios/gmail-llm-eval-search-priority.scenario.ts",
+      "plugins/app-lifeops/test/lifeops-simulator.test.ts",
+      "plugins/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
+      "plugins/app-lifeops/test/scenarios/gmail-llm-eval-search-priority.scenario.ts",
     ],
   },
   {
@@ -132,8 +132,8 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "apps/app-lifeops/test/lifeops-x-dm-reader.integration.test.ts",
-      "apps/app-lifeops/src/actions/search-across-channels.test.ts",
+      "plugins/app-lifeops/test/lifeops-x-dm-reader.integration.test.ts",
+      "plugins/app-lifeops/src/actions/search-across-channels.test.ts",
     ],
   },
   {
@@ -156,8 +156,8 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
       "test/mocks/__tests__/mock-runtime-seeding.test.ts",
-      "apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "apps/app-lifeops/test/whatsapp.test.ts",
+      "plugins/app-lifeops/test/lifeops-simulator.test.ts",
+      "plugins/app-lifeops/test/whatsapp.test.ts",
     ],
   },
   {
@@ -180,10 +180,10 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     rationale:
       "LifeOps uses telegram-local-client.ts and TelegramLocalClientDeps; an HTTP Mockoon facade would test a path the product does not call.",
     validation: [
-      "apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "apps/app-lifeops/src/lifeops/telegram-local-client.test.ts",
-      "apps/app-lifeops/src/lifeops/service-mixin-telegram.test.ts",
-      "apps/app-lifeops/test/cross-channel-send.test.ts",
+      "plugins/app-lifeops/test/lifeops-simulator.test.ts",
+      "plugins/app-lifeops/src/lifeops/telegram-local-client.test.ts",
+      "plugins/app-lifeops/src/lifeops/service-mixin-telegram.test.ts",
+      "plugins/app-lifeops/test/cross-channel-send.test.ts",
     ],
   },
   {
@@ -207,9 +207,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
       "test/mocks/__tests__/mock-runtime-seeding.test.ts",
-      "apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "apps/app-lifeops/test/lifeops-signal-local-client.integration.test.ts",
-      "apps/app-lifeops/src/lifeops/service-mixin-signal.test.ts",
+      "plugins/app-lifeops/test/lifeops-simulator.test.ts",
+      "plugins/app-lifeops/test/lifeops-signal-local-client.integration.test.ts",
+      "plugins/app-lifeops/src/lifeops/service-mixin-signal.test.ts",
     ],
   },
   {
@@ -238,9 +238,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
       "test/mocks/__tests__/mock-runtime-seeding.test.ts",
-      "apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "apps/app-lifeops/test/discord-browser-scraper.test.ts",
-      "apps/app-lifeops/test/lifeops-discord-browser-companion.test.ts",
+      "plugins/app-lifeops/test/lifeops-simulator.test.ts",
+      "plugins/app-lifeops/test/discord-browser-scraper.test.ts",
+      "plugins/app-lifeops/test/lifeops-discord-browser-companion.test.ts",
     ],
   },
   {
@@ -269,9 +269,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "apps/app-lifeops/test/imessage.test.ts",
-      "apps/app-lifeops/src/lifeops/imessage-bridge.test.ts",
+      "plugins/app-lifeops/test/lifeops-simulator.test.ts",
+      "plugins/app-lifeops/test/imessage.test.ts",
+      "plugins/app-lifeops/src/lifeops/imessage-bridge.test.ts",
     ],
   },
   {
@@ -290,8 +290,8 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/mock-runtime.smoke.test.ts",
-      "apps/app-lifeops/test/twilio-sms.test.ts",
-      "apps/app-lifeops/test/twilio-call.test.ts",
+      "plugins/app-lifeops/test/twilio-sms.test.ts",
+      "plugins/app-lifeops/test/twilio-call.test.ts",
     ],
   },
   {
@@ -312,7 +312,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/mock-runtime.smoke.test.ts",
-      "apps/app-lifeops/test/calendly.test.ts",
+      "plugins/app-lifeops/test/calendly.test.ts",
     ],
   },
   {

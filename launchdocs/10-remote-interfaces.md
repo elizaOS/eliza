@@ -1,4 +1,4 @@
-# TODO 10 - Remote Interfaces Review
+# Launch Readiness 10: Remote Interfaces
 
 ## Current state
 
@@ -12,14 +12,14 @@ Remote/second-device support exists in several partially overlapping layers:
 
 ## Evidence reviewed with file refs
 
-- `apps/app-lifeops/src/remote/remote-session-service.ts:1` - T9a service overview, session states, local-mode bypass, persisted ledger, default data-plane failure, pairing validation, list/revoke.
-- `apps/app-lifeops/src/remote/remote-session-service.ts:199` - data-plane resolver is called with `sessionId: "pending"` before the final session id is allocated.
-- `apps/app-lifeops/src/remote/pairing-code.ts:1` - in-process one-time 6-digit pairing codes with 5-minute TTL.
-- `apps/app-lifeops/src/remote/tailscale-transport.ts:1` - Tailscale/cloud/local transport types and `tailscale serve` probe/reserve/release helpers.
-- `apps/app-lifeops/src/actions/start-remote-session.ts:1` - owner-only T9a start action, pairing-code input, confirmation requirement, data-plane-not-configured response.
-- `apps/app-lifeops/src/actions/list-remote-sessions.ts:1` and `apps/app-lifeops/src/actions/revoke-remote-session.ts:1` - owner-only session list/revoke actions.
-- `apps/app-lifeops/src/actions/owner-remote-desktop.ts:1` - routing layer that sends `start/list/revoke` to T9a actions while keeping `status/end` on the legacy backend.
-- `apps/app-lifeops/src/actions/remote-desktop.ts:1` and `apps/app-lifeops/src/lifeops/remote-desktop.ts:1` - legacy VNC/SSH/ngrok remote desktop implementation, mock backend, session expiry, listing, and revoke behavior.
+- `plugins/app-lifeops/src/remote/remote-session-service.ts:1` - T9a service overview, session states, local-mode bypass, persisted ledger, default data-plane failure, pairing validation, list/revoke.
+- `plugins/app-lifeops/src/remote/remote-session-service.ts:199` - data-plane resolver is called with `sessionId: "pending"` before the final session id is allocated.
+- `plugins/app-lifeops/src/remote/pairing-code.ts:1` - in-process one-time 6-digit pairing codes with 5-minute TTL.
+- `plugins/app-lifeops/src/remote/tailscale-transport.ts:1` - Tailscale/cloud/local transport types and `tailscale serve` probe/reserve/release helpers.
+- `plugins/app-lifeops/src/actions/start-remote-session.ts:1` - owner-only T9a start action, pairing-code input, confirmation requirement, data-plane-not-configured response.
+- `plugins/app-lifeops/src/actions/list-remote-sessions.ts:1` and `plugins/app-lifeops/src/actions/revoke-remote-session.ts:1` - owner-only session list/revoke actions.
+- `plugins/app-lifeops/src/actions/owner-remote-desktop.ts:1` - routing layer that sends `start/list/revoke` to T9a actions while keeping `status/end` on the legacy backend.
+- `plugins/app-lifeops/src/actions/remote-desktop.ts:1` and `plugins/app-lifeops/src/lifeops/remote-desktop.ts:1` - legacy VNC/SSH/ngrok remote desktop implementation, mock backend, session expiry, listing, and revoke behavior.
 - `packages/app-core/src/services/phone-companion/session-client.ts:1` - companion WebSocket client, token query parameter, input event sending, touch event conversion, base64 pairing payload decoder.
 - `packages/app-core/src/components/phone-companion/RemoteSession.tsx:120` - ingress URL safety checks, viewer/input URL builders, iframe sandbox, input overlay wiring.
 - `packages/app-core/src/components/phone-companion/Pairing.tsx:36` - QR scan path and currently non-functional manual pairing path.
@@ -69,7 +69,7 @@ Remote/second-device support exists in several partially overlapping layers:
 ### P1
 
 - Cloud pairing is not visibly end-to-end. `cloud/apps/api/v1/remote/pair/route.ts:1` creates a pending session and returns a 6-digit code, but no route/repository path was found that consumes the code, promotes the session to active, writes `ingress_url`, or binds the cloud session to the desktop T9a session. The returned `expiresAt` is not backed by a persisted `expires_at`, so stale pending sessions can remain listable until manually revoked.
-- T9a data-plane resolution happens before the durable session id exists. `apps/app-lifeops/src/remote/remote-session-service.ts:199` calls `dataPlane.resolve({ sessionId: "pending", ... })`, then creates the real `session-${Date.now()}...` id later. A real data plane would be unable to mint session-scoped ingress or revocation metadata against the persisted session id.
+- T9a data-plane resolution happens before the durable session id exists. `plugins/app-lifeops/src/remote/remote-session-service.ts:199` calls `dataPlane.resolve({ sessionId: "pending", ... })`, then creates the real `session-${Date.now()}...` id later. A real data plane would be unable to mint session-scoped ingress or revocation metadata against the persisted session id.
 - Phone companion manual pairing and chat are not launch-ready. `Pairing.tsx` returns a manual-handshake-not-available error, and `Chat.tsx` is a placeholder for future SSE/composer work. A user without QR/APNs payload delivery has no working manual path into a remote session.
 
 ### P2

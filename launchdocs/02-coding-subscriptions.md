@@ -1,4 +1,10 @@
-# TODO 2 - Coding subscriptions review
+# Launch Readiness 02: Coding Subscriptions
+
+## Second-Pass Status (2026-05-05)
+
+- Superseded: account-pool strategy now flows into direct env and runtime shim selection paths.
+- Still open: multi-account subscription preflight still collapses rows by provider, inline subscription probe failures still map too broadly to `rate-limited`, Z.AI aliases are incomplete, and `resolveProviderCredentialMulti()` does not pass selection config.
+- Launch gate: keep `packages/app-core/src/services/__tests__/account-pool.test.ts` in the focused launch suite and add row-aggregation/health-mapping tests before treating this area as complete.
 
 ## Current state
 
@@ -25,7 +31,7 @@
 - Claude code-agent-only runtime policy: `packages/agent/src/auth/credentials.ts:520-652`, `packages/shared/src/contracts/onboarding.ts:223-253`, `packages/shared/src/contracts/onboarding.ts:611-629`, `packages/agent/src/api/provider-switch-config.ts:849-893`.
 - Claude Code spawn env and health feedback: `plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts:475-607`, `plugins/plugin-agent-orchestrator/src/services/pty-spawn.ts:78-115`, `plugins/plugin-agent-orchestrator/src/services/pty-spawn.ts:507-518`.
 - Task-agent readiness/scoring: `plugins/plugin-agent-orchestrator/src/services/task-agent-frameworks.ts:682-720`, `plugins/plugin-agent-orchestrator/src/services/task-agent-frameworks.ts:999-1046`.
-- Coding-agent preflight subscription checks: `apps/app-task-coordinator/src/evals/coordinator-preflight.ts:358-459`.
+- Coding-agent preflight subscription checks: `plugins/app-task-coordinator/src/evals/coordinator-preflight.ts:358-459`.
 - UI account management and strategy picker: `packages/app-core/src/components/accounts/AccountList.tsx:96-155`, `packages/app-core/src/components/accounts/RotationStrategyPicker.tsx:33-62`, `packages/app-core/src/components/settings/ProviderSwitcher.tsx:1219-1303`.
 - Legacy subscription panel behavior: `packages/app-core/src/components/settings/SubscriptionStatus.tsx:278-320`, `packages/app-core/src/components/settings/SubscriptionStatus.tsx:572-690`.
 - Subscription status/delete routes and stale REST docs: `packages/agent/src/api/subscription-routes.ts:54-90`, `packages/agent/src/api/subscription-routes.ts:270-338`, `docs/rest/subscriptions.md:17-30`, `docs/rest/subscriptions.md:166-175`.

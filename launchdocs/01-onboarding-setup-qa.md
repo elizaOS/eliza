@@ -1,4 +1,10 @@
-# TODO 1 - Onboarding and Setup QA Review
+# Launch Readiness 01: Onboarding And Setup QA
+
+## Second-Pass Status (2026-05-05)
+
+- Superseded: Android local runtime pre-seed is wired through `packages/app/src/main.tsx`, and remote manual onboarding now normalizes invalid URLs with focused launch QA coverage.
+- Still open: remote onboarding completes without a live `/api/health` or auth probe, cloud auto-pick can persist the first returned agent without proving a usable API/UI URL, and public onboarding docs remain stale.
+- Launch gate: covered by `packages/app-core/test/onboarding/launch-qa-remote-target.test.tsx`, `packages/app-core/test/onboarding/pre-seed-android-local-runtime.test.ts`, and the launchdocs docs gate.
 
 Review date: 2026-05-04
 Worker: 01

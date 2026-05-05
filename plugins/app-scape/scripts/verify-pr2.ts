@@ -15,7 +15,7 @@
  *      `ELIZA_CURATED_APP_DEFINITIONS` helper lookups — the same
  *      lookup the app manager does when surfacing the apps grid.
  *
- * Run: bun eliza/apps/app-scape/scripts/verify-pr2.ts
+ * Run: bun eliza/plugins/app-scape/scripts/verify-pr2.ts
  */
 
 import appScapePlugin, {

@@ -14,7 +14,7 @@
  *
  * Usage:
  *   1. Start xrsps with BOT_SDK_TOKEN=dev-secret
- *   2. BOT_SDK_TOKEN=dev-secret bun eliza/apps/app-scape/scripts/verify-pr4-live-loop.ts
+ *   2. BOT_SDK_TOKEN=dev-secret bun eliza/plugins/app-scape/scripts/verify-pr4-live-loop.ts
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

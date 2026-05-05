@@ -20929,7 +20929,7 @@ Original commit hashes, oldest first:
 - [`0c801b0c754e`](https://github.com/elizaOS/eliza/commit/0c801b0c754e06b192170190a789f215dc35c6ca) 2026-04-26 Shaw: Clean up security settings UX
 - [`428bb3d18266`](https://github.com/elizaOS/eliza/commit/428bb3d182662aea8662c30d572f75e17887d732) 2026-04-26 Shaw: Uncommit unrelated LoginView changes
 - [`decddf25b771`](https://github.com/elizaOS/eliza/commit/decddf25b771812af18146b057ffae3cce15031e) 2026-04-26 Shaw: defaults: bump anthropic large to claude-opus-4-7
-- [`92ef5721b313`](https://github.com/elizaOS/eliza/commit/92ef5721b313c3cecc53e2ab79c21854c8894e00) 2026-04-26 Shaw: templates: add min-app scaffold
+- [`92ef5721b313`](https://github.com/elizaOS/eliza/commit/92ef5721b313c3cecc53e2ab79c21854c8894e00) 2026-04-26 Shaw: templates: add min-project scaffold
 - [`41e20bfa434e`](https://github.com/elizaOS/eliza/commit/41e20bfa434ebb9a79ec1dcaf6dae880b7259fe8) 2026-04-26 Shaw: templates: add min-plugin scaffold
 - [`90b449886bd5`](https://github.com/elizaOS/eliza/commit/90b449886bd5586ef9ecb3b131fed17cf3dfd853) 2026-04-26 Shaw: Clean up remote login UX
 - [`81fa648c84b7`](https://github.com/elizaOS/eliza/commit/81fa648c84b768c4c2e990f64ae8a5b4dc0519e7) 2026-04-26 Shaw: feat(lifeops): cache normalized inbox messages
@@ -21197,10 +21197,10 @@ Original commit hashes, oldest first:
 - [`c9bd3fa2fabd`](https://github.com/elizaOS/eliza/commit/c9bd3fa2fabd2bd53a20f3702fb00de85a022525) 2026-04-26 Shaw: Merge remote-tracking branch 'origin/develop' into HEAD
 - [`523cd9d7563e`](https://github.com/elizaOS/eliza/commit/523cd9d7563ee6accb36051c26b935a3e3f4cf40) 2026-04-27 github-actions[bot]: chore: release v2.0.0-alpha.422 (alpha) [skip ci]
 - [`6f6cb19c3467`](https://github.com/elizaOS/eliza/commit/6f6cb19c34677087f1e8a275cea176667304b95d) 2026-04-26 Shaw: multi-account: reconcile WS2/WS3 — single source of truth via AccountPool
-- [`3309886e6ea7`](https://github.com/elizaOS/eliza/commit/3309886e6ea763fbd08f4b34b321e54cd0461f17) 2026-04-26 Shaw: fix(templates): drop unused @ts-expect-error from min-app/min-plugin smoke tests
+- [`3309886e6ea7`](https://github.com/elizaOS/eliza/commit/3309886e6ea763fbd08f4b34b321e54cd0461f17) 2026-04-26 Shaw: fix(templates): drop unused @ts-expect-error from min-project/min-plugin smoke tests
 - [`b43be01014f9`](https://github.com/elizaOS/eliza/commit/b43be01014f9aac20340a3d6c5ac7688a2872d6a) 2026-04-26 Shaw: multi-account: WS4 partial — client methods + useAccounts + AccountCard + RotationStrategyPicker
 - [`bc2aed30a81f`](https://github.com/elizaOS/eliza/commit/bc2aed30a81fb4d2b3534050c6f9487877dc21e5) 2026-04-26 Shaw: test(app-control): contract test for APP scenario shape
-- [`6c57ddf96883`](https://github.com/elizaOS/eliza/commit/6c57ddf9688317e290d14477944268912e670b3d) 2026-04-26 Shaw: test(app-control): scaffold + verify both min-app and min-plugin templates
+- [`6c57ddf96883`](https://github.com/elizaOS/eliza/commit/6c57ddf9688317e290d14477944268912e670b3d) 2026-04-26 Shaw: test(app-control): scaffold + verify both min-project and min-plugin templates
 - [`0819b792d077`](https://github.com/elizaOS/eliza/commit/0819b792d077e07c69d4546427092a5a3d83d1c6) 2026-04-27 github-actions[bot]: chore: release v2.0.0-alpha.423 (alpha) [skip ci]
 - [`af731ad9ff20`](https://github.com/elizaOS/eliza/commit/af731ad9ff205a09e4fb151d7ea4e9169c3508f7) 2026-04-26 Shaw: Merge remote-tracking branch 'origin/develop' into HEAD
 - [`61ed67d18e7c`](https://github.com/elizaOS/eliza/commit/61ed67d18e7c362c81fe395bcfe4a7ee7db4b7b4) 2026-04-26 Shaw: multi-account: WS4 finish — AccountList + AddAccountDialog + ProviderSwitcher integration
@@ -21433,7 +21433,7 @@ Original commit hashes, oldest first:
 - [`7cb20bd4d1aa`](https://github.com/elizaOS/eliza/commit/7cb20bd4d1aa5b514d8256ea9750ac1ea5a3b280) 2026-04-28 Shaw: chore: bump plugin-plugin-manager — TypeScript 6.0.3 alignment
 - [`5810b1698d73`](https://github.com/elizaOS/eliza/commit/5810b1698d73fd8fc816ba1c5aacd4f8b965f380) 2026-04-28 github-actions[bot]: chore: release v2.0.0-alpha.474 (alpha) [skip ci]
 - [`0054b692a0d7`](https://github.com/elizaOS/eliza/commit/0054b692a0d78b4b17fcfc4daf2954c442e71535) 2026-04-28 Shaw: chore: bump plugin-agent-orchestrator — restore model-pref resolution
-- [`2e863a85703b`](https://github.com/elizaOS/eliza/commit/2e863a85703b81a26befb6a9434ab404f4217e6b) 2026-04-28 Shaw: refactor(test): drop redundant fast-profile leg from min-app smoke
+- [`2e863a85703b`](https://github.com/elizaOS/eliza/commit/2e863a85703b81a26befb6a9434ab404f4217e6b) 2026-04-28 Shaw: refactor(test): drop redundant fast-profile leg from min-project smoke
 - [`ef13feba9139`](https://github.com/elizaOS/eliza/commit/ef13feba9139b34941a03173c1fa2c91aa8c6eff) 2026-04-28 Shaw: test(workflows): gate electrobun-release drift test on wrapper shape
 - [`992ced51442f`](https://github.com/elizaOS/eliza/commit/992ced51442f1c5e43bcb7b24316f61cdc05d436) 2026-04-28 Shaw: test(workflows): gate startup integration drift test on wrapper scripts
 - [`fa9b323ae3ad`](https://github.com/elizaOS/eliza/commit/fa9b323ae3adf234abd1d3657b684f414c5f6d0d) 2026-04-28 Shaw: fix(apps): add placeholder hero images for internal tool apps

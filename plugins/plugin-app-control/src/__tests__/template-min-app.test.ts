@@ -1,5 +1,5 @@
 /**
- * Template validation: scaffolds the real `eliza/templates/min-app` and
+ * Template validation: scaffolds the real `eliza/templates/min-project` and
  * `eliza/templates/min-plugin` templates into a tempdir, replaces the
  * placeholders the way the create flow's `copyTemplate()` does, and runs
  * the AppVerificationService pipeline against the result.
@@ -37,7 +37,7 @@ const execFileAsync = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // __tests__ → src → typescript → plugin-app-control → plugins → eliza
 const ELIZA_ROOT = path.resolve(HERE, "..", "..", "..", "..", "..");
-const APP_TEMPLATE_DIR = path.join(ELIZA_ROOT, "templates", "min-app");
+const APP_TEMPLATE_DIR = path.join(ELIZA_ROOT, "templates", "min-project");
 const PLUGIN_TEMPLATE_DIR = path.join(ELIZA_ROOT, "templates", "min-plugin");
 const TEST_RUN_ID = `${process.pid}-${Date.now()}-${randomUUID()}`;
 const APP_TMP_PARENT = path.join(ELIZA_ROOT, "apps");
@@ -112,7 +112,7 @@ function createScaffoldDir(parent: string, prefix: string): string {
 }
 
 describe.skipIf(skip)(
-	"templates/min-app — scaffolds into a verifiable workspace",
+	"templates/min-project — scaffolds into a verifiable workspace",
 	() => {
 		const service = new AppVerificationService();
 
@@ -140,7 +140,7 @@ describe.skipIf(skip)(
 		// typecheck+lint, run with `--testNamePattern` and a custom checks
 		// override locally.
 		it("scaffolds + typechecks + lints + tests clean", async () => {
-			const scaffoldDir = createScaffoldDir(APP_TMP_PARENT, "min-app");
+			const scaffoldDir = createScaffoldDir(APP_TMP_PARENT, "min-project");
 
 			try {
 				copyTemplateAndReplace(APP_TEMPLATE_DIR, scaffoldDir, {
@@ -159,7 +159,7 @@ describe.skipIf(skip)(
 					workdir: scaffoldDir,
 					appName: "scaffold-validation-app",
 					checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
-					runId: `template-min-app-with-tests-${TEST_RUN_ID}`,
+					runId: `template-min-project-with-tests-${TEST_RUN_ID}`,
 				});
 
 				if (result.verdict !== "pass") {
@@ -170,7 +170,7 @@ describe.skipIf(skip)(
 						)
 						.join("\n");
 					throw new Error(
-						`min-app template failed verification.\nChecks:\n${summary}\n\nRetryable prompt:\n${result.retryablePromptForChild}`,
+						`min-project template failed verification.\nChecks:\n${summary}\n\nRetryable prompt:\n${result.retryablePromptForChild}`,
 					);
 				}
 				expect(result.verdict).toBe("pass");

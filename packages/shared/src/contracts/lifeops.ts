@@ -1343,7 +1343,7 @@ export interface LifeOpsActivitySignal {
 // ---------------------------------------------------------------------------
 // Telemetry event families (canonical store).
 //
-// See `eliza/apps/app-lifeops/docs/telemetry-event-families.md` for the full
+// See `eliza/plugins/app-lifeops/docs/telemetry-event-families.md` for the full
 // spec. Every telemetry payload is a fully-typed discriminated-union variant
 // per the no-`unknown`/no-`any` rule.
 // ---------------------------------------------------------------------------

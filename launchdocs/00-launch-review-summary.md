@@ -1,6 +1,6 @@
-# Launch TODO Review Summary
+# Launch Readiness Review Summary
 
-Generated from the TODO-specific QA reports in `launchdocs/`.
+Generated from the launch-readiness QA reports in `launchdocs/`.
 
 ## Reports Completed
 
@@ -47,7 +47,7 @@ Generated from the TODO-specific QA reports in `launchdocs/`.
 - `bun run --cwd cloud typecheck` passed: 41/41 package splits.
 - `bunx vitest run --config packages/agent/vitest.config.ts packages/agent/src/services/launchpads/launchpad-engine.test.ts packages/agent/src/actions/launchpad-launch.test.ts` passed: 10 tests.
 - `bun run --cwd packages/agent typecheck` passed.
-- `bunx vitest run --config apps/app-lifeops/vitest.config.ts apps/app-lifeops/test/followup-tracker.test.ts apps/app-lifeops/src/hooks/useGoogleLifeOpsConnector.test.ts` passed: 25 tests.
+- `bunx vitest run --config plugins/app-lifeops/vitest.config.ts plugins/app-lifeops/test/followup-tracker.test.ts plugins/app-lifeops/src/hooks/useGoogleLifeOpsConnector.test.ts` passed: 25 tests.
 
 Note: a direct `bun test` run against the launchpad tests failed because those tests depend on Vitest's `vi.mocked` helper. The same files passed under the repository's intended Vitest config.
 

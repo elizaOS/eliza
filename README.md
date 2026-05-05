@@ -126,7 +126,7 @@ bun run dev
 
 The project template lays out a full workspace with a local eliza checkout, default plugins (`plugin-sql`, `plugin-elizacloud`, `plugin-local-ai`, `plugin-ollama`), and a Vite + React UI you can edit immediately.
 
-**2. Copy a template directly.** [`templates/min-app/`](templates/min-app) is the smallest possible app — Vite + React UI, a runtime `Plugin` with one action, the `elizaos.app` metadata block in `package.json`, and a vitest smoke test. Read [`templates/min-app/SCAFFOLD.md`](templates/min-app/SCAFFOLD.md) for the placeholders to replace and the verification contract.
+**2. Copy a template directly.** [`templates/min-project/`](templates/min-project) is the smallest possible app — Vite + React UI, a runtime `Plugin` with one action, the `elizaos.app` metadata block in `package.json`, and a vitest smoke test. Read [`templates/min-project/SCAFFOLD.md`](templates/min-project/SCAFFOLD.md) for the placeholders to replace and the verification contract.
 
 For first-party app plugin references, browse [`plugins/app-*`](plugins). A few starting points by complexity:
 

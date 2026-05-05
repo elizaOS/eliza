@@ -181,7 +181,7 @@ describe("APP create dispatch", () => {
 	it("passes verifier policy through CREATE_TASK parameters with canonical completion proof", async () => {
 		const repoRoot = await mkdtemp(path.join(tmpdir(), "eliza-app-create-"));
 		try {
-			const templateDir = path.join(repoRoot, "eliza/templates/min-app");
+			const templateDir = path.join(repoRoot, "eliza/templates/min-project");
 			await mkdir(templateDir, { recursive: true });
 			await writeFile(
 				path.join(templateDir, "package.json"),
@@ -285,7 +285,7 @@ describe("APP create dispatch", () => {
 				version: "0.1.0",
 				installedAt: new Date().toISOString(),
 			};
-			const appDir = path.join(repoRoot, "eliza/apps/app-notes");
+			const appDir = path.join(repoRoot, "eliza/plugins/app-notes");
 			await mkdir(appDir, { recursive: true });
 			await writeFile(
 				path.join(appDir, "package.json"),

@@ -1,4 +1,10 @@
-# TODO 5 Settings QA
+# Launch Readiness 05: Settings QA
+
+## Second-Pass Status (2026-05-05)
+
+- Superseded: the earlier P1 findings for existing API key redisplay, streaming permission filtering, and custom RPC mode are fixed or narrowed by current code.
+- Still open: cloud API keys are still stored as plaintext despite hash-oriented schema comments, cloud API create/delete UI can leave loading state stuck on thrown errors, subscription disconnect remains hidden, and a settings connector deep link targets a missing `integrations` section.
+- Launch gate: keep the cloud API key redaction contract and settings/component tests in the focused launch suite; add cloud UI error-path tests before calling settings fully verified.
 
 ## Current state
 

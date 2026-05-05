@@ -25,7 +25,7 @@
  *   in-game chat path, we rely on the offline verify-pr7.ts harness.
  *
  * Run:
- *   BOT_SDK_TOKEN=dev-secret bun eliza/apps/app-scape/scripts/verify-pr7-live.ts
+ *   BOT_SDK_TOKEN=dev-secret bun eliza/plugins/app-scape/scripts/verify-pr7-live.ts
  */
 
 import type { PerceptionSnapshot } from "@elizaos/app-scape";

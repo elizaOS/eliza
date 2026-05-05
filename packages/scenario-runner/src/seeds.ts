@@ -1,9 +1,9 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
 } from "@elizaos/scenario-schema";
-import { stringToUuid } from "@elizaos/core";
 
 // Loaded lazily so this module can be built without pulling app-lifeops into the
 // scenario-runner rootDir (app-lifeops is only available at runtime).
@@ -11,12 +11,21 @@ async function loadLifeOps() {
   // Cast to `string` so TypeScript does not statically resolve these paths for
   // rootDir validation — they live outside this package's src/ rootDir.
   // biome-ignore lint/suspicious/noExplicitAny: dynamic imports outside rootDir
-  const [{ resolveDefaultWindowPolicy }, { materializeDefinitionOccurrences }, repo] =
-    await Promise.all([
-      import("../../../apps/app-lifeops/src/lifeops/defaults.ts" as string) as any,
-      import("../../../apps/app-lifeops/src/lifeops/engine.ts" as string) as any,
-      import("../../../apps/app-lifeops/src/lifeops/repository.ts" as string) as any,
-    ]);
+  const [
+    { resolveDefaultWindowPolicy },
+    { materializeDefinitionOccurrences },
+    repo,
+  ] = await Promise.all([
+    import(
+      "../../../plugins/app-lifeops/src/lifeops/defaults.ts" as string
+    ) as any,
+    import(
+      "../../../plugins/app-lifeops/src/lifeops/engine.ts" as string
+    ) as any,
+    import(
+      "../../../plugins/app-lifeops/src/lifeops/repository.ts" as string
+    ) as any,
+  ]);
   return {
     resolveDefaultWindowPolicy,
     materializeDefinitionOccurrences,

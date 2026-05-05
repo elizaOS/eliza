@@ -26,7 +26,7 @@ elizaos create
 elizaos create my-project --template project
 
 # Backwards-compatible alias for the project template
-elizaos create my-project --template fullstack-app
+elizaos create my-project --template project
 
 # Create a TypeScript plugin starter
 elizaos create plugin-foo --template plugin
@@ -58,7 +58,7 @@ elizaos info --language typescript
 | `project` | elizaOS project backed by a local `eliza` checkout | TypeScript |
 | `plugin` | Plugin starter workspace | TypeScript |
 
-`fullstack-app` remains accepted as an alias for `project`.
+`project` remains accepted as an alias for `project`.
 
 ## Development
 

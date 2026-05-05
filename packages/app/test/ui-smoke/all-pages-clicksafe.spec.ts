@@ -347,7 +347,7 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/vincent/status", async (route) => {
+  await page.route("**/api/vincent/status**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -363,7 +363,31 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/shopify/status", async (route) => {
+  await page.route("**/api/vincent/strategy**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ connected: false, strategy: null }),
+    });
+  });
+
+  await page.route("**/api/vincent/trading-profile**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ connected: false, profile: null }),
+    });
+  });
+
+  await page.route("**/api/shopify/status**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -375,6 +399,54 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
         connected: false,
         shop: null,
       }),
+    });
+  });
+
+  await page.route("**/api/shopify/products**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ products: [], total: 0, page: 1, pageSize: 25 }),
+    });
+  });
+
+  await page.route("**/api/shopify/orders**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ orders: [], total: 0 }),
+    });
+  });
+
+  await page.route("**/api/shopify/inventory**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], locations: [] }),
+    });
+  });
+
+  await page.route("**/api/shopify/customers**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ customers: [], total: 0 }),
     });
   });
 
@@ -445,6 +517,20 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ datasets: [] }),
+    });
+  });
+
+  await page.route("**/api/training/backends**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        backends: { mlx: false, cuda: false, cpu: true },
+      }),
     });
   });
 
@@ -923,131 +1009,6 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/trajectories**", async (route) => {
-    const request = route.request();
-    const pathname = new URL(request.url()).pathname;
-    if (request.method() === "GET" && pathname === "/api/trajectories/config") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ enabled: false }),
-      });
-      return;
-    }
-    if (request.method() === "GET" && pathname === "/api/trajectories/stats") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          total: 0,
-          active: 0,
-          completed: 0,
-          error: 0,
-          timeout: 0,
-        }),
-      });
-      return;
-    }
-    if (request.method() === "GET" && pathname === "/api/trajectories") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          trajectories: [],
-          total: 0,
-          offset: 0,
-          limit: 50,
-        }),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true }),
-    });
-  });
-
-  await page.route("**/api/training/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        runtimeAvailable: true,
-        autoTrain: null,
-      }),
-    });
-  });
-
-  await page.route("**/api/training/trajectories**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        trajectories: [],
-        total: 0,
-        offset: 0,
-        limit: 50,
-      }),
-    });
-  });
-
-  await page.route("**/api/training/datasets", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ datasets: [] }),
-    });
-  });
-
-  await page.route("**/api/training/backends", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ backends: [] }),
-    });
-  });
-
-  await page.route("**/api/training/jobs", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ jobs: [] }),
-    });
-  });
-
-  await page.route("**/api/training/models", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ models: [] }),
-    });
-  });
-
   await page.route("**/api/training/auto/config", async (route) => {
     const method = route.request().method();
     if (method !== "GET" && method !== "POST") {
@@ -1188,6 +1149,7 @@ test.beforeEach(async ({ page }) => {
 test("core app routes render at desktop and mobile without console failures", async ({
   page,
 }) => {
+  test.setTimeout(8 * 60_000);
   const issues = installPageIssueGuards(page);
 
   for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {

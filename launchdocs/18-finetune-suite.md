@@ -1,4 +1,4 @@
-# TODO 18: Fine tune suite of models for Eliza harness
+# Launch Readiness 18: Fine-Tune Suite
 
 Worker: 18  
 Date: 2026-05-04  
@@ -18,73 +18,73 @@ Launch-readiness assessment: this is not launch-ready as a fine-tuned model suit
 
 ### Training service/API layer is a stub
 
-- `apps/app-training/src/services/training-service.ts:34` defines `TrainingService`, but it stores datasets/jobs/models only in process memory.
-- `apps/app-training/src/services/training-service.ts:65` returns an empty trajectory list unconditionally.
-- `apps/app-training/src/services/training-service.ts:77` returns `null` for every trajectory id.
-- `apps/app-training/src/services/training-service.ts:85` creates only a metadata-only `DatasetRecord`; it does not read trajectories or write dataset files.
-- `apps/app-training/src/services/training-service.ts:104` creates a queued job record only; there is no trainer invocation or job state progression.
-- `apps/app-training/src/services/training-service.ts:141`, `:150`, and `:159` have placeholder import/activate/benchmark methods that only operate on the empty in-memory `models` array.
-- `apps/app-training/src/routes/training-routes.ts:316` wires `/api/training/trajectories` through this service, so that route cannot currently return real trajectories.
-- `apps/app-training/src/routes/training-routes.ts:347` and `:373` expose dataset/job creation on top of the stub service.
+- `plugins/app-training/src/services/training-service.ts:34` defines `TrainingService`, but it stores datasets/jobs/models only in process memory.
+- `plugins/app-training/src/services/training-service.ts:65` returns an empty trajectory list unconditionally.
+- `plugins/app-training/src/services/training-service.ts:77` returns `null` for every trajectory id.
+- `plugins/app-training/src/services/training-service.ts:85` creates only a metadata-only `DatasetRecord`; it does not read trajectories or write dataset files.
+- `plugins/app-training/src/services/training-service.ts:104` creates a queued job record only; there is no trainer invocation or job state progression.
+- `plugins/app-training/src/services/training-service.ts:141`, `:150`, and `:159` have placeholder import/activate/benchmark methods that only operate on the empty in-memory `models` array.
+- `plugins/app-training/src/routes/training-routes.ts:316` wires `/api/training/trajectories` through this service, so that route cannot currently return real trajectories.
+- `plugins/app-training/src/routes/training-routes.ts:347` and `:373` expose dataset/job creation on top of the stub service.
 
 ### Real trajectory-backed path exists, but separately
 
-- `apps/app-training/src/core/training-orchestrator.ts:425` is the real orchestration entry point.
-- It requires a runtime `trajectories` service at `apps/app-training/src/core/training-orchestrator.ts:438`.
-- It pulls up to 500 recent trajectories at `apps/app-training/src/core/training-orchestrator.ts:470`.
-- It applies `applyPrivacyFilter` before writing JSONL at `apps/app-training/src/core/training-orchestrator.ts:478`.
-- It exports datasets with `exportTrajectoryTaskDatasets` at `apps/app-training/src/core/training-orchestrator.ts:488`.
-- It selects a task based on threshold policy at `apps/app-training/src/core/training-orchestrator.ts:495`.
-- It records run JSON under `<state>/training/runs` at `apps/app-training/src/core/training-orchestrator.ts:383`.
-- `apps/app-training/src/services/training-trigger.ts:338` increments per-task counters when a trajectory completes, and `:401` fires the orchestrator when thresholds/cooldowns allow it.
-- Runtime registration exists in `apps/app-training/src/register-runtime.ts:10`; it registers trajectory export cron, skill scoring cron, and the training trigger service.
+- `plugins/app-training/src/core/training-orchestrator.ts:425` is the real orchestration entry point.
+- It requires a runtime `trajectories` service at `plugins/app-training/src/core/training-orchestrator.ts:438`.
+- It pulls up to 500 recent trajectories at `plugins/app-training/src/core/training-orchestrator.ts:470`.
+- It applies `applyPrivacyFilter` before writing JSONL at `plugins/app-training/src/core/training-orchestrator.ts:478`.
+- It exports datasets with `exportTrajectoryTaskDatasets` at `plugins/app-training/src/core/training-orchestrator.ts:488`.
+- It selects a task based on threshold policy at `plugins/app-training/src/core/training-orchestrator.ts:495`.
+- It records run JSON under `<state>/training/runs` at `plugins/app-training/src/core/training-orchestrator.ts:383`.
+- `plugins/app-training/src/services/training-trigger.ts:338` increments per-task counters when a trajectory completes, and `:401` fires the orchestrator when thresholds/cooldowns allow it.
+- Runtime registration exists in `plugins/app-training/src/register-runtime.ts:10`; it registers trajectory export cron, skill scoring cron, and the training trigger service.
 - Trajectory storage attempts to notify the trigger service on completion in `packages/agent/src/runtime/trajectory-storage.ts:240`.
 
 ### Dataset export is implemented
 
-- `apps/app-training/src/core/trajectory-task-datasets.ts:15` defines five task buckets: `should_respond`, `context_routing`, `action_planner`, `response`, `media_description`.
-- Task inference is heuristic, based on call purpose/tags/model/metadata and response shape at `apps/app-training/src/core/trajectory-task-datasets.ts:209`.
-- Examples are emitted as Gemini-style `{ messages: [...] }` rows at `apps/app-training/src/core/trajectory-task-datasets.ts:266`.
-- JSONL files and a summary are written at `apps/app-training/src/core/trajectory-task-datasets.ts:355`.
-- `/api/training/trajectories/export` can split by task using this exporter at `apps/app-training/src/routes/training-routes.ts:790`, but that endpoint depends on the stub `TrainingService` trajectory methods and therefore exports zero real examples through the `/api/training/*` route today.
+- `plugins/app-training/src/core/trajectory-task-datasets.ts:15` defines five task buckets: `should_respond`, `context_routing`, `action_planner`, `response`, `media_description`.
+- Task inference is heuristic, based on call purpose/tags/model/metadata and response shape at `plugins/app-training/src/core/trajectory-task-datasets.ts:209`.
+- Examples are emitted as Gemini-style `{ messages: [...] }` rows at `plugins/app-training/src/core/trajectory-task-datasets.ts:266`.
+- JSONL files and a summary are written at `plugins/app-training/src/core/trajectory-task-datasets.ts:355`.
+- `/api/training/trajectories/export` can split by task using this exporter at `plugins/app-training/src/routes/training-routes.ts:790`, but that endpoint depends on the stub `TrainingService` trajectory methods and therefore exports zero real examples through the `/api/training/*` route today.
 
 ### Privacy controls exist but are narrow
 
-- `apps/app-training/src/core/privacy-filter.ts:1` documents credential, handle, privacy-level, and geo redaction.
-- `apps/app-training/src/core/privacy-filter.ts:241` clones trajectories and transforms only `steps[*].llmCalls[*].systemPrompt/userPrompt/response`.
-- The filter intentionally preserves metadata, as tested in `apps/app-training/test/privacy-filter.test.ts:113`.
+- `plugins/app-training/src/core/privacy-filter.ts:1` documents credential, handle, privacy-level, and geo redaction.
+- `plugins/app-training/src/core/privacy-filter.ts:241` clones trajectories and transforms only `steps[*].llmCalls[*].systemPrompt/userPrompt/response`.
+- The filter intentionally preserves metadata, as tested in `plugins/app-training/test/privacy-filter.test.ts:113`.
 - This is good for filtering/sorting, but risk remains if secrets, PII, file contents, screenshots OCR, tool outputs, or user data are stored outside those three string fields.
 
 ### Backend adapters are mostly integration placeholders
 
-- `apps/app-training/src/backends/native.ts:1` describes native as prompt optimization, not model fine-tuning. It parses JSONL rows and runs prompt optimizers.
-- `apps/app-training/src/backends/native.ts:172` creates an adapter over `runtime.useModel`, scores variants, and returns optimized prompt artifacts.
-- `apps/app-training/src/core/training-orchestrator.ts:230` dispatches native and persists optimized prompt artifacts only if `optimized_prompt` service is available.
-- `apps/app-training/src/backends/atropos.ts:45` validates and stages a dataset, but without `ATROPOS_BIN` it prints next steps and returns `invoked: false`.
-- `apps/app-training/src/backends/tinker.ts:33` lazily imports `@thinking-machines/tinker`; if missing or unconfigured, it returns `invoked: false`.
-- `apps/app-training/src/core/training-orchestrator.ts:217` explicitly refuses Vertex dispatch from threshold/cron paths because project/bucket config is not available there.
-- `apps/app-training/src/core/vertex-tuning.ts:280` can upload local JSONL to GCS and create a Vertex tuning job, but this was not validated live.
-- `apps/app-training/src/core/vertex-tuning.ts:470` returns a model preference patch/recommended id but does not itself publish, activate, benchmark, or rollback the tuned model.
+- `plugins/app-training/src/backends/native.ts:1` describes native as prompt optimization, not model fine-tuning. It parses JSONL rows and runs prompt optimizers.
+- `plugins/app-training/src/backends/native.ts:172` creates an adapter over `runtime.useModel`, scores variants, and returns optimized prompt artifacts.
+- `plugins/app-training/src/core/training-orchestrator.ts:230` dispatches native and persists optimized prompt artifacts only if `optimized_prompt` service is available.
+- `plugins/app-training/src/backends/atropos.ts:45` validates and stages a dataset, but without `ATROPOS_BIN` it prints next steps and returns `invoked: false`.
+- `plugins/app-training/src/backends/tinker.ts:33` lazily imports `@thinking-machines/tinker`; if missing or unconfigured, it returns `invoked: false`.
+- `plugins/app-training/src/core/training-orchestrator.ts:217` explicitly refuses Vertex dispatch from threshold/cron paths because project/bucket config is not available there.
+- `plugins/app-training/src/core/vertex-tuning.ts:280` can upload local JSONL to GCS and create a Vertex tuning job, but this was not validated live.
+- `plugins/app-training/src/core/vertex-tuning.ts:470` returns a model preference patch/recommended id but does not itself publish, activate, benchmark, or rollback the tuned model.
 
 ### CLI exists but is not a production trainer
 
-- `apps/app-training/src/cli/train.ts:36` exposes `--backend {atropos|tinker|vertex|native}`.
-- Vertex waits for job completion at `apps/app-training/src/cli/train.ts:177`, so it is a long-running/live cloud command.
-- Native CLI uses a deterministic stub adapter at `apps/app-training/src/cli/train.ts:211`; it is explicitly described as a smoke test path, not production LLM optimization.
+- `plugins/app-training/src/cli/train.ts:36` exposes `--backend {atropos|tinker|vertex|native}`.
+- Vertex waits for job completion at `plugins/app-training/src/cli/train.ts:177`, so it is a long-running/live cloud command.
+- Native CLI uses a deterministic stub adapter at `plugins/app-training/src/cli/train.ts:211`; it is explicitly described as a smoke test path, not production LLM optimization.
 
 ## What I could validate
 
 Command:
 
 ```sh
-bun run --cwd apps/app-training test
+bun run --cwd plugins/app-training test
 ```
 
 Result:
 
 ```text
 $ vitest run
-RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/apps/app-training
+RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-training
 Test Files  8 passed (8)
 Tests  66 passed (66)
 Duration  21.53s
@@ -100,7 +100,7 @@ This validates the bounded unit suite for:
 - Nightly trajectory export privacy guard with fake trajectories.
 - Cron registration tests.
 
-I also validated by inspection that `apps/app-training/package.json` has only `train`, `test`, and `test:watch`; there is no package-level typecheck script.
+I also validated by inspection that `plugins/app-training/package.json` has only `train`, `test`, and `test:watch`; there is no package-level typecheck script.
 
 ## What I could not validate
 
@@ -108,9 +108,9 @@ I also validated by inspection that `apps/app-training/package.json` has only `t
 - No Atropos training run was launched; no configured `ATROPOS_BIN` was discovered or invoked.
 - No Tinker job was launched; the SDK/API key/project path is external and optional.
 - No long-running training, weight export, model upload, model registry publishing, Ollama import, activation, or rollback was performed.
-- The live e2e test in `apps/app-training/test/training-api.live.e2e.test.ts` is gated on `ELIZA_LIVE_TEST=1`; I did not run it.
+- The live e2e test in `plugins/app-training/test/training-api.live.e2e.test.ts` is gated on `ELIZA_LIVE_TEST=1`; I did not run it.
 - I did not run repo-wide typecheck/build because this workspace is large and the task requested bounded validation only.
-- I did not validate the UI behavior in `apps/app-training/src/ui/FineTuningView.tsx` against a live runtime.
+- I did not validate the UI behavior in `plugins/app-training/src/ui/FineTuningView.tsx` against a live runtime.
 
 ## Bugs and risks
 
@@ -175,7 +175,7 @@ I also validated by inspection that `apps/app-training/package.json` has only `t
 - Contract: Atropos CLI invocation arguments and result ingestion with a fake executable.
 - Contract: Tinker SDK `createJob` payload with a fake module.
 - Live gated: Vertex create/list/status/orchestrate against a tiny approved JSONL dataset.
-- Eval: held-out trajectory replay using `apps/app-training/src/core/replay-validator.ts`, comparing baseline vs optimized/tuned model.
+- Eval: held-out trajectory replay using `plugins/app-training/src/core/replay-validator.ts`, comparing baseline vs optimized/tuned model.
 - Eval: regression suite for `should_respond`, `action_planner`, `response`, `context_routing`, and `media_description`.
 - Safety: privacy leak scan of every generated JSONL and run artifact before upload/publish.
 - Operational: activation/rollback drill that applies a model preference patch, verifies runtime use, then reverts.

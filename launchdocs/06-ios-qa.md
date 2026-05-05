@@ -1,4 +1,10 @@
-# TODO 6 - Build and QA iOS
+# Launch Readiness 06: iOS Build And QA
+
+## Second-Pass Status (2026-05-05)
+
+- Superseded: `CapacitorApp` and `CapacitorPreferences` are present in the current Podfile and generated Podfile tests; their absence from SPM is intentional for incompatible plugins.
+- Still open: iOS Agent remains a native stub, runtime docs reference missing helper commands/env vars, and cloud remote-session consume/activate is not implemented.
+- Launch gate: static mobile artifact checks pass, but physical iPhone, TestFlight/App Store, APNs, permissions, and cloud-hybrid device bridge validation remain manual/live.
 
 ## Current state
 
@@ -10,7 +16,7 @@ The canonical native iOS template lives under `packages/app-core/platforms/ios`;
 
 iOS runtime config supports `remote-mac`, `cloud`, `cloud-hybrid`, and `local` as a type shape in `packages/app/src/ios-runtime.ts:1-95`. The app shell starts the mobile DeviceBridge client for `cloud-hybrid` or `local` modes in `packages/app/src/main.tsx:773-804`. The native iOS Agent plugin is intentionally a stub, so iOS is currently a remote/cloud shell, not a full local iOS agent (`packages/native-plugins/agent/ios/Sources/AgentPlugin/AgentPlugin.swift:3-12`).
 
-Remote desktop support is split. Legacy local desktop sessions can use Tailscale/ngrok/VNC through `apps/app-lifeops/src/lifeops/remote-desktop.ts:175-201` and `apps/app-lifeops/src/lifeops/remote-desktop.ts:383-508`. The newer remote-session control plane has local service actions and cloud DB endpoints, but I did not find an end-to-end cloud pairing consume/activate path.
+Remote desktop support is split. Legacy local desktop sessions can use Tailscale/ngrok/VNC through `plugins/app-lifeops/src/lifeops/remote-desktop.ts:175-201` and `plugins/app-lifeops/src/lifeops/remote-desktop.ts:383-508`. The newer remote-session control plane has local service actions and cloud DB endpoints, but I did not find an end-to-end cloud pairing consume/activate path.
 
 ## Evidence reviewed with file refs
 
@@ -23,7 +29,7 @@ Remote desktop support is split. Legacy local desktop sessions can use Tailscale
 - iOS runtime/device bridge: `packages/app/src/ios-runtime.ts:1-95`, `packages/app/src/main.tsx:744-821`, `packages/app/test/ios-runtime.test.ts:1-64`.
 - Mobile runtime UX: `packages/app-core/src/onboarding/mobile-runtime-mode.ts:4-85`, `packages/app-core/src/components/shell/RuntimeGate.tsx` refs found by search.
 - Local inference/DeviceBridge refs: `packages/native-plugins/llama/src/index.ts:1-23`, `packages/app-core/src/runtime/mobile-local-inference-gate.test.ts`.
-- Remote session/control-plane refs: `apps/app-lifeops/src/actions/start-remote-session.ts:1-201`, `apps/app-lifeops/src/actions/owner-remote-desktop.ts:54-254`, `apps/app-lifeops/src/remote/remote-session-service.ts:1-242`, `cloud/apps/api/v1/remote/pair/route.ts:1-103`, `cloud/apps/api/v1/remote/sessions/route.ts:1-55`, `cloud/packages/db/repositories/remote-sessions.ts:14-63`.
+- Remote session/control-plane refs: `plugins/app-lifeops/src/actions/start-remote-session.ts:1-201`, `plugins/app-lifeops/src/actions/owner-remote-desktop.ts:54-254`, `plugins/app-lifeops/src/remote/remote-session-service.ts:1-242`, `cloud/apps/api/v1/remote/pair/route.ts:1-103`, `cloud/apps/api/v1/remote/sessions/route.ts:1-55`, `cloud/packages/db/repositories/remote-sessions.ts:14-63`.
 
 ## What I could validate
 
@@ -40,7 +46,7 @@ Remote desktop support is split. Legacy local desktop sessions can use Tailscale
 
 ## What I could not validate
 
-- Full `bun run build:ios`, `cap sync ios`, `pod install`, or `xcodebuild build`.
+- Full `bun run --cwd packages/app build:ios`, `cap sync ios`, `pod install`, or `xcodebuild build`.
 - Physical iPhone install, simulator behavior, TestFlight, App Store upload, or App Review metadata.
 - Real iOS permissions: Local Network/Bonjour, microphone, camera, speech recognition, HealthKit, background fetch, Family Controls, app groups, WebsiteBlocker extension, APNs.
 - Real cloud login, remote Mac connection over LAN/WAN, cloud-hybrid local inference on device, Tailscale/ngrok/VNC data plane, or remote cloud-agent pairing.
@@ -50,8 +56,8 @@ Remote desktop support is split. Legacy local desktop sessions can use Tailscale
 
 - `bun run --cwd packages/app test -- test/ios-runtime.test.ts` - passed, 1 file / 6 tests.
 - `bun run --cwd packages/app-core test -- test/onboarding/mobile-runtime-mode.test.ts src/runtime/mobile-local-inference-gate.test.ts` - passed, 2 files / 13 tests.
-- `bun run --cwd apps/app-lifeops test -- test/remote-session-service.test.ts test/remote-desktop-action.test.ts` - passed, 2 files / 21 tests.
-- `bun run --cwd apps/app-lifeops test -- src/remote/tailscale-transport.test.ts` - passed, 1 file / 15 tests.
+- `bun run --cwd plugins/app-lifeops test -- test/remote-session-service.test.ts test/remote-desktop-action.test.ts` - passed, 2 files / 21 tests.
+- `bun run --cwd plugins/app-lifeops test -- src/remote/tailscale-transport.test.ts` - passed, 1 file / 15 tests.
 - `bun run --cwd packages/app typecheck` - passed.
 - `node --check packages/app-core/scripts/run-mobile-build.mjs` - passed.
 - `node --check packages/app/scripts/build.mjs` - passed.
@@ -68,14 +74,14 @@ Remote desktop support is split. Legacy local desktop sessions can use Tailscale
 
 ### P1
 
-- The generated/current iOS Podfile does not include `CapacitorApp` or `CapacitorPreferences`, while the app imports and uses both (`packages/app/src/main.tsx:6-9`, `packages/app/src/main.tsx:357-396`, `packages/app/src/main.tsx:744-752`). Current `packages/app/ios/App/Podfile:8-24` only includes Capacitor core, Browser, Keyboard, and custom pods. `CapApp-SPM/Package.swift` also lacks `CapacitorApp` and `CapacitorPreferences`. This risks broken lifecycle/deep-link handling and persistent DeviceBridge/storage IDs on iOS.
-- Remote-to-cloud-agent support appears incomplete. The cloud pair endpoint creates a pending DB row and code hash (`cloud/apps/api/v1/remote/pair/route.ts:72-97`), but the repository only has create/find/list/revoke (`cloud/packages/db/repositories/remote-sessions.ts:14-63`), and the agent action consumes a local `PairingCodeStore` instead (`apps/app-lifeops/src/actions/start-remote-session.ts:129-136`). I did not find a cloud consume/activate/update-ingress path.
+- Superseded: the Podfile gap is fixed. Current `packages/app/ios/App/Podfile` includes `CapacitorApp` and `CapacitorPreferences`, and `packages/app-core/scripts/run-mobile-build.test.ts` covers generated Podfile output. `CapApp-SPM/Package.swift` still omits those plugins because SPM-incompatible plugins are stripped intentionally; CocoaPods is the source of truth for them.
+- Remote-to-cloud-agent support appears incomplete. The cloud pair endpoint creates a pending DB row and code hash (`cloud/apps/api/v1/remote/pair/route.ts:72-97`), but the repository only has create/find/list/revoke (`cloud/packages/db/repositories/remote-sessions.ts:14-63`), and the agent action consumes a local `PairingCodeStore` instead (`plugins/app-lifeops/src/actions/start-remote-session.ts:129-136`). I did not find a cloud consume/activate/update-ingress path.
 
 ### P2
 
 - The iOS runtime-mode docs reference missing helper commands and env vars. `docs/apps/mobile/build-guide.md:75-104` documents `bun run dev:ios:*`, `ELIZA_IOS_REMOTE_API_BASE`, and `ELIZA_IOS_DEVICE_BRIDGE_API_BASE`; current `packages/app/package.json:5-28` has no `dev:ios:*`, and `packages/app/src/ios-runtime.ts:60-95` reads `VITE_ELIZA_IOS_API_BASE`, `VITE_ELIZA_IOS_API_TOKEN`, and `VITE_ELIZA_DEVICE_BRIDGE_URL/TOKEN`.
 - The cloud/local model UX is code-shaped but not device-validated. `cloud-hybrid` starts the DeviceBridge client, and tests cover URL derivation, but actual iOS local inference depends on an arm64-only `llama-cpp-capacitor` framework and a real paired agent/device path.
-- The remote desktop stack has two partially overlapping paths: legacy `REMOTE_DESKTOP` returns Tailscale/ngrok/VNC session URLs, while `START_REMOTE_SESSION` returns service-backed authorization with `ingressUrl: null` when no data plane is configured (`apps/app-lifeops/src/actions/start-remote-session.ts:151-175`). Product QA must choose which path is launch-blocking.
+- The remote desktop stack has two partially overlapping paths: legacy `REMOTE_DESKTOP` returns Tailscale/ngrok/VNC session URLs, while `START_REMOTE_SESSION` returns service-backed authorization with `ingressUrl: null` when no data plane is configured (`plugins/app-lifeops/src/actions/start-remote-session.ts:151-175`). Product QA must choose which path is launch-blocking.
 
 ### P3
 
@@ -85,7 +91,7 @@ Remote desktop support is split. Legacy local desktop sessions can use Tailscale
 
 ## Codex-fixable work
 
-- Align `generatePodfile()` with the iOS template and actual JS imports; add a focused unit test that asserts generated iOS pods include `CapacitorApp`, `CapacitorPreferences`, and any other official plugin the app imports.
+- Keep the Podfile/template regression test in the launch gate so `CapacitorApp`, `CapacitorPreferences`, and future official plugin imports cannot drift again.
 - Either restore `scripts/ios-runtime-mode.mjs` plus `dev:ios:*` scripts, or update the build guide to the current `VITE_*` env flow.
 - Wire branded iOS runtime env aliases consistently between `packages/app/src/ios-runtime.ts` and app-core.
 - Add cloud remote-session consume/activate/update-ingress repository methods and routes, then make `START_REMOTE_SESSION` able to consume cloud-issued pairing codes.
@@ -93,7 +99,7 @@ Remote desktop support is split. Legacy local desktop sessions can use Tailscale
 
 ## Human/device/App Store/credential QA needed
 
-- Run `bun run build:ios` on a clean branch, then inspect any generated diffs before committing native outputs.
+- Run `bun run --cwd packages/app build:ios` on a clean branch, then inspect any generated diffs before committing native outputs.
 - Install on a physical iPhone and test: cloud onboarding, remote Mac onboarding, cloud-hybrid phone compute, app lifecycle resume/pause, deep links, Preferences persistence, local network discovery, and DeviceBridge reconnect.
 - Exercise microphone, camera, speech recognition, HealthKit, Family Controls, WebsiteBlocker extension, background fetch, APNs, and Local Network prompts.
 - Validate Tailscale/ngrok/VNC remote desktop from phone to desktop, plus cloud-agent pairing/list/revoke once the cloud consume path exists.
