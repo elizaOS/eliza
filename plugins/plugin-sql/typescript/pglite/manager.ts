@@ -1,4 +1,12 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
 import { vector } from "@electric-sql/pglite/vector";
