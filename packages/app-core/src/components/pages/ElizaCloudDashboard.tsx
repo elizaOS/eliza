@@ -21,6 +21,7 @@ import {
   type CloudBillingSettings,
   type CloudBillingSummary,
   client,
+  isRateLimitedError,
 } from "../../api";
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
@@ -71,6 +72,14 @@ export function CloudDashboard() {
     useState<CloudBillingSummary | null>(null);
   const [billingSettings, setBillingSettings] =
     useState<CloudBillingSettings | null>(null);
+  // When non-null, Eliza Cloud is rate-limiting us; render a countdown until
+  // the wall-clock passes this timestamp instead of "Too many requests".
+  const [rateLimitedUntilMs, setRateLimitedUntilMs] = useState<number | null>(
+    null,
+  );
+  const [, setCountdownTick] = useState(0);
+  const fetchInFlightRef = useRef<Promise<void> | null>(null);
+  const rateLimitRetryScheduledRef = useRef(false);
   const [billingAmount, setBillingAmount] = useState("25");
   const [autoTopUpForm, dispatchAutoTopUpForm] = useReducer(
     autoTopUpFormReducer,
@@ -99,47 +108,86 @@ export function CloudDashboard() {
   );
 
   const fetchBillingData = useCallback(async () => {
-    setBillingLoading(true);
-    setBillingError(null);
-    try {
-      const [summaryResponse, settingsResponse] = await Promise.all([
-        client.getCloudBillingSummary().catch((err) => ({ __error: err })),
-        client.getCloudBillingSettings().catch((err) => ({ __error: err })),
-      ]);
+    if (fetchInFlightRef.current) return fetchInFlightRef.current;
+    const run = (async () => {
+      setBillingLoading(true);
+      setBillingError(null);
+      try {
+        const [summaryResponse, settingsResponse] = await Promise.all([
+          client.getCloudBillingSummary().catch((err) => ({ __error: err })),
+          client.getCloudBillingSettings().catch((err) => ({ __error: err })),
+        ]);
 
-      if (!mountedRef.current) return;
+        if (!mountedRef.current) return;
 
-      if (isRecord(summaryResponse) && "__error" in summaryResponse) {
-        const err = summaryResponse.__error;
-        throw err instanceof Error
-          ? err
-          : new Error(
-              t("elizaclouddashboard.BillingSummaryUnavailable", {
-                defaultValue: "Billing summary unavailable.",
-              }),
-            );
-      }
+        // Detect rate-limit on either response before either side throws so
+        // we can render a single countdown banner and skip the error toast.
+        const summaryRateLimited =
+          isRecord(summaryResponse) && "__error" in summaryResponse
+            ? isRateLimitedError(summaryResponse.__error)
+              ? summaryResponse.__error
+              : null
+            : null;
+        const settingsRateLimited =
+          !summaryRateLimited &&
+          isRecord(settingsResponse) &&
+          "__error" in settingsResponse &&
+          isRateLimitedError(settingsResponse.__error)
+            ? settingsResponse.__error
+            : null;
+        const rateLimitedErr = summaryRateLimited ?? settingsRateLimited;
+        if (rateLimitedErr) {
+          const retryAfterSec =
+            typeof rateLimitedErr.retryAfter === "number" &&
+            rateLimitedErr.retryAfter > 0
+              ? Math.ceil(rateLimitedErr.retryAfter)
+              : 60;
+          setRateLimitedUntilMs(Date.now() + retryAfterSec * 1000);
+          // Preserve last-known balance/settings on rate-limit so the user
+          // doesn't see a flicker of "—" — just a banner explaining the wait.
+          return;
+        }
 
-      setBillingSummary(normalizeBillingSummary(summaryResponse));
+        if (isRecord(summaryResponse) && "__error" in summaryResponse) {
+          const err = summaryResponse.__error;
+          setRateLimitedUntilMs(null);
+          throw err instanceof Error
+            ? err
+            : new Error(
+                t("elizaclouddashboard.BillingSummaryUnavailable", {
+                  defaultValue: "Billing summary unavailable.",
+                }),
+              );
+        }
 
-      if (isRecord(settingsResponse) && !("__error" in settingsResponse)) {
-        setBillingSettings(normalizeBillingSettings(settingsResponse));
-      } else {
+        setRateLimitedUntilMs(null);
+        setBillingSummary(normalizeBillingSummary(summaryResponse));
+
+        if (isRecord(settingsResponse) && !("__error" in settingsResponse)) {
+          setBillingSettings(normalizeBillingSettings(settingsResponse));
+        } else {
+          setBillingSettings(null);
+        }
+      } catch (err) {
+        if (!mountedRef.current) return;
+        setBillingSummary(null);
         setBillingSettings(null);
+        setBillingError(
+          err instanceof Error
+            ? err.message
+            : t("elizaclouddashboard.FailedToLoadBillingData", {
+                defaultValue: "Failed to load billing data.",
+              }),
+        );
+      } finally {
+        if (mountedRef.current) setBillingLoading(false);
       }
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setBillingSummary(null);
-      setBillingSettings(null);
-      setBillingError(
-        err instanceof Error
-          ? err.message
-          : t("elizaclouddashboard.FailedToLoadBillingData", {
-              defaultValue: "Failed to load billing data.",
-            }),
-      );
+    })();
+    fetchInFlightRef.current = run;
+    try {
+      await run;
     } finally {
-      if (mountedRef.current) setBillingLoading(false);
+      fetchInFlightRef.current = null;
     }
   }, [t]);
 
@@ -332,6 +380,31 @@ export function CloudDashboard() {
     };
   }, []);
 
+  // Tick once per second while rate-limited so the countdown re-renders, then
+  // fire one auto-retry when the window expires. We schedule the retry once
+  // per rate-limit window (gated by rateLimitRetryScheduledRef) so we never
+  // turn this into a tight retry loop against an upstream that's still refusing.
+  useEffect(() => {
+    if (rateLimitedUntilMs === null) {
+      rateLimitRetryScheduledRef.current = false;
+      return;
+    }
+    const interval = window.setInterval(() => {
+      if (!mountedRef.current) return;
+      const remaining = rateLimitedUntilMs - Date.now();
+      if (remaining > 0) {
+        setCountdownTick((n) => n + 1);
+        return;
+      }
+      window.clearInterval(interval);
+      if (rateLimitRetryScheduledRef.current) return;
+      rateLimitRetryScheduledRef.current = true;
+      setRateLimitedUntilMs(null);
+      void fetchBillingData();
+    }, 1_000);
+    return () => window.clearInterval(interval);
+  }, [rateLimitedUntilMs, fetchBillingData]);
+
   // Refetch billing only when the cloud-connected flag flips. We deliberately
   // exclude `fetchBillingData` from the dep array: its identity tracks `t`
   // (i18n) and changes on every render, which would re-fire this effect every
@@ -491,6 +564,18 @@ export function CloudDashboard() {
   const formattedBalance =
     cloudBalanceNumber !== null ? cloudBalanceNumber.toFixed(2) : null;
   const currencyPrefix = cloudCurrency === "USD" ? "$" : `${cloudCurrency} `;
+  const rateLimitRemainingSec =
+    rateLimitedUntilMs !== null
+      ? Math.max(0, Math.ceil((rateLimitedUntilMs - Date.now()) / 1000))
+      : 0;
+  const isRateLimited = rateLimitRemainingSec > 0;
+  const rateLimitMessage = isRateLimited
+    ? t("elizaclouddashboard.RateLimitedRetryIn", {
+        defaultValue:
+          "Eliza Cloud is rate-limiting this account; retrying in {{seconds}}s.",
+        seconds: rateLimitRemainingSec,
+      })
+    : null;
 
   if (!elizaCloudConnected) {
     return (
@@ -561,9 +646,13 @@ export function CloudDashboard() {
             size="icon"
             className="h-8 w-8 rounded-lg"
             onClick={handleRefresh}
-            disabled={refreshing || billingLoading}
+            disabled={refreshing || billingLoading || isRateLimited}
             aria-label={t("common.refresh")}
-            title={t("common.refresh")}
+            title={
+              isRateLimited
+                ? (rateLimitMessage ?? t("common.refresh"))
+                : t("common.refresh")
+            }
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
@@ -593,7 +682,16 @@ export function CloudDashboard() {
         </div>
       )}
 
-      {billingError && (
+      {rateLimitMessage && (
+        <div
+          role="status"
+          className="mt-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
+        >
+          {rateLimitMessage}
+        </div>
+      )}
+
+      {!rateLimitMessage && billingError && (
         <div
           role="alert"
           className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
@@ -659,7 +757,16 @@ export function CloudDashboard() {
         </span>
       </div>
 
-      {billingError && (
+      {rateLimitMessage && (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
+        >
+          {rateLimitMessage}
+        </div>
+      )}
+
+      {!rateLimitMessage && billingError && (
         <div
           role="alert"
           className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
