@@ -2,10 +2,9 @@
   "name": "@elizaos/cloud",
   "version": "0.1.0",
   "workspaces": [
-    "../packages/core",
-    "../packages/schemas",
-    "../packages/shared",
-    "../plugins/plugin-elizacloud",
+    "../packages/*",
+    "../packages/native-plugins/*",
+    "../plugins/*",
     "apps/*",
     "packages/*",
     "packages/services/*",

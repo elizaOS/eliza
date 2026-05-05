@@ -72,9 +72,7 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		},
 	],
 ]);
-let cachedServiceClassRegistrations:
-	| ServiceClassRegistration[]
-	| null = null;
+let cachedServiceClassRegistrations: ServiceClassRegistration[] | null = null;
 
 class CollisionTestServiceA extends Service {
 	static override serviceType = "collision-test";
@@ -154,7 +152,10 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
 
 function literalStringValue(expression: ts.Expression): string | null {
 	const unwrapped = unwrapExpression(expression);
-	if (ts.isStringLiteral(unwrapped) || ts.isNoSubstitutionTemplateLiteral(unwrapped)) {
+	if (
+		ts.isStringLiteral(unwrapped) ||
+		ts.isNoSubstitutionTemplateLiteral(unwrapped)
+	) {
 		return unwrapped.text;
 	}
 	return null;
@@ -185,9 +186,7 @@ function collectLocalConstants(sourceFile: ts.SourceFile): Map<string, string> {
 	return constants;
 }
 
-function getUniqueGlobalConstants(
-	sources: SourceInfo[],
-): Map<string, string> {
+function getUniqueGlobalConstants(sources: SourceInfo[]): Map<string, string> {
 	const valuesByName = new Map<string, Set<string>>();
 	for (const source of sources) {
 		for (const [name, value] of source.localConstants) {
@@ -235,10 +234,7 @@ function resolveServiceTypeInitializer(
 	return null;
 }
 
-function hasModifier(
-	node: ts.Node,
-	kind: ts.SyntaxKind,
-): boolean {
+function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
 	return Boolean(
 		ts.canHaveModifiers(node) &&
 			ts.getModifiers(node)?.some((modifier) => modifier.kind === kind),
@@ -449,7 +445,9 @@ describe("serviceType collision guardrails", () => {
 		const groups = groupByServiceType(registrations);
 		const unexpectedDuplicateGroups = [...groups.entries()]
 			.filter(([, group]) => group.length > 1)
-			.filter(([serviceType, group]) => !isAllowlistedDuplicate(serviceType, group))
+			.filter(
+				([serviceType, group]) => !isAllowlistedDuplicate(serviceType, group),
+			)
 			.map(([serviceType, group]) => formatDuplicateGroup(serviceType, group));
 
 		expect(unexpectedDuplicateGroups).toEqual([]);

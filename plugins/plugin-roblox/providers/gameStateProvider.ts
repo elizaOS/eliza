@@ -7,8 +7,7 @@ const providerName = "roblox-game-state";
 export const gameStateProvider: Provider = {
   name: providerName,
   description: "Provides information about the connected Roblox game/experience",
-  descriptionCompressed:
-    "Read Roblox connection state, experience metadata, and messaging topic.",
+  descriptionCompressed: "Read Roblox connection state, experience metadata, and messaging topic.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
