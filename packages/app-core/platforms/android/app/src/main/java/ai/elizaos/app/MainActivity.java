@@ -87,13 +87,18 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onStop() {
+    public void onStop() {
         super.onStop();
         if (!isFinishing()) {
             // The gateway notification is only needed to keep the Capacitor
             // gateway alive after the UI leaves the foreground. Starting it
             // during first render can trip Android's service-execution ANR on
             // slower emulator boots.
+            //
+            // Declared `public` (not `protected`) to match Capacitor's
+            // BridgeActivity.onStop, which widens visibility from the
+            // android.app.Activity superclass — overriding with weaker
+            // access would be a Java compile error.
             GatewayConnectionService.start(this);
         }
     }
