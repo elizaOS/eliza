@@ -12,7 +12,7 @@ describe("@elizaos/plugin-google-meet-cute", () => {
       "CREATE_MEETING",
       "GET_MEETING_INFO",
       "GET_PARTICIPANTS",
-      "GENERATE_MEETING_REPORT",
+      "GENERATE_REPORT",
     ]);
     expect(googleMeetPlugin.services).toHaveLength(2);
     expect(googleMeetPlugin.providers).toHaveLength(1);

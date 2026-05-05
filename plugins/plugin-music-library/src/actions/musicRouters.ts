@@ -254,7 +254,7 @@ export const musicPlaylist: Action = {
   ],
   description:
     "Playlist router. Use subaction save, load, list, delete, or add. Save/load/delete/add require confirmed:true when changing queue or saved playlists.",
-  descriptionCompressed: "Playlist router: save, load, list, delete, add.",
+  descriptionCompressed: "Playlist router subaction: save, load, list, delete, add.",
   parameters: [
     {
       name: "subaction",
@@ -322,7 +322,7 @@ export const musicLibrary: Action = {
   similes: ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
   description:
     "Music library router. Use subaction download to fetch music into the local library without playing it. Requires confirmed:true before downloading.",
-  descriptionCompressed: "Library router: download music into local library.",
+  descriptionCompressed: "Library router subaction: download music into local library.",
   parameters: [
     {
       name: "subaction",
@@ -386,7 +386,7 @@ export const musicMetadataSearch: Action = {
     "Music metadata/search router. Use subaction youtube to return YouTube links, wikipedia to look up artist/album/song metadata, or resolve_and_queue for complex music requests that need research before queueing. " +
     MUSIC_INFO_ACTION_DOCS,
   descriptionCompressed:
-    "Music metadata/search: YouTube links, Wikipedia metadata, resolve complex query and queue.",
+    "Music metadata/search subaction: YouTube links, Wikipedia metadata, resolve query and queue.",
   parameters: [
     {
       name: "subaction",
