@@ -2,7 +2,7 @@
 # Pre-flight gate for Vast.ai provisioning.
 #
 # Run this BEFORE `bash scripts/train_vast.sh provision`. It catches the
-# six classes of failure that have actually burned smoke runs / paid GPU
+# seven classes of failure that have actually burned smoke runs / paid GPU
 # time in this repo:
 #
 #   1. uv lock drift             → ancient pin (e.g. pandas==1.0.5) gets
@@ -22,6 +22,12 @@
 #   6. CUDA capability mismatch  → torch wheels need cu126/cu130 floor and
 #                                   the picked GPU target's driver / sm level
 #                                   must support it.
+#   7. format ceiling violations → per-task_type schema (planner envelope,
+#                                   TOON-decoded routing tokens, tool-call
+#                                   action shape, default-thought leaks) —
+#                                   things `eliza_record.is_valid()` doesn't
+#                                   catch. Trainer ingests the data anyway
+#                                   and the model learns the wrong shape.
 #
 # On full success the script writes `.preflight.ok` at the repo root with
 # a JSON summary and current timestamp. `train_vast.sh provision` reads
@@ -105,7 +111,7 @@ record() {
 # ──────────────────────────────────────────────────────────────────────
 # Check 1 — uv lock consistency
 # ──────────────────────────────────────────────────────────────────────
-log "[1/6] uv lock --check (pyproject.toml ↔ uv.lock)"
+log "[1/8] uv lock --check (pyproject.toml ↔ uv.lock)"
 if uv lock --check >/dev/null 2>&1; then
   log_ok "uv lock consistent"
   record uv_lock pass '{}'
@@ -119,7 +125,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # Check 2 — CPU pytest sweep
 # ──────────────────────────────────────────────────────────────────────
-log "[2/6] CPU pytest sweep (training + quantization + reward + hf publish)"
+log "[2/8] CPU pytest sweep (training + quantization + reward + hf publish)"
 PYTEST_TARGETS=(
   scripts/training/test_memory_calc.py
   scripts/training/test_model_registry.py
@@ -153,7 +159,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # Check 3 — eliza_record schema gate over data/final/{train,val,test}.jsonl
 # ──────────────────────────────────────────────────────────────────────
-log "[3/6] schema gate — data/final/{train,val,test}.jsonl (≤${SAMPLE_LINES} lines/file)"
+log "[3/8] schema gate — data/final/{train,val,test}.jsonl (≤${SAMPLE_LINES} lines/file)"
 SCHEMA_DETAIL_FILE="$(mktemp)"
 trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE"' EXIT
 if uv run --extra train python - "$ROOT" "$SAMPLE_LINES" "$SCHEMA_DETAIL_FILE" <<'PY'
@@ -276,7 +282,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # Check 4 — memory projection vs target hardware (85% cap)
 # ──────────────────────────────────────────────────────────────────────
-log "[4/6] memory projection ≤${MAX_UTIL_PCT}% of target hardware"
+log "[4/8] memory projection ≤${MAX_UTIL_PCT}% of target hardware"
 MEM_DETAIL_FILE="$(mktemp)"
 trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE"' EXIT
 if uv run --extra train python - "$REGISTRY_KEY" "$VAST_GPU_TARGET" "$MAX_UTIL_PCT" "$MEM_DETAIL_FILE" <<'PY'
@@ -420,7 +426,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # Check 5 — recent local smoke green
 # ──────────────────────────────────────────────────────────────────────
-log "[5/6] local smoke fresh (<${SMOKE_MAX_AGE_HOURS}h, content_pct ≥ ${MIN_CONTENT_PCT})"
+log "[5/8] local smoke fresh (<${SMOKE_MAX_AGE_HOURS}h, content_pct ≥ ${MIN_CONTENT_PCT})"
 SMOKE_DETAIL_FILE="$(mktemp)"
 trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETAIL_FILE"' EXIT
 if uv run --extra train python - "$REGISTRY_KEY" "$SMOKE_MAX_AGE_HOURS" "$MIN_CONTENT_PCT" "$SMOKE_DETAIL_FILE" <<'PY'
@@ -523,7 +529,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # Check 6 — CUDA capability declaration
 # ──────────────────────────────────────────────────────────────────────
-log "[6/6] CUDA capability ≥ torch wheel floor for $VAST_GPU_TARGET"
+log "[6/8] CUDA capability ≥ torch wheel floor for $VAST_GPU_TARGET"
 CUDA_DETAIL_FILE="$(mktemp)"
 trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETAIL_FILE" "$CUDA_DETAIL_FILE"' EXIT
 if uv run --extra train python - "$VAST_GPU_TARGET" "$CUDA_DETAIL_FILE" <<'PY'
@@ -596,7 +602,172 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# All six checks passed — write summary
+# Check 7 — per-task_type format ceiling validation
+# ──────────────────────────────────────────────────────────────────────
+# `eliza_record.is_valid()` enforces only the FLOOR (top-level fields,
+# non-empty content). validate_corpus.py enforces the CEILING — that the
+# `expectedResponse` for each `metadata.task_type` actually matches what
+# the eliza runtime parses. Catches the format drift DATASET_REVIEW.md
+# documented (default-thought leaks, lowercase routing actions, missing
+# REPLY/IGNORE/STOP, malformed planner envelopes, tool-calls that don't
+# decode to TOON, etc.).
+log "[7/8] format ceiling — validate_corpus.py --strict on data/final/{train,val,test}.jsonl"
+FORMAT_DETAIL_FILE="$(mktemp)"
+trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETAIL_FILE" "$CUDA_DETAIL_FILE" "$FORMAT_DETAIL_FILE"' EXIT
+FORMAT_OK=1
+FORMAT_FAILED_FILES=()
+mkdir -p "$ROOT/data/synthesized/review"
+for SPLIT in train val test; do
+  SPLIT_PATH="$ROOT/data/final/${SPLIT}.jsonl"
+  REPORT_PATH="$ROOT/data/synthesized/review/format_validation_${SPLIT}.json"
+  if [ ! -f "$SPLIT_PATH" ]; then
+    log_err "format ceiling: $SPLIT_PATH missing"
+    FORMAT_OK=0
+    FORMAT_FAILED_FILES+=("${SPLIT}:missing")
+    continue
+  fi
+  if uv run --extra train python "$ROOT/scripts/validate_corpus.py" \
+        --input "$SPLIT_PATH" \
+        --report "$REPORT_PATH" \
+        --strict 2>&1 | tee -a /tmp/preflight_format.log; then
+    log_ok "format ceiling: $SPLIT clean (report: $REPORT_PATH)"
+  else
+    log_err "format ceiling: $SPLIT has invalid records (report: $REPORT_PATH)"
+    FORMAT_OK=0
+    FORMAT_FAILED_FILES+=("${SPLIT}:invalid")
+  fi
+done
+
+if [ "$FORMAT_OK" -eq 1 ]; then
+  printf '{"reports":["data/synthesized/review/format_validation_%s.json"]}' \
+      "{train,val,test}" > "$FORMAT_DETAIL_FILE"
+  record format_ceiling pass "$(cat "$FORMAT_DETAIL_FILE")"
+else
+  printf '{"failed":["%s"],"fix":"inspect data/synthesized/review/format_validation_*.json; fix the named adapter in scripts/lib/adapters.py"}' \
+      "$(IFS=,; echo "${FORMAT_FAILED_FILES[*]}")" > "$FORMAT_DETAIL_FILE"
+  record format_ceiling fail "$(cat "$FORMAT_DETAIL_FILE")"
+  log_err "Fix:  open data/synthesized/review/format_validation_<split>.json,"
+  log_err "      identify the failing task_type/source, patch the adapter."
+  exit 1
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# Check 8 — default-thought leak scan (fast, scoped, actionable)
+# ──────────────────────────────────────────────────────────────────────
+# DATASET_REVIEW.md flagged literal default-thought injection as the most
+# damning corpus pollution. This check is intentionally separate from
+# check #7 because it has a *concrete* fix path (run
+# transform_fix_default_thoughts.py) and a tight per-record cost — we
+# count, threshold, and fail with the exact remediation command. Threshold
+# defaults to 100 records cumulative across train/val/test; override via
+# MILADY_PREFLIGHT_LEAK_THRESHOLD.
+LEAK_THRESHOLD="${MILADY_PREFLIGHT_LEAK_THRESHOLD:-100}"
+log "[8/8] default-thought leak scan (≤${LEAK_THRESHOLD} cumulative leaks)"
+LEAK_DETAIL_FILE="$(mktemp)"
+trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETAIL_FILE" "$CUDA_DETAIL_FILE" "$FORMAT_DETAIL_FILE" "$LEAK_DETAIL_FILE"' EXIT
+if uv run --extra train python - "$ROOT" "$LEAK_THRESHOLD" "$LEAK_DETAIL_FILE" <<'PY'
+"""Count records in data/final/{train,val,test}.jsonl whose first
+`thought:` line equals one of the canonical leak literals from
+scripts/lib/eliza_record.DEFAULT_THOUGHT_LEAKS. Aggregate count above
+threshold = fail.
+
+Cheap: streams JSONL line by line, only inspects the first ~1KB of
+expectedResponse to find the thought line, never touches the bun TOON
+decoder.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+ROOT = Path(sys.argv[1])
+THRESHOLD = int(sys.argv[2])
+DETAIL_OUT = Path(sys.argv[3])
+
+sys.path.insert(0, str(ROOT))
+from scripts.lib.eliza_record import (  # noqa: E402
+    DEFAULT_THOUGHT_LEAKS, is_default_thought_leak,
+)
+
+leak_counter: Counter = Counter()
+per_split: dict[str, dict] = {}
+total_leaks = 0
+total_records = 0
+
+for name in ("train.jsonl", "val.jsonl", "test.jsonl"):
+    path = ROOT / "data" / "final" / name
+    n_recs = 0
+    n_leaks = 0
+    if not path.exists():
+        per_split[name] = {"path": str(path), "missing": True,
+                           "records": 0, "leaks": 0}
+        continue
+    with path.open("rb") as f:
+        for raw in f:
+            n_recs += 1
+            try:
+                rec = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            er = rec.get("expectedResponse") or ""
+            if not er:
+                continue
+            head = er[:1024]
+            for line in head.splitlines():
+                s = line.strip()
+                if s.startswith("thought:") or s.startswith('"thought":'):
+                    key = "thought:" if s.startswith("thought:") else '"thought":'
+                    v = s[len(key):].strip()
+                    if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+                        v = v[1:-1]
+                    if is_default_thought_leak(v):
+                        n_leaks += 1
+                        leak_counter[v.strip()] += 1
+                    break
+    per_split[name] = {"path": str(path), "records": n_recs, "leaks": n_leaks}
+    total_leaks += n_leaks
+    total_records += n_recs
+
+detail = {
+    "threshold": THRESHOLD,
+    "total_records": total_records,
+    "total_leaks": total_leaks,
+    "by_split": per_split,
+    "by_phrase": dict(sorted(leak_counter.items(), key=lambda kv: -kv[1])),
+    "leak_literals": list(DEFAULT_THOUGHT_LEAKS),
+}
+DETAIL_OUT.write_text(json.dumps(detail, separators=(",", ":")))
+
+print(f"  scanned={total_records}  leaks={total_leaks}  "
+      f"threshold={THRESHOLD}", file=sys.stderr)
+if total_leaks > THRESHOLD:
+    print(
+        f"FAIL: {total_leaks} default-thought leak literals found in "
+        f"data/final/ (threshold {THRESHOLD}). These records train the "
+        f"model to emit phrases like {DEFAULT_THOUGHT_LEAKS[0]!r} "
+        f"verbatim. Remediate with:\n"
+        f"  .venv/bin/python scripts/transform_fix_default_thoughts.py",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+sys.exit(0)
+PY
+then
+  log_ok "default-thought leak count under threshold"
+  record default_thought_leak pass "$(cat "$LEAK_DETAIL_FILE")"
+else
+  log_err "default-thought leak count exceeds threshold ${LEAK_THRESHOLD}"
+  log_err "Fix:  .venv/bin/python scripts/transform_fix_default_thoughts.py"
+  log_err "      then mv data/intermediate/train_thought_fixed.jsonl data/final/train.jsonl"
+  detail_json="$(cat "$LEAK_DETAIL_FILE" 2>/dev/null || echo '{}')"
+  record default_thought_leak fail "$detail_json"
+  exit 1
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# All eight checks passed — write summary
 # ──────────────────────────────────────────────────────────────────────
 TS_EPOCH="$(date +%s)"
 TS_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -648,6 +819,6 @@ summary = {
 out.write_text(json.dumps(summary, indent=2))
 PY
 
-log "PASS — all 6 checks green. Wrote $SUMMARY_FILE"
+log "PASS — all 8 checks green. Wrote $SUMMARY_FILE"
 log "      registry-key=$REGISTRY_KEY gpu-target=$VAST_GPU_TARGET"
 log "      next: bash scripts/train_vast.sh provision"

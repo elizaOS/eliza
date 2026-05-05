@@ -1,200 +1,537 @@
 #!/usr/bin/env python3
-"""N-gram diversification — replace overrepresented phrases with paraphrases.
+"""N-gram diversification — rewrite over-represented n-grams in the assistant
+streams (`thought` and `text`) of `expectedResponse`.
 
-Targets the 18 candidate phrases identified by analyze_ngrams.py:
-- "then confirm to deploy" (45,316 occurrences across 16 n8n-family sources)
-- "connect any required credentials" (45,316 — same template tail)
-- "call the tool to satisfy the request" (24,376)
-- "create an n8n workflow to ..." (25,657)
-- "the user s request" (22,357 — possessive-stripped artifact)
+Driven by `data/synthesized/review/ngrams/diversification_candidates.json`
+produced by `scripts/analyze_ngrams.py`. A candidate has `record_pct > 5%`,
+`gini > 0.7`, `n >= 4`. Static paraphrase tables cover the worst offenders
+(n8n template tail, nemotron tool-call thought boilerplate); other
+candidates with no static rule are reported as flagged-for-manual-review.
 
-Strategy: stratified rewrite of ~60% of occurrences across the synth-template
-phrases. The other 40% stay so we don't completely erase the template — we
-just break the n-gram concentration.
+Behavior contract
+-----------------
+* Read-only on user_input. Only `assistant_thought` and `assistant_text`
+  TOON fields are rewritten — the user side is conditioning, not target.
+* Deterministic per record: seed = `roomName + agentId`. Re-running on the
+  same input produces the same output.
+* TOON-validity preserving: rewrites operate on the inner string of the
+  `text:`/`thought:` field. The shape of the TOON document is untouched.
+  An acceptance check round-trip-decodes a 100-record sample at the end.
+* Replacements only happen when the paraphrase is at least 3 tokens shorter
+  than the original n-gram. Empty pool / equal-length pool entries are
+  skipped, leaving the original verbatim.
+* Per-ngram + per-source replacement counts land in
+  `data/synthesized/review/ngrams/diversification_applied.json`.
 
-Per-record decision is keyed by hash(record_idx + phrase) % 100 < 60, so
-results are deterministic and the same phrase isn't double-rewritten.
-
-Reads `data/final/train_caveman.jsonl` (or train_deslopped.jsonl if caveman
-not yet run). Writes `data/final/train_diversified.jsonl`.
+CLI
+---
+    python scripts/transform_ngram_diversify.py \\
+        --input data/final/train.jsonl \\
+        --output data/intermediate/train_ngram_diversified.jsonl \\
+        --candidates data/synthesized/review/ngrams/diversification_candidates.json \\
+        [--dry-run] [--max-records N]
 """
+
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
-import random
 import re
 import sys
+import time
+from collections import Counter, defaultdict
 from pathlib import Path
+from typing import Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-DST = ROOT / "data" / "final" / "train_diversified.jsonl"
-MANIFEST = ROOT / "data" / "final" / "manifest_diversified.json"
-SRC_CANDIDATES = [
-    ROOT / "data" / "final" / "train_caveman.jsonl",
-    ROOT / "data" / "final" / "train_deslopped.jsonl",
-    ROOT / "data" / "final" / "train_cleaned.jsonl",
-]
 
+# ---------------------------------------------------------------------------
+# Paraphrase tables
+# ---------------------------------------------------------------------------
+#
+# (A) Static n8n boilerplate. The n8n-mega-workflows + n8n-workflows-templates
+#     family emits a verbatim template tail
+#         "... nodes connect any required credentials then confirm to deploy."
+#     in 12.6% of records. Hard-coded paraphrases are appropriate here because
+#     the source phrasing is already mechanical.
+#
+# (B) Thought-leak patterns. Nemotron-rl-tool-use + dolci-instruct + openclaw
+#     repeatedly produce phrases like "call the tool to satisfy the request".
+#     Replaced with a small, more natural pool. Sampled uniformly per record.
 
-def pick_src() -> Path:
-    for p in SRC_CANDIDATES:
-        if p.exists():
-            return p
-    raise SystemExit(f"none of these exist: {SRC_CANDIDATES}")
-
-
-# Paraphrase dictionary. Each key is a regex pattern; value is a list of
-# candidate replacements. We pick by deterministic hash to keep output stable.
-PARAPHRASES: dict[str, list[str]] = {
-    # n8n template tail variants — the most concentrated phrases
-    r"\bthen confirm to deploy\b": [
-        "then deploy when ready",
-        "and deploy when ready",
-        "then run it",
-        "and confirm to launch",
-        "before deploying",
+N8N_TEMPLATE_PARAPHRASES: dict[str, list[str]] = {
+    # 5-gram and 4-gram supersets — match longest first (see PARAPHRASE_ORDER)
+    "nodes connect any required credentials then confirm to deploy": [
+        "wire up the credentials and deploy",
+        "set credentials and deploy",
+        "add credentials, then deploy",
+        "configure the credential bindings and ship",
+        "fill in credentials and deploy",
+        "plug in the credentials and run",
     ],
-    r"\bconnect any required credentials\b": [
-        "connect the credentials",
-        "wire up credentials",
-        "set up the credential bindings",
-        "add credentials where needed",
+    "connect any required credentials then confirm to deploy": [
+        "wire up credentials and deploy",
+        "set credentials, then deploy",
+        "add credentials and ship",
+        "configure credentials and run",
+        "fill in credentials and deploy",
+        "plug in credentials and run",
+    ],
+    "connect any required credentials then confirm": [
+        "wire up credentials, then confirm",
+        "set credentials, then confirm",
+        "add credentials and confirm",
+    ],
+    "any required credentials then confirm to deploy": [
+        "credentials, then deploy",
+        "credentials and ship",
+        "credentials, then run",
+    ],
+    "required credentials then confirm to deploy": [
+        "credentials, then deploy",
+        "credentials and run",
+        "credentials, then ship",
+    ],
+    "credentials then confirm to deploy": [
+        "credentials and deploy",
+        "credentials, then deploy",
+        "credentials and ship",
+    ],
+    "nodes connect any required credentials": [
+        "wire up the credentials",
+        "set the credentials",
         "configure credentials",
     ],
-    # "nodes connect any required credentials then confirm to deploy"
-    r"\bnodes\b": [
-        "nodes",  # leave most
-        "the nodes",
-        "each node",
+    "connect any required credentials": [
+        "wire up credentials",
+        "set credentials",
+        "configure credentials",
+        "add credentials",
+        "plug in credentials",
     ],
-    # assistant_thought tics
-    r"\bcall the tool to satisfy the request\b": [
-        "invoke the tool to handle the ask",
-        "use the tool for this",
-        "run the tool to address it",
-        "fire the tool to fulfill the user's ask",
+    "any required credentials then confirm": [
+        "credentials, then confirm",
+        "credentials and confirm",
     ],
-    r"\bcall the tool to\b": [
-        "invoke the tool to",
-        "fire the tool to",
-        "use the tool to",
-        "run the tool to",
+    "required credentials then confirm": [
+        "credentials, then confirm",
+        "credentials and confirm",
     ],
-    r"\bto satisfy the request\b": [
-        "to fulfill the request",
-        "to handle this",
-        "to address the ask",
-        "to answer the user",
+    "credentials then confirm to": [
+        "credentials, then",
+        "credentials and",
     ],
-    r"\bthe user s request\b": [
-        "the user's request",
-        "the user's ask",
-        "what the user asked",
+    "then confirm to deploy": [
+        "and deploy",
+        "then deploy",
+        "and ship",
+        "then run",
+        "and launch",
+    ],
+}
+
+THOUGHT_LEAK_PARAPHRASES: dict[str, list[str]] = {
+    "call the tool to satisfy the request": [
+        "use the tool",
+        "invoke the matching tool",
+        "run the right tool",
+        "fire the tool",
+    ],
+    "tool to satisfy the request": [
+        "tool for the ask",
+        "tool for this",
+        "right tool",
+    ],
+    "to satisfy the request": [
+        "for the ask",
+        "for this",
+        "for the user",
+    ],
+    "call the tool to": [
+        # 4 tokens -> 2 tokens. Saves >=3 tokens? 4 - 2 = 2. Skipped by guard.
+        # Kept here so flagged-as-manual is accurate; guard rejects at runtime.
+        "use the",
+        "fire the",
+    ],
+    "the user s request": [
         "the request",
+        "the ask",
+        "what was asked",
     ],
-    # n8n-family user-input concentration (do NOT rewrite — these are user msgs)
-    # leave "create an n8n workflow" alone (would make user msgs unrealistic)
 }
 
-# Stream-scope: which fields each pattern is allowed to rewrite.
-ASSISTANT_TEXT_PATTERNS = {
-    r"\bthen confirm to deploy\b",
-    r"\bconnect any required credentials\b",
+# Order matters: we apply longest patterns first so a 5-gram beats its 4-gram
+# subset to the same span. Built from the union of both tables.
+PARAPHRASE_TABLE: dict[str, list[str]] = {
+    **N8N_TEMPLATE_PARAPHRASES,
+    **THOUGHT_LEAK_PARAPHRASES,
 }
-ASSISTANT_THOUGHT_PATTERNS = {
-    r"\bcall the tool to satisfy the request\b",
-    r"\bcall the tool to\b",
-    r"\bto satisfy the request\b",
-    r"\bthe user s request\b",
-}
+PARAPHRASE_ORDER: list[str] = sorted(
+    PARAPHRASE_TABLE.keys(),
+    key=lambda k: (-len(k.split()), -len(k)),
+)
 
-REWRITE_PROBABILITY = 0.60
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+MIN_TOKEN_SAVINGS = 3  # required shortening to accept a paraphrase
 
 
-def stable_choice(seed_key: str, choices: list[str]) -> str:
+def _tokens(s: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9']+", s)
+
+
+def _ngram_to_regex(ng: str) -> re.Pattern[str]:
+    """Word-boundary, case-insensitive, whitespace-flexible match."""
+    parts = [re.escape(t) for t in ng.split()]
+    pat = r"\b" + r"\s+".join(parts) + r"\b"
+    return re.compile(pat, re.IGNORECASE)
+
+
+def _stable_choice(seed_key: str, choices: list[str]) -> str:
     h = int(hashlib.md5(seed_key.encode("utf-8")).hexdigest()[:8], 16)
     return choices[h % len(choices)]
 
 
-def diversify_text(text: str, patterns: set[str], idx: int, stats: dict) -> str:
-    if not isinstance(text, str) or not text.strip():
-        return text
-    for pat in patterns:
-        compiled = re.compile(pat, re.IGNORECASE)
-        replacements = PARAPHRASES.get(pat, [])
-        if not replacements:
+def _record_seed(rec: dict) -> str:
+    """Deterministic seed per record. Falls back to JSON hash when ids absent."""
+    rn = rec.get("roomName") or ""
+    aid = rec.get("agentId") or ""
+    if rn or aid:
+        return f"{rn}|{aid}"
+    # last-ditch: hash the canonical message + first 200 chars of expectedResponse
+    cm = (rec.get("currentMessage") or {}).get("content") or ""
+    er = rec.get("expectedResponse") or ""
+    return hashlib.md5((cm[:200] + er[:200]).encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Candidate ingestion
+# ---------------------------------------------------------------------------
+
+def _load_candidates(path: Path) -> tuple[list[dict], dict[str, list[str]]]:
+    """Return (raw_candidates, applicable_paraphrases) keyed by ngram lowercase.
+
+    `applicable_paraphrases` only contains candidates that:
+      * appear in `assistant_thought` or `assistant_text` streams,
+      * have at least one paraphrase that beats the MIN_TOKEN_SAVINGS guard.
+
+    Candidates that don't qualify are still returned in `raw_candidates` so the
+    caller can flag them for manual review.
+    """
+    if not path.exists():
+        raise SystemExit(
+            f"missing candidates file: {path}\n"
+            "Run scripts/analyze_ngrams.py first."
+        )
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, list):
+        raise SystemExit(f"unexpected candidates shape: {type(raw)}")
+
+    applicable: dict[str, list[str]] = {}
+    for entry in raw:
+        ng = (entry.get("ngram") or "").lower().strip()
+        stream = entry.get("stream", "")
+        if stream not in ("assistant_thought", "assistant_text"):
             continue
-
-        def _replace(match: re.Match) -> str:
-            seed = f"{idx}:{pat}:{match.start()}"
-            roll = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16) % 100
-            if roll >= REWRITE_PROBABILITY * 100:
-                return match.group(0)
-            choice = stable_choice(seed, replacements)
-            stats[f"rewrite.{pat}"] = stats.get(f"rewrite.{pat}", 0) + 1
-            return choice
-
-        text = compiled.sub(_replace, text)
-    return text
+        pool = PARAPHRASE_TABLE.get(ng, [])
+        if not pool:
+            continue
+        n_tokens = len(ng.split())
+        keep = [p for p in pool if n_tokens - len(_tokens(p)) >= MIN_TOKEN_SAVINGS]
+        if not keep:
+            continue
+        applicable[ng] = keep
+    return raw, applicable
 
 
-# TOON `text:`/`thought:` extractors — same shape as deslop
-TOON_TEXT_RE = re.compile(
-    r'(^|\n)(text:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
+def _flag_unmatched(raw: list[dict]) -> list[dict]:
+    """Return candidates that have no static paraphrase rule + are eligible
+    in the assistant streams. These need manual authoring."""
+    flagged: list[dict] = []
+    for entry in raw:
+        ng = (entry.get("ngram") or "").lower().strip()
+        stream = entry.get("stream", "")
+        if stream not in ("assistant_thought", "assistant_text"):
+            continue
+        if ng in PARAPHRASE_TABLE:
+            # Still flag if all pool entries failed the savings guard.
+            n_tokens = len(ng.split())
+            pool = PARAPHRASE_TABLE[ng]
+            keep = [p for p in pool if n_tokens - len(_tokens(p)) >= MIN_TOKEN_SAVINGS]
+            if keep:
+                continue
+        flagged.append({
+            "ngram": entry.get("ngram"),
+            "stream": stream,
+            "n": entry.get("n"),
+            "record_pct": entry.get("record_pct"),
+            "gini": entry.get("gini"),
+            "top_sources": entry.get("top_sources", [])[:3],
+            "reason": (
+                "no static paraphrase rule"
+                if ng not in PARAPHRASE_TABLE
+                else "all pool entries fail >=3-token savings guard"
+            ),
+        })
+    return flagged
+
+
+# ---------------------------------------------------------------------------
+# String rewriter
+# ---------------------------------------------------------------------------
+
+class Rewriter:
+    """Stateful per-stream rewriter. Tracks per-ngram replacement counts."""
+
+    def __init__(self, applicable: dict[str, list[str]], stream: str) -> None:
+        self.stream = stream
+        self.pools: dict[str, list[str]] = applicable
+        self.compiled: list[tuple[str, re.Pattern[str]]] = [
+            (ng, _ngram_to_regex(ng))
+            for ng in PARAPHRASE_ORDER
+            if ng in applicable
+        ]
+        self.replacements: Counter = Counter()
+
+    def rewrite(self, text: str, *, seed: str) -> tuple[str, int]:
+        if not isinstance(text, str) or not text:
+            return text, 0
+        out = text
+        local_hits = 0
+        for ng, pat in self.compiled:
+            pool = self.pools.get(ng)
+            if not pool:
+                continue
+
+            def _replace(match: re.Match, *, _ng: str = ng, _pool: list[str] = pool) -> str:
+                nonlocal local_hits
+                key = f"{seed}|{self.stream}|{_ng}|{match.start()}"
+                choice = _stable_choice(key, _pool)
+                # Defensive: re-check the savings guard at runtime.
+                if len(_tokens(_ng)) - len(_tokens(choice)) < MIN_TOKEN_SAVINGS:
+                    return match.group(0)
+                self.replacements[_ng] += 1
+                local_hits += 1
+                # Preserve a leading capital if the original started with one.
+                orig = match.group(0)
+                if orig[:1].isupper() and choice[:1].islower():
+                    choice = choice[:1].upper() + choice[1:]
+                return choice
+
+            out = pat.sub(_replace, out)
+        return out, local_hits
+
+
+# ---------------------------------------------------------------------------
+# TOON field substitution
+# ---------------------------------------------------------------------------
+
+TOON_THOUGHT_QUOTED = re.compile(
+    r'(^|\n)(\s*thought:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
-TOON_THOUGHT_RE = re.compile(
-    r'(^|\n)(thought:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
+TOON_THOUGHT_UNQUOTED = re.compile(
+    r'(^|\n)(\s*thought:\s*)([^"\n][^\n]*)(?=\n|$)',
+)
+TOON_TEXT_QUOTED = re.compile(
+    r'(^|\n)(\s*text:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
+)
+TOON_TEXT_UNQUOTED = re.compile(
+    r'(^|\n)(\s*text:\s*)([^"\n][^\n]*)(?=\n|$)',
 )
 
 
-def diversify_toon(toon: str, idx: int, stats: dict) -> str:
-    def _text(match: re.Match) -> str:
-        prefix, key, quoted, suffix = match.groups()
+def _sub_quoted(toon: str, regex: re.Pattern[str], rewriter: Rewriter, seed: str) -> tuple[str, int]:
+    hits = 0
+
+    def _r(m: re.Match) -> str:
+        nonlocal hits
+        prefix, key, quoted, suffix = m.groups()
         try:
             inner = json.loads(quoted)
         except json.JSONDecodeError:
-            return match.group(0)
-        new_inner = diversify_text(inner, ASSISTANT_TEXT_PATTERNS, idx, stats)
-        if new_inner != inner:
-            stats["text_changed"] = stats.get("text_changed", 0) + 1
+            return m.group(0)
+        new_inner, n = rewriter.rewrite(inner, seed=seed)
+        if n == 0 or new_inner == inner:
+            return m.group(0)
+        hits += n
         return f"{prefix}{key}{json.dumps(new_inner, ensure_ascii=False)}{suffix}"
 
-    def _thought(match: re.Match) -> str:
-        prefix, key, quoted, suffix = match.groups()
-        try:
-            inner = json.loads(quoted)
-        except json.JSONDecodeError:
-            return match.group(0)
-        new_inner = diversify_text(inner, ASSISTANT_THOUGHT_PATTERNS, idx, stats)
-        if new_inner != inner:
-            stats["thought_changed"] = stats.get("thought_changed", 0) + 1
-        return f"{prefix}{key}{json.dumps(new_inner, ensure_ascii=False)}{suffix}"
-
-    toon = TOON_TEXT_RE.sub(_text, toon)
-    toon = TOON_THOUGHT_RE.sub(_thought, toon)
-    return toon
+    return regex.sub(_r, toon), hits
 
 
-def diversify_record(rec: dict, idx: int, stats: dict) -> dict:
+def _sub_unquoted(toon: str, regex: re.Pattern[str], rewriter: Rewriter, seed: str) -> tuple[str, int]:
+    hits = 0
+
+    def _r(m: re.Match) -> str:
+        nonlocal hits
+        prefix, key, value = m.groups()
+        new_value, n = rewriter.rewrite(value, seed=seed)
+        if n == 0 or new_value == value:
+            return m.group(0)
+        hits += n
+        # Promote to a quoted form if the new value contains TOON-special chars.
+        if any(c in new_value for c in '"\n\\,'):
+            return f"{prefix}{key}{json.dumps(new_value, ensure_ascii=False)}"
+        return f"{prefix}{key}{new_value}"
+
+    return regex.sub(_r, toon), hits
+
+
+def diversify_record(
+    rec: dict,
+    *,
+    text_rw: Rewriter,
+    thought_rw: Rewriter,
+    per_source_hits: dict[str, Counter],
+) -> tuple[dict, int]:
     er = rec.get("expectedResponse")
-    if isinstance(er, str) and er:
-        new_er = diversify_toon(er, idx, stats)
-        if new_er != er:
-            rec["expectedResponse"] = new_er
-            stats["records_changed"] = stats.get("records_changed", 0) + 1
-    return rec
+    if not isinstance(er, str) or not er:
+        return rec, 0
+    seed = _record_seed(rec)
+    new_er = er
+    total_hits = 0
+    new_er, h1 = _sub_quoted(new_er, TOON_THOUGHT_QUOTED, thought_rw, seed)
+    new_er, h2 = _sub_unquoted(new_er, TOON_THOUGHT_UNQUOTED, thought_rw, seed)
+    new_er, h3 = _sub_quoted(new_er, TOON_TEXT_QUOTED, text_rw, seed)
+    new_er, h4 = _sub_unquoted(new_er, TOON_TEXT_UNQUOTED, text_rw, seed)
+    total_hits = h1 + h2 + h3 + h4
+    if total_hits and new_er != er:
+        rec["expectedResponse"] = new_er
+        src = (rec.get("metadata") or {}).get("source_dataset") or "unknown"
+        per_source_hits[src]["records"] += 1
+        per_source_hits[src]["replacements"] += total_hits
+    return rec, total_hits
 
+
+# ---------------------------------------------------------------------------
+# TOON round-trip acceptance check
+# ---------------------------------------------------------------------------
+
+def _toon_decode_or_none(s: str):
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from lib.toon import decode  # type: ignore
+    except Exception:
+        return None  # decoder unavailable: skip the check, don't crash
+    try:
+        return decode(s)
+    except Exception:
+        return False
+
+
+def _acceptance_check(sample: list[str]) -> dict:
+    """Decode the last N rewritten TOONs through the canonical decoder.
+
+    Returns {"checked": int, "ok": int, "failed": int, "skipped": bool}.
+    `skipped` flips true when bun/decoder is unavailable in this env.
+    """
+    if not sample:
+        return {"checked": 0, "ok": 0, "failed": 0, "skipped": False}
+    first = _toon_decode_or_none(sample[0])
+    if first is None:
+        return {"checked": 0, "ok": 0, "failed": 0, "skipped": True}
+    ok = 1 if first is not False else 0
+    failed = 0 if first is not False else 1
+    for s in sample[1:]:
+        r = _toon_decode_or_none(s)
+        if r is False:
+            failed += 1
+        else:
+            ok += 1
+    return {"checked": len(sample), "ok": ok, "failed": failed, "skipped": False}
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main() -> int:
-    src = pick_src()
-    print(f"[diversify] {src} -> {DST}", file=sys.stderr)
-    stats = {"total": 0, "decode_errors": 0, "records_changed": 0,
-             "text_changed": 0, "thought_changed": 0}
-    with src.open() as fin, DST.open("w") as fout:
-        for idx, line in enumerate(fin):
+    p = argparse.ArgumentParser()
+    p.add_argument("--input", default="data/final/train.jsonl")
+    p.add_argument(
+        "--output",
+        default="data/intermediate/train_ngram_diversified.jsonl",
+    )
+    p.add_argument(
+        "--candidates",
+        default="data/synthesized/review/ngrams/diversification_candidates.json",
+    )
+    p.add_argument(
+        "--summary",
+        default="data/synthesized/review/ngrams/diversification_applied.json",
+    )
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--max-records", type=int, default=0)
+    args = p.parse_args()
+
+    in_path = Path(args.input).resolve() if Path(args.input).is_absolute() else (ROOT / args.input)
+    out_path = Path(args.output).resolve() if Path(args.output).is_absolute() else (ROOT / args.output)
+    cand_path = Path(args.candidates).resolve() if Path(args.candidates).is_absolute() else (ROOT / args.candidates)
+    summary_path = Path(args.summary).resolve() if Path(args.summary).is_absolute() else (ROOT / args.summary)
+
+    raw_cands, applicable = _load_candidates(cand_path)
+    flagged = _flag_unmatched(raw_cands)
+
+    print(
+        f"[ngram-diversify] candidates loaded: {len(raw_cands)}; "
+        f"applicable (with shorter paraphrase): {len(applicable)}; "
+        f"flagged for manual review: {len(flagged)}",
+        file=sys.stderr,
+    )
+
+    if args.dry_run:
+        # Project hit count from candidate record_count totals.
+        projected = 0
+        for entry in raw_cands:
+            ng = (entry.get("ngram") or "").lower().strip()
+            if ng in applicable:
+                projected += int(entry.get("record_count") or 0)
+        print(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "candidate_set_size": len(raw_cands),
+                    "applicable_size": len(applicable),
+                    "flagged_for_manual_review": len(flagged),
+                    "projected_record_replacements_upper_bound": projected,
+                    "applicable_ngrams": sorted(applicable.keys()),
+                    "flagged_ngrams_first_10": [f["ngram"] for f in flagged[:10]],
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if not in_path.exists():
+        print(f"missing input: {in_path}", file=sys.stderr)
+        return 2
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+
+    text_rw = Rewriter(applicable, stream="assistant_text")
+    thought_rw = Rewriter(applicable, stream="assistant_thought")
+    per_source_hits: dict[str, Counter] = defaultdict(Counter)
+
+    sample_for_check: list[str] = []
+    sample_window = 100
+
+    stats = {
+        "total": 0,
+        "decode_errors": 0,
+        "records_changed": 0,
+        "records_skipped": 0,
+        "total_replacements": 0,
+    }
+    t0 = time.time()
+    last_print = t0
+    with in_path.open("r", encoding="utf-8") as fin, out_path.open("w", encoding="utf-8") as fout:
+        for line in fin:
             stats["total"] += 1
             try:
                 rec = json.loads(line)
@@ -202,16 +539,80 @@ def main() -> int:
                 stats["decode_errors"] += 1
                 fout.write(line)
                 continue
-            rec = diversify_record(rec, idx, stats)
+            rec, hits = diversify_record(
+                rec,
+                text_rw=text_rw,
+                thought_rw=thought_rw,
+                per_source_hits=per_source_hits,
+            )
+            if hits:
+                stats["records_changed"] += 1
+                stats["total_replacements"] += hits
+                er = rec.get("expectedResponse")
+                if isinstance(er, str):
+                    if len(sample_for_check) < sample_window:
+                        sample_for_check.append(er)
+                    else:
+                        # rolling tail of the last 100 changed records
+                        sample_for_check.pop(0)
+                        sample_for_check.append(er)
+            else:
+                stats["records_skipped"] += 1
             fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            if stats["total"] % 100000 == 0:
+
+            now = time.time()
+            if now - last_print > 5:
+                rate = stats["total"] / max(1e-6, now - t0)
                 print(
-                    f"[diversify] {stats['total']:>7d}  "
-                    f"records_changed={stats['records_changed']:>6d}",
+                    f"[ngram-diversify] {stats['total']:>8d}  "
+                    f"changed={stats['records_changed']:>7d}  "
+                    f"replacements={stats['total_replacements']:>7d}  "
+                    f"{rate:.0f} rec/s",
                     file=sys.stderr,
                 )
-    MANIFEST.write_text(json.dumps(stats, indent=2))
-    print(json.dumps(stats, indent=2), file=sys.stderr)
+                last_print = now
+
+            if args.max_records and stats["total"] >= args.max_records:
+                break
+
+    elapsed = round(time.time() - t0, 1)
+
+    # Acceptance check on a 100-record tail of the rewritten outputs.
+    accept = _acceptance_check(sample_for_check)
+
+    summary = {
+        "input": str(in_path),
+        "output": str(out_path),
+        "candidates_path": str(cand_path),
+        "elapsed_sec": elapsed,
+        "totals": stats,
+        "per_ngram_replacements": {
+            "assistant_text": dict(text_rw.replacements),
+            "assistant_thought": dict(thought_rw.replacements),
+        },
+        "per_source_replacements": {
+            src: {"records": c["records"], "replacements": c["replacements"]}
+            for src, c in sorted(
+                per_source_hits.items(),
+                key=lambda kv: kv[1]["replacements"],
+                reverse=True,
+            )
+        },
+        "applicable_ngrams": sorted(applicable.keys()),
+        "flagged_for_manual_review": flagged,
+        "toon_acceptance_check": accept,
+    }
+    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+    print(json.dumps(summary["totals"], indent=2), file=sys.stderr)
+    print(f"[ngram-diversify] summary -> {summary_path}", file=sys.stderr)
+    print(f"[ngram-diversify] output -> {out_path}", file=sys.stderr)
+    if accept.get("failed", 0):
+        print(
+            f"[ngram-diversify] WARNING: {accept['failed']}/{accept['checked']} "
+            "rewritten TOON docs failed round-trip decode",
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 

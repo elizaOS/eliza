@@ -1,0 +1,77 @@
+# Corpus rebalancing caps for `scripts/transform_cap_distribution.py`.
+#
+# Purpose: prevent any single primary action OR any single source from
+# dominating the supervised target distribution after `pack_dataset.py`
+# already applied per-source weighting/tier caps.
+#
+# Reading order:
+#   1. DATASET_REVIEW.md  — the eliza-alignment ranking; this file's
+#      `eliza_tier_whitelist` is the canonical Tier S+A list from there.
+#   2. scripts/pack_dataset.py — per-source weighting (runs first).
+#   3. scripts/transform_cap_distribution.py — applies these caps after
+#      packing.
+#
+# Application order (mirrors the script):
+#   per-source cap → per-action cap → non-eliza fraction gate.
+#
+# Determinism: all downsamples use `seed` below so re-runs produce
+# byte-identical output.
+
+seed: 42
+
+# ─────────────── per-source-dataset cap ────────────────────────────
+# After packing, no single source_dataset may contribute more than this
+# many records. The current corpus has agent-trove ~1.5M records and the
+# kimi/glm reasoning corpora >700k each (DATASET_REVIEW.md tiers B/D);
+# 100k is the defensible upper bound for any single source even after
+# tier weighting.
+#
+# Sources where a flat 100k cap is dramatically wrong:
+#   - nubilio-trajectories (5,041 total) — Tier S, gold-standard. The
+#     eliza_tier_whitelist below exempts it from the non-eliza fraction
+#     gate but the per-source cap can clip its replicate-×5 budget. If
+#     pack_dataset replicates Tier S to ~25k that's still well under 100k
+#     — fine. If a future config replicates further, raise this cap.
+#   - scambench (37k) and scam-defense-corpus (19k) — Tier A. Below the
+#     cap, untouched.
+#
+# All other sources (agent-trove, hermes-3, kimi-k25, etc.) get hard-
+# capped at this value. Set to 0 to disable this gate.
+max_per_source: 100000
+
+# ─────────────── per-action cap ────────────────────────────────────
+# Primary action = first entry in `availableActions` for routing tasks
+# (RESPOND/IGNORE/STOP, REPLY, etc.) OR the action name extracted from
+# TOON `actions[0].name` for tool_call/shell_command tasks (TASK_CALL,
+# SHELL_COMMAND, …).
+#
+# Cap prevents `TASK_CALL` (which alone covers all of Tier B+C tool
+# corpora) from drowning out routing decisions like RESPOND/IGNORE which
+# are 50× under-represented today (DATASET_REVIEW.md §"Action-distribution
+# rebalance").
+#
+# Set to 0 to disable this gate.
+max_per_action: 50000
+
+# ─────────────── non-eliza-source fraction gate ────────────────────
+# After per-source and per-action caps, the share of non-eliza sources
+# (everything outside `eliza_tier_whitelist`) must not exceed this
+# fraction of the total. If it does, downsample uniformly across non-
+# eliza sources to bring the overall share to the cap. Eliza-tier sources
+# are never downsampled by this gate.
+#
+# 0.5 = at most 50% of the final corpus may come from non-eliza tiers.
+max_non_eliza_fraction: 0.50
+
+# ─────────────── eliza tier whitelist (Tier S + Tier A) ────────────
+# Source-of-truth: DATASET_REVIEW.md Tier S + Tier A.
+# These sources are exempt from the non-eliza-fraction gate AND get
+# logged separately in the report. Per-source/per-action caps still
+# apply (they're sized so these tiers never trip them).
+#
+# Keep in sync with `ELIZA_TIER_WHITELIST` in
+# scripts/transform_cap_distribution.py.
+eliza_tier_whitelist:
+  - nubilio-trajectories     # Tier S — real eliza coding-agent loop
+  - scambench                # Tier A — real scam-defense scenarios
+  - scam-defense-corpus      # Tier A — augmented v2 trajectories
