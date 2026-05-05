@@ -3,31 +3,89 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Companion app package with the VRM scene runtime and avatar utilities.",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "storybook": "storybook dev -p 6007",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
   },
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./ui": "./src/ui.ts",
-    "./plugin": "./src/plugin.ts",
-    "./register": "./src/register.ts",
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./src/ui.ts",
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
+    "./plugin": {
+      "types": "./src/plugin.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./register": {
+      "types": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    },
     "./assets.json": "./assets.json",
-    "./character-catalog": "./src/character-catalog.ts",
-    "./vrm-assets": "./src/vrm-assets.ts",
-    "./components/avatar/vector-browser-three": "./src/components/avatar/vector-browser-three.ts",
-    "./components/avatar/vector-browser-utils": "./src/components/avatar/vector-browser-utils.ts",
-    "./components/avatar/VrmEngine": "./src/components/avatar/VrmEngine.ts",
-    "./components/companion/shell-control-styles": "./src/components/companion/shell-control-styles.ts",
-    "./components/*": "./src/components/*",
-    "./types/*": "./src/types/*",
-    "./emotes": "./src/emotes/index.ts",
-    "./emotes/*": "./src/emotes/*.ts"
+    "./character-catalog": {
+      "types": "./src/character-catalog.ts",
+      "import": "./dist/character-catalog.js",
+      "default": "./dist/character-catalog.js"
+    },
+    "./vrm-assets": {
+      "types": "./src/vrm-assets.ts",
+      "import": "./dist/vrm-assets.js",
+      "default": "./dist/vrm-assets.js"
+    },
+    "./components/avatar/vector-browser-three": {
+      "types": "./src/components/avatar/vector-browser-three.ts",
+      "import": "./dist/components/avatar/vector-browser-three.js",
+      "default": "./dist/components/avatar/vector-browser-three.js"
+    },
+    "./components/avatar/vector-browser-utils": {
+      "types": "./src/components/avatar/vector-browser-utils.ts",
+      "import": "./dist/components/avatar/vector-browser-utils.js",
+      "default": "./dist/components/avatar/vector-browser-utils.js"
+    },
+    "./components/avatar/VrmEngine": {
+      "types": "./src/components/avatar/VrmEngine.ts",
+      "import": "./dist/components/avatar/VrmEngine.js",
+      "default": "./dist/components/avatar/VrmEngine.js"
+    },
+    "./components/companion/shell-control-styles": {
+      "types": "./src/components/companion/shell-control-styles.ts",
+      "import": "./dist/components/companion/shell-control-styles.js",
+      "default": "./dist/components/companion/shell-control-styles.js"
+    },
+    "./components/*": {
+      "types": "./src/components/*",
+      "import": "./dist/components/*",
+      "default": "./dist/components/*"
+    },
+    "./types/*": {
+      "types": "./src/types/*",
+      "import": "./dist/types/*",
+      "default": "./dist/types/*"
+    },
+    "./emotes": {
+      "types": "./src/emotes/index.ts",
+      "import": "./dist/emotes/index.js",
+      "default": "./dist/emotes/index.js"
+    },
+    "./emotes/*": {
+      "types": "./src/emotes/*.ts",
+      "import": "./dist/emotes/*.js",
+      "default": "./dist/emotes/*.js"
+    }
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
@@ -53,7 +111,8 @@
     "@types/three": "^0.184.0",
     "storybook": "^10.0.0",
     "three": "^0.184.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.0",
+    "tsup": "^8.5.1"
   },
   "peerDependencies": {
     "@pixiv/three-vrm": "^3.4.5",
@@ -70,5 +129,9 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist"
+  ]
 }

@@ -2,14 +2,38 @@
   "name": "@elizaos/app-vincent",
   "version": "2.0.0-beta.0",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/client.ts",
-    "./plugin": "./src/plugin.ts",
-    "./register": "./src/register.ts",
-    "./useVincentState": "./src/useVincentState.ts",
-    "./*": "./src/*"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
+    },
+    "./plugin": {
+      "types": "./src/plugin.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./register": {
+      "types": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    },
+    "./useVincentState": {
+      "types": "./src/useVincentState.ts",
+      "import": "./dist/useVincentState.js",
+      "default": "./dist/useVincentState.js"
+    },
+    "./*": {
+      "types": "./src/*",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -22,5 +46,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }
