@@ -65,7 +65,7 @@ export default function Home() {
         const welcomeMsg =
           data.mode === "elizaos"
             ? "Hello! I'm Eliza, powered by elizaOS. How can I help you today?"
-            : "Hello! I'm Eliza (classic mode). For LLM responses, set POSTGRES_URL or run `elizaos start`.";
+            : "Hello! I'm Eliza (classic mode). For LLM responses, set POSTGRES_URL or connect to a running elizaOS project API.";
         setMessages([
           {
             id: "welcome",

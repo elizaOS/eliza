@@ -4,7 +4,7 @@
  * Uses the canonical elizaOS runtime with messageService.handleMessage pattern.
  *
  * NOTE: If PGLite bundling fails with Next.js, set POSTGRES_URL for external database,
- * or run `elizaos start` separately and connect to its API.
+ * or connect to a running generated elizaOS project API.
  */
 
 import {
@@ -79,7 +79,7 @@ async function getRuntime(): Promise<IAgentRuntime> {
         initError =
           "PGLite extensions not compatible with Next.js bundling. " +
           "Please set POSTGRES_URL environment variable for external database, " +
-          "or run `elizaos start` separately.";
+          "or connect to a running generated elizaOS project API.";
       } else {
         initError = message;
       }
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
         error: "elizaOS runtime not available",
         details: initError,
         suggestion:
-          "Set POSTGRES_URL environment variable or run `elizaos start` separately",
+          "Set POSTGRES_URL environment variable or connect to a running generated elizaOS project API",
       },
       { status: 503 },
     );

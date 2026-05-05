@@ -23,33 +23,42 @@ For complete guides and API references, visit our official **[documentation](htt
 
 > **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available ElizaOS plugins.
 
-## Framework vs. application
+## Framework, Projects, And App Plugins
 
-elizaOS is two things stacked together. Knowing which one you're working with makes everything else easier.
+elizaOS is a framework plus packages built on top of it. Knowing which layer
+you're working with keeps projects, plugins, and app surfaces from getting
+mixed together.
 
 **The framework** is the runtime: `@elizaos/core`, the agent loop, the plugin model (actions, providers, services, evaluators), the message/memory/state primitives, and the model-agnostic LLM layer. If you depend on `@elizaos/core` from your own code, you are using the framework.
 
-**An application** is a product *built on* the framework. [`apps/app-companion`](apps/app-companion), [`apps/app-browser`](apps/app-browser), [`apps/app-knowledge`](apps/app-knowledge), [`apps/app-phone`](apps/app-phone), and the rest of [`apps/`](apps) are first-party examples. Each is a self-contained package with its own UI, runtime plugin, data model, and deployment story. They share the framework, not the implementation.
+**A project** is a deployable product workspace built on the framework. A
+generated project owns its branded app shell, usually under `apps/app` inside
+that project workspace.
+
+**An app plugin** is a runtime plugin that also contributes an app surface inside
+Eliza. First-party app plugins live under [`plugins/app-*`](plugins), keep npm
+names like `@elizaos/app-companion`, and are loaded by package name. They are
+plugins, not top-level repo applications.
 
 The same split shows up in the directory tree:
 
 ```
-packages/        ← FRAMEWORK
+packages/        ← framework and shared packages
   core/          # @elizaos/core — runtime, types, agent loop
   agent/         # @elizaos/agent — AgentRuntime + plugin loader
   app-core/      # API + dashboard host
   elizaos/       # the `elizaos` CLI
   prompts/       # shared prompt scaffolding
   ui/            # shared React component library
-  examples/      # 30+ standalone examples (chat, discord, mcp, …)
-  benchmarks/    # 30+ evaluation suites (gaia, swe_bench, tau-bench, …)
+  examples/      # standalone examples (chat, discord, mcp, ...)
+  benchmarks/    # evaluation suites (gaia, swe_bench, tau-bench, ...)
 
-apps/            ← APPLICATIONS
+plugins/         ← runtime plugins and app plugins
   app-companion/ app-browser/ app-knowledge/ app-phone/
   app-task-coordinator/ app-training/ app-form/ ...
+  plugin-discord/ plugin-openai/ plugin-sql/ ...
 
-plugins/         ← runtime plugins (connectors + capabilities)
-templates/       ← scaffolds used by `APP create` / `PLUGIN create` flows
+templates/       ← scaffolds used by project and plugin create flows
 ```
 
 A *plugin* sits between the two: framework-shaped (registers actions/providers/services with the runtime) but shipped and consumed like a product. Community plugins are listed at [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
@@ -60,7 +69,7 @@ A *plugin* sits between the two: framework-shaped (registers actions/providers/s
 |---|---|
 | Try an agent in 5 minutes | [CLI quick start](#cli-quick-start) |
 | Use the runtime from your own TypeScript code (no CLI, no UI) | [Standalone usage](#standalone-usage) |
-| Build a new agent application | [Create a new app](#create-a-new-app) |
+| Build a new deployable product | [Create a new project](#create-a-new-project) |
 | Build a runtime plugin (action / provider / service) | [Create a new plugin](#create-a-new-plugin) |
 | See how others did it | [Examples](#examples) |
 | Evaluate or benchmark an agent | [Benchmarks](#benchmarks) |
@@ -68,18 +77,18 @@ A *plugin* sits between the two: framework-shaped (registers actions/providers/s
 
 ## CLI quick start
 
-**Prerequisites:** [Node.js v23+](https://nodejs.org/), [bun](https://bun.sh/docs/installation). On Windows, use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
+**Prerequisites:** [Node.js v24+](https://nodejs.org/), [bun](https://bun.sh/docs/installation). On Windows, use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
 
 ```bash
-bun install -g elizaos@alpha
-elizaos create my-first-agent        # interactive — pick `fullstack-app` for the standard path
+bun add -g elizaos
+elizaos create my-first-agent --template project
 cd my-first-agent
 # add OPENAI_API_KEY=... to .env (or your provider's key)
 bun install
 bun run dev
 ```
 
-The scaffolded `fullstack-app` exposes the runtime scripts you'll use day-to-day: `bun run dev`, `bun run build`, `bun run test`, `bun run typecheck`, `bun run lint`, `bun run verify`. The `elizaos` CLI itself is intentionally minimal — its job is scaffolding (`elizaos create`) and template upgrades (`elizaos upgrade`). For a list of available templates, run `elizaos info`.
+The generated project exposes the runtime scripts you'll use day-to-day: `bun run dev`, `bun run build`, `bun run test`, `bun run typecheck`, `bun run lint`, `bun run verify`. The `elizaos` CLI itself is intentionally minimal — its job is scaffolding (`elizaos create`) and template upgrades (`elizaos upgrade`). For a list of available templates, run `elizaos info`.
 
 Full reference: `elizaos --help` or `elizaos <command> --help`.
 
@@ -100,32 +109,34 @@ Nearly every surface has a working example in [`packages/examples/`](packages/ex
 
 > **About the partial clone.** `--filter=blob:none` gives you the full history but fetches file contents on demand — about 10× smaller. `git log`, branches, and `git checkout` work normally; `git blame` and `git log -p` will fetch on first use. To upgrade later: `git config --unset remote.origin.partialclonefilter && git fetch --refetch`. For one-off CI, `--depth=1 --single-branch` is even smaller.
 
-## Create a new app
+## Create a new project
 
-An *application* is a self-contained product on top of the runtime: UI, runtime plugin, metadata. Two paths:
+A project is a self-contained product workspace on top of the runtime: branded
+app shell, local eliza checkout, app plugin selection, platform config, and
+deployment scripts. Two paths:
 
 **1. CLI scaffold (recommended).**
 
 ```bash
-elizaos create my-app -t fullstack-app
+elizaos create my-app --template project
 cd my-app
 bun install
 bun run dev
 ```
 
-`fullstack-app` lays out a full workspace with a local eliza checkout, default plugins (`plugin-sql`, `plugin-elizacloud`, `plugin-local-ai`, `plugin-ollama`), and a Vite + React UI you can edit immediately.
+The project template lays out a full workspace with a local eliza checkout, default plugins (`plugin-sql`, `plugin-elizacloud`, `plugin-local-ai`, `plugin-ollama`), and a Vite + React UI you can edit immediately.
 
 **2. Copy a template directly.** [`templates/min-app/`](templates/min-app) is the smallest possible app — Vite + React UI, a runtime `Plugin` with one action, the `elizaos.app` metadata block in `package.json`, and a vitest smoke test. Read [`templates/min-app/SCAFFOLD.md`](templates/min-app/SCAFFOLD.md) for the placeholders to replace and the verification contract.
 
-For real-world references, browse [`apps/`](apps). A few starting points by complexity:
+For first-party app plugin references, browse [`plugins/app-*`](plugins). A few starting points by complexity:
 
-- [`app-companion`](apps/app-companion) — chat-first companion with a custom React UI.
-- [`app-browser`](apps/app-browser) — agent-driven browser automation.
-- [`app-knowledge`](apps/app-knowledge) — RAG over user documents.
-- [`app-phone`](apps/app-phone) — voice + telephony surface.
-- [`app-form`](apps/app-form) — form-driven data collection.
-- [`app-task-coordinator`](apps/app-task-coordinator) — multi-agent orchestration.
-- [`app-training`](apps/app-training) — trajectory capture + native prompt optimization.
+- [`app-companion`](plugins/app-companion) — chat-first companion with a custom React UI.
+- [`app-browser`](plugins/app-browser) — agent-driven browser automation.
+- [`app-knowledge`](plugins/app-knowledge) — RAG over user documents.
+- [`app-phone`](plugins/app-phone) — voice + telephony surface.
+- [`app-form`](plugins/app-form) — form-driven data collection.
+- [`app-task-coordinator`](plugins/app-task-coordinator) — multi-agent orchestration.
+- [`app-training`](plugins/app-training) — trajectory capture + native prompt optimization.
 
 ## Create a new plugin
 

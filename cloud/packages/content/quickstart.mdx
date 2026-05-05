@@ -250,28 +250,30 @@ print(completion['choices'][0]['message']['content'])
 
 ## Using the CLI
 
-Deploy agents from your local elizaOS project.
+Create a local elizaOS project. Cloud deployment and hosted app registration use
+the dashboard, Cloud API, or SDK endpoints documented in the app and container
+sections.
 
 <Steps>
 ### Install the CLI
 
 ```bash
-bun add -g @elizaos/cli
+bun add -g elizaos
 ```
 
-### Login to elizaOS Cloud
+### Create a Project
 
 ```bash
-elizaos login
+elizaos create my-cloud-app --template project
+cd my-cloud-app
 ```
 
-### Deploy Your Agent
+### Run Locally
 
 ```bash
-elizaos deploy --character ./character.json
+bun install
+bun run dev
 ```
-
-This uploads your character configuration and deploys it to elizaOS Cloud.
 
 </Steps>
 

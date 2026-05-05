@@ -1022,13 +1022,17 @@ export default defineConfig({
           "websiteblocker/src/index.ts",
         ),
       },
-      // Dynamic aliases for all eliza/apps/* packages
+      // Dynamic aliases for all eliza/plugins/app-* packages
       ...(() => {
-        const appsDir = path.resolve(elizaRoot, "apps");
+        const appPluginsDir = path.resolve(elizaRoot, "plugins");
         const aliases = [];
-        for (const entry of fs.readdirSync(appsDir, { withFileTypes: true })) {
+        if (!fs.existsSync(appPluginsDir)) return aliases;
+        for (const entry of fs.readdirSync(appPluginsDir, {
+          withFileTypes: true,
+        })) {
           if (!entry.isDirectory()) continue;
-          const pkgPath = path.join(appsDir, entry.name, "package.json");
+          if (!entry.name.startsWith("app-")) continue;
+          const pkgPath = path.join(appPluginsDir, entry.name, "package.json");
           if (!fs.existsSync(pkgPath)) continue;
           const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
           const pkgName = pkg.name;

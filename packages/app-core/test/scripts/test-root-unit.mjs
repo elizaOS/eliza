@@ -63,14 +63,14 @@ function collectTestFiles(...relativeRoots) {
   return files.sort();
 }
 
-function collectAppTestFiles() {
-  const appsRoot = path.join(repoRoot, "eliza", "apps");
-  if (!fs.existsSync(appsRoot)) return [];
+function collectAppPluginTestFiles() {
+  const appPluginsRoot = path.join(repoRoot, "eliza", "plugins");
+  if (!fs.existsSync(appPluginsRoot)) return [];
 
   return fs
-    .readdirSync(appsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((entry) => collectTestFiles(`eliza/apps/${entry.name}/test`));
+    .readdirSync(appPluginsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("app-"))
+    .flatMap((entry) => collectTestFiles(`eliza/plugins/${entry.name}/test`));
 }
 
 function chunkFiles(label, files, chunkSize = 20) {
@@ -91,7 +91,7 @@ function chunkFiles(label, files, chunkSize = 20) {
   return chunks;
 }
 
-const appTestFiles = collectAppTestFiles();
+const appTestFiles = collectAppPluginTestFiles();
 const lifeOpsSourceTestFiles = collectTestFiles("eliza/plugins/app-lifeops/src");
 const appsAndPluginsSourceTestFiles = [
   ...collectTestFiles(

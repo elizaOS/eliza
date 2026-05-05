@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install the elizaOS SDK and CLI tools for local development.
+description: Install the elizaOS SDK and scaffolding CLI for local development.
 ---
 
 import { Tabs, Callout, Steps } from "@/docs/components";
@@ -29,10 +29,10 @@ Install the official elizaOS packages:
 
 ## CLI Installation
 
-Install the elizaOS CLI for deployment and management:
+Install the elizaOS CLI for project and plugin scaffolding:
 
 ```bash
-bun add -g @elizaos/cli
+bun add -g elizaos
 ```
 
 Verify the installation:
@@ -45,7 +45,7 @@ elizaos --version
 
 | Requirement | Version            |
 | ----------- | ------------------ |
-| Node.js     | 18.0+              |
+| Node.js     | 24.0+              |
 | Bun         | Latest             |
 | TypeScript  | 5.0+ (recommended) |
 
@@ -55,7 +55,7 @@ elizaos --version
 ### Initialize a New Project
 
 ```bash
-elizaos init my-agent
+elizaos create my-agent --template project
 cd my-agent
 ```
 

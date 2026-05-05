@@ -264,7 +264,7 @@
       "name": "e2e-test-harness",
       "globs": [
         "test/**",
-        "eliza/apps/**/test/**",
+        "eliza/plugins/app-*/test/**",
         "eliza/packages/app-core/test/**",
         "eliza/test/vitest/integration.config.ts",
         "eliza/test/vitest/e2e.config.ts"

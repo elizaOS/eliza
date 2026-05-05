@@ -86,14 +86,16 @@ Response:
 ### Using the CLI
 
 ```bash
-# Install the CLI
-bun add -g @elizaos/cli
+# Install the scaffolding CLI
+bun add -g elizaos
 
-# Login to elizaOS Cloud
-elizaos login
+# Create a local project
+elizaos create research-assistant --template project
+cd research-assistant
 
-# Deploy from character file
-elizaos deploy --character ./character.json
+# Run the generated project scripts
+bun install
+bun run dev
 ```
 
   </Tabs.Tab>

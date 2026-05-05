@@ -56,8 +56,7 @@
     "typescript": "^6.0.0"
   },
   "scripts": {
-    "start": "elizaos start",
-    "dev": "elizaos dev",
+    "dev": "bun run build:watch",
     "build": "bun run build.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe ./src",
     "lint:check": "bunx @biomejs/biome check ./src",

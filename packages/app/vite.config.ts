@@ -37,6 +37,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "packages/native-plugins");
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
+const pluginSqlSrcRoot = path.join(elizaRoot, "plugins/plugin-sql/typescript");
 const appCoreNativePluginEntrypoints = path.join(
   appCoreSrcRoot,
   "platform/native-plugin-entrypoints.ts",
@@ -110,8 +111,12 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
   const aliases = [];
   for (const packageRoot of packageRoots) {
     if (!fs.existsSync(packageRoot)) continue;
+    const packageRootName = path.basename(packageRoot);
     for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      if (packageRootName === "plugins" && !entry.name.startsWith("app-")) {
+        continue;
+      }
       const pkgPath = path.join(packageRoot, entry.name, "package.json");
       if (!fs.existsSync(pkgPath)) continue;
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
@@ -1487,6 +1492,21 @@ export default defineConfig({
         find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints\.js$/,
         replacement: appCoreNativePluginEntrypoints,
       },
+      // Keep plugin-sql subpath imports on the repo-local source layout. Some
+      // cached package copies still describe the old src/ layout, which makes
+      // renderer builds fail before the server-only imports can be stubbed.
+      {
+        find: /^@elizaos\/plugin-sql\/drizzle$/,
+        replacement: path.join(pluginSqlSrcRoot, "drizzle/index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-sql\/schema$/,
+        replacement: path.join(pluginSqlSrcRoot, "schema/index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-sql\/types$/,
+        replacement: path.join(pluginSqlSrcRoot, "types.ts"),
+      },
       // Node built-in subpaths that browser polyfills don't provide.
       // Server-only code imports these but they're never executed in-browser.
       ...["util/types", "stream/promises", "stream/web"].flatMap((sub) => [
@@ -1556,12 +1576,8 @@ export default defineConfig({
         find: /^@elizaos\/ui\/lib\/(.*)$/,
         replacement: `${uiPkgRoot}/src/lib/$1.ts`,
       },
-      // Dynamic aliases for local app packages. Older checkouts used
-      // eliza/apps/*; current workspaces use plugins/app-*.
-      ...createWorkspacePackageAliases([
-        path.resolve(elizaRoot, "apps"),
-        path.resolve(elizaRoot, "plugins"),
-      ]),
+      // Dynamic aliases for local app plugin packages.
+      ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {
         const sharedPkgPath = path.resolve(
           elizaRoot,
