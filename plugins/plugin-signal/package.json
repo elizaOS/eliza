@@ -47,7 +47,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "qrcode": "^1.5.4",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

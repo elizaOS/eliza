@@ -9,6 +9,8 @@
  * Add new env reads here, not at call sites.
  */
 
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+
 function pick(...candidates: (string | undefined)[]): string | undefined {
   for (const candidate of candidates) {
     if (candidate && candidate.length > 0) return candidate;
@@ -19,55 +21,56 @@ function pick(...candidates: (string | undefined)[]): string | undefined {
 export const containersEnv = {
   /** Base64-encoded SSH private key for connecting to Docker nodes. */
   sshKey(): string | undefined {
-    return pick(process.env.CONTAINERS_SSH_KEY, process.env.AGENT_SSH_KEY);
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_SSH_KEY, env.AGENT_SSH_KEY);
   },
 
   /** Filesystem path to the SSH private key (used when sshKey() is unset). */
   sshKeyPath(): string | undefined {
-    return pick(process.env.CONTAINERS_SSH_KEY_PATH, process.env.AGENT_SSH_KEY_PATH);
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_SSH_KEY_PATH, env.AGENT_SSH_KEY_PATH);
   },
 
   /** SSH user for connecting to Docker nodes. Defaults to "root". */
   sshUser(): string {
-    return pick(process.env.CONTAINERS_SSH_USER, process.env.AGENT_SSH_USER) ?? "root";
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER) ?? "root";
   },
 
   /** Docker network name created on every node. Containers attach to this. */
   dockerNetwork(): string {
-    return (
-      pick(process.env.CONTAINERS_DOCKER_NETWORK, process.env.AGENT_DOCKER_NETWORK) ??
-      "containers-isolated"
-    );
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_DOCKER_NETWORK, env.AGENT_DOCKER_NETWORK) ?? "containers-isolated";
   },
 
   /** Username used for Docker registry pulls on container nodes. */
   registryUsername(): string | undefined {
+    const env = getCloudAwareEnv();
     return pick(
-      process.env.CONTAINERS_REGISTRY_USERNAME,
-      process.env.ELIZA_APP_IMAGE_REGISTRY_USERNAME,
-      process.env.GHCR_USERNAME,
-      process.env.GITHUB_ACTOR,
+      env.CONTAINERS_REGISTRY_USERNAME,
+      env.ELIZA_APP_IMAGE_REGISTRY_USERNAME,
+      env.GHCR_USERNAME,
+      env.GITHUB_ACTOR,
     );
   },
 
   /** Token used for Docker registry pulls on container nodes. */
   registryToken(): string | undefined {
+    const env = getCloudAwareEnv();
     return pick(
-      process.env.CONTAINERS_REGISTRY_TOKEN,
-      process.env.ELIZA_APP_IMAGE_REGISTRY_TOKEN,
-      process.env.GHCR_TOKEN,
-      process.env.GITHUB_TOKEN,
-      process.env.GH_TOKEN,
-      process.env.CR_PAT,
+      env.CONTAINERS_REGISTRY_TOKEN,
+      env.ELIZA_APP_IMAGE_REGISTRY_TOKEN,
+      env.GHCR_TOKEN,
+      env.GITHUB_TOKEN,
+      env.GH_TOKEN,
+      env.CR_PAT,
     );
   },
 
   /** Filesystem path to a Docker registry token for container node pulls. */
   registryTokenFile(): string | undefined {
-    return pick(
-      process.env.CONTAINERS_REGISTRY_TOKEN_FILE,
-      process.env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE,
-    );
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_REGISTRY_TOKEN_FILE, env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE);
   },
 
   /**
@@ -76,12 +79,10 @@ export const containersEnv = {
    * without code changes.
    */
   defaultAgentImage(): string {
+    const env = getCloudAwareEnv();
     return (
-      pick(
-        process.env.ELIZA_AGENT_IMAGE,
-        process.env.CONTAINERS_DEFAULT_IMAGE,
-        process.env.AGENT_DOCKER_IMAGE,
-      ) ?? "ghcr.io/elizaos/eliza:latest"
+      pick(env.ELIZA_AGENT_IMAGE, env.CONTAINERS_DEFAULT_IMAGE, env.AGENT_DOCKER_IMAGE) ??
+      "ghcr.io/elizaos/eliza:latest"
     );
   },
 
@@ -91,29 +92,32 @@ export const containersEnv = {
    * Format: `nodeId:hostname:capacity,nodeId2:hostname2:capacity2`.
    */
   seedNodes(): string | undefined {
-    return pick(process.env.CONTAINERS_DOCKER_NODES, process.env.AGENT_DOCKER_NODES);
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_DOCKER_NODES, env.AGENT_DOCKER_NODES);
   },
 
   /** Application port baked into the canonical Eliza agent image. */
   agentPort(): string {
-    return pick(process.env.ELIZA_AGENT_PORT, process.env.AGENT_AGENT_PORT) ?? "2139";
+    const env = getCloudAwareEnv();
+    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "2139";
   },
 
   /** Bridge port the agent listens on inside the container (for agent-server bridge). */
   agentBridgePort(): string {
-    return (
-      pick(process.env.ELIZA_AGENT_BRIDGE_PORT, process.env.AGENT_BRIDGE_INTERNAL_PORT) ?? "31337"
-    );
+    const env = getCloudAwareEnv();
+    return pick(env.ELIZA_AGENT_BRIDGE_PORT, env.AGENT_BRIDGE_INTERNAL_PORT) ?? "31337";
   },
 
   /** Legacy "ELIZA_PORT" — kept as a transitional env var for the agent image. */
   legacyContainerPort(): string {
-    return pick(process.env.AGENT_CONTAINER_PORT) ?? "2138";
+    const env = getCloudAwareEnv();
+    return pick(env.AGENT_CONTAINER_PORT) ?? "2138";
   },
 
   /** Hetzner Cloud API token for elastic node provisioning. Optional. */
   hetznerCloudToken(): string | undefined {
-    return pick(process.env.HCLOUD_TOKEN, process.env.HETZNER_CLOUD_TOKEN);
+    const env = getCloudAwareEnv();
+    return pick(env.HCLOUD_TOKEN, env.HETZNER_CLOUD_TOKEN);
   },
 
   /**
@@ -124,10 +128,8 @@ export const containersEnv = {
    * resolves these to the corresponding node:port upstream.
    */
   publicBaseDomain(): string | undefined {
-    return pick(
-      process.env.CONTAINERS_PUBLIC_BASE_DOMAIN,
-      process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
-    );
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_PUBLIC_BASE_DOMAIN, env.ELIZA_CLOUD_AGENT_BASE_DOMAIN);
   },
 
   /**
@@ -137,6 +139,7 @@ export const containersEnv = {
    * the same location. Defaults to "fsn1" (Falkenstein, Germany).
    */
   defaultHcloudLocation(): string {
-    return pick(process.env.CONTAINERS_HCLOUD_LOCATION, process.env.HCLOUD_LOCATION) ?? "fsn1";
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "fsn1";
   },
 };

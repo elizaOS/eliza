@@ -35,7 +35,7 @@
   ],
   "dependencies": {
     "ws": "^8.18.0",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -47,7 +47,7 @@
   },
   "scripts": {
     "dev": "bun --hot build.ts",
-    "test": "vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "test": "vitest run --passWithNoTests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",

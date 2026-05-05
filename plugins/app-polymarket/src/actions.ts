@@ -17,6 +17,15 @@ import type {
 
 const ACTION_TIMEOUT_MS = 15_000;
 
+const READ_KINDS = [
+  "status",
+  "markets",
+  "market",
+  "orderbook",
+  "positions",
+] as const;
+type PolymarketReadKind = (typeof READ_KINDS)[number];
+
 function getApiBase(): string {
   return `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`;
 }
@@ -61,6 +70,17 @@ function readNumberParam(
         ? Number.parseInt(value, 10)
         : Number.NaN;
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readKind(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+): PolymarketReadKind | null {
+  const raw = readStringParam(options, "kind");
+  if (!raw) return null;
+  const normalized = raw.toLowerCase() as PolymarketReadKind;
+  return (READ_KINDS as readonly string[]).includes(normalized)
+    ? normalized
+    : null;
 }
 
 async function fetchPolymarketJson<T>(
@@ -147,237 +167,212 @@ function formatOrderbook(orderbook: PolymarketOrderbookResponse): string {
   ].join("\n");
 }
 
-export const polymarketStatusAction: Action = {
-  name: "POLYMARKET_STATUS",
-  similes: ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"],
-  description:
-    "Check Polymarket public-read and trading readiness for the local app.",
-  descriptionCompressed: "Check Polymarket readiness.",
-  validate: async () => true,
-  handler: async (_runtime, _message, _state, _options, callback) => {
-    try {
-      const status = await fetchPolymarketJson<PolymarketStatusResponse>(
-        "/api/polymarket/status",
-      );
-      const text = `Polymarket public reads: ${
-        status.publicReads.ready ? "ready" : "not ready"
-      }\nTrading: ${
-        status.trading.ready ? "ready" : "disabled"
-      }\nCredentials: ${
-        status.trading.credentialsReady ? "present" : "missing"
-      }${status.trading.reason ? `\nReason: ${status.trading.reason}` : ""}`;
-      return emit(callback, "POLYMARKET_STATUS", text, { status });
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      if (callback) await callback({ text, actions: ["POLYMARKET_STATUS"] });
-      return { success: false, text, error: text };
-    }
-  },
-};
+async function handleStatus(
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const status = await fetchPolymarketJson<PolymarketStatusResponse>(
+    "/api/polymarket/status",
+  );
+  const text = `Polymarket public reads: ${
+    status.publicReads.ready ? "ready" : "not ready"
+  }\nTrading: ${status.trading.ready ? "ready" : "disabled"}\nCredentials: ${
+    status.trading.credentialsReady ? "present" : "missing"
+  }${status.trading.reason ? `\nReason: ${status.trading.reason}` : ""}`;
+  return emit(callback, "POLYMARKET_READ", text, {
+    kind: "status" satisfies PolymarketReadKind,
+    status,
+  });
+}
 
-export const polymarketGetMarketsAction: Action = {
-  name: "POLYMARKET_GET_MARKETS",
-  similes: ["POLYMARKET_MARKETS", "SEARCH_POLYMARKET_MARKETS"],
+async function handleMarkets(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const limit = Math.min(100, Math.max(1, readNumberParam(options, "limit", 20)));
+  const offset = Math.max(0, readNumberParam(options, "offset", 0));
+  const response = await fetchPolymarketJson<PolymarketMarketsResponse>(
+    `/api/polymarket/markets?limit=${limit}&offset=${offset}`,
+  );
+  return emit(callback, "POLYMARKET_READ", formatMarkets(response.markets), {
+    kind: "markets" satisfies PolymarketReadKind,
+    markets: response.markets,
+    source: response.source,
+  });
+}
+
+async function handleMarket(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const id = readStringParam(options, "id");
+  const slug = readStringParam(options, "slug");
+  if (!id && !slug) {
+    const text = "Provide a Polymarket market id or slug.";
+    if (callback) await callback({ text, actions: ["POLYMARKET_READ"] });
+    return { success: false, text, error: "missing_market_identifier" };
+  }
+  const query = new URLSearchParams();
+  if (id) query.set("id", id);
+  if (slug && !id) query.set("slug", slug);
+  const response = await fetchPolymarketJson<PolymarketMarketResponse>(
+    `/api/polymarket/market?${query.toString()}`,
+  );
+  return emit(callback, "POLYMARKET_READ", formatMarket(response), {
+    kind: "market" satisfies PolymarketReadKind,
+    market: response.market,
+    source: response.source,
+  });
+}
+
+async function handleOrderbook(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const tokenId =
+    readStringParam(options, "tokenId") ??
+    readStringParam(options, "token_id");
+  if (!tokenId) {
+    const text = "Provide a Polymarket CLOB token id.";
+    if (callback) await callback({ text, actions: ["POLYMARKET_READ"] });
+    return { success: false, text, error: "missing_token_id" };
+  }
+  const response = await fetchPolymarketJson<PolymarketOrderbookResponse>(
+    `/api/polymarket/orderbook?token_id=${encodeURIComponent(tokenId)}`,
+  );
+  return emit(callback, "POLYMARKET_READ", formatOrderbook(response), {
+    kind: "orderbook" satisfies PolymarketReadKind,
+    orderbook: response,
+  });
+}
+
+async function handlePositions(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const user = readStringParam(options, "user");
+  if (!user) {
+    const text = "Provide a wallet address for Polymarket positions.";
+    if (callback) await callback({ text, actions: ["POLYMARKET_READ"] });
+    return { success: false, text, error: "missing_wallet_address" };
+  }
+  const response = await fetchPolymarketJson<PolymarketPositionsResponse>(
+    `/api/polymarket/positions?user=${encodeURIComponent(user)}`,
+  );
+  const text =
+    response.positions.length === 0
+      ? "No Polymarket positions found for that wallet."
+      : `Polymarket positions:\n${response.positions
+          .slice(0, 12)
+          .map(
+            (position) =>
+              `- ${position.question ?? position.conditionId ?? "Market"}: ${
+                position.outcome ?? "outcome"
+              } size ${position.size ?? "n/a"} value ${
+                position.currentValue ?? "n/a"
+              }`,
+          )
+          .join("\n")}`;
+  return emit(callback, "POLYMARKET_READ", text, {
+    kind: "positions" satisfies PolymarketReadKind,
+    positions: response.positions,
+    source: response.source,
+  });
+}
+
+export const polymarketReadAction: Action = {
+  name: "POLYMARKET_READ",
+  similes: [
+    "POLYMARKET_STATUS",
+    "POLYMARKET_READINESS",
+    "POLYMARKET_HEALTH",
+    "POLYMARKET_GET_MARKETS",
+    "POLYMARKET_MARKETS",
+    "SEARCH_POLYMARKET_MARKETS",
+    "POLYMARKET_GET_MARKET",
+    "POLYMARKET_MARKET",
+    "POLYMARKET_MARKET_DETAILS",
+    "POLYMARKET_GET_ORDERBOOK",
+    "POLYMARKET_ORDERBOOK",
+    "POLYMARKET_QUOTE",
+    "POLYMARKET_TOKEN_INFO",
+    "POLYMARKET_GET_POSITIONS",
+    "POLYMARKET_POSITIONS",
+    "POLYMARKET_WALLET_POSITIONS",
+  ],
   description:
-    "List active Polymarket markets. Supports limit and offset parameters.",
-  descriptionCompressed: "List active Polymarket markets.",
+    "Read Polymarket public state. kind selects: status (readiness), markets (list active markets), market (single market by id/slug), orderbook (CLOB quote by tokenId), positions (wallet positions).",
+  descriptionCompressed:
+    "Polymarket reads: status, markets, market, orderbook, positions.",
   parameters: [
     {
+      name: "kind",
+      description:
+        "Read kind: status | markets | market | orderbook | positions.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
       name: "limit",
-      description: "Maximum markets to return, from 1 to 100.",
+      description: "markets only: max markets (1-100).",
       required: false,
       schema: { type: "number", default: 20 },
     },
     {
       name: "offset",
-      description: "Market result offset.",
+      description: "markets only: result offset.",
       required: false,
       schema: { type: "number", default: 0 },
     },
-  ],
-  validate: async () => true,
-  handler: async (_runtime, _message, _state, options, callback) => {
-    try {
-      const limit = Math.min(
-        100,
-        Math.max(1, readNumberParam(options, "limit", 20)),
-      );
-      const offset = Math.max(0, readNumberParam(options, "offset", 0));
-      const response = await fetchPolymarketJson<PolymarketMarketsResponse>(
-        `/api/polymarket/markets?limit=${limit}&offset=${offset}`,
-      );
-      return emit(
-        callback,
-        "POLYMARKET_GET_MARKETS",
-        formatMarkets(response.markets),
-        {
-          markets: response.markets,
-          source: response.source,
-        },
-      );
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      if (callback) {
-        await callback({ text, actions: ["POLYMARKET_GET_MARKETS"] });
-      }
-      return { success: false, text, error: text };
-    }
-  },
-};
-
-export const polymarketGetMarketAction: Action = {
-  name: "POLYMARKET_GET_MARKET",
-  similes: ["POLYMARKET_MARKET", "POLYMARKET_MARKET_DETAILS"],
-  description: "Fetch a single Polymarket market by market id or slug.",
-  descriptionCompressed: "Fetch a Polymarket market by id or slug.",
-  parameters: [
     {
       name: "id",
-      description: "Polymarket Gamma market id.",
+      description: "market only: Polymarket Gamma market id.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "slug",
-      description: "Polymarket market slug.",
+      description: "market only: Polymarket market slug.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "tokenId",
+      description: "orderbook only: Polymarket CLOB token id.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "user",
+      description: "positions only: wallet address.",
       required: false,
       schema: { type: "string" },
     },
   ],
   validate: async () => true,
   handler: async (_runtime, _message, _state, options, callback) => {
-    const id = readStringParam(options, "id");
-    const slug = readStringParam(options, "slug");
-    if (!id && !slug) {
-      const text = "Provide a Polymarket market id or slug.";
-      if (callback) {
-        await callback({ text, actions: ["POLYMARKET_GET_MARKET"] });
-      }
-      return { success: false, text, error: "missing_market_identifier" };
-    }
-    try {
-      const query = new URLSearchParams();
-      if (id) query.set("id", id);
-      if (slug && !id) query.set("slug", slug);
-      const response = await fetchPolymarketJson<PolymarketMarketResponse>(
-        `/api/polymarket/market?${query.toString()}`,
-      );
-      return emit(callback, "POLYMARKET_GET_MARKET", formatMarket(response), {
-        market: response.market,
-        source: response.source,
-      });
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      if (callback) {
-        await callback({ text, actions: ["POLYMARKET_GET_MARKET"] });
-      }
-      return { success: false, text, error: text };
-    }
-  },
-};
-
-export const polymarketGetOrderbookAction: Action = {
-  name: "POLYMARKET_GET_ORDERBOOK",
-  similes: [
-    "POLYMARKET_QUOTE",
-    "POLYMARKET_ORDERBOOK",
-    "POLYMARKET_TOKEN_INFO",
-  ],
-  description:
-    "Fetch a token orderbook and derive true best bid/ask from all CLOB levels.",
-  descriptionCompressed: "Get a Polymarket token quote/orderbook.",
-  parameters: [
-    {
-      name: "tokenId",
-      description: "Polymarket CLOB token id.",
-      required: true,
-      schema: { type: "string" },
-    },
-  ],
-  validate: async () => true,
-  handler: async (_runtime, _message, _state, options, callback) => {
-    const tokenId =
-      readStringParam(options, "tokenId") ??
-      readStringParam(options, "token_id");
-    if (!tokenId) {
-      const text = "Provide a Polymarket CLOB token id.";
-      if (callback) {
-        await callback({ text, actions: ["POLYMARKET_GET_ORDERBOOK"] });
-      }
-      return { success: false, text, error: "missing_token_id" };
-    }
-    try {
-      const response = await fetchPolymarketJson<PolymarketOrderbookResponse>(
-        `/api/polymarket/orderbook?token_id=${encodeURIComponent(tokenId)}`,
-      );
-      return emit(
-        callback,
-        "POLYMARKET_GET_ORDERBOOK",
-        formatOrderbook(response),
-        {
-          orderbook: response,
-        },
-      );
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      if (callback) {
-        await callback({ text, actions: ["POLYMARKET_GET_ORDERBOOK"] });
-      }
-      return { success: false, text, error: text };
-    }
-  },
-};
-
-export const polymarketGetPositionsAction: Action = {
-  name: "POLYMARKET_GET_POSITIONS",
-  similes: ["POLYMARKET_POSITIONS", "POLYMARKET_WALLET_POSITIONS"],
-  description: "Fetch Polymarket positions for a wallet address.",
-  descriptionCompressed: "Fetch Polymarket wallet positions.",
-  parameters: [
-    {
-      name: "user",
-      description: "Wallet address whose positions should be fetched.",
-      required: true,
-      schema: { type: "string" },
-    },
-  ],
-  validate: async () => true,
-  handler: async (_runtime, _message, _state, options, callback) => {
-    const user = readStringParam(options, "user");
-    if (!user) {
-      const text = "Provide a wallet address for Polymarket positions.";
-      if (callback) {
-        await callback({ text, actions: ["POLYMARKET_GET_POSITIONS"] });
-      }
-      return { success: false, text, error: "missing_wallet_address" };
-    }
-    try {
-      const response = await fetchPolymarketJson<PolymarketPositionsResponse>(
-        `/api/polymarket/positions?user=${encodeURIComponent(user)}`,
-      );
+    const kind = readKind(options);
+    if (!kind) {
       const text =
-        response.positions.length === 0
-          ? "No Polymarket positions found for that wallet."
-          : `Polymarket positions:\n${response.positions
-              .slice(0, 12)
-              .map(
-                (position) =>
-                  `- ${position.question ?? position.conditionId ?? "Market"}: ${
-                    position.outcome ?? "outcome"
-                  } size ${position.size ?? "n/a"} value ${
-                    position.currentValue ?? "n/a"
-                  }`,
-              )
-              .join("\n")}`;
-      return emit(callback, "POLYMARKET_GET_POSITIONS", text, {
-        positions: response.positions,
-        source: response.source,
-      });
+        "Provide kind: status | markets | market | orderbook | positions.";
+      if (callback) await callback({ text, actions: ["POLYMARKET_READ"] });
+      return { success: false, text, error: "missing_or_invalid_kind" };
+    }
+    try {
+      switch (kind) {
+        case "status":
+          return await handleStatus(callback);
+        case "markets":
+          return await handleMarkets(options, callback);
+        case "market":
+          return await handleMarket(options, callback);
+        case "orderbook":
+          return await handleOrderbook(options, callback);
+        case "positions":
+          return await handlePositions(options, callback);
+      }
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      if (callback) {
-        await callback({ text, actions: ["POLYMARKET_GET_POSITIONS"] });
-      }
+      if (callback) await callback({ text, actions: ["POLYMARKET_READ"] });
       return { success: false, text, error: text };
     }
   },
@@ -417,10 +412,6 @@ export const polymarketOrdersDisabledAction: Action = {
 };
 
 export const polymarketActions: Action[] = [
-  polymarketStatusAction,
-  polymarketGetMarketsAction,
-  polymarketGetMarketAction,
-  polymarketGetOrderbookAction,
-  polymarketGetPositionsAction,
+  polymarketReadAction,
   polymarketOrdersDisabledAction,
 ];

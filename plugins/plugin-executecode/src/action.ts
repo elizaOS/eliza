@@ -132,6 +132,8 @@ export const executeCodeAction: Action = {
   similes: ["RUN_SCRIPT", "EXECUTE_TOOL_SCRIPT"],
   description:
     "Run a short JS-style script that calls multiple agent actions through `tools.<actionName>(args)` and reads runtime context via `context`. Use when the same turn needs three or more sequential tool calls with simple control flow or data passing between them. Not for single-call work.",
+  descriptionCompressed:
+    "Run multi-step JS script that calls actions sequentially via tools.<name>(args).",
   parameters: [
     {
       name: "script",

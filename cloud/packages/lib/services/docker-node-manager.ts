@@ -7,13 +7,13 @@
  * Reference: eliza-cloud/backend/services/node-manager.ts
  */
 
-import { and, eq, notInArray, sql } from "drizzle-orm";
-import { dbRead } from "@/db/helpers";
 import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { type AgentSandboxStatus, agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import type { DockerNode, DockerNodeStatus } from "@/db/schemas/docker-nodes";
+import { countAllocatedWorkloadsOnNode } from "@/lib/services/docker-node-workloads";
 import { DockerSSHClient } from "@/lib/services/docker-ssh";
 import { logger } from "@/lib/utils/logger";
+import { containersEnv } from "../config/containers-env";
+import { shellQuote } from "./docker-sandbox-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -152,19 +152,30 @@ export class DockerNodeManager {
    */
   async getCapacityReport(): Promise<CapacitySummary> {
     const nodes = await dockerNodesRepository.findAll();
+    const allocatedByNode = new Map(
+      await Promise.all(
+        nodes.map(
+          async (node) =>
+            [node.node_id, await countAllocatedWorkloadsOnNode(node.node_id)] as const,
+        ),
+      ),
+    );
 
     const nodeReports: NodeCapacityReport[] = nodes.map((node) => ({
       nodeId: node.node_id,
       hostname: node.hostname,
       capacity: node.capacity,
-      allocated: node.allocated_count,
-      available: node.enabled ? Math.max(0, node.capacity - node.allocated_count) : 0,
+      allocated: allocatedByNode.get(node.node_id) ?? node.allocated_count,
+      available:
+        node.enabled && node.status === "healthy"
+          ? Math.max(0, node.capacity - (allocatedByNode.get(node.node_id) ?? node.allocated_count))
+          : 0,
       status: node.status,
       enabled: node.enabled,
       lastHealthCheck: node.last_health_check,
     }));
 
-    const enabledNodes = nodeReports.filter((n) => n.enabled);
+    const enabledNodes = nodeReports.filter((n) => n.enabled && n.status === "healthy");
 
     return {
       totalCapacity: enabledNodes.reduce((sum, n) => sum + n.capacity, 0),
@@ -177,30 +188,19 @@ export class DockerNodeManager {
   // ---- Allocation Sync --------------------------------------------------
 
   /**
-   * Count actual sandbox containers per node from the database and reconcile
+   * Count actual active workloads per node from the database and reconcile
    * allocated_count in docker_nodes.
    *
-   * Active sandboxes are those not in terminal states (stopped/error).
+   * The Docker pool is shared by user `containers` and managed
+   * `agent_sandboxes`; both must be counted or the scheduler can overfill a
+   * node or drain a node that still has agent workloads.
    */
   async syncAllocatedCounts(): Promise<Map<string, { before: number; after: number }>> {
     const nodes = await dockerNodesRepository.findEnabled();
     const changes = new Map<string, { before: number; after: number }>();
 
-    // Count active sandboxes per node from agent_sandboxes
-    const terminalStatuses: AgentSandboxStatus[] = ["stopped", "error"];
-
     for (const node of nodes) {
-      const [result] = await dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.node_id, node.node_id),
-            notInArray(agentSandboxes.status, terminalStatuses),
-          ),
-        );
-
-      const actualCount = result?.count ?? 0;
+      const actualCount = await countAllocatedWorkloadsOnNode(node.node_id);
 
       if (actualCount !== node.allocated_count) {
         logger.info(
@@ -219,6 +219,84 @@ export class DockerNodeManager {
     }
 
     return changes;
+  }
+
+  /**
+   * Pre-pull the agent image on healthy nodes with spare capacity so a
+   * subsequent agent provision does not pay the Docker image cold-start cost.
+   */
+  async prePullAgentImageOnAvailableNodes(image = containersEnv.defaultAgentImage()): Promise<
+    Array<{
+      nodeId: string;
+      hostname: string;
+      available: number;
+      status: "pulled" | "skipped" | "failed";
+      reason?: string;
+      error?: string;
+    }>
+  > {
+    const nodes = await dockerNodesRepository.findEnabled();
+
+    return Promise.all(
+      nodes.map(async (node) => {
+        const allocated = await countAllocatedWorkloadsOnNode(node.node_id);
+        const available = Math.max(0, node.capacity - allocated);
+
+        if (node.status !== "healthy") {
+          return {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            available,
+            status: "skipped" as const,
+            reason: `node status is ${node.status}`,
+          };
+        }
+
+        if (available <= 0) {
+          return {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            available,
+            status: "skipped" as const,
+            reason: "no spare slots",
+          };
+        }
+
+        try {
+          const ssh = DockerSSHClient.getClient(
+            node.hostname,
+            node.ssh_port ?? undefined,
+            node.host_key_fingerprint ?? undefined,
+            node.ssh_user ?? undefined,
+          );
+          await ssh.connect();
+          await ssh.exec(
+            `docker image inspect ${shellQuote(image)} >/dev/null 2>&1 || docker pull ${shellQuote(image)}`,
+            5 * 60 * 1000,
+          );
+          return {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            available,
+            status: "pulled" as const,
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.warn("[docker-node-manager] Agent image pre-pull failed", {
+            nodeId: node.node_id,
+            image,
+            error: message,
+          });
+          return {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            available,
+            status: "failed" as const,
+            error: message,
+          };
+        }
+      }),
+    );
   }
 
   // ---- Runtime Container Inspection -------------------------------------

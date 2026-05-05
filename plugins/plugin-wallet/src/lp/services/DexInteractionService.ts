@@ -1,5 +1,5 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import { type IAgentRuntime, Service, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
   AddLiquidityConfig,
   IEvmLpService,
@@ -89,8 +89,7 @@ export class DexInteractionService
   registerDexService(dexService: ILpService | IEvmLpService): void {
     const dexName = dexService.getDexName();
     const isEvm =
-      typeof (dexService as IEvmLpService).getSupportedChainIds ===
-      "function";
+      typeof (dexService as IEvmLpService).getSupportedChainIds === "function";
 
     this.lpManagementService.registerProtocol(
       isEvm

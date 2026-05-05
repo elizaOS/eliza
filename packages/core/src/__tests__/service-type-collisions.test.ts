@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import { Service, ServiceType } from "../types/service";
 import type { IAgentRuntime } from "../types/runtime";
+import { Service, ServiceType } from "../types/service";
 
 type SourceInfo = {
 	filePath: string;

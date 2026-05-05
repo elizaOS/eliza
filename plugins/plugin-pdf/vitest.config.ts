@@ -7,5 +7,6 @@ export default defineConfig({
     testTimeout: 60_000,
     hookTimeout: 60_000,
     setupFiles: ["./__tests__/core-test-mock.ts"],
+    passWithNoTests: true,
   },
 });

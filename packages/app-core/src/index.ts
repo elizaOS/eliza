@@ -24,6 +24,7 @@ export {
 } from "@elizaos/shared";
 export * from "@elizaos/ui";
 export { App } from "./App.tsx";
+export * from "./account-pool.js";
 export * from "./api/auth";
 export * from "./api/compat-route-shared";
 export * from "./api/index";
@@ -73,8 +74,6 @@ export { CHANNEL_PLUGIN_MAP } from "./runtime/channel-plugin-map";
 export * from "./security/agent-vault-id";
 export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
-
-export * from "./account-pool.js";
 
 export * from "./shell/index";
 export * from "./state/index";

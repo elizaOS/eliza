@@ -1,8 +1,8 @@
-import { ServiceType, type IAgentRuntime, type Memory, type State } from "@elizaos/core";
+import { type IAgentRuntime, type Memory, ServiceType, type State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SOLANA_SERVICE_NAME } from "../constants";
 import { allActionDocs } from "../generated/specs/specs";
-import { SolanaService, SolanaWalletService, SOLANA_WALLET_COMPAT_SERVICE_NAME } from "../service";
+import { SOLANA_WALLET_COMPAT_SERVICE_NAME, SolanaService, SolanaWalletService } from "../service";
 import { executeSwap } from "./swap";
 import transferToken from "./transfer";
 

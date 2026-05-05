@@ -67,7 +67,7 @@ export const xPostAction: Action = {
   description:
     "Create a public X/Twitter post or public reply. Direct messages are handled by the X DM connector.",
   descriptionCompressed:
-    "public X/Twitter post router; subaction post|reply, no DMs",
+    "public X/Twitter connector post router; subaction post|reply, no DMs",
   suppressPostActionContinuation: true,
   parameters: [
     {

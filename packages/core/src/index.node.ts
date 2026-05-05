@@ -135,9 +135,10 @@ export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
+// Prompt description compression (parity with Python `compress_prompt_description`)
+export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
-// Prompt description compression (parity with Python `compress_prompt_description`)
 export * from "./utils/prompt-compression";
 // Export Node-specific utilities
 export * from "./utils/server-health";

@@ -257,7 +257,7 @@ parts:
       # The cloud-agent template is a release helper workspace, not a
       # snap runtime dependency. Keeping it in the workspace graph
       # pulls the published @elizaos/plugin-sql package, whose current
-      # alpha manifest self-pins an unavailable alpha.114 build.
+      # older prerelease manifest self-pins an unavailable build.
       node -e '
         const fs = require("fs");
         const pkgPath = "package.json";

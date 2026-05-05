@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import type { ConversationMode } from "../api/client";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { getBootConfig } from "../config/boot-config-store";
@@ -29,6 +30,10 @@ function tryLocalStorage<T>(fn: () => T, fallback: T): T {
     console.warn("[persistence] localStorage operation failed:", err);
     return fallback;
   }
+}
+
+function describePersistenceError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -140,7 +145,10 @@ export function loadCompanionVrmPowerMode(): CompanionVrmPowerMode {
       saveCompanionVrmPowerMode("balanced");
     }
     return "balanced";
-  } catch {
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to load companion VRM power mode: ${describePersistenceError(err)}`,
+    );
     return "balanced";
   }
 }
@@ -151,8 +159,10 @@ export function saveCompanionVrmPowerMode(mode: CompanionVrmPowerMode): void {
     localStorage.setItem(COMPANION_VRM_POWER_STORAGE_KEY, next);
     localStorage.removeItem(LEGACY_COMPANION_EFFICIENCY_KEY);
     localStorage.removeItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY);
-  } catch {
-    // ignore
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to save companion VRM power mode: ${describePersistenceError(err)}`,
+    );
   }
 }
 
@@ -162,7 +172,10 @@ const COMPANION_ANIMATE_WHEN_HIDDEN_KEY = "eliza:companion-animate-when-hidden";
 export function loadCompanionAnimateWhenHidden(): boolean {
   try {
     return localStorage.getItem(COMPANION_ANIMATE_WHEN_HIDDEN_KEY) === "1";
-  } catch {
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to load companion animate-when-hidden flag: ${describePersistenceError(err)}`,
+    );
     return false;
   }
 }
@@ -173,8 +186,10 @@ export function saveCompanionAnimateWhenHidden(enabled: boolean): void {
       COMPANION_ANIMATE_WHEN_HIDDEN_KEY,
       enabled ? "1" : "0",
     );
-  } catch {
-    // ignore
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to save companion animate-when-hidden flag: ${describePersistenceError(err)}`,
+    );
   }
 }
 
@@ -206,7 +221,10 @@ export function loadCompanionHalfFramerateMode(): CompanionHalfFramerateMode {
     return normalizeCompanionHalfFramerateMode(
       localStorage.getItem(COMPANION_HALF_FRAMERATE_STORAGE_KEY),
     );
-  } catch {
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to load companion half-framerate mode: ${describePersistenceError(err)}`,
+    );
     return "when_saving_power";
   }
 }
@@ -219,8 +237,10 @@ export function saveCompanionHalfFramerateMode(
       COMPANION_HALF_FRAMERATE_STORAGE_KEY,
       normalizeCompanionHalfFramerateMode(mode),
     );
-  } catch {
-    // ignore
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to save companion half-framerate mode: ${describePersistenceError(err)}`,
+    );
   }
 }
 
@@ -359,7 +379,10 @@ const ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
 export function loadPersistedOnboardingComplete(): boolean {
   try {
     return localStorage.getItem(ONBOARDING_COMPLETE_STORAGE_KEY) === "1";
-  } catch {
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to load onboarding completion flag: ${describePersistenceError(err)}`,
+    );
     return false;
   }
 }
@@ -371,8 +394,10 @@ export function savePersistedOnboardingComplete(complete: boolean): void {
     } else {
       localStorage.removeItem(ONBOARDING_COMPLETE_STORAGE_KEY);
     }
-  } catch {
-    /* ignore */
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to save onboarding completion flag: ${describePersistenceError(err)}`,
+    );
   }
 }
 
@@ -547,7 +572,10 @@ export function loadFavoriteApps(): string[] {
     try {
       const parsed = JSON.parse(stored);
       return sanitizeFavoriteApps(parsed);
-    } catch {
+    } catch (err) {
+      logger.warn(
+        `[persistence] failed to parse favorite apps from localStorage: ${describePersistenceError(err)}`,
+      );
       return defaultApps;
     }
   }, defaultApps);
@@ -578,7 +606,10 @@ export async function fetchServerFavoriteApps(): Promise<string[] | null> {
     const sanitized = sanitizeFavoriteApps(data.favoriteApps);
     saveFavoriteApps(sanitized);
     return sanitized;
-  } catch {
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to fetch server favorite apps: ${describePersistenceError(err)}`,
+    );
     return null;
   }
 }
@@ -601,7 +632,10 @@ export async function replaceServerFavoriteApps(
     const sanitized = sanitizeFavoriteApps(data.favoriteApps);
     saveFavoriteApps(sanitized);
     return sanitized;
-  } catch {
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to replace server favorite apps: ${describePersistenceError(err)}`,
+    );
     return null;
   }
 }
@@ -626,7 +660,10 @@ export async function toggleServerFavoriteApp(
     const sanitized = sanitizeFavoriteApps(data.favoriteApps);
     saveFavoriteApps(sanitized);
     return sanitized;
-  } catch {
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to toggle server favorite app: ${describePersistenceError(err)}`,
+    );
     return null;
   }
 }
@@ -646,7 +683,10 @@ export function loadRecentApps(): string[] {
       return parsed
         .filter((item): item is string => typeof item === "string")
         .slice(0, RECENT_APPS_MAX);
-    } catch {
+    } catch (err) {
+      logger.warn(
+        `[persistence] failed to parse recent apps from localStorage: ${describePersistenceError(err)}`,
+      );
       return [];
     }
   }, []);
@@ -835,7 +875,10 @@ function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
     return ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(
       new URL(apiBase).hostname.toLowerCase(),
     );
-  } catch {
+  } catch (err) {
+    logger.debug(
+      `[persistence] failed to parse apiBase URL while checking Eliza Cloud control plane: apiBase=${apiBase}; error=${describePersistenceError(err)}`,
+    );
     return false;
   }
 }
@@ -873,7 +916,10 @@ export function createPersistedActiveServer(args: {
       if (!explicitLabel && apiBase) {
         try {
           label = new URL(apiBase).host || label;
-        } catch {
+        } catch (err) {
+          logger.debug(
+            `[persistence] failed to parse apiBase URL for remote server label; using raw apiBase: apiBase=${apiBase}; error=${describePersistenceError(err)}`,
+          );
           label = apiBase;
         }
       }

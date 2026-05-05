@@ -50,7 +50,7 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "scripts": {
     "build:ts": "bun run build.ts",

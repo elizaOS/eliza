@@ -15,8 +15,7 @@ export const checkPaymentAction: Action = {
   name: "CHECK_PAYMENT",
   similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
   description: "Check if payment has been received for the current reading session.",
-  descriptionCompressed:
-    "Check payment status for the active mysticism reading session.",
+  descriptionCompressed: "Check payment status for the active mysticism reading session.",
 
   validate: async (
     runtime: IAgentRuntime,

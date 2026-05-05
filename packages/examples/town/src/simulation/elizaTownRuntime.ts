@@ -783,7 +783,13 @@ function buildCombinedText(
   if (!text) {
     throw new Error("Agent message generation failed: empty response.");
   }
-  return thought ? `<thought>${thought}</thought>\n${text}` : text;
+  return thought
+    ? `thought: ${compactToonLine(thought)}\ntext: ${compactToonLine(text)}`
+    : text;
+}
+
+function compactToonLine(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function getNearbyAgentIds(

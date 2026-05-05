@@ -25,7 +25,7 @@ export const meteoraPlugin: Plugin = {
         dex: "meteora",
         label: "Meteora",
         service,
-      }),
+      })
     );
   },
 };

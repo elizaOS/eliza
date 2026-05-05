@@ -159,6 +159,12 @@ LLM_TRAJECTORY_STORAGE = "r2"
 #       AWS_* / ECS_* / ACM_* secrets are gone.
 #   GITHUB_APP_TOKEN  (or GIT_ACCESS_TOKEN)
 #   CRON_SECRET                        Scheduled-job auth
+#   CONTAINER_CONTROL_PLANE_URL        Node sidecar URL for container mutations + hot-pool image pre-pull
+#   CONTAINER_CONTROL_PLANE_TOKEN      Shared Worker↔sidecar secret
+#   HCLOUD_TOKEN                       Hetzner Cloud API token for elastic Docker node provisioning
+#   CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY Public SSH key written to autoscaled nodes
+#   CONTAINERS_BOOTSTRAP_CALLBACK_URL  Optional docker_nodes self-registration callback URL
+#   CONTAINERS_BOOTSTRAP_SECRET        Optional docker_nodes self-registration shared secret
 #   CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET   x402
 #   DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID
 #   GATEWAY_BOOTSTRAP_SECRET / GATEWAY_INTERNAL_SECRET
@@ -172,7 +178,7 @@ LLM_TRAJECTORY_STORAGE = "r2"
 #   ELIZA_APP_DISCORD_BOT_TOKEN / ELIZA_APP_DISCORD_CLIENT_SECRET
 #   ELIZA_APP_WHATSAPP_ACCESS_TOKEN / _APP_SECRET / _VERIFY_TOKEN
 #   NEON_API_KEY                       Per-app database provisioning
-#   AGENT_SSH_KEY                     Docker provider SSH
+#   CONTAINERS_SSH_KEY / AGENT_SSH_KEY Docker provider SSH private key for the Node sidecar
 #   HEADSCALE_API_KEY / HEADSCALE_INTERNAL_TOKEN
 #   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
 # -----------------------------------------------------------------------------

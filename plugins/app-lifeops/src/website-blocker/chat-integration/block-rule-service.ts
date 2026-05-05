@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { ChannelType, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
-import { blockWebsitesAction } from "../../actions/website-blocker.js";
+import { blockWebsitesAction } from "../../actions/owner-website-block.js";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
 import {
   BLOCK_RULES_TABLE,

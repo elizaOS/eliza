@@ -72,7 +72,7 @@
   "peerDependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

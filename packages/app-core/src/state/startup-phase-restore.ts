@@ -5,6 +5,7 @@
  * Probes for an existing install/connection and dispatches the result.
  */
 
+import { logger } from "@elizaos/core";
 import { getStylePresets, ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared";
 import { client, type OnboardingOptions } from "../api";
 import {
@@ -28,8 +29,8 @@ import {
   clearPersistedActiveServer,
   loadPersistedActiveServer,
   loadPersistedOnboardingComplete,
-  savePersistedActiveServer,
   type PersistedActiveServer,
+  savePersistedActiveServer,
   savePersistedOnboardingComplete,
 } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
@@ -74,9 +75,7 @@ function isAndroidLocalAgentApiBase(value: string | undefined): boolean {
 }
 
 function isAndroidLocalActiveServer(server: PersistedActiveServer): boolean {
-  return (
-    server.kind === "local" || isAndroidLocalAgentApiBase(server.apiBase)
-  );
+  return server.kind === "local" || isAndroidLocalAgentApiBase(server.apiBase);
 }
 
 function androidLoopbackActiveServer(): PersistedActiveServer {
@@ -315,7 +314,11 @@ export async function runRestoringSession(
           rpcMethod: "agentStart",
           ipcChannel: "agent:start",
         });
-      } catch {}
+      } catch (err) {
+        logger.warn(
+          `[startup-phase-restore] desktop agent bridge request failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     },
   });
 

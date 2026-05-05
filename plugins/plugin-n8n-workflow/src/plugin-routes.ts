@@ -39,7 +39,9 @@ function makeN8nHandler() {
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
 
-    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
+    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) {
+      return;
+    }
 
     await handleN8nRoutes({
       req: httpReq,

@@ -9,7 +9,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
-  acknowledgeIntent,
   broadcastIntent,
   LIFE_INTENT_KINDS,
   LIFE_INTENT_PRIORITIES,
@@ -17,19 +16,9 @@ import {
   type LifeOpsIntentKind,
   type LifeOpsIntentPriority,
   type LifeOpsIntentTargetDevice,
-  pruneExpiredIntents,
-  receivePendingIntents,
 } from "../lifeops/intent-sync.js";
 
-const ACTION_NAME = "INTENT_SYNC";
-
-const SUBACTIONS = [
-  "broadcast",
-  "list_pending",
-  "acknowledge",
-  "prune_expired",
-] as const;
-type Subaction = (typeof SUBACTIONS)[number];
+const ACTION_NAME = "OWNER_DEVICE_INTENT";
 
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -44,10 +33,6 @@ function coerceNumber(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
-}
-
-function isSubaction(value: string): value is Subaction {
-  return (SUBACTIONS as readonly string[]).includes(value);
 }
 
 function isKind(value: string): value is LifeOpsIntentKind {
@@ -74,37 +59,11 @@ function fail(
   };
 }
 
-function normalizeParams(
-  raw: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  if (!raw || typeof raw !== "object") return {};
-  return raw;
-}
-
-function withStructuredBroadcastDefault(
-  params: Record<string, unknown>,
-): Record<string, unknown> {
-  if (
-    coerceString(params.subaction) ||
-    coerceString(params.mode) ||
-    coerceString(params.action) ||
-    !coerceString(params.kind)
-  ) {
-    return params;
-  }
-  return { ...params, subaction: "broadcast" };
-}
-
 function validationTerminate(
   error: string,
   message: string,
   extra: Record<string, unknown> = {},
 ): ActionResult {
-  // Validation terminates here when the user's intent was correctly routed to
-  // INTENT_SYNC but a required field is missing or unrecognized — the action
-  // ran and is now waiting on the user to fill in the gap. Mark the result as
-  // awaiting-confirmation so the runtime stops the multi-step continuation
-  // and the benchmark scorer treats this as completed.
   return {
     text: message,
     success: false,
@@ -129,54 +88,15 @@ export const intentSyncAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
-    // Old name (back-compat after PUBLISH_DEVICE_INTENT was deleted as a
-    // redundant single-purpose alias of INTENT_SYNC.broadcast).
-    "PUBLISH_DEVICE_INTENT",
     "BROADCAST_INTENT",
-    "SYNC_INTENT",
-    "CROSS_DEVICE_INTENT",
-    "BROADCAST_REMINDER",
-    "MOBILE_REMINDER",
     "DEVICE_REMINDER",
-    "ROUTINE_REMINDER_TO_PHONE",
+    "MOBILE_REMINDER",
     "NOTIFY_ALL_DEVICES",
-    "FIRE_DEVICE_INTENT",
-    "BROADCAST_DEVICE_INTENT",
-    "SIGNATURE_REMINDER",
-    "MEETING_REMINDER_LADDER",
-    "DEVICE_WARNING",
-    "CANCELLATION_FEE_WARNING",
-  ],
-  tags: [
-    "always-include",
-    "broadcast reminder",
-    "mobile reminder",
-    "device reminder",
-    "routine reminder",
-    "notify my phone",
-    "meeting reminder ladder",
-    "signature reminder",
-    "cancellation fee warning",
-    "workflow escalation",
   ],
   description:
-    "Single entry point for cross-device intent broadcasting. Publishes a " +
-    "structured intent (alarm, reminder, block, custom) to the device bus " +
-    "so all paired devices realize it. Subactions: broadcast, list_pending, " +
-    "acknowledge, prune_expired. " +
-    "Use this for: 'broadcast a routine reminder to my mobile titled X', " +
-    "'broadcast a reminder to all my devices', 'ping my phone with a " +
-    "reminder', desktop+phone reminder ladders, multi-device meeting nudges, " +
-    "document-signing reminders, updated-ID interventions, cancellation-fee " +
-    "warnings, and urgent device-level escalations where the owner wants the " +
-    "same intent realized across paired devices. " +
-    "Standing 'if/when X happens, warn me on my devices' policies should fire " +
-    "this on the first turn even when the exact reservation or workflow is " +
-    "still pending. " +
-    "Do NOT use this for: chat replies (OWNER_SEND_MESSAGE), inbox digests / " +
-    "missed-call repair / group-chat handoff (OWNER_INBOX), portal uploads / " +
-    "browser workflows (LIFEOPS_COMPUTER_USE), schedule preferences like " +
-    "protected sleep windows or no-call meeting hours (OWNER_CALENDAR).",
+    "Broadcast a structured cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices realize it. Owner only.",
+  descriptionCompressed:
+    "broadcast intent paired-devices: alarm reminder block custom owner",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
@@ -184,33 +104,21 @@ export const intentSyncAction: Action & {
 
   parameters: [
     {
-      name: "subaction",
-      description: `Which operation to perform. One of: ${SUBACTIONS.join(", ")}.`,
-      required: false,
-      schema: { type: "string" as const, enum: [...SUBACTIONS] },
-    },
-    {
-      name: "intent",
-      description: "User-phrased intent summary (optional, for logging).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
       name: "kind",
       description: `Intent kind. One of: ${LIFE_INTENT_KINDS.join(", ")}.`,
-      required: false,
+      required: true,
       schema: { type: "string" as const, enum: [...LIFE_INTENT_KINDS] },
     },
     {
       name: "title",
       description: "Short intent title (shown in notification).",
-      required: false,
+      required: true,
       schema: { type: "string" as const },
     },
     {
       name: "body",
       description: "Intent body text.",
-      required: false,
+      required: true,
       schema: { type: "string" as const },
     },
     {
@@ -238,19 +146,6 @@ export const intentSyncAction: Action & {
       schema: { type: "string" as const, enum: [...LIFE_INTENT_PRIORITIES] },
     },
     {
-      name: "intentId",
-      description: "Intent id to acknowledge.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "deviceId",
-      description:
-        "Device id performing the acknowledgement, or requesting pending intents.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
       name: "expiresInMinutes",
       description: "Expire the intent after this many minutes.",
       required: false,
@@ -271,26 +166,6 @@ export const intentSyncAction: Action & {
         },
       },
     ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "What intents are pending on this desktop?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "Listing pending intents for desktop..." },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Acknowledge intent abc-123 from this device" },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "Marked intent abc-123 acknowledged." },
-      },
-    ],
   ] as ActionExample[][],
 
   handler: async (
@@ -303,154 +178,81 @@ export const intentSyncAction: Action & {
       return fail("PERMISSION_DENIED");
     }
 
-    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const normalized = withStructuredBroadcastDefault(
-      normalizeParams(rawParameters),
-    );
-    const params = (await extractActionParamsViaLlm<typeof normalized>({
+    const rawParameters =
+      ((options as HandlerOptions | undefined)?.parameters as
+        | Record<string, unknown>
+        | undefined) ?? {};
+    const params = (await extractActionParamsViaLlm<Record<string, unknown>>({
       runtime,
       message,
       state,
-      actionName: "INTENT_SYNC",
+      actionName: ACTION_NAME,
       actionDescription: intentSyncAction.description ?? "",
       paramSchema: intentSyncAction.parameters ?? [],
-      existingParams: normalized,
-      requiredFields: ["subaction"],
-    })) as typeof normalized;
+      existingParams: rawParameters,
+      requiredFields: ["kind", "title", "body"],
+    })) as Record<string, unknown>;
 
-    let subactionRaw = coerceString(params.subaction);
-    let kindRaw = coerceString(params.kind);
-    if (!subactionRaw) {
-      // Tolerate LLMs that emit the verb in `mode` / `action` field name
-      // variants (parameter-key normalization only — not free-text inference).
-      subactionRaw =
-        coerceString((params as Record<string, unknown>).mode) ??
-        coerceString((params as Record<string, unknown>).action);
-    }
-    if (subactionRaw && !isSubaction(subactionRaw) && isKind(subactionRaw)) {
-      kindRaw ??= subactionRaw;
-      subactionRaw = "broadcast";
-    }
-    if (!subactionRaw) {
+    const kindRaw = coerceString(params.kind);
+    const title = coerceString(params.title);
+    const body = coerceString(params.body);
+
+    if (!kindRaw) {
       return validationTerminate(
-        "MISSING_SUBACTION",
-        "I couldn't tell whether you wanted to broadcast, list, acknowledge, or prune an intent. Please say which.",
+        "MISSING_KIND",
+        `I need an intent kind to broadcast (one of: ${LIFE_INTENT_KINDS.join(", ")}).`,
       );
     }
-    if (!isSubaction(subactionRaw)) {
+    if (!isKind(kindRaw)) {
       return validationTerminate(
-        "UNKNOWN_SUBACTION",
-        `Unknown INTENT_SYNC subaction "${subactionRaw}". Expected one of: ${SUBACTIONS.join(", ")}.`,
-        { subaction: subactionRaw },
+        "UNKNOWN_KIND",
+        `Unknown intent kind "${kindRaw}". Expected one of: ${LIFE_INTENT_KINDS.join(", ")}.`,
+        { kind: kindRaw },
       );
     }
-    const subaction: Subaction = subactionRaw;
-
-    if (subaction === "broadcast") {
-      const title = coerceString(params.title);
-      const body = coerceString(params.body);
-      if (!kindRaw) {
-        return validationTerminate(
-          "MISSING_KIND",
-          `I need an intent kind to broadcast (one of: ${LIFE_INTENT_KINDS.join(", ")}).`,
-        );
-      }
-      if (!isKind(kindRaw)) {
-        return validationTerminate(
-          "UNKNOWN_KIND",
-          `Unknown intent kind "${kindRaw}". Expected one of: ${LIFE_INTENT_KINDS.join(", ")}.`,
-          { kind: kindRaw },
-        );
-      }
-      if (!title) {
-        return validationTerminate(
-          "MISSING_TITLE",
-          "I need a short title for the intent before I can broadcast it.",
-        );
-      }
-      if (!body) {
-        return validationTerminate(
-          "MISSING_BODY",
-          "I need a body for the intent before I can broadcast it.",
-        );
-      }
-
-      const targetRaw = coerceString(params.target) ?? "all";
-      if (!isTarget(targetRaw)) {
-        return fail("UNKNOWN_TARGET", { target: targetRaw });
-      }
-      const priorityRaw = coerceString(params.priority) ?? "medium";
-      if (!isPriority(priorityRaw)) {
-        return fail("UNKNOWN_PRIORITY", { priority: priorityRaw });
-      }
-
-      const targetDeviceId = coerceString(params.targetDeviceId);
-      if (targetRaw === "specific" && !targetDeviceId) {
-        return fail("MISSING_TARGET_DEVICE_ID");
-      }
-
-      const intent = await broadcastIntent(runtime, {
-        kind: kindRaw,
-        target: targetRaw,
-        targetDeviceId,
-        title,
-        body,
-        actionUrl: coerceString(params.actionUrl),
-        priority: priorityRaw,
-        expiresInMinutes: coerceNumber(params.expiresInMinutes),
-      });
-
-      return {
-        text: `Broadcast ${intent.kind} intent "${intent.title}" to ${intent.target}.`,
-        success: true,
-        values: { success: true, intentId: intent.id, kind: intent.kind },
-        data: { actionName: ACTION_NAME, intent },
-      };
+    if (!title) {
+      return validationTerminate(
+        "MISSING_TITLE",
+        "I need a short title for the intent before I can broadcast it.",
+      );
+    }
+    if (!body) {
+      return validationTerminate(
+        "MISSING_BODY",
+        "I need a body for the intent before I can broadcast it.",
+      );
     }
 
-    if (subaction === "list_pending") {
-      const deviceRaw = coerceString(params.target);
-      let device: LifeOpsIntentTargetDevice | undefined;
-      if (deviceRaw !== undefined) {
-        if (!isTarget(deviceRaw)) {
-          return fail("UNKNOWN_TARGET", { target: deviceRaw });
-        }
-        device = deviceRaw;
-      }
-      const deviceId = coerceString(params.deviceId);
-      const intents = await receivePendingIntents(runtime, {
-        device,
-        deviceId,
-      });
-      return {
-        text: `Found ${intents.length} pending intent(s).`,
-        success: true,
-        values: { success: true, count: intents.length },
-        data: { actionName: ACTION_NAME, intents },
-      };
+    const targetRaw = coerceString(params.target) ?? "all";
+    if (!isTarget(targetRaw)) {
+      return fail("UNKNOWN_TARGET", { target: targetRaw });
+    }
+    const priorityRaw = coerceString(params.priority) ?? "medium";
+    if (!isPriority(priorityRaw)) {
+      return fail("UNKNOWN_PRIORITY", { priority: priorityRaw });
     }
 
-    if (subaction === "acknowledge") {
-      const intentId = coerceString(params.intentId);
-      const deviceId = coerceString(params.deviceId);
-      if (!intentId) return fail("MISSING_INTENT_ID");
-      if (!deviceId) return fail("MISSING_DEVICE_ID");
-      await acknowledgeIntent(runtime, intentId, deviceId);
-      return {
-        text: `Acknowledged intent ${intentId}.`,
-        success: true,
-        values: { success: true, intentId, deviceId },
-        data: { actionName: ACTION_NAME, intentId, deviceId },
-      };
+    const targetDeviceId = coerceString(params.targetDeviceId);
+    if (targetRaw === "specific" && !targetDeviceId) {
+      return fail("MISSING_TARGET_DEVICE_ID");
     }
 
-    // prune_expired
-    const { pruned } = await pruneExpiredIntents(runtime);
+    const intent = await broadcastIntent(runtime, {
+      kind: kindRaw,
+      target: targetRaw,
+      targetDeviceId,
+      title,
+      body,
+      actionUrl: coerceString(params.actionUrl),
+      priority: priorityRaw,
+      expiresInMinutes: coerceNumber(params.expiresInMinutes),
+    });
+
     return {
-      text: `Pruned ${pruned} expired intent(s).`,
+      text: `Broadcast ${intent.kind} intent "${intent.title}" to ${intent.target}.`,
       success: true,
-      values: { success: true, pruned },
-      data: { actionName: ACTION_NAME, pruned },
+      values: { success: true, intentId: intent.id, kind: intent.kind },
+      data: { actionName: ACTION_NAME, intent },
     };
   },
 };

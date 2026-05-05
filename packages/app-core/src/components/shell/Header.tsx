@@ -8,7 +8,6 @@ import type {
 import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useMediaQuery } from "../../hooks";
-import { type AuthStatusState, useAuthStatus } from "../../hooks/useAuthStatus";
 import {
   type DynamicNavTab,
   getTabGroups,
@@ -75,8 +74,6 @@ const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
   "group relative inline-flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
 const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
   "text-accent after:opacity-100";
-const ACCESS_BADGE_CLASSNAME =
-  "inline-flex h-[2.375rem] max-w-[15rem] shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-bg/45 px-2 text-[11px] font-medium leading-none text-muted shadow-none";
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
   paddingInlineStart:
     "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 80px))",
@@ -140,7 +137,6 @@ export function Header({
     uiTheme,
     walletEnabled,
   } = useApp();
-  const { state: authStatusState } = useAuthStatus({ observeOnly: true });
 
   const isMobileViewport = useMediaQuery(MOBILE_HEADER_MEDIA_QUERY);
   const collapseDesktopNavLabels = useMediaQuery(

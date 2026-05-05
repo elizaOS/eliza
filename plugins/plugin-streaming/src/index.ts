@@ -7,8 +7,9 @@ export * from "./core.ts";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   buildPresetLayout,
-  buildStreamingPipelineActions,
+  buildStreamOpAction,
   createStreamingPlugin,
+  streamStatusProvider,
   type StreamingDestination,
   type StreamingPluginConfig,
 } from "./core.ts";
@@ -102,67 +103,6 @@ export function createPumpfunDestination(
   return pumpfunBundle.createDestination(runtime, config);
 }
 
-const PRESET_PLATFORM_LABELS = [
-  TWITCH_CFG.platformName,
-  YOUTUBE_CFG.platformName,
-  X_CFG.platformName,
-  PUMPFUN_CFG.platformName,
-] as const;
-
-function legacyPlannerSimiles(): {
-  start: string[];
-  stop: string[];
-  status: string[];
-} {
-  const start: string[] = [
-    "START_STREAM",
-    "GO_LIVE",
-    "START_LIVE",
-    "BEGIN_STREAM",
-    "STREAM_GO_LIVE",
-  ];
-  const stop: string[] = [
-    "STOP_STREAM",
-    "GO_OFFLINE",
-    "END_STREAM",
-    "STREAM_GO_OFFLINE",
-  ];
-  const status: string[] = [
-    "GET_STREAM_STATUS",
-    "STREAM_STATUS",
-    "IS_LIVE",
-    "CHECK_STREAM",
-  ];
-
-  for (const label of PRESET_PLATFORM_LABELS) {
-    const U = label.toUpperCase();
-    start.push(
-      `START_${U}_STREAM`,
-      `GO_LIVE_${U}`,
-      `START_${U}`,
-      `BEGIN_${U}_STREAM`,
-      `${U}_GO_LIVE`,
-    );
-    stop.push(
-      `STOP_${U}_STREAM`,
-      `GO_OFFLINE_${U}`,
-      `STOP_${U}`,
-      `END_${U}_STREAM`,
-      `${U}_GO_OFFLINE`,
-    );
-    status.push(
-      `GET_${U}_STREAM_STATUS`,
-      `${U}_STATUS`,
-      `${U}_STREAM_STATUS`,
-      `IS_${U}_LIVE`,
-      `CHECK_${U}_STREAM`,
-    );
-  }
-  return { start, stop, status };
-}
-
-const plannerSimiles = legacyPlannerSimiles();
-
 export const streamingPlugin: Plugin = {
   name: "streaming",
   description:
@@ -181,14 +121,8 @@ export const streamingPlugin: Plugin = {
     return out;
   },
 
-  actions: buildStreamingPipelineActions({
-    upperToken: "RTMP",
-    displayName: "RTMP stream",
-    validate: async () => true,
-    extraStartSimiles: plannerSimiles.start,
-    extraStopSimiles: plannerSimiles.stop,
-    extraStatusSimiles: plannerSimiles.status,
-  }),
+  actions: [buildStreamOpAction()],
+  providers: [streamStatusProvider],
 
   async init() {},
 };

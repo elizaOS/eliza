@@ -51,6 +51,62 @@ const SKIP_SCAN_DIR_NAMES = new Set([
   "node_modules",
 ]);
 
+const DESCRIPTION_COMPRESSED_ONLY = process.argv.includes(
+  "--description-compressed-only",
+);
+
+const COMPRESSED_DESCRIPTION_MAX_LENGTH = 160;
+const STRICT_COMPRESSED_SOURCE_ROOTS = [
+  "plugins/plugin-calendly",
+  "plugins/plugin-minecraft",
+  "plugins/plugin-roblox",
+  "plugins/plugin-wallet/src/analytics/birdeye",
+  "plugins/plugin-mysticism",
+];
+const GENERATED_COMPRESSED_SOURCE_ROOTS = ["packages/core/src/generated"];
+
+const COMPRESSED_FILLER_PATTERNS = [
+  /\bthis action\b/i,
+  /\ballows? users?\b/i,
+  /\bused to\b/i,
+  /\bsimply\b/i,
+  /\bcurrently\b/i,
+];
+
+const COMPRESSED_UNGRAMMATICAL_PATTERNS = [
+  /\bcannot undone\b/i,
+  /\bperform Ching\b/i,
+  /\bread (?:service|session|process)\b/i,
+  /\breceive current\b/i,
+  /\bchange line\b/i,
+  /\bGoogle Meet meet\b/i,
+  /\broom ID alia\b/i,
+  /\brelat(?:e|ed)? message\b/i,
+];
+
+const KEYWORD_SOUP_CONNECTORS =
+  /\b(?:to|for|with|by|from|in|on|via|as|when|after|before|into|using|or|and|of|the|a|an|if|at|about|through|across|without|within|requires?|returns?|only|per)\b/i;
+
+const SEMANTIC_ROUTING_TERMS = [
+  { name: "chain", pattern: /\b(?:chain|chains|chainId|chain=|chain:|blockchain)\b/i },
+  { name: "category", pattern: /\bcategor(?:y|ies)\b/i },
+  { name: "connector", pattern: /\bconnectors?\b/i },
+  { name: "source", pattern: /\bsources?\b/i },
+  { name: "subaction", pattern: /\bsubactions?\b/i },
+  {
+    name: "live",
+    pattern: /\blive\s+(?:preview|refresh|data|operation|read|write|search|urls?)\b/i,
+  },
+  {
+    name: "read",
+    pattern: /\b(?:read-only|public-read|read\/write|read access|read,\s*type)\b/i,
+  },
+  {
+    name: "write",
+    pattern: /\b(?:write access|read\/write|write mode|write operation)\b/i,
+  },
+];
+
 const FORMAT_INSTRUCTION_PATTERNS = [
   /\bReturn\s+(?:ONLY\s+|only\s+|strict\s+|valid\s+)*(?:JSON|XML)\b/i,
   /\bReturn\s+(?:JSON|XML)\s+or\s+(?:JSON|XML)\b/i,
@@ -159,6 +215,70 @@ function getNormalizedCompressed(doc) {
     : "";
 }
 
+function normalizeCompressedKey(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function hasKeywordSoupShape(compressed) {
+  const words = compressed.match(/[A-Za-z][A-Za-z0-9_-]*/g) ?? [];
+  if (words.length < 7) return false;
+  if (/[.,;:()/-]/.test(compressed)) return false;
+  return !KEYWORD_SOUP_CONNECTORS.test(compressed);
+}
+
+function validateCompressedQuality(
+  compressed,
+  description,
+  label,
+  violations,
+  options = {},
+) {
+  const { strictGrammar = false } = options;
+
+  for (const pattern of COMPRESSED_FILLER_PATTERNS) {
+    if (pattern.test(compressed)) {
+      violations.push(
+        `${label}: compressed description contains filler "${pattern.source}"`,
+      );
+      break;
+    }
+  }
+
+  if (strictGrammar && hasKeywordSoupShape(compressed)) {
+    violations.push(
+      `${label}: compressed description looks like keyword soup; use a compact grammatical phrase`,
+    );
+  }
+
+  if (strictGrammar) {
+    for (const pattern of COMPRESSED_UNGRAMMATICAL_PATTERNS) {
+      if (pattern.test(compressed)) {
+        violations.push(
+          `${label}: compressed description looks ungrammatical (${pattern.source})`,
+        );
+        break;
+      }
+    }
+  }
+
+  if (typeof description === "string" && description.trim()) {
+    for (const { name, pattern } of SEMANTIC_ROUTING_TERMS) {
+      if (name === "chain" && /\bchain of actions\b/i.test(description)) {
+        continue;
+      }
+      if (pattern.test(description) && !pattern.test(compressed)) {
+        violations.push(
+          `${label}: compressed description dropped semantic routing term "${name}"`,
+        );
+      }
+    }
+  }
+}
+
 function validateCompressedDoc(doc, label, violations) {
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
     violations.push(`${label}: entry must be an object`);
@@ -189,9 +309,9 @@ function validateCompressedDoc(doc, label, violations) {
     );
     return;
   }
-  if (compressed.length > 160) {
+  if (compressed.length > COMPRESSED_DESCRIPTION_MAX_LENGTH) {
     violations.push(
-      `${label}: compressed description is ${compressed.length} chars (max 160)`,
+      `${label}: compressed description is ${compressed.length} chars (max ${COMPRESSED_DESCRIPTION_MAX_LENGTH})`,
     );
   }
   if (/\s{2,}|\n|\r|\t/.test(compressed)) {
@@ -199,6 +319,12 @@ function validateCompressedDoc(doc, label, violations) {
       `${label}: compressed description is not whitespace-normalized`,
     );
   }
+  validateCompressedQuality(
+    compressed,
+    typeof doc.description === "string" ? doc.description : "",
+    label,
+    violations,
+  );
 }
 
 function auditSpecs() {
@@ -217,6 +343,7 @@ function auditSpecs() {
         continue;
       }
 
+      const duplicateDescriptions = new Map();
       items.forEach((item, index) => {
         itemCount += 1;
         const name =
@@ -225,6 +352,18 @@ function auditSpecs() {
             : `#${index}`;
         const label = `${relativePath}:${group.kind}:${name}`;
         validateCompressedDoc(item, label, violations);
+        const compressed = getNormalizedCompressed(item);
+        const duplicateKey = normalizeCompressedKey(compressed);
+        if (duplicateKey.length >= 24) {
+          const existing = duplicateDescriptions.get(duplicateKey);
+          if (existing) {
+            violations.push(
+              `${label}: duplicates compressed description from ${existing}`,
+            );
+          } else {
+            duplicateDescriptions.set(duplicateKey, label);
+          }
+        }
 
         if (group.requireParameters && Array.isArray(item?.parameters)) {
           item.parameters.forEach((param, paramIndex) => {
@@ -276,6 +415,104 @@ function listActionSourceFiles() {
     }
   }
   return [...files].sort((a, b) => a.localeCompare(b));
+}
+
+function listCompressedSourceFiles() {
+  const files = [];
+  const sourceRoots = STRICT_COMPRESSED_SOURCE_ROOTS.map((root) => ({
+    root,
+    strictGrammar: true,
+  })).concat(
+    GENERATED_COMPRESSED_SOURCE_ROOTS.map((root) => ({
+      root,
+      strictGrammar: false,
+    })),
+  );
+
+  for (const { root, strictGrammar } of sourceRoots) {
+    for (const file of listFiles(root, (filePath) => {
+      const relativePath = path.relative(REPO_ROOT, filePath);
+      return (
+        /\.(?:ts|tsx)$/.test(relativePath) &&
+        !TEST_SOURCE_PATH_PATTERN.test(relativePath)
+      );
+    })) {
+      files.push({ file, strictGrammar });
+    }
+  }
+
+  return files.sort((a, b) => a.file.localeCompare(b.file));
+}
+
+function parseStringLiteral(raw) {
+  const quote = raw[0];
+  const body = raw.slice(1, -1);
+  if (quote === '"') {
+    return JSON.parse(raw);
+  }
+  return body
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\`/g, "`")
+    .replace(/\\'/g, "'")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\");
+}
+
+function extractCompressedStringLiterals(source) {
+  const entries = [];
+  const pattern =
+    /descriptionCompressed\s*:\s*((?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)(?:\s*\+\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`))*)/g;
+  let match;
+  while ((match = pattern.exec(source))) {
+    const rawInitializer = match[1];
+    const literals =
+      rawInitializer.match(
+        /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g,
+      ) ?? [];
+    const value = literals.map(parseStringLiteral).join("");
+    const line = source.slice(0, match.index).split(/\r?\n/).length;
+    entries.push({ value, line });
+  }
+  return entries;
+}
+
+function auditSourceCompressedDescriptions() {
+  const violations = [];
+  let fileCount = 0;
+  let descriptionCount = 0;
+
+  for (const { file, strictGrammar } of listCompressedSourceFiles()) {
+    const absolutePath = path.join(REPO_ROOT, file);
+    if (!fs.existsSync(absolutePath)) continue;
+    fileCount += 1;
+    const source = fs.readFileSync(absolutePath, "utf8");
+    for (const { value, line } of extractCompressedStringLiterals(source)) {
+      descriptionCount += 1;
+      const label = `${file}:${line}:descriptionCompressed`;
+      const compressed = value.trim();
+      if (!compressed) {
+        violations.push(`${label}: compressed description is empty`);
+        continue;
+      }
+      if (compressed.length > COMPRESSED_DESCRIPTION_MAX_LENGTH) {
+        violations.push(
+          `${label}: compressed description is ${compressed.length} chars (max ${COMPRESSED_DESCRIPTION_MAX_LENGTH})`,
+        );
+      }
+      if (/\s{2,}|\n|\r|\t/.test(compressed)) {
+        violations.push(
+          `${label}: compressed description is not whitespace-normalized`,
+        );
+      }
+      validateCompressedQuality(compressed, "", label, violations, {
+        strictGrammar,
+      });
+    }
+  }
+
+  return { violations, fileCount, descriptionCount };
 }
 
 function auditPromptFormats() {
@@ -383,11 +620,19 @@ function auditLegacyLlmXmlHelpers() {
 
 function main() {
   const specResult = auditSpecs();
-  const promptResult = auditPromptFormats();
-  const actionXmlResult = auditActionXmlUsage();
-  const legacyXmlResult = auditLegacyLlmXmlHelpers();
+  const sourceCompressedResult = auditSourceCompressedDescriptions();
+  const promptResult = DESCRIPTION_COMPRESSED_ONLY
+    ? { violations: [], scannedLineCount: 0 }
+    : auditPromptFormats();
+  const actionXmlResult = DESCRIPTION_COMPRESSED_ONLY
+    ? { violations: [], fileCount: 0, scannedLineCount: 0 }
+    : auditActionXmlUsage();
+  const legacyXmlResult = DESCRIPTION_COMPRESSED_ONLY
+    ? { violations: [], fileCount: 0, scannedLineCount: 0 }
+    : auditLegacyLlmXmlHelpers();
   const violations = [
     ...specResult.violations,
+    ...sourceCompressedResult.violations,
     ...promptResult.violations,
     ...actionXmlResult.violations,
     ...legacyXmlResult.violations,
@@ -397,14 +642,19 @@ function main() {
     `[prompt-compliance] specs: ${specResult.itemCount} docs, ${specResult.parameterCount} params`,
   );
   console.log(
-    `[prompt-compliance] prompt lines scanned: ${promptResult.scannedLineCount}`,
+    `[prompt-compliance] compressed source scan: ${sourceCompressedResult.fileCount} files, ${sourceCompressedResult.descriptionCount} descriptions`,
   );
-  console.log(
-    `[prompt-compliance] action XML scan: ${actionXmlResult.fileCount} files, ${actionXmlResult.scannedLineCount} lines`,
-  );
-  console.log(
-    `[prompt-compliance] legacy LLM XML helper scan: ${legacyXmlResult.fileCount} files, ${legacyXmlResult.scannedLineCount} lines`,
-  );
+  if (!DESCRIPTION_COMPRESSED_ONLY) {
+    console.log(
+      `[prompt-compliance] prompt lines scanned: ${promptResult.scannedLineCount}`,
+    );
+    console.log(
+      `[prompt-compliance] action XML scan: ${actionXmlResult.fileCount} files, ${actionXmlResult.scannedLineCount} lines`,
+    );
+    console.log(
+      `[prompt-compliance] legacy LLM XML helper scan: ${legacyXmlResult.fileCount} files, ${legacyXmlResult.scannedLineCount} lines`,
+    );
+  }
 
   if (violations.length > 0) {
     console.error(`[prompt-compliance] ${violations.length} violation(s):`);

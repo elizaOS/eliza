@@ -2,57 +2,179 @@ import {
 	type Action,
 	type ActionExample,
 	type ActionResult,
-	type Content,
 	ContentType,
-	composePromptFromState,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
 	type Media,
 	type Memory,
-	MemoryType,
-	ModelType,
-	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
-import { mediaAttachmentIdTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 
-/**
- * Asynchronous function to get the media attachment ID from the user input.
- *
- * @param {IAgentRuntime} runtime - The agent runtime object.
- * @param {Memory} _message - The memory object.
- * @param {State} state - The current state of the conversation.
- * @returns {Promise<string | null>} A promise that resolves with the media attachment ID or null.
- */
-const getMediaAttachmentId = async (
+type MediaCandidate = Media & { _createdAt?: number };
+
+const MEDIA_REQUEST_PATTERN =
+	/\b(?:transcribe|transcript|audio|video|media|youtube|meeting|recording|podcast|call|conference|interview|speech|lecture|presentation|voice|song)\b/i;
+
+function messageText(message: Memory): string {
+	return typeof message.content.text === "string" ? message.content.text : "";
+}
+
+function isMediaAttachment(
+	attachment: Media | null | undefined,
+): attachment is Media {
+	if (!attachment) {
+		return false;
+	}
+	if (
+		attachment.contentType === ContentType.AUDIO ||
+		attachment.contentType === ContentType.VIDEO
+	) {
+		return true;
+	}
+	return /^(audio|video)$/i.test(attachment.source ?? "");
+}
+
+function attachmentLabel(attachment: Media): string {
+	return attachment.title?.trim() || attachment.url || attachment.id;
+}
+
+function requestedAttachmentMatches(text: string, attachment: Media): boolean {
+	const normalizedText = text.toLowerCase();
+	const values = [attachment.id, attachment.title, attachment.url]
+		.filter((value): value is string => Boolean(value?.trim()))
+		.map((value) => value.toLowerCase());
+	return values.some(
+		(value) => value.length >= 4 && normalizedText.includes(value),
+	);
+}
+
+async function collectMediaCandidates(
 	runtime: IAgentRuntime,
-	_message: Memory,
-	state: State,
-): Promise<string | null> => {
-	const prompt = composePromptFromState({
-		state,
-		template: mediaAttachmentIdTemplate,
+	message: Memory,
+): Promise<{
+	current: MediaCandidate[];
+	all: MediaCandidate[];
+}> {
+	const current = ((message.content.attachments ?? []) as Media[])
+		.filter(isMediaAttachment)
+		.map((attachment) => ({
+			...attachment,
+			_createdAt: message.createdAt ?? Date.now(),
+		}));
+	const candidatesById = new Map<string, MediaCandidate>();
+	for (const attachment of current) {
+		candidatesById.set(attachment.id, attachment);
+	}
+
+	const conversationLength = runtime.getConversationLength?.() ?? 20;
+	const recentMessages = await runtime.getMemories?.({
+		tableName: "messages",
+		roomId: message.roomId,
+		count: conversationLength,
+		unique: false,
 	});
-
-	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-		});
-
-		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
-			response,
-		) as {
-			attachmentId: string;
-		} | null;
-
-		if (parsedResponse?.attachmentId) {
-			return parsedResponse.attachmentId;
+	if (Array.isArray(recentMessages)) {
+		for (const recentMessage of recentMessages) {
+			const createdAt = recentMessage.createdAt ?? 0;
+			const attachments = (recentMessage.content.attachments ?? []) as Media[];
+			for (const attachment of attachments.filter(isMediaAttachment)) {
+				const existing = candidatesById.get(attachment.id);
+				if (existing && (existing._createdAt ?? 0) >= createdAt) {
+					continue;
+				}
+				candidatesById.set(attachment.id, {
+					...attachment,
+					_createdAt: createdAt,
+				});
+			}
 		}
 	}
-	return null;
-};
+
+	return {
+		current,
+		all: Array.from(candidatesById.values()).sort(
+			(left, right) => (right._createdAt ?? 0) - (left._createdAt ?? 0),
+		),
+	};
+}
+
+async function selectMediaAttachments(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<MediaCandidate[]> {
+	const { current, all } = await collectMediaCandidates(runtime, message);
+	const explicitId =
+		typeof message.content.attachmentId === "string"
+			? message.content.attachmentId.trim()
+			: typeof message.content.id === "string"
+				? message.content.id.trim()
+				: "";
+	if (explicitId) {
+		return all.filter(
+			(attachment) => attachment.id.toLowerCase() === explicitId.toLowerCase(),
+		);
+	}
+	if (current.length > 0) {
+		return current;
+	}
+	const text = messageText(message);
+	const requested = all.filter((attachment) =>
+		requestedAttachmentMatches(text, attachment),
+	);
+	if (requested.length > 0) {
+		return requested;
+	}
+	return all.length > 0 ? [all[0]] : [];
+}
+
+function transcriptText(attachment: Media): string {
+	return typeof attachment.text === "string" ? attachment.text.trim() : "";
+}
+
+function formatTranscript(attachments: MediaCandidate[]): string {
+	const transcripts = attachments
+		.map((attachment, index) => ({
+			label: attachmentLabel(attachment),
+			index,
+			text: transcriptText(attachment),
+		}))
+		.filter((entry) => entry.text);
+	if (transcripts.length === 1) {
+		return transcripts[0]?.text ?? "";
+	}
+	return transcripts
+		.map((entry) =>
+			[`Transcript ${entry.index + 1}: ${entry.label}`, entry.text].join("\n"),
+		)
+		.join("\n\n");
+}
+
+function mediaKind(attachments: MediaCandidate[]): "audio" | "video" | "media" {
+	if (
+		attachments.every(
+			(attachment) => attachment.contentType === ContentType.AUDIO,
+		)
+	) {
+		return "audio";
+	}
+	if (
+		attachments.every(
+			(attachment) => attachment.contentType === ContentType.VIDEO,
+		)
+	) {
+		return "video";
+	}
+	return "media";
+}
+
+function missingTranscriptMessage(attachments: MediaCandidate[]): string {
+	const kind = mediaKind(attachments);
+	return attachments.length === 1
+		? `I don't have a transcript for that ${kind} attachment yet.`
+		: `I don't have transcripts for those ${kind} attachments yet.`;
+}
 
 /**
  * Action for transcribing the full text of an audio or video file that the user has attached.
@@ -72,219 +194,90 @@ export const transcribeMedia: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
-	validate: async (
-		runtime: any,
-		message: any,
-		state?: any,
-		options?: any,
-	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["transcribe", "media"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((word) => word.length > 0 && __avText.includes(word));
-		const __avRegex = /\b(?:transcribe|media)\b/i;
-		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(
-					__avSource ||
-						state ||
-						runtime?.agentId ||
-						runtime?.getService ||
-						runtime?.getSetting,
-				);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
+	suppressPostActionContinuation: true,
+	validate: async (_runtime, message): Promise<boolean> => {
+		if (message.content.source !== "discord") {
 			return false;
 		}
-
-		const __avLegacyValidate = async (
-			_runtime: IAgentRuntime,
-			message: Memory,
-			_state?: State,
-		): Promise<boolean> => {
-			if (message.content.source !== "discord") {
-				return false;
-			}
-
-			const keywords: string[] = [
-				"transcribe",
-				"transcript",
-				"audio",
-				"video",
-				"media",
-				"youtube",
-				"meeting",
-				"recording",
-				"podcast",
-				"call",
-				"conference",
-				"interview",
-				"speech",
-				"lecture",
-				"presentation",
-			];
-			return keywords.some((keyword) =>
-				message.content.text?.toLowerCase().includes(keyword.toLowerCase()),
-			);
-		};
-		try {
-			return Boolean(
-				await (__avLegacyValidate as any)(runtime, message, state, options),
-			);
-		} catch {
-			return false;
+		const currentAttachments = (message.content.attachments ?? []) as Media[];
+		if (currentAttachments.some(isMediaAttachment)) {
+			return true;
 		}
+		return MEDIA_REQUEST_PATTERN.test(messageText(message));
 	},
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state?: State,
+		_state?: State,
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
-	): Promise<ActionResult | undefined> => {
-		const callbackData: Content = {
-			text: "", // fill in later
-			actions: ["TRANSCRIBE_MEDIA_RESPONSE"],
-			source: message.content.source,
-			attachments: [],
-		};
-
-		const attachmentId = await getMediaAttachmentId(runtime, message, state);
-		if (!attachmentId) {
+	): Promise<ActionResult> => {
+		const selectedAttachments = await selectMediaAttachments(runtime, message);
+		if (selectedAttachments.length === 0) {
+			const text = "I don't see an audio or video attachment to transcribe.";
 			runtime.logger.warn(
 				{
 					src: "plugin:discord:action:transcribe-media",
 					agentId: runtime.agentId,
 				},
-				"Could not get media attachment ID from message",
+				"Could not find media attachment to transcribe",
 			);
-			await runtime.createMemory(
-				{
-					entityId: message.entityId,
-					agentId: message.agentId,
-					roomId: message.roomId,
-					content: {
-						source: "discord",
-						thought: "I couldn't find the media attachment ID in the message",
-						actions: ["TRANSCRIBE_MEDIA_FAILED"],
-					},
-					metadata: {
-						type: MemoryType.CUSTOM,
-					},
-				},
-				"messages",
-			);
-			return;
+			await callback?.({
+				text,
+				actions: ["TRANSCRIBE_MEDIA_FAILED"],
+				source: message.content.source,
+			});
+			return { success: false, text };
 		}
 
-		const conversationLength = runtime.getConversationLength();
-
-		const recentMessages = await runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			count: conversationLength,
-			unique: false,
-		});
-
-		const attachment = recentMessages
-			.filter(
-				(msg) => msg.content.attachments && msg.content.attachments.length > 0,
-			)
-			.flatMap((msg) => msg.content.attachments)
-			.find(
-				(attachment) =>
-					attachment &&
-					attachment.id.toLowerCase() === attachmentId.toLowerCase(),
-			);
-
-		if (!attachment) {
-			runtime.logger.warn(
-				{
-					src: "plugin:discord:action:transcribe-media",
-					agentId: runtime.agentId,
-					attachmentId,
-				},
-				"Could not find attachment",
-			);
-			await runtime.createMemory(
-				{
-					entityId: message.entityId,
-					agentId: message.agentId,
-					roomId: message.roomId,
-					content: {
-						source: "discord",
-						thought: `I couldn't find the media attachment with ID ${attachmentId}`,
-						actions: ["TRANSCRIBE_MEDIA_FAILED"],
-					},
-					metadata: {
-						type: MemoryType.CUSTOM,
-					},
-				},
-				"messages",
-			);
-			return;
+		const transcript = formatTranscript(selectedAttachments);
+		if (!transcript) {
+			const text = missingTranscriptMessage(selectedAttachments);
+			await callback?.({
+				text,
+				actions: ["TRANSCRIBE_MEDIA_FAILED"],
+				source: message.content.source,
+			});
+			return { success: false, text };
 		}
 
-		const mediaTranscript = attachment.text;
-
-		callbackData.text = mediaTranscript?.trim();
-
-		// if callbackData.text is < 4 lines or < 100 words, then we we callback with normal message wrapped in markdown block
 		if (
-			callbackData.text &&
-			(callbackData.text.split("\n").length < 4 ||
-				callbackData.text.split(" ").length < 100)
+			transcript.split("\n").length < 4 ||
+			transcript.split(/\s+/).filter(Boolean).length < 100
 		) {
-			callbackData.text = `Here is the transcript:
+			const text = `Here is the transcript:
 \`\`\`md
-${mediaTranscript?.trim() || ""}
+${transcript}
 \`\`\`
 `;
-			await callback?.(callbackData);
-		}
-		// if text is big, let's send as an attachment
-		else if (callbackData.text) {
-			const transcriptFilename = `content/transcript_${Date.now()}`;
-
-			// save the transcript to a file
-			await runtime.setCache<string>(transcriptFilename, callbackData.text);
-
 			await callback?.({
-				...callbackData,
-				text: "I've attached the transcript as a text file.",
-				attachments: [
-					...(callbackData.attachments || []),
-					{
-						id: transcriptFilename,
-						url: transcriptFilename,
-						title: "Transcript",
-						source: "discord",
-						contentType: ContentType.DOCUMENT,
-					} as Media,
-				],
+				text,
+				actions: ["TRANSCRIBE_MEDIA_RESPONSE"],
+				source: message.content.source,
+				attachments: [],
 			});
-		} else {
-			runtime.logger.warn(
-				{
-					src: "plugin:discord:action:transcribe-media",
-					agentId: runtime.agentId,
-				},
-				"Empty response from transcribe media action",
-			);
+			return { success: true, text };
 		}
 
-		return { success: true, text: callbackData.text };
+		const transcriptFilename = `content/transcript_${Date.now()}`;
+		await runtime.setCache<string>(transcriptFilename, transcript);
+
+		const text = "I've attached the transcript as a text file.";
+		await callback?.({
+			text,
+			actions: ["TRANSCRIBE_MEDIA_RESPONSE"],
+			source: message.content.source,
+			attachments: [
+				{
+					id: transcriptFilename,
+					url: transcriptFilename,
+					title: "Transcript",
+					source: "discord",
+					contentType: ContentType.DOCUMENT,
+				} as Media,
+			],
+		});
+		return { success: true, text };
 	},
 	examples: (spec.examples ?? []) as ActionExample[][],
 };

@@ -56,7 +56,7 @@
     "@atproto/xrpc": "^0.7.0",
     "@elizaos/core": "workspace:*",
     "lru-cache": "^11.1.0",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

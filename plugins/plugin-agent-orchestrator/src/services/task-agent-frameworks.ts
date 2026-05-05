@@ -275,7 +275,7 @@ export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
   TaskAgentModelPrefs
 > = {
   claude: { powerful: "claude-opus-4-7" },
-  codex: { powerful: "gpt-5.5", fast: "gpt-5-mini" },
+  codex: { powerful: "gpt-5.5", fast: "gpt-5.4-mini" },
   gemini: {},
   aider: {},
   opencode: {},

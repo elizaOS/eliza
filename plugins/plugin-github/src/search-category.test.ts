@@ -1,7 +1,4 @@
-import type {
-  IAgentRuntime,
-  SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   GITHUB_PULL_REQUESTS_SEARCH_CATEGORY,
@@ -24,8 +21,10 @@ function createRuntime() {
   return {
     categories,
     registerSearchCategory,
-    runtime: { getSearchCategory, registerSearchCategory } as unknown as
-      IAgentRuntime,
+    runtime: {
+      getSearchCategory,
+      registerSearchCategory,
+    } as unknown as IAgentRuntime,
   };
 }
 
@@ -43,9 +42,18 @@ describe("GitHub search category", () => {
       source: "plugin:github",
     });
     expect(
-      GITHUB_PULL_REQUESTS_SEARCH_CATEGORY.filters?.map((filter) => filter.name),
+      GITHUB_PULL_REQUESTS_SEARCH_CATEGORY.filters?.map(
+        (filter) => filter.name,
+      ),
     ).toEqual(
-      expect.arrayContaining(["query", "repo", "state", "author", "as", "limit"]),
+      expect.arrayContaining([
+        "query",
+        "repo",
+        "state",
+        "author",
+        "as",
+        "limit",
+      ]),
     );
   });
 });

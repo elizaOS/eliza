@@ -25,8 +25,14 @@ export function createUseModelMock(schemaResult?: Record<string, unknown>) {
 
     // Text calls (response formatting) — extract and return the data section
     const prompt = (opts?.prompt || "") as string;
-    const dataIdx = prompt.lastIndexOf("\n\n{");
-    if (dataIdx !== -1) return Promise.resolve(prompt.slice(dataIdx + 2));
+    const dataSection = "\n\nData:\n";
+    const dataIdx = prompt.lastIndexOf(dataSection);
+    if (dataIdx !== -1) {
+      return Promise.resolve(prompt.slice(dataIdx + dataSection.length));
+    }
+
+    const jsonIdx = prompt.lastIndexOf("\n\n{");
+    if (jsonIdx !== -1) return Promise.resolve(prompt.slice(jsonIdx + 2));
 
     return Promise.resolve("");
   });

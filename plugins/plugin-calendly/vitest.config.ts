@@ -5,5 +5,6 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts", "src/__tests__/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**"],
+    passWithNoTests: true,
   },
 });

@@ -7,6 +7,7 @@ import {
 	type MessageReceivedHandlerParams,
 	ModelType,
 	parseToonKeyValue,
+	withStandaloneTrajectory,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { TRUST_LEADERBOARD_WORLD_SEED } from "./config";
@@ -20,10 +21,17 @@ import {
 	type UserTrustProfile,
 } from "./types";
 
-const RELEVANCE_CHECK_TEMPLATE = `
-# Task: Relevance Check
-Given the current message and recent conversation context, determine if the message is relevant to cryptocurrency discussions.
-This includes topics like token mentions, trading, market sentiment, buy/sell signals, DeFi, NFTs, or financial advice related to crypto.
+// Combined relevance + extraction in a single LLM call. An empty
+// `recommendations` array == not relevant. This saves one TEXT_LARGE per
+// inbound message versus the old two-call relevance-then-extraction flow.
+const RELEVANCE_AND_EXTRACTION_TEMPLATE = `
+# Task: Crypto Relevance + Recommendation Extraction
+Given the current message and recent conversation context, do BOTH at once:
+1. Decide whether the message is relevant to cryptocurrency discussions
+   (token mentions, trading, market sentiment, buy/sell signals, DeFi, NFTs,
+   or financial advice related to crypto).
+2. If and only if it IS relevant, extract every explicit or strongly implied
+   recommendation to buy or sell a cryptocurrency token, or strong criticism.
 
 # Conversation Context
 Current Message Sender: {{senderName}}
@@ -32,47 +40,28 @@ Current Message: "{{currentMessageText}}"
 Recent Messages (if any):
 {{recentMessagesContext}}
 
-# Instructions
-Respond with TOON only.
-Fields:
-isRelevant: true/false
-reason: brief explanation
-Focus SOLELY on relevance to crypto. Do not analyze for recommendations yet.
-
-Example Output for relevant message:
-isRelevant: true
-reason: The message discusses price predictions for $ETH.
-
-Example Output for irrelevant message:
-isRelevant: false
-reason: The message is about weekend plans.
-
-# Your Analysis:
-`;
-
-const RECOMMENDATION_EXTRACTION_TEMPLATE = `
-# Task: Extract Cryptocurrency Recommendations
-Analyze the user's message to identify any explicit or strongly implied recommendations to buy or sell a cryptocurrency token, or strong criticisms.
-
-# User Message
-Sender: {{senderName}}
-Message: "{{messageText}}"
-
-# Instructions
-If the message contains a recommendation or strong criticism:
-1. Identify the token mentioned (ticker like $SOL or contract address). If a contract address, make sure it looks like one (e.g. long alphanumeric string).
+# Extraction rules (apply only when the message is crypto-relevant)
+For each recommendation/criticism:
+1. Identify the token mentioned (ticker like $SOL, or a contract address —
+   a contract address must look like one, e.g. a long alphanumeric string).
 2. Determine if the mention is a ticker (true/false).
-3. Determine the sentiment: 'positive' (buy, pump, moon, good investment), 'negative' (sell, dump, scam, bad investment), or 'neutral' (general discussion without clear buy/sell intent).
+3. Determine the sentiment: 'positive' (buy, pump, moon, good investment),
+   'negative' (sell, dump, scam, bad investment), or 'neutral' (general
+   discussion without clear buy/sell intent).
 4. Estimate the sender's conviction: 'NONE', 'LOW', 'MEDIUM', 'HIGH'.
-5. Extract the direct quote from the message that forms the basis of the recommendation/criticism.
+5. Extract the direct quote from the message that forms the basis of the
+   recommendation/criticism.
 
-Respond with TOON only.
-Use this shape:
+# Output
+Respond with TOON only. Use this shape:
 recommendations[0]{tokenMentioned,isTicker,sentiment,conviction,quote}: SOL,true,positive,HIGH,$SOL is going to moon
 
-If no new, clear recommendation or strong criticism is found:
+If the message is NOT crypto-relevant, OR is relevant but contains no
+actionable recommendation or strong criticism, return an empty list:
 recommendations:
-Focus only on actionable recommendations or strong criticisms, not general token mentions without sentiment or conviction.
+
+An empty \`recommendations\` list means "not relevant or nothing to extract" —
+the caller treats both cases the same way.
 
 # Your Analysis:
 `;
@@ -222,68 +211,13 @@ const messageReceivedHandler = async ({
 				})
 				.join("\n");
 
-			const relevancePrompt = RELEVANCE_CHECK_TEMPLATE.replace(
+			const combinedPrompt = RELEVANCE_AND_EXTRACTION_TEMPLATE.replace(
 				"{{senderName}}",
 				String(content.name || currentMessageSenderId.toString()),
 			)
 				.replace("{{currentMessageText}}", String(content.text || ""))
 				.replace("{{recentMessagesContext}}", history);
 
-			// logger.debug(`[CommunityInvestor Handler] Relevance prompt being sent to useModel:\n${relevancePrompt}`);
-
-			const relevanceResponseRaw = await runtime.useModel(
-				ModelType.TEXT_LARGE,
-				{
-					prompt: relevancePrompt,
-				},
-			);
-			logger.debug(
-				`[HANDLER DEBUG] relevanceResponseRaw: '${relevanceResponseRaw}' (type: ${typeof relevanceResponseRaw})`,
-			); // Changed to error for visibility
-
-			const relevanceResult =
-				parseToonKeyValue<Record<string, unknown>>(relevanceResponseRaw);
-
-			logger.debug(
-				`[HANDLER DEBUG] Parsed relevanceResult: ${JSON.stringify(relevanceResult)} (type: ${typeof relevanceResult})`,
-			); // Changed to error
-
-			let isActuallyRelevant = false; // Default to false
-			if (relevanceResult?.hasOwnProperty("isRelevant")) {
-				if (typeof relevanceResult.isRelevant === "boolean") {
-					isActuallyRelevant = relevanceResult.isRelevant;
-				} else if (typeof relevanceResult.isRelevant === "string") {
-					isActuallyRelevant =
-						relevanceResult.isRelevant.toLowerCase() === "true";
-				}
-			}
-			logger.debug(
-				`[HANDLER DEBUG] isActuallyRelevant determined as: ${isActuallyRelevant}`,
-			); // Changed to error
-
-			if (!isActuallyRelevant) {
-				logger.info(
-					`[CommunityInvestor] Message determined NOT relevant. Reason: ${relevanceResult?.reason || "N/A"}. Returning.`,
-				); // Changed from error to info
-				onComplete?.();
-				return;
-			}
-
-			logger.debug(
-				`[CommunityInvestor] Message IS RELEVANT. Proceeding to extraction.`,
-			); // Changed to error
-
-			const extractionPrompt = RECOMMENDATION_EXTRACTION_TEMPLATE.replace(
-				"{{senderName}}",
-				String(content.name || currentMessageSenderId.toString()),
-			).replace("{{messageText}}", String(content.text || ""));
-
-			const extractionResponseRaw = await runtime.useModel(
-				ModelType.TEXT_LARGE,
-				{
-					prompt: extractionPrompt,
-				},
-			);
 			type ExtractedRec = {
 				tokenMentioned: string;
 				isTicker: boolean;
@@ -291,23 +225,46 @@ const messageReceivedHandler = async ({
 				conviction: "NONE" | "LOW" | "MEDIUM" | "HIGH";
 				quote: string;
 			};
-			const extractionResult = (parseToonKeyValue<{
+
+			// Single combined relevance + extraction call. An empty
+			// `recommendations` list means either the message was not
+			// crypto-relevant or had nothing actionable — both short-circuit
+			// the rest of the pipeline. Wrapped in a standalone trajectory so
+			// the event-loop call is anchored even though no Action is active.
+			const extractionResponseRaw = await withStandaloneTrajectory(
+				runtime,
+				{
+					source: "social-alpha-event",
+					metadata: {
+						messageId,
+						type: "relevance-extraction",
+					},
+				},
+				() =>
+					runtime.useModel(ModelType.TEXT_LARGE, {
+						prompt: combinedPrompt,
+					}),
+			);
+
+			const extractionResult = parseToonKeyValue<{
 				recommendations?: ExtractedRec[];
-			}>(extractionResponseRaw)) as {
-				recommendations: ExtractedRec[];
+			}>(extractionResponseRaw) as {
+				recommendations?: ExtractedRec[];
 			} | null;
 
-			if (
-				!extractionResult?.recommendations ||
-				extractionResult.recommendations.length === 0
-			) {
-				logger.debug("[CommunityInvestor] No recommendations extracted.");
+			const extractedRecommendations =
+				extractionResult?.recommendations ?? [];
+
+			if (extractedRecommendations.length === 0) {
+				logger.debug(
+					"[CommunityInvestor] No recommendations extracted (not relevant or nothing actionable).",
+				);
 				onComplete?.();
 				return;
 			}
 
 			logger.info(
-				`[CommunityInvestor] Found ${extractionResult.recommendations.length} recommendations to process`,
+				`[CommunityInvestor] Found ${extractedRecommendations.length} recommendations to process`,
 			);
 
 			const communityInvestorService = runtime.getService(
@@ -346,7 +303,7 @@ const messageReceivedHandler = async ({
 
 			let profileUpdated = false;
 
-			for (const extractedRec of extractionResult.recommendations) {
+			for (const extractedRec of extractedRecommendations) {
 				if (
 					extractedRec.sentiment === "neutral" ||
 					!extractedRec.tokenMentioned?.trim()

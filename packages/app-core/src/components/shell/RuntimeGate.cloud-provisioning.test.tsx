@@ -168,7 +168,7 @@ describe("resolveRuntimeChoices", () => {
     ).toEqual(["cloud", "remote"]);
   });
 
-  it("keeps Cloud available on Android while adding Local when the probe succeeds", () => {
+  it("keeps Cloud, Local, and Remote available on Android while the local probe resolves", () => {
     expect(
       resolveRuntimeChoices({
         isAndroid: true,
@@ -178,7 +178,7 @@ describe("resolveRuntimeChoices", () => {
         showLocalOption: false,
         localProbePending: true,
       }),
-    ).toEqual(["cloud", "remote"]);
+    ).toEqual(["cloud", "local", "remote"]);
 
     expect(
       resolveRuntimeChoices({
@@ -200,7 +200,7 @@ describe("resolveRuntimeChoices", () => {
         showLocalOption: false,
         localProbePending: false,
       }),
-    ).toEqual(["cloud", "remote"]);
+    ).toEqual(["cloud", "local", "remote"]);
   });
 });
 
@@ -325,6 +325,39 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       expect(screen.getByText("Insufficient credits")).toBeTruthy(),
     );
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces repeated async provisioning poll failures without hanging startup", async () => {
+    vi.useFakeTimers();
+    clientMock.provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-1", agentId: "agent-1", status: "pending" },
+    });
+    clientMock.getCloudCompatJobStatus.mockRejectedValue(
+      new Error("Job lookup failed"),
+    );
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Select Cloud"));
+    });
+
+    await vi.waitFor(() =>
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    await vi.waitFor(() =>
+      expect(screen.getByText("Job lookup failed")).toBeTruthy(),
+    );
+    expect(clientMock.getCloudCompatJobStatus).toHaveBeenCalledTimes(3);
     expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });

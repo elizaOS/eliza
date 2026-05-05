@@ -16,8 +16,9 @@ function extractCode(prompt: string, label: string): string {
 
 function buildToonResponse(fields: Record<string, string | undefined>): string {
   return Object.entries(fields)
-    .filter((entry): entry is [string, string] =>
-      typeof entry[1] === "string" && entry[1].length > 0,
+    .filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === "string" && entry[1].length > 0,
     )
     .map(([key, value]) => {
       if (value.includes("\n")) {
@@ -32,7 +33,10 @@ function buildToonResponse(fields: Record<string, string | undefined>): string {
 }
 
 function createBenchmarkActionToon(prompt: string): string {
-  if (/Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) || /RLM benchmark task/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) ||
+    /RLM benchmark task/i.test(prompt)
+  ) {
     const answer =
       /authorization code is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
       /encrypted key sequence is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
@@ -48,10 +52,15 @@ function createBenchmarkActionToon(prompt: string): string {
     });
   }
 
-  if (/Benchmark:\*{0,2}\s*gaia/i.test(prompt) || /GAIA benchmark task|FINAL ANSWER/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*gaia/i.test(prompt) ||
+    /GAIA benchmark task|FINAL ANSWER/i.test(prompt)
+  ) {
     const arithmetic =
       /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(prompt) ??
-      /Question:\s*(?:what is\s*)?(-?\d+)\s+(times|multiplied by|plus|minus)\s+(-?\d+)/i.exec(prompt);
+      /Question:\s*(?:what is\s*)?(-?\d+)\s+(times|multiplied by|plus|minus)\s+(-?\d+)/i.exec(
+        prompt,
+      );
     let answer = "mock-answer";
     if (arithmetic) {
       const left = Number(arithmetic[1]);
@@ -59,7 +68,12 @@ function createBenchmarkActionToon(prompt: string): string {
       const op = arithmetic[2].toLowerCase();
       if (op === "+" || op === "plus") answer = String(left + right);
       if (op === "-" || op === "minus") answer = String(left - right);
-      if (op === "*" || op === "x" || op === "times" || op === "multiplied by") {
+      if (
+        op === "*" ||
+        op === "x" ||
+        op === "times" ||
+        op === "multiplied by"
+      ) {
         answer = String(left * right);
       }
     }
@@ -70,7 +84,12 @@ function createBenchmarkActionToon(prompt: string): string {
     });
   }
 
-  if (/Benchmark:\*{0,2}\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(prompt) || /Hyperliquid DEX|HyperliquidBench/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(
+      prompt,
+    ) ||
+    /Hyperliquid DEX|HyperliquidBench/i.test(prompt)
+  ) {
     return buildToonResponse({
       thought: "Returning a deterministic Hyperliquid plan.",
       actions: "REPLY",
@@ -78,10 +97,14 @@ function createBenchmarkActionToon(prompt: string): string {
     });
   }
 
-  if (/Benchmark:\*{0,2}\s*(vending-bench|vending_bench)/i.test(prompt) || /Vending-Bench|vending machine business/i.test(prompt)) {
-    const action = /pending orders/i.test(prompt) && !/no pending orders/i.test(prompt)
-      ? '{"action":"ADVANCE_DAY"}'
-      : '{"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}';
+  if (
+    /Benchmark:\*{0,2}\s*(vending-bench|vending_bench)/i.test(prompt) ||
+    /Vending-Bench|vending machine business/i.test(prompt)
+  ) {
+    const action =
+      /pending orders/i.test(prompt) && !/no pending orders/i.test(prompt)
+        ? '{"action":"ADVANCE_DAY"}'
+        : '{"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}';
     return buildToonResponse({
       thought: "Returning a deterministic Vending-Bench action.",
       actions: "REPLY",
@@ -89,7 +112,10 @@ function createBenchmarkActionToon(prompt: string): string {
     });
   }
 
-  if (/Benchmark:\*{0,2}\s*clawbench/i.test(prompt) || /ClawBench|Review my inbox/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*clawbench/i.test(prompt) ||
+    /ClawBench|Review my inbox/i.test(prompt)
+  ) {
     return buildToonResponse({
       thought: "Returning deterministic ClawBench inbox triage.",
       actions: "REPLY",
@@ -97,23 +123,39 @@ function createBenchmarkActionToon(prompt: string): string {
     });
   }
 
-  if (/Benchmark:\*{0,2}\s*adhdbench/i.test(prompt) || /ADHDBench/i.test(prompt)) {
-    const currentMessage = /Current user message:\s*([\s\S]*?)(?:\n\n|$)/i.exec(prompt)?.[1]?.toLowerCase() ?? prompt.toLowerCase();
+  if (
+    /Benchmark:\*{0,2}\s*adhdbench/i.test(prompt) ||
+    /ADHDBench/i.test(prompt)
+  ) {
+    const currentMessage =
+      /Current user message:\s*([\s\S]*?)(?:\n\n|$)/i
+        .exec(prompt)?.[1]
+        ?.toLowerCase() ?? prompt.toLowerCase();
     let action = "REPLY";
-    if (/send a message|message to/.test(currentMessage)) action = "SEND_MESSAGE";
+    if (/send a message|message to/.test(currentMessage))
+      action = "SEND_MESSAGE";
     else if (/mute this|too noisy/.test(currentMessage)) action = "MUTE_ROOM";
     else if (/unmute/.test(currentMessage)) action = "UNMUTE_ROOM";
     else if (/follow the/.test(currentMessage)) action = "FOLLOW_ROOM";
-    else if (/stop following|unfollow/.test(currentMessage)) action = "UNFOLLOW_ROOM";
+    else if (/stop following|unfollow/.test(currentMessage))
+      action = "UNFOLLOW_ROOM";
     else if (/find all|search/.test(currentMessage)) action = "SEARCH_CONTACTS";
-    else if (/make .* admin|update role/.test(currentMessage)) action = "UPDATE_ROLE";
-    else if (/remind me|tomorrow/.test(currentMessage)) action = "SCHEDULE_FOLLOW_UP";
-    else if (/add .* contact|new colleague/.test(currentMessage)) action = "ADD_CONTACT";
-    else if (/remove .* contact/.test(currentMessage)) action = "REMOVE_CONTACT";
-    else if (/settings|notification preferences/.test(currentMessage)) action = "UPDATE_SETTINGS";
-    else if (/reset|start fresh|clear everything/.test(currentMessage)) action = "RESET_SESSION";
-    else if (/phone number|contact info/.test(currentMessage)) action = "UPDATE_CONTACT_INFO";
-    else if (/generate .*picture|image/.test(currentMessage)) action = "GENERATE_IMAGE";
+    else if (/make .* admin|update role/.test(currentMessage))
+      action = "UPDATE_ROLE";
+    else if (/remind me|tomorrow/.test(currentMessage))
+      action = "SCHEDULE_FOLLOW_UP";
+    else if (/add .* contact|new colleague/.test(currentMessage))
+      action = "ADD_CONTACT";
+    else if (/remove .* contact/.test(currentMessage))
+      action = "REMOVE_CONTACT";
+    else if (/settings|notification preferences/.test(currentMessage))
+      action = "UPDATE_SETTINGS";
+    else if (/reset|start fresh|clear everything/.test(currentMessage))
+      action = "RESET_SESSION";
+    else if (/phone number|contact info/.test(currentMessage))
+      action = "UPDATE_CONTACT_INFO";
+    else if (/generate .*picture|image/.test(currentMessage))
+      action = "GENERATE_IMAGE";
     else if (/ignore that last/.test(currentMessage)) action = "IGNORE";
     else if (/create .*plan/.test(currentMessage)) action = "CREATE_PLAN";
     if (["REPLY", "IGNORE", "NONE"].includes(action)) {

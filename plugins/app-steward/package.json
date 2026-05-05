@@ -73,6 +73,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
+    "@toon-format/toon": "^2.1.0",
     "ethers": "^6.16.0",
     "lucide-react": "^1.0.0",
     "viem": "^2.48.8"

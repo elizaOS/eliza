@@ -18,7 +18,6 @@ import {
 } from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
-import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import type {
   ChatTokenUsage,
   ConnectionStateInfo,
@@ -29,6 +28,7 @@ import type {
   WsEventHandler,
 } from "./client-types";
 import { ApiError } from "./client-types";
+import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -53,7 +53,9 @@ function normalizeBaseUrl(value: string | null | undefined): string {
   return trimmed.slice(0, end);
 }
 
-function isElizaCloudControlPlaneBase(value: string | null | undefined): boolean {
+function isElizaCloudControlPlaneBase(
+  value: string | null | undefined,
+): boolean {
   const normalized = normalizeBaseUrl(value);
   if (!normalized) return false;
   try {
@@ -208,10 +210,7 @@ export class ElizaClient {
     return this.baseUrl;
   }
 
-  setBaseUrl(
-    baseUrl: string | null,
-    options?: { persist?: boolean },
-  ): void {
+  setBaseUrl(baseUrl: string | null, options?: { persist?: boolean }): void {
     const normalized = normalizeBaseUrl(baseUrl);
     const persist = options?.persist !== false;
     this._userSetBase = normalized.length > 0;

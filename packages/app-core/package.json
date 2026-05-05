@@ -182,8 +182,6 @@
     "@elizaos/app-training": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-n8n-workflow": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
@@ -223,7 +221,7 @@
     "telegraf": "^4.16.3",
     "undici": "^8.0.0",
     "ws": "^8.19.0",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "publishConfig": {
     "access": "public",

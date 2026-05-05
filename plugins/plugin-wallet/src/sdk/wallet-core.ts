@@ -10,11 +10,7 @@ import {
 } from "viem";
 import { arbitrum, base, baseSepolia, mainnet, polygon } from "viem/chains";
 import { AgentAccountV2Abi } from "./abi.js";
-import type {
-  AgentWalletConfig,
-  BudgetStatus,
-  SpendPolicy,
-} from "./types.js";
+import type { AgentWalletConfig, BudgetStatus, SpendPolicy } from "./types.js";
 
 const CHAINS: Record<string, Chain> = {
   base,

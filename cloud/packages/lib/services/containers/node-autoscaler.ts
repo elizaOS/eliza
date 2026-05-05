@@ -17,10 +17,7 @@
  *    provision and drain.
  */
 
-import { and, eq, sql } from "drizzle-orm";
-import { dbRead } from "@/db/helpers";
 import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { containers as containersTable } from "@/db/schemas/containers";
 import type { DockerNode } from "@/db/schemas/docker-nodes";
 import { containersEnv } from "@/lib/config/containers-env";
 import {
@@ -32,6 +29,10 @@ import {
   buildContainerNodeUserData,
   type NodeBootstrapInput,
 } from "@/lib/services/containers/node-bootstrap";
+import {
+  countAllocatedWorkloadsOnNode,
+  countRetainedWorkloadsOnNode,
+} from "@/lib/services/docker-node-workloads";
 import { logger } from "@/lib/utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -41,6 +42,8 @@ import { logger } from "@/lib/utils/logger";
 export interface AutoscalePolicy {
   /** Free slots that must remain across the pool before we provision a new node. */
   minFreeSlotsBuffer: number;
+  /** Emergency floor for hot agent starts; bypasses cooldown if availability drops below it. */
+  minHotAvailableSlots: number;
   /** Hard cap on enabled nodes; never provision past this number. */
   maxNodes: number;
   /** Cooldown after the most recent provision before another one is allowed. */
@@ -59,6 +62,7 @@ export interface AutoscalePolicy {
 
 export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
   minFreeSlotsBuffer: 4,
+  minHotAvailableSlots: 1,
   maxNodes: 12,
   scaleUpCooldownMs: 5 * 60 * 1000,
   idleNodeMinAgeMs: 30 * 60 * 1000,
@@ -73,6 +77,7 @@ export interface CapacityDecision {
   totalAllocated: number;
   totalAvailable: number;
   enabledNodeCount: number;
+  healthyNodeCount: number;
   shouldScaleUp: boolean;
   shouldScaleDownNodeIds: string[];
   reason: string;
@@ -123,11 +128,24 @@ export class NodeAutoscaler {
   async evaluateCapacity(): Promise<CapacityDecision> {
     const nodes = await dockerNodesRepository.findAll();
     const enabled = nodes.filter((n) => n.enabled);
+    const healthyEnabled = enabled.filter((n) => n.status === "healthy");
+    const allocatedByNode = new Map(
+      await Promise.all(
+        healthyEnabled.map(
+          async (node) =>
+            [node.node_id, await countAllocatedWorkloadsOnNode(node.node_id)] as const,
+        ),
+      ),
+    );
 
-    const totalCapacity = enabled.reduce((sum, n) => sum + n.capacity, 0);
-    const totalAllocated = enabled.reduce((sum, n) => sum + n.allocated_count, 0);
-    const totalAvailable = enabled.reduce(
-      (sum, n) => sum + Math.max(0, n.capacity - n.allocated_count),
+    const totalCapacity = healthyEnabled.reduce((sum, n) => sum + n.capacity, 0);
+    const totalAllocated = healthyEnabled.reduce(
+      (sum, n) => sum + (allocatedByNode.get(n.node_id) ?? n.allocated_count),
+      0,
+    );
+    const totalAvailable = healthyEnabled.reduce(
+      (sum, n) =>
+        sum + Math.max(0, n.capacity - (allocatedByNode.get(n.node_id) ?? n.allocated_count)),
       0,
     );
 
@@ -135,19 +153,23 @@ export class NodeAutoscaler {
       (n) => this.nowFn() - n.created_at.getTime() < this.policy.scaleUpCooldownMs,
     );
 
+    const belowHotFloor = totalAvailable < this.policy.minHotAvailableSlots;
+    const belowBuffer = totalAvailable < this.policy.minFreeSlotsBuffer;
     const shouldScaleUp =
       enabled.length < this.policy.maxNodes &&
-      totalAvailable < this.policy.minFreeSlotsBuffer &&
-      !recentlyProvisioned;
+      belowBuffer &&
+      (!recentlyProvisioned || belowHotFloor);
 
     const drainCandidates = await this.findDrainCandidates(enabled);
 
     let reason = "steady";
     if (shouldScaleUp) {
-      reason = `available ${totalAvailable} < buffer ${this.policy.minFreeSlotsBuffer} (cooldown ok)`;
+      reason = belowHotFloor
+        ? `available ${totalAvailable} < hot floor ${this.policy.minHotAvailableSlots}`
+        : `available ${totalAvailable} < buffer ${this.policy.minFreeSlotsBuffer} (cooldown ok)`;
     } else if (drainCandidates.length > 0) {
       reason = `${drainCandidates.length} idle node(s) eligible for drain`;
-    } else if (recentlyProvisioned && totalAvailable < this.policy.minFreeSlotsBuffer) {
+    } else if (recentlyProvisioned && belowBuffer) {
       reason = "would scale up but cooldown active";
     }
 
@@ -156,6 +178,7 @@ export class NodeAutoscaler {
       totalAllocated,
       totalAvailable,
       enabledNodeCount: enabled.length,
+      healthyNodeCount: healthyEnabled.length,
       shouldScaleUp,
       shouldScaleDownNodeIds: drainCandidates.map((n) => n.node_id),
       reason,
@@ -283,11 +306,11 @@ export class NodeAutoscaler {
       logger.info("[autoscaler] Disabled node for drain", { nodeId });
     }
 
-    const containerCount = await countActiveContainersOnNode(nodeId);
-    if (containerCount > 0) {
-      logger.info("[autoscaler] Node still has containers, leaving disabled until empty", {
+    const retainedWorkloads = await countRetainedWorkloadsOnNode(nodeId);
+    if (retainedWorkloads > 0) {
+      logger.info("[autoscaler] Node still has retained workloads, leaving disabled until empty", {
         nodeId,
-        remaining: containerCount,
+        remaining: retainedWorkloads,
       });
       return;
     }
@@ -345,7 +368,7 @@ export class NodeAutoscaler {
     const counts = await Promise.all(
       oldEnough.map(async (node) => ({
         node,
-        count: await countActiveContainersOnNode(node.node_id),
+        count: await countRetainedWorkloadsOnNode(node.node_id),
       })),
     );
     return counts.filter((c) => c.count === 0).map((c) => c.node);
@@ -355,22 +378,6 @@ export class NodeAutoscaler {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function countActiveContainersOnNode(nodeId: string): Promise<number> {
-  const [row] = await dbRead
-    .select({ count: sql<number>`count(*)::int` })
-    .from(containersTable)
-    .where(
-      and(
-        eq(containersTable.node_id, nodeId),
-        // Treat anything not in a terminal state as "still on the node".
-        // `deleted` rows have already been removed from the table, so we
-        // count by node_id presence.
-        sql`${containersTable.status} not in ('failed','deleted')`,
-      ),
-    );
-  return row?.count ?? 0;
-}
 
 function generateNodeId(): string {
   // Short hex id with a deterministic prefix — easy to scan in the dashboard.

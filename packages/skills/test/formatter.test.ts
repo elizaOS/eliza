@@ -25,7 +25,7 @@ describe("formatSkillsForPrompt", () => {
     assert.strictEqual(formatSkillsForPrompt(skills), "");
   });
 
-  it("formats visible skills as XML", () => {
+  it("formats visible skills as TOON-style text", () => {
     const skills: Skill[] = [
       {
         name: "test-skill",
@@ -34,29 +34,25 @@ describe("formatSkillsForPrompt", () => {
       },
     ];
     const result = formatSkillsForPrompt(skills);
-    assert.ok(result.includes("<available_skills>"));
-    assert.ok(result.includes("<name>test-skill</name>"));
-    assert.ok(result.includes("<description>A test skill</description>"));
-    assert.ok(result.includes("<location>/path/to/SKILL.md</location>"));
-    assert.ok(result.includes("</available_skills>"));
+    assert.ok(result.includes("available_skills:"));
+    assert.ok(result.includes("- name: test-skill"));
+    assert.ok(result.includes("description: A test skill"));
+    assert.ok(result.includes("location: /path/to/SKILL.md"));
   });
 
   it("omits location when filePath is not set", () => {
     const skills: Skill[] = [{ name: "inline", description: "Inline skill" }];
     const result = formatSkillsForPrompt(skills);
-    assert.ok(result.includes("<name>inline</name>"));
-    assert.ok(!result.includes("<location>"));
+    assert.ok(result.includes("- name: inline"));
+    assert.ok(!result.includes("location:"));
   });
 
-  it("escapes XML special characters in name and description", () => {
+  it("preserves non-XML text characters in name and description", () => {
     const skills: Skill[] = [
       { name: "test", description: "Uses <tags> & \"quotes\" and 'apos'" },
     ];
     const result = formatSkillsForPrompt(skills);
-    assert.ok(result.includes("&lt;tags&gt;"));
-    assert.ok(result.includes("&amp;"));
-    assert.ok(result.includes("&quot;quotes&quot;"));
-    assert.ok(result.includes("&apos;apos&apos;"));
+    assert.ok(result.includes("Uses <tags> & \"quotes\" and 'apos'"));
   });
 
   it("formats multiple skills", () => {
@@ -65,8 +61,8 @@ describe("formatSkillsForPrompt", () => {
       { name: "skill-b", description: "Second" },
     ];
     const result = formatSkillsForPrompt(skills);
-    assert.ok(result.includes("<name>skill-a</name>"));
-    assert.ok(result.includes("<name>skill-b</name>"));
+    assert.ok(result.includes("- name: skill-a"));
+    assert.ok(result.includes("- name: skill-b"));
   });
 });
 
@@ -88,7 +84,7 @@ describe("formatSkillEntriesForPrompt", () => {
     ];
     const result = formatSkillEntriesForPrompt(entries);
     assert.ok(result.includes("visible"));
-    assert.ok(!result.includes("<name>hidden</name>"));
+    assert.ok(!result.includes("- name: hidden"));
   });
 
   it("returns empty string when all entries are hidden", () => {

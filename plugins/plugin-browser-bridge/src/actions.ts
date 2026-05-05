@@ -67,6 +67,7 @@ export const browserBridgeInstallAction: Action = {
       params: "none",
     },
   }),
+  descriptionCompressed: "Install browser companion extension.",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -144,6 +145,7 @@ export const browserBridgeRevealFolderAction: Action = {
       params: "none",
     },
   }),
+  descriptionCompressed: "Reveal companion folder in Finder.",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -202,6 +204,7 @@ export const browserBridgeOpenManagerAction: Action = {
       params: "none",
     },
   }),
+  descriptionCompressed: "Open browser companion manager UI.",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -265,6 +268,7 @@ export const browserBridgeRefreshAction: Action = {
       params: "none",
     },
   }),
+  descriptionCompressed: "Refresh companion connection state.",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,

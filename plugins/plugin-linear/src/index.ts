@@ -5,16 +5,12 @@ import { createIssueAction } from "./actions/createIssue";
 import { deleteIssueAction } from "./actions/deleteIssue";
 import { getActivityAction } from "./actions/getActivity";
 import { getIssueAction } from "./actions/getIssue";
-import { listProjectsAction } from "./actions/listProjects";
-import { listTeamsAction } from "./actions/listTeams";
 import {
   LINEAR_COMMENT_CONTEXT,
   LINEAR_ISSUE_CONTEXT,
-  LINEAR_PROJECT_TEAM_CONTEXT,
   LINEAR_WORKFLOW_CONTEXT,
   linearCommentRouterAction,
   linearIssueRouterAction,
-  linearProjectTeamRouterAction,
   linearWorkflowRouterAction,
 } from "./actions/routers";
 import { searchIssuesAction } from "./actions/searchIssues";
@@ -46,10 +42,6 @@ const linearCommentActions = [createCommentAction].map((action) =>
   withContexts(action, ["general", "automation", LINEAR_COMMENT_CONTEXT])
 );
 
-const linearProjectTeamActions = [listTeamsAction, listProjectsAction].map((action) =>
-  withContexts(action, ["general", "automation", LINEAR_PROJECT_TEAM_CONTEXT])
-);
-
 const linearWorkflowActions = [getActivityAction, clearActivityAction, searchIssuesAction].map(
   (action) => withContexts(action, ["general", "automation", "knowledge", LINEAR_WORKFLOW_CONTEXT])
 );
@@ -61,11 +53,9 @@ export const linearPlugin: Plugin = {
   actions: [
     linearIssueRouterAction,
     linearCommentRouterAction,
-    linearProjectTeamRouterAction,
     linearWorkflowRouterAction,
     ...linearIssueActions,
     ...linearCommentActions,
-    ...linearProjectTeamActions,
     ...linearWorkflowActions,
   ],
   providers: [
