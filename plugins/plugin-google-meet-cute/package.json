@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-google-meet-cute",
   "description": "Google Meet integration plugin for ElizaOS - manage meetings, get participant info, and access meeting artifacts via Google Meet REST API",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

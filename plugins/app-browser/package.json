@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-browser",
-  "version": "0.0.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Eliza app-browser: desktop browser workspace control, Steward wallet actions, and (eventually) browser UI exported for the dashboard.",
   "main": "./src/index.ts",
@@ -9,8 +9,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/agent": "workspace:*"
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

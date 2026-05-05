@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-plugin-manager",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "description": "Plugin manager for ElizaOS",
   "type": "module",
   "main": "dist/index.js",

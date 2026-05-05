@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-github",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "description": "GitHub integration plugin for elizaOS agents — PRs, issues, notifications via the GitHub REST API",
   "type": "module",
   "main": "dist/index.js",

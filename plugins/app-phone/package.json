@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-phone",
-  "version": "0.0.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Phone overlay app for the Eliza Android build — dialer, call log, and contact-driven calls backed by @elizaos/capacitor-phone.",
   "main": "./src/index.ts",
