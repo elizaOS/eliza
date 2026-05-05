@@ -162,10 +162,9 @@ app.delete("/", async (c) => {
     }
 
     await managedDomainsService.unassignFromResource(md.id);
-    const remainingDomains = await managedDomainsService.listForApp(
-      ctx.user.organization_id,
-      ctx.appId,
-    );
+    const remainingDomains = (
+      await managedDomainsService.listForApp(ctx.user.organization_id, ctx.appId)
+    ).filter((candidate) => candidate.id !== md.id);
     const primaryDomain =
       remainingDomains.find((candidate) => candidate.verified && candidate.status === "active") ??
       remainingDomains[0];
