@@ -1,5 +1,0 @@
-dist
-node_modules
-.turbo
-.turbo-tsconfig.json
-tsconfig.tsbuildinfo
