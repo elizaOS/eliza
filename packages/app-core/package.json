@@ -234,6 +234,7 @@
     "json5": "^2.2.3",
     "playwright-core": "^1.58.2",
     "react-test-renderer": "^19.2.4",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
     "telegraf": "^4.16.3",
     "typescript": "^6.0.0",

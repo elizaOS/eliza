@@ -1,11 +1,11 @@
-import { fetchChatMessages } from "@elizaos/app-lifeops/inbox/message-fetcher";
-import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
   LIFEOPS_SIMULATOR_CHANNELS,
 } from "../../../test/mocks/fixtures/lifeops-simulator.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
+import { fetchChatMessages } from "../src/inbox/message-fetcher.ts";
+import { LifeOpsService } from "../src/lifeops/service.ts";
 
 const INTERNAL_URL = new URL("http://127.0.0.1:31337");
 

@@ -1,7 +1,7 @@
-import { fetchChatMessages } from "@elizaos/app-lifeops/inbox/message-fetcher";
-import { readLifeOpsOwnerProfile } from "@elizaos/app-lifeops/lifeops/owner-profile";
-import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import { afterEach, describe, expect, it } from "vitest";
+import { fetchChatMessages } from "../../../plugins/app-lifeops/src/inbox/message-fetcher.ts";
+import { readLifeOpsOwnerProfile } from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
+import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
 import {
   assertLifeOpsSimulatorFixtureIntegrity,
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,

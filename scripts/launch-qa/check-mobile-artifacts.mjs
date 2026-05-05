@@ -526,6 +526,26 @@ function checkAndroidPluginAssets(
   }
 }
 
+function addSkippedGeneratedChecks(checks) {
+  for (const id of [
+    "ios-podfile:packages/app/ios/App/Podfile",
+    "ios-info-plist:packages/app/ios/App/App/Info.plist",
+    "ios-entitlements:packages/app/ios/App/App/App.entitlements",
+    "android-manifest",
+    "android-identity",
+    "android-capacitor-config-asset",
+    "android-capacitor-plugin-asset",
+    "android-asset",
+  ]) {
+    checks.push({
+      id,
+      ok: true,
+      skipped: true,
+      reason: "generated mobile project artifacts are not committed",
+    });
+  }
+}
+
 function checkRequiredFiles(repoRoot, relativePaths, errors, checks, idPrefix) {
   const missing = [];
   for (const relativePath of relativePaths) {
@@ -574,6 +594,7 @@ function checkIdentity(appConfig, capacitorConfig, errors, checks) {
 
 export function checkMobileArtifacts(options = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? defaultRepoRoot);
+  const allowMissingGenerated = Boolean(options.allowMissingGenerated);
   const errors = [];
   const checks = [];
   const appConfig = extractAppConfig(repoRoot);
@@ -582,43 +603,68 @@ export function checkMobileArtifacts(options = {}) {
   checkIdentity(appConfig, capacitorConfig, errors, checks);
   checkAndroidSystemScripts(repoRoot, errors, checks);
 
-  for (const podfile of [
-    "packages/app/ios/App/Podfile",
+  if (allowMissingGenerated) {
+    addSkippedGeneratedChecks(checks);
+  } else {
+    checkPodfile(repoRoot, "packages/app/ios/App/Podfile", errors, checks);
+  }
+  checkPodfile(
+    repoRoot,
     "packages/app-core/platforms/ios/App/Podfile",
-  ]) {
-    checkPodfile(repoRoot, podfile, errors, checks);
-  }
+    errors,
+    checks,
+  );
 
-  for (const plist of [
-    "packages/app/ios/App/App/Info.plist",
+  if (!allowMissingGenerated) {
+    checkInfoPlist(
+      repoRoot,
+      "packages/app/ios/App/App/Info.plist",
+      errors,
+      checks,
+    );
+  }
+  checkInfoPlist(
+    repoRoot,
     "packages/app-core/platforms/ios/App/App/Info.plist",
-  ]) {
-    checkInfoPlist(repoRoot, plist, errors, checks);
-  }
+    errors,
+    checks,
+  );
 
-  for (const entitlements of [
-    "packages/app/ios/App/App/App.entitlements",
+  if (!allowMissingGenerated) {
+    checkEntitlements(
+      repoRoot,
+      "packages/app/ios/App/App/App.entitlements",
+      appConfig.appId,
+      errors,
+      checks,
+    );
+  }
+  checkEntitlements(
+    repoRoot,
     "packages/app-core/platforms/ios/App/App/App.entitlements",
-  ]) {
-    checkEntitlements(repoRoot, entitlements, appConfig.appId, errors, checks);
-  }
+    appConfig.appId,
+    errors,
+    checks,
+  );
 
-  checkAndroidManifest(repoRoot, appConfig.appId, errors, checks);
-  checkAndroidIdentity(repoRoot, appConfig, errors, checks);
-  checkAndroidPluginAssets(
-    repoRoot,
-    appConfig,
-    capacitorConfig,
-    errors,
-    checks,
-  );
-  checkRequiredFiles(
-    repoRoot,
-    REQUIRED_ANDROID_ASSETS,
-    errors,
-    checks,
-    "android-asset",
-  );
+  if (!allowMissingGenerated) {
+    checkAndroidManifest(repoRoot, appConfig.appId, errors, checks);
+    checkAndroidIdentity(repoRoot, appConfig, errors, checks);
+    checkAndroidPluginAssets(
+      repoRoot,
+      appConfig,
+      capacitorConfig,
+      errors,
+      checks,
+    );
+    checkRequiredFiles(
+      repoRoot,
+      REQUIRED_ANDROID_ASSETS,
+      errors,
+      checks,
+      "android-asset",
+    );
+  }
 
   return {
     ok: errors.length === 0,
@@ -627,9 +673,10 @@ export function checkMobileArtifacts(options = {}) {
     summary: {
       checkCount: checks.length,
       errorCount: errors.length,
-      iosPodfiles: 2,
-      iosInfoPlists: 2,
-      androidAssets: REQUIRED_ANDROID_ASSETS.length,
+      iosPodfiles: allowMissingGenerated ? 1 : 2,
+      iosInfoPlists: allowMissingGenerated ? 1 : 2,
+      androidAssets: allowMissingGenerated ? 0 : REQUIRED_ANDROID_ASSETS.length,
+      generatedArtifactsRequired: !allowMissingGenerated,
       nativeBuildsRun: false,
     },
     app: {
@@ -663,6 +710,7 @@ function printHuman(result) {
 function parseArgs(argv) {
   return {
     json: argv.includes("--json"),
+    allowMissingGenerated: argv.includes("--allow-missing-generated"),
     repoRoot:
       argv
         .find((arg) => arg.startsWith("--repo-root="))
@@ -673,7 +721,10 @@ function parseArgs(argv) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
-  const result = checkMobileArtifacts({ repoRoot: args.repoRoot });
+  const result = checkMobileArtifacts({
+    repoRoot: args.repoRoot,
+    allowMissingGenerated: args.allowMissingGenerated,
+  });
   if (args.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
