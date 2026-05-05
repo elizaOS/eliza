@@ -336,9 +336,7 @@ export function PluginCard({
               main
             </Button>
             <Button
-              variant={
-                selectedReleaseStream === "beta" ? "default" : "outline"
-              }
+              variant={selectedReleaseStream === "beta" ? "default" : "outline"}
               size="sm"
               className="h-6 px-2 text-2xs font-bold tracking-wide"
               onClick={(e) => {
