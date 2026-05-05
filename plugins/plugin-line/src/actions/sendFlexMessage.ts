@@ -128,8 +128,7 @@ export const sendFlexMessage: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response);
       if (parsed?.title && parsed?.body) {
         flexInfo = {
           altText: String(parsed.altText || `${parsed.title}: ${parsed.body}`),

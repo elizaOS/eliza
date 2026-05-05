@@ -394,11 +394,7 @@ export function extractPlannerActionNames(
 				.map((action) => {
 					if (isRecord(action)) {
 						const actionName = getPlannerActionObjectName(action);
-						attachInlineToonActionParams(
-							parsedXml,
-							actionName,
-							action.params,
-						);
+						attachInlineToonActionParams(parsedXml, actionName, action.params);
 						return actionName;
 					}
 					return unwrapPlannerIdentifier(String(action));
@@ -1536,7 +1532,8 @@ async function repairCanonicalPlannerActions(args: {
 			},
 			{
 				field: "text",
-				description: "Optional fallback reply only when no runtime action matches",
+				description:
+					"Optional fallback reply only when no runtime action matches",
 				required: false,
 				validateField: false,
 				streamField: false,
@@ -2340,7 +2337,8 @@ async function recoverProvidersForTurn(args: {
 			schema: [
 				{
 					field: "providers",
-					description: "Provider names to call before replying, or an empty array",
+					description:
+						"Provider names to call before replying, or an empty array",
 					type: "array",
 					items: { description: "One provider name" },
 					required: true,
@@ -2453,8 +2451,7 @@ async function shouldUseKnowledgeProviders(
 			},
 		});
 		const value =
-			parsed?.useKnowledgeProviders ??
-			parsed?.use_knowledge_providers;
+			parsed?.useKnowledgeProviders ?? parsed?.use_knowledge_providers;
 		if (typeof value === "boolean") {
 			return value;
 		}
@@ -5875,7 +5872,8 @@ export class DefaultMessageService implements IMessageService {
 				actions: finalActions,
 				providers: normalizedProviders,
 				text: String(parsedPlanner.text || ""),
-				simple: parsedPlanner.simple === true || parsedPlanner.simple === "true",
+				simple:
+					parsedPlanner.simple === true || parsedPlanner.simple === "true",
 			};
 		} else {
 			// dynamicPromptExecFromState returned null - use streamed text if available

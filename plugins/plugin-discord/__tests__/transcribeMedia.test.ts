@@ -94,10 +94,13 @@ describe("TRANSCRIBE_MEDIA", () => {
 	});
 
 	it("uses the current audio attachment transcript directly", async () => {
-		const { callback, result, runtime: testRuntime } = await run(
-			"what does this say?",
-			[media({ id: "voice", text: "hello from the recording" })],
-		);
+		const {
+			callback,
+			result,
+			runtime: testRuntime,
+		} = await run("what does this say?", [
+			media({ id: "voice", text: "hello from the recording" }),
+		]);
 
 		expect(callback).toHaveBeenCalledWith({
 			text: expect.stringContaining("hello from the recording"),
@@ -110,10 +113,11 @@ describe("TRANSCRIBE_MEDIA", () => {
 	});
 
 	it("returns a clean fallback when current media has no transcript", async () => {
-		const { callback, result, runtime: testRuntime } = await run(
-			"what does this audio say?",
-			[media({ text: "" })],
-		);
+		const {
+			callback,
+			result,
+			runtime: testRuntime,
+		} = await run("what does this audio say?", [media({ text: "" })]);
 
 		expect(callback).toHaveBeenCalledWith({
 			text: "I don't have a transcript for that audio attachment yet.",

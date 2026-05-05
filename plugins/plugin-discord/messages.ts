@@ -1110,7 +1110,9 @@ export class MessageManager {
 
 		if (message.attachments.size > 0) {
 			attachments.push(
-				...(await this.attachmentManager.processAttachments(message.attachments)),
+				...(await this.attachmentManager.processAttachments(
+					message.attachments,
+				)),
 			);
 		}
 

@@ -101,8 +101,7 @@ export const sendLocation: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response);
       if (
         parsed?.title &&
         parsed?.address &&

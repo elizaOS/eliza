@@ -8,11 +8,7 @@ describe("createPinnedLookup", () => {
 			addresses: ["203.0.113.10"],
 		}) as (
 			hostname: string,
-			callback: (
-				error: Error | null,
-				address: string,
-				family?: number,
-			) => void,
+			callback: (error: Error | null, address: string, family?: number) => void,
 		) => void;
 
 		await new Promise<void>((resolve, reject) => {

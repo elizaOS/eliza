@@ -119,8 +119,7 @@ describe("READ_ATTACHMENT", () => {
 		{
 			name: "answers exact-value document requests",
 			request: "read this and reply with only the secret phrase",
-			content:
-				"Secret phrase: saffron-anchor\nReturn only the secret phrase.",
+			content: "Secret phrase: saffron-anchor\nReturn only the secret phrase.",
 			answer: "saffron-anchor",
 			promptIncludes: ["reply with only the secret phrase", "saffron-anchor"],
 		},
@@ -146,8 +145,7 @@ describe("READ_ATTACHMENT", () => {
 		{
 			name: "answers exact-value URL requests from link content",
 			request: "open this url and reply only with the secret phrase",
-			content:
-				"<html><body>Secret phrase: velvet-lantern-7419</body></html>",
+			content: "<html><body>Secret phrase: velvet-lantern-7419</body></html>",
 			answer: "velvet-lantern-7419",
 			promptIncludes: [
 				"open this url and reply only with the secret phrase",
@@ -180,9 +178,11 @@ describe("READ_ATTACHMENT", () => {
 				source: "discord",
 			});
 			expect(result?.text).toBe(scenario.answer);
-			const prompt = (vi.mocked(runtime.useModel).mock.calls[0]?.[1] as {
-				prompt?: string;
-			}).prompt;
+			const prompt = (
+				vi.mocked(runtime.useModel).mock.calls[0]?.[1] as {
+					prompt?: string;
+				}
+			).prompt;
 			for (const expected of scenario.promptIncludes) {
 				expect(prompt).toContain(expected);
 			}
@@ -264,9 +264,11 @@ describe("READ_ATTACHMENT", () => {
 
 		expect(result?.text).toBe("Lentil soup is the matching recipe.");
 		expect(result?.data?.attachmentIds).toEqual(["recipes", "shopping"]);
-		const prompt = (vi.mocked(runtime.useModel).mock.calls[0]?.[1] as {
-			prompt?: string;
-		}).prompt;
+		const prompt = (
+			vi.mocked(runtime.useModel).mock.calls[0]?.[1] as {
+				prompt?: string;
+			}
+		).prompt;
 		expect(prompt).toContain("Attachment 1: recipes.txt");
 		expect(prompt).toContain("Lentil soup: lentils, onion, carrot, broth");
 		expect(prompt).toContain("Attachment 2: shopping.txt");
@@ -313,9 +315,11 @@ describe("READ_ATTACHMENT", () => {
 			ModelType.IMAGE_DESCRIPTION,
 			expect.objectContaining({ imageUrl: expect.stringContaining("image-2") }),
 		);
-		const prompt = (vi.mocked(runtime.useModel).mock.calls[2]?.[1] as {
-			prompt?: string;
-		}).prompt;
+		const prompt = (
+			vi.mocked(runtime.useModel).mock.calls[2]?.[1] as {
+				prompt?: string;
+			}
+		).prompt;
 		expect(prompt).toContain("Attachment 1: first.png");
 		expect(prompt).toContain("a red square");
 		expect(prompt).toContain("Attachment 2: second.png");

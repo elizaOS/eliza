@@ -203,7 +203,8 @@ describe("AttachmentManager non-text media fallbacks", () => {
 		expect(media).toMatchObject({
 			source: "Audio",
 			contentType: ContentType.AUDIO,
-			description: "User-uploaded audio/video attachment (no transcription available)",
+			description:
+				"User-uploaded audio/video attachment (no transcription available)",
 			text: "",
 		});
 	});

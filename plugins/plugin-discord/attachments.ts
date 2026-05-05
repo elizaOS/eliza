@@ -59,7 +59,10 @@ function attachmentExtension(attachment: Attachment): string {
 
 function isReadableTextAttachment(attachment: Attachment): boolean {
 	const mimeType = normalizedMimeType(attachment.contentType);
-	if (mimeType.startsWith("text/") || TEXT_ATTACHMENT_MIME_TYPES.has(mimeType)) {
+	if (
+		mimeType.startsWith("text/") ||
+		TEXT_ATTACHMENT_MIME_TYPES.has(mimeType)
+	) {
 		return true;
 	}
 
@@ -150,10 +153,7 @@ export class AttachmentManager {
 			media = await this.processPdfAttachment(attachment);
 		} else if (isReadableTextAttachment(attachment)) {
 			media = await this.processPlaintextAttachment(attachment);
-		} else if (
-			mimeType.startsWith("audio/") ||
-			mimeType === "video/mp4"
-		) {
+		} else if (mimeType.startsWith("audio/") || mimeType === "video/mp4") {
 			media = await this.processAudioVideoAttachment(attachment);
 		} else if (mimeType.startsWith("image/")) {
 			media = await this.processImageAttachment(attachment);
