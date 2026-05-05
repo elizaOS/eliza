@@ -53,6 +53,7 @@ const GMAIL_PRD_PATH = path.join(
   ELIZA_ROOT,
   "packages",
   "docs",
+  "docs",
   "plans",
   "2026-04-22-gmail-lifeops-integration-review.md",
 );

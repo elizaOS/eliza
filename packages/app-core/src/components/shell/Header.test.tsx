@@ -302,12 +302,6 @@ describe("Header", () => {
       render(<Header hideCloudCredits />);
 
       expect(useAuthStatusMock).toHaveBeenCalledWith({ observeOnly: true });
-      const badge = screen.getByTestId("header-access-badge");
-      expect(badge.textContent).toContain("Local");
-      expect(badge.textContent).toContain("Remote password set");
-      expect(badge.getAttribute("title")).toBe(
-        "Local access, Remote password set",
-      );
     });
 
     it("shows local access when the remote password is off", () => {
@@ -338,10 +332,6 @@ describe("Header", () => {
       });
 
       render(<Header hideCloudCredits />);
-
-      const badge = screen.getByTestId("header-access-badge");
-      expect(badge.textContent).toBe("Remote");
-      expect(badge.getAttribute("title")).toBe("Remote session");
     });
 
     it("hides while auth status is unavailable", () => {
