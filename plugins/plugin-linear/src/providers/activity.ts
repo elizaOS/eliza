@@ -5,6 +5,7 @@ import type { LinearActivityItem } from "../types";
 export const linearActivityProvider: Provider = {
   name: "LINEAR_ACTIVITY",
   description: "Provides context about recent Linear activity",
+  descriptionCompressed: "provide context recent Linear activity",
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {

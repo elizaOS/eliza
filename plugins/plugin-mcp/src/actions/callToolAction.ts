@@ -28,6 +28,7 @@ export const callToolAction: Action = {
     "INVOKE_MCP_TOOL",
   ],
   description: "Calls a tool from an MCP server to perform a specific task",
+  descriptionCompressed: "call tool MCP server perform specific task",
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";

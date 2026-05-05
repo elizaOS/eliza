@@ -42,10 +42,16 @@ PROVIDER_KEY_ENV: dict[str, str] = {
     "openrouter": "OPENROUTER_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "google": "GOOGLE_API_KEY",
+    "vllm": "VLLM_API_KEY",
 }
 OPENAI_COMPAT_BASE_URL: dict[str, str] = {
     "groq": "https://api.groq.com/openai/v1",
     "openrouter": "https://openrouter.ai/api/v1",
+    "vllm": "http://127.0.0.1:8001/v1",
+}
+# Providers whose API key has no real secret value (self-hosted endpoints).
+PROVIDER_DUMMY_KEY: dict[str, str] = {
+    "vllm": "dummy",
 }
 DEFAULT_STALE_RECOVERY_SECONDS = 300
 
@@ -136,11 +142,26 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["GROQ_LARGE_MODEL"] = request.model
     env["GROQ_SMALL_MODEL"] = request.model
     provider = request.provider.strip().lower()
+    if provider in PROVIDER_DUMMY_KEY:
+        provider_key = PROVIDER_KEY_ENV.get(provider)
+        if provider_key and not env.get(provider_key):
+            env[provider_key] = PROVIDER_DUMMY_KEY[provider]
     if provider in OPENAI_COMPAT_BASE_URL:
         provider_key = PROVIDER_KEY_ENV.get(provider)
         if provider_key and env.get(provider_key):
             env["OPENAI_API_KEY"] = env[provider_key]
-        env["OPENAI_BASE_URL"] = OPENAI_COMPAT_BASE_URL[provider]
+        base_url_override = (
+            request.extra_config.get("vllm_base_url")
+            if provider == "vllm"
+            else None
+        )
+        if isinstance(base_url_override, str) and base_url_override.strip():
+            env["OPENAI_BASE_URL"] = base_url_override.strip()
+            env["VLLM_BASE_URL"] = base_url_override.strip()
+        elif provider == "vllm" and env.get("VLLM_BASE_URL"):
+            env["OPENAI_BASE_URL"] = env["VLLM_BASE_URL"]
+        else:
+            env["OPENAI_BASE_URL"] = OPENAI_COMPAT_BASE_URL[provider]
     return env
 
 

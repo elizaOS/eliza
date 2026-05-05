@@ -21,6 +21,7 @@ export const getTailscaleStatusAction: Action = {
   name: 'GET_TAILSCALE_STATUS',
   similes: ['TAILSCALE_STATUS', 'CHECK_TUNNEL', 'TUNNEL_INFO'],
   description: 'Get the current status of the Tailscale tunnel',
+  descriptionCompressed: "get current status Tailscale tunnel",
   validate: async (runtime: IAgentRuntime) => Boolean(getTunnelService(runtime)),
   handler: async (
     runtime: IAgentRuntime,

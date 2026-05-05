@@ -31,7 +31,7 @@ export const manageZones = {
     "show zones",
   ],
   description: "Manage audio zones for multi-bot voice routing",
-  descriptionCompressed: "Manage audio zones for multi-bot voice routing.",
+  descriptionCompressed: "manage audio zone multi-bot voice rout",
 
   validate: async (
     _runtime: IAgentRuntime,

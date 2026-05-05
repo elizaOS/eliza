@@ -22,6 +22,7 @@ export const userContextProvider: Provider = {
   name: "twitchUserContext",
   description:
     "Provides information about the Twitch user in the current conversation",
+  descriptionCompressed: "provide information Twitch user current conversation",
 
   dynamic: true,
   get: async (

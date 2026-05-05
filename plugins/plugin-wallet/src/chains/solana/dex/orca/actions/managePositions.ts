@@ -72,6 +72,7 @@ export const managePositions: typeof actions = {
   similes: ["AUTOMATE_REBALANCING", "AUTOMATE_POSITIONS", "START_MANAGING_POSITIONS"],
   description:
     "Automatically manage positions by rebalancing them when they drift too far from the pool price",
+  descriptionCompressed: "automatically manage position rebalance drift too far pool price",
 
   validate: async (runtime: AgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";

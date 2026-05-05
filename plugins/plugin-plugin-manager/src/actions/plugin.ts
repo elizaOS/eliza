@@ -198,6 +198,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 
     description:
       "Unified plugin control. mode=install installs from registry; mode=eject clones a registry plugin locally; mode=sync pulls upstream into an ejected plugin; mode=reinject removes the local copy; mode=list shows loaded/installed; mode=list_ejected shows ejected; mode=search queries the registry; mode=core_status reports @elizaos/core ejection state; mode=create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
+    descriptionCompressed: "unifi plugin control mode install install registry; mode eject clone registry plugin locally; mode sync pull upstream eject plugin; mode reinject remove local copy; mode list show loaded/install; mode list_eject show eject; mode search query registry; mode core_status report elizaos/core ejection state; mode create run multi-turn create-or-edit flow scaffold min-plugin template dispatch cod agent w/ AppVerificationService validator",
 
     parameters: [
       {

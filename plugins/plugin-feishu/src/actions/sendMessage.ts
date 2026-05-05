@@ -26,6 +26,7 @@ export const sendMessageAction: Action = {
 		"SEND_LARK",
 	],
 	description: "Send a message to a Feishu/Lark chat",
+	descriptionCompressed: "send message Feishu/Lark chat",
 
 	validate: async (
 		_runtime: IAgentRuntime,

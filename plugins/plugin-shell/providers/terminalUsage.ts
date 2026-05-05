@@ -11,7 +11,7 @@ import {
 export const terminalUsageProvider: Provider = {
   name: "terminalUsage",
   description: "Terminal usage instructions",
-  descriptionCompressed: "Terminal usage instructions.",
+  descriptionCompressed: "terminal usage instruction",
   dynamic: true,
   relevanceKeywords: [
     "terminalusage",

@@ -9,6 +9,7 @@ const spec = requireProviderSpec("farcasterProfile");
 export const farcasterProfileProvider: Provider = {
   name: spec.name,
   description: "Provides information about the agent's Farcaster profile",
+  descriptionCompressed: "provide information agent Farcaster profile",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {

@@ -22,7 +22,7 @@ export const listContacts: Action = {
   name: "SIGNAL_LIST_CONTACTS",
   similes: ["LIST_SIGNAL_CONTACTS", "SHOW_CONTACTS", "GET_CONTACTS", "SIGNAL_CONTACTS"],
   description: "List Signal contacts",
-  descriptionCompressed: "List Signal contacts.",
+  descriptionCompressed: "list Signal contact",
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;

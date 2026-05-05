@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+data/
+checkpoints/
+benchmarks/
+previews/
+local-corpora/
+wandb/
+*.parquet
+.vast_instance_id
+.preflight.ok
+.cloud_instance.json
+.DS_Store
+scripts/synth/scenarios/*.jsonl

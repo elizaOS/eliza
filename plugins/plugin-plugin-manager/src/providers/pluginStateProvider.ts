@@ -33,6 +33,7 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
   name: "pluginState",
   description:
     "Provides information about the current state of all plugins including loaded status, missing environment variables, and errors",
+  descriptionCompressed: "provide information current state plugin includ load status, miss environment variable, error",
 
   dynamic: true,
   relevanceKeywords: PLUGIN_STATE_PROVIDER_KEYWORDS,

@@ -17,6 +17,7 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 export const getIssueAction: Action = {
   name: "GET_LINEAR_ISSUE",
   description: "Get details of a specific Linear issue",
+  descriptionCompressed: "get detail specific Linear issue",
   similes: [
     "get-linear-issue",
     "show-linear-issue",

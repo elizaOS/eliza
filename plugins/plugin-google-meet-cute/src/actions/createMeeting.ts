@@ -13,6 +13,7 @@ import { CreateMeetingParams } from "../types";
 export const createMeetingAction: Action = {
   name: "CREATE_MEETING",
   description: "Create a new Google Meet meeting space",
+  descriptionCompressed: "create new Google Meet meet space",
   similes: ["start a meeting", "create a meet", "new meeting", "setup a call"],
   examples: [
     [

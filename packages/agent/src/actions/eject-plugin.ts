@@ -23,6 +23,7 @@ export const ejectPluginAction: Action = {
   description:
     "Clone a plugin's source code locally so edits override the npm version " +
     "at runtime. Use this before modifying upstream plugin code.",
+  descriptionCompressed: "clone plugin source code locally edit override npm version runtime use before modify upstream plugin code",
 
   validate: async () => true,
 

@@ -52,6 +52,7 @@ export const queryTrajectoriesAction: Action = {
   similes: ["LIST_TRAJECTORIES", "FIND_TRAJECTORIES", "BROWSE_TRAJECTORIES"],
   description:
     "List recorded trajectories with optional filters: source, status, scenarioId, batchId, plus limit/offset.",
+  descriptionCompressed: "list record trajectory w/ optional filter: source, status, scenarioid, batchid, plus limit/offset",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -208,6 +209,7 @@ export const exportTrajectoryDatasetAction: Action = {
   similes: ["DUMP_TRAJECTORIES", "DOWNLOAD_TRAJECTORIES"],
   description:
     "Export trajectory data as JSON, CSV, or ZIP via /api/trajectories/export. Returns the response size; the agent does not stream the bytes back to the user.",
+  descriptionCompressed: "export trajectory data JSON, CSV, ZIP via / api/trajectories/export return response size; agent stream byte back user",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -344,6 +346,7 @@ export const annotateTrajectoryAction: Action = {
   similes: ["TAG_TRAJECTORY", "ANNOTATE_TRAJECTORY_STEP"],
   description:
     "Attach kind/script/childSteps/usedSkills annotations to the active trajectory step (or a supplied stepId).",
+  descriptionCompressed: "attach kind/script/childsteps/usedskill annotation active trajectory step (suppli stepid)",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

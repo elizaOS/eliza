@@ -5,6 +5,7 @@ import type { LinearService } from "../services/linear";
 export const linearProjectsProvider: Provider = {
   name: "LINEAR_PROJECTS",
   description: "Provides context about active Linear projects",
+  descriptionCompressed: "provide context active Linear project",
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {

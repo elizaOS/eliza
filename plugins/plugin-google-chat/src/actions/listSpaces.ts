@@ -17,6 +17,7 @@ export const listSpaces: Action = {
   name: "GOOGLE_CHAT_LIST_SPACES",
   similes: ["LIST_GOOGLE_CHAT_SPACES", "GCHAT_SPACES", "SHOW_GOOGLE_CHAT_SPACES"],
   description: "List all Google Chat spaces the bot is a member of",
+  descriptionCompressed: "list Google Chat space bot member",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const textRaw = typeof message.content?.text === "string" ? message.content.text : "";

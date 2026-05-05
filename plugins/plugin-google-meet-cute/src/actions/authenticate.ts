@@ -12,6 +12,7 @@ import { AuthenticateParams } from "../types";
 export const authenticateAction: Action = {
   name: "AUTHENTICATE_GOOGLE",
   description: "Authenticate with Google to access Meet API",
+  descriptionCompressed: "authenticate w/ Google access Meet API",
   similes: ["login to google", "google auth", "sign in", "authenticate"],
   examples: [
     [

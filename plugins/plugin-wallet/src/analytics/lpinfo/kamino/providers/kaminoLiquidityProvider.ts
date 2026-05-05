@@ -29,6 +29,7 @@ export const kaminoLiquidityProvider: Provider = {
   name: "KAMINO_LIQUIDITY",
   description:
     "Provides information about Kamino liquidity pools, strategies, and token-specific liquidity data",
+  descriptionCompressed: "provide information Kamino liquidity pool, strategy, token-specific liquidity data",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_LIQUIDITY provider called");

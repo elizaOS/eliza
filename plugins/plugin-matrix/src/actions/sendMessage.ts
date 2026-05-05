@@ -43,6 +43,7 @@ export const sendMessage: Action = {
   name: "MATRIX_SEND_MESSAGE",
   similes: ["SEND_MATRIX_MESSAGE", "MESSAGE_MATRIX", "MATRIX_TEXT"],
   description: "Send a message to a Matrix room",
+  descriptionCompressed: "send message Matrix room",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "matrix";

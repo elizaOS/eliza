@@ -9,6 +9,7 @@ import { getPubkeyDisplayName, NOSTR_SERVICE_NAME, pubkeyToNpub } from "../types
 export const senderContextProvider: Provider = {
   name: "nostrSenderContext",
   description: "Provides information about the Nostr user in the current conversation",
+  descriptionCompressed: "provide information Nostr user current conversation",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     // Only provide context for Nostr messages

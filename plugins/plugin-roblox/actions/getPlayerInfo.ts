@@ -72,6 +72,7 @@ const getPlayerInfo: Action = {
   name: actionName,
   similes: [],
   description: "Fetch Roblox player information by username or user id.",
+  descriptionCompressed: "fetch Roblox player information username user id",
   examples: getPlayerInfoExamples,
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {

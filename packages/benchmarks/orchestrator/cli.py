@@ -6,9 +6,16 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .adapters import discover_adapters
-from .db import connect_database, initialize_database, recover_stale_running_runs
+from .db import (
+    connect_database,
+    initialize_database,
+    list_runs_for_comparison,
+    recover_stale_running_runs,
+    tag_run_with_comparison,
+)
 from .runner import run_benchmarks
 from .types import RunRequest
 from .viewer_server import serve_viewer
@@ -180,6 +187,334 @@ def _cmd_show_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_model_spec(spec: str) -> tuple[str, str, str | None]:
+    """Parse ``provider:model[@base_url]`` into ``(provider, model, base_url)``.
+
+    Examples:
+        ``vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1``
+        ``openai:gpt-4o-mini``
+    """
+    raw = spec.strip()
+    if not raw:
+        raise ValueError("model spec is empty")
+    base_url: str | None = None
+    if "@" in raw:
+        raw, base_url = raw.split("@", 1)
+        base_url = base_url.strip() or None
+    if ":" not in raw:
+        raise ValueError(
+            f"invalid model spec '{spec}': expected '<provider>:<model>[@<base_url>]'"
+        )
+    provider, model = raw.split(":", 1)
+    provider = provider.strip().lower()
+    model = model.strip()
+    if not provider or not model:
+        raise ValueError(f"invalid model spec '{spec}': provider and model are required")
+    return provider, model, base_url
+
+
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _run_one_side(
+    *,
+    workspace_root: Path,
+    provider: str,
+    model: str,
+    base_url: str | None,
+    benchmarks: tuple[str, ...],
+    temperature: float,
+    max_examples: int | None,
+    comparison_id: str,
+) -> list[dict[str, Any]]:
+    extra: dict[str, Any] = {}
+    if base_url:
+        extra["vllm_base_url"] = base_url
+    if max_examples is not None:
+        extra["max_examples"] = max_examples
+        extra["max_tasks"] = max_examples
+        extra["max_questions"] = max_examples
+        extra["sample"] = max_examples
+
+    request = RunRequest(
+        benchmarks=benchmarks,
+        agent="compare",
+        provider=provider,
+        model=model,
+        extra_config=extra,
+        force=True,
+    )
+    _, outcomes, _ = run_benchmarks(workspace_root=workspace_root, request=request)
+
+    db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+    conn = connect_database(db_path)
+    initialize_database(conn)
+    side_rows: list[dict[str, Any]] = []
+    for outcome in outcomes:
+        tag_run_with_comparison(
+            conn,
+            run_id=outcome.run_id,
+            comparison_id=comparison_id,
+        )
+        side_rows.append(
+            {
+                "benchmark_id": outcome.benchmark_id,
+                "run_id": outcome.run_id,
+                "status": outcome.status,
+                "provider": provider,
+                "model": model,
+                "base_url": base_url,
+                "score": outcome.score,
+                "unit": outcome.unit,
+                "higher_is_better": outcome.higher_is_better,
+                "metrics": outcome.metrics,
+                "duration_seconds": outcome.duration_seconds,
+                "error": outcome.error,
+            }
+        )
+    conn.close()
+    return side_rows
+
+
+def _format_score(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.4f}"
+
+
+def _format_delta(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    sign = "+" if value > 0 else ""
+    return f"{sign}{value:.4f}"
+
+
+def _compute_winner(
+    a_score: float | None,
+    b_score: float | None,
+    higher_is_better: bool | None,
+) -> str:
+    if a_score is None and b_score is None:
+        return "n/a"
+    if a_score is None:
+        return "B"
+    if b_score is None:
+        return "A"
+    if a_score == b_score:
+        return "tie"
+    if higher_is_better is False:
+        return "A" if a_score < b_score else "B"
+    return "A" if a_score > b_score else "B"
+
+
+def _print_compare_table(
+    *,
+    label_a: str,
+    label_b: str,
+    rows: list[dict[str, Any]],
+) -> None:
+    headers = [
+        "benchmark",
+        f"A: {label_a}",
+        f"B: {label_b}",
+        "delta (B-A)",
+        "winner",
+    ]
+    body: list[list[str]] = []
+    for row in rows:
+        a_score = row.get("a_score")
+        b_score = row.get("b_score")
+        delta = row.get("delta")
+        body.append(
+            [
+                str(row.get("benchmark_id", "")),
+                _format_score(a_score),
+                _format_score(b_score),
+                _format_delta(delta),
+                str(row.get("winner", "")),
+            ]
+        )
+    widths = [
+        max(len(headers[i]), *(len(r[i]) for r in body)) if body else len(headers[i])
+        for i in range(len(headers))
+    ]
+    sep = "-+-".join("-" * w for w in widths)
+    print(" | ".join(h.ljust(w) for h, w in zip(headers, widths)))
+    print(sep)
+    for row in body:
+        print(" | ".join(cell.ljust(w) for cell, w in zip(row, widths)))
+
+
+def _build_compare_rows(
+    a_runs: list[dict[str, Any]],
+    b_runs: list[dict[str, Any]],
+    benchmarks: list[str],
+) -> list[dict[str, Any]]:
+    a_by_bench = {run["benchmark_id"]: run for run in a_runs}
+    b_by_bench = {run["benchmark_id"]: run for run in b_runs}
+    rows: list[dict[str, Any]] = []
+    for benchmark_id in benchmarks:
+        a = a_by_bench.get(benchmark_id)
+        b = b_by_bench.get(benchmark_id)
+        a_score = a.get("score") if a else None
+        b_score = b.get("score") if b else None
+        higher_is_better: bool | None = None
+        for side in (a, b):
+            if side and side.get("higher_is_better") is not None:
+                higher_is_better = bool(side["higher_is_better"])
+                break
+        delta: float | None
+        if a_score is not None and b_score is not None:
+            delta = b_score - a_score
+        else:
+            delta = None
+        rows.append(
+            {
+                "benchmark_id": benchmark_id,
+                "a_score": a_score,
+                "b_score": b_score,
+                "delta": delta,
+                "higher_is_better": higher_is_better,
+                "winner": _compute_winner(a_score, b_score, higher_is_better),
+                "a_run_id": a.get("run_id") if a else None,
+                "b_run_id": b.get("run_id") if b else None,
+                "a_status": a.get("status") if a else "missing",
+                "b_status": b.get("status") if b else "missing",
+                "unit": (a or b or {}).get("unit"),
+            }
+        )
+    return rows
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    a_provider, a_model, a_base_url = _parse_model_spec(args.a)
+    b_provider, b_model, b_base_url = _parse_model_spec(args.b)
+    benchmarks = _split_csv(args.benchmarks)
+    if not benchmarks:
+        raise SystemExit("--benchmarks must be a non-empty comma-separated list")
+
+    discovery = discover_adapters(workspace_root)
+    unknown = [b for b in benchmarks if b not in discovery.adapters]
+    if unknown:
+        raise SystemExit(f"Unknown benchmark IDs: {', '.join(unknown)}")
+
+    comparison_id = f"cmp_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}_{uuid4().hex[:8]}"
+    label_a = f"{a_provider}:{a_model}"
+    label_b = f"{b_provider}:{b_model}"
+
+    print(f"Comparison ID: {comparison_id}")
+    print(f"A: {label_a}{(' @ ' + a_base_url) if a_base_url else ''}")
+    print(f"B: {label_b}{(' @ ' + b_base_url) if b_base_url else ''}")
+    print(f"Benchmarks: {', '.join(benchmarks)}")
+    print("")
+
+    print("Running side A...")
+    a_runs = _run_one_side(
+        workspace_root=workspace_root,
+        provider=a_provider,
+        model=a_model,
+        base_url=a_base_url,
+        benchmarks=tuple(benchmarks),
+        temperature=args.temperature,
+        max_examples=args.max_examples,
+        comparison_id=comparison_id,
+    )
+    print("Running side B...")
+    b_runs = _run_one_side(
+        workspace_root=workspace_root,
+        provider=b_provider,
+        model=b_model,
+        base_url=b_base_url,
+        benchmarks=tuple(benchmarks),
+        temperature=args.temperature,
+        max_examples=args.max_examples,
+        comparison_id=comparison_id,
+    )
+
+    rows = _build_compare_rows(a_runs, b_runs, benchmarks)
+    print("")
+    _print_compare_table(label_a=label_a, label_b=label_b, rows=rows)
+
+    out_dir = Path(args.out) if args.out else (
+        workspace_root / "benchmarks" / "benchmark_results" / "comparisons"
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"compare-{comparison_id}.json"
+    payload = {
+        "comparison_id": comparison_id,
+        "created_at": datetime.now(UTC).isoformat(),
+        "a": {
+            "provider": a_provider,
+            "model": a_model,
+            "base_url": a_base_url,
+            "runs": a_runs,
+        },
+        "b": {
+            "provider": b_provider,
+            "model": b_model,
+            "base_url": b_base_url,
+            "runs": b_runs,
+        },
+        "rows": rows,
+    }
+    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+    print("")
+    print(f"Wrote {out_path}")
+    return 0
+
+
+def _cmd_view_comparison(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+    conn = connect_database(db_path)
+    initialize_database(conn)
+    runs = list_runs_for_comparison(conn, comparison_id=args.comparison_id)
+    conn.close()
+    if not runs:
+        print(f"No runs found for comparison_id={args.comparison_id}")
+        return 1
+
+    sides: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    order: list[tuple[str, str]] = []
+    for row in runs:
+        key = (str(row.get("provider", "")), str(row.get("model", "")))
+        if key not in sides:
+            sides[key] = []
+            order.append(key)
+        sides[key].append(row)
+
+    if len(order) < 2:
+        print(
+            f"Comparison {args.comparison_id} has only one side "
+            f"({order[0][0]}:{order[0][1]}). Cannot render delta table."
+        )
+        return 1
+
+    a_key, b_key = order[0], order[1]
+    label_a = f"{a_key[0]}:{a_key[1]}"
+    label_b = f"{b_key[0]}:{b_key[1]}"
+
+    benchmarks_seen: list[str] = []
+    seen_set: set[str] = set()
+    for run in runs:
+        bid = str(run.get("benchmark_id", ""))
+        if bid and bid not in seen_set:
+            benchmarks_seen.append(bid)
+            seen_set.add(bid)
+
+    rows = _build_compare_rows(sides[a_key], sides[b_key], benchmarks_seen)
+    print(f"Comparison ID: {args.comparison_id}")
+    print(f"A: {label_a}")
+    print(f"B: {label_b}")
+    print("")
+    _print_compare_table(label_a=label_a, label_b=label_b, rows=rows)
+    return 0
+
+
 def _cmd_serve_viewer(args: argparse.Namespace) -> int:
     workspace_root = _workspace_root_from_here()
     serve_viewer(
@@ -241,6 +576,51 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=8877, help="Bind port (default: 8877)")
     p_serve.set_defaults(func=_cmd_serve_viewer)
+
+    p_compare = sub.add_parser(
+        "compare",
+        help="Run benchmarks twice (A vs B) and print a side-by-side delta table",
+    )
+    p_compare.add_argument(
+        "--a",
+        required=True,
+        help="Side A spec: '<provider>:<model>[@<base_url>]' (e.g. vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1)",
+    )
+    p_compare.add_argument(
+        "--b",
+        required=True,
+        help="Side B spec: '<provider>:<model>[@<base_url>]'",
+    )
+    p_compare.add_argument(
+        "--benchmarks",
+        required=True,
+        help="Comma-separated benchmark IDs (e.g. eliza-format,bfcl,realm,context-bench)",
+    )
+    p_compare.add_argument(
+        "--max-examples",
+        type=int,
+        default=None,
+        help="Cap examples per benchmark when supported (forwarded as max_examples/max_tasks/sample)",
+    )
+    p_compare.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (default: 0.0)",
+    )
+    p_compare.add_argument(
+        "--out",
+        default=None,
+        help="Output directory for compare-<comparison_id>.json (default: benchmark_results/comparisons/)",
+    )
+    p_compare.set_defaults(func=_cmd_compare)
+
+    p_view = sub.add_parser(
+        "view-comparison",
+        help="Print the delta table for a previously stored comparison",
+    )
+    p_view.add_argument("comparison_id", help="Comparison UUID returned by `compare`")
+    p_view.set_defaults(func=_cmd_view_comparison)
 
     return parser
 

@@ -76,7 +76,7 @@ function getRepoLocalElizaCoreRoot(
       continue;
     }
 
-    const candidate = path.join(elizaRoot, "packages", "typescript");
+    const candidate = path.join(elizaRoot, "packages", "core");
     if (!existsSync(path.join(candidate, "package.json"))) {
       continue;
     }

@@ -17,6 +17,7 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 export const createIssueAction: Action = {
   name: "CREATE_LINEAR_ISSUE",
   description: "Create a new issue in Linear",
+  descriptionCompressed: "create new issue Linear",
   similes: ["create-linear-issue", "new-linear-issue", "add-linear-issue"],
 
   examples: [

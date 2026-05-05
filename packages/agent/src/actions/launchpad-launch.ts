@@ -97,6 +97,7 @@ export const launchpadLaunchAction: Action = {
   similes: ["LAUNCH_TOKEN", "CREATE_MEME_COIN", "LAUNCH_MEME", "LAUNCH_COIN"],
   description:
     "Drive an in-app browser tab through a launchpad (four.meme or flap.sh, both on BNB Chain) to launch a token while the user watches. Generates token metadata + image, fills the form with realistic cursor movement, and stops at the wallet confirmation sheet — the user approves each transaction. Use dryRun: 'stop-before-tx' for testnet runs.",
+  descriptionCompressed: "drive in-app browser tab through launchpad (four meme flap sh, both BNB Chain) launch token user watch generate token metadata + image, fill form w/ realistic cursor movement, stop wallet confirmation sheet user approve each transaction use dryrun: stop-before-tx testnet run",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasRoleAccess(runtime, message, "USER"),
   handler: async (runtime, message, _state, options) => {

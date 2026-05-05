@@ -85,6 +85,7 @@ export const managePositions: Action = {
   ],
   description:
     "Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
+  descriptionCompressed: "automatically manage Raydium position rebalance drift too far pool price",
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";

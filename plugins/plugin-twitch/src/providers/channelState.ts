@@ -21,6 +21,7 @@ import {
 export const channelStateProvider: Provider = {
   name: "twitchChannelState",
   description: "Provides information about the current Twitch channel context",
+  descriptionCompressed: "provide information current Twitch channel context",
 
   dynamic: true,
   get: async (

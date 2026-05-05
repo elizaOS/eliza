@@ -47,6 +47,7 @@ export const recallMemoryFilteredAction: Action = {
   similes: ["BROWSE_MEMORIES", "FILTER_MEMORIES", "FIND_MEMORIES"],
   description:
     "Recall memories filtered by type, entityId, roomId, or text query. Routes to /api/memories/by-entity when entityId is supplied; otherwise /api/memories/browse.",
+  descriptionCompressed: "recall memory filter type, entityid, roomid, text query route / api/memories/by-entity entityid suppli; otherwise / api/memories/browse",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -187,6 +188,7 @@ export const forgetMemoryAction: Action = {
   similes: ["DELETE_MEMORY", "REMOVE_MEMORY"],
   description:
     "Permanently delete a memory by id. Requires explicit confirm:true.",
+  descriptionCompressed: "permanently delete memory id require explicit confirm: true",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -284,6 +286,7 @@ export const editMemoryAction: Action = {
   similes: ["UPDATE_MEMORY", "MODIFY_MEMORY"],
   description:
     "Edit the text of an existing memory. Server re-embeds the new text. Requires explicit confirm:true.",
+  descriptionCompressed: "edit text exist memory server re-embed new text require explicit confirm: true",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

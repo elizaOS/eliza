@@ -47,6 +47,7 @@ export const webSearch: Action = {
     ],
     suppressPostActionContinuation: true,
     description: "Perform a web search to find information related to the message.",
+    descriptionCompressed: "perform web search find information relat message",
     validate: async (runtime: IAgentRuntime, _message: Memory) => {
         const key = runtime.getSetting("TAVILY_API_KEY");
         return typeof key === "string" && key.length > 0;

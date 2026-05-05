@@ -44,6 +44,7 @@ export const roleBackfillProvider: Provider = {
   name: "roleBackfill",
   description:
     "Lazily backfills OWNER role for new worlds created after roles bootstrap.",
+  descriptionCompressed: "lazily backfill OWNER role new world create after role bootstrap",
   dynamic: true,
   // High position number = runs after the main roles provider (position 10).
   position: 11,
