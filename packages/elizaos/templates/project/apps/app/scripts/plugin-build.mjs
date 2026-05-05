@@ -14,6 +14,11 @@ const _appDir = path.resolve(__dirname, "..");
 const pluginsDir = NATIVE_PLUGINS_ROOT;
 const pluginNames = CAPACITOR_PLUGIN_NAMES;
 
+if (pluginNames.length === 0) {
+  console.log("[plugins] no local native plugins to build.");
+  process.exit(0);
+}
+
 function run(command, args, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {

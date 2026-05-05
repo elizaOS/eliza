@@ -6,11 +6,17 @@
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./register-routes": "./src/register-routes.ts",
+    "./setup-routes": "./src/setup-routes.ts",
+    "./routes/browser-workspace-routes": "./src/routes/browser-workspace-routes.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/agent": "workspace:*"
+  },
+  "peerDependencies": {
+    "@elizaos/app-core": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

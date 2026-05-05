@@ -4,41 +4,50 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
-import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
+import {
+  CAPACITOR_PLUGIN_NAMES,
+  NATIVE_PLUGINS_ROOT,
+} from "./scripts/capacitor-plugin-names.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 const _require = createRequire(import.meta.url);
 
-const nativePluginsRoot = path.join(
-  repoRoot,
-  "eliza",
-  "packages",
-  "native-plugins",
-);
-const appCorePackageRoot = path.join(
-  repoRoot,
-  "eliza",
+const localElizaRoot = path.join(repoRoot, "eliza");
+const localAppCorePackageRoot = path.join(
+  localElizaRoot,
   "packages",
   "app-core",
-  "src",
 );
-const agentSourceRoot = path.join(
-  repoRoot,
-  "eliza",
-  "packages",
-  "agent",
-  "src",
+const installedAppCorePackageRoot = path.dirname(
+  _require.resolve("@elizaos/app-core/package.json", {
+    paths: [repoRoot, here],
+  }),
 );
-const uiSourceRoot = path.join(repoRoot, "eliza", "packages", "ui", "src");
+const appCorePackageRoot = fs.existsSync(
+  path.join(localAppCorePackageRoot, "package.json"),
+)
+  ? localAppCorePackageRoot
+  : installedAppCorePackageRoot;
+const appCoreSourceRoot = fs.existsSync(
+  path.join(appCorePackageRoot, "packages/app-core/src"),
+)
+  ? path.join(appCorePackageRoot, "packages/app-core/src")
+  : path.join(appCorePackageRoot, "src");
+const agentSourceRoot = path.join(localElizaRoot, "packages", "agent", "src");
+const uiSourceRoot = path.join(localElizaRoot, "packages", "ui", "src");
 const bridgeStubPath = path.join(here, "test", "stubs", "app-core-bridge.ts");
 
 const capacitorCoreEntry = _require.resolve("@capacitor/core");
 
+const nativePluginAliasEntries = CAPACITOR_PLUGIN_NAMES.map((name) => ({
+  find: new RegExp(`^@elizaos/capacitor-${name}$`),
+  replacement: path.join(NATIVE_PLUGINS_ROOT, `${name}/src/index.ts`),
+}));
 const nativePluginAliasMap = Object.fromEntries(
   CAPACITOR_PLUGIN_NAMES.map((name) => [
     `@elizaos/capacitor-${name}`,
-    path.join(nativePluginsRoot, `${name}/src/index.ts`),
+    path.join(NATIVE_PLUGINS_ROOT, `${name}/src/index.ts`),
   ]),
 );
 
@@ -85,7 +94,7 @@ function appCoreBridgeStubPlugin(): Plugin {
  * resolve `@elizaos/app-core/<subpath>` directly to source.
  */
 function buildAppCoreAliases(): Array<{ find: RegExp; replacement: string }> {
-  const appCorePkgPath = path.resolve(appCorePackageRoot, "..", "package.json");
+  const appCorePkgPath = path.join(appCorePackageRoot, "package.json");
   if (!fs.existsSync(appCorePkgPath)) {
     return [];
   }
@@ -94,12 +103,19 @@ function buildAppCoreAliases(): Array<{ find: RegExp; replacement: string }> {
   };
   const aliases: Array<{ find: RegExp; replacement: string }> = [];
   for (const [key, value] of Object.entries(appCorePkg.exports ?? {})) {
-    if (typeof value !== "string") continue;
+    const target =
+      typeof value === "string"
+        ? value
+        : value && typeof value === "object"
+          ? ((value as Record<string, unknown>).import ??
+            (value as Record<string, unknown>).default)
+          : null;
+    if (typeof target !== "string") continue;
     const aliasKey =
       key === "."
         ? "@elizaos/app-core"
         : `@elizaos/app-core/${key.replace(/^\.\//, "")}`;
-    const targetPath = path.resolve(appCorePackageRoot, "..", value);
+    const targetPath = path.resolve(appCorePackageRoot, target);
     aliases.push({
       find: new RegExp(`^${aliasKey}$`),
       replacement: targetPath,
@@ -114,7 +130,7 @@ function buildAppCoreAliases(): Array<{ find: RegExp; replacement: string }> {
   // Catch-all for sub-paths not in the explicit exports map.
   aliases.push({
     find: /^@elizaos\/app-core\/(.*)/,
-    replacement: path.join(appCorePackageRoot, "$1"),
+    replacement: path.join(appCoreSourceRoot, "$1"),
   });
   return aliases;
 }
@@ -143,7 +159,12 @@ export default defineConfig({
         find: /^@capacitor\/core$/,
         replacement: capacitorCoreEntry,
       },
-      ...(fs.existsSync(appCorePackageRoot) ? buildAppCoreAliases() : []),
+      ...nativePluginAliasEntries,
+      {
+        find: /^@elizaos\/capacitor-.+$/,
+        replacement: path.join(here, "src/native-plugin-stubs.ts"),
+      },
+      ...(fs.existsSync(appCoreSourceRoot) ? buildAppCoreAliases() : []),
       ...(fs.existsSync(agentSourceRoot)
         ? [
             {

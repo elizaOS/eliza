@@ -2,16 +2,18 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
 import {
-  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
+} from "@elizaos/shared/dev-settings-table";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
+import {
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-} from "@elizaos/shared";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
+} from "@elizaos/shared/runtime-env";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type Plugin, transformWithEsbuild } from "vite";
@@ -22,6 +24,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(here, "../..");
 const elizaRoot = path.resolve(projectRoot, "eliza");
 const nativePluginsRoot = path.join(elizaRoot, "packages", "native-plugins");
+const optionalElizaAppStubEntry = path.join(
+  here,
+  "src/optional-eliza-app-stub.tsx",
+);
 const nativePluginStubEntry = path.join(here, "src/native-plugin-stubs.ts");
 
 function readSourceModeMarker(): string | null {
@@ -73,12 +79,24 @@ const appCoreSrcRoot = hasLocalElizaWorkspace
   : fs.existsSync(path.join(publishedAppCoreRoot, "packages/app-core/src"))
     ? path.join(publishedAppCoreRoot, "packages/app-core/src")
     : path.join(publishedAppCoreRoot, "src");
-const appCoreNativePluginEntrypoints = hasLocalElizaWorkspace
-  ? path.join(appCoreSrcRoot, "platform/native-plugin-entrypoints.ts")
-  : requireResolve("@elizaos/app-core/platform/native-plugin-entrypoints");
-const emptyNodeModuleEntry = hasLocalElizaWorkspace
-  ? path.join(appCoreSrcRoot, "platform/empty-node-module.ts")
-  : requireResolve("@elizaos/app-core/platform/empty-node-module");
+
+function resolveAppCoreSourceFile(relativePath: string): string {
+  const extensionCandidates = hasLocalElizaWorkspace
+    ? [".ts", ".tsx", ".js", ".jsx"]
+    : [".js", ".jsx", ".ts", ".tsx"];
+  for (const extension of extensionCandidates) {
+    const candidate = path.join(appCoreSrcRoot, `${relativePath}${extension}`);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(appCoreSrcRoot, `${relativePath}${extensionCandidates[0]}`);
+}
+
+const appCoreNativePluginEntrypoints = resolveAppCoreSourceFile(
+  "platform/native-plugin-entrypoints",
+);
+const emptyNodeModuleEntry = resolveAppCoreSourceFile(
+  "platform/empty-node-module",
+);
 
 /**
  * Pinned @elizaos/core from the repo root (must match the agent/runtime lock).
@@ -213,7 +231,7 @@ function resolveElizaCoreBundlePath(): string {
     console.warn(
       "[eliza][vite] @elizaos/core dist/browser is missing; using dist/node for the client bundle. " +
         "For a linked eliza workspace, run `bun run build` in that checkout (e.g. packages/core). " +
-        "Or reinstall with ELIZA_SKIP_LOCAL_ELIZA=1 to use the published npm package.",
+        "Or run `bun run eliza:packages` to use published packages.",
     );
     return nodeEntry;
   }
@@ -228,7 +246,7 @@ function resolveElizaCoreBundlePath(): string {
   if (bunBrowser) {
     console.warn(
       `[eliza][vite] Linked @elizaos/core at ${pkgDir} has no dist/; using bun cache build at ${bunBrowser}. ` +
-        "Run `bun run build` in your eliza checkout or ELIZA_SKIP_LOCAL_ELIZA=1 bun install to align versions.",
+        "Run `bun run build` in your eliza checkout or `bun run eliza:packages` to align versions.",
     );
     return bunBrowser;
   }
@@ -242,7 +260,7 @@ function resolveElizaCoreBundlePath(): string {
   throw new Error(
     `[eliza][vite] @elizaos/core has no built artifacts under ${pkgDir} and none in node_modules/.bun. ` +
       "Expected src/index.browser.ts, dist/browser/index.browser.js, dist/index.browser.js, dist/node/index.node.js, or dist/index.node.js. " +
-      "Build your local eliza workspace or run `ELIZA_SKIP_LOCAL_ELIZA=1 bun install`.",
+      "Build your local eliza workspace or run `bun run eliza:packages`.",
   );
 }
 
@@ -1098,6 +1116,14 @@ export default defineConfig({
           replacement: emptyNodeModuleEntry,
         },
       ]),
+      {
+        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints$/,
+        replacement: appCoreNativePluginEntrypoints,
+      },
+      {
+        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints\.js$/,
+        replacement: appCoreNativePluginEntrypoints,
+      },
       // Capacitor plugins — local source mode resolves real plugin sources;
       // package mode uses browser-safe stubs for renderer builds.
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
@@ -1137,6 +1163,14 @@ export default defineConfig({
         }
         return aliases;
       })(),
+      {
+        find: /^@clawville\/app-clawville(\/.*)?$/,
+        replacement: optionalElizaAppStubEntry,
+      },
+      {
+        find: /^@elizaos\/app-(?!core(\/|$)).+$/,
+        replacement: optionalElizaAppStubEntry,
+      },
       ...(() => {
         if (!hasLocalElizaWorkspace) return [];
         const sharedPkgPath = path.resolve(
@@ -1417,7 +1451,9 @@ export default defineConfig({
     fs: {
       // Allow serving files from the app package, workspace root/node_modules,
       // and the optional local elizaOS checkout.
-      allow: hasLocalElizaWorkspace ? [here, projectRoot, elizaRoot] : [here, projectRoot],
+      allow: hasLocalElizaWorkspace
+        ? [here, projectRoot, elizaRoot]
+        : [here, projectRoot],
     },
     watch: {
       // Polling is only needed in Docker/WSL where native fs events are unreliable

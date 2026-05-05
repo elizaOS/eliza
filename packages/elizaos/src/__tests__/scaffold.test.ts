@@ -124,7 +124,7 @@ describe("managed file upgrades", () => {
     );
     expect(fs.existsSync(renderedPath)).toBe(true);
     expect(fs.readFileSync(renderedPath, "utf8")).toContain("plugin-foo");
-    expect(managedFiles).toHaveProperty("src/e2e/plugin-foo.e2e.ts");
+    expect(Object.hasOwn(managedFiles, "src/e2e/plugin-foo.e2e.ts")).toBe(true);
   });
 
   test("adds missing workspace entries without duplicating existing ones", () => {

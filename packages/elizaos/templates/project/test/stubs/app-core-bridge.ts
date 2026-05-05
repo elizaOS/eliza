@@ -1,1 +1,1 @@
-export * from "../../eliza/packages/app-core/test/stubs/app-core-bridge";
+export * from "../../apps/app/test/stubs/app-core-bridge";

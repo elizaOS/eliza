@@ -98,11 +98,91 @@ const repoPackageJsonPath = path.relative(
 	electrobunDir,
 	path.join(repoRoot, "package.json"),
 );
+const defaultBrandConfigPath = path.join(
+	electrobunDir,
+	"assets",
+	"brand-config.json",
+);
+const generatedBrandConfigPath = path.join(
+	electrobunDir,
+	".generated",
+	"brand-config.json",
+);
 const libMacWindowEffectsDylib = path.join(
 	electrobunDir,
 	"src",
 	"libMacWindowEffects.dylib",
 );
+
+function readJsonFile(filePath: string): Record<string, unknown> {
+	try {
+		const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? parsed
+			: {};
+	} catch {
+		return {};
+	}
+}
+
+function trimEnv(name: string): string {
+	return (process.env[name] ?? "").trim();
+}
+
+function resolveBrandConfigCopySource({
+	appName,
+	appId,
+	urlScheme,
+}: {
+	appName: string;
+	appId: string;
+	urlScheme: string;
+}): string {
+	const explicitConfigPath = trimEnv("ELIZA_BRAND_CONFIG_PATH");
+	const namespace = trimEnv("ELIZA_NAMESPACE");
+	const appDescription = trimEnv("ELIZA_APP_DESCRIPTION");
+	const hasBrandOverride = Boolean(
+		explicitConfigPath ||
+			trimEnv("ELIZA_APP_NAME") ||
+			trimEnv("ELIZA_APP_ID") ||
+			trimEnv("ELIZA_URL_SCHEME") ||
+			namespace ||
+			appDescription,
+	);
+
+	if (!hasBrandOverride) {
+		return "assets/brand-config.json";
+	}
+
+	const fileConfig = explicitConfigPath
+		? readJsonFile(path.resolve(explicitConfigPath))
+		: readJsonFile(defaultBrandConfigPath);
+	const brandConfig = {
+		...fileConfig,
+		appName,
+		appId,
+		urlScheme,
+		namespace: namespace || fileConfig.namespace || "elizaos",
+		configDirName:
+			typeof fileConfig.configDirName === "string" &&
+			fileConfig.configDirName.trim()
+				? fileConfig.configDirName
+				: appName,
+		...(appDescription
+			? { appDescription }
+			: typeof fileConfig.appDescription === "string"
+				? { appDescription: fileConfig.appDescription }
+				: {}),
+	};
+
+	fs.mkdirSync(path.dirname(generatedBrandConfigPath), { recursive: true });
+	fs.writeFileSync(
+		generatedBrandConfigPath,
+		`${JSON.stringify(brandConfig, null, "\t")}\n`,
+	);
+
+	return path.relative(electrobunDir, generatedBrandConfigPath);
+}
 
 export function createElectrobunConfig(): ElectrobunConfig {
 	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "elizaOS";
@@ -111,6 +191,11 @@ export function createElectrobunConfig(): ElectrobunConfig {
 	const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
 	const runtimeDistDir =
 		(process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
+	const brandConfigCopySource = resolveBrandConfigCopySource({
+		appName,
+		appId,
+		urlScheme,
+	});
 	// Note: All paths relative to electrobun.config.ts location
 	// (eliza/packages/app-core/platforms/electrobun/)
 	// ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
@@ -193,7 +278,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				[repoPackageJsonPath]: `${runtimeDistDir}/package.json`,
 				"assets/appIcon.png": "assets/appIcon.png",
 				"assets/appIcon.ico": "assets/appIcon.ico",
-				"assets/brand-config.json": "brand-config.json",
+				[brandConfigCopySource]: "brand-config.json",
 				...(process.platform === "darwin" &&
 				fs.existsSync(libMacWindowEffectsDylib)
 					? { "src/libMacWindowEffects.dylib": "libMacWindowEffects.dylib" }

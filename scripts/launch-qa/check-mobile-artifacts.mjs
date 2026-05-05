@@ -372,9 +372,11 @@ function checkAndroidManifest(repoRoot, appId, errors, checks) {
     content.includes("android.intent.category.LAUNCHER");
   const hasMainActivity =
     attrValue(activityAttrs, "android:name") === ".MainActivity";
+  const hasService = (serviceName) =>
+    content.includes(`android:name=".${serviceName}"`) ||
+    content.includes(`android:name="${appId}.${serviceName}"`);
   const hasServices =
-    content.includes('android:name=".GatewayConnectionService"') &&
-    content.includes('android:name=".ElizaAgentService"');
+    hasService("GatewayConnectionService") && hasService("ElizaAgentService");
   const ok =
     missingPermissions.length === 0 &&
     attrValue(applicationAttrs, "android:label") === "@string/app_name" &&

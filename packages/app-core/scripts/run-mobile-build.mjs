@@ -1877,6 +1877,70 @@ function patchAndroidGradle() {
   }
 }
 
+function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
+  const srcJava = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
+  );
+  if (fs.existsSync(srcJava)) return;
+
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (!fs.existsSync(manifestPath)) return;
+
+  let xml = fs.readFileSync(manifestPath, "utf8");
+  const original = xml;
+  const removeComponent = (source, className) => {
+    const escapedName = escapeRegExp(className);
+    const pairedRe = new RegExp(
+      `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
+      "g",
+    );
+    const selfClosingRe = new RegExp(
+      `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[^>]*/>\\s*`,
+      "g",
+    );
+    return source.replace(pairedRe, "\n").replace(selfClosingRe, "\n");
+  };
+
+  for (const component of [
+    "ElizaAgentService",
+    "ElizaDialActivity",
+    "ElizaAssistActivity",
+    "ElizaInCallService",
+    "ElizaSmsReceiver",
+    "ElizaMmsReceiver",
+    "ElizaRespondViaMessageService",
+    "ElizaSmsComposeActivity",
+    "ElizaBootReceiver",
+    "ElizaBrowserActivity",
+    "ElizaContactsActivity",
+    "ElizaCameraActivity",
+    "ElizaClockActivity",
+    "ElizaCalendarActivity",
+  ]) {
+    xml = removeComponent(xml, component);
+  }
+  if (xml !== original) {
+    fs.writeFileSync(manifestPath, xml, "utf8");
+    console.log(
+      "[mobile-build] Removed Android components that need packaged platform templates.",
+    );
+  }
+}
+
 const ANDROID_LAUNCHER_ICON_SIZES = {
   "mipmap-mdpi": 48,
   "mipmap-hdpi": 72,
@@ -2093,6 +2157,7 @@ async function buildAndroid() {
   patchAndroidGradle();
   await generateAndroidBrandAssets();
   overlayAndroid();
+  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
@@ -2198,6 +2263,7 @@ async function buildAndroidSystem() {
   patchAndroidGradle();
   await generateAndroidBrandAssets();
   overlayAndroid();
+  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,

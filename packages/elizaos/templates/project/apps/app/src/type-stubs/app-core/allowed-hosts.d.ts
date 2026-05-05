@@ -1,8 +1,7 @@
 /**
  * Stub mirror of @elizaos/app-core/config/allowed-hosts. Used by
  * capacitor.config.ts to merge env-driven hosts into Capacitor's
- * allowNavigation list. Replaced by the real source once the eliza
- * submodule is initialized.
+ * allowNavigation list.
  */
 
 export interface AllowedHostPattern {

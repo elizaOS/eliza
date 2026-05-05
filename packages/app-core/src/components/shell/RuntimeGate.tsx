@@ -412,7 +412,12 @@ export function RuntimeGate() {
     (agent: CloudCompatAgent) => {
       setCloudStage("connecting");
 
-      const apiBase = agent.web_ui_url ?? agent.webUiUrl ?? agent.bridge_url;
+      const apiBase =
+        agent.web_ui_url ||
+        agent.webUiUrl ||
+        agent.bridge_url ||
+        agent.containerUrl ||
+        undefined;
       savePersistedActiveServer({
         id: `cloud:${agent.agent_id}`,
         kind: "cloud",
@@ -1146,7 +1151,7 @@ function GateShell({
   const lightMode = uiTheme === "light";
 
   return (
-    <div className="relative min-h-full w-full overflow-y-auto bg-black text-white">
+    <div className="relative h-full min-h-0 w-full overflow-hidden bg-black text-white overscroll-none">
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 overflow-hidden"
@@ -1196,9 +1201,9 @@ function GateShell({
         />
       </div>
 
-      <div className="relative z-10 flex min-h-full items-center justify-center px-3 pb-[max(1rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_4.25rem)] sm:px-6 md:px-8">
+      <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[max(0.75rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div
-          className="flex w-full max-w-[72rem] flex-col items-center gap-3 border-2 border-black bg-[rgba(9,10,14,0.82)] px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
+          className="flex max-h-full min-h-0 w-full max-w-[72rem] flex-col items-center gap-3 overflow-hidden border-2 border-black bg-[rgba(9,10,14,0.82)] px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
           style={{
             borderRadius: 0,
             clipPath:

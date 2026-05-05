@@ -5,7 +5,6 @@ export * from "./agent-model.js";
 export * from "./agent-transfer-routes.js";
 export * from "./apps-routes.js";
 export * from "./auth-routes.js";
-export * from "./browser-workspace-routes.js";
 export * from "./bug-report-routes.js";
 export * from "./character-routes.js";
 export * from "./cloud-billing-routes.js";
