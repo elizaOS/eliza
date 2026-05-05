@@ -92,7 +92,7 @@ const formatUserInfo = (
 	return basicInfo.join("\n");
 };
 
-const spec = requireActionSpec("GET_USER_INFO");
+const spec = requireActionSpec("DISCORD_GET_USER_INFO");
 
 export const getUserInfo: Action = {
 	name: spec.name,
