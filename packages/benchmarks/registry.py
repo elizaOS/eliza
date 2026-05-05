@@ -1330,6 +1330,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             python,
             repo("benchmarks/openclaw-benchmark/eliza_adapter.py"),
             "--json",
+            "--output-dir",
+            str(output_dir),
         ]
         task = extra.get("task")
         if isinstance(task, str) and task.strip():
@@ -1344,12 +1346,22 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return args
 
     def _openclaw_bench_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="openclaw-*.json")
+        return find_latest_file(output_dir, glob_pattern="openclaw_*.json")
 
     def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
         root = expect_dict(data, ctx="openclaw:root")
-        overall = expect_float(get_optional(root, "overall_score") or 0.0, ctx="openclaw:overall_score")
+        overall_raw = get_optional(root, "overall_score")
+        if isinstance(overall_raw, (int, float)):
+            overall = float(overall_raw)
+        else:
+            score_obj = get_optional(root, "score")
+            if isinstance(score_obj, dict):
+                overall = expect_float(get_optional(score_obj, "score") or 0.0, ctx="openclaw:score.score")
+            else:
+                overall = 0.0
         tasks_completed = get_optional(root, "tasks_completed") or 0
+        if not tasks_completed and isinstance(get_optional(root, "score"), dict):
+            tasks_completed = 1
         return ScoreExtraction(
             score=overall,
             unit="ratio",
@@ -1357,6 +1369,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             metrics={
                 "overall_score": overall,
                 "tasks_completed": tasks_completed,
+                "mode": get_optional(root, "mode") or root.get("scoring_type") or "",
             },
         )
 

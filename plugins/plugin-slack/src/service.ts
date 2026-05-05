@@ -16,7 +16,8 @@ import {
   type World,
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
-import type { WebAPICallResult, WebClient } from "@slack/web-api";
+import type { WebAPICallResult } from "@slack/web-api";
+type WebClient = App["client"];
 
 // Define Slack event types inline to avoid import issues
 interface SlackMessageEventType {

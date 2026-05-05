@@ -35,6 +35,27 @@ def _json_score(path: Path) -> ScoreSummary:
     return generic_score_extractor(path)
 
 
+IGNORED_BENCHMARK_DIRS = {
+    "__pycache__",
+    ".git",
+    ".pytest_cache",
+    "benchmark_results",
+    "eliza-adapter",
+    "orchestrator",
+    "swe-bench-workspace",
+    "viewer",
+}
+
+
+def _is_benchmark_directory(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    name = path.name
+    if name.startswith("."):
+        return False
+    return name not in IGNORED_BENCHMARK_DIRS
+
+
 def _make_registry_adapter(
     workspace_root: Path,
     benchmarks_root: Path,
@@ -126,7 +147,14 @@ def _make_extra_adapter(
 
 
 def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    args = ["python", "-m", "benchmarks.HyperliquidBench", "--coverage"]
+    args = [
+        "python",
+        "-m",
+        "benchmarks.HyperliquidBench",
+        "--coverage",
+        "--output",
+        str(ctx.output_root),
+    ]
     if ctx.request.model:
         args.extend(["--model", ctx.request.model])
     if "max_steps" in ctx.request.extra_config:
@@ -188,6 +216,38 @@ def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
     if "seed" in ctx.request.extra_config:
         args.extend(["--seed", str(int(ctx.request.extra_config["seed"]))])
     return args
+
+
+def _command_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        "bun",
+        "run",
+        "run-benchmarks.ts",
+        "--root",
+        str(ctx.workspace_root.parent.resolve()),
+    ]
+    task_type = ctx.request.extra_config.get("type")
+    if isinstance(task_type, str) and task_type.strip():
+        args.extend(["--type", task_type.strip()])
+    task_id = ctx.request.extra_config.get("task")
+    if isinstance(task_id, str) and task_id.strip():
+        args.extend(["--task", task_id.strip()])
+    timeout = ctx.request.extra_config.get("timeout_ms")
+    if isinstance(timeout, int) and timeout > 0:
+        args.extend(["--timeout", str(timeout)])
+    if ctx.request.extra_config.get("server") is True:
+        args.append("--server")
+    if ctx.request.extra_config.get("verbose") is True:
+        args.append("--verbose")
+    return args
+
+
+def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    return {
+        "ELIZA_APP_ROOT": str(ctx.workspace_root.parent.resolve()),
+        "ELIZA_HEADLESS": "1",
+        "LOG_LEVEL": "error",
+    }
 
 
 def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -521,6 +581,35 @@ def _score_from_adhd(path: Path) -> ScoreSummary:
     return ScoreSummary(score=score, unit="ratio", higher_is_better=True, metrics={"mean_score": score, "num_cases": len(vals)})
 
 
+def _score_from_app_eval(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+
+    overall_raw = data.get("overall_score")
+    score = None
+    if isinstance(overall_raw, (int, float)):
+        # app-eval scores tasks on a 0..10 rubric; normalize for leaderboard
+        # parity while keeping the raw score in metrics.
+        score = max(0.0, min(float(overall_raw) / 10.0, 1.0))
+
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_score": overall_raw,
+            "total_tasks": data.get("total_tasks", 0),
+            "completed": data.get("completed", 0),
+            "failed": data.get("failed", 0),
+            "timed_out": data.get("timed_out", 0),
+            "avg_duration_ms": data.get("avg_duration_ms", 0),
+        },
+    )
+
+
 def _score_from_social_alpha(path: Path) -> ScoreSummary:
     import json
 
@@ -572,9 +661,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     benchmark_dirs = sorted(
         p.name
         for p in benchmarks_root.iterdir()
-        if p.is_dir()
-        and p.name
-        not in {"__pycache__", ".git", "benchmark_results", "orchestrator", "eliza-adapter", "viewer"}
+        if _is_benchmark_directory(p)
     )
 
     score_extractor_factory = RegistryScoreExtractor(workspace_root)
@@ -623,6 +710,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "rlm_bench": "rlm-bench",
         "swe_bench_orchestrated": "swe_bench",
         "gaia_orchestrated": "gaia",
+        "hyperliquid_bench": "HyperliquidBench",
+        "openclaw_bench": "openclaw-benchmark",
     }
     for entry in registry_entries:
         directory = registry_dir_map.get(entry.id, entry.id)
@@ -677,8 +766,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="HyperliquidBench Eliza coverage benchmark",
             cwd=str((benchmarks_root / "HyperliquidBench").resolve()),
             command_builder=_command_hyperliquid,
-            result_patterns=["runs/**/eval_score.json", "runs/**/run_meta.json"],
+            result_patterns=["hyperliquid_bench-*.json", "runs/hyperliquid_bench-*.json"],
             env_builder=_command_hyperliquid_env,
+            score_extractor=score_extractor_factory.for_benchmark("hyperliquid_bench"),
         ),
         _make_extra_adapter(
             adapter_id="adhdbench",
@@ -706,6 +796,17 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             cwd=str((benchmarks_root / "experience").resolve()),
             command_builder=_command_experience,
             result_patterns=["experience-results.json", "*.json"],
+        ),
+        _make_extra_adapter(
+            adapter_id="app-eval",
+            directory="app-eval",
+            description="elizaOS app agent research/coding benchmark",
+            cwd=str((benchmarks_root / "app-eval").resolve()),
+            command_builder=_command_app_eval,
+            env_builder=_env_app_eval,
+            result_patterns=["results/latest/summary.json", "results/*/summary.json", "summary.json", "evaluation.json"],
+            score_extractor=_score_from_app_eval,
+            default_timeout_seconds=14400,
         ),
         _make_extra_adapter(
             adapter_id="framework",
@@ -827,7 +928,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     ]
 
     for adapter in extras:
-        if adapter.directory in benchmark_dirs:
+        adapter_dir_exists = (benchmarks_root / adapter.directory).is_dir()
+        if adapter.directory in benchmark_dirs or (adapter.id == "eliza_replay" and adapter_dir_exists):
             adapters[adapter.id] = adapter
 
     return AdapterDiscovery(adapters=adapters, all_directories=tuple(benchmark_dirs))
