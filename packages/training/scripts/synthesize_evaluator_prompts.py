@@ -500,25 +500,36 @@ You maintain a two-store fact memory for an AI assistant. For each message you d
 
 ## STRICT op vocabulary (these are the ONLY accepted op values)
 
-- `add_durable`     — for stable identity-level claims (where someone lives, allergies, founded a company, life events)
-- `add_current`     — for time-bound state (anxious today, debugging X, working on Y, traveling next week)
-- `strengthen`      — when a known fact is restated; include `factId`
+- `add_durable`     — for stable identity-level claims. ALWAYS include
+                      `claim`, `category`, AND `structured_fields` (object).
+                      Optional: `verification_status`, `reason`.
+- `add_current`     — for time-bound state. ALWAYS include `claim`,
+                      `category`, AND `structured_fields` (object).
+                      Optional: `valid_at` (ISO timestamp), `reason`.
+- `strengthen`      — when a known fact is restated; include `factId` and
+                      `reason`.
 - `decay`           — when a current fact looks resolved; include `factId`
-- `contradict`      — when a fact is directly contradicted; include `factId` and `proposedText`
+                      and `reason`.
+- `contradict`      — when a fact is directly contradicted; include
+                      `factId`, `proposedText`, `reason`.
 
 DO NOT emit `op: insert`, `op: add`, `op: update`, or any value not in the
 list above. Use `add_durable` for durable claims and `add_current` for
-time-bound state — never the bare `add` or `insert`.
+time-bound state — never the bare `add` or `insert`. Every `add_*` op
+MUST include `structured_fields` even when sparse — `{}` is not valid;
+include at least one structured key the claim is about.
 
 WRONG (rejected):
   {"ops":[{"op":"insert","category":"current.feeling","claim":"anxious"}]}
-  {"ops":[{"op":"add","category":"durable.allergy","claim":"peanuts"}]}
+  {"ops":[{"op":"add_current","category":"feeling","claim":"anxious"}]}   ← missing structured_fields
   {"ops":[{"insert":{"category":"current.task","value":"debugging"}}]}
 
 RIGHT:
-  {"ops":[{"op":"add_current","category":"current.feeling","claim":"anxious"}]}
-  {"ops":[{"op":"add_durable","category":"durable.allergy","claim":"peanuts"}]}
-  {"ops":[{"op":"add_current","category":"current.task","claim":"debugging"}]}
+  {"ops":[{"op":"add_current","claim":"anxious this morning","category":"feeling","structured_fields":{"emotion":"anxious","window":"morning"}}]}
+  {"ops":[{"op":"add_durable","claim":"peanut allergy","category":"allergy","structured_fields":{"allergen":"peanuts"}}]}
+  {"ops":[{"op":"add_durable","claim":"founded Acme Corp in 2024","category":"life_event","structured_fields":{"event":"founded company","company":"Acme Corp","year":2024}}]}
+  {"ops":[{"op":"strengthen","factId":"fact_xyz","reason":"user reaffirmed in this message"}]}
+  {"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"moved from Berlin"}]}
 
 (see eliza/packages/core/src/prompts.ts:752 for the full description; the
 inputs below replicate the runtime substitution.)
