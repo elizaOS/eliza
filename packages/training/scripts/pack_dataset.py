@@ -40,7 +40,18 @@ ROOT = Path(__file__).resolve().parent.parent
 NORMALIZED = ROOT / "data" / "normalized"
 SYNTHESIZED = ROOT / "data" / "synthesized"
 FINAL = ROOT / "data" / "final"
+ABLITERATION = ROOT / "data" / "abliteration"
 REGISTRY_FILE = ROOT / "datasets.yaml"
+
+# Records with these task_types are calibration corpora for the
+# orthogonal-projection abliteration in scripts/quantization/abliteration_apply.py.
+# They MUST NOT enter train/val/test; pack_dataset.py routes them to
+# data/abliteration/{harmful,harmless}.jsonl instead. Their source entries
+# in datasets.yaml carry weight=0.0 as a redundant guard.
+ABLITERATION_TASK_TYPES = {
+    "abliteration_harmful": "harmful.jsonl",
+    "abliteration_harmless": "harmless.jsonl",
+}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -159,10 +170,53 @@ def main() -> int:
     for s in (registry.get("synthesized") or []):
         weights[s["task_id"]] = float(s.get("weight", 1.0))
 
+    # Slugs whose normalized output should NOT enter the train mix and
+    # instead be copied verbatim into data/abliteration/{harmful,harmless}.jsonl.
+    # Determined by adapter name: any source using harmful_behaviors /
+    # harmless_alpaca is calibration data.
+    abliteration_slugs: dict[str, str] = {}
+    for e in (registry.get("datasets") or []):
+        adapter = e.get("normalizer")
+        if adapter == "harmful_behaviors":
+            abliteration_slugs[e["slug"]] = "harmful.jsonl"
+        elif adapter == "harmless_alpaca":
+            abliteration_slugs[e["slug"]] = "harmless.jsonl"
+
+    # ─────────────── route abliteration sources directly ─────────────
+    if abliteration_slugs:
+        ABLITERATION.mkdir(parents=True, exist_ok=True)
+        for slug, fname in abliteration_slugs.items():
+            src = NORMALIZED / f"{slug}.jsonl"
+            if not src.exists():
+                log.info("  abliteration: %s not yet normalized; skipping", slug)
+                continue
+            dst = ABLITERATION / fname
+            n = 0
+            with src.open("r", encoding="utf-8", errors="replace") as fin, \
+                 dst.open("w", encoding="utf-8") as fout:
+                for line in fin:
+                    line = line.rstrip("\n")
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    tt = (rec.get("metadata") or {}).get("task_type") or ""
+                    if tt not in ABLITERATION_TASK_TYPES:
+                        continue
+                    fout.write(line + "\n")
+                    n += 1
+            log.info("  abliteration: %s → %s (%d records)", slug, dst, n)
+
     # ─────────────── enumerate sources ────────────────────────────────
     sources: list[tuple[str, Path]] = []
     for path in sorted(NORMALIZED.glob("*.jsonl")):
         if path.name.endswith(".errors.jsonl"):
+            continue
+        # Abliteration calibration data is routed separately (above) and
+        # must NEVER appear in train/val/test.
+        if path.stem in abliteration_slugs:
             continue
         sources.append((path.stem, path))
     for path in sorted(SYNTHESIZED.rglob("*.jsonl")):
@@ -370,6 +424,14 @@ def main() -> int:
                     try:
                         rec = json.loads(line)
                     except json.JSONDecodeError:
+                        continue
+                    # Defensive: never let abliteration calibration leak
+                    # into the supervised splits. The slug-level filter
+                    # above is the primary gate; this catches any record
+                    # whose metadata.task_type was set after the slug was
+                    # already enumerated as a regular source.
+                    rec_tt = (rec.get("metadata") or {}).get("task_type") or ""
+                    if rec_tt in ABLITERATION_TASK_TYPES:
                         continue
                     h = record_hash(rec)
                     if h in seen:

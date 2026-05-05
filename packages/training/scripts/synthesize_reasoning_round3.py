@@ -27,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
 from lib.groq_thoughts import (  # noqa: E402
     DEFAULT_OUT_FILE,
     HTTPPolicy,
@@ -71,17 +72,7 @@ BAD_PATTERNS: tuple[str, ...] = (
     r'\bActually\b',
 )
 
-TRIVIAL_THOUGHTS = frozenset({
-    "Reply to the user.",
-    "Call the tool to satisfy the request.",
-    "Let me work through this step by step.",
-    "Let me handle this request.",
-    "Let me figure out the correct tool and parameters.",
-    "Processing the user's request now.",
-    "Got the data. Let me figure out how to proceed.",
-    "Information retrieved. Let me process this for the user.",
-    "The tool returned data. Let me review it.",
-})
+TRIVIAL_THOUGHTS = frozenset(DEFAULT_THOUGHT_LEAKS)
 
 CFG = RoundConfig(
     system_prompt=SYS_PROMPT,
