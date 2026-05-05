@@ -179,6 +179,7 @@ const vitestInlineDeps = [
   "react-test-renderer",
   /^@elizaai\/shared/,
   /^@elizaos\/plugin-/,
+  /^@elizaos\/app-/,
   /^@elizaos\/shared/,
   "zod",
 ];
