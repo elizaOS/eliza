@@ -5,6 +5,7 @@
  * Uses actual AgentRuntime with mocked database adapter.
  */
 
+import { randomUUID } from "node:crypto";
 import {
   AgentRuntime,
   ChannelType,
@@ -21,7 +22,6 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
 
 /**

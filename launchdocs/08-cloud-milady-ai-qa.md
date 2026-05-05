@@ -1,5 +1,11 @@
 # Launch Readiness 08: Cloud milady.ai QA
 
+## Second-Pass Status (2026-05-05)
+
+- Superseded: pairing-token 202 server-side tests exist.
+- Still open: the Web UI client still lacks 202 retry handling, custom `dockerImage` is sent by the UI but stripped by API schema, raw dashboard `fetch` calls bypass shared bearer-token injection, and authenticated cloud lifecycle e2e remains missing.
+- Launch gate: cloud API-key client/redaction coverage is wired into launch QA; live login, agent creation, web UI open/resume, billing, and migration flows still need credentialed validation.
+
 Review timestamp: 2026-05-04 PDT. Scope was repo inspection plus public, non-mutating network checks. I did not create accounts, provision agents, open checkout, or spend money.
 
 ## Current state

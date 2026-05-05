@@ -1,5 +1,11 @@
 # Launch Readiness 16: All App Pages QA
 
+## Second-Pass Status (2026-05-05)
+
+- Superseded: route smoke coverage exists in `packages/app/test/ui-smoke/all-pages-clicksafe.spec.ts` and is now mandatory through `packages/app` `test:e2e`.
+- Still open: overlay direct-route filtering is inconsistent, Phone/Messages/Contacts can silently fall back to chat outside Android, `/apps/tasks` semantics are confusing, and app-window/native overlay rendering is not covered end to end.
+- Launch gate: extend the Playwright smoke to representative app-window and native overlay URLs before calling all pages fully verified.
+
 ## Current state
 
 The launch host is `packages/app`, with shared page rendering and navigation in `packages/app-core`. The same React renderer is used by web, Capacitor mobile, and Electrobun desktop; desktop adds detached surface windows and per-app windows, while mobile adds native WebView configuration and Android-only phone surfaces.

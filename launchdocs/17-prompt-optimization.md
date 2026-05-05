@@ -1,5 +1,11 @@
 # Launch Readiness 17: Prompt Optimization
 
+## Second-Pass Status (2026-05-05)
+
+- Current: prompt source drift remains real; source prompt files do not fully match generated core prompts, and planner/response scoring still mixes older XML/action-name expectations with TOON-era prompts.
+- Still open: explicit TOON encapsulation, same-timestamp optimized-prompt tie-breaking, token efficiency budgets, planner `params` scoring, and dataset contamination checks need tests.
+- Launch gate: training-focused tests cover pieces, but no held-out prompt-quality/effectiveness gate proves the optimized prompts are launch-ready.
+
 ## Current state
 
 The prompt stack has meaningful launch hardening in place: the generated core prompts are TOON-oriented, planner outputs are schema-validated, malformed planner outputs have repair paths, and bounded prompt-optimization tests pass locally. The main runtime path also has several guardrails for action/provider name repair, missing parameter repair, metadata-action rescue, and prevention of speculative tool calls.

@@ -1,5 +1,11 @@
 # Launch Readiness 12: Computer Use QA
 
+## Second-Pass Status (2026-05-05)
+
+- Superseded: agent status now recognizes `@elizaos/plugin-computeruse` and has a regression test.
+- Still open: default approval posture remains `full_control`, OS permission grants can auto-enable the plugin, settings still has two separate Computer Use controls, and approval-mode API/client lacks visible app UI.
+- Launch gate: route/overlay tests cover deterministic behavior; real desktop click/type/screenshot, macOS TCC, permission revoke/regrant, and packaged app validation remain live/manual.
+
 ## Current state
 
 Computer use is implemented as the optional core plugin `@elizaos/plugin-computeruse`. The plugin registers a `computeruse` service, desktop/browser/window/file/terminal actions, and a provider that exposes platform capabilities, recent actions, and approval queue state. The service defaults to `approvalMode: "full_control"` unless `COMPUTER_USE_APPROVAL_MODE` is configured or changed through the compat API.

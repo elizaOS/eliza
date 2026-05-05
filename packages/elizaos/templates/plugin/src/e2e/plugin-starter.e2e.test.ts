@@ -1,6 +1,6 @@
 import { describe, it } from "vitest";
-import plugin from "../plugin";
 import { cleanupTestRuntime, createTestRuntime } from "../__tests__/test-utils";
+import plugin from "../plugin";
 import { StarterPluginTestSuite } from "./plugin-starter.e2e";
 
 describe(StarterPluginTestSuite.name, () => {

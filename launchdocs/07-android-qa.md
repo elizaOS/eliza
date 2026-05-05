@@ -1,5 +1,11 @@
 # Launch Readiness 07: Android Build And QA
 
+## Second-Pass Status (2026-05-05)
+
+- Superseded: `build:android:system` is now present at the repo root and in `packages/app/package.json`.
+- Still open: mobile device-bridge embedding requests are mismatched with the device client, Android smoke CI still appears to install SDK 34 while the project compiles SDK 36, and legacy release signing workflow drift remains.
+- Launch gate: static mobile artifact checks pass; emulator, physical device, Cuttlefish/AOSP, Play upload, foreground service, Doze, logcat, SELinux, and cloud-hybrid embedding tests remain unvalidated.
+
 ## Current state
 
 Android is a real Capacitor app under `packages/app`, with current app identity `ai.elizaos.app` / `elizaOS` (`packages/app/app.config.ts:21-30`, `packages/app/capacitor.config.ts:4-24`). The Gradle project targets minSdk 26, compileSdk 36, targetSdk 35, Java 21, AGP 9.2.0, and Kotlin 2.3.21 (`packages/app/android/variables.gradle:1-17`, `packages/app/android/build.gradle:17-30`, `packages/app/android/build.gradle:46-59`).

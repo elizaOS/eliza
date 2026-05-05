@@ -1,5 +1,11 @@
 # Launch Readiness 09: Desktop QA
 
+## Second-Pass Status (2026-05-05)
+
+- Current: the core desktop runtime-mode risks remain accurate, including disabled/manual-mode UX coverage and local/runtime persistence divergence.
+- Still open: packaged Electrobun Playwright regressions are not exposed by a package script, release CI references missing heavy/desktop scripts, and `test-electrobun-release.yml` still contains intentional no-op porting checks.
+- Launch gate: desktop work is not fully automated; add real packaged Playwright scripts and wire release CI before treating desktop launch validation as complete.
+
 ## Current state
 
 The desktop app is an Electrobun shell around the app-core renderer. The shell owns the main window, tray/menu behavior, detached surfaces, native OS permission bridges, auth/session bridges, and an optional embedded app-core runtime child process.

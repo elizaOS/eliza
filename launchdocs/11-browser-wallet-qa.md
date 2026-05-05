@@ -1,5 +1,11 @@
 # Launch Readiness 11: Browser And Wallet QA
 
+## Second-Pass Status (2026-05-05)
+
+- Superseded: launchpad dry-run now stops before transaction-triggering steps, and `providerOption` is implemented and tested.
+- Still open: no pump.fun launchpad support, Solana cloud signing still depends on local `SOLANA_PRIVATE_KEY`, external browser bridge cannot inject wallet providers, app-browser action schema is not realistic enough for site automation, and transaction previews remain thin.
+- Launch gate: fake-wallet tests are useful deterministic coverage; real wallet extension, site login, signature rejection/approval, testnet transaction, and selector-drift checks remain live/manual.
+
 ## Current state
 
 Static review says the side-chat browser path can open, navigate, inspect, click, fill, upload, and run desktop-only realistic actions when the desktop browser workspace bridge is configured. The Browser view prompt is explicitly watch-mode oriented and says the agent must narrate each browser action and never auto-sign transactions.

@@ -1,5 +1,11 @@
 # Launch Readiness 14: LifeOps QA
 
+## Second-Pass Status (2026-05-05)
+
+- Superseded: follow-up tracker task-row seeding and Google OAuth callback channel refresh drift are fixed and covered by tests.
+- Still open: connected-account flows are mostly mocked or manual, local-only intent sync needs product signoff, and WhatsApp/Twilio/Ntfy/Discord/Signal/Telegram route parity needs deterministic fake-adapter coverage plus periodic live checks.
+- Launch gate: `fake-connectors.contract`, follow-up tracker, and Google connector tests cover critical pieces; repair or delete the permanently skipped browser-settings defaults test before counting it as evidence.
+
 ## Current state
 
 LifeOps is implemented as a broad app plugin in `plugins/app-lifeops`. The plugin registers LifeOps actions for browser bridge management, calendar/inbox, X, approvals, routines, relationships/followups, Twilio, remote desktop, cross-channel send, intent sync, password/autofill, health, subscriptions, unsubscribe, payments, connector management, and mutations (`plugins/app-lifeops/src/plugin.ts:207`). It also registers providers/services for browser bridge context, blockers, LifeOps context, health, inbox triage, cross-channel context, activity profile, browser bridge service, website blocker service, activity tracking, and presence signal bridging (`plugins/app-lifeops/src/plugin.ts:254`).

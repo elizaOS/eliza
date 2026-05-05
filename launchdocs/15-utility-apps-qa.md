@@ -1,5 +1,11 @@
 # Launch Readiness 15: Utility Apps QA
 
+## Second-Pass Status (2026-05-05)
+
+- Current: Workflow Builder remains a package-level stub while the user-facing route is `/automations`; Screenshare remains hidden; Electrobun menu entries still drift from renderer app entries.
+- Still open: Android Contacts/Phone/WiFi packages are not imported by the host app, WiFi is absent from native entrypoints, and current tests do not catch renderer registration gaps.
+- Launch gate: add host-import/native-entrypoint assertions and make Screenshare tests discoverable before treating utility apps as complete.
+
 ## Current state
 
 The app catalog has a working client-side path for bundled utility apps. Renderer-owned internal tools are injected before server catalog data so their curated names, hero images, order, capabilities, and direct routes win over bare runtime entries (`packages/app-core/src/components/pages/AppsView.tsx:451`). The merged catalog loader also combines static catalog apps, installed apps, and registered overlay apps, then hides explicitly internal/system-only packages from normal browse (`packages/app-core/src/components/apps/catalog-loader.ts:13`, `packages/app-core/src/components/apps/helpers.ts:43`).

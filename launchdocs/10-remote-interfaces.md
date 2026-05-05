@@ -1,5 +1,11 @@
 # Launch Readiness 10: Remote Interfaces
 
+## Second-Pass Status (2026-05-05)
+
+- Current: the main blockers are still accurate: cloud pair has no consume/promote/update-ingress path, no persisted expiry, and T9a data-plane resolution still happens before the final durable session id exists.
+- Still open: phone manual pairing and chat mirroring are placeholders, remote scenarios are weak prompt-routing checks rather than transport/session tests, and multi-controller revoke/fanout e2e is missing.
+- Launch gate: app-core pairing-token and LifeOps service tests cover pieces only; add cloud-to-T9a contract and two-client browser/data-plane tests before launch.
+
 ## Current state
 
 Remote/second-device support exists in several partially overlapping layers:
