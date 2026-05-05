@@ -1875,7 +1875,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--api-key-env", api_key_env.strip()])
         test_file = extra.get("test_file")
         if isinstance(test_file, str) and test_file.strip():
-            args.extend(["--test-file", test_file.strip()])
+            test_path = Path(test_file.strip())
+            if not test_path.is_absolute():
+                for candidate in (repo_root / test_path, repo_root.parent / test_path):
+                    if candidate.exists():
+                        test_path = candidate.resolve()
+                        break
+            args.extend(["--test-file", str(test_path)])
         max_per_bucket = extra.get("max_per_bucket") or extra.get("max_examples")
         if isinstance(max_per_bucket, int) and max_per_bucket > 0:
             args.extend(["--max-per-bucket", str(max_per_bucket)])

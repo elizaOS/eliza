@@ -13,6 +13,13 @@ declare module "@elizaos/capacitor-canvas" {
 }
 
 declare module "@elizaos/capacitor-desktop" {
+  type DesktopEventPayload<TEvent extends string> =
+    TEvent extends "shortcutPressed"
+      ? { id: string }
+      : TEvent extends "trayMenuClick"
+        ? { itemId: string; checked?: boolean }
+        : unknown;
+
   export const Desktop: {
     getVersion(): Promise<{ runtime: string }>;
     registerShortcut(options: {
@@ -21,7 +28,7 @@ declare module "@elizaos/capacitor-desktop" {
     }): Promise<void>;
     addListener<TEvent extends string>(
       eventName: TEvent,
-      listener: (event: unknown) => void,
+      listener: (event: DesktopEventPayload<TEvent>) => void,
     ): Promise<{ remove(): void | Promise<void> }>;
     setTrayMenu(options: { menu: readonly unknown[] }): Promise<void>;
   };

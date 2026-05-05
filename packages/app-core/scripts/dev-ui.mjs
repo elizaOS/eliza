@@ -122,8 +122,20 @@ function resolveDevServerEntryRelativePath(devCwd) {
   if (existsSync(elizaRepoEntry)) {
     return "packages/app-core/src/runtime/dev-server.ts";
   }
+  const packagedAppCoreEntry = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "packages",
+    "app-core",
+    "src",
+    "runtime",
+    "dev-server.js",
+  );
+  if (existsSync(packagedAppCoreEntry)) {
+    return packagedAppCoreEntry;
+  }
   throw new Error(
-    `[dev-ui] dev-server.ts not found under ${devCwd}. Expected eliza/packages/app-core/... (Eliza-style checkout) or packages/app-core/... (eliza repo root).`,
+    `[dev-ui] dev-server entry not found under ${devCwd}. Expected eliza/packages/app-core/... (Eliza-style checkout), packages/app-core/... (eliza repo root), or a packaged @elizaos/app-core runtime entry.`,
   );
 }
 

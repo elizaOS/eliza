@@ -145,7 +145,6 @@ import { handleAvatarRoutes } from "./avatar-routes.js";
 // resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
 // before the runtime plugin route dispatcher runs.
 import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
-import { handleBrowserWorkspaceRoutes } from "./browser-workspace-routes.js";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
@@ -2298,19 +2297,8 @@ async function handleRequest(
     return;
   }
 
-  if (
-    await handleBrowserWorkspaceRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      readJsonBody,
-      json,
-      error,
-    })
-  ) {
-    return;
-  }
+  // Browser workspace routes (/api/browser-workspace/*) are served by the
+  // @elizaos/app-browser plugin via Plugin.routes.
 
   // Agent self-status, Privy, and ERC-8004 registry routes are now handled
   // by handleAgentStatusRoutes above.

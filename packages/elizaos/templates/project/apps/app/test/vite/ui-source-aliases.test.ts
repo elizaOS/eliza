@@ -33,7 +33,8 @@ function resolveAlias(specifier: string): string | null {
 describe("workspace ui source aliases", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(here, "../../../..");
-  const uiSrcRoot = path.join(repoRoot, "eliza/packages/ui/src");
+  const localElizaRoot = path.join(repoRoot, "eliza");
+  const uiSrcRoot = path.join(localElizaRoot, "packages/ui/src");
   const uiSrcAvailable = fs.existsSync(uiSrcRoot);
 
   it.runIf(uiSrcAvailable)(

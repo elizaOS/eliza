@@ -18,6 +18,7 @@ import {
 } from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
+import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import type {
   ChatTokenUsage,
   ConnectionStateInfo,
@@ -292,6 +293,7 @@ export class ElizaClient {
         const transport =
           this.requestTransport === fetchAgentTransport
             ? ((await androidNativeAgentTransportForUrl(requestUrl)) ??
+              nativeCloudHttpTransportForUrl(requestUrl) ??
               this.requestTransport)
             : this.requestTransport;
         return await transport.request(requestUrl, requestInit, { timeoutMs });

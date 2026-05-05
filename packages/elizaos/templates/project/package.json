@@ -25,6 +25,7 @@
     "verify": "bun run typecheck && bun run lint",
     "setup:upstreams": "node scripts/eliza-source-mode.mjs local --install",
     "eliza:local": "node scripts/eliza-source-mode.mjs local --install",
-    "eliza:packages": "node scripts/eliza-source-mode.mjs packages --install"
+    "eliza:packages": "node scripts/eliza-source-mode.mjs packages --install",
+    "postinstall": "node scripts/ensure-elizaos-optional-app-stubs.mjs"
   }
 }

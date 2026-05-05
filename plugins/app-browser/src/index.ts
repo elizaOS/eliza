@@ -2,6 +2,7 @@ import { gatePluginSessionForHostedApp } from "@elizaos/agent";
 import type { Plugin } from "@elizaos/core";
 import { manageElizaBrowserWorkspaceAction } from "./action";
 import { appBrowserWorkspaceProvider } from "./provider";
+import { browserWorkspaceRoutes } from "./setup-routes";
 import { AppBrowserWorkspaceService } from "./service";
 import {
   approveElizaWalletRequestAction,
@@ -21,6 +22,7 @@ const rawAppBrowserPlugin: Plugin = {
   ],
   providers: [appBrowserWorkspaceProvider],
   services: [AppBrowserWorkspaceService],
+  routes: browserWorkspaceRoutes,
 };
 
 export const appBrowserPlugin: Plugin = gatePluginSessionForHostedApp(

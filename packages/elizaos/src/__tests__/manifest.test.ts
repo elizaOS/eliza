@@ -29,6 +29,41 @@ describe("templates-manifest.json", () => {
     expect(getTemplateById("project")?.id).toBe("project");
   });
 
+  test("project template is package-first by default", () => {
+    const projectTemplate = getTemplateById("project");
+    expect(projectTemplate?.upstream).toBeUndefined();
+
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.join(PACKAGE_ROOT, "templates", "project", "package.json"),
+        "utf-8",
+      ),
+    );
+    expect(packageJson.workspaces).toEqual(["apps/*"]);
+    expect(JSON.stringify(packageJson)).not.toContain("eliza/packages");
+
+    const appPackageJson = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          PACKAGE_ROOT,
+          "templates",
+          "project",
+          "apps",
+          "app",
+          "package.json",
+        ),
+        "utf-8",
+      ),
+    );
+    for (const [name, spec] of Object.entries(
+      appPackageJson.dependencies ?? {},
+    )) {
+      if (String(name).startsWith("@elizaos/")) {
+        expect(spec).not.toBe("workspace:*");
+      }
+    }
+  });
+
   test("packaged templates directory contains the expected source templates", () => {
     expect(fs.existsSync(path.join(PACKAGE_ROOT, "templates", "plugin"))).toBe(
       true,

@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import {
   buildWindowsRepairSteps,
@@ -13,6 +14,7 @@ import {
 } from "./lib/desktop-preflight.mjs";
 
 const ROOT = process.cwd();
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 // --app=<name> selects which app to build (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
@@ -32,6 +34,11 @@ const COMMAND_PREFIX = (process.env.ELIZA_DESKTOP_COMMAND_PREFIX ?? "")
   .trim()
   .split(/\s+/)
   .filter(Boolean);
+const RUNTIME_COPY_SCRIPT = fs.existsSync(
+  path.join(ROOT, "scripts", "copy-runtime-node-modules.ts"),
+)
+  ? path.join(ROOT, "scripts", "copy-runtime-node-modules.ts")
+  : path.join(SCRIPT_DIR, "copy-runtime-node-modules.ts");
 
 const argv = process.argv.slice(2);
 const command = argv[0] && !argv[0].startsWith("--") ? argv[0] : "build";
@@ -459,7 +466,7 @@ function stageDesktopBuild() {
     [
       "--import",
       "tsx",
-      "scripts/copy-runtime-node-modules.ts",
+      RUNTIME_COPY_SCRIPT,
       "--scan-dir",
       "dist",
       "--target-dist",

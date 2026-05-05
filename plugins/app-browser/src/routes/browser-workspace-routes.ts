@@ -1,3 +1,17 @@
+/**
+ * Browser workspace HTTP routes.
+ *
+ * Migrated from `packages/agent/src/api/browser-workspace-routes.ts`. The
+ * runtime mounts these via `Plugin.routes` with `rawPath: true` so the
+ * legacy `/api/browser-workspace/*` paths are preserved.
+ *
+ * The handler depends on the browser-workspace service helpers exported
+ * from `@elizaos/agent/services/browser-workspace`. We keep the dependency
+ * direction app-browser → agent (app-browser already lists agent in its
+ * dependencies for `gatePluginSessionForHostedApp`).
+ */
+
+import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
 import {
   type BrowserWorkspaceCommand,
   closeBrowserWorkspaceTab,
@@ -11,8 +25,7 @@ import {
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
-} from "../services/browser-workspace.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+} from "@elizaos/agent/services/browser-workspace";
 
 type OpenBrowserWorkspaceBody = {
   url?: string;
@@ -160,3 +173,19 @@ export async function handleBrowserWorkspaceRoutes(
     return true;
   }
 }
+
+export const BROWSER_WORKSPACE_ROUTE_PATHS: Array<{
+  type: string;
+  path: string;
+}> = [
+  { type: "GET", path: "/api/browser-workspace" },
+  { type: "POST", path: "/api/browser-workspace/command" },
+  { type: "GET", path: "/api/browser-workspace/tabs" },
+  { type: "POST", path: "/api/browser-workspace/tabs" },
+  { type: "DELETE", path: "/api/browser-workspace/tabs/:tabId" },
+  { type: "POST", path: "/api/browser-workspace/tabs/:tabId/show" },
+  { type: "POST", path: "/api/browser-workspace/tabs/:tabId/hide" },
+  { type: "GET", path: "/api/browser-workspace/tabs/:tabId/snapshot" },
+  { type: "POST", path: "/api/browser-workspace/tabs/:tabId/navigate" },
+  { type: "POST", path: "/api/browser-workspace/tabs/:tabId/eval" },
+];

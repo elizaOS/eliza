@@ -1,8 +1,7 @@
 /**
  * Type stubs for `@elizaos/app-core` — keeps `tsc --noEmit` passing on a
- * fresh template scaffold before the user initializes the `eliza` git
- * submodule. Once the submodule is present the workspace resolution
- * supersedes these stubs with the real source.
+ * fresh template scaffold while Vite resolves the published package at
+ * runtime. Local source mode aliases in-repo elizaOS files when enabled.
  *
  * Signatures are intentionally broad (`unknown` payloads, broad union
  * params) — the goal is type-check parity, not perfect mirroring. Once the
