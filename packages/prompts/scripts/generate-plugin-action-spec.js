@@ -860,8 +860,7 @@ function sanitizeSchema(schema) {
 function sanitizeExamples(examples) {
   if (!Array.isArray(examples)) return undefined;
   const vals = examples.filter(
-    (v) =>
-      v === null || ["string", "number", "boolean"].includes(typeof v),
+    (v) => v === null || ["string", "number", "boolean"].includes(typeof v),
   );
   return vals.length > 0 ? vals : undefined;
 }
@@ -959,7 +958,10 @@ function inferParametersFromDescription(description) {
           .split("|")
           .map((v) => v.trim())
           .filter(Boolean);
-        if (enumValues.length > 1 && enumValues.every((v) => /^[\w-]+$/.test(v))) {
+        if (
+          enumValues.length > 1 &&
+          enumValues.every((v) => /^[\w-]+$/.test(v))
+        ) {
           schema.enum = enumValues;
         }
       }
@@ -1155,8 +1157,7 @@ function main() {
   function sampleValueForParam(param) {
     const examples = Array.isArray(param.examples) ? param.examples : [];
     const example = examples.find(
-      (v) =>
-        v === null || ["string", "number", "boolean"].includes(typeof v),
+      (v) => v === null || ["string", "number", "boolean"].includes(typeof v),
     );
     if (example !== undefined) return example;
 
@@ -1241,7 +1242,7 @@ function main() {
             ? descriptionParameters
             : toonTemplateParameters.length > 0
               ? toonTemplateParameters
-          : inferParameters(obj.objectText);
+              : inferParameters(obj.objectText);
       const exampleCalls = buildExampleCallForAction(name, parameters);
 
       // Do not overwrite existing entries; prefer the first seen (stable ordering).

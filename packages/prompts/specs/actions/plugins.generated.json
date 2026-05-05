@@ -37,9 +37,7 @@
       "exampleCalls": [
         {
           "user": "Use ADD_TO_PLAYLIST with the provided parameters.",
-          "actions": [
-            "ADD_TO_PLAYLIST"
-          ],
+          "actions": ["ADD_TO_PLAYLIST"],
           "params": {
             "ADD_TO_PLAYLIST": {
               "confirmed": false
@@ -65,22 +63,14 @@
       "description": "Attack a nearby NPC by name",
       "parameters": [],
       "descriptionCompressed": "Attack nearby NPC by name.",
-      "similes": [
-        "FIGHT_NPC",
-        "MELEE_NPC"
-      ]
+      "similes": ["FIGHT_NPC", "MELEE_NPC"]
     },
     {
       "name": "AUTHENTICATE_GOOGLE",
       "description": "Authenticate with Google to access Meet API",
       "parameters": [],
       "descriptionCompressed": "authenticate w/ Google access Meet API",
-      "similes": [
-        "login to google",
-        "google auth",
-        "sign in",
-        "authenticate"
-      ]
+      "similes": ["login to google", "google auth", "sign in", "authenticate"]
     },
     {
       "name": "BLOCK_UNTIL_TASK_COMPLETE",
@@ -141,9 +131,7 @@
       "exampleCalls": [
         {
           "user": "Use BLOCK_UNTIL_TASK_COMPLETE with the provided parameters.",
-          "actions": [
-            "BLOCK_UNTIL_TASK_COMPLETE"
-          ],
+          "actions": ["BLOCK_UNTIL_TASK_COMPLETE"],
           "params": {
             "BLOCK_UNTIL_TASK_COMPLETE": {
               "websites": "example",
@@ -161,11 +149,7 @@
       "description": "Add or remove a reaction on a message via BlueBubbles",
       "parameters": [],
       "descriptionCompressed": "React on iMessage via BlueBubbles.",
-      "similes": [
-        "BLUEBUBBLES_REACT",
-        "BB_REACTION",
-        "IMESSAGE_REACT"
-      ]
+      "similes": ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"]
     },
     {
       "name": "BROWSER_ACTION",
@@ -252,10 +236,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "up",
-              "down"
-            ]
+            "enum": ["up", "down"]
           }
         },
         {
@@ -298,9 +279,7 @@
       "exampleCalls": [
         {
           "user": "Use BROWSER_ACTION with the provided parameters.",
-          "actions": [
-            "BROWSER_ACTION"
-          ],
+          "actions": ["BROWSER_ACTION"],
           "params": {
             "BROWSER_ACTION": {
               "action": "open",
@@ -323,20 +302,14 @@
       "description": "Use tinderbox on logs in inventory to light a fire",
       "parameters": [],
       "descriptionCompressed": "Use tinderbox on logs to light fire.",
-      "similes": [
-        "LIGHT_FIRE",
-        "FIREMAKING"
-      ]
+      "similes": ["LIGHT_FIRE", "FIREMAKING"]
     },
     {
       "name": "BUY_FROM_SHOP",
       "description": "Buy an item from the currently open shop, optionally specifying a count (defaults to 1)",
       "parameters": [],
       "descriptionCompressed": "Buy item from open shop.",
-      "similes": [
-        "PURCHASE_ITEM",
-        "BUY_ITEM"
-      ]
+      "similes": ["PURCHASE_ITEM", "BUY_ITEM"]
     },
     {
       "name": "CALL_MCP_TOOL",
@@ -361,22 +334,14 @@
       "description": "Cast a spell by ID, optionally targeting an NPC",
       "parameters": [],
       "descriptionCompressed": "Cast spell by ID, opt. target NPC.",
-      "similes": [
-        "USE_MAGIC",
-        "CAST"
-      ]
+      "similes": ["USE_MAGIC", "CAST"]
     },
     {
       "name": "CHAT_PUBLIC",
       "description": "Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.",
       "parameters": [],
       "descriptionCompressed": "Say something in public chat.",
-      "similes": [
-        "SAY",
-        "SPEAK",
-        "TALK",
-        "BROADCAST"
-      ]
+      "similes": ["SAY", "SPEAK", "TALK", "BROADCAST"]
     },
     {
       "name": "CHECK_AVAILABILITY",
@@ -400,17 +365,11 @@
         }
       ],
       "descriptionCompressed": "Check owner free/busy for one ISO-8601 time window and list overlapping events.",
-      "similes": [
-        "AM_I_FREE",
-        "AVAILABILITY_CHECK",
-        "FREE_BUSY"
-      ],
+      "similes": ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
       "exampleCalls": [
         {
           "user": "Use CHECK_AVAILABILITY with the provided parameters.",
-          "actions": [
-            "CHECK_AVAILABILITY"
-          ],
+          "actions": ["CHECK_AVAILABILITY"],
           "params": {
             "CHECK_AVAILABILITY": {
               "startAt": "example",
@@ -445,9 +404,7 @@
       "exampleCalls": [
         {
           "user": "Use CHECK_BALANCE with the provided parameters.",
-          "actions": [
-            "CHECK_BALANCE"
-          ],
+          "actions": ["CHECK_BALANCE"],
           "params": {
             "CHECK_BALANCE": {
               "chain": "example"
@@ -461,53 +418,35 @@
       "description": "Check if payment has been received for the current reading session.",
       "parameters": [],
       "descriptionCompressed": "Check payment status for the active mysticism reading session.",
-      "similes": [
-        "VERIFY_PAYMENT",
-        "PAYMENT_STATUS"
-      ]
+      "similes": ["VERIFY_PAYMENT", "PAYMENT_STATUS"]
     },
     {
       "name": "CHOP_TREE",
       "description": "Chop a nearby tree, optionally specifying the tree type (oak, willow, etc.)",
       "parameters": [],
       "descriptionCompressed": "Chop nearby tree, opt. specify type.",
-      "similes": [
-        "CUT_TREE",
-        "WOODCUT"
-      ]
+      "similes": ["CUT_TREE", "WOODCUT"]
     },
     {
       "name": "CLAUDE_CODE_WORKBENCH_LIST",
       "description": "List available Claude Code workbench workflows.",
       "parameters": [],
       "descriptionCompressed": "list available Claude Code workbench workflow",
-      "similes": [
-        "LIST_WORKBENCH_WORKFLOWS",
-        "WORKBENCH_LIST",
-        "CCW_LIST"
-      ]
+      "similes": ["LIST_WORKBENCH_WORKFLOWS", "WORKBENCH_LIST", "CCW_LIST"]
     },
     {
       "name": "CLAUDE_CODE_WORKBENCH_RUN",
       "description": "Run an allowlisted repo workflow through the Claude Code workbench service.",
       "parameters": [],
       "descriptionCompressed": "run allowlist repo workflow through Claude Code workbench service",
-      "similes": [
-        "RUN_WORKBENCH_WORKFLOW",
-        "WORKBENCH_RUN",
-        "CCW_RUN"
-      ]
+      "similes": ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"]
     },
     {
       "name": "CLEAR_GRAPH",
       "description": "Clear all entities and relationships from the graph.",
       "parameters": [],
       "descriptionCompressed": "clear entity relationship graph",
-      "similes": [
-        "RESET_GRAPH",
-        "CLEAR_ALL",
-        "DELETE_ALL"
-      ]
+      "similes": ["RESET_GRAPH", "CLEAR_ALL", "DELETE_ALL"]
     },
     {
       "name": "CLEAR_LINEAR_ACTIVITY",
@@ -525,18 +464,14 @@
       "description": "Close the bank interface",
       "parameters": [],
       "descriptionCompressed": "Close bank interface.",
-      "similes": [
-        "EXIT_BANK"
-      ]
+      "similes": ["EXIT_BANK"]
     },
     {
       "name": "CLOSE_SHOP",
       "description": "Close the shop interface",
       "parameters": [],
       "descriptionCompressed": "Close shop interface.",
-      "similes": [
-        "EXIT_SHOP"
-      ]
+      "similes": ["EXIT_SHOP"]
     },
     {
       "name": "CLOUD_AGENT",
@@ -548,12 +483,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "provision",
-              "freeze",
-              "resume",
-              "check_credits"
-            ]
+            "enum": ["provision", "freeze", "resume", "check_credits"]
           }
         },
         {
@@ -652,9 +582,7 @@
       "exampleCalls": [
         {
           "user": "Use CLOUD_AGENT with the provided parameters.",
-          "actions": [
-            "CLOUD_AGENT"
-          ],
+          "actions": ["CLOUD_AGENT"],
           "params": {
             "CLOUD_AGENT": {
               "op": "provision",
@@ -677,31 +605,21 @@
       "description": "List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
       "parameters": [],
       "descriptionCompressed": "List available commands. Trigger: /commands, /cmds.",
-      "similes": [
-        "/commands",
-        "/cmds"
-      ]
+      "similes": ["/commands", "/cmds"]
     },
     {
       "name": "COMPLETE_GOAL",
       "description": "Mark the active goal (or a specific goal id) as completed or abandoned. Use status: completed|abandoned and optional notes: why.",
       "parameters": [],
       "descriptionCompressed": "Mark goal completed or abandoned.",
-      "similes": [
-        "FINISH_GOAL",
-        "ABANDON_GOAL",
-        "CLOSE_GOAL"
-      ]
+      "similes": ["FINISH_GOAL", "ABANDON_GOAL", "CLOSE_GOAL"]
     },
     {
       "name": "COOK_FOOD",
       "description": "Cook raw food on a nearby fire or range, optionally specifying the food name",
       "parameters": [],
       "descriptionCompressed": "Cook raw food on fire/range.",
-      "similes": [
-        "COOK",
-        "COOK_RAW_FOOD"
-      ]
+      "similes": ["COOK", "COOK_RAW_FOOD"]
     },
     {
       "name": "COUNT_STATISTICS",
@@ -714,23 +632,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "get statistic current relational data graph",
-      "similes": [
-        "STATS",
-        "STATISTICS",
-        "COUNT"
-      ],
+      "similes": ["STATS", "STATISTICS", "COUNT"],
       "exampleCalls": [
         {
           "user": "Use COUNT_STATISTICS with the provided parameters.",
-          "actions": [
-            "COUNT_STATISTICS"
-          ],
+          "actions": ["COUNT_STATISTICS"],
           "params": {
             "COUNT_STATISTICS": {
               "values": "example"
@@ -744,10 +654,7 @@
       "description": "Use a needle on leather in inventory to craft leather armour",
       "parameters": [],
       "descriptionCompressed": "Craft leather armour with needle.",
-      "similes": [
-        "CRAFTING",
-        "SEW_LEATHER"
-      ]
+      "similes": ["CRAFTING", "SEW_LEATHER"]
     },
     {
       "name": "CREATE_ENTITY",
@@ -760,23 +667,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "create new entity w/ type name entity node relational graph",
-      "similes": [
-        "NEW_ENTITY",
-        "ADD_ENTITY",
-        "MAKE_ENTITY"
-      ],
+      "similes": ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
       "exampleCalls": [
         {
           "user": "Use CREATE_ENTITY with the provided parameters.",
-          "actions": [
-            "CREATE_ENTITY"
-          ],
+          "actions": ["CREATE_ENTITY"],
           "params": {
             "CREATE_ENTITY": {
               "values": "example"
@@ -796,9 +695,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "add comment Linear issue",
@@ -811,9 +708,7 @@
       "exampleCalls": [
         {
           "user": "Use CREATE_LINEAR_COMMENT with the provided parameters.",
-          "actions": [
-            "CREATE_LINEAR_COMMENT"
-          ],
+          "actions": ["CREATE_LINEAR_COMMENT"],
           "params": {
             "CREATE_LINEAR_COMMENT": {
               "name": "example"
@@ -827,11 +722,7 @@
       "description": "Create a new issue in Linear",
       "parameters": [],
       "descriptionCompressed": "create new issue Linear",
-      "similes": [
-        "create-linear-issue",
-        "new-linear-issue",
-        "add-linear-issue"
-      ]
+      "similes": ["create-linear-issue", "new-linear-issue", "add-linear-issue"]
     },
     {
       "name": "CREATE_MEETING",
@@ -856,23 +747,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "create relationship between two entity relationship edge relational graph",
-      "similes": [
-        "LINK",
-        "CONNECT",
-        "RELATE"
-      ],
+      "similes": ["LINK", "CONNECT", "RELATE"],
       "exampleCalls": [
         {
           "user": "Use CREATE_RELATIONSHIP with the provided parameters.",
-          "actions": [
-            "CREATE_RELATIONSHIP"
-          ],
+          "actions": ["CREATE_RELATIONSHIP"],
           "params": {
             "CREATE_RELATIONSHIP": {
               "values": "example"
@@ -891,10 +774,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "create_group_chat",
-              "escalate_to_user"
-            ]
+            "enum": ["create_group_chat", "escalate_to_user"]
           }
         },
         {
@@ -943,9 +823,7 @@
       "exampleCalls": [
         {
           "user": "Use CROSS_PLATFORM_GATEWAY with the provided parameters.",
-          "actions": [
-            "CROSS_PLATFORM_GATEWAY"
-          ],
+          "actions": ["CROSS_PLATFORM_GATEWAY"],
           "params": {
             "CROSS_PLATFORM_GATEWAY": {
               "subaction": "create_group_chat",
@@ -994,22 +872,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "delete current entity relationship",
-      "similes": [
-        "REMOVE_ENTITY",
-        "DESTROY_ENTITY"
-      ],
+      "similes": ["REMOVE_ENTITY", "DESTROY_ENTITY"],
       "exampleCalls": [
         {
           "user": "Use DELETE_ENTITY with the provided parameters.",
-          "actions": [
-            "DELETE_ENTITY"
-          ],
+          "actions": ["DELETE_ENTITY"],
           "params": {
             "DELETE_ENTITY": {
               "values": "example"
@@ -1035,22 +906,14 @@
       "description": "Delete a message from a Discord channel",
       "parameters": [],
       "descriptionCompressed": "delete message Discord channel",
-      "similes": [
-        "REMOVE_MESSAGE",
-        "UNSEND_MESSAGE",
-        "DELETE_DISCORD_MESSAGE"
-      ]
+      "similes": ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"]
     },
     {
       "name": "DELETE_N8N_WORKFLOW",
       "description": "Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
       "parameters": [],
       "descriptionCompressed": "delete n8n workflow permanently action cannot undone identify workflow ID, name, semantic description language",
-      "similes": [
-        "DELETE_WORKFLOW",
-        "REMOVE_WORKFLOW",
-        "DESTROY_WORKFLOW"
-      ]
+      "similes": ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"]
     },
     {
       "name": "DELETE_PLAYLIST",
@@ -1075,9 +938,7 @@
       "exampleCalls": [
         {
           "user": "Use DELETE_PLAYLIST with the provided parameters.",
-          "actions": [
-            "DELETE_PLAYLIST"
-          ],
+          "actions": ["DELETE_PLAYLIST"],
           "params": {
             "DELETE_PLAYLIST": {
               "confirmed": false
@@ -1091,71 +952,43 @@
       "description": "Deposit an item into the bank by name, optionally specifying a count (defaults to all)",
       "parameters": [],
       "descriptionCompressed": "Deposit item into bank.",
-      "similes": [
-        "BANK_ITEM",
-        "STORE_ITEM"
-      ]
+      "similes": ["BANK_ITEM", "STORE_ITEM"]
     },
     {
       "name": "DEXSCREENER_BOOSTED_TOKENS",
       "description": "Get boosted (promoted/sponsored) tokens from DexScreener, showing tokens with paid promotional boosts",
       "parameters": [],
-      "similes": [
-        "promoted tokens",
-        "sponsored tokens",
-        "boosted coins"
-      ]
+      "similes": ["promoted tokens", "sponsored tokens", "boosted coins"]
     },
     {
       "name": "DEXSCREENER_CHAIN_PAIRS",
       "description": "Get top trading pairs from a specific blockchain sorted by volume, liquidity, price change, or transaction count",
       "parameters": [],
-      "similes": [
-        "tokens on",
-        "pairs on",
-        "top on"
-      ]
+      "similes": ["tokens on", "pairs on", "top on"]
     },
     {
       "name": "DEXSCREENER_NEW_PAIRS",
       "description": "Get newly created trading pairs from DexScreener, showing recently launched tokens and their initial liquidity",
       "parameters": [],
-      "similes": [
-        "new listings",
-        "latest pairs",
-        "new tokens",
-        "fresh pairs"
-      ]
+      "similes": ["new listings", "latest pairs", "new tokens", "fresh pairs"]
     },
     {
       "name": "DEXSCREENER_SEARCH",
       "description": "Search for tokens or trading pairs on DexScreener by name, symbol, or contract address",
       "parameters": [],
-      "similes": [
-        "find token",
-        "look for",
-        "search dexscreener"
-      ]
+      "similes": ["find token", "look for", "search dexscreener"]
     },
     {
       "name": "DEXSCREENER_TOKEN_INFO",
       "description": "Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
       "parameters": [],
-      "similes": [
-        "token details",
-        "token price",
-        "get token",
-        "check token"
-      ]
+      "similes": ["token details", "token price", "get token", "check token"]
     },
     {
       "name": "DEXSCREENER_TOKEN_PROFILES",
       "description": "Get latest token profiles from DexScreener including social links, descriptions, and project information",
       "parameters": [],
-      "similes": [
-        "token profiles",
-        "token details page"
-      ]
+      "similes": ["token profiles", "token details page"]
     },
     {
       "name": "DEXSCREENER_TRENDING",
@@ -1193,9 +1026,7 @@
       "exampleCalls": [
         {
           "user": "Use DOWNLOAD_MUSIC with the provided parameters.",
-          "actions": [
-            "DOWNLOAD_MUSIC"
-          ],
+          "actions": ["DOWNLOAD_MUSIC"],
           "params": {
             "DOWNLOAD_MUSIC": {
               "confirmed": false
@@ -1209,20 +1040,14 @@
       "description": "Drop an item from inventory by name",
       "parameters": [],
       "descriptionCompressed": "Drop inventory item.",
-      "similes": [
-        "DISCARD_ITEM",
-        "THROW_AWAY"
-      ]
+      "similes": ["DISCARD_ITEM", "THROW_AWAY"]
     },
     {
       "name": "EAT_FOOD",
       "description": "Eat the first food item found in inventory",
       "parameters": [],
       "descriptionCompressed": "Eat food from inventory.",
-      "similes": [
-        "CONSUME_FOOD",
-        "HEAL"
-      ]
+      "similes": ["CONSUME_FOOD", "HEAL"]
     },
     {
       "name": "EDIT_MESSAGE",
@@ -1241,10 +1066,7 @@
       "description": "Equip an item from inventory by name",
       "parameters": [],
       "descriptionCompressed": "Equip inventory item.",
-      "similes": [
-        "WEAR_ITEM",
-        "WIELD_ITEM"
-      ]
+      "similes": ["WEAR_ITEM", "WIELD_ITEM"]
     },
     {
       "name": "EXECUTE_TRADE",
@@ -1292,20 +1114,11 @@
         }
       ],
       "descriptionCompressed": "Execute BSC token trade (buy/sell) via PancakeSwap (admin/owner only).",
-      "similes": [
-        "BUY_TOKEN",
-        "SELL_TOKEN",
-        "SWAP",
-        "TRADE",
-        "BUY",
-        "SELL"
-      ],
+      "similes": ["BUY_TOKEN", "SELL_TOKEN", "SWAP", "TRADE", "BUY", "SELL"],
       "exampleCalls": [
         {
           "user": "Use EXECUTE_TRADE with the provided parameters.",
-          "actions": [
-            "EXECUTE_TRADE"
-          ],
+          "actions": ["EXECUTE_TRADE"],
           "params": {
             "EXECUTE_TRADE": {
               "side": "example",
@@ -1328,10 +1141,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "post",
-              "reply"
-            ]
+            "enum": ["post", "reply"]
           }
         },
         {
@@ -1370,9 +1180,7 @@
       "exampleCalls": [
         {
           "user": "Use FARCASTER_CAST with the provided parameters.",
-          "actions": [
-            "FARCASTER_CAST"
-          ],
+          "actions": ["FARCASTER_CAST"],
           "params": {
             "FARCASTER_CAST": {
               "subaction": "post",
@@ -1389,11 +1197,7 @@
       "description": "Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
       "parameters": [],
       "descriptionCompressed": "fetch home timeline x return top-n tweet rank engagement (like + retweet 2)",
-      "similes": [
-        "GET_X_FEED",
-        "TOP_TWEETS",
-        "FEED_TOP"
-      ]
+      "similes": ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"]
     },
     {
       "name": "FILE_ACTION",
@@ -1521,9 +1325,7 @@
       "exampleCalls": [
         {
           "user": "Use FILE_ACTION with the provided parameters.",
-          "actions": [
-            "FILE_ACTION"
-          ],
+          "actions": ["FILE_ACTION"],
           "params": {
             "FILE_ACTION": {
               "action": "read",
@@ -1615,9 +1417,7 @@
       "exampleCalls": [
         {
           "user": "Use FINALIZE_WORKSPACE with the provided parameters.",
-          "actions": [
-            "FINALIZE_WORKSPACE"
-          ],
+          "actions": ["FINALIZE_WORKSPACE"],
           "params": {
             "FINALIZE_WORKSPACE": {
               "workspaceId": "example",
@@ -1643,23 +1443,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "find shortest path between two entity relationship graph",
-      "similes": [
-        "PATH",
-        "ROUTE",
-        "CONNECTION_PATH"
-      ],
+      "similes": ["PATH", "ROUTE", "CONNECTION_PATH"],
       "exampleCalls": [
         {
           "user": "Use FIND_PATH with the provided parameters.",
-          "actions": [
-            "FIND_PATH"
-          ],
+          "actions": ["FIND_PATH"],
           "params": {
             "FIND_PATH": {
               "values": "example"
@@ -1673,30 +1465,21 @@
       "description": "Fish at a nearby fishing spot, optionally specifying the spot type",
       "parameters": [],
       "descriptionCompressed": "Fish at nearby spot, opt. type.",
-      "similes": [
-        "GO_FISHING",
-        "CATCH_FISH"
-      ]
+      "similes": ["GO_FISHING", "CATCH_FISH"]
     },
     {
       "name": "FLETCH_LOGS",
       "description": "Use a knife on logs in inventory to fletch them",
       "parameters": [],
       "descriptionCompressed": "Fletch logs with knife.",
-      "similes": [
-        "FLETCHING",
-        "CARVE_LOGS"
-      ]
+      "similes": ["FLETCHING", "CARVE_LOGS"]
     },
     {
       "name": "FORM_RESTORE",
       "description": "Restore a previously stashed form session",
       "parameters": [],
       "descriptionCompressed": "Restore stashed form session.",
-      "similes": [
-        "RESUME_FORM",
-        "CONTINUE_FORM"
-      ]
+      "similes": ["RESUME_FORM", "CONTINUE_FORM"]
     },
     {
       "name": "GENERATE_REPORT",
@@ -1733,9 +1516,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "get detail specific Linear issue",
@@ -1749,9 +1530,7 @@
       "exampleCalls": [
         {
           "user": "Use GET_LINEAR_ISSUE with the provided parameters.",
-          "actions": [
-            "GET_LINEAR_ISSUE"
-          ],
+          "actions": ["GET_LINEAR_ISSUE"],
           "params": {
             "GET_LINEAR_ISSUE": {
               "name": "example"
@@ -1807,14 +1586,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "all",
-              "evm",
-              "solana",
-              "bsc",
-              "ethereum",
-              "base"
-            ]
+            "enum": ["all", "evm", "solana", "bsc", "ethereum", "base"]
           }
         }
       ],
@@ -1829,9 +1601,7 @@
       "exampleCalls": [
         {
           "user": "Use GET_RECEIVE_ADDRESS with the provided parameters.",
-          "actions": [
-            "GET_RECEIVE_ADDRESS"
-          ],
+          "actions": ["GET_RECEIVE_ADDRESS"],
           "params": {
             "GET_RECEIVE_ADDRESS": {
               "chain": "all"
@@ -1845,21 +1615,14 @@
       "description": "Get detailed information about a specific skill including version, owner, and stats.",
       "parameters": [],
       "descriptionCompressed": "Get skill version, owner, stats.",
-      "similes": [
-        "SKILL_INFO",
-        "SKILL_DETAILS"
-      ]
+      "similes": ["SKILL_INFO", "SKILL_DETAILS"]
     },
     {
       "name": "GET_TAILSCALE_STATUS",
       "description": "Get the current status of the Tailscale tunnel",
       "parameters": [],
       "descriptionCompressed": "get current status Tailscale tunnel",
-      "similes": [
-        "TAILSCALE_STATUS",
-        "CHECK_TUNNEL",
-        "TUNNEL_INFO"
-      ]
+      "similes": ["TAILSCALE_STATUS", "CHECK_TUNNEL", "TUNNEL_INFO"]
     },
     {
       "name": "GOOGLE_CHAT_LIST_SPACES",
@@ -1964,9 +1727,7 @@
       "exampleCalls": [
         {
           "user": "Use HEALTH with the provided parameters.",
-          "actions": [
-            "HEALTH"
-          ],
+          "actions": ["HEALTH"],
           "params": {
             "HEALTH": {
               "subaction": "example",
@@ -1984,11 +1745,7 @@
       "description": "Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
       "parameters": [],
       "descriptionCompressed": "Show commands and descriptions. Trigger: /help, /h, /?.",
-      "similes": [
-        "/help",
-        "/h",
-        "/?"
-      ]
+      "similes": ["/help", "/h", "/?"]
     },
     {
       "name": "ICHING_READING",
@@ -2019,33 +1776,21 @@
       "description": "Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
       "parameters": [],
       "descriptionCompressed": "Install skill from ClawHub registry. Security-scanned before activation.",
-      "similes": [
-        "DOWNLOAD_SKILL",
-        "ADD_SKILL",
-        "GET_SKILL"
-      ]
+      "similes": ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"]
     },
     {
       "name": "INTERACT_OBJECT",
       "description": "Interact with a world object by name, with an optional interaction option",
       "parameters": [],
       "descriptionCompressed": "Interact with world object.",
-      "similes": [
-        "USE_OBJECT",
-        "CLICK_OBJECT"
-      ]
+      "similes": ["USE_OBJECT", "CLICK_OBJECT"]
     },
     {
       "name": "LINE_SEND_FLEX_MESSAGE",
       "description": "Send a rich flex message/card via LINE",
       "parameters": [],
       "descriptionCompressed": "send rich flex message/card via LINE",
-      "similes": [
-        "SEND_LINE_CARD",
-        "LINE_FLEX",
-        "LINE_CARD",
-        "SEND_LINE_FLEX"
-      ]
+      "similes": ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"]
     },
     {
       "name": "LINE_SEND_LOCATION",
@@ -2109,9 +1854,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "list project Linear w/ optional filter",
@@ -2124,9 +1867,7 @@
       "exampleCalls": [
         {
           "user": "Use LIST_LINEAR_PROJECTS with the provided parameters.",
-          "actions": [
-            "LIST_LINEAR_PROJECTS"
-          ],
+          "actions": ["LIST_LINEAR_PROJECTS"],
           "params": {
             "LIST_LINEAR_PROJECTS": {
               "toLowerCase": "example"
@@ -2170,9 +1911,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "List all saved playlists.",
@@ -2185,9 +1924,7 @@
       "exampleCalls": [
         {
           "user": "Use LIST_PLAYLISTS with the provided parameters.",
-          "actions": [
-            "LIST_PLAYLISTS"
-          ],
+          "actions": ["LIST_PLAYLISTS"],
           "params": {
             "LIST_PLAYLISTS": {
               "data": "example"
@@ -2220,9 +1957,7 @@
       "exampleCalls": [
         {
           "user": "Use LOAD_PLAYLIST with the provided parameters.",
-          "actions": [
-            "LOAD_PLAYLIST"
-          ],
+          "actions": ["LOAD_PLAYLIST"],
           "params": {
             "LOAD_PLAYLIST": {
               "confirmed": false
@@ -2259,10 +1994,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "solana",
-              "evm"
-            ]
+            "enum": ["solana", "evm"]
           }
         },
         {
@@ -2349,9 +2081,7 @@
       "exampleCalls": [
         {
           "user": "Use lp_management with the provided parameters.",
-          "actions": [
-            "lp_management"
-          ],
+          "actions": ["lp_management"],
           "params": {
             "lp_management": {
               "subaction": "onboard",
@@ -2444,9 +2174,7 @@
       "exampleCalls": [
         {
           "user": "Use MANAGE_ISSUES with the provided parameters.",
-          "actions": [
-            "MANAGE_ISSUES"
-          ],
+          "actions": ["MANAGE_ISSUES"],
           "params": {
             "MANAGE_ISSUES": {
               "operation": "example",
@@ -2477,11 +2205,7 @@
       "description": "List and search customers in a connected Shopify store.",
       "parameters": [],
       "descriptionCompressed": "List/search Shopify customers.",
-      "similes": [
-        "LIST_CUSTOMERS",
-        "FIND_CUSTOMER",
-        "SEARCH_CUSTOMERS"
-      ]
+      "similes": ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"]
     },
     {
       "name": "MANAGE_SHOPIFY_INVENTORY",
@@ -2507,9 +2231,7 @@
       "exampleCalls": [
         {
           "user": "Use MANAGE_SHOPIFY_INVENTORY with the provided parameters.",
-          "actions": [
-            "MANAGE_SHOPIFY_INVENTORY"
-          ],
+          "actions": ["MANAGE_SHOPIFY_INVENTORY"],
           "params": {
             "MANAGE_SHOPIFY_INVENTORY": {
               "confirmed": false
@@ -2542,9 +2264,7 @@
       "exampleCalls": [
         {
           "user": "Use MANAGE_SHOPIFY_ORDERS with the provided parameters.",
-          "actions": [
-            "MANAGE_SHOPIFY_ORDERS"
-          ],
+          "actions": ["MANAGE_SHOPIFY_ORDERS"],
           "params": {
             "MANAGE_SHOPIFY_ORDERS": {
               "confirmed": false
@@ -2577,9 +2297,7 @@
       "exampleCalls": [
         {
           "user": "Use MANAGE_SHOPIFY_PRODUCTS with the provided parameters.",
-          "actions": [
-            "MANAGE_SHOPIFY_PRODUCTS"
-          ],
+          "actions": ["MANAGE_SHOPIFY_PRODUCTS"],
           "params": {
             "MANAGE_SHOPIFY_PRODUCTS": {
               "confirmed": false
@@ -2667,9 +2385,7 @@
       "exampleCalls": [
         {
           "user": "Use MANAGE_WINDOW with the provided parameters.",
-          "actions": [
-            "MANAGE_WINDOW"
-          ],
+          "actions": ["MANAGE_WINDOW"],
           "params": {
             "MANAGE_WINDOW": {
               "action": "list",
@@ -2722,9 +2438,7 @@
       "exampleCalls": [
         {
           "user": "Use MARK_FOLLOWUP_DONE with the provided parameters.",
-          "actions": [
-            "MARK_FOLLOWUP_DONE"
-          ],
+          "actions": ["MARK_FOLLOWUP_DONE"],
           "params": {
             "MARK_FOLLOWUP_DONE": {
               "contactId": "example",
@@ -2740,11 +2454,7 @@
       "description": "Clear all calculation buffers and reset to zero.",
       "parameters": [],
       "descriptionCompressed": "clear calculation buffer reset zero",
-      "similes": [
-        "CLEAR",
-        "RESET",
-        "CLEAR_ALL"
-      ]
+      "similes": ["CLEAR", "RESET", "CLEAR_ALL"]
     },
     {
       "name": "MATH_RECALL",
@@ -2757,23 +2467,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "recall value memory input buffer",
-      "similes": [
-        "RECALL",
-        "LOAD",
-        "MEMORY_RECALL"
-      ],
+      "similes": ["RECALL", "LOAD", "MEMORY_RECALL"],
       "exampleCalls": [
         {
           "user": "Use MATH_RECALL with the provided parameters.",
-          "actions": [
-            "MATH_RECALL"
-          ],
+          "actions": ["MATH_RECALL"],
           "params": {
             "MATH_RECALL": {
               "values": "example"
@@ -2793,23 +2495,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "store current accumulator value memory",
-      "similes": [
-        "STORE",
-        "SAVE",
-        "MEMORY_STORE"
-      ],
+      "similes": ["STORE", "SAVE", "MEMORY_STORE"],
       "exampleCalls": [
         {
           "user": "Use MATH_STORE with the provided parameters.",
-          "actions": [
-            "MATH_STORE"
-          ],
+          "actions": ["MATH_STORE"],
           "params": {
             "MATH_STORE": {
               "values": "example"
@@ -2823,22 +2517,14 @@
       "description": "Join a Matrix room by ID or alias",
       "parameters": [],
       "descriptionCompressed": "join Matrix room ID alia",
-      "similes": [
-        "JOIN_MATRIX_ROOM",
-        "ENTER_ROOM"
-      ]
+      "similes": ["JOIN_MATRIX_ROOM", "ENTER_ROOM"]
     },
     {
       "name": "MATRIX_LIST_ROOMS",
       "description": "List all Matrix rooms the bot has joined",
       "parameters": [],
       "descriptionCompressed": "list Matrix room bot join",
-      "similes": [
-        "LIST_MATRIX_ROOMS",
-        "SHOW_ROOMS",
-        "GET_ROOMS",
-        "MY_ROOMS"
-      ]
+      "similes": ["LIST_MATRIX_ROOMS", "SHOW_ROOMS", "GET_ROOMS", "MY_ROOMS"]
     },
     {
       "name": "MATRIX_SEND_MESSAGE",
@@ -2851,23 +2537,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "send message Matrix room",
-      "similes": [
-        "SEND_MATRIX_MESSAGE",
-        "MESSAGE_MATRIX",
-        "MATRIX_TEXT"
-      ],
+      "similes": ["SEND_MATRIX_MESSAGE", "MESSAGE_MATRIX", "MATRIX_TEXT"],
       "exampleCalls": [
         {
           "user": "Use MATRIX_SEND_MESSAGE with the provided parameters.",
-          "actions": [
-            "MATRIX_SEND_MESSAGE"
-          ],
+          "actions": ["MATRIX_SEND_MESSAGE"],
           "params": {
             "MATRIX_SEND_MESSAGE": {
               "data": "example"
@@ -2887,23 +2565,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "react Matrix message w/ emoji",
-      "similes": [
-        "REACT_MATRIX",
-        "MATRIX_REACT",
-        "ADD_MATRIX_REACTION"
-      ],
+      "similes": ["REACT_MATRIX", "MATRIX_REACT", "ADD_MATRIX_REACTION"],
       "exampleCalls": [
         {
           "user": "Use MATRIX_SEND_REACTION with the provided parameters.",
-          "actions": [
-            "MATRIX_SEND_REACTION"
-          ],
+          "actions": ["MATRIX_SEND_REACTION"],
           "params": {
             "MATRIX_SEND_REACTION": {
               "data": "example"
@@ -2917,19 +2587,14 @@
       "description": "Mine a nearby rock, optionally specifying the ore type (copper, tin, iron, etc.)",
       "parameters": [],
       "descriptionCompressed": "Mine nearby rock, opt. ore type.",
-      "similes": [
-        "MINE_ORE",
-        "MINE"
-      ]
+      "similes": ["MINE_ORE", "MINE"]
     },
     {
       "name": "MODELS_COMMAND",
       "description": "List available AI models and providers. Only activates for /models slash command.",
       "parameters": [],
       "descriptionCompressed": "List AI models/providers. Trigger: /models.",
-      "similes": [
-        "/models"
-      ]
+      "similes": ["/models"]
     },
     {
       "name": "MODIFY_EXISTING_N8N_WORKFLOW",
@@ -2954,23 +2619,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "perform addition multiverse number behave differently base dimensional constant (prime, quantum, chaos)",
-      "similes": [
-        "M_ADD",
-        "MULTI_ADD",
-        "DIMENSIONAL_ADD"
-      ],
+      "similes": ["M_ADD", "MULTI_ADD", "DIMENSIONAL_ADD"],
       "exampleCalls": [
         {
           "user": "Use MULTIVERSE_ADD with the provided parameters.",
-          "actions": [
-            "MULTIVERSE_ADD"
-          ],
+          "actions": ["MULTIVERSE_ADD"],
           "params": {
             "MULTIVERSE_ADD": {
               "values": "example"
@@ -2990,23 +2647,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "perform division multiverse infinity zero special meaning (safe, infinite, golden)",
-      "similes": [
-        "M_DIVIDE",
-        "MULTI_DIV",
-        "DIMENSIONAL_DIVIDE"
-      ],
+      "similes": ["M_DIVIDE", "MULTI_DIV", "DIMENSIONAL_DIVIDE"],
       "exampleCalls": [
         {
           "user": "Use MULTIVERSE_DIVIDE with the provided parameters.",
-          "actions": [
-            "MULTIVERSE_DIVIDE"
-          ],
+          "actions": ["MULTIVERSE_DIVIDE"],
           "params": {
             "MULTIVERSE_DIVIDE": {
               "values": "example"
@@ -3026,23 +2675,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "perform modulo operation multiverse w/ cyclical dimensional property (cyclical, spiral, fractal)",
-      "similes": [
-        "M_MODULO",
-        "MULTI_MOD",
-        "DIMENSIONAL_MODULO"
-      ],
+      "similes": ["M_MODULO", "MULTI_MOD", "DIMENSIONAL_MODULO"],
       "exampleCalls": [
         {
           "user": "Use MULTIVERSE_MODULO with the provided parameters.",
-          "actions": [
-            "MULTIVERSE_MODULO"
-          ],
+          "actions": ["MULTIVERSE_MODULO"],
           "params": {
             "MULTIVERSE_MODULO": {
               "values": "example"
@@ -3062,23 +2703,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "perform multiplication across dimensional boundary w/ exotic number behavior (fibonacci, exponential, harmonic)",
-      "similes": [
-        "M_MULTIPLY",
-        "MULTI_MUL",
-        "DIMENSIONAL_MULTIPLY"
-      ],
+      "similes": ["M_MULTIPLY", "MULTI_MUL", "DIMENSIONAL_MULTIPLY"],
       "exampleCalls": [
         {
           "user": "Use MULTIVERSE_MULTIPLY with the provided parameters.",
-          "actions": [
-            "MULTIVERSE_MULTIPLY"
-          ],
+          "actions": ["MULTIVERSE_MULTIPLY"],
           "params": {
             "MULTIVERSE_MULTIPLY": {
               "values": "example"
@@ -3098,23 +2731,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "raise number power multiverse w/ dimensional effect (standard, imaginary, recursive)",
-      "similes": [
-        "M_POWER",
-        "MULTI_POW",
-        "DIMENSIONAL_POWER"
-      ],
+      "similes": ["M_POWER", "MULTI_POW", "DIMENSIONAL_POWER"],
       "exampleCalls": [
         {
           "user": "Use MULTIVERSE_POWER with the provided parameters.",
-          "actions": [
-            "MULTIVERSE_POWER"
-          ],
+          "actions": ["MULTIVERSE_POWER"],
           "params": {
             "MULTIVERSE_POWER": {
               "values": "example"
@@ -3134,23 +2759,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "take square root multiverse w/ dimensional variation (positive, complex, quantum)",
-      "similes": [
-        "M_SQRT",
-        "MULTI_ROOT",
-        "DIMENSIONAL_SQRT"
-      ],
+      "similes": ["M_SQRT", "MULTI_ROOT", "DIMENSIONAL_SQRT"],
       "exampleCalls": [
         {
           "user": "Use MULTIVERSE_SQRT with the provided parameters.",
-          "actions": [
-            "MULTIVERSE_SQRT"
-          ],
+          "actions": ["MULTIVERSE_SQRT"],
           "params": {
             "MULTIVERSE_SQRT": {
               "values": "example"
@@ -3170,23 +2787,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "perform subtraction multiverse negative number exist dimension (absolute, mirror, void)",
-      "similes": [
-        "M_SUBTRACT",
-        "MULTI_SUB",
-        "DIMENSIONAL_SUBTRACT"
-      ],
+      "similes": ["M_SUBTRACT", "MULTI_SUB", "DIMENSIONAL_SUBTRACT"],
       "exampleCalls": [
         {
           "user": "Use MULTIVERSE_SUBTRACT with the provided parameters.",
-          "actions": [
-            "MULTIVERSE_SUBTRACT"
-          ],
+          "actions": ["MULTIVERSE_SUBTRACT"],
           "params": {
             "MULTIVERSE_SUBTRACT": {
               "values": "example"
@@ -3205,11 +2814,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "generate",
-              "custom",
-              "extend"
-            ]
+            "enum": ["generate", "custom", "extend"]
           }
         },
         {
@@ -3250,9 +2855,7 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC_GENERATION with the provided parameters.",
-          "actions": [
-            "MUSIC_GENERATION"
-          ],
+          "actions": ["MUSIC_GENERATION"],
           "params": {
             "MUSIC_GENERATION": {
               "subaction": "generate",
@@ -3274,9 +2877,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "download"
-            ]
+            "enum": ["download"]
           }
         },
         {
@@ -3290,18 +2891,11 @@
         }
       ],
       "descriptionCompressed": "Library router: download music into local library.",
-      "similes": [
-        "DOWNLOAD_MUSIC",
-        "FETCH_MUSIC",
-        "GET_MUSIC",
-        "SAVE_MUSIC"
-      ],
+      "similes": ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
       "exampleCalls": [
         {
           "user": "Use MUSIC_LIBRARY with the provided parameters.",
-          "actions": [
-            "MUSIC_LIBRARY"
-          ],
+          "actions": ["MUSIC_LIBRARY"],
           "params": {
             "MUSIC_LIBRARY": {
               "subaction": "download",
@@ -3321,11 +2915,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "youtube",
-              "wikipedia",
-              "resolve_and_queue"
-            ]
+            "enum": ["youtube", "wikipedia", "resolve_and_queue"]
           }
         },
         {
@@ -3342,11 +2932,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "artist",
-              "album",
-              "song"
-            ]
+            "enum": ["artist", "album", "song"]
           }
         },
         {
@@ -3371,9 +2957,7 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC_METADATA_SEARCH with the provided parameters.",
-          "actions": [
-            "MUSIC_METADATA_SEARCH"
-          ],
+          "actions": ["MUSIC_METADATA_SEARCH"],
           "params": {
             "MUSIC_METADATA_SEARCH": {
               "subaction": "youtube",
@@ -3395,13 +2979,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "save",
-              "load",
-              "list",
-              "delete",
-              "add"
-            ]
+            "enum": ["save", "load", "list", "delete", "add"]
           }
         },
         {
@@ -3425,9 +3003,7 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC_PLAYLIST with the provided parameters.",
-          "actions": [
-            "MUSIC_PLAYLIST"
-          ],
+          "actions": ["MUSIC_PLAYLIST"],
           "params": {
             "MUSIC_PLAYLIST": {
               "subaction": "save",
@@ -3442,64 +3018,42 @@
       "description": "Select a dialog option by number (1-based) during an NPC conversation",
       "parameters": [],
       "descriptionCompressed": "Select NPC dialog option by number.",
-      "similes": [
-        "SELECT_DIALOG",
-        "CHOOSE_OPTION",
-        "DIALOG_OPTION"
-      ]
+      "similes": ["SELECT_DIALOG", "CHOOSE_OPTION", "DIALOG_OPTION"]
     },
     {
       "name": "NOSTR_PUBLISH_PROFILE",
       "description": "Publish or update the bot's Nostr profile (kind:0 metadata)",
       "parameters": [],
       "descriptionCompressed": "publish update bot Nostr profile (kind: 0 metadata)",
-      "similes": [
-        "UPDATE_NOSTR_PROFILE",
-        "SET_NOSTR_PROFILE",
-        "NOSTR_PROFILE"
-      ]
+      "similes": ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"]
     },
     {
       "name": "NOSTR_SEND_DM",
       "description": "Send an encrypted direct message via Nostr (NIP-04)",
       "parameters": [],
       "descriptionCompressed": "send encrypt direct message via Nostr (NIP-04)",
-      "similes": [
-        "SEND_NOSTR_DM",
-        "NOSTR_MESSAGE",
-        "NOSTR_TEXT",
-        "DM_NOSTR"
-      ]
+      "similes": ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"]
     },
     {
       "name": "OPEN_BANK",
       "description": "Open the nearest bank booth or banker NPC",
       "parameters": [],
       "descriptionCompressed": "Open nearest bank.",
-      "similes": [
-        "USE_BANK",
-        "ACCESS_BANK"
-      ]
+      "similes": ["USE_BANK", "ACCESS_BANK"]
     },
     {
       "name": "OPEN_DOOR",
       "description": "Open the nearest door or gate",
       "parameters": [],
       "descriptionCompressed": "Open nearest door/gate.",
-      "similes": [
-        "OPEN_GATE",
-        "USE_DOOR"
-      ]
+      "similes": ["OPEN_GATE", "USE_DOOR"]
     },
     {
       "name": "OPEN_SHOP",
       "description": "Open a shop by talking to a shopkeeper NPC",
       "parameters": [],
       "descriptionCompressed": "Open shop via shopkeeper.",
-      "similes": [
-        "TRADE_WITH_NPC",
-        "BROWSE_SHOP"
-      ]
+      "similes": ["TRADE_WITH_NPC", "BROWSE_SHOP"]
     },
     {
       "name": "OWNER_SCHEDULE",
@@ -3533,9 +3087,7 @@
       "exampleCalls": [
         {
           "user": "Use OWNER_SCHEDULE with the provided parameters.",
-          "actions": [
-            "OWNER_SCHEDULE"
-          ],
+          "actions": ["OWNER_SCHEDULE"],
           "params": {
             "OWNER_SCHEDULE": {
               "subaction": "example",
@@ -3550,33 +3102,21 @@
       "description": "Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio. ",
       "parameters": [],
       "descriptionCompressed": "Pause current track. Not via PLAY_AUDIO.",
-      "similes": [
-        "PAUSE",
-        "PAUSE_AUDIO",
-        "PAUSE_SONG",
-        "PAUSE_PLAYBACK"
-      ]
+      "similes": ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"]
     },
     {
       "name": "PICKPOCKET_NPC",
       "description": "Pickpocket a nearby NPC by name",
       "parameters": [],
       "descriptionCompressed": "Pickpocket nearby NPC.",
-      "similes": [
-        "STEAL_FROM_NPC",
-        "THIEVE_NPC"
-      ]
+      "similes": ["STEAL_FROM_NPC", "THIEVE_NPC"]
     },
     {
       "name": "PICKUP_ITEM",
       "description": "Pick up an item from the ground by name",
       "parameters": [],
       "descriptionCompressed": "Pick up ground item.",
-      "similes": [
-        "TAKE_ITEM",
-        "GRAB_ITEM",
-        "LOOT_ITEM"
-      ]
+      "similes": ["TAKE_ITEM", "GRAB_ITEM", "LOOT_ITEM"]
     },
     {
       "name": "PLACE_CALL",
@@ -3592,19 +3132,11 @@
         }
       ],
       "descriptionCompressed": "Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
-      "similes": [
-        "CALL",
-        "DIAL",
-        "RING",
-        "PHONE_CALL",
-        "MAKE_CALL"
-      ],
+      "similes": ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
       "exampleCalls": [
         {
           "user": "Use PLACE_CALL with the provided parameters.",
-          "actions": [
-            "PLACE_CALL"
-          ],
+          "actions": ["PLACE_CALL"],
           "params": {
             "PLACE_CALL": {
               "phoneNumber": "example"
@@ -3645,9 +3177,7 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_AUDIO with the provided parameters.",
-          "actions": [
-            "PLAY_AUDIO"
-          ],
+          "actions": ["PLAY_AUDIO"],
           "params": {
             "PLAY_AUDIO": {
               "confirmed": false
@@ -3683,9 +3213,7 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_EMOTE with the provided parameters.",
-          "actions": [
-            "PLAY_EMOTE"
-          ],
+          "actions": ["PLAY_EMOTE"],
           "params": {
             "PLAY_EMOTE": {
               "emote": "example"
@@ -3718,9 +3246,7 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_MUSIC_QUERY with the provided parameters.",
-          "actions": [
-            "PLAY_MUSIC_QUERY"
-          ],
+          "actions": ["PLAY_MUSIC_QUERY"],
           "params": {
             "PLAY_MUSIC_QUERY": {
               "confirmed": false
@@ -3751,16 +3277,11 @@
         }
       ],
       "descriptionCompressed": "Fetch a Polymarket market by id or slug.",
-      "similes": [
-        "POLYMARKET_MARKET",
-        "POLYMARKET_MARKET_DETAILS"
-      ],
+      "similes": ["POLYMARKET_MARKET", "POLYMARKET_MARKET_DETAILS"],
       "exampleCalls": [
         {
           "user": "Use POLYMARKET_GET_MARKET with the provided parameters.",
-          "actions": [
-            "POLYMARKET_GET_MARKET"
-          ],
+          "actions": ["POLYMARKET_GET_MARKET"],
           "params": {
             "POLYMARKET_GET_MARKET": {
               "id": "example",
@@ -3794,16 +3315,11 @@
         }
       ],
       "descriptionCompressed": "List active Polymarket markets.",
-      "similes": [
-        "POLYMARKET_MARKETS",
-        "SEARCH_POLYMARKET_MARKETS"
-      ],
+      "similes": ["POLYMARKET_MARKETS", "SEARCH_POLYMARKET_MARKETS"],
       "exampleCalls": [
         {
           "user": "Use POLYMARKET_GET_MARKETS with the provided parameters.",
-          "actions": [
-            "POLYMARKET_GET_MARKETS"
-          ],
+          "actions": ["POLYMARKET_GET_MARKETS"],
           "params": {
             "POLYMARKET_GET_MARKETS": {
               "limit": 20,
@@ -3835,9 +3351,7 @@
       "exampleCalls": [
         {
           "user": "Use POLYMARKET_GET_ORDERBOOK with the provided parameters.",
-          "actions": [
-            "POLYMARKET_GET_ORDERBOOK"
-          ],
+          "actions": ["POLYMARKET_GET_ORDERBOOK"],
           "params": {
             "POLYMARKET_GET_ORDERBOOK": {
               "tokenId": "example"
@@ -3860,16 +3374,11 @@
         }
       ],
       "descriptionCompressed": "Fetch Polymarket wallet positions.",
-      "similes": [
-        "POLYMARKET_POSITIONS",
-        "POLYMARKET_WALLET_POSITIONS"
-      ],
+      "similes": ["POLYMARKET_POSITIONS", "POLYMARKET_WALLET_POSITIONS"],
       "exampleCalls": [
         {
           "user": "Use POLYMARKET_GET_POSITIONS with the provided parameters.",
-          "actions": [
-            "POLYMARKET_GET_POSITIONS"
-          ],
+          "actions": ["POLYMARKET_GET_POSITIONS"],
           "params": {
             "POLYMARKET_GET_POSITIONS": {
               "user": "example"
@@ -3883,21 +3392,14 @@
       "description": "Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
       "parameters": [],
       "descriptionCompressed": "Report disabled Polymarket trading readiness.",
-      "similes": [
-        "POLYMARKET_TRADE",
-        "POLYMARKET_BUY",
-        "POLYMARKET_SELL"
-      ]
+      "similes": ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"]
     },
     {
       "name": "POLYMARKET_STATUS",
       "description": "Check Polymarket public-read and trading readiness for the local app.",
       "parameters": [],
       "descriptionCompressed": "Check Polymarket readiness.",
-      "similes": [
-        "POLYMARKET_READINESS",
-        "POLYMARKET_HEALTH"
-      ]
+      "similes": ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"]
     },
     {
       "name": "POST_INSTAGRAM_COMMENT",
@@ -3910,9 +3412,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "post comment Instagram post media",
@@ -3925,9 +3425,7 @@
       "exampleCalls": [
         {
           "user": "Use POST_INSTAGRAM_COMMENT with the provided parameters.",
-          "actions": [
-            "POST_INSTAGRAM_COMMENT"
-          ],
+          "actions": ["POST_INSTAGRAM_COMMENT"],
           "params": {
             "POST_INSTAGRAM_COMMENT": {
               "response": "example"
@@ -4013,9 +3511,7 @@
       "exampleCalls": [
         {
           "user": "Use PREPARE_SWAP with the provided parameters.",
-          "actions": [
-            "PREPARE_SWAP"
-          ],
+          "actions": ["PREPARE_SWAP"],
           "params": {
             "PREPARE_SWAP": {
               "fromSymbol": "example",
@@ -4068,9 +3564,7 @@
       "exampleCalls": [
         {
           "user": "Use PREPARE_TRANSFER with the provided parameters.",
-          "actions": [
-            "PREPARE_TRANSFER"
-          ],
+          "actions": ["PREPARE_TRANSFER"],
           "params": {
             "PREPARE_TRANSFER": {
               "toAddress": "example",
@@ -4129,9 +3623,7 @@
       "exampleCalls": [
         {
           "user": "Use PROVISION_WORKSPACE with the provided parameters.",
-          "actions": [
-            "PROVISION_WORKSPACE"
-          ],
+          "actions": ["PROVISION_WORKSPACE"],
           "params": {
             "PROVISION_WORKSPACE": {
               "repo": "example",
@@ -4154,23 +3646,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "query entity type attribute value",
-      "similes": [
-        "FIND_ENTITIES",
-        "SEARCH_ENTITIES",
-        "LIST_ENTITIES"
-      ],
+      "similes": ["FIND_ENTITIES", "SEARCH_ENTITIES", "LIST_ENTITIES"],
       "exampleCalls": [
         {
           "user": "Use QUERY_ENTITIES with the provided parameters.",
-          "actions": [
-            "QUERY_ENTITIES"
-          ],
+          "actions": ["QUERY_ENTITIES"],
           "params": {
             "QUERY_ENTITIES": {
               "values": "example"
@@ -4190,23 +3674,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "query relationship specific type specific entity",
-      "similes": [
-        "FIND_RELATIONSHIPS",
-        "GET_CONNECTIONS",
-        "SHOW_LINKS"
-      ],
+      "similes": ["FIND_RELATIONSHIPS", "GET_CONNECTIONS", "SHOW_LINKS"],
       "exampleCalls": [
         {
           "user": "Use QUERY_RELATIONSHIPS with the provided parameters.",
-          "actions": [
-            "QUERY_RELATIONSHIPS"
-          ],
+          "actions": ["QUERY_RELATIONSHIPS"],
           "params": {
             "QUERY_RELATIONSHIPS": {
               "values": "example"
@@ -4230,18 +3706,11 @@
         }
       ],
       "descriptionCompressed": "Queue song for later.",
-      "similes": [
-        "ADD_TO_QUEUE",
-        "QUEUE_SONG",
-        "QUEUE_TRACK",
-        "ADD_SONG"
-      ],
+      "similes": ["ADD_TO_QUEUE", "QUEUE_SONG", "QUEUE_TRACK", "ADD_SONG"],
       "exampleCalls": [
         {
           "user": "Use QUEUE_MUSIC with the provided parameters.",
-          "actions": [
-            "QUEUE_MUSIC"
-          ],
+          "actions": ["QUEUE_MUSIC"],
           "params": {
             "QUEUE_MUSIC": {
               "confirmed": false
@@ -4265,17 +3734,11 @@
         }
       ],
       "descriptionCompressed": "List recent Android phone calls (max 50).",
-      "similes": [
-        "RECENT_CALLS",
-        "CALL_HISTORY",
-        "LIST_CALLS"
-      ],
+      "similes": ["RECENT_CALLS", "CALL_HISTORY", "LIST_CALLS"],
       "exampleCalls": [
         {
           "user": "Use READ_CALL_LOG with the provided parameters.",
-          "actions": [
-            "READ_CALL_LOG"
-          ],
+          "actions": ["READ_CALL_LOG"],
           "params": {
             "READ_CALL_LOG": {
               "limit": 1
@@ -4305,11 +3768,7 @@
       "description": "List unread Twitter/X direct messages.",
       "parameters": [],
       "descriptionCompressed": "list unread Twitter/X direct message",
-      "similes": [
-        "READ_X_DMS",
-        "GET_X_UNREAD_DMS",
-        "CHECK_X_DMS"
-      ]
+      "similes": ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"]
     },
     {
       "name": "READING_FOLLOWUP",
@@ -4361,9 +3820,7 @@
       "exampleCalls": [
         {
           "user": "Use RELEASE_BLOCK with the provided parameters.",
-          "actions": [
-            "RELEASE_BLOCK"
-          ],
+          "actions": ["RELEASE_BLOCK"],
           "params": {
             "RELEASE_BLOCK": {
               "ruleId": "example",
@@ -4379,12 +3836,7 @@
       "description": "Write a note to the Scape Journal. Use for lessons, landmarks, and things you want to remember next step.",
       "parameters": [],
       "descriptionCompressed": "Write note to Scape Journal for future reference.",
-      "similes": [
-        "NOTE",
-        "LOG",
-        "JOURNAL",
-        "RECORD"
-      ]
+      "similes": ["NOTE", "LOG", "JOURNAL", "RECORD"]
     },
     {
       "name": "REMOTE_ATTESTATION",
@@ -4433,17 +3885,11 @@
         }
       ],
       "descriptionCompressed": "reply Twitter/X direct message two-stage: wo/ confirm: true return preview require confirmation; w/ confirm: true DM send",
-      "similes": [
-        "SEND_X_DM",
-        "REPLY_TWITTER_DM",
-        "X_DM_REPLY"
-      ],
+      "similes": ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
       "exampleCalls": [
         {
           "user": "Use REPLY_X_DM with the provided parameters.",
-          "actions": [
-            "REPLY_X_DM"
-          ],
+          "actions": ["REPLY_X_DM"],
           "params": {
             "REPLY_X_DM": {
               "recipient": "example",
@@ -4459,11 +3905,7 @@
       "description": "Request payment from the user for a reading service. Specify the amount to charge.",
       "parameters": [],
       "descriptionCompressed": "Request payment amount for the active mysticism reading service.",
-      "similes": [
-        "CHARGE_USER",
-        "ASK_FOR_PAYMENT",
-        "SET_PRICE"
-      ]
+      "similes": ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"]
     },
     {
       "name": "RESUME_MUSIC",
@@ -4503,9 +3945,7 @@
       "exampleCalls": [
         {
           "user": "Use SAVE_PLAYLIST with the provided parameters.",
-          "actions": [
-            "SAVE_PLAYLIST"
-          ],
+          "actions": ["SAVE_PLAYLIST"],
           "params": {
             "SAVE_PLAYLIST": {
               "confirmed": false
@@ -4538,18 +3978,11 @@
         }
       ],
       "descriptionCompressed": "List nearby Wi-Fi networks (Android scanResults).",
-      "similes": [
-        "LIST_WIFI",
-        "WIFI_SCAN",
-        "NEARBY_WIFI",
-        "WIFI_NETWORKS"
-      ],
+      "similes": ["LIST_WIFI", "WIFI_SCAN", "NEARBY_WIFI", "WIFI_NETWORKS"],
       "exampleCalls": [
         {
           "user": "Use SCAN_WIFI with the provided parameters.",
-          "actions": [
-            "SCAN_WIFI"
-          ],
+          "actions": ["SCAN_WIFI"],
           "params": {
             "SCAN_WIFI": {
               "limit": 1,
@@ -4597,9 +4030,7 @@
       "exampleCalls": [
         {
           "user": "Use SCHEDULE_X_DM_REPLY with the provided parameters.",
-          "actions": [
-            "SCHEDULE_X_DM_REPLY"
-          ],
+          "actions": ["SCHEDULE_X_DM_REPLY"],
           "params": {
             "SCHEDULE_X_DM_REPLY": {
               "recipient": "example",
@@ -4621,9 +4052,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "search issue Linear w/ various filter",
@@ -4636,9 +4065,7 @@
       "exampleCalls": [
         {
           "user": "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
-          "actions": [
-            "SEARCH_LINEAR_ISSUES"
-          ],
+          "actions": ["SEARCH_LINEAR_ISSUES"],
           "params": {
             "SEARCH_LINEAR_ISSUES": {
               "name": "example"
@@ -4652,21 +4079,14 @@
       "description": "Search across products, orders, and customers in a connected Shopify store.",
       "parameters": [],
       "descriptionCompressed": "Search Shopify products, orders, customers.",
-      "similes": [
-        "SHOPIFY_SEARCH",
-        "STORE_SEARCH"
-      ]
+      "similes": ["SHOPIFY_SEARCH", "STORE_SEARCH"]
     },
     {
       "name": "SEARCH_SKILLS",
       "description": "Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
       "parameters": [],
       "descriptionCompressed": "Search skill registry; returns action chips per result.",
-      "similes": [
-        "BROWSE_SKILLS",
-        "LIST_SKILLS",
-        "FIND_SKILLS"
-      ]
+      "similes": ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"]
     },
     {
       "name": "SEARCH_X",
@@ -4693,17 +4113,11 @@
         }
       ],
       "descriptionCompressed": "search x recent tweet use v2 recent search endpoint parameter: query (require), maxresult (optional, default 10)",
-      "similes": [
-        "SEARCH_TWITTER",
-        "SEARCH_TWEETS",
-        "X_SEARCH"
-      ],
+      "similes": ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
       "exampleCalls": [
         {
           "user": "Use SEARCH_X with the provided parameters.",
-          "actions": [
-            "SEARCH_X"
-          ],
+          "actions": ["SEARCH_X"],
           "params": {
             "SEARCH_X": {
               "query": "example",
@@ -4738,23 +4152,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "select dimensional constant affect how mathematical operation behave multiverse",
-      "similes": [
-        "DIMENSION",
-        "SET_DIMENSION",
-        "CHOOSE_DIMENSION"
-      ],
+      "similes": ["DIMENSION", "SET_DIMENSION", "CHOOSE_DIMENSION"],
       "exampleCalls": [
         {
           "user": "Use SELECT_DIMENSION with the provided parameters.",
-          "actions": [
-            "SELECT_DIMENSION"
-          ],
+          "actions": ["SELECT_DIMENSION"],
           "params": {
             "SELECT_DIMENSION": {
               "values": "example"
@@ -4774,23 +4180,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "select entity current entity operation",
-      "similes": [
-        "CHOOSE_ENTITY",
-        "FOCUS_ENTITY",
-        "SET_CURRENT_ENTITY"
-      ],
+      "similes": ["CHOOSE_ENTITY", "FOCUS_ENTITY", "SET_CURRENT_ENTITY"],
       "exampleCalls": [
         {
           "user": "Use SELECT_ENTITY with the provided parameters.",
-          "actions": [
-            "SELECT_ENTITY"
-          ],
+          "actions": ["SELECT_ENTITY"],
           "params": {
             "SELECT_ENTITY": {
               "values": "example"
@@ -4804,9 +4202,7 @@
       "description": "Sell an item to the currently open shop, optionally specifying a count (defaults to 1)",
       "parameters": [],
       "descriptionCompressed": "Sell item to open shop.",
-      "similes": [
-        "SELL_ITEM"
-      ]
+      "similes": ["SELL_ITEM"]
     },
     {
       "name": "SEND_BLUEBUBBLES_MESSAGE",
@@ -4832,9 +4228,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "send direct message Instagram user",
@@ -4848,9 +4242,7 @@
       "exampleCalls": [
         {
           "user": "Use SEND_INSTAGRAM_DM with the provided parameters.",
-          "actions": [
-            "SEND_INSTAGRAM_DM"
-          ],
+          "actions": ["SEND_INSTAGRAM_DM"],
           "params": {
             "SEND_INSTAGRAM_DM": {
               "response": "example"
@@ -4918,9 +4310,7 @@
       "exampleCalls": [
         {
           "user": "Use SEND_TO_AGENT with the provided parameters.",
-          "actions": [
-            "SEND_TO_AGENT"
-          ],
+          "actions": ["SEND_TO_AGENT"],
           "params": {
             "SEND_TO_AGENT": {
               "sessionId": "example",
@@ -4956,17 +4346,11 @@
         }
       ],
       "descriptionCompressed": "publish tweet Twitter/X w/ confirmation gate two-stage: wo/ confirm: true return preview; w/ confirm: true tweet post",
-      "similes": [
-        "POST_X",
-        "TWEET_WITH_CONFIRMATION",
-        "PUBLISH_TWEET"
-      ],
+      "similes": ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
       "exampleCalls": [
         {
           "user": "Use SEND_X_POST with the provided parameters.",
-          "actions": [
-            "SEND_X_POST"
-          ],
+          "actions": ["SEND_X_POST"],
           "params": {
             "SEND_X_POST": {
               "text": "example",
@@ -4987,23 +4371,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "set attribute current entity attribute store additional data entity",
-      "similes": [
-        "ADD_ATTRIBUTE",
-        "SET_PROPERTY",
-        "UPDATE_ATTRIBUTE"
-      ],
+      "similes": ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
       "exampleCalls": [
         {
           "user": "Use SET_ATTRIBUTE with the provided parameters.",
-          "actions": [
-            "SET_ATTRIBUTE"
-          ],
+          "actions": ["SET_ATTRIBUTE"],
           "params": {
             "SET_ATTRIBUTE": {
               "values": "example"
@@ -5017,10 +4393,7 @@
       "description": "Set the combat style (0=Attack, 1=Strength, 2=Defence, 3=Controlled)",
       "parameters": [],
       "descriptionCompressed": "Set combat style (Attack/Strength/Defence/Controlled).",
-      "similes": [
-        "CHANGE_COMBAT_STYLE",
-        "SWITCH_COMBAT"
-      ]
+      "similes": ["CHANGE_COMBAT_STYLE", "SWITCH_COMBAT"]
     },
     {
       "name": "SET_FOLLOWUP_THRESHOLD",
@@ -5059,9 +4432,7 @@
       "exampleCalls": [
         {
           "user": "Use SET_FOLLOWUP_THRESHOLD with the provided parameters.",
-          "actions": [
-            "SET_FOLLOWUP_THRESHOLD"
-          ],
+          "actions": ["SET_FOLLOWUP_THRESHOLD"],
           "params": {
             "SET_FOLLOWUP_THRESHOLD": {
               "contactId": "example",
@@ -5077,11 +4448,7 @@
       "description": "Declare a new goal you want to pursue. Write a short title and optional notes; the goal goes into the Scape Journal and drives future steps until it's completed or abandoned.",
       "parameters": [],
       "descriptionCompressed": "Declare new goal to pursue.",
-      "similes": [
-        "DECLARE_GOAL",
-        "NEW_GOAL",
-        "PLAN"
-      ]
+      "similes": ["DECLARE_GOAL", "NEW_GOAL", "PLAN"]
     },
     {
       "name": "SETUP_CREDENTIALS",
@@ -5094,9 +4461,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Guide credential setup for third-party services, validate and store securely.",
@@ -5110,9 +4475,7 @@
       "exampleCalls": [
         {
           "user": "Use SETUP_CREDENTIALS with the provided parameters.",
-          "actions": [
-            "SETUP_CREDENTIALS"
-          ],
+          "actions": ["SETUP_CREDENTIALS"],
           "params": {
             "SETUP_CREDENTIALS": {
               "data": "example"
@@ -5126,12 +4489,7 @@
       "description": "Show the current music queue",
       "parameters": [],
       "descriptionCompressed": "show current music queue",
-      "similes": [
-        "QUEUE",
-        "LIST_QUEUE",
-        "SHOW_PLAYLIST",
-        "QUEUE_LIST"
-      ]
+      "similes": ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"]
     },
     {
       "name": "SIGNAL_LIST_CONTACTS",
@@ -5180,9 +4538,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Send Signal message.",
@@ -5195,9 +4551,7 @@
       "exampleCalls": [
         {
           "user": "Use SIGNAL_SEND_MESSAGE with the provided parameters.",
-          "actions": [
-            "SIGNAL_SEND_MESSAGE"
-          ],
+          "actions": ["SIGNAL_SEND_MESSAGE"],
           "params": {
             "SIGNAL_SEND_MESSAGE": {
               "data": "example"
@@ -5217,9 +4571,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "React to Signal message.",
@@ -5232,9 +4584,7 @@
       "exampleCalls": [
         {
           "user": "Use SIGNAL_SEND_REACTION with the provided parameters.",
-          "actions": [
-            "SIGNAL_SEND_REACTION"
-          ],
+          "actions": ["SIGNAL_SEND_REACTION"],
           "params": {
             "SIGNAL_SEND_REACTION": {
               "data": "example"
@@ -5258,18 +4608,11 @@
         }
       ],
       "descriptionCompressed": "Skip to next queued song. Not via PLAY_AUDIO.",
-      "similes": [
-        "SKIP",
-        "NEXT_TRACK",
-        "SKIP_SONG",
-        "NEXT_SONG"
-      ],
+      "similes": ["SKIP", "NEXT_TRACK", "SKIP_SONG", "NEXT_SONG"],
       "exampleCalls": [
         {
           "user": "Use SKIP_TRACK with the provided parameters.",
-          "actions": [
-            "SKIP_TRACK"
-          ],
+          "actions": ["SKIP_TRACK"],
           "params": {
             "SKIP_TRACK": {
               "confirmed": false
@@ -5289,23 +4632,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Delete Slack message.",
-      "similes": [
-        "REMOVE_SLACK_MESSAGE",
-        "DELETE_MESSAGE",
-        "SLACK_REMOVE"
-      ],
+      "similes": ["REMOVE_SLACK_MESSAGE", "DELETE_MESSAGE", "SLACK_REMOVE"],
       "exampleCalls": [
         {
           "user": "Use SLACK_DELETE_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_DELETE_MESSAGE"
-          ],
+          "actions": ["SLACK_DELETE_MESSAGE"],
           "params": {
             "SLACK_DELETE_MESSAGE": {
               "data": "example"
@@ -5325,9 +4660,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Edit Slack message.",
@@ -5340,9 +4673,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_EDIT_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_EDIT_MESSAGE"
-          ],
+          "actions": ["SLACK_EDIT_MESSAGE"],
           "params": {
             "SLACK_EDIT_MESSAGE": {
               "data": "example"
@@ -5398,9 +4729,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "List Slack pinned messages.",
@@ -5413,9 +4742,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_LIST_PINS with the provided parameters.",
-          "actions": [
-            "SLACK_LIST_PINS"
-          ],
+          "actions": ["SLACK_LIST_PINS"],
           "params": {
             "SLACK_LIST_PINS": {
               "data": "example"
@@ -5533,9 +4860,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_MESSAGE_OP with the provided parameters.",
-          "actions": [
-            "SLACK_MESSAGE_OP"
-          ],
+          "actions": ["SLACK_MESSAGE_OP"],
           "params": {
             "SLACK_MESSAGE_OP": {
               "op": "send",
@@ -5562,9 +4887,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Pin Slack message.",
@@ -5577,9 +4900,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_PIN_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_PIN_MESSAGE"
-          ],
+          "actions": ["SLACK_PIN_MESSAGE"],
           "params": {
             "SLACK_PIN_MESSAGE": {
               "data": "example"
@@ -5599,9 +4920,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Add/remove Slack message reaction.",
@@ -5615,9 +4934,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_REACT_TO_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_REACT_TO_MESSAGE"
-          ],
+          "actions": ["SLACK_REACT_TO_MESSAGE"],
           "params": {
             "SLACK_REACT_TO_MESSAGE": {
               "data": "example"
@@ -5637,9 +4954,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Read Slack channel message history.",
@@ -5653,9 +4968,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_READ_CHANNEL with the provided parameters.",
-          "actions": [
-            "SLACK_READ_CHANNEL"
-          ],
+          "actions": ["SLACK_READ_CHANNEL"],
           "params": {
             "SLACK_READ_CHANNEL": {
               "data": "example"
@@ -5675,9 +4988,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Send Slack channel/thread message.",
@@ -5691,9 +5002,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_SEND_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_SEND_MESSAGE"
-          ],
+          "actions": ["SLACK_SEND_MESSAGE"],
           "params": {
             "SLACK_SEND_MESSAGE": {
               "data": "example"
@@ -5713,9 +5022,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "Unpin Slack message.",
@@ -5728,9 +5035,7 @@
       "exampleCalls": [
         {
           "user": "Use SLACK_UNPIN_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_UNPIN_MESSAGE"
-          ],
+          "actions": ["SLACK_UNPIN_MESSAGE"],
           "params": {
             "SLACK_UNPIN_MESSAGE": {
               "data": "example"
@@ -5744,10 +5049,7 @@
       "description": "Smith a metal bar at a nearby anvil, optionally specifying what to make",
       "parameters": [],
       "descriptionCompressed": "Smith bar at nearby anvil.",
-      "similes": [
-        "SMITHING",
-        "USE_ANVIL"
-      ]
+      "similes": ["SMITHING", "USE_ANVIL"]
     },
     {
       "name": "SPAWN_AGENT",
@@ -5792,12 +5094,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "readonly",
-              "standard",
-              "permissive",
-              "autonomous"
-            ]
+            "enum": ["readonly", "standard", "permissive", "autonomous"]
           }
         },
         {
@@ -5824,9 +5121,7 @@
       "exampleCalls": [
         {
           "user": "Use SPAWN_AGENT with the provided parameters.",
-          "actions": [
-            "SPAWN_AGENT"
-          ],
+          "actions": ["SPAWN_AGENT"],
           "params": {
             "SPAWN_AGENT": {
               "agentType": "example",
@@ -5857,10 +5152,7 @@
       "description": "Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
       "parameters": [],
       "descriptionCompressed": "Show session settings. Trigger: /status, /s.",
-      "similes": [
-        "/status",
-        "/s"
-      ]
+      "similes": ["/status", "/s"]
     },
     {
       "name": "STOP_AGENT",
@@ -5897,9 +5189,7 @@
       "exampleCalls": [
         {
           "user": "Use STOP_AGENT with the provided parameters.",
-          "actions": [
-            "STOP_AGENT"
-          ],
+          "actions": ["STOP_AGENT"],
           "params": {
             "STOP_AGENT": {
               "sessionId": "example",
@@ -5914,11 +5204,7 @@
       "description": "Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.",
       "parameters": [],
       "descriptionCompressed": "Stop/abort running tasks. Trigger: /stop, /abort, /cancel.",
-      "similes": [
-        "/stop",
-        "/abort",
-        "/cancel"
-      ]
+      "similes": ["/stop", "/abort", "/cancel"]
     },
     {
       "name": "STOP_MUSIC",
@@ -5946,9 +5232,7 @@
       "exampleCalls": [
         {
           "user": "Use STOP_MUSIC with the provided parameters.",
-          "actions": [
-            "STOP_MUSIC"
-          ],
+          "actions": ["STOP_MUSIC"],
           "params": {
             "STOP_MUSIC": {
               "confirmed": false
@@ -5962,54 +5246,35 @@
       "description": "Stop the running Tailscale tunnel",
       "parameters": [],
       "descriptionCompressed": "stop run Tailscale tunnel",
-      "similes": [
-        "STOP_TUNNEL",
-        "CLOSE_TUNNEL",
-        "TAILSCALE_DOWN"
-      ]
+      "similes": ["STOP_TUNNEL", "CLOSE_TUNNEL", "TAILSCALE_DOWN"]
     },
     {
       "name": "SUMMARIZE_FEED",
       "description": "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
       "parameters": [],
       "descriptionCompressed": "fetch top-n x tweet produce concise natural-language summary use runtime small text model",
-      "similes": [
-        "X_FEED_SUMMARY",
-        "SUMMARIZE_TWITTER",
-        "SUMMARIZE_X_FEED"
-      ]
+      "similes": ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"]
     },
     {
       "name": "SYNC_SKILL_CATALOG",
       "description": "Sync the skill catalog from the registry to discover new skills.",
       "parameters": [],
       "descriptionCompressed": "Sync skill catalog from registry.",
-      "similes": [
-        "REFRESH_SKILLS",
-        "UPDATE_CATALOG"
-      ]
+      "similes": ["REFRESH_SKILLS", "UPDATE_CATALOG"]
     },
     {
       "name": "TALK_TO_NPC",
       "description": "Talk to a nearby NPC by name",
       "parameters": [],
       "descriptionCompressed": "Talk to nearby NPC.",
-      "similes": [
-        "SPEAK_TO_NPC",
-        "CHAT_WITH_NPC"
-      ]
+      "similes": ["SPEAK_TO_NPC", "CHAT_WITH_NPC"]
     },
     {
       "name": "TAROT_READING",
       "description": "Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
       "parameters": [],
       "descriptionCompressed": "Start tarot reading; draw a card spread and reveal cards iteratively.",
-      "similes": [
-        "READ_TAROT",
-        "DRAW_CARDS",
-        "TAROT_SPREAD",
-        "CARD_READING"
-      ]
+      "similes": ["READ_TAROT", "DRAW_CARDS", "TAROT_SPREAD", "CARD_READING"]
     },
     {
       "name": "TASK_CONTROL",
@@ -6021,14 +5286,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "pause",
-              "stop",
-              "resume",
-              "continue",
-              "archive",
-              "reopen"
-            ]
+            "enum": ["pause", "stop", "resume", "continue", "archive", "reopen"]
           }
         },
         {
@@ -6093,9 +5351,7 @@
       "exampleCalls": [
         {
           "user": "Use TASK_CONTROL with the provided parameters.",
-          "actions": [
-            "TASK_CONTROL"
-          ],
+          "actions": ["TASK_CONTROL"],
           "params": {
             "TASK_CONTROL": {
               "operation": "pause",
@@ -6120,11 +5376,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "list",
-              "count",
-              "detail"
-            ]
+            "enum": ["list", "count", "detail"]
           }
         },
         {
@@ -6189,9 +5441,7 @@
       "exampleCalls": [
         {
           "user": "Use TASK_HISTORY with the provided parameters.",
-          "actions": [
-            "TASK_HISTORY"
-          ],
+          "actions": ["TASK_HISTORY"],
           "params": {
             "TASK_HISTORY": {
               "metric": "list",
@@ -6245,9 +5495,7 @@
       "exampleCalls": [
         {
           "user": "Use TASK_SHARE with the provided parameters.",
-          "actions": [
-            "TASK_SHARE"
-          ],
+          "actions": ["TASK_SHARE"],
           "params": {
             "TASK_SHARE": {
               "threadId": "example",
@@ -6349,9 +5597,7 @@
       "exampleCalls": [
         {
           "user": "Use TERMINAL_ACTION with the provided parameters.",
-          "actions": [
-            "TERMINAL_ACTION"
-          ],
+          "actions": ["TERMINAL_ACTION"],
           "params": {
             "TERMINAL_ACTION": {
               "action": "connect",
@@ -6392,23 +5638,15 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "descriptionCompressed": "transfer accumulator value input buffer next operation",
-      "similes": [
-        "TRANSFER",
-        "MOVE_TO_INPUT",
-        "ACCUMULATOR_TO_INPUT"
-      ],
+      "similes": ["TRANSFER", "MOVE_TO_INPUT", "ACCUMULATOR_TO_INPUT"],
       "exampleCalls": [
         {
           "user": "Use TRANSFER_TO_INPUT with the provided parameters.",
-          "actions": [
-            "TRANSFER_TO_INPUT"
-          ],
+          "actions": ["TRANSFER_TO_INPUT"],
           "params": {
             "TRANSFER_TO_INPUT": {
               "values": "example"
@@ -6466,9 +5704,7 @@
       "exampleCalls": [
         {
           "user": "Use TRANSFER_TOKEN with the provided parameters.",
-          "actions": [
-            "TRANSFER_TOKEN"
-          ],
+          "actions": ["TRANSFER_TOKEN"],
           "params": {
             "TRANSFER_TOKEN": {
               "toAddress": "example",
@@ -6490,11 +5726,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "join",
-              "leave",
-              "list"
-            ]
+            "enum": ["join", "leave", "list"]
           }
         },
         {
@@ -6516,9 +5748,7 @@
       "exampleCalls": [
         {
           "user": "Use TWITCH_CHANNEL with the provided parameters.",
-          "actions": [
-            "TWITCH_CHANNEL"
-          ],
+          "actions": ["TWITCH_CHANNEL"],
           "params": {
             "TWITCH_CHANNEL": {
               "subaction": "join",
@@ -6533,11 +5763,7 @@
       "description": "Join a Twitch channel to listen and send messages",
       "parameters": [],
       "descriptionCompressed": "join Twitch channel listen send message",
-      "similes": [
-        "JOIN_TWITCH_CHANNEL",
-        "ENTER_CHANNEL",
-        "CONNECT_CHANNEL"
-      ]
+      "similes": ["JOIN_TWITCH_CHANNEL", "ENTER_CHANNEL", "CONNECT_CHANNEL"]
     },
     {
       "name": "TWITCH_LEAVE_CHANNEL",
@@ -6580,20 +5806,14 @@
       "description": "Unequip a worn item by name",
       "parameters": [],
       "descriptionCompressed": "Unequip worn item.",
-      "similes": [
-        "REMOVE_ITEM",
-        "TAKE_OFF_ITEM"
-      ]
+      "similes": ["REMOVE_ITEM", "TAKE_OFF_ITEM"]
     },
     {
       "name": "UNINSTALL_SKILL",
       "description": "Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
       "parameters": [],
       "descriptionCompressed": "Remove non-bundled skill.",
-      "similes": [
-        "REMOVE_SKILL",
-        "DELETE_SKILL"
-      ]
+      "similes": ["REMOVE_SKILL", "DELETE_SKILL"]
     },
     {
       "name": "USE_COMPUTER",
@@ -6677,11 +5897,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "left",
-              "middle",
-              "right"
-            ]
+            "enum": ["left", "middle", "right"]
           }
         },
         {
@@ -6700,12 +5916,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "up",
-              "down",
-              "left",
-              "right"
-            ]
+            "enum": ["up", "down", "left", "right"]
           }
         },
         {
@@ -6742,9 +5953,7 @@
       "exampleCalls": [
         {
           "user": "Use USE_COMPUTER with the provided parameters.",
-          "actions": [
-            "USE_COMPUTER"
-          ],
+          "actions": ["USE_COMPUTER"],
           "params": {
             "USE_COMPUTER": {
               "action": "screenshot",
@@ -6767,50 +5976,35 @@
       "description": "Use an item from inventory by name",
       "parameters": [],
       "descriptionCompressed": "Use inventory item.",
-      "similes": [
-        "ACTIVATE_ITEM"
-      ]
+      "similes": ["ACTIVATE_ITEM"]
     },
     {
       "name": "USE_ITEM_ON_ITEM",
       "description": "Use one inventory item on another (e.g. tinderbox on logs)",
       "parameters": [],
       "descriptionCompressed": "Use inventory item on another.",
-      "similes": [
-        "COMBINE_ITEMS"
-      ]
+      "similes": ["COMBINE_ITEMS"]
     },
     {
       "name": "USE_ITEM_ON_OBJECT",
       "description": "Use an inventory item on a world object (e.g. ore on furnace)",
       "parameters": [],
       "descriptionCompressed": "Use inventory item on world object.",
-      "similes": [
-        "ITEM_ON_OBJECT"
-      ]
+      "similes": ["ITEM_ON_OBJECT"]
     },
     {
       "name": "USE_SKILL",
       "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
       "parameters": [],
       "descriptionCompressed": "Invoke an enabled skill by slug.",
-      "similes": [
-        "INVOKE_SKILL",
-        "EXECUTE_SKILL",
-        "RUN_SKILL",
-        "CALL_SKILL"
-      ]
+      "similes": ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"]
     },
     {
       "name": "WALK_TO",
       "description": "Walk the player to a coordinate or named destination (e.g. bank, lumbridge)",
       "parameters": [],
       "descriptionCompressed": "Walk to coordinate or named destination.",
-      "similes": [
-        "MOVE_TO",
-        "GO_TO",
-        "TRAVEL_TO"
-      ]
+      "similes": ["MOVE_TO", "GO_TO", "TRAVEL_TO"]
     },
     {
       "name": "WEB_SEARCH",
@@ -6834,9 +6028,7 @@
       "description": "Withdraw an item from the bank by name, optionally specifying a count (defaults to 1)",
       "parameters": [],
       "descriptionCompressed": "Withdraw item from bank.",
-      "similes": [
-        "TAKE_FROM_BANK"
-      ]
+      "similes": ["TAKE_FROM_BANK"]
     },
     {
       "name": "X_POST",
@@ -6848,10 +6040,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "post",
-              "reply"
-            ],
+            "enum": ["post", "reply"],
             "default": "post"
           }
         },
@@ -6895,9 +6084,7 @@
       "exampleCalls": [
         {
           "user": "Use X_POST with the provided parameters.",
-          "actions": [
-            "X_POST"
-          ],
+          "actions": ["X_POST"],
           "params": {
             "X_POST": {
               "subaction": "post",

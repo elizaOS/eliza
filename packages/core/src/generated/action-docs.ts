@@ -2632,7 +2632,7 @@ export const allActionsSpec = {
 					actions: ["ADD_TO_PLAYLIST"],
 					params: {
 						ADD_TO_PLAYLIST: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -2740,11 +2740,11 @@ export const allActionsSpec = {
 					actions: ["BLOCK_UNTIL_TASK_COMPLETE"],
 					params: {
 						BLOCK_UNTIL_TASK_COMPLETE: {
-							websites: null,
-							todoId: null,
-							todoName: null,
-							unlockDurationMinutes: null,
-							profile: null,
+							websites: "example",
+							todoId: "example",
+							todoName: "example",
+							unlockDurationMinutes: 1,
+							profile: "example",
 						},
 					},
 				},
@@ -2901,16 +2901,16 @@ export const allActionsSpec = {
 					actions: ["BROWSER_ACTION"],
 					params: {
 						BROWSER_ACTION: {
-							action: null,
-							url: null,
-							selector: null,
-							coordinate: null,
-							text: null,
-							code: null,
-							direction: null,
-							amount: null,
-							tabId: null,
-							timeout: null,
+							action: "open",
+							url: "example",
+							selector: "example",
+							coordinate: "example",
+							text: "example",
+							code: "example",
+							direction: "up",
+							amount: 300,
+							tabId: "example",
+							timeout: 5000,
 						},
 					},
 				},
@@ -2997,8 +2997,8 @@ export const allActionsSpec = {
 					actions: ["CHECK_AVAILABILITY"],
 					params: {
 						CHECK_AVAILABILITY: {
-							startAt: null,
-							endAt: null,
+							startAt: "example",
+							endAt: "example",
 						},
 					},
 				},
@@ -3036,7 +3036,7 @@ export const allActionsSpec = {
 					actions: ["CHECK_BALANCE"],
 					params: {
 						CHECK_BALANCE: {
-							chain: null,
+							chain: "example",
 						},
 					},
 				},
@@ -3246,16 +3246,16 @@ export const allActionsSpec = {
 					actions: ["CLOUD_AGENT"],
 					params: {
 						CLOUD_AGENT: {
-							op: null,
-							name: null,
-							project_name: null,
-							containerId: null,
-							snapshotId: null,
-							description: null,
-							environment_vars: null,
-							auto_backup: null,
-							detailed: null,
-							confirmed: null,
+							op: "provision",
+							name: "example",
+							project_name: "example",
+							containerId: "example",
+							snapshotId: "example",
+							description: "example",
+							environment_vars: "example",
+							auto_backup: false,
+							detailed: false,
+							confirmed: false,
 						},
 					},
 				},
@@ -3514,11 +3514,11 @@ export const allActionsSpec = {
 					actions: ["CROSS_PLATFORM_GATEWAY"],
 					params: {
 						CROSS_PLATFORM_GATEWAY: {
-							subaction: null,
-							platform: null,
-							participants: null,
-							title: null,
-							reason: null,
+							subaction: "create_group_chat",
+							platform: "example",
+							participants: "example",
+							title: "example",
+							reason: "example",
 						},
 					},
 				},
@@ -3604,10 +3604,10 @@ export const allActionsSpec = {
 		{
 			name: "DELETE_N8N_WORKFLOW",
 			description:
-				"Delete an n8n workflow permanently by ID, name, or semantic description in any language. Cannot be undone.",
+				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
 			parameters: [],
 			descriptionCompressed:
-				"Delete n8n workflow permanently by ID, name, or semantic description; cannot be undone.",
+				"delete n8n workflow permanently action cannot undone identify workflow ID, name, semantic description language",
 			similes: ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
 		},
 		{
@@ -3640,7 +3640,7 @@ export const allActionsSpec = {
 					actions: ["DELETE_PLAYLIST"],
 					params: {
 						DELETE_PLAYLIST: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -3753,7 +3753,7 @@ export const allActionsSpec = {
 					actions: ["DOWNLOAD_MUSIC"],
 					params: {
 						DOWNLOAD_MUSIC: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -3859,11 +3859,11 @@ export const allActionsSpec = {
 					actions: ["EXECUTE_TRADE"],
 					params: {
 						EXECUTE_TRADE: {
-							side: null,
-							tokenAddress: null,
-							amount: null,
-							slippageBps: null,
-							routeProvider: null,
+							side: "example",
+							tokenAddress: "example",
+							amount: "example",
+							slippageBps: 1,
+							routeProvider: "example",
 						},
 					},
 				},
@@ -3927,10 +3927,10 @@ export const allActionsSpec = {
 					actions: ["FARCASTER_CAST"],
 					params: {
 						FARCASTER_CAST: {
-							subaction: null,
-							text: null,
-							parentCastHash: null,
-							parentFid: null,
+							subaction: "post",
+							text: "example",
+							parentCastHash: "example",
+							parentFid: 1,
 						},
 					},
 				},
@@ -4088,18 +4088,18 @@ export const allActionsSpec = {
 					actions: ["FILE_ACTION"],
 					params: {
 						FILE_ACTION: {
-							action: null,
-							path: null,
-							filepath: null,
-							dirpath: null,
-							content: null,
-							encoding: null,
-							oldText: null,
-							newText: null,
-							old_text: null,
-							new_text: null,
-							find: null,
-							replace: null,
+							action: "read",
+							path: "example",
+							filepath: "example",
+							dirpath: "example",
+							content: "example",
+							encoding: "example",
+							oldText: "example",
+							newText: "example",
+							old_text: "example",
+							new_text: "example",
+							find: "example",
+							replace: "example",
 						},
 					},
 				},
@@ -4191,13 +4191,13 @@ export const allActionsSpec = {
 					actions: ["FINALIZE_WORKSPACE"],
 					params: {
 						FINALIZE_WORKSPACE: {
-							workspaceId: null,
-							commitMessage: null,
-							prTitle: null,
-							prBody: null,
-							baseBranch: null,
-							draft: null,
-							skipPR: null,
+							workspaceId: "example",
+							commitMessage: "example",
+							prTitle: "example",
+							prBody: "example",
+							baseBranch: "example",
+							draft: false,
+							skipPR: false,
 						},
 					},
 				},
@@ -4389,7 +4389,7 @@ export const allActionsSpec = {
 					actions: ["GET_RECEIVE_ADDRESS"],
 					params: {
 						GET_RECEIVE_ADDRESS: {
-							chain: null,
+							chain: "all",
 						},
 					},
 				},
@@ -4528,11 +4528,11 @@ export const allActionsSpec = {
 					actions: ["HEALTH"],
 					params: {
 						HEALTH: {
-							subaction: null,
-							intent: null,
-							metric: null,
-							date: null,
-							days: null,
+							subaction: "example",
+							intent: "example",
+							metric: "example",
+							date: "example",
+							days: 1,
 						},
 					},
 				},
@@ -4775,7 +4775,7 @@ export const allActionsSpec = {
 					actions: ["LOAD_PLAYLIST"],
 					params: {
 						LOAD_PLAYLIST: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -4785,7 +4785,118 @@ export const allActionsSpec = {
 			name: "lp_management",
 			description:
 				"Single LP management action. Params: subaction=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences, chain=solana|evm, dex, pool, position, amount, range, tokenA, tokenB, chainId, slippageBps.",
-			parameters: [],
+			parameters: [
+				{
+					name: "subaction",
+					description: "Router parameter subaction.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"onboard",
+							"list_pools",
+							"open",
+							"close",
+							"reposition",
+							"list_positions",
+							"get_position",
+							"set_preferences",
+						],
+					},
+					descriptionCompressed: "Router param subaction.",
+				},
+				{
+					name: "chain",
+					description: "Router parameter chain.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["solana", "evm"],
+					},
+					descriptionCompressed: "Router param chain.",
+				},
+				{
+					name: "dex",
+					description: "Router parameter dex.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Router param dex.",
+				},
+				{
+					name: "pool",
+					description: "Router parameter pool.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Router param pool.",
+				},
+				{
+					name: "position",
+					description: "Router parameter position.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Router param position.",
+				},
+				{
+					name: "amount",
+					description: "Router parameter amount.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Router param amount.",
+				},
+				{
+					name: "range",
+					description: "Router parameter range.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Router param range.",
+				},
+				{
+					name: "tokenA",
+					description: "Router parameter tokenA.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Router param tokenA.",
+				},
+				{
+					name: "tokenB",
+					description: "Router parameter tokenB.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Router param tokenB.",
+				},
+				{
+					name: "chainId",
+					description: "Router parameter chainId.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Router param chainId.",
+				},
+				{
+					name: "slippageBps",
+					description: "Router parameter slippageBps.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Router param slippageBps.",
+				},
+			],
 			descriptionCompressed:
 				"manage LP positions with subaction chain dex pool position amount range token filters",
 			similes: [
@@ -4794,6 +4905,27 @@ export const allActionsSpec = {
 				"LP_MANAGER",
 				"MANAGE_LP",
 				"MANAGE_LIQUIDITY",
+			],
+			exampleCalls: [
+				{
+					user: "Use lp_management with the provided parameters.",
+					actions: ["lp_management"],
+					params: {
+						lp_management: {
+							subaction: "onboard",
+							chain: "solana",
+							dex: "example",
+							pool: "example",
+							position: "example",
+							amount: 1,
+							range: "example",
+							tokenA: "example",
+							tokenB: "example",
+							chainId: "example",
+							slippageBps: 1,
+						},
+					},
+				},
 			],
 		},
 		{
@@ -4890,13 +5022,13 @@ export const allActionsSpec = {
 					actions: ["MANAGE_ISSUES"],
 					params: {
 						MANAGE_ISSUES: {
-							operation: null,
-							repo: null,
-							title: null,
-							body: null,
-							issueNumber: null,
-							labels: null,
-							state: null,
+							operation: "example",
+							repo: "example",
+							title: "example",
+							body: "example",
+							issueNumber: 1,
+							labels: "example",
+							state: "example",
 						},
 					},
 				},
@@ -4954,7 +5086,7 @@ export const allActionsSpec = {
 					actions: ["MANAGE_SHOPIFY_INVENTORY"],
 					params: {
 						MANAGE_SHOPIFY_INVENTORY: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -4986,7 +5118,7 @@ export const allActionsSpec = {
 					actions: ["MANAGE_SHOPIFY_ORDERS"],
 					params: {
 						MANAGE_SHOPIFY_ORDERS: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -5023,7 +5155,7 @@ export const allActionsSpec = {
 					actions: ["MANAGE_SHOPIFY_PRODUCTS"],
 					params: {
 						MANAGE_SHOPIFY_PRODUCTS: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -5123,12 +5255,12 @@ export const allActionsSpec = {
 					actions: ["MANAGE_WINDOW"],
 					params: {
 						MANAGE_WINDOW: {
-							action: null,
-							windowId: null,
-							windowTitle: null,
-							arrangement: null,
-							x: null,
-							y: null,
+							action: "list",
+							windowId: "example",
+							windowTitle: "example",
+							arrangement: "example",
+							x: 1,
+							y: 1,
 						},
 					},
 				},
@@ -5184,9 +5316,9 @@ export const allActionsSpec = {
 					actions: ["MARK_FOLLOWUP_DONE"],
 					params: {
 						MARK_FOLLOWUP_DONE: {
-							contactId: null,
-							contactName: null,
-							note: null,
+							contactId: "example",
+							contactName: "example",
+							note: "example",
 						},
 					},
 				},
@@ -5637,10 +5769,10 @@ export const allActionsSpec = {
 					actions: ["MUSIC_GENERATION"],
 					params: {
 						MUSIC_GENERATION: {
-							subaction: null,
-							prompt: null,
-							audio_id: null,
-							duration: null,
+							subaction: "generate",
+							prompt: "example",
+							audio_id: "example",
+							duration: 30,
 						},
 					},
 				},
@@ -5681,8 +5813,8 @@ export const allActionsSpec = {
 					actions: ["MUSIC_LIBRARY"],
 					params: {
 						MUSIC_LIBRARY: {
-							subaction: null,
-							confirmed: null,
+							subaction: "download",
+							confirmed: false,
 						},
 					},
 				},
@@ -5752,10 +5884,10 @@ export const allActionsSpec = {
 					actions: ["MUSIC_METADATA_SEARCH"],
 					params: {
 						MUSIC_METADATA_SEARCH: {
-							subaction: null,
-							query: null,
-							entityType: null,
-							confirmed: null,
+							subaction: "youtube",
+							query: "example",
+							entityType: "artist",
+							confirmed: false,
 						},
 					},
 				},
@@ -5803,8 +5935,8 @@ export const allActionsSpec = {
 					actions: ["MUSIC_PLAYLIST"],
 					params: {
 						MUSIC_PLAYLIST: {
-							subaction: null,
-							confirmed: null,
+							subaction: "save",
+							confirmed: false,
 						},
 					},
 				},
@@ -5893,8 +6025,8 @@ export const allActionsSpec = {
 					actions: ["OWNER_SCHEDULE"],
 					params: {
 						OWNER_SCHEDULE: {
-							subaction: null,
-							timezone: null,
+							subaction: "example",
+							timezone: "example",
 						},
 					},
 				},
@@ -5950,7 +6082,7 @@ export const allActionsSpec = {
 					actions: ["PLACE_CALL"],
 					params: {
 						PLACE_CALL: {
-							phoneNumber: null,
+							phoneNumber: "example",
 						},
 					},
 				},
@@ -5995,7 +6127,7 @@ export const allActionsSpec = {
 					actions: ["PLAY_AUDIO"],
 					params: {
 						PLAY_AUDIO: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -6036,7 +6168,7 @@ export const allActionsSpec = {
 					actions: ["PLAY_EMOTE"],
 					params: {
 						PLAY_EMOTE: {
-							emote: null,
+							emote: "example",
 						},
 					},
 				},
@@ -6074,7 +6206,7 @@ export const allActionsSpec = {
 					actions: ["PLAY_MUSIC_QUERY"],
 					params: {
 						PLAY_MUSIC_QUERY: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -6111,8 +6243,8 @@ export const allActionsSpec = {
 					actions: ["POLYMARKET_GET_MARKET"],
 					params: {
 						POLYMARKET_GET_MARKET: {
-							id: null,
-							slug: null,
+							id: "example",
+							slug: "example",
 						},
 					},
 				},
@@ -6152,8 +6284,8 @@ export const allActionsSpec = {
 					actions: ["POLYMARKET_GET_MARKETS"],
 					params: {
 						POLYMARKET_GET_MARKETS: {
-							limit: null,
-							offset: null,
+							limit: 20,
+							offset: 0,
 						},
 					},
 				},
@@ -6186,7 +6318,7 @@ export const allActionsSpec = {
 					actions: ["POLYMARKET_GET_ORDERBOOK"],
 					params: {
 						POLYMARKET_GET_ORDERBOOK: {
-							tokenId: null,
+							tokenId: "example",
 						},
 					},
 				},
@@ -6215,7 +6347,7 @@ export const allActionsSpec = {
 					actions: ["POLYMARKET_GET_POSITIONS"],
 					params: {
 						POLYMARKET_GET_POSITIONS: {
-							user: null,
+							user: "example",
 						},
 					},
 				},
@@ -6369,12 +6501,12 @@ export const allActionsSpec = {
 					actions: ["PREPARE_SWAP"],
 					params: {
 						PREPARE_SWAP: {
-							fromSymbol: null,
-							toSymbol: null,
-							amount: null,
-							fromAddress: null,
-							toAddress: null,
-							slippageBps: null,
+							fromSymbol: "example",
+							toSymbol: "example",
+							amount: "example",
+							fromAddress: "example",
+							toAddress: "example",
+							slippageBps: 1,
 						},
 					},
 				},
@@ -6430,9 +6562,9 @@ export const allActionsSpec = {
 					actions: ["PREPARE_TRANSFER"],
 					params: {
 						PREPARE_TRANSFER: {
-							toAddress: null,
-							assetSymbol: null,
-							amount: null,
+							toAddress: "example",
+							assetSymbol: "example",
+							amount: "example",
 						},
 					},
 				},
@@ -6496,10 +6628,10 @@ export const allActionsSpec = {
 					actions: ["PROVISION_WORKSPACE"],
 					params: {
 						PROVISION_WORKSPACE: {
-							repo: null,
-							baseBranch: null,
-							useWorktree: null,
-							parentWorkspaceId: null,
+							repo: "example",
+							baseBranch: "example",
+							useWorktree: false,
+							parentWorkspaceId: "example",
 						},
 					},
 				},
@@ -6588,7 +6720,7 @@ export const allActionsSpec = {
 					actions: ["QUEUE_MUSIC"],
 					params: {
 						QUEUE_MUSIC: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -6620,7 +6752,7 @@ export const allActionsSpec = {
 					actions: ["READ_CALL_LOG"],
 					params: {
 						READ_CALL_LOG: {
-							limit: null,
+							limit: 1,
 						},
 					},
 				},
@@ -6708,9 +6840,9 @@ export const allActionsSpec = {
 					actions: ["RELEASE_BLOCK"],
 					params: {
 						RELEASE_BLOCK: {
-							ruleId: null,
-							confirmed: null,
-							reason: null,
+							ruleId: "example",
+							confirmed: false,
+							reason: "example",
 						},
 					},
 				},
@@ -6787,9 +6919,9 @@ export const allActionsSpec = {
 					actions: ["REPLY_X_DM"],
 					params: {
 						REPLY_X_DM: {
-							recipient: null,
-							text: null,
-							confirmed: null,
+							recipient: "example",
+							text: "example",
+							confirmed: false,
 						},
 					},
 				},
@@ -6849,7 +6981,7 @@ export const allActionsSpec = {
 					actions: ["SAVE_PLAYLIST"],
 					params: {
 						SAVE_PLAYLIST: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -6894,8 +7026,8 @@ export const allActionsSpec = {
 					actions: ["SCAN_WIFI"],
 					params: {
 						SCAN_WIFI: {
-							limit: null,
-							maxAge: null,
+							limit: 1,
+							maxAge: 1,
 						},
 					},
 				},
@@ -6948,9 +7080,9 @@ export const allActionsSpec = {
 					actions: ["SCHEDULE_X_DM_REPLY"],
 					params: {
 						SCHEDULE_X_DM_REPLY: {
-							recipient: null,
-							text: null,
-							sendAtIso: null,
+							recipient: "example",
+							text: "example",
+							sendAtIso: "example",
 						},
 					},
 				},
@@ -7043,8 +7175,8 @@ export const allActionsSpec = {
 					actions: ["SEARCH_X"],
 					params: {
 						SEARCH_X: {
-							query: null,
-							maxResults: null,
+							query: "example",
+							maxResults: 10,
 						},
 					},
 				},
@@ -7257,11 +7389,11 @@ export const allActionsSpec = {
 					actions: ["SEND_TO_AGENT"],
 					params: {
 						SEND_TO_AGENT: {
-							sessionId: null,
-							input: null,
-							task: null,
-							label: null,
-							keys: null,
+							sessionId: "example",
+							input: "example",
+							task: "example",
+							label: "example",
+							keys: "example",
 						},
 					},
 				},
@@ -7301,8 +7433,8 @@ export const allActionsSpec = {
 					actions: ["SEND_X_POST"],
 					params: {
 						SEND_X_POST: {
-							text: null,
-							confirmed: null,
+							text: "example",
+							confirmed: false,
 						},
 					},
 				},
@@ -7396,9 +7528,9 @@ export const allActionsSpec = {
 					actions: ["SET_FOLLOWUP_THRESHOLD"],
 					params: {
 						SET_FOLLOWUP_THRESHOLD: {
-							contactId: null,
-							contactName: null,
-							thresholdDays: null,
+							contactId: "example",
+							contactName: "example",
+							thresholdDays: 1,
 						},
 					},
 				},
@@ -7587,7 +7719,7 @@ export const allActionsSpec = {
 					actions: ["SKIP_TRACK"],
 					params: {
 						SKIP_TRACK: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -7735,14 +7867,93 @@ export const allActionsSpec = {
 				"Slack message operation router. Send, edit, delete, react, pin, or unpin Slack messages by setting op.",
 			parameters: [
 				{
-					name: "data",
-					description: "The data to use.",
+					name: "op",
+					description: "One of: send, edit, delete, react, pin, unpin",
+					required: false,
+					schema: {
+						type: "string",
+						default: "send",
+					},
+					descriptionCompressed:
+						"One of: send, edit, delete, react, pin, unpin",
+				},
+				{
+					name: "text",
+					description:
+						"For send — the message text. For edit — the new message text.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
+					descriptionCompressed:
+						"For send - the msg text. For edit - the new msg text.",
+				},
+				{
+					name: "messageTs",
+					description:
+						"For edit/delete/react/pin/unpin — the message timestamp (format: 1234567890.123456)",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For edit/delete/react/pin/unpin - the msg timestamp (format: 1234567890. 123456)",
+				},
+				{
+					name: "channelRef",
+					description: 'For send — the channel name/id, or "current".',
+					required: false,
+					schema: {
+						type: "string",
+						default: "current",
+					},
+					descriptionCompressed:
+						'For send - the channel name/id, or "current".',
+				},
+				{
+					name: "channelId",
+					description:
+						"For edit/delete/react/pin/unpin — the channel ID (optional, defaults to current channel)",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For edit/delete/react/pin/unpin - the channel ID (optional, defaults to current channel)",
+				},
+				{
+					name: "threadTs",
+					description:
+						"For send — optional thread timestamp to reply in a thread.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For send - optional thread timestamp to reply in a thread.",
+				},
+				{
+					name: "emoji",
+					description:
+						'For react — the emoji name (without colons, e.g. "thumbsup").',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'For react - the emoji name (without colons, e. g. "thumbsup").',
+				},
+				{
+					name: "remove",
+					description:
+						"For react — true to remove the reaction, false (default) to add it.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"For react - true to remove the reaction, false (default) to add it.",
 				},
 			],
 			descriptionCompressed:
@@ -7786,7 +7997,14 @@ export const allActionsSpec = {
 					actions: ["SLACK_MESSAGE_OP"],
 					params: {
 						SLACK_MESSAGE_OP: {
-							data: "example",
+							op: "send",
+							text: "example",
+							messageTs: "example",
+							channelRef: "current",
+							channelId: "example",
+							threadTs: "example",
+							emoji: "example",
+							remove: false,
 						},
 					},
 				},
@@ -8065,12 +8283,12 @@ export const allActionsSpec = {
 					actions: ["SPAWN_AGENT"],
 					params: {
 						SPAWN_AGENT: {
-							agentType: null,
-							workdir: null,
-							task: null,
-							memoryContent: null,
-							approvalPreset: null,
-							keepAliveAfterComplete: null,
+							agentType: "example",
+							workdir: "example",
+							task: "example",
+							memoryContent: "example",
+							approvalPreset: "readonly",
+							keepAliveAfterComplete: false,
 						},
 					},
 				},
@@ -8135,8 +8353,8 @@ export const allActionsSpec = {
 					actions: ["STOP_AGENT"],
 					params: {
 						STOP_AGENT: {
-							sessionId: null,
-							all: null,
+							sessionId: "example",
+							all: false,
 						},
 					},
 				},
@@ -8183,7 +8401,7 @@ export const allActionsSpec = {
 					actions: ["STOP_MUSIC"],
 					params: {
 						STOP_MUSIC: {
-							confirmed: null,
+							confirmed: false,
 						},
 					},
 				},
@@ -8323,13 +8541,13 @@ export const allActionsSpec = {
 					actions: ["TASK_CONTROL"],
 					params: {
 						TASK_CONTROL: {
-							operation: null,
-							threadId: null,
-							sessionId: null,
-							search: null,
-							note: null,
-							instruction: null,
-							agentType: null,
+							operation: "pause",
+							threadId: "example",
+							sessionId: "example",
+							search: "example",
+							note: "example",
+							instruction: "example",
+							agentType: "example",
 						},
 					},
 				},
@@ -8423,12 +8641,12 @@ export const allActionsSpec = {
 					actions: ["TASK_HISTORY"],
 					params: {
 						TASK_HISTORY: {
-							metric: null,
-							window: null,
-							search: null,
-							statuses: null,
-							limit: null,
-							includeArchived: null,
+							metric: "list",
+							window: "active",
+							search: "example",
+							statuses: "example",
+							limit: 1,
+							includeArchived: false,
 						},
 					},
 				},
@@ -8483,9 +8701,9 @@ export const allActionsSpec = {
 					actions: ["TASK_SHARE"],
 					params: {
 						TASK_SHARE: {
-							threadId: null,
-							sessionId: null,
-							search: null,
+							threadId: "example",
+							sessionId: "example",
+							search: "example",
 						},
 					},
 				},
@@ -8595,14 +8813,14 @@ export const allActionsSpec = {
 					actions: ["TERMINAL_ACTION"],
 					params: {
 						TERMINAL_ACTION: {
-							action: null,
-							command: null,
-							cwd: null,
-							sessionId: null,
-							session_id: null,
-							text: null,
-							timeout: null,
-							timeoutSeconds: null,
+							action: "connect",
+							command: "example",
+							cwd: "example",
+							sessionId: "example",
+							session_id: "example",
+							text: "example",
+							timeout: 30,
+							timeoutSeconds: 30,
 						},
 					},
 				},
@@ -8718,10 +8936,10 @@ export const allActionsSpec = {
 					actions: ["TRANSFER_TOKEN"],
 					params: {
 						TRANSFER_TOKEN: {
-							toAddress: null,
-							amount: null,
-							assetSymbol: null,
-							tokenAddress: null,
+							toAddress: "example",
+							amount: "example",
+							assetSymbol: "example",
+							tokenAddress: "example",
 						},
 					},
 				},
@@ -8767,8 +8985,8 @@ export const allActionsSpec = {
 					actions: ["TWITCH_CHANNEL"],
 					params: {
 						TWITCH_CHANNEL: {
-							subaction: null,
-							channel: null,
+							subaction: "join",
+							channel: "example",
 						},
 					},
 				},
@@ -8988,16 +9206,16 @@ export const allActionsSpec = {
 					actions: ["USE_COMPUTER"],
 					params: {
 						USE_COMPUTER: {
-							action: null,
-							coordinate: null,
-							startCoordinate: null,
-							text: null,
-							modifiers: null,
-							key: null,
-							button: null,
-							clicks: null,
-							scrollDirection: null,
-							scrollAmount: null,
+							action: "screenshot",
+							coordinate: "example",
+							startCoordinate: "example",
+							text: "example",
+							modifiers: "example",
+							key: "example",
+							button: "left",
+							clicks: 1,
+							scrollDirection: "up",
+							scrollAmount: 3,
 						},
 					},
 				},
@@ -9132,10 +9350,10 @@ export const allActionsSpec = {
 					actions: ["X_POST"],
 					params: {
 						X_POST: {
-							subaction: null,
-							text: null,
-							confirmed: null,
-							inReplyTo: null,
+							subaction: "post",
+							text: "example",
+							confirmed: false,
+							inReplyTo: "example",
 						},
 					},
 				},
