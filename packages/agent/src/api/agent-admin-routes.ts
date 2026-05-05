@@ -209,19 +209,8 @@ export async function handleAgentAdminRoutes(
             // Entry may not exist — fine.
           }
         }
-        // Also remove the vault-bootstrap marker so the next boot re-evaluates
-        // env hydration cleanly instead of trusting a stale "already-hydrated"
-        // hint that includes the cloud key.
-        try {
-          const fs = await import("node:fs");
-          const stateDirPath = resolveStateDir();
-          const markerPath = path.join(stateDirPath, ".vault-hydrated.json");
-          if (fs.existsSync(markerPath)) {
-            fs.unlinkSync(markerPath);
-          }
-        } catch {
-          // Marker missing or unreadable — fine.
-        }
+        // (No marker file to remove — vault-bootstrap is now keyed off
+        // per-key vault.has() checks and re-evaluates cleanly on every boot.)
       } catch (vaultErr) {
         logWarn(
           `[eliza-api] Reset: failed to wipe cloud vault entries: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
