@@ -28,6 +28,7 @@ RUN apt-get update \
         curl \
         git \
         ninja-build \
+        unzip \
  && rm -rf /var/lib/apt/lists/*
 
 ENV UV_INSTALL_DIR=/usr/local/bin
