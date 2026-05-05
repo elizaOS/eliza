@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
+import { lookup as dnsLookup } from "node:dns/promises";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
+  fetchWithSsrfGuard,
   type GenerateTextParams,
   type IAgentRuntime,
   type ImageDescriptionParams,
   type ImageDescriptionResult,
+  type LookupFn,
   logger,
 } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
@@ -52,20 +55,18 @@ function readSetting(
     : undefined;
 }
 
-export function isCodexModelProviderEnabled(): boolean {
-  const raw =
-    readConfigEnvKey("PARALLAX_CODEX_MODEL_PROVIDER") ??
-    process.env.PARALLAX_CODEX_MODEL_PROVIDER;
+export function isCodexModelProviderEnabled(runtime?: IAgentRuntime): boolean {
+  const raw = readSetting(runtime, "PARALLAX_CODEX_MODEL_PROVIDER");
   if (!raw) return false;
   if (TRUE_VALUE.test(raw)) return true;
   if (FALSE_VALUE.test(raw)) return false;
   return false;
 }
 
-export function readCodexModelProviderPriority(): number {
-  const raw =
-    readConfigEnvKey("PARALLAX_CODEX_MODEL_PRIORITY") ??
-    process.env.PARALLAX_CODEX_MODEL_PRIORITY;
+export function readCodexModelProviderPriority(
+  runtime?: IAgentRuntime,
+): number {
+  const raw = readSetting(runtime, "PARALLAX_CODEX_MODEL_PRIORITY");
   const parsed = raw ? Number(raw) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 50;
 }
@@ -104,7 +105,6 @@ export function buildCodexExecArgs(
     "-C",
     options.workdir,
     "--skip-git-repo-check",
-    "--ignore-rules",
     "--ephemeral",
     "--color",
     "never",
@@ -124,7 +124,9 @@ export function buildCodexExecArgs(
   return args;
 }
 
-export function promptFromGenerateTextParams(params: GenerateTextParams): string {
+export function promptFromGenerateTextParams(
+  params: GenerateTextParams,
+): string {
   if (typeof params.prompt === "string" && params.prompt.length > 0) {
     return params.prompt;
   }
@@ -214,7 +216,10 @@ export function parseCodexImageDescriptionResult(
     // Plain text is acceptable; older Codex CLI builds do not always honor JSON-only prompts.
   }
 
-  const firstLine = cleaned.split(/\r?\n/).find((line) => line.trim())?.trim();
+  const firstLine = cleaned
+    .split(/\r?\n/)
+    .find((line) => line.trim())
+    ?.trim();
   return {
     title: firstLine?.slice(0, 80) || "Image Analysis",
     description: cleaned || "Image description unavailable.",
@@ -310,13 +315,13 @@ export async function runCodexExec(
       };
 
       const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         child.kill("SIGTERM");
         escalationTimer = setTimeout(() => {
           child.kill("SIGKILL");
         }, KILL_GRACE_MS);
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
         reject(
           new Error(
             `codex exec timed out after ${options.timeoutMs}ms for model provider call`,
@@ -366,7 +371,9 @@ export async function runCodexExec(
           })
       : stdout.trim();
     if (!finalMessage) {
-      throw new Error(`codex exec produced an empty model response. ${stderr || stdout}`.trim());
+      throw new Error(
+        `codex exec produced an empty model response. ${stderr || stdout}`.trim(),
+      );
     }
     return finalMessage;
   } finally {
@@ -396,14 +403,29 @@ function imageExtensionForUrl(url: URL): string {
   return "";
 }
 
-async function writeDataUrlImage(imageUrl: string, tempDir: string): Promise<string> {
+const nodeLookup: LookupFn = async (hostname, options) => {
+  const records = await dnsLookup(hostname, options);
+  return records.map((record) => ({
+    address: record.address,
+    family: record.family,
+  }));
+};
+
+async function writeDataUrlImage(
+  imageUrl: string,
+  tempDir: string,
+): Promise<string> {
   const match = imageUrl.match(/^data:([^;,]+)(;base64)?,(.*)$/s);
   if (!match) {
-    throw new Error("IMAGE_DESCRIPTION requires an http(s) URL or image data URL");
+    throw new Error(
+      "IMAGE_DESCRIPTION requires an http(s) URL or image data URL",
+    );
   }
   const mime = match[1]?.toLowerCase();
   if (!mime?.startsWith("image/")) {
-    throw new Error(`IMAGE_DESCRIPTION data URL is not an image: ${mime ?? "unknown"}`);
+    throw new Error(
+      `IMAGE_DESCRIPTION data URL is not an image: ${mime ?? "unknown"}`,
+    );
   }
   const buffer = match[2]
     ? Buffer.from(match[3] ?? "", "base64")
@@ -419,7 +441,10 @@ async function writeDataUrlImage(imageUrl: string, tempDir: string): Promise<str
   return imagePath;
 }
 
-async function downloadImageUrl(imageUrl: string, tempDir: string): Promise<string> {
+async function downloadImageUrl(
+  imageUrl: string,
+  tempDir: string,
+): Promise<string> {
   if (imageUrl.startsWith("data:")) {
     return writeDataUrlImage(imageUrl, tempDir);
   }
@@ -428,54 +453,70 @@ async function downloadImageUrl(imageUrl: string, tempDir: string): Promise<stri
   try {
     parsed = new URL(imageUrl);
   } catch {
-    throw new Error("IMAGE_DESCRIPTION requires an http(s) URL or image data URL");
+    throw new Error(
+      "IMAGE_DESCRIPTION requires an http(s) URL or image data URL",
+    );
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`IMAGE_DESCRIPTION does not support ${parsed.protocol} URLs`);
+    throw new Error(
+      `IMAGE_DESCRIPTION does not support ${parsed.protocol} URLs`,
+    );
   }
 
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), IMAGE_FETCH_TIMEOUT_MS);
-  let response: Response;
+  let response: Response | undefined;
+  let release: (() => Promise<void>) | undefined;
   try {
-    response = await fetch(parsed, { signal: abort.signal });
+    const result = await fetchWithSsrfGuard({
+      url: parsed.toString(),
+      timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
+      lookupFn: nodeLookup,
+    });
+    response = result.response;
+    release = result.release;
   } catch (error) {
     throw new Error(
       `IMAGE_DESCRIPTION image fetch failed: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!response.ok) {
-    throw new Error(
-      `IMAGE_DESCRIPTION image fetch failed: ${response.status} ${response.statusText}`,
-    );
-  }
-  const contentLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
-    throw new Error(`IMAGE_DESCRIPTION image exceeds ${MAX_IMAGE_BYTES} bytes`);
-  }
-  const contentType = response.headers
-    .get("content-type")
-    ?.split(";")[0]
-    ?.trim()
-    .toLowerCase();
-  if (contentType && !contentType.startsWith("image/")) {
-    throw new Error(`IMAGE_DESCRIPTION URL is not an image: ${contentType}`);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (buffer.byteLength > MAX_IMAGE_BYTES) {
-    throw new Error(`IMAGE_DESCRIPTION image exceeds ${MAX_IMAGE_BYTES} bytes`);
+  try {
+    if (!response.ok) {
+      throw new Error(
+        `IMAGE_DESCRIPTION image fetch failed: ${response.status} ${response.statusText}`,
+      );
+    }
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
+      throw new Error(
+        `IMAGE_DESCRIPTION image exceeds ${MAX_IMAGE_BYTES} bytes`,
+      );
+    }
+    const contentType = response.headers
+      .get("content-type")
+      ?.split(";")[0]
+      ?.trim()
+      .toLowerCase();
+    if (contentType && !contentType.startsWith("image/")) {
+      throw new Error(`IMAGE_DESCRIPTION URL is not an image: ${contentType}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength > MAX_IMAGE_BYTES) {
+      throw new Error(
+        `IMAGE_DESCRIPTION image exceeds ${MAX_IMAGE_BYTES} bytes`,
+      );
+    }
+    const imagePath = path.join(
+      tempDir,
+      `${randomUUID()}${imageExtensionForMime(contentType) || imageExtensionForUrl(parsed)}`,
+    );
+    await writeFile(imagePath, buffer);
+    return imagePath;
+  } finally {
+    await release?.();
   }
-  const imagePath = path.join(
-    tempDir,
-    `${randomUUID()}${imageExtensionForMime(contentType) || imageExtensionForUrl(parsed)}`,
-  );
-  await writeFile(imagePath, buffer);
-  return imagePath;
 }
 
 export async function codexCliImageDescriptionModel(
@@ -494,9 +535,13 @@ export async function codexCliImageDescriptionModel(
     logger.info(
       `[codex-model-provider] running codex exec for IMAGE_DESCRIPTION in ${options.workdir}`,
     );
-    const text = await runCodexExec(buildCodexImageDescriptionPrompt(params), options, {
-      imagePaths: [imagePath],
-    });
+    const text = await runCodexExec(
+      buildCodexImageDescriptionPrompt(params),
+      options,
+      {
+        imagePaths: [imagePath],
+      },
+    );
     return parseCodexImageDescriptionResult(text);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

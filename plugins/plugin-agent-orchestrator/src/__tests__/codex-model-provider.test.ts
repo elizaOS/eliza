@@ -1,13 +1,38 @@
-import { describe, expect, it } from "vitest";
+import { ModelType, type IAgentRuntime } from "@elizaos/core";
+import { afterEach, describe, expect, it } from "vitest";
+import { taskAgentPlugin } from "../index.js";
 import {
   buildCodexExecArgs,
   buildCodexImageDescriptionPrompt,
   buildCodexModelPrompt,
+  codexCliImageDescriptionModel,
+  isCodexModelProviderEnabled,
   parseCodexImageDescriptionResult,
   promptFromGenerateTextParams,
+  readCodexModelProviderPriority,
 } from "../services/codex-model-provider.js";
 
+function runtimeWithSettings(settings: Record<string, string>): IAgentRuntime {
+  return {
+    getSetting(key: string) {
+      return settings[key];
+    },
+  } as IAgentRuntime;
+}
+
 describe("codex model provider", () => {
+  const originalModels = taskAgentPlugin.models;
+  const originalPriority = taskAgentPlugin.priority;
+
+  afterEach(() => {
+    taskAgentPlugin.models = originalModels;
+    if (originalPriority === undefined) {
+      delete taskAgentPlugin.priority;
+    } else {
+      taskAgentPlugin.priority = originalPriority;
+    }
+  });
+
   it("uses codex exec in read-only non-interactive output-file mode", () => {
     const args = buildCodexExecArgs("/tmp/out.txt", {
       binary: "codex",
@@ -24,7 +49,6 @@ describe("codex model provider", () => {
       "-C",
       "/workspace",
       "--skip-git-repo-check",
-      "--ignore-rules",
       "--ephemeral",
       "--color",
       "never",
@@ -36,6 +60,34 @@ describe("codex model provider", () => {
       "gpt-5.5",
       "-",
     ]);
+  });
+
+  it("reads Codex provider enablement from runtime settings", () => {
+    const runtime = runtimeWithSettings({
+      PARALLAX_CODEX_MODEL_PROVIDER: "true",
+      PARALLAX_CODEX_MODEL_PRIORITY: "77",
+    });
+
+    expect(isCodexModelProviderEnabled(runtime)).toBe(true);
+    expect(readCodexModelProviderPriority(runtime)).toBe(77);
+  });
+
+  it("registers Codex models during plugin init", () => {
+    taskAgentPlugin.models = undefined;
+    delete taskAgentPlugin.priority;
+
+    taskAgentPlugin.init?.(
+      {},
+      runtimeWithSettings({
+        PARALLAX_CODEX_MODEL_PROVIDER: "true",
+        PARALLAX_CODEX_MODEL_PRIORITY: "77",
+      }),
+    );
+
+    expect(taskAgentPlugin.priority).toBe(77);
+    expect(taskAgentPlugin.models?.[ModelType.IMAGE_DESCRIPTION]).toBe(
+      codexCliImageDescriptionModel,
+    );
   });
 
   it("extracts a plain prompt before falling back to messages", () => {
@@ -104,5 +156,14 @@ describe("codex model provider", () => {
       title: "Red square",
       description: "A red square with the word RED.",
     });
+  });
+
+  it("blocks private image URLs before invoking codex", async () => {
+    await expect(
+      codexCliImageDescriptionModel(runtimeWithSettings({}), {
+        imageUrl: "http://127.0.0.1/image.png",
+        prompt: "describe this",
+      }),
+    ).rejects.toThrow(/private|internal|Blocked/i);
   });
 });
