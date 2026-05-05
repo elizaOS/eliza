@@ -449,7 +449,7 @@ async function handleRepositioning(
 
           // Close existing position
           let closeSuccess = false;
-          let closeTxId;
+          let closeTxId: string | undefined;
           while (!closeSuccess) {
             try {
               const closeInstructions = await createClosePositionInstructions(
@@ -469,7 +469,7 @@ async function handleRepositioning(
 
           // Open new position
           let openSuccess = false;
-          let openTxId;
+          let openTxId: string | undefined;
           while (!openSuccess) {
             try {
               const openInstructions = await createOpenPositionInstructions(
