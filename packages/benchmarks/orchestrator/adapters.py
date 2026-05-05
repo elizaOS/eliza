@@ -370,24 +370,49 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         "elizaos_webshop",
         "--output",
         str(ctx.output_root),
-        "--model-provider",
-        ctx.request.provider,
-        "--model",
-        ctx.request.model,
     ]
-    if "max_tasks" in ctx.request.extra_config:
-        args.extend(["--max-tasks", str(int(ctx.request.extra_config["max_tasks"]))])
-    if bool(ctx.request.extra_config.get("sample", True)):
-        args.append("--sample")
+    provider_lower = ctx.request.provider.strip().lower()
+    if ctx.request.extra_config.get("mock") is True or provider_lower == "mock":
+        args.append("--mock")
+    elif ctx.request.extra_config.get("bridge") is True or provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
+        args.append("--bridge")
+        if ctx.request.model:
+            args.extend(["--model", ctx.request.model])
+    else:
+        if ctx.request.provider:
+            args.extend(["--model-provider", ctx.request.provider])
+        if ctx.request.model:
+            args.extend(["--model", ctx.request.model])
+
+    for extra_key, cli_key in (
+        ("max_tasks", "--max-tasks"),
+        ("max_turns", "--max-turns"),
+        ("trials", "--trials"),
+    ):
+        value = ctx.request.extra_config.get(extra_key)
+        if isinstance(value, int) and value > 0:
+            args.extend([cli_key, str(value)])
+
     if bool(ctx.request.extra_config.get("hf", False)):
         args.append("--hf")
+        split = ctx.request.extra_config.get("split")
+        if isinstance(split, str) and split.strip():
+            args.extend(["--split", split.strip()])
+    elif bool(ctx.request.extra_config.get("sample", True)):
+        args.append("--sample")
+
+    if bool(ctx.request.extra_config.get("trajectories", False)):
+        args.append("--trajectories")
     if not bool(ctx.request.extra_config.get("trajectories", False)):
         args.append("--no-trajectories")
+    temperature = ctx.request.extra_config.get("temperature")
+    if isinstance(temperature, (int, float)):
+        args.extend(["--temperature", str(float(temperature))])
     return args
 
 
 def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return [
+    args = [
         "python",
         "-m",
         "benchmarks.woobench",
@@ -396,6 +421,38 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
         "--output",
         str(ctx.output_root),
     ]
+    provider_lower = ctx.request.provider.strip().lower()
+    agent_lower = ctx.request.agent.strip().lower()
+    if ctx.request.extra_config.get("mock") is True or provider_lower == "mock" or agent_lower == "dummy":
+        args.extend(["--agent", "dummy"])
+        args.extend(["--evaluator", "heuristic"])
+    else:
+        args.extend(["--agent", "eliza"])
+        evaluator = ctx.request.extra_config.get("evaluator")
+        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
+            args.extend(["--evaluator", evaluator])
+
+    for extra_key, cli_key in (
+        ("scenario", "--scenario"),
+        ("system", "--system"),
+        ("persona", "--persona"),
+    ):
+        value = ctx.request.extra_config.get(extra_key)
+        if isinstance(value, str) and value.strip():
+            args.extend([cli_key, value.strip()])
+
+    concurrency = ctx.request.extra_config.get("concurrency")
+    if isinstance(concurrency, int) and concurrency > 0:
+        args.extend(["--concurrency", str(concurrency)])
+    return args
+
+
+def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    return {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+    }
 
 
 def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
@@ -768,6 +825,7 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
             "overall_score": data.get("overall_score"),
             "revenue_efficiency": data.get("revenue_efficiency"),
             "resilience_score": data.get("resilience_score"),
+            "failed_scenarios": data.get("failed_scenarios"),
         },
     )
 
@@ -1036,6 +1094,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             cwd=str((benchmarks_root / "webshop").resolve()),
             command_builder=_command_webshop,
             result_patterns=["webshop-results.json"],
+            score_extractor=score_extractor_factory.for_benchmark("webshop"),
             default_extra_config={
                 "max_tasks": 1,
                 "sample": True,
@@ -1047,6 +1106,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="WooBench mystical reading benchmark",
             cwd=str((benchmarks_root / "woobench").resolve()),
             command_builder=_command_woobench,
+            env_builder=_env_woobench,
             result_patterns=["woobench_*.json"],
             score_extractor=_score_from_woobench,
         ),

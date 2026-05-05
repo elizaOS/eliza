@@ -150,6 +150,8 @@ class WebShopRunner:
 
         await agent.initialize()
 
+        steps: list[EpisodeStep] = []
+        final_response = ""
         try:
             steps, final_response, _last_obs = await asyncio.wait_for(
                 agent.process_task(task),
@@ -302,4 +304,3 @@ class WebShopRunner:
 ## Notes
 - Success is currently defined as reward == 1.0 (perfect match).
 """
-

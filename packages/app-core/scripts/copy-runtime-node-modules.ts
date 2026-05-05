@@ -536,6 +536,9 @@ export function shouldCopyPackageEntry(entry: string): boolean {
   if (path.basename(entry) === "node_modules") {
     return false;
   }
+  if (entry.endsWith(".map")) {
+    return false;
+  }
 
   let stats: fs.Stats;
   try {

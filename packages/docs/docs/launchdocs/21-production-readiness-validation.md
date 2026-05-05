@@ -20,6 +20,8 @@ bunx vitest run scripts/launch-qa/check-docs.test.ts
 node scripts/launch-qa/check-docs.mjs --scope=launchdocs --json
 node scripts/launch-qa/run.mjs --only docs --json
 node scripts/launch-qa/run.mjs --only docs,ui-smoke --continue-on-failure --json
+node scripts/launch-qa/run.mjs --suite release --continue-on-failure --json
+node scripts/launch-qa/run.mjs --only training-focused --json
 node scripts/launch-qa/run-ui-smoke-stub.mjs test/ui-smoke/titlebar-navigation.spec.ts
 PYTHONPATH=packages python -m pytest packages/benchmarks/orchestrator/tests/test_adapter_discovery.py -q
 python -m py_compile packages/benchmarks/HyperliquidBench/eliza_agent.py packages/benchmarks/HyperliquidBench/types.py packages/benchmarks/adhdbench/elizaos_adhdbench/distractor_plugin.py packages/benchmarks/adhdbench/elizaos_adhdbench/runner.py packages/benchmarks/adhdbench/scripts/run_benchmark.py packages/benchmarks/bfcl/agent.py packages/benchmarks/bfcl/plugin.py
@@ -38,6 +40,8 @@ PYTHONPATH=packages/benchmarks/adhdbench python packages/benchmarks/adhdbench/sc
 - Built-app UI smoke: passed, 35 route entries plus the visible safe app tiles/button click-safety test. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-vxSi7X`.
 - Built-app UI smoke after titlebar inset fix: passed, 35 route entries plus the visible safe app tiles/button click-safety test.
 - Launch runner docs task after docs-site move: passed. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-ej5kda`.
+- Release suite rerun: all tasks passed except `training-focused`, which was the pre-fix Vast route failure from the already-running process. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-Gk4Zf1`.
+- Training-focused rerun after the Vast test-helper fix: passed, 9 files and 73 tests. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-V39Tq9`.
 - Titlebar navigation smoke: passed, 1 Playwright test.
 - Benchmark adapter discovery: passed, 6 pytest tests.
 - Orchestrator lifecycle dataset/evaluator/runner tests: passed, 4 pytest tests.

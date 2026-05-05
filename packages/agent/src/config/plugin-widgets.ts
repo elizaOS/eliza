@@ -1,42 +1,24 @@
 /**
  * Server-side plugin widget declarations.
  *
- * Maps plugin IDs to their widget metadata. This is the authoritative source
- * for widget declarations until upstream elizaOS adds a `widgets` field to the
- * Plugin type. When that happens, this map becomes a fallback for plugins
- * that haven't adopted the new field yet.
+ * Two sources merge here:
+ *   1. The plugin's own `widgets` field on its `Plugin` instance (canonical).
+ *   2. The static `PLUGIN_WIDGET_MAP` below, kept as a fallback for plugins
+ *      that haven't migrated to declaring widgets on the Plugin instance yet.
  *
- * Widget types are intentionally kept as plain objects (not imported from
- * app-core) to avoid circular dependencies between server and client packages.
+ * TODO: Migrate each entry into the owning plugin's `widgets` field, then
+ * delete its row from `PLUGIN_WIDGET_MAP`.
  */
 
-export interface PluginWidgetDeclarationServer {
-  id: string;
-  pluginId: string;
-  slot:
-    | "chat-sidebar"
-    | "chat-inline"
-    | "wallet"
-    | "browser"
-    | "heartbeats"
-    | "character"
-    | "settings"
-    | "nav-page";
-  label: string;
-  icon?: string;
-  order?: number;
-  defaultEnabled?: boolean;
-  navGroup?: string;
-}
+import type { Plugin, PluginWidgetDeclaration } from "@elizaos/core";
+
+export type PluginWidgetDeclarationServer = PluginWidgetDeclaration;
 
 /**
  * Static map of plugin widget declarations.
  * Key: plugin ID. Value: array of widget declarations.
  */
-export const PLUGIN_WIDGET_MAP: Record<
-  string,
-  PluginWidgetDeclarationServer[]
-> = {
+export const PLUGIN_WIDGET_MAP: Record<string, PluginWidgetDeclaration[]> = {
   lifeops: [
     {
       id: "lifeops.overview",
@@ -79,9 +61,55 @@ export const PLUGIN_WIDGET_MAP: Record<
   ],
 };
 
-/** Resolve widget declarations for a plugin by ID. */
+/** Strip common scope/prefix to compare a Plugin.name against a PluginEntry.id. */
+function normalizePluginIdentity(value: string): string {
+  let v = value.trim();
+  if (v.startsWith("@")) {
+    const slash = v.indexOf("/");
+    if (slash > 0) v = v.slice(slash + 1);
+  }
+  if (v.startsWith("plugin-")) v = v.slice("plugin-".length);
+  if (v.startsWith("app-")) v = v.slice("app-".length);
+  return v;
+}
+
+/**
+ * Resolve widget declarations for a plugin by id, merging:
+ *   - the plugin instance's own `widgets` field (when a runtime plugin list is
+ *     supplied and a match is found), and
+ *   - the static `PLUGIN_WIDGET_MAP` fallback.
+ *
+ * Declarations from the plugin instance take precedence; static-map entries
+ * with the same `(pluginId, id)` key are dropped.
+ */
 export function getPluginWidgets(
   pluginId: string,
-): PluginWidgetDeclarationServer[] {
-  return PLUGIN_WIDGET_MAP[pluginId] ?? [];
+  runtimePlugins?: ReadonlyArray<Plugin>,
+): PluginWidgetDeclaration[] {
+  const fromInstance: PluginWidgetDeclaration[] = [];
+  if (runtimePlugins && runtimePlugins.length > 0) {
+    const normalizedId = normalizePluginIdentity(pluginId);
+    const match = runtimePlugins.find(
+      (p) => normalizePluginIdentity(p.name) === normalizedId,
+    );
+    if (match?.widgets && match.widgets.length > 0) {
+      fromInstance.push(...match.widgets);
+    }
+  }
+
+  const fallback = PLUGIN_WIDGET_MAP[pluginId] ?? [];
+  if (fromInstance.length === 0) {
+    return [...fallback];
+  }
+
+  const seen = new Set(fromInstance.map((w) => `${w.pluginId}::${w.id}`));
+  const merged = [...fromInstance];
+  for (const decl of fallback) {
+    const key = `${decl.pluginId}::${decl.id}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(decl);
+    }
+  }
+  return merged;
 }

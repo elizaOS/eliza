@@ -32,6 +32,7 @@ For each runtime and each mode (`simple`, `non-simple`):
 
 - `groq`: Groq for transcription + response models + voice generation
 - `elevenlabs`: Groq for response models, ElevenLabs for transcription + voice generation
+- `mock`: deterministic in-process model, transcription, and TTS handlers for smoke tests without external credentials
 
 ## Required Environment
 
@@ -42,6 +43,11 @@ Common:
   - `examples/town/public/assets/background.mp3`
   - `agent-town/public/assets/background.mp3`
   - `run.sh` resolves the selected path to an absolute path before invoking the TypeScript runner
+  - `mock` profile additionally falls back to `benchmarks/voicebench/shared/mock-audio.txt`
+
+Mock profile:
+
+- no external credentials
 
 Groq profile:
 
@@ -66,6 +72,7 @@ ElevenLabs profile:
 
 ```bash
 cd benchmarks/voicebench
+./run.sh --profile=mock --iterations=1 --dataset=fixtures/manifest-mock.json
 ./run.sh --profile=groq
 ./run.sh --profile=elevenlabs
 ```

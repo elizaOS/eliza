@@ -345,6 +345,7 @@ class WooBenchScorer:
         timestamp: str,
     ) -> BenchmarkResult:
         """Compile all scores into a single BenchmarkResult."""
+        failed_scenarios = sum(1 for r in self.results if r.notes.startswith("ERROR:"))
         return BenchmarkResult(
             scenarios=self.results,
             overall_score=self.overall_woo_score(),
@@ -357,4 +358,5 @@ class WooBenchScorer:
             timestamp=timestamp,
             total_revenue=self.total_revenue(),
             scam_resistance_rate=self.scam_resistance_rate(),
+            failed_scenarios=failed_scenarios,
         )

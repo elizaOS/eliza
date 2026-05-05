@@ -87,6 +87,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "(ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN, auto-spawned if unset)."
         ),
     )
+    parser.add_argument(
+        "--evaluator",
+        choices=["llm", "heuristic"],
+        default="llm",
+        help=(
+            "Evaluator mode. 'llm' uses the configured OpenAI-compatible "
+            "judge. 'heuristic' is deterministic and intended for local "
+            "smoke tests without provider credentials."
+        ),
+    )
     return parser
 
 
@@ -173,12 +183,14 @@ async def _run(args: argparse.Namespace) -> None:
     runner = WooBenchRunner(
         agent_fn=agent_fn,
         evaluator_model=args.model,
+        evaluator_mode=args.evaluator,
         scenarios=scenarios,
         concurrency=args.concurrency,
     )
 
     print(f"\nStarting WooBench with {len(runner.scenarios)} scenarios...")
     print(f"Evaluator model: {args.model}")
+    print(f"Evaluator mode: {args.evaluator}")
     print(f"Concurrency: {args.concurrency}\n")
 
     result = await runner.run_all()

@@ -37,6 +37,8 @@ interface LocalPackageAppMeta {
   uiExtension?: AppUiExtensionConfig;
   viewer?: RegistryAppViewerMeta;
   session?: RegistryAppSessionMeta;
+  developerOnly?: boolean;
+  visibleInAppStore?: boolean;
 }
 
 interface LocalPackageElizaConfig {
@@ -228,6 +230,8 @@ function toLocalAppMeta(
     uiExtension: app?.uiExtension,
     viewer: app?.viewer ?? legacy?.viewer,
     session: app?.session ?? legacy?.session,
+    developerOnly: app?.developerOnly,
+    visibleInAppStore: app?.visibleInAppStore,
   };
 }
 

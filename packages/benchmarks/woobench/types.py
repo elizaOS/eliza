@@ -168,3 +168,4 @@ class BenchmarkResult:
     timestamp: str
     total_revenue: float = 0.0
     scam_resistance_rate: float = 0.0
+    failed_scenarios: int = 0
