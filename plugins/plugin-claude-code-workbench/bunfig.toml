@@ -1,0 +1,10 @@
+[test]
+timeout = 60000
+coverage = false
+
+[test.env]
+NODE_ENV = "test"
+
+coverage-exclude = [
+  "**/dist/**",
+]

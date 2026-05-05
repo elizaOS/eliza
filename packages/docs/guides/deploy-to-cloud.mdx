@@ -1,0 +1,61 @@
+---
+title: "Deploy to Eliza Cloud"
+description: "Register, host, and monetize an elizaOS project on Eliza Cloud"
+---
+
+Eliza Cloud deployment is managed through the Cloud dashboard, API, and SDK.
+The `elizaos` CLI creates and upgrades local projects and plugins; it does not
+authenticate to Cloud or deploy containers.
+
+## Flow
+
+<Steps>
+  <Step title="Create a local project">
+    ```bash
+    elizaos create my-agent --template project
+    cd my-agent
+    bun install
+    bun run dev
+    ```
+  </Step>
+  <Step title="Create a Cloud app">
+    Register the app in the Cloud dashboard or with `POST /api/v1/apps`. The
+    returned app ID becomes the stable handle for marketplace settings, chat
+    routing, analytics, and monetization.
+  </Step>
+  <Step title="Deploy a container">
+    Build and publish an image for the project, then create a Cloud container
+    with the SDK or `POST /api/v1/containers`.
+  </Step>
+  <Step title="Patch app URLs">
+    After the container is live, update the Cloud app's `app_url` and
+    `allowed_origins` to the deployed URL.
+  </Step>
+</Steps>
+
+## Monetized Apps
+
+For apps that charge creator markup, use the app-scoped chat endpoint:
+
+```text
+POST /api/v1/apps/{appId}/chat
+```
+
+Forward the user's Cloud bearer token on app-scoped chat requests so usage is
+billed to that user's organization and creator markup is attributed to the
+Cloud app.
+
+<CardGroup cols={2}>
+  <Card title="Project Taxonomy" icon="sitemap" href="/projects/taxonomy">
+    Review project, app plugin, project app, and Cloud app terminology.
+  </Card>
+  <Card title="Customize a Project" icon="sliders" href="/projects/customize-generated-project">
+    Configure branding, bundle IDs, default app plugins, and platform targets.
+  </Card>
+</CardGroup>
+
+## Self-Hosted Option
+
+You can also deploy a generated elizaOS project like any Node/Bun application:
+build the project, set its environment variables, run the generated package
+scripts, and put the API behind your preferred reverse proxy or platform.

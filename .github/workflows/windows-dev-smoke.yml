@@ -1,0 +1,92 @@
+name: Windows Dev Smoke
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "packages/app-core/scripts/**"
+      - "packages/app-core/platforms/electrobun/**"
+      - "packages/app/**"
+      - "package.json"
+      - "bun.lock"
+  schedule:
+    # Weekly Bun canary check (Mondays 06:00 UTC).
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: windows-dev-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dev-smoke:
+    name: Windows smoke (${{ matrix.bun-version }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # PRs only exercise the pinned Bun; canary runs via the weekly
+        # schedule and manual workflow_dispatch.
+        bun-version: ${{ github.event_name == 'pull_request' && fromJSON('["1.3.10"]') || fromJSON('["1.3.10", "canary"]') }}
+
+    steps:
+      - name: Enable long paths (Windows)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          function Set-GitLongPaths([string]$Scope) {
+            & git config $Scope core.longpaths true
+            if ($LASTEXITCODE -ne 0) {
+              throw "git config $Scope core.longpaths true failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          try {
+            Set-GitLongPaths "--system"
+            Write-Host "Enabled Git long paths in system config."
+          } catch {
+            Write-Warning "System git config failed; falling back to --global. $($_.Exception.Message)"
+            Set-GitLongPaths "--global"
+            Write-Host "Enabled Git long paths in global config."
+          }
+
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /package.json
+            /bun.lock
+            /bunfig.toml
+            /tsconfig.json
+            /.github/actions/setup-bun-workspace/**
+            packages/
+            patches/
+            scripts/
+            plugins/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ matrix.bun-version }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          run-postinstall: "false"
+          init-submodules: "false"
+
+      - name: Verify json5 interop
+        run: >
+          bun -e "import * as JSON5Module from 'json5';
+          const JSON5 = JSON5Module.default ?? JSON5Module;
+          if (typeof JSON5.parse !== 'function') throw new Error('JSON5.parse missing');
+          console.log('json5 interop ok');"
+
+      - name: Verify bun-version-guard
+        run: >
+          bun -e "import { getBunVersionAdvisory } from './packages/app-core/scripts/lib/bun-version-guard.mjs';
+          const result = getBunVersionAdvisory();
+          console.log('bun-version-guard:', result ?? 'OK (no advisory)');"

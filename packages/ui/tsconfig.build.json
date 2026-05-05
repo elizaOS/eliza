@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "rootDir": "../../",
+    "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],
+  "include": ["src", "../agent/src/external-modules.d.ts"]
+}

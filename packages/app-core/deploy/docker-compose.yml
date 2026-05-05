@@ -1,0 +1,57 @@
+services:
+  eliza-gateway:
+    image: ${ELIZA_IMAGE:-eliza:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      ELIZA_GATEWAY_TOKEN: ${ELIZA_GATEWAY_TOKEN}
+      ELIZA_ALLOWED_ORIGINS: ${ELIZA_ALLOWED_ORIGINS}
+      # Set ELIZA_API_TOKEN for non-localhost deployments to require auth on API routes
+      ELIZA_API_TOKEN: ${ELIZA_API_TOKEN:-}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
+    volumes:
+      - ${ELIZA_CONFIG_DIR}:/home/node/.eliza
+      - ${ELIZA_WORKSPACE_DIR}:/home/node/.eliza/workspace
+    ports:
+      - "${ELIZA_GATEWAY_PORT:-18789}:${ELIZA_GATEWAY_PORT:-18789}"
+      - "${ELIZA_BRIDGE_PORT:-18790}:18790"
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${ELIZA_GATEWAY_PORT:-18789}/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "${ELIZA_GATEWAY_BIND:-lan}",
+        "--port",
+        "${ELIZA_GATEWAY_PORT:-18789}",
+      ]
+
+  eliza-cli:
+    image: ${ELIZA_IMAGE:-eliza:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      ELIZA_GATEWAY_TOKEN: ${ELIZA_GATEWAY_TOKEN}
+      # Set ELIZA_API_TOKEN for non-localhost deployments to require auth on API routes
+      ELIZA_API_TOKEN: ${ELIZA_API_TOKEN:-}
+      BROWSER: echo
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
+    volumes:
+      - ${ELIZA_CONFIG_DIR}:/home/node/.eliza
+      - ${ELIZA_WORKSPACE_DIR}:/home/node/.eliza/workspace
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["node", "dist/index.js"]

@@ -1,0 +1,117 @@
+---
+title: Models
+description: List and discover available AI models on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Models
+
+<div className="status-badge status-stable">Stable</div>
+
+Discover and list available AI models.
+
+## List Models
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/models</span>
+</div>
+
+Returns a list of all available models.
+
+### Request
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/models" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Response
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "gpt-4o",
+      "object": "model",
+      "created": 1705312800,
+      "owned_by": "openai",
+      "capabilities": ["chat", "function_calling", "vision"]
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "object": "model",
+      "created": 1705312800,
+      "owned_by": "anthropic"
+    }
+  ]
+}
+```
+
+---
+
+## Chat Models
+
+The `/api/v1/models` response is the source of truth for the full live catalog. The tables below are representative examples, not an exhaustive list.
+
+### OpenAI
+
+| Model         | Context | Best For                |
+| ------------- | ------- | ----------------------- |
+| `gpt-4o`      | 128K    | General purpose, vision |
+| `gpt-4o-mini` | 128K    | Fast, cost-effective    |
+| `gpt-4-turbo` | 128K    | Complex reasoning       |
+
+### Anthropic
+
+| Model                        | Context | Best For                 |
+| ---------------------------- | ------- | ------------------------ |
+| `claude-sonnet-4-6` | 200K    | Balance of speed/quality |
+| `claude-opus-4-7`     | 200K    | Most capable             |
+| `claude-haiku-4-5-20251001`    | 200K    | Fastest                  |
+
+### Google
+
+| Model              | Context | Best For       |
+| ------------------ | ------- | -------------- |
+| `gemini-1.5-pro`   | 1M      | Long context   |
+| `gemini-1.5-flash` | 1M      | Fast responses |
+
+---
+
+## Embedding Models
+
+| Model                    | Dimensions | Description          |
+| ------------------------ | ---------- | -------------------- |
+| `text-embedding-3-small` | 1536       | Fast, cost-effective |
+| `text-embedding-3-large` | 3072       | Higher quality       |
+
+---
+
+## Image Models
+
+| Model                                   | Provider | Speed  | Best For                 |
+| --------------------------------------- | -------- | ------ | ------------------------ |
+| `google/gemini-2.5-flash-image`         | Google   | Fast   | General use (default)    |
+| `google/gemini-3.1-flash-image-preview` | Google   | Fast   | Preview/testing          |
+| `google/gemini-3-pro-image`             | Google   | Medium | Higher quality           |
+| `openai/gpt-5-nano`                     | OpenAI   | Medium | OpenAI image generation  |
+| `bfl/flux-kontext-max`                  | BFL      | Medium | Context-aware generation |
+
+---
+
+## Model Selection Tips
+
+<Callout type="info">
+  Start with `gpt-4o-mini` or `claude-sonnet-4-6` for a good balance.
+</Callout>
+
+| Use Case          | Recommended Model   |
+| ----------------- | ------------------- |
+| General chat      | `gpt-4o-mini`       |
+| Complex reasoning | `gpt-4o`            |
+| Code generation   | `claude-sonnet-4-6` |
+| Long documents    | `gemini-1.5-pro`    |
+| Fast responses    | `claude-haiku-4-5-20251001`    |

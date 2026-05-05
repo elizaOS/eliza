@@ -1,0 +1,795 @@
+---
+title: "Migration"
+description: "Complete guide for migrating elizaOS plugins from version 0.x to 1.x"
+---
+
+> **Important**: This comprehensive guide will walk you through migrating your elizaOS plugins from version 0.x to 1.x. The migration process involves several key changes to architecture, APIs, and best practices.
+
+## Migration Overview
+
+The 1.x architecture brings:
+
+- **Better modularity** - Cleaner separation of concerns
+- **Improved testing** - Easier to test individual components
+- **Enhanced flexibility** - More customization options
+- **Better performance** - Optimized runtime execution
+- **Stronger typing** - Catch errors at compile time
+
+## Pre-Migration Checklist
+
+Before starting your migration:
+
+- [ ] Backup your existing plugin code
+- [ ] Review all breaking changes
+- [ ] Identify custom components that need migration
+- [ ] Plan your testing strategy
+- [ ] Allocate sufficient time for the migration
+
+## Step 1: Create Version Branch
+
+Create a new branch for the 1.x version while preserving the main branch for backwards compatibility:
+
+```bash
+git checkout -b 1.x
+```
+
+> **Note**: This branch will serve as your new 1.x version branch.
+
+## Step 2: Remove Deprecated Files
+
+Clean up deprecated tooling and configuration files:
+
+### Files to Remove:
+
+- **`biome.json`** - Deprecated linter configuration
+- **`vitest.config.ts`** - Replaced by Bun test runner
+- **Lock files** - Any `lock.json` or `yml.lock` files
+
+### Quick Cleanup Commands:
+
+```bash
+rm -rf vitest.config.ts
+rm -rf biome.json
+rm -f *.lock.json *.yml.lock
+```
+
+> **Why?** The elizaOS ecosystem has standardized on:
+>
+> - **Bun's built-in test runner** (replacing Vitest)
+> - **Prettier** for code formatting (replacing Biome)
+
+## Step 3: Update package.json
+
+### Version and Naming
+
+```json
+{
+  "version": "1.0.0",
+  "name": "@elizaos/plugin-yourname" // Note: @elizaos, not @elizaos-plugins
+}
+```
+
+### Dependencies
+
+```json
+{
+  "dependencies": {
+    "@elizaos/core": "^2.0.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "bun": "^1.2.15", // REQUIRED
+    "@types/bun": "latest", // REQUIRED
+    "typescript": "^5.0.0"
+  }
+}
+```
+
+### Scripts Section
+
+```json
+"scripts": {
+  "build": "bun run build.ts",
+  "dev": "bun --hot build.ts",
+  "lint": "prettier --write ./src",
+  "clean": "rm -rf dist .turbo node_modules",
+  "test": "vitest",
+  "publish": "npm publish --access public"
+}
+```
+
+## Step 4: Update TypeScript Configuration
+
+Update `tsconfig.json`:
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "esnext",
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["bun-types"],
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]
+}
+```
+
+## Step 5: Update Core Package Imports
+
+### Import Changes
+
+```typescript
+// OLD (0.x)
+import { Action, Memory, State } from "@ai16z/eliza";
+
+// NEW (1.x)
+import { Action, Memory, State, ActionResult } from "@elizaos/core";
+```
+
+## Step 6: Update Actions
+
+### Action Signatures
+
+Actions in 1.x must return `ActionResult` and include callbacks:
+
+```typescript
+// OLD (0.x)
+const myAction = {
+  handler: async (runtime, message, state) => {
+    return { text: "Response" };
+  },
+};
+
+// NEW (1.x)
+const myAction = {
+  handler: async (runtime, message, state, options, callback) => {
+    // Use callback for intermediate responses
+    await callback?.({ text: "Processing..." });
+
+    // Must return ActionResult
+    return {
+      success: true, // REQUIRED field
+      text: "Response completed",
+      values: {
+        /* state updates */
+      },
+      data: {
+        /* raw data */
+      },
+    };
+  },
+};
+```
+
+### Common Action Patterns
+
+```typescript
+// Error handling
+handler: async (runtime, message, state, options, callback) => {
+  try {
+    const result = await performAction();
+    return {
+      success: true,
+      text: `Action completed: ${result}`,
+      data: result,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      text: "Action failed",
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+};
+
+// Using previous results (action chaining)
+handler: async (runtime, message, state, options, callback) => {
+  const context = options?.context;
+  const previousResult = context?.getPreviousResult?.("PREVIOUS_ACTION");
+
+  if (previousResult?.data) {
+    // Use data from previous action
+    const continuedResult = await continueWork(previousResult.data);
+    return {
+      success: true,
+      text: "Continued from previous action",
+      data: continuedResult,
+    };
+  }
+};
+```
+
+## Step 7: State Management
+
+### Using composeState
+
+The v1 `composeState` method has enhanced filtering capabilities:
+
+```typescript
+// v0: Basic state composition
+const state = await runtime.composeState(message);
+
+// v1: With filtering
+const state = await runtime.composeState(
+  message,
+  ["agentName", "bio", "recentMessages"], // Include only these
+  true, // onlyInclude = true
+);
+
+// v1: Update specific parts
+const updatedState = await runtime.composeState(
+  message,
+  ["RECENT_MESSAGES", "GOALS"], // Update only these
+);
+```
+
+### Available State Keys
+
+Core state keys you can filter:
+
+- Agent info: `agentId`, `agentName`, `bio`, `lore`, `adjective`
+- Conversation: `recentMessages`, `recentMessagesData`
+- Providers: Any registered provider name (e.g., `TIME`, `FACTS`)
+
+## Step 8: Update Providers
+
+### Provider Migration
+
+```typescript
+// v0: Direct state access
+const data = await runtime.databaseAdapter.getData();
+
+// v1: Provider pattern
+const provider: Provider = {
+  name: "MY_DATA",
+  description: "Provides custom data",
+  dynamic: true, // Re-fetch on each use
+
+  get: async (runtime, message, state) => {
+    const data = await runtime.databaseAdapter.getData();
+    return {
+      text: formatDataForPrompt(data),
+      values: data,
+      data: { raw: data },
+    };
+  },
+};
+```
+
+### Provider Options
+
+```typescript
+interface Provider {
+  name: string;
+  description?: string;
+  dynamic?: boolean; // Default: false
+  position?: number; // Execution order (-100 to 100)
+  private?: boolean; // Hidden from provider list
+  get: (runtime, message, state) => Promise<ProviderResult>;
+}
+```
+
+## Step 9: Testing Migration
+
+### Test Framework (Vitest)
+
+All tests use **real runtime instances** with PGLite - no mocks:
+
+```typescript
+// Using Vitest for tests with real runtime
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestRuntime, cleanupRuntime } from "./test-utils";
+import type { IAgentRuntime } from "@elizaos/core";
+
+let runtime: IAgentRuntime;
+
+beforeEach(async () => {
+  runtime = await createTestRuntime();
+});
+
+afterEach(async () => {
+  await cleanupRuntime(runtime);
+});
+```
+
+Run tests with:
+```bash
+npx vitest
+```
+
+### Test Structure
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { myAction } from "../src/actions/myAction";
+import { createTestRuntime, cleanupRuntime } from "./test-utils";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+
+describe("MyAction", () => {
+  let runtime: IAgentRuntime;
+
+  beforeEach(async () => {
+    // Create real runtime with PGLite database
+    runtime = await createTestRuntime();
+  });
+
+  afterEach(async () => {
+    await cleanupRuntime(runtime);
+  });
+
+  it("should validate correctly", async () => {
+    const message = { content: { text: "test" } } as Memory;
+    const isValid = await myAction.validate(runtime, message);
+    expect(isValid).toBe(true);
+  });
+
+  it("should return ActionResult", async () => {
+    const message = { content: { text: "test" } } as Memory;
+    const result = await myAction.handler(runtime, message);
+
+    expect(result).toHaveProperty("success");
+    expect(result.success).toBe(true);
+  });
+});
+```
+
+## Step 10: Prompt Generation
+
+### Template System Changes
+
+```typescript
+// v0: Simple template
+const template = `{{agentName}} responds to {{userName}}`;
+
+// v1: Enhanced templates with conditional blocks
+const template = `
+{{#if hasGoals}}
+Current goals: {{goals}}
+{{/if}}
+
+{{agentName}} considers the context and responds.
+`;
+```
+
+### Using composePromptFromState
+
+```typescript
+import { composePromptFromState } from "@elizaos/core";
+
+const prompt = composePromptFromState({
+  state,
+  template: myTemplate,
+  additionalContext: {
+    customField: "value",
+  },
+});
+
+const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt,
+  runtime,
+});
+```
+
+## Step 11: Advanced Patterns
+
+### Service Migration
+
+```typescript
+// v1: Service pattern
+export class MyService extends Service {
+  static serviceType = "my-service";
+  capabilityDescription = "My service capabilities";
+
+  static async start(runtime: IAgentRuntime): Promise<MyService> {
+    const service = new MyService(runtime);
+    await service.initialize();
+    return service;
+  }
+
+  async stop(): Promise<void> {
+    // Cleanup
+  }
+}
+```
+
+### Event Handlers
+
+```typescript
+// v1: Event system
+export const myPlugin: Plugin = {
+  name: "my-plugin",
+  events: {
+    MESSAGE_RECEIVED: [
+      async (params) => {
+        // Handle message received event
+      },
+    ],
+    RUN_COMPLETED: [
+      async (params) => {
+        // Handle run completed event
+      },
+    ],
+  },
+};
+```
+
+## Step 12: Final Configuration
+
+### Configure .gitignore
+
+```
+dist
+node_modules
+.env
+.elizadb
+.turbo
+```
+
+### Configure .npmignore
+
+```
+*
+!dist/**
+!package.json
+!readme.md
+!build.ts
+```
+
+### Add MIT License
+
+Create a `LICENSE` file with MIT license text.
+
+### Verify package.json Fields
+
+Ensure all required fields are present:
+
+- [ ] `name`, `version`, `description`
+- [ ] `main`, `types`, `module`
+- [ ] `author`, `license`, `repository`
+- [ ] `scripts`, `dependencies`, `devDependencies`
+- [ ] `type`: "module"
+- [ ] `exports` configuration
+
+## Common Migration Issues
+
+### Issue: Action not returning correct format
+
+**Solution**: Ensure all actions return `ActionResult` with `success` field:
+
+```typescript
+return {
+  success: true, // REQUIRED
+  text: "Response",
+  values: {},
+  data: {},
+};
+```
+
+### Issue: Tests failing with module errors
+
+**Solution**: Update imports to use `vitest`:
+
+```typescript
+import { describe, it, expect, vi } from "vitest";
+```
+
+### Issue: State composition performance
+
+**Solution**: Use filtering to only compose needed state:
+
+```typescript
+const state = await runtime.composeState(
+  message,
+  ["RECENT_MESSAGES", "CHARACTER"],
+  true, // onlyInclude
+);
+```
+
+### Issue: Provider not being called
+
+**Solution**: Ensure provider is registered and not marked as `private`:
+
+```typescript
+const provider = {
+  name: "MY_PROVIDER",
+  private: false, // Make sure it's not private
+  dynamic: false, // Static providers are included by default
+  get: async () => {
+    /* ... */
+  },
+};
+```
+
+## Testing Your Migration
+
+### Build Test
+
+```bash
+bun run build
+```
+
+### Run Tests
+
+```bash
+npx vitest
+```
+
+### Integration Test
+
+Create a test agent using your migrated plugin:
+
+```typescript
+import { myPlugin } from "./dist/index.js";
+
+const agent = {
+  name: "TestAgent",
+  plugins: [myPlugin],
+};
+
+// Test your plugin functionality
+```
+
+## Publishing
+
+Once migration is complete:
+
+```bash
+# Build the plugin
+bun run build
+
+# Test everything
+npx vitest
+
+# Publish to npm
+npm publish --access public
+```
+
+## Migration Completion Checklist
+
+- [ ] All imports updated to `@elizaos/core`
+- [ ] Actions return `ActionResult` with `success` field
+- [ ] Callbacks implemented in action handlers
+- [ ] Tests use Vitest for test framework
+- [ ] State composition uses new filtering API
+- [ ] Providers implemented for custom data
+- [ ] Package.json updated with correct dependencies
+- [ ] TypeScript configuration updated
+- [ ] Build succeeds without errors
+- [ ] All tests pass
+- [ ] Plugin works with v1.x runtime
+
+## Getting Help
+
+If you encounter issues during migration:
+
+1. Review this guide for common issues
+2. Search existing [GitHub issues](https://github.com/elizaos/eliza/issues)
+3. Join our [Discord community](https://discord.gg/ai16z) for real-time help
+4. Create a detailed issue with your migration problem
+
+## Advanced Migration Topics
+
+### Evaluators Migration
+
+#### Evaluator Interface Changes
+
+Evaluators remain largely unchanged in their core structure, but their integration with the runtime has evolved:
+
+```typescript
+// v0 Evaluator usage remains the same
+export interface Evaluator {
+  alwaysRun?: boolean;
+  description: string;
+  similes: string[];
+  examples: EvaluationExample[];
+  handler: Handler;
+  name: string;
+  validate: Validator;
+}
+```
+
+#### Key Changes:
+
+1. **Evaluation Results**: The `evaluate()` method now returns `Evaluator[]` instead of `string[]`:
+
+```typescript
+// v0: Returns string array of evaluator names
+const evaluators: string[] = await runtime.evaluate(message, state);
+
+// v1: Returns Evaluator objects
+const evaluators: Evaluator[] | null = await runtime.evaluate(message, state);
+```
+
+2. **Additional Parameters**: The evaluate method accepts new optional parameters:
+
+```typescript
+// v1: Extended evaluate signature
+await runtime.evaluate(
+    message: Memory,
+    state?: State,
+    didRespond?: boolean,
+    callback?: HandlerCallback,
+    responses?: Memory[]  // NEW: Can pass responses for evaluation
+);
+```
+
+### Entity System Migration
+
+The most significant change is the shift from User/Participant to Entity/Room/World:
+
+#### User → Entity
+
+```typescript
+// v0: User-based methods
+await runtime.ensureUserExists(userId, userName, name, email, source);
+const account = await runtime.getAccountById(userId);
+
+// v1: Entity-based methods
+await runtime.ensureConnection({
+  entityId: userId,
+  roomId,
+  userName,
+  name,
+  worldId,
+  source,
+});
+const entity = await runtime.getEntityById(entityId);
+```
+
+#### Participant → Room Membership
+
+```typescript
+// v0: Participant methods
+await runtime.ensureParticipantExists(userId, roomId);
+await runtime.ensureParticipantInRoom(userId, roomId);
+
+// v1: Simplified room membership
+await runtime.ensureParticipantInRoom(entityId, roomId);
+```
+
+#### New World Concept
+
+v1 introduces the concept of "worlds" (servers/environments):
+
+```typescript
+// v1: World management
+await runtime.ensureWorldExists({
+  id: worldId,
+  name: serverName,
+  type: "discord", // or other platform
+});
+
+// Get all rooms in a world
+const rooms = await runtime.getRooms(worldId);
+```
+
+#### Connection Management
+
+```typescript
+// v0: Multiple ensure methods
+await runtime.ensureUserExists(...);
+await runtime.ensureRoomExists(roomId);
+await runtime.ensureParticipantInRoom(...);
+
+// v1: Single connection method
+await runtime.ensureConnection({
+    entityId,
+    roomId,
+    worldId,
+    userName,
+    name,
+    source,
+    channelId,
+    serverId,
+    type: 'user',
+    metadata: {}
+});
+```
+
+### Client Migration
+
+Clients now have a simpler interface:
+
+```typescript
+// v0: Client with config
+export type Client = {
+  name: string;
+  config?: { [key: string]: string | number | boolean };
+  start: (runtime: IAgentRuntime) => Promise<ClientInstance>;
+};
+
+// v1: Client integrated with services
+// Clients are now typically implemented as services
+class MyClient extends Service {
+  static serviceType = ServiceTypeName.MY_CLIENT;
+
+  async initialize(runtime: IAgentRuntime): Promise<void> {
+    // Start client operations
+  }
+
+  async stop(): Promise<void> {
+    // Stop client operations
+  }
+}
+```
+
+### Runtime Method Changes
+
+#### Removed Methods
+
+- `updateRecentMessageState()` → Use `composeState(message, ['RECENT_MESSAGES'])`
+- `registerMemoryManager()` → Not needed, use database adapter
+- `getMemoryManager()` → Use database adapter methods
+- `registerContextProvider()` → Use `registerProvider()`
+
+#### Changed Methods
+
+- `evaluate()` → Now returns `Evaluator[]` instead of `string[]`
+- `getAccountById()` → `getEntityById()`
+- `ensureUserExists()` → `ensureConnection()`
+- `generateText()` → `runtime.useModel()`
+
+#### New Methods
+
+- `setSetting()`
+- `registerEvent()`
+- `emitEvent()`
+- `useModel()`
+- `registerModel()`
+- `ensureWorldExists()`
+- `getRooms()`
+
+### Advanced Migration Checklist
+
+- [ ] Update all evaluator result handling to expect `Evaluator[]` objects
+- [ ] Remove singleton patterns from services
+- [ ] Update service registration to pass classes instead of instances
+- [ ] Replace `updateRecentMessageState` with `composeState`
+- [ ] Migrate from `generateText` to `runtime.useModel`
+- [ ] Update user/participant methods to entity/room methods
+- [ ] Add world management for multi-server environments
+- [ ] Convert clients to service-based architecture
+- [ ] Update any direct memory manager access to use database adapter
+- [ ] Replace `import { settings }` with `runtime.getSetting()` calls
+- [ ] Update functions to accept `runtime` parameter where settings are needed
+
+## Summary
+
+The migration from 0.x to 1.x involves:
+
+1. Updating package structure and dependencies
+2. Migrating action signatures to return `ActionResult`
+3. Implementing callbacks for user feedback
+4. Converting to Bun test runner
+5. Using the enhanced state composition system
+6. Implementing providers for custom data
+7. Following new TypeScript patterns
+
+Take your time, test thoroughly, and don't hesitate to ask for help in the community!
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Plugin Architecture" icon="sitemap" href="/plugins/architecture">
+    Understand the new plugin system architecture
+  </Card>
+
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build new plugins with modern patterns
+</Card>
+
+<Card title="Plugin Components" icon="cube" href="/plugins/components">
+  Learn about Actions, Providers, Evaluators, and Services
+</Card>
+
+  <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+    Master proven plugin development patterns
+  </Card>
+</CardGroup>

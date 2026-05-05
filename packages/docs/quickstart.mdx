@@ -1,0 +1,100 @@
+---
+title: "Quickstart"
+description: "Create and run your first generated elizaOS project"
+---
+
+This quickstart creates a generated project, installs dependencies, and starts the product app from its package scripts.
+
+## Create a Project
+
+```bash
+npx elizaos create my-agent-app --template project
+cd my-agent-app
+bun install
+```
+
+You can also run `elizaos create` with no arguments for interactive template selection.
+
+<Note>
+  The `elizaos` CLI scaffolds and upgrades workspaces. After creation, use the generated project's scripts to run, build, and test the app.
+</Note>
+
+## Add Environment Variables
+
+Copy the generated example file and add your model provider key:
+
+```bash
+cp .env.example .env
+```
+
+For an OpenAI-backed local setup:
+
+```bash
+OPENAI_API_KEY=your-api-key
+```
+
+Project templates may include additional app-specific `.env.example` files under `apps/app/`. Keep secrets in local `.env` files and out of version control.
+
+## Run the App
+
+Start the generated development server:
+
+```bash
+bun run dev
+```
+
+The generated project owns the app runtime scripts. Common scripts include:
+
+```bash
+bun run dev
+bun run build
+bun run test
+bun run typecheck
+bun run lint
+```
+
+Open the URL printed by the dev server. In the default fullstack project, the branded app lives in `apps/app`, while the local elizaOS checkout lives under `eliza/`.
+
+## What Was Created
+
+```bash
+my-agent-app/
+├── apps/
+│   └── app/              # Project app: branded web, desktop, and mobile shell
+├── eliza/                # Local elizaOS checkout used by the generated workspace
+├── .elizaos/
+│   └── template.json     # Template metadata for future upgrades
+├── .env.example
+├── package.json          # Project scripts
+└── bunfig.toml
+```
+
+The project is the deployable product workspace. The project app is the branded shell inside `apps/app`. Runtime extensions are plugins, and app plugins are plugins that also contribute app surfaces.
+
+## Upgrade Later
+
+From the project root:
+
+```bash
+elizaos upgrade --check
+elizaos upgrade
+```
+
+Use `--check` before writing changes. The upgrade command updates managed template files and reports conflicts instead of overwriting local edits.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize a Generated Project" icon="sliders" href="/projects/customize-generated-project">
+    Update identity, bundle IDs, branding, app plugins, and platform config.
+  </Card>
+  <Card title="Project Taxonomy" icon="sitemap" href="/projects/taxonomy">
+    Learn project, plugin, app plugin, project app, and Cloud app terminology.
+  </Card>
+  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+    Build a reusable runtime extension.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+    Review `create`, `upgrade`, `info`, and `version`.
+  </Card>
+</CardGroup>

@@ -1,0 +1,22 @@
+# Messages we are searching for channel join information
+{{recentMessages}}
+
+# Instructions: {{senderName}} is requesting the bot to join a specific Discord channel (text or voice). Your goal is to determine which channel they want to join.
+
+Extract the channel identifier from their request:
+- If they mention a channel like #general or <#channelid>, extract that
+- If they provide a channel name, extract that
+- If they provide a channel ID (long number), extract that
+- If they mention "voice", "vc", "voice channel", include that as a hint
+
+Your response must be formatted as a JSON block with this structure:
+```json
+{
+  "channelIdentifier": "<channel-name|channel-id|#mention>",
+  "isVoiceChannel": true/false
+}
+```
+
+
+
+

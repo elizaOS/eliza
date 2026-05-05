@@ -1,0 +1,20 @@
+{
+  "name": "@elizaos/container-control-plane",
+  "version": "1.0.0",
+  "description": "Node/Bun control plane for Eliza Cloud user containers",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun --watch run src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "4.12.14"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "22.19.2",
+    "typescript": "^6.0.0"
+  }
+}

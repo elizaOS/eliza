@@ -1,0 +1,61 @@
+---
+title: API Explorer
+description: Browse every public Cloud API route (mostly under /api/v1) with a full left-side explorer and OpenAPI-friendly paths.
+---
+
+import { Callout } from "@/docs/components";
+import { ApiRouteExplorer } from "@/components/docs/api-route-explorer";
+
+# API Explorer
+
+This page gives you a **complete route map** of the elizaOS Cloud REST API, generated directly from the codebase (`app/api/v1/**/route.ts`) so it stays in sync with production.
+
+<Callout type="info">
+  Most public REST endpoints live under <code>/api/v1</code>. Some internal
+  endpoints (admin/cron) are hidden by default — toggle “Show all” in the
+  explorer if you need them.
+</Callout>
+
+## Base URL
+
+```text
+https://elizacloud.ai/api/v1
+```
+
+## Authentication (recommended)
+
+For server-to-server usage, send your API key as a Bearer token:
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/models" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Requests
+
+- **Content-Type**: send JSON with `Content-Type: application/json` (unless the endpoint explicitly requires multipart uploads).
+- **Idempotency**: for write endpoints, prefer retry-safe patterns (don’t assume POST is idempotent).
+
+## Responses & errors
+
+Errors are returned with appropriate HTTP status codes (e.g. `401`, `403`, `404`, `429`, `500`). If you need a stable programmatic contract, rely on **status codes first**, then parse error bodies.
+
+## OpenAI compatibility
+
+For OpenAI-style chat, use the OpenAI-compatible route:
+
+- **POST** `/api/v1/chat/completions`
+
+## Full API route explorer
+
+<ApiRouteExplorer />
+
+## OpenAPI spec + client generation
+
+The platform exposes an OpenAPI spec endpoint at:
+
+```text
+https://elizacloud.ai/api/openapi.json
+```
+
+You can generate TypeScript types/clients from that spec using your preferred tooling (e.g. `openapi-typescript`, `orval`, or OpenAPI Generator).

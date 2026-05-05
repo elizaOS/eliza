@@ -1,0 +1,12 @@
+dist
+node_modules
+.env
+.elizadb
+.turbo
+target/
+__pycache__
+*.pyc
+.venv
+*.egg-info
+.DS_Store
+package-lock.json

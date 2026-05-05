@@ -1,0 +1,45 @@
+// payment.proto - x402 payment schema types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// Payment configuration definition for x402-enabled routes
+message PaymentConfigDefinition {
+  string network = 1;
+  string asset_namespace = 2;
+  string asset_reference = 3;
+  string payment_address = 4;
+  string symbol = 5;
+  optional string chain_id = 6;
+}
+
+// x402 configuration for a paid route
+message X402Config {
+  uint32 price_in_cents = 1;
+  repeated string payment_configs = 2;
+}
+
+// x402 "accepts" entry describing payment terms
+message X402Accepts {
+  string scheme = 1;
+  string network = 2;
+  string max_amount_required = 3;
+  string resource = 4;
+  string description = 5;
+  string mime_type = 6;
+  string pay_to = 7;
+  uint32 max_timeout_seconds = 8;
+  string asset = 9;
+  optional google.protobuf.Struct output_schema = 10;
+  optional google.protobuf.Struct extra = 11;
+}
+
+// x402 payment-required response payload
+message X402Response {
+  uint32 x402_version = 1;
+  optional string error = 2;
+  repeated X402Accepts accepts = 3;
+  optional string payer = 4;
+}

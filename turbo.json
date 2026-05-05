@@ -1,0 +1,224 @@
+{
+  "$schema": "https://turborepo.org/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/agent#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-pdf#build",
+        "@elizaos/capacitor-contacts#build",
+        "@elizaos/capacitor-phone#build",
+        "@elizaos/capacitor-wifi#build"
+      ],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/app-core#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/agent#build",
+        "@elizaos/shared#build"
+      ],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/ui#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-pdf#build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/core#build": {
+      "dependsOn": ["@elizaos/schemas#build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**", "src/types/generated/**"],
+      "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
+    },
+    "@elizaos/electrobun#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["build/**"]
+    },
+    "@elizaos/client#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/server#build": {
+      "dependsOn": ["@elizaos/client#build", "^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-cli-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-commands-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-discord-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-elizacloud-root#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/cloud-sdk#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-groq-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-imessage-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-agent-skills-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-app-control-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-edge-tts-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-local-ai-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-local-embedding-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-ollama-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-openai-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-openrouter-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-pdf-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-plugin-manager-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-shell-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-wallet#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-sql-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-sql#build": {
+      "dependsOn": ["@elizaos/core#build"],
+      "outputs": ["typescript/dist/**"]
+    },
+    "@elizaos/plugin-whatsapp-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/native-activity-tracker#build": {
+      "dependsOn": [],
+      "outputs": []
+    },
+    "@elizaos/schemas#build": {
+      "outputs": ["../core/src/types/generated/**"],
+      "inputs": ["eliza/**", "buf.yaml", "buf.gen.yaml"]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "@elizaos/interop#lint": {
+      "outputs": []
+    },
+    "lint:check": {
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/app-core#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/scenario-runner#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming#build"],
+      "outputs": []
+    },
+    "@elizaos/ui#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/app#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-streaming#typecheck": {
+      "dependsOn": ["@elizaos/core#build"],
+      "outputs": []
+    },
+    "format": {
+      "outputs": []
+    },
+    "format:check": {
+      "outputs": []
+    },
+    "start": {
+      "dependsOn": ["@elizaos/core#build"],
+      "env": ["LOG_LEVEL"],
+      "persistent": true
+    },
+    "dev": {
+      "dependsOn": ["@elizaos/core#build"],
+      "persistent": true
+    },
+    "test": {
+      "dependsOn": [],
+      "outputs": ["coverage/**"],
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.js",
+        "__tests__/**/*",
+        "*.test.*",
+        "package.json",
+        "tests/**/*"
+      ],
+      "cache": false
+    },
+    "migrate": {
+      "dependsOn": ["@elizaos/core#build"],
+      "cache": false
+    },
+    "migrate:generate": {
+      "dependsOn": ["@elizaos/core#build"],
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

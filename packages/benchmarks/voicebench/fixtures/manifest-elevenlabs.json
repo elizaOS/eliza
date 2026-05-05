@@ -1,0 +1,119 @@
+{
+  "datasetName": "voicebench-ground-truth-elevenlabs",
+  "profile": "elevenlabs",
+  "generatedAtMs": 1771141904165,
+  "promptFile": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/shared/fixture_prompts.jsonl",
+  "sampleCount": 10,
+  "samples": [
+    {
+      "id": "greeting_short",
+      "text": "Hello there. This is a short voice benchmark sample.",
+      "firstSentence": "Hello there.",
+      "hasRemainder": true,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/greeting_short.mp3",
+      "audioBytes": 48946,
+      "audioSha256": "ce556fb1647a16184424a742b381f4c9870684a6c035280a5fecdb7f28a6b168",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "weather_city",
+      "text": "Today in Austin, skies are clear and temperatures are mild.",
+      "firstSentence": "Today in Austin, skies are clear and temperatures are mild.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/weather_city.mp3",
+      "audioBytes": 51871,
+      "audioSha256": "6b377eb9919e04eaece54d8fc1dc1ac8842b397aeaa5868d7432ab9353ed0220",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "finance_brief",
+      "text": "The quarterly report shows revenue growth and improving margins.",
+      "firstSentence": "The quarterly report shows revenue growth and improving margins.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/finance_brief.mp3",
+      "audioBytes": 55633,
+      "audioSha256": "d82de744abe74f4d2511603ee57ee59142f23c633fcb28d1ac966c3ddc2cbd3f",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "support_reset",
+      "text": "To reset your password, open settings, choose security, then tap reset.",
+      "firstSentence": "To reset your password, open settings, choose security, then tap reset.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/support_reset.mp3",
+      "audioBytes": 80711,
+      "audioSha256": "111fe8d679e9f8ce368a44291d0efdac74fe52fdcca5f4dc134c38a432e3d5c3",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "calendar_note",
+      "text": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "firstSentence": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/calendar_note.mp3",
+      "audioBytes": 64410,
+      "audioSha256": "e30d6f4b67223d06e897707a0ce1ce965c23f3e7e9dc8f542d0802a5cb083af5",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "navigation_turn",
+      "text": "In five hundred feet, turn right and continue for two miles.",
+      "firstSentence": "In five hundred feet, turn right and continue for two miles.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/navigation_turn.mp3",
+      "audioBytes": 49782,
+      "audioSha256": "d18109b6309f2aea0acaf5e97fccc687ef107664955c6ea8a6a40b5bfe3fdd42",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "medical_disclaimer",
+      "text": "This information is educational and does not replace medical advice from a clinician.",
+      "firstSentence": "This information is educational and does not replace medical advice from a clinician.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/medical_disclaimer.mp3",
+      "audioBytes": 74859,
+      "audioSha256": "5e166191a62d78619d042b76c0f25673a0e54cf227943df22b171b7c722520ce",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "multisentence_long",
+      "text": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "firstSentence": "Latency depends on model size, region distance, and network jitter.",
+      "hasRemainder": true,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/multisentence_long.mp3",
+      "audioBytes": 124596,
+      "audioSha256": "09030467f9c5287703e418f6c44a2f892ffdd3b7994e09a4387364cf67af0f03",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "list_format",
+      "text": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "firstSentence": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/list_format.mp3",
+      "audioBytes": 120835,
+      "audioSha256": "ed340964fc00c6859adcc571a98ad00cddee2b80e00d5e0ca8e03fd115ceabd5",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    },
+    {
+      "id": "numbers_dates",
+      "text": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "firstSentence": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/numbers_dates.mp3",
+      "audioBytes": 93667,
+      "audioSha256": "439cf48f9f5914173572426132df1f0c77b8b695ff97e092c7cae7ec1dee267e",
+      "provider": "elevenLabs",
+      "profile": "elevenlabs"
+    }
+  ]
+}

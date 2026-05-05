@@ -1,0 +1,27 @@
+{
+  "id": "2004scape",
+  "name": "2004scape",
+  "description": "Classic-era RuneScape-inspired multiplayer world.",
+  "npmName": "@elizaos/app-2004scape",
+  "source": "bundled",
+  "tags": [],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Gamepad2",
+    "group": "Curated",
+    "groupOrder": 3,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "game",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [],
+    "curatedSlug": "2004scape"
+  }
+}

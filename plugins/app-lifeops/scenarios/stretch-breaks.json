@@ -1,0 +1,36 @@
+{
+  "id": "stretch-breaks",
+  "title": "Stretch default breaks during the day",
+  "domain": "tasks",
+  "rooms": [
+    {
+      "id": "main",
+      "source": "discord",
+      "title": "LifeOps Stretch Breaks"
+    }
+  ],
+  "turns": [
+    {
+      "name": "stretch default preview",
+      "text": "help me remember to stretch during the day",
+      "responseIncludesAny": ["stretch", "during the day", "reminder"]
+    },
+    {
+      "name": "stretch default confirm",
+      "text": "yes, save that routine",
+      "responseIncludesAny": ["saved", "stretch"]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Stretch",
+      "delta": 1,
+      "cadenceKind": "interval",
+      "requiredEveryMinutes": 360,
+      "requiredMaxOccurrencesPerDay": 2,
+      "requiredWindows": ["afternoon", "evening"],
+      "requireReminderPlan": true
+    }
+  ]
+}

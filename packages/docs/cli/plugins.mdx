@@ -1,0 +1,76 @@
+---
+title: "eliza plugins"
+description: "List, install, search, and manage plugins from the CLI."
+---
+
+# `eliza plugins`
+
+Manage the plugin lifecycle — browse the registry, install or remove plugins, and inspect what's currently loaded.
+
+## Subcommands
+
+| Subcommand | Purpose |
+|------------|---------|
+| `eliza plugins list` | Browse available plugins in the registry |
+| `eliza plugins installed` | Show plugins currently installed |
+| `eliza plugins install <name>` | Install a plugin by name or package |
+| `eliza plugins uninstall <name>` | Remove an installed plugin |
+| `eliza plugins search <query>` | Search registry plugins by keyword |
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `eliza plugins list` | Browse registry plugins (default limit: 30) |
+| `eliza plugins installed` | Show currently installed plugins |
+| `eliza plugins install <name>` | Install a plugin from the registry |
+| `eliza plugins uninstall <name>` | Remove an installed plugin |
+| `eliza plugins search <query>` | Search plugins by keyword |
+| `eliza plugins info <name>` | Show detailed plugin information |
+| `eliza plugins config <name>` | Show or edit plugin configuration |
+| `eliza plugins refresh` | Force cache refresh from remote registry |
+
+## Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `eliza plugins list` | List plugins from the remote registry |
+| `eliza plugins search <query>` | Search registry plugins by keyword |
+| `eliza plugins info <name>` | Show detailed info about a specific plugin |
+| `eliza plugins install <name>` | Install a plugin from the registry |
+| `eliza plugins uninstall <name>` | Remove an installed plugin |
+| `eliza plugins installed` | List plugins installed from the registry |
+| `eliza plugins refresh` | Force-refresh the registry cache |
+| `eliza plugins config <name>` | View or edit a plugin's configuration |
+| `eliza plugins test` | Validate custom drop-in plugins |
+| `eliza plugins add-path <path>` | Register an additional plugin search directory |
+| `eliza plugins paths` | List all plugin search directories |
+| `eliza plugins open [name]` | Open a plugin directory in your editor |
+
+## Subcommands
+
+### `eliza plugins list`
+
+List all plugins from the registry. Shows install status and basic metadata.
+
+| Flag | Description |
+|------|-------------|
+| `-q, --query <query>` | Filter plugins by name or keyword |
+| `-l, --limit <number>` | Max results to show (default: 30) |
+
+```bash
+eliza plugins list
+eliza plugins installed
+eliza plugins install @elizaos/plugin-openai
+eliza plugins install discord
+eliza plugins uninstall discord
+eliza plugins search "image generation"
+```
+
+Short plugin names (e.g. `discord`) resolve to `@elizaos/plugin-discord` automatically. Full package names also work.
+
+## Related
+
+- [Plugins overview](/plugins/overview)
+- [Plugin registry](/plugins/registry)
+- [REST — plugins](/rest/plugins)
