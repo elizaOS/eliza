@@ -10,11 +10,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import {
-  logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
@@ -111,6 +107,16 @@ function formatInboxDraftContext(draft: DeferredInboxDraft | null): string {
     `draftText: ${draft.draftText}`,
     `deepLink: ${draft.deepLink ?? ""}`,
   ].join("\n");
+}
+
+async function runInboxTextModel(
+  runtime: IAgentRuntime,
+  prompt: string,
+): Promise<string> {
+  // Keep inbox planning/generation on runtime.useModel so core trajectory
+  // capture records the call site; do not call provider SDKs directly here.
+  const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+  return typeof result === "string" ? result : "";
 }
 
 function buildInboxPolicyAcknowledgement(
@@ -264,10 +270,8 @@ async function resolveSubactionPlan(
   ].join("\n");
 
   try {
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(raw);
+    const raw = await runInboxTextModel(runtime, prompt);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
     if (!parsed) {
       return {
         subaction: null,
@@ -1413,8 +1417,7 @@ async function draftResponse(
     .join("\n");
 
   try {
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const text = typeof result === "string" ? result.trim() : "";
+    const text = (await runInboxTextModel(runtime, prompt)).trim();
     return (
       text || seed || "Thanks for reaching out. I'll get back to you soon."
     );

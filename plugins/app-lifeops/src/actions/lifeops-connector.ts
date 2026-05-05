@@ -784,8 +784,7 @@ async function dispatchTelegram(
         connector: "telegram",
         target: params.sendTarget,
         text:
-          params.sendMessage ??
-          "LifeOps Telegram connector verification ping.",
+          params.sendMessage ?? "LifeOps Telegram connector verification ping.",
       });
       const response = await service.verifyTelegramConnector({
         side,
@@ -807,7 +806,11 @@ async function dispatchTelegram(
     }
     case "status":
     case "list": {
-      const registryStatus = registryStatusResult(runtime, "telegram", subaction);
+      const registryStatus = registryStatusResult(
+        runtime,
+        "telegram",
+        subaction,
+      );
       if (registryStatus) {
         return registryStatus;
       }
@@ -977,7 +980,11 @@ async function dispatchDiscord(
     }
     case "status":
     case "list": {
-      const registryStatus = registryStatusResult(runtime, "discord", subaction);
+      const registryStatus = registryStatusResult(
+        runtime,
+        "discord",
+        subaction,
+      );
       if (registryStatus) {
         return registryStatus;
       }

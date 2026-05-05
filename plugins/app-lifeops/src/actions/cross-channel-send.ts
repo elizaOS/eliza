@@ -25,11 +25,7 @@ import type {
   MessageConnector,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseToonKeyValue,
-  sendMessageAction,
-} from "@elizaos/core";
+import { ModelType, parseToonKeyValue, sendMessageAction } from "@elizaos/core";
 import {
   createCalendlySingleUseLink,
   readCalendlyCredentialsFromEnv,
@@ -310,8 +306,7 @@ async function resolveCrossChannelSendPlanWithLlm(args: {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {};
     }
@@ -501,13 +496,18 @@ async function dispatchViaSendMessageAction(
     }
   }
 
-  const result = await sendMessageAction.handler(ctx.runtime, ctx.message, ctx.state, {
-    parameters: {
-      source,
-      target: ctx.target,
-      message: ctx.body,
+  const result = await sendMessageAction.handler(
+    ctx.runtime,
+    ctx.message,
+    ctx.state,
+    {
+      parameters: {
+        source,
+        target: ctx.target,
+        message: ctx.body,
+      },
     },
-  });
+  );
   if (!result?.success) {
     return buildDispatchFailure({
       channel: ctx.channel,

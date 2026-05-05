@@ -43,12 +43,21 @@ function getDexConfiguration(runtime: IAgentRuntime): {
     runtime.getSetting("ARBITRUM_RPC_URL") ||
     runtime.getSetting("EVM_PROVIDER_ARBITRUM")
   );
-  const _hasSolanaRpc = !!runtime.getSetting("SOLANA_RPC_URL");
+  const hasSolanaRpc = !!runtime.getSetting("SOLANA_RPC_URL");
 
-  const hasSolana = !!(
+  const hasSolanaWallet = !!(
     solanaPrivateKey && typeof solanaPrivateKey === "string"
   );
-  const hasEvm = !!(evmPrivateKey && typeof evmPrivateKey === "string");
+  const hasEvmWallet = !!(
+    evmPrivateKey && typeof evmPrivateKey === "string"
+  );
+  const hasSolana = hasSolanaWallet || hasSolanaRpc;
+  const hasEvm =
+    hasEvmWallet ||
+    hasEthereumRpc ||
+    hasBaseRpc ||
+    hasBscRpc ||
+    hasArbitrumRpc;
 
   // Determine Solana DEXes to load
   const solanaDexes: SolanaDex[] = [];
@@ -238,7 +247,7 @@ const lpManagerPlugin: Plugin = {
 
     if (!hasSolana && !hasEvm) {
       logger.warn(
-        `[LP Manager] No wallet credentials found. Please set SOLANA_PRIVATE_KEY and/or EVM_PRIVATE_KEY.`,
+        `[LP Manager] No LP chain configuration found. Set SOLANA_RPC_URL, an EVM RPC URL, SOLANA_PRIVATE_KEY, or EVM_PRIVATE_KEY.`,
       );
       logger.warn(`[LP Manager] No production mock LP services will be registered.`);
       return;

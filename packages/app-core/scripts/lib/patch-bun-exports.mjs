@@ -453,7 +453,7 @@ const ELIZA_CORE_STREAM_RETRY_PLACEHOLDER_BROWSER_FROM = `if(this.state="retryin
 const ELIZA_CORE_STREAM_RETRY_PLACEHOLDER_BROWSER_TO = `this.state="retrying";`;
 
 /**
- * `ValidationStreamExtractor.signalRetry` in @elizaos/core calls `onChunk` with a
+ * Older @elizaos/core structured stream retry handling called `onChunk` with a
  * fixed apology line for non-rich streaming consumers on every parse/validation
  * retry. That duplicates in the saved message (e.g. 3× with maxRetries 3).
  * Remove the placeholder; `emitEvent({ eventType: "retry_start" })` is unchanged.

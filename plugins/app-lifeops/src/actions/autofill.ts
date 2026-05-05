@@ -19,7 +19,6 @@
  * credential.
  */
 
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
@@ -29,6 +28,8 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  ModelType,
+  type State,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -38,6 +39,7 @@ import {
 } from "../lifeops/autofill-whitelist.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
+import { runLifeOpsToonModel } from "./lifeops-google-helpers.js";
 
 const FIELD_PURPOSES = [
   "email",
@@ -47,6 +49,14 @@ const FIELD_PURPOSES = [
   "custom",
 ] as const;
 type FieldPurpose = (typeof FIELD_PURPOSES)[number];
+
+type AutofillSubaction = "request_fill" | "add_whitelist" | "list_whitelist";
+
+type AutofillParameters = RequestFieldFillParameters &
+  AddAutofillWhitelistParameters & {
+    readonly subaction?: AutofillSubaction | string;
+    readonly intent?: string;
+  };
 
 const WHITELIST_CACHE_KEY = "eliza:lifeops-autofill-whitelist";
 const DEVICE_BUS_URL_ENV = "ELIZA_DEVICE_BUS_URL";
