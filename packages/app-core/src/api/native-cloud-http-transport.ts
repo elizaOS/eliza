@@ -63,8 +63,12 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
       headers: headersToRecord(init.headers),
       ...(methodAllowsBody(method) && data !== undefined ? { data } : {}),
       responseType: "text",
-      connectTimeout: context?.timeoutMs,
-      readTimeout: context?.timeoutMs,
+      ...(context?.timeoutMs
+        ? {
+            connectTimeout: context.timeoutMs,
+            readTimeout: context.timeoutMs,
+          }
+        : {}),
     });
 
     return new Response(responseBody(result.data), {
