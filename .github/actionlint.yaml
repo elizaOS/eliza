@@ -6,10 +6,14 @@
 # labels we use:
 #   kvm — Linux x86_64 host with /dev/kvm available, used for Cuttlefish/AOSP
 #         builds (.github/workflows/elizaos-cuttlefish.yml).
+#   gpu-cuda-12.6 — Linux x86_64 host with an NVIDIA GPU + CUDA 12.6 driver
+#                   stack, used for the eliza-1 training stack QJL nvcc
+#                   build (.github/workflows/training-stack.yml).
 
 self-hosted-runner:
   labels:
     - kvm
+    - gpu-cuda-12.6
 
 paths:
   .github/workflows/*.yml:
