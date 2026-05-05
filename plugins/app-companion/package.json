@@ -91,6 +91,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
+    "@elizaos/app-wallet": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",

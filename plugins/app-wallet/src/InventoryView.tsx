@@ -42,22 +42,22 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "../../api";
+import { client } from "@elizaos/app-core/api";
 import {
   type ActivityEvent,
   useActivityEvents,
-} from "../../hooks/useActivityEvents";
-import type { InventoryChainFilters } from "../../state/types";
-import { useApp } from "../../state/useApp";
-import { getNativeLogoUrl } from "../inventory/chainConfig";
+} from "@elizaos/app-core/hooks/useActivityEvents";
+import type { InventoryChainFilters } from "@elizaos/app-core/state/types";
+import { useApp } from "@elizaos/app-core/state/useApp";
+import { AppPageSidebar } from "@elizaos/app-core/components/shared/AppPageSidebar";
+import { getNativeLogoUrl } from "./inventory/chainConfig";
 import {
   formatBalance,
   type NftItem,
   type TokenRow,
-} from "../inventory/constants";
-import { TokenLogo } from "../inventory/TokenLogo";
-import { useInventoryData } from "../inventory/useInventoryData";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
+} from "./inventory/constants";
+import { TokenLogo } from "./inventory/TokenLogo";
+import { useInventoryData } from "./inventory/useInventoryData";
 
 type DashboardWindow = "24h" | "7d" | "30d";
 type WalletRailTab = "tokens" | "defi" | "nfts";

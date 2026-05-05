@@ -20,7 +20,7 @@ import { preOpenWindow } from "../../utils";
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
-} from "../../wallet-rpc";
+} from "@elizaos/app-wallet/wallet-rpc";
 import {
   BSC_RPC_OPTIONS,
   CloudServicesSection,

@@ -2249,7 +2249,6 @@ def _terminal_assistant_extract(content: str) -> tuple[str, str]:
     # 2. JSON envelope: {"analysis": ..., "plan": ..., "commands": [...]}.
     cmd = ""
     is_json_envelope = False
-    json_obj: dict[str, Any] | None = None
     if body.startswith("{") and body.endswith("}"):
         try:
             obj = json.loads(body)

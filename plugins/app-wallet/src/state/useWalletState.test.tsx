@@ -122,15 +122,15 @@ const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
   }),
 );
 
-vi.mock("../api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: clientMock,
 }));
 
-vi.mock("../utils", () => ({
+vi.mock("@elizaos/app-core/utils", () => ({
   confirmDesktopAction: confirmDesktopActionMock,
 }));
 
-vi.mock("./persistence", () => persistenceMock);
+vi.mock("@elizaos/app-core/state/persistence", () => persistenceMock);
 
 import { useWalletState } from "./useWalletState";
 

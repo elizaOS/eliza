@@ -158,7 +158,6 @@ import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
-import { handleCodingAgentsFallback } from "./coding-agents-fallback-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
@@ -187,7 +186,6 @@ import { handleMiscRoutes } from "./misc-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
 import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.js";
 import { handleOnboardingRoutes } from "./onboarding-routes.js";
-import type { PTYService } from "./parse-action-block.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
 import { handlePluginRoutes } from "./plugin-routes.js";
@@ -320,15 +318,6 @@ import {
 } from "./plugin-discovery-helpers.js";
 
 const _nodeRequire = createRequire(import.meta.url);
-// Dynamic import (not require) because the plugin is ESM-only and bun's
-// createRequire cannot load ESM packages. Top-level await is settled before
-// any consumer reads the binding.
-let agentOrchestratorCompat: unknown = null;
-try {
-  agentOrchestratorCompat = await import("@elizaos/plugin-agent-orchestrator");
-} catch {
-  agentOrchestratorCompat = null;
-}
 
 // Re-export for downstream consumers (e.g. @elizaos/app-core)
 export {
@@ -343,24 +332,6 @@ export {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-// ConnectorRouteHandler imported from server-types.ts
-import type { ConnectorRouteHandler } from "./server-types.js";
-
-type OrchestratorFallbackRouteHandler = (
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  pathname: string,
-  method?: string,
-) => Promise<boolean>;
-
-interface OrchestratorPluginFallbackModule {
-  createCodingAgentRouteHandler?: (
-    runtime: AgentRuntime,
-    coordinator?: unknown,
-  ) => OrchestratorFallbackRouteHandler;
-  getCoordinator?: (runtime: AgentRuntime) => unknown;
-}
 
 function getAgentEventSvc(
   runtime: AgentRuntime | null,
@@ -1174,10 +1145,8 @@ const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
 
 // ── Autonomy / swarm / coding-agent helpers — extracted to server-helpers-swarm.ts ──
 import {
-  getCoordinatorFromRuntime,
   getPtyConsoleBridge,
   routeAutonomyTextToUser,
-  wireCodingAgentBridgesNow,
   wireCodingAgentChatBridge,
   wireCodingAgentSwarmSynthesis,
   wireCodingAgentWsBridge,
@@ -2437,23 +2406,10 @@ async function handleRequest(
   // Trajectory routes (/api/trajectories/*) are now provided by the
   // @elizaos/app-training plugin via the runtime route registry.
 
-  // ── Coding Agent API (/api/coding-agents/*, /api/workspace/*, /api/issues/*) ──
-  if (
-    !state.runtime &&
-    method === "GET" &&
-    pathname === "/api/coding-agents/coordinator/status"
-  ) {
-    error(res, "Coding agent runtime unavailable", 503);
-    return;
-  }
-  if (
-    !state.runtime &&
-    method === "GET" &&
-    pathname === "/api/coding-agents/preflight"
-  ) {
-    error(res, "Coding agent runtime unavailable", 503);
-    return;
-  }
+  // Coding Agent API routes (/api/coding-agents/*, /api/workspace/*,
+  // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
+  // plugin via the runtime route registry. Pre-runtime 503 responses for
+  // those paths are still emitted below.
   if (
     !state.runtime &&
     method === "GET" &&
@@ -2461,116 +2417,6 @@ async function handleRequest(
   ) {
     error(res, "Coding agent runtime unavailable", 503);
     return;
-  }
-  if (
-    state.runtime &&
-    (pathname.startsWith("/api/coding-agents") ||
-      pathname.startsWith("/api/workspace") ||
-      pathname.startsWith("/api/issues"))
-  ) {
-    const isCoordinatorStatusRoute =
-      method === "GET" && pathname === "/api/coding-agents/coordinator/status";
-    const isPreflightRoute =
-      method === "GET" && pathname === "/api/coding-agents/preflight";
-
-    // Try to dynamically load the route handler from the local plugin first
-    let handled = false;
-
-    // Lazily start PTY_SERVICE if it was registered but not yet started.
-    // The core runtime only starts services on-demand via getServiceLoadPromise,
-    // but the orchestrator plugin's route handler checks getService() (which
-    // only returns already-started instances). Without this kick, the plugin
-    // sees null and returns 503 for every route.
-    if (
-      !state.runtime.getService("PTY_SERVICE") &&
-      state.runtime.hasService("PTY_SERVICE")
-    ) {
-      try {
-        await state.runtime.getServiceLoadPromise("PTY_SERVICE");
-        wireCodingAgentBridgesNow(state);
-      } catch {
-        // Service start failed — the fallback handler will surface 503 unavailability.
-      }
-    }
-
-    const ptyService = state.runtime.getService(
-      "PTY_SERVICE",
-    ) as PTYService | null;
-    const coordinator = getCoordinatorFromRuntime(state.runtime);
-    const codeTaskService = state.runtime.getService("CODE_TASK");
-    const isTaskRoute =
-      method === "GET" && pathname === "/api/coding-agents/tasks";
-    const isTaskDetailRoute =
-      method === "GET" && /^\/api\/coding-agents\/tasks\/[^/]+$/.test(pathname);
-    const isSessionsRoute =
-      method === "GET" && pathname === "/api/coding-agents/sessions";
-    const isSessionDetailRoute =
-      method === "GET" &&
-      /^\/api\/coding-agents\/sessions\/[^/]+$/.test(pathname);
-    const isScratchRoute =
-      method === "GET" && pathname === "/api/coding-agents/scratch";
-    const isAgentListRoute =
-      method === "GET" && pathname === "/api/coding-agents";
-
-    // The settings UI and startup hydration poll these routes early. When the
-    // PTY/coordinator services are not ready yet, surface explicit 503
-    // unavailability rather than synthesizing success-shaped empty payloads.
-    if (
-      (isCoordinatorStatusRoute && !coordinator) ||
-      (isPreflightRoute && !ptyService) ||
-      ((isTaskRoute ||
-        isTaskDetailRoute ||
-        isScratchRoute ||
-        isAgentListRoute) &&
-        !codeTaskService) ||
-      ((isSessionsRoute || isSessionDetailRoute) && !ptyService)
-    ) {
-      handled = await handleCodingAgentsFallback(
-        state.runtime,
-        pathname,
-        method,
-        req,
-        res,
-      );
-    }
-
-    // Prefer @elizaos/plugin-agent-orchestrator route handler so the full coordinator
-    // contract is served from the embedded runtime (replaces the old plugin).
-    if (!handled)
-      try {
-        const orchestratorPlugin =
-          agentOrchestratorCompat as OrchestratorPluginFallbackModule | null;
-        if (orchestratorPlugin?.createCodingAgentRouteHandler) {
-          const coordinator = orchestratorPlugin.getCoordinator?.(
-            state.runtime,
-          );
-          const handler = orchestratorPlugin.createCodingAgentRouteHandler(
-            state.runtime,
-            coordinator,
-          );
-          handled = await (handler as ConnectorRouteHandler)(
-            req,
-            res,
-            pathname,
-            req.method ?? "GET",
-          );
-        }
-      } catch {
-        // Compat layer unavailable — final fallback below handles coding-agents routes.
-      }
-
-    // Final fallback: handle coding-agents routes using the plugin's CODE_TASK compatibility service.
-    if (!handled && pathname.startsWith("/api/coding-agents")) {
-      handled = await handleCodingAgentsFallback(
-        state.runtime,
-        pathname,
-        method,
-        req,
-        res,
-      );
-    }
-
-    if (handled) return;
   }
 
   if (

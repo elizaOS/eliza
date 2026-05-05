@@ -315,6 +315,7 @@ async def run_benchmark(
 ) -> int:
     """Run the benchmark via the eliza TS bridge and return exit code."""
     runtime = None
+    bridge_manager = None
     try:
         # Load .env (if provided or if repo-root .env exists)
         if dotenv_path:
@@ -356,8 +357,38 @@ async def run_benchmark(
             # The bridge agent forwards every multi-turn LLM call to the TS bench
             # server; MINTRunner reuses runner.executor and runner.feedback_generator.
             from eliza_adapter.mint import ElizaMINTAgent
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            provider_name = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+            if not provider_name:
+                if os.environ.get("GROQ_API_KEY"):
+                    provider_name = "groq"
+                elif os.environ.get("OPENROUTER_API_KEY"):
+                    provider_name = "openrouter"
+                elif os.environ.get("OPENAI_API_KEY"):
+                    provider_name = "openai"
+            model_name = (model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
+            if not model_name:
+                model_name = (
+                    "openai/gpt-oss-120b"
+                    if provider_name in {"groq", "openrouter"}
+                    else "gpt-4o-mini"
+                )
+            if provider_name:
+                os.environ["BENCHMARK_MODEL_PROVIDER"] = provider_name
+            os.environ["BENCHMARK_MODEL_NAME"] = model_name
+            os.environ["OPENAI_LARGE_MODEL"] = model_name
+            os.environ["OPENAI_SMALL_MODEL"] = model_name
+            os.environ["GROQ_LARGE_MODEL"] = model_name
+            os.environ["GROQ_SMALL_MODEL"] = model_name
+            os.environ["OPENROUTER_LARGE_MODEL"] = model_name
+            os.environ["OPENROUTER_SMALL_MODEL"] = model_name
+
+            bridge_manager = ElizaServerManager()
+            bridge_manager.start()
 
             runner.agent = ElizaMINTAgent(
+                client=bridge_manager.client,
                 tool_executor=runner.executor,
                 feedback_generator=runner.feedback_generator,
                 temperature=config.temperature,
@@ -408,6 +439,8 @@ async def run_benchmark(
         logging.error(f"Benchmark failed: {e}")
         raise
     finally:
+        if bridge_manager is not None:
+            bridge_manager.stop()
         if runtime is not None:
             stop = getattr(runtime, "stop", None)
             if callable(stop):

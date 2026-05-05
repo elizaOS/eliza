@@ -1,17 +1,17 @@
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useApp } from "../../../state";
+import { useApp } from "@elizaos/app-core/state";
+import { EmptyWidgetState, WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
+import type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "@elizaos/app-core/components/chat/widgets/types";
 import {
   type ChainKey,
   getNativeLogoUrl,
   resolveChainKey,
-} from "../../inventory/chainConfig";
-import { normalizeInventoryImageUrl } from "../../inventory/media-url";
-import { EmptyWidgetState, WidgetSection } from "./shared";
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "./types";
+} from "../inventory/chainConfig";
+import { normalizeInventoryImageUrl } from "../inventory/media-url";
 
 const DUST_THRESHOLD_USD = 0.01;
 const COPY_FEEDBACK_MS = 1200;

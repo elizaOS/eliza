@@ -268,8 +268,10 @@ async function resolveOwnerWebsiteBlockPlanWithLlm(args: {
 
   const prompt = [
     "Plan the OWNER_WEBSITE_BLOCK subaction for this request.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"block"|"unblock"|"status"|"request_permission"|null,"shouldAct":true|false,"response":"string|null"}',
+    "Return TOON only with exactly these fields:",
+    "subaction: block|unblock|status|request_permission|null",
+    "shouldAct: true|false",
+    "response: string|null",
     "",
     "OWNER_WEBSITE_BLOCK is the owner-only umbrella for local website blocking on this Mac.",
     "Choose subaction=block for clear requests to block websites now, including direct requests like 'please block x.com for me' and follow-up confirmations like 'please do' or 'actually do it now' when recent conversation already named the websites.",
@@ -282,12 +284,12 @@ async function resolveOwnerWebsiteBlockPlanWithLlm(args: {
     "Set shouldAct=false only when the request is not actually about website blocking or when there is not enough information to know whether the user wants block, unblock, status, or permission flow.",
     "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
     "",
-    'Example: "please block x.com for me" -> {"subaction":"block","shouldAct":true,"response":null}',
-    'Example: "remove the website block" -> {"subaction":"unblock","shouldAct":true,"response":null}',
-    'Example: "can you unblock x?" -> {"subaction":"unblock","shouldAct":true,"response":null}',
-    'Example: "what sites are blocked right now?" -> {"subaction":"status","shouldAct":true,"response":null}',
-    'Example: "can we pre-approve website blocking on startup?" -> {"subaction":"request_permission","shouldAct":true,"response":null}',
-    'Example: current request "x.com" with recent conversation about unblocking -> {"subaction":"unblock","shouldAct":true,"response":null}',
+    'Example: "please block x.com for me" -> subaction: block; shouldAct: true; response: null',
+    'Example: "remove the website block" -> subaction: unblock; shouldAct: true; response: null',
+    'Example: "can you unblock x?" -> subaction: unblock; shouldAct: true; response: null',
+    'Example: "what sites are blocked right now?" -> subaction: status; shouldAct: true; response: null',
+    'Example: "can we pre-approve website blocking on startup?" -> subaction: request_permission; shouldAct: true; response: null',
+    'Example: current request "x.com" with recent conversation about unblocking -> subaction: unblock; shouldAct: true; response: null',
     "",
     "Current request:",
     currentText || "(empty)",
@@ -305,9 +307,9 @@ async function resolveOwnerWebsiteBlockPlanWithLlm(args: {
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
       parseDirectJsonObject(rawResponse) ??
-      parseJSONObjectFromText(rawResponse) ??
-      parseKeyValueXml<Record<string, unknown>>(rawResponse);
+      parseJSONObjectFromText(rawResponse);
     if (!parsed) {
       return { subaction: null, shouldAct: null };
     }
