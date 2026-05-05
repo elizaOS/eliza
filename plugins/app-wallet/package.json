@@ -1,0 +1,83 @@
+{
+  "name": "@elizaos/app-wallet",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./src/ui.ts",
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
+    "./plugin": {
+      "types": "./src/plugin.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./register": {
+      "types": "./src/register-routes.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
+    },
+    "./state/*": {
+      "types": "./src/state/*.ts",
+      "import": "./dist/state/*.js",
+      "default": "./dist/state/*.js"
+    },
+    "./inventory/*": {
+      "types": "./src/inventory/*.ts",
+      "import": "./dist/inventory/*.js",
+      "default": "./dist/inventory/*.js"
+    },
+    "./widgets/*": {
+      "types": "./src/widgets/*.tsx",
+      "import": "./dist/widgets/*.js",
+      "default": "./dist/widgets/*.js"
+    },
+    "./wallet-rpc": {
+      "types": "./src/wallet-rpc.ts",
+      "import": "./dist/wallet-rpc.js",
+      "default": "./dist/wallet-rpc.js"
+    },
+    "./*": {
+      "types": "./src/*",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
+    "react": ">=18.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}
