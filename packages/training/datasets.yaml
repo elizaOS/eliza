@@ -1178,6 +1178,46 @@ datasets:
     license: unknown
     notes: republish of n8nbuilder corpus; dedupe collapses overlap.
 
+  # =================== ABLITERATION CALIBRATION (NOT IN TRAIN MIX) ===================
+  # mlabonne/harmful_behaviors + mlabonne/harmless_alpaca are calibration
+  # corpora for orthogonal-projection abliteration (refusal-direction
+  # ablation) and for the heretic eval gate. They MUST NOT enter the
+  # supervised train mix — weight=0.0 makes pack_dataset.py route the
+  # normalized records to data/abliteration/{harmful,harmless}.jsonl
+  # instead of train/val/test. Consumers:
+  #   - scripts/quantization/abliteration_apply.py (--harmful-jsonl /
+  #     --harmless-jsonl read currentMessage.content)
+  #   - scripts/training/abliterate.py (loads via HF directly; this entry
+  #     just keeps the corpus discoverable + license-traceable)
+  - slug: harmful_behaviors
+    repo_id: mlabonne/harmful_behaviors
+    normalizer: harmful_behaviors
+    weight: 0.0
+    est_size_gb: 0.01
+    priority: extra
+    license: mit
+    notes: |
+      Canonical harmful-prompt corpus referenced by
+      scripts/quantization/abliteration_apply.py (line ~68 comment).
+      ~520 refusal-eliciting prompts. Calibration only — weight=0.0 keeps
+      these records out of train.jsonl. pack_dataset.py routes records
+      with task_type="abliteration_harmful" to
+      data/abliteration/harmful.jsonl.
+
+  - slug: harmless_alpaca
+    repo_id: mlabonne/harmless_alpaca
+    normalizer: harmless_alpaca
+    weight: 0.0
+    est_size_gb: 0.05
+    priority: extra
+    license: mit
+    notes: |
+      Paired benign-instruction corpus for orthogonal-projection
+      abliteration. ~1.4k benign prompts (Alpaca-derived). Calibration
+      only — weight=0.0 keeps these records out of train.jsonl.
+      pack_dataset.py routes records with task_type="abliteration_harmless"
+      to data/abliteration/harmless.jsonl.
+
 # Synthesized examples generated from elizaOS prompt templates
 # (handled by synthesize_targets.py, not downloaded).
 synthesized:

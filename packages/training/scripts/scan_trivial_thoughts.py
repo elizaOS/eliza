@@ -33,18 +33,13 @@ SUMMARY_OUT = ROOT / "data" / "synthesized" / "review" / "trivial_summary.json"
 
 TASKS_WITH_THOUGHT = {"reply", "agent_trace", "tool_call", "mcp_tool_call"}
 
-# Exact-match (after stripping quotes/whitespace) trivial placeholder thoughts.
-TRIVIAL_THOUGHTS = frozenset({
-    "Reply to the user.",
-    "Call the tool to satisfy the request.",
-    "Let me work through this step by step.",
-    "Let me handle this request.",
-    "Let me figure out the correct tool and parameters.",
-    "Processing the user's request now.",
-    "Got the data. Let me figure out how to proceed.",
-    "Information retrieved. Let me process this for the user.",
-    "The tool returned data. Let me review it.",
-})
+# Single source of truth lives in scripts/lib/eliza_record.py — every tool
+# that scrubs or scans the corpus for default-thought leaks imports it from
+# there so the lists never drift.
+sys.path.insert(0, str(ROOT))
+from scripts.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
+
+TRIVIAL_THOUGHTS = frozenset(DEFAULT_THOUGHT_LEAKS)
 
 
 def extract_thought(toon: str) -> str | None:

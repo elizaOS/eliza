@@ -389,6 +389,12 @@ def main() -> int:
             f"cards). Set MILADY_FORCE_OPTIM=1 to acknowledge, or pass "
             f"`--optimizer adamw` to make the override explicit."
         )
+    # TRL's SFTTrainer.tokenize is a single-process dataset.map by default,
+    # which on a 1.06M-record corpus at seq_len=8192 takes ~30+ hours to walk
+    # before the first training step. Fan out to all CPU cores; cap at 32 to
+    # avoid IPC overhead drowning the win on huge boxes (H100 SXM = 24 vCPUs,
+    # B200 hosts often expose 48-96).
+    _dnp = max(1, min(32, (os.cpu_count() or 1)))
     sft_cfg = SFTConfig(
         output_dir=str(out_dir),
         num_train_epochs=args.epochs,
@@ -409,6 +415,7 @@ def main() -> int:
         max_length=args.max_seq_len,
         packing=False,
         dataset_text_field="text",
+        dataset_num_proc=_dnp,
         # When Liger fused chunked-CE is on, the model returns loss but
         # `outputs.logits` is None — SFTTrainer's `completion_only_loss=True`
         # path tries to slice logits manually and crashes. We disable

@@ -1817,10 +1817,15 @@ async function buildAndroid() {
   // Mirror the AOSP gradle property forwarding from buildAndroidSystem so
   // a developer iterating with `bun run build:android` under ELIZA_AOSP_BUILD=1
   // gets BuildConfig.AOSP_BUILD=true in the debug APK as well.
-  const gradleArgs = [
-    ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
-    ":app:assembleDebug",
-  ];
+  const settingsGradle = fs.readFileSync(
+    path.join(androidDir, "capacitor.settings.gradle"),
+    "utf8",
+  );
+  const gradleArgs = [];
+  if (settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
+    gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
+  }
+  gradleArgs.push(":app:assembleDebug");
   if (
     process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
     process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
