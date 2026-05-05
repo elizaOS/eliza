@@ -75,12 +75,12 @@ jobs:
       - name: Import probe — model_registry
         # The whole point of this lane: catch import-time errors in the
         # training package before they hit a real GPU run.
-        # Mount live sources away from /workspace so the image's
-        # /workspace/.venv remains visible at runtime.
+        # Mount live sources under /workspace/live so the image's
+        # /workspace/.venv and TOON node_modules remain visible at runtime.
         run: |
           docker run --rm \
-            -v "${{ github.workspace }}/packages/training:/workspace_src" \
-            -e PYTHONPATH=/workspace_src/scripts \
+            -v "${{ github.workspace }}/packages/training:/workspace/live" \
+            -e PYTHONPATH=/workspace/live/scripts \
             eliza-training-cpu:ci \
             -c "python -c 'from training.model_registry import REGISTRY; print(list(REGISTRY))'"
 
@@ -89,11 +89,11 @@ jobs:
         # may be a no-op in some branches; we still surface its result.
         run: |
           docker run --rm \
-            -v "${{ github.workspace }}/packages/training:/workspace_src" \
-            -e PYTHONPATH=/workspace_src/scripts \
+            -v "${{ github.workspace }}/packages/training:/workspace/live" \
+            -e PYTHONPATH=/workspace/live/scripts \
             eliza-training-cpu:ci \
             -c "set -e; \
-                cd /workspace_src; \
+                cd /workspace/live; \
                 pytest -xvs \
                   scripts/test_default_thought_leak.py \
                   scripts/test_eliza_record.py \
@@ -108,10 +108,10 @@ jobs:
         # COVERAGE_AUDIT.md) on every PR.
         run: |
           docker run --rm \
-            -v "${{ github.workspace }}/packages/training:/workspace_src" \
-            -e PYTHONPATH=/workspace_src/scripts \
+            -v "${{ github.workspace }}/packages/training:/workspace/live" \
+            -e PYTHONPATH=/workspace/live/scripts \
             eliza-training-cpu:ci \
-            -c "set -e; cd /workspace_src; bash scripts/ci_smoke_e2e.sh"
+            -c "set -e; cd /workspace/live; bash scripts/ci_smoke_e2e.sh"
 
       - name: Upload logs on failure
         if: failure()
