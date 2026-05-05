@@ -67,16 +67,23 @@ def main() -> int:
             md = rec.get("metadata") or {}
             sp = (md.get("split") or "").lower()
             if sp in ("val", "validation", "dev"):
-                fv.write(line + "\n"); n_val += 1; continue
+                fv.write(line + "\n")
+                n_val += 1
+                continue
             if sp == "test":
-                fte.write(line + "\n"); n_test += 1; continue
+                fte.write(line + "\n")
+                n_test += 1
+                continue
             r = rng.random()
             if r < val_threshold:
-                fv.write(line + "\n"); n_val += 1
+                fv.write(line + "\n")
+                n_val += 1
             elif r < test_threshold:
-                fte.write(line + "\n"); n_test += 1
+                fte.write(line + "\n")
+                n_test += 1
             else:
-                ftr.write(line + "\n"); n_train += 1
+                ftr.write(line + "\n")
+                n_train += 1
             if n_total % 100_000 == 0:
                 log.info("scanned %d records (train=%d val=%d test=%d)",
                          n_total, n_train, n_val, n_test)
