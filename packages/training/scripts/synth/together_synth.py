@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from typing import IO
 import os
 import sys
 import time
@@ -113,7 +114,7 @@ async def main_async(args) -> int:
 
     semaphore = asyncio.Semaphore(args.concurrency)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_files: dict[str, "_io.TextIOBase"] = {}
+    out_files: dict[str, IO[str]] = {}
 
     def get_out_file(task_type: str):
         if task_type not in out_files:

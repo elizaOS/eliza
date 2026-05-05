@@ -1,9 +1,34 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
-  const parsed = parseJSONObjectFromText(raw);
-  return parsed && typeof parsed === "object" ? parsed : null;
+  const parsedToon = parseToonKeyValue<Record<string, unknown>>(raw);
+  if (parsedToon && typeof parsedToon === "object") {
+    return parsedToon;
+  }
+  return null;
+}
+
+function promptLine(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : "(empty)";
+}
+
+function readBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return typeof value === "string" && value.trim().toLowerCase() === "true";
+}
+
+function readReasoning(value: unknown): string {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : "No reasoning provided";
 }
 
 // ---------------------------------------------------------------------------
@@ -35,17 +60,22 @@ export async function reflectOnSendConfirmation(
     "You are a safety check for an inbox response system. Your job is to determine",
     "whether the user has clearly confirmed they want to send a drafted message.",
     "",
-    `The pending draft message is: "${opts.draftText}"`,
-    `It would be sent to: ${opts.recipientName} on ${opts.channelName}`,
+    "Pending draft TOON:",
+    `draftText: ${promptLine(opts.draftText)}`,
+    `recipientName: ${promptLine(opts.recipientName)}`,
+    `channelName: ${promptLine(opts.channelName)}`,
     "",
-    `The user's most recent message is: "${opts.userMessage}"`,
+    "Owner message TOON:",
+    `userMessage: ${promptLine(opts.userMessage)}`,
     "",
     "Determine if the user CLEARLY confirmed they want this message sent.",
     "Confirmation signals: 'yes', 'send it', 'go ahead', 'looks good, send it', 'confirm'",
     "Rejection signals: 'no', 'wait', 'hold on', 'change it', 'actually...', 'not yet'",
     "Ambiguous (treat as NOT confirmed): single words that could mean anything, unrelated responses",
     "",
-    'Respond with exactly one JSON object: { "confirmed": true/false, "reasoning": "brief explanation" }',
+    "Return TOON only with exactly these fields:",
+    "confirmed: true or false",
+    "reasoning: brief explanation",
   ].join("\n");
 
   try {
@@ -54,11 +84,8 @@ export async function reflectOnSendConfirmation(
     const parsed = parseReflectionObject(raw);
     if (parsed) {
       return {
-        confirmed: parsed.confirmed === true,
-        reasoning:
-          typeof parsed.reasoning === "string"
-            ? parsed.reasoning
-            : "No reasoning provided",
+        confirmed: readBoolean(parsed.confirmed),
+        reasoning: readReasoning(parsed.reasoning),
       };
     }
     return {
@@ -108,8 +135,13 @@ export async function reflectOnAutoReply(
     "send a reply WITHOUT explicit owner confirmation. Your job is to determine if this",
     "auto-reply is appropriate and safe to send.",
     "",
-    `Inbound message from ${opts.senderName} on ${opts.source}: "${opts.inboundText}"`,
-    `Proposed auto-reply: "${opts.replyText}"`,
+    "Inbound message TOON:",
+    `senderName: ${promptLine(opts.senderName)}`,
+    `source: ${promptLine(opts.source)}`,
+    `inboundText: ${promptLine(opts.inboundText)}`,
+    "",
+    "Proposed reply TOON:",
+    `replyText: ${promptLine(opts.replyText)}`,
     "",
     "Approve the auto-reply ONLY if ALL of these are true:",
     "1. The reply is factually neutral and unlikely to cause harm",
@@ -124,7 +156,9 @@ export async function reflectOnAutoReply(
     "- The reply could be embarrassing or inappropriate",
     "- The sender seems upset or the conversation is heated",
     "",
-    'Respond with exactly one JSON object: { "approved": true/false, "reasoning": "brief explanation" }',
+    "Return TOON only with exactly these fields:",
+    "approved: true or false",
+    "reasoning: brief explanation",
   ].join("\n");
 
   try {
@@ -133,11 +167,8 @@ export async function reflectOnAutoReply(
     const parsed = parseReflectionObject(raw);
     if (parsed) {
       return {
-        approved: parsed.approved === true,
-        reasoning:
-          typeof parsed.reasoning === "string"
-            ? parsed.reasoning
-            : "No reasoning provided",
+        approved: readBoolean(parsed.approved),
+        reasoning: readReasoning(parsed.reasoning),
       };
     }
 

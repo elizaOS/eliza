@@ -6,6 +6,82 @@ import type { KaminoService } from "../services/kaminoService";
 // Kamino Lend Program constants
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
 
+type AccountLike = {
+  id?: unknown;
+  username?: unknown;
+  name?: unknown;
+  metawallets?: Array<{
+    keypairs?: Record<string, { publicKey?: unknown }>;
+  }>;
+};
+
+function getSolanaWalletAddresses(account: unknown): string[] {
+  const walletAddresses: string[] = [];
+  const accountData = account as AccountLike;
+
+  if (!Array.isArray(accountData.metawallets)) {
+    return walletAddresses;
+  }
+
+  for (const mw of accountData.metawallets) {
+    if (!mw?.keypairs) {
+      continue;
+    }
+
+    for (const [chain, kp] of Object.entries(mw.keypairs)) {
+      if (chain === "solana" && kp.publicKey) {
+        walletAddresses.push(String(kp.publicKey));
+      }
+    }
+  }
+
+  return walletAddresses;
+}
+
+function formatAccountForPrompt(account: unknown): string {
+  if (!account) {
+    return "account_status: not found";
+  }
+
+  const accountData = account as AccountLike;
+  const lines = ["account_status: available"];
+  const identifiers = {
+    id: accountData.id,
+    username: accountData.username,
+    name: accountData.name,
+  };
+
+  for (const [key, value] of Object.entries(identifiers)) {
+    if (value !== undefined && value !== null && value !== "") {
+      lines.push(`${key}: ${formatPromptValue(value)}`);
+    }
+  }
+
+  const solanaWallets = getSolanaWalletAddresses(account);
+  lines.push(`solana_wallet_count: ${solanaWallets.length}`);
+  solanaWallets.forEach((wallet, index) => {
+    lines.push(`solana_wallets[${index}]: ${wallet}`);
+  });
+
+  return lines.join("\n");
+}
+
+function formatPromptValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "N/A";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return String(value);
+}
+
 /**
  * Kamino Lending Protocol Provider
  * Provides information about Kamino lending positions and market data
@@ -108,25 +184,13 @@ export const kaminoProvider: Provider = {
  */
 async function getUserKaminoPositions(
   kaminoService: KaminoService,
-  account: any,
+  account: unknown,
 ): Promise<string> {
   let positionsInfo = "📊 YOUR KAMINO POSITIONS:\n\n";
 
   try {
     // Extract wallet addresses from account
-    const walletAddresses: string[] = [];
-    if (account.metawallets) {
-      for (const mw of account.metawallets) {
-        for (const chain in mw.keypairs) {
-          if (chain === "solana") {
-            const kp = mw.keypairs[chain];
-            if (kp.publicKey) {
-              walletAddresses.push(kp.publicKey);
-            }
-          }
-        }
-      }
-    }
+    const walletAddresses = getSolanaWalletAddresses(account);
 
     if (walletAddresses.length === 0) {
       positionsInfo += "No Solana wallets found in your account.\n\n";
@@ -351,7 +415,7 @@ async function getDiscoveredKaminoMarkets(
 async function generateEnhancedKaminoLendingReport(
   runtime: IAgentRuntime,
   data: {
-    account: any;
+    account: unknown;
     userPositions: string;
     availableReserves: string;
     marketOverview: string;
@@ -364,7 +428,7 @@ async function generateEnhancedKaminoLendingReport(
     const lendingPrompt = `You are a professional DeFi analyst specializing in Kamino Finance lending protocols. Generate a comprehensive, well-crafted lending analysis report for the user.
 
 USER ACCOUNT DATA:
-${JSON.stringify(data.account, null, 2)}
+${formatAccountForPrompt(data.account)}
 
 USER POSITIONS:
 ${data.userPositions}

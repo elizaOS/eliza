@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -25,12 +25,8 @@ Recent conversation:
 Extract the following:
 1. channelRef: The channel to list pins from (default: "current" for the current channel, or a channel name/ID)
 
-Respond with a JSON object like:
-{
-  "channelRef": "current"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+channelRef: current`;
 
 export const listPins: Action = {
   name: "SLACK_LIST_PINS",
@@ -41,6 +37,7 @@ export const listPins: Action = {
     "PINNED_MESSAGES",
   ],
   description: "List pinned messages in a Slack channel",
+  descriptionCompressed: "List Slack pinned messages.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -115,7 +112,8 @@ export const listPins: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse) {
         listInfo = {
           channelRef: parsedResponse.channelRef

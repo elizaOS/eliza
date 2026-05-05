@@ -1,7 +1,12 @@
 /**
- * Browser-extension autofill actions (T8f — plan §6.14).
+ * Browser-extension autofill router (T8f — plan §6.14).
  *
- * Three actions:
+ * One canonical action:
+ *
+ *   - AUTOFILL                — routes request_fill, add_whitelist, and
+ *                              list_whitelist subactions.
+ *
+ * Compatibility exports keep the old constants available:
  *
  *   - REQUEST_FIELD_FILL     — agent asks the browser extension to fill a
  *                              field via the installed password manager.
@@ -19,7 +24,6 @@
  * credential.
  */
 
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
@@ -29,6 +33,8 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  ModelType,
+  type State,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -38,6 +44,7 @@ import {
 } from "../lifeops/autofill-whitelist.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
+import { runLifeOpsToonModel } from "./lifeops-google-helpers.js";
 
 const FIELD_PURPOSES = [
   "email",
@@ -47,6 +54,14 @@ const FIELD_PURPOSES = [
   "custom",
 ] as const;
 type FieldPurpose = (typeof FIELD_PURPOSES)[number];
+
+type AutofillSubaction = "request_fill" | "add_whitelist" | "list_whitelist";
+
+type AutofillParameters = RequestFieldFillParameters &
+  AddAutofillWhitelistParameters & {
+    readonly subaction?: AutofillSubaction | string;
+    readonly intent?: string;
+  };
 
 const WHITELIST_CACHE_KEY = "eliza:lifeops-autofill-whitelist";
 const DEVICE_BUS_URL_ENV = "ELIZA_DEVICE_BUS_URL";
@@ -122,6 +137,7 @@ const AUTOFILL_NEEDS_INPUT_ERRORS = new Set([
   "INVALID_TAB_URL",
   "MISSING_DOMAIN",
   "INVALID_DOMAIN",
+  "INVALID_SUBACTION",
   "INVALID_FIELD_PURPOSE",
   "CONFIRMATION_REQUIRED",
   "PERSISTENCE_UNAVAILABLE",
@@ -169,6 +185,146 @@ function asFieldPurpose(value: unknown): FieldPurpose | null {
     : null;
 }
 
+function normalizeAutofillSubaction(value: unknown): AutofillSubaction | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  const aliases: Record<string, AutofillSubaction> = {
+    request_fill: "request_fill",
+    request_field_fill: "request_fill",
+    autofill_field: "request_fill",
+    autofill_request: "request_fill",
+    add_whitelist: "add_whitelist",
+    add_autofill_whitelist: "add_whitelist",
+    trust_site_for_autofill: "add_whitelist",
+    approve_autofill_domain: "add_whitelist",
+    list_whitelist: "list_whitelist",
+    list_autofill_whitelist: "list_whitelist",
+    show_autofill_whitelist: "list_whitelist",
+    get_autofill_whitelist: "list_whitelist",
+  };
+  return aliases[normalized] ?? null;
+}
+
+function normalizeAutofillBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "1", "confirmed", "confirm"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "0"].includes(normalized)) {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return undefined;
+  return trimmed;
+}
+
+function inferAutofillSubactionFromParams(
+  params: Partial<AutofillParameters>,
+): AutofillSubaction | null {
+  const explicit = normalizeAutofillSubaction(params.subaction);
+  if (explicit) return explicit;
+  if (params.tabUrl || params.fieldPurpose) return "request_fill";
+  if (params.domain) return "add_whitelist";
+  return null;
+}
+
+function hasRequiredAutofillParams(
+  subaction: AutofillSubaction,
+  params: Partial<AutofillParameters>,
+): boolean {
+  if (subaction === "list_whitelist") return true;
+  if (subaction === "add_whitelist") {
+    return Boolean(normalizeOptionalString(params.domain));
+  }
+  return Boolean(
+    normalizeOptionalString(params.tabUrl) &&
+      asFieldPurpose(params.fieldPurpose),
+  );
+}
+
+async function resolveAutofillParameters(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  options: HandlerOptions | undefined;
+}): Promise<AutofillParameters> {
+  const rawParams =
+    ((args.options as HandlerOptions | undefined)?.parameters as
+      | AutofillParameters
+      | undefined) ?? {};
+  const inferred = inferAutofillSubactionFromParams(rawParams);
+  if (inferred && hasRequiredAutofillParams(inferred, rawParams)) {
+    return { ...rawParams, subaction: inferred };
+  }
+
+  const currentMessage =
+    typeof args.message.content?.text === "string"
+      ? args.message.content.text.trim()
+      : "";
+  const supplied = Object.entries(rawParams)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join("\n");
+  const prompt = [
+    "Resolve the AUTOFILL router subaction and parameters.",
+    "Return TOON only with exactly these fields:",
+    "subaction: request_fill, add_whitelist, list_whitelist, or null",
+    "tabUrl: current tab URL for request_fill, or null",
+    "fieldPurpose: email, password, name, phone, custom, or null",
+    "fieldSelector: CSS selector, or null",
+    "customKey: password-manager custom field key, or null",
+    "domain: registrable domain for add_whitelist, or null",
+    "confirmed: true, false, or null",
+    "",
+    "Rules:",
+    "- request_fill asks the browser extension to fill a known field; it needs tabUrl and fieldPurpose.",
+    "- add_whitelist adds a trusted autofill domain; it needs domain and explicit confirmation.",
+    "- list_whitelist lists trusted autofill domains and needs no extra fields.",
+    "- Do not invent URLs, domains, selectors, or custom keys.",
+    "- Return only TOON; no prose, markdown, JSON, or code fences.",
+    "",
+    "Already supplied parameters:",
+    supplied || "(none)",
+    "Current request:",
+    currentMessage || "(empty)",
+  ].join("\n");
+
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "AUTOFILL.resolve",
+    failureMessage: "Autofill parameter extraction model call failed",
+    source: "action:autofill",
+    modelType: ModelType.TEXT_SMALL,
+    purpose: "action",
+  });
+  const parsed = result?.parsed ?? {};
+  const subaction =
+    inferred ?? normalizeAutofillSubaction(parsed.subaction) ?? undefined;
+  return {
+    ...parsed,
+    ...rawParams,
+    subaction,
+    tabUrl: rawParams.tabUrl ?? normalizeOptionalString(parsed.tabUrl),
+    fieldPurpose:
+      rawParams.fieldPurpose ?? normalizeOptionalString(parsed.fieldPurpose),
+    fieldSelector:
+      rawParams.fieldSelector ?? normalizeOptionalString(parsed.fieldSelector),
+    customKey: rawParams.customKey ?? normalizeOptionalString(parsed.customKey),
+    domain: rawParams.domain ?? normalizeOptionalString(parsed.domain),
+    confirmed:
+      rawParams.confirmed ?? normalizeAutofillBoolean(parsed.confirmed),
+  } as AutofillParameters;
+}
+
 async function dispatchToExtension(
   runtime: IAgentRuntime,
   payload: {
@@ -214,28 +370,146 @@ async function dispatchToExtension(
   return { dispatched: true, via: "device-bus" };
 }
 
-export const requestFieldFillAction: Action & {
+export const autofillAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "REQUEST_FIELD_FILL",
+  name: "AUTOFILL",
   suppressPostActionContinuation: true,
-  similes: ["AUTOFILL_FIELD", "AUTOFILL_REQUEST", "FILL_PASSWORD_FIELD"],
+  similes: [
+    "REQUEST_FIELD_FILL",
+    "ADD_AUTOFILL_WHITELIST",
+    "LIST_AUTOFILL_WHITELIST",
+    "AUTOFILL_FIELD",
+    "AUTOFILL_REQUEST",
+    "FILL_PASSWORD_FIELD",
+    "TRUST_SITE_FOR_AUTOFILL",
+    "SHOW_AUTOFILL_WHITELIST",
+  ],
   description:
-    "Ask the LifeOps browser extension to autofill one specific field via the installed password manager (1Password or ProtonPass). Use this only when the current tab URL and exact field purpose are already known. Refuses on domains not in the user's autofill whitelist. Credentials never pass through the agent — the extension resolves them locally. Do not use this for whole portal-upload or broader browser workflows; those belong to LIFEOPS_COMPUTER_USE.",
+    "Owner-only autofill router. Subactions: request_fill, add_whitelist, list_whitelist. " +
+    "request_fill asks the LifeOps browser extension to autofill one specific field via the installed password manager; it refuses non-whitelisted domains and credentials never pass through the agent. " +
+    "add_whitelist persists a trusted registrable domain after explicit confirmation. list_whitelist returns bundled and user-added trusted domains. " +
+    "Do not use this for whole portal-upload or broader browser workflows; those belong to LIFEOPS_COMPUTER_USE.",
+  descriptionCompressed:
+    "Owner autofill router: request_fill/add_whitelist/list_whitelist; extension fills fields, agent never sees credentials.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
 
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
-      return failure("REQUEST_FIELD_FILL", "PERMISSION_DENIED");
+      return failure("AUTOFILL", "PERMISSION_DENIED");
+    }
+
+    const params = await resolveAutofillParameters({
+      runtime,
+      message,
+      state,
+      options: options as HandlerOptions | undefined,
+    });
+    const subaction = normalizeAutofillSubaction(params.subaction);
+    if (!subaction) {
+      return failure("AUTOFILL", "INVALID_SUBACTION", {
+        allowed: ["request_fill", "add_whitelist", "list_whitelist"],
+      });
+    }
+
+    if (subaction === "list_whitelist") {
+      const user = await loadUserDomains(runtime);
+      const effective = await effectiveWhitelist(runtime);
+      return {
+        text: `Autofill whitelist (${effective.length} entries): ${effective.join(", ")}`,
+        success: true,
+        values: {
+          success: true,
+          count: effective.length,
+        },
+        data: {
+          actionName: "AUTOFILL",
+          subaction,
+          defaults: [...DEFAULT_AUTOFILL_WHITELIST],
+          userAdded: [...user],
+          effective: [...effective],
+        },
+      };
+    }
+
+    if (subaction === "add_whitelist") {
+      const rawDomain = (params.domain ?? "").toString().trim();
+      if (!rawDomain) {
+        return failure("AUTOFILL", "MISSING_DOMAIN", { subaction });
+      }
+      const normalized = extractRegistrableDomain(rawDomain);
+      if (!normalized) {
+        return failure("AUTOFILL", "INVALID_DOMAIN", {
+          subaction,
+          input: rawDomain,
+        });
+      }
+      if (params.confirmed !== true) {
+        return failure("AUTOFILL", "CONFIRMATION_REQUIRED", {
+          subaction,
+          domain: normalized,
+        });
+      }
+      const existing = await loadUserDomains(runtime);
+      const existingNormalized = existing
+        .map((e) => normalizeAutofillDomain(e))
+        .filter((v): v is string => v !== null);
+      const alreadyShipped = DEFAULT_AUTOFILL_WHITELIST.includes(normalized);
+      const alreadyUser = existingNormalized.includes(normalized);
+      if (alreadyShipped || alreadyUser) {
+        return {
+          text: `Domain ${normalized} already whitelisted.`,
+          success: true,
+          values: { success: true, domain: normalized, added: false },
+          data: {
+            actionName: "AUTOFILL",
+            subaction,
+            domain: normalized,
+            added: false,
+            source: alreadyShipped ? "default" : "user",
+          },
+        };
+      }
+      const next = [...existingNormalized, normalized];
+      try {
+        await saveUserDomains(runtime, next);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          { action: "AUTOFILL", subaction, domain: normalized, detail },
+          `[AUTOFILL] failed to persist ${normalized}: ${detail}`,
+        );
+        return failure("AUTOFILL", "PERSISTENCE_UNAVAILABLE", {
+          subaction,
+          domain: normalized,
+          detail,
+        });
+      }
+      logger.info(
+        { action: "AUTOFILL", subaction, domain: normalized },
+        `[AUTOFILL] added ${normalized} to user whitelist`,
+      );
+      return {
+        text: `Added ${normalized} to the autofill whitelist.`,
+        success: true,
+        values: { success: true, domain: normalized, added: true },
+        data: {
+          actionName: "AUTOFILL",
+          subaction,
+          domain: normalized,
+          added: true,
+        },
+      };
     }
 
     try {
       await requireFeatureEnabled(runtime, "browser.automation");
     } catch (error) {
       if (error instanceof FeatureNotEnabledError) {
-        return failure("REQUEST_FIELD_FILL", error.code, {
+        return failure("AUTOFILL", error.code, {
+          subaction,
           featureKey: error.featureKey,
           message: error.message,
         });
@@ -243,29 +517,13 @@ export const requestFieldFillAction: Action & {
       throw error;
     }
 
-    const rawParams =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | RequestFieldFillParameters
-        | undefined) ?? {};
-    const params = (await extractActionParamsViaLlm<RequestFieldFillParameters>(
-      {
-        runtime,
-        message,
-        state,
-        actionName: "REQUEST_FIELD_FILL",
-        actionDescription: requestFieldFillAction.description ?? "",
-        paramSchema: requestFieldFillAction.parameters ?? [],
-        existingParams: rawParams,
-        requiredFields: ["tabUrl", "fieldPurpose"],
-      },
-    )) as RequestFieldFillParameters;
-
     const tabUrl = (params.tabUrl ?? "").toString().trim();
-    if (!tabUrl) return failure("REQUEST_FIELD_FILL", "MISSING_TAB_URL");
+    if (!tabUrl) return failure("AUTOFILL", "MISSING_TAB_URL", { subaction });
 
     const fieldPurpose = asFieldPurpose(params.fieldPurpose);
     if (!fieldPurpose) {
-      return failure("REQUEST_FIELD_FILL", "INVALID_FIELD_PURPOSE", {
+      return failure("AUTOFILL", "INVALID_FIELD_PURPOSE", {
+        subaction,
         allowed: [...FIELD_PURPOSES],
       });
     }
@@ -273,7 +531,7 @@ export const requestFieldFillAction: Action & {
     const whitelist = await effectiveWhitelist(runtime);
     const check = isUrlWhitelisted(tabUrl, whitelist);
     if (!check.registrableDomain) {
-      return failure("REQUEST_FIELD_FILL", "INVALID_TAB_URL");
+      return failure("AUTOFILL", "INVALID_TAB_URL", { subaction });
     }
     if (!check.allowed) {
       logger.warn(
@@ -285,7 +543,7 @@ export const requestFieldFillAction: Action & {
         `[REQUEST_FIELD_FILL] refused non-whitelisted domain ${check.registrableDomain}`,
       );
       return {
-        text: `Autofill refused: ${check.registrableDomain} is not in your autofill whitelist. Add it explicitly with ADD_AUTOFILL_WHITELIST if you trust this site.`,
+        text: `Autofill refused: ${check.registrableDomain} is not in your autofill whitelist. Add it explicitly with AUTOFILL subaction add_whitelist if you trust this site.`,
         success: false,
         // Selection + execution were correct: the user asked to autofill,
         // the action ran, and we're now waiting on the user to whitelist
@@ -297,7 +555,8 @@ export const requestFieldFillAction: Action & {
           registrableDomain: check.registrableDomain,
         },
         data: {
-          actionName: "REQUEST_FIELD_FILL",
+          actionName: "AUTOFILL",
+          subaction,
           reason: "not-whitelisted",
           requiresConfirmation: true,
           registrableDomain: check.registrableDomain,
@@ -328,7 +587,8 @@ export const requestFieldFillAction: Action & {
           via: dispatch.via,
         },
         data: {
-          actionName: "REQUEST_FIELD_FILL",
+          actionName: "AUTOFILL",
+          subaction,
           reason: "extension-unreachable",
           requiresConfirmation: true,
           via: dispatch.via,
@@ -355,7 +615,8 @@ export const requestFieldFillAction: Action & {
         fieldPurpose,
       },
       data: {
-        actionName: "REQUEST_FIELD_FILL",
+        actionName: "AUTOFILL",
+        subaction,
         registrableDomain: check.registrableDomain,
         matched: check.matched,
         fieldPurpose,
@@ -365,9 +626,15 @@ export const requestFieldFillAction: Action & {
 
   parameters: [
     {
+      name: "subaction",
+      description:
+        "Autofill operation: request_fill, add_whitelist, or list_whitelist.",
+      schema: { type: "string" as const },
+    },
+    {
       name: "tabUrl",
       description:
-        "URL of the tab where the field should be filled. Used for whitelist enforcement.",
+        "URL of the tab where the field should be filled. Used by request_fill for whitelist enforcement.",
       schema: { type: "string" as const },
     },
     {
@@ -388,6 +655,18 @@ export const requestFieldFillAction: Action & {
         "When fieldPurpose is 'custom', the key in the password-manager item to resolve (e.g. 'API key').",
       schema: { type: "string" as const },
     },
+    {
+      name: "domain",
+      description:
+        "Registrable domain to trust for add_whitelist, such as example.com.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "confirmed",
+      description:
+        "Must be true for add_whitelist so the owner explicitly approves the domain.",
+      schema: { type: "boolean" as const },
+    },
   ],
   examples: [
     [
@@ -400,7 +679,8 @@ export const requestFieldFillAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "Requested password autofill on github.com via the browser extension.",
+          text: "subaction: request_fill\nstatus: requested\nregistrableDomain: github.com\nfieldPurpose: password",
+          action: "AUTOFILL",
         },
       },
     ],
@@ -414,7 +694,38 @@ export const requestFieldFillAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "Requested email autofill on example.com via the browser extension.",
+          text: "subaction: request_fill\nstatus: requested\nregistrableDomain: example.com\nfieldPurpose: email",
+          action: "AUTOFILL",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Yes, trust notion.so for autofill going forward.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "subaction: add_whitelist\nstatus: added\ndomain: notion.so",
+          action: "AUTOFILL",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Which sites are allowed for autofill right now?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "subaction: list_whitelist\ncount: 3\neffective[0]: github.com\neffective[1]: linear.app\neffective[2]: notion.so",
+          action: "AUTOFILL",
         },
       },
     ],
@@ -426,207 +737,33 @@ interface AddAutofillWhitelistParameters {
   readonly confirmed?: boolean;
 }
 
-export const addAutofillWhitelistAction: Action = {
-  name: "ADD_AUTOFILL_WHITELIST",
-  similes: ["TRUST_SITE_FOR_AUTOFILL", "APPROVE_AUTOFILL_DOMAIN"],
-  description:
-    "Add a domain to the autofill whitelist. Requires explicit user confirmation (confirmed: true). Persisted to the local profile store.",
-
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
-
-  handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return failure("ADD_AUTOFILL_WHITELIST", "PERMISSION_DENIED");
-    }
-    const rawParams =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | AddAutofillWhitelistParameters
-        | undefined) ?? {};
-    const params =
-      (await extractActionParamsViaLlm<AddAutofillWhitelistParameters>({
-        runtime,
-        message,
-        state,
-        actionName: "ADD_AUTOFILL_WHITELIST",
-        actionDescription: addAutofillWhitelistAction.description ?? "",
-        paramSchema: addAutofillWhitelistAction.parameters ?? [],
-        existingParams: rawParams,
-        requiredFields: ["domain"],
-      })) as AddAutofillWhitelistParameters;
-    const rawDomain = (params.domain ?? "").toString().trim();
-    if (!rawDomain) {
-      return failure("ADD_AUTOFILL_WHITELIST", "MISSING_DOMAIN");
-    }
-    const normalized = extractRegistrableDomain(rawDomain);
-    if (!normalized) {
-      return failure("ADD_AUTOFILL_WHITELIST", "INVALID_DOMAIN", {
-        input: rawDomain,
-      });
-    }
-    if (params.confirmed !== true) {
-      return failure("ADD_AUTOFILL_WHITELIST", "CONFIRMATION_REQUIRED", {
-        domain: normalized,
-      });
-    }
-    const existing = await loadUserDomains(runtime);
-    const existingNormalized = existing
-      .map((e) => normalizeAutofillDomain(e))
-      .filter((v): v is string => v !== null);
-    const alreadyShipped = DEFAULT_AUTOFILL_WHITELIST.includes(normalized);
-    const alreadyUser = existingNormalized.includes(normalized);
-    if (alreadyShipped || alreadyUser) {
-      return {
-        text: `Domain ${normalized} already whitelisted.`,
-        success: true,
-        values: { success: true, domain: normalized, added: false },
-        data: {
-          actionName: "ADD_AUTOFILL_WHITELIST",
-          domain: normalized,
-          added: false,
-          source: alreadyShipped ? "default" : "user",
-        },
+function makeAutofillShim(subaction: AutofillSubaction): Action {
+  return {
+    ...autofillAction,
+    handler: async (runtime, message, state, options, callback) => {
+      const legacyParams =
+        options && typeof options === "object" && "parameters" in options &&
+        options.parameters && typeof options.parameters === "object"
+          ? (options.parameters as Record<string, unknown>)
+          : {};
+      const pinned: HandlerOptions = {
+        ...(options as HandlerOptions | undefined),
+        parameters: { ...legacyParams, subaction },
       };
-    }
-    const next = [...existingNormalized, normalized];
-    try {
-      await saveUserDomains(runtime, next);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      logger.warn(
-        { action: "ADD_AUTOFILL_WHITELIST", domain: normalized, detail },
-        `[ADD_AUTOFILL_WHITELIST] failed to persist ${normalized}: ${detail}`,
-      );
-      return failure("ADD_AUTOFILL_WHITELIST", "PERSISTENCE_UNAVAILABLE", {
-        domain: normalized,
-        detail,
-      });
-    }
-    logger.info(
-      { action: "ADD_AUTOFILL_WHITELIST", domain: normalized },
-      `[ADD_AUTOFILL_WHITELIST] added ${normalized} to user whitelist`,
-    );
-    return {
-      text: `Added ${normalized} to the autofill whitelist.`,
-      success: true,
-      values: { success: true, domain: normalized, added: true },
-      data: {
-        actionName: "ADD_AUTOFILL_WHITELIST",
-        domain: normalized,
-        added: true,
-      },
-    };
-  },
-
-  parameters: [
-    {
-      name: "domain",
-      description:
-        "Domain to add. Stored as a registrable domain (e.g. 'example.com'). Subdomains are covered by the parent entry.",
-      schema: { type: "string" as const },
+      const handler = autofillAction.handler;
+      if (typeof handler !== "function") {
+        return { success: false, text: "AUTOFILL handler is unavailable." };
+      }
+      return handler(runtime, message, state, pinned, callback);
     },
-    {
-      name: "confirmed",
-      description:
-        "Must be explicitly true. Required to ensure the user approved the addition, not the agent.",
-      schema: { type: "boolean" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes, trust notion.so for autofill going forward.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Added notion.so to the autofill whitelist.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Go ahead and approve linear.app for password autofill.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Added linear.app to the autofill whitelist.",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+  };
+}
 
-export const listAutofillWhitelistAction: Action = {
-  name: "LIST_AUTOFILL_WHITELIST",
-  similes: ["SHOW_AUTOFILL_WHITELIST", "GET_AUTOFILL_WHITELIST"],
-  description:
-    "List effective autofill whitelist entries: the bundled defaults plus user-added entries.",
-
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
-
-  handler: async (runtime, message): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return failure("LIST_AUTOFILL_WHITELIST", "PERMISSION_DENIED");
-    }
-    const user = await loadUserDomains(runtime);
-    const effective = await effectiveWhitelist(runtime);
-    return {
-      text: `Autofill whitelist (${effective.length} entries): ${effective.join(", ")}`,
-      success: true,
-      values: {
-        success: true,
-        count: effective.length,
-      },
-      data: {
-        actionName: "LIST_AUTOFILL_WHITELIST",
-        defaults: [...DEFAULT_AUTOFILL_WHITELIST],
-        userAdded: [...user],
-        effective: [...effective],
-      },
-    };
-  },
-
-  parameters: [],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Which sites are allowed for autofill right now?",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Autofill whitelist (4 entries): github.com, notion.so, linear.app, example.com",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Show me my trusted sites.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Autofill whitelist (3 entries): github.com, notion.so, linear.app",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+export const requestFieldFillAction = autofillAction;
+export const addAutofillWhitelistAction: Action =
+  makeAutofillShim("add_whitelist");
+export const listAutofillWhitelistAction: Action =
+  makeAutofillShim("list_whitelist");
 
 export const __internal = {
   effectiveWhitelist,

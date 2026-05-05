@@ -1,6 +1,7 @@
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { cache } from "@/lib/cache/client";
+import { OPENROUTER_DEFAULT_TEXT_MODEL } from "@/lib/models";
 import {
   type ManagedElizaEnvironmentResult,
   prepareManagedElizaSharedEnvironment,
@@ -11,8 +12,8 @@ import {
 import { logger } from "@/lib/utils/logger";
 import { elizaSandboxService } from "./eliza-sandbox";
 
-const DEFAULT_SMALL_MODEL = "minimax/minimax-m2.7";
-const DEFAULT_LARGE_MODEL = "anthropic/claude-sonnet-4.6";
+const DEFAULT_SMALL_MODEL = OPENROUTER_DEFAULT_TEXT_MODEL;
+const DEFAULT_LARGE_MODEL = OPENROUTER_DEFAULT_TEXT_MODEL;
 const LAUNCH_SESSION_TTL_SECONDS = 300;
 
 export interface ManagedLaunchConnection {

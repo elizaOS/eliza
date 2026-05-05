@@ -11,11 +11,9 @@ import {
 	type Action,
 	type ActionExample,
 	ChannelType,
-	composePromptFromState,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
-	type JsonValue,
 	type Memory,
 	ModelType,
 	type State,
@@ -129,25 +127,75 @@ export const manageSecretAction: Action = {
 		// Extract operation from user message
 		let operation: SecretOperation;
 		try {
-			const prompt = composePromptFromState({
+			const result = await runtime.dynamicPromptExecFromState({
 				state: currentState,
-				template: extractOperationTemplate,
+				params: {
+					prompt: extractOperationTemplate,
+				},
+				schema: [
+					{
+						field: "operation",
+						description: "Secret operation: get, set, delete, list, or check",
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "key",
+						description: "Secret key, usually UPPERCASE_WITH_UNDERSCORES",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "value",
+						description: "Secret value when setting a secret",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "level",
+						description: "Storage level: global, world, or user",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "description",
+						description: "Optional short description for the secret",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "type",
+						description:
+							"Secret type: api_key, secret, credential, url, or config",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.TEXT_SMALL,
+					preferredEncapsulation: "toon",
+					contextCheckLevel: 0,
+					maxRetries: 1,
+				},
 			});
-
-			const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
-				prompt,
-			})) as Record<string, JsonValue>;
 
 			// Transform and validate result
 			operation = {
-				operation: (result.operation as SecretOperation["operation"]) || "list",
-				key: result.key ? String(result.key) : undefined,
-				value: result.value ? String(result.value) : undefined,
-				level: result.level as SecretOperation["level"],
-				description: result.description
+				operation:
+					(result?.operation as SecretOperation["operation"]) || "list",
+				key: result?.key ? String(result.key) : undefined,
+				value: result?.value ? String(result.value) : undefined,
+				level: result?.level as SecretOperation["level"],
+				description: result?.description
 					? String(result.description)
 					: undefined,
-				type: result.type as SecretOperation["type"],
+				type: result?.type as SecretOperation["type"],
 			};
 		} catch (error) {
 			const errorMessage =

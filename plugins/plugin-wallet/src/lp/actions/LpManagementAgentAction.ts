@@ -6,175 +6,534 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { privateKeyToAccount } from "viem/accounts";
 import type {
-  IDexInteractionService,
   IUserLpProfileService,
   IVaultService,
   LpActionParams,
+  LpManagementSubaction,
   LpPositionDetails,
+  PoolInfo,
   TokenBalance,
   UserLpProfile,
 } from "../types.ts";
+import { getChainConfig } from "../types.ts";
+import {
+  getLpManagementService,
+  type LpManagementService,
+  NoMatchingLpProtocolError,
+} from "../services/LpManagementService.ts";
+
+const SOLANA_DEXES = new Set(["raydium", "orca", "meteora"]);
+const EVM_DEXES = new Set(["uniswap", "aerodrome", "pancakeswap"]);
 
 const formatPositions = (positions: LpPositionDetails[]): string => {
   if (!positions || positions.length === 0) {
     return "No active LP positions found.";
   }
-  let response = "Your LP Positions:\n";
+
+  let response = "LP positions:\n";
   positions.forEach((pos, index) => {
-    const underlying = pos.underlyingTokens
+    const underlying = (pos.underlyingTokens || [])
       .map(
-        (t: TokenBalance) => `${t.uiAmount?.toFixed(4) || "N/A"} ${t.symbol}`,
+        (token: TokenBalance) =>
+          `${token.uiAmount?.toFixed(4) || token.balance || "N/A"} ${token.symbol || token.address}`,
       )
-      .join(" & ");
+      .join(" / ");
     response +=
-      `\n[${index + 1}] **${pos.poolId}** on **${pos.dex.toUpperCase()}**\n` +
-      `   - **Value**: $${pos.valueUsd?.toFixed(2) || "N/A"}\n` +
-      `   - **Composition**: ${underlying}\n` +
-      `   - **LP Tokens**: ${pos.lpTokenBalance.uiAmount?.toFixed(6) || "N/A"} ${pos.lpTokenBalance.symbol}\n`;
+      `\n${index + 1}. ${pos.poolId} on ${pos.dex}\n` +
+      `   Value: $${pos.valueUsd?.toFixed(2) || "N/A"}\n` +
+      `   Tokens: ${underlying || "N/A"}\n` +
+      `   LP balance: ${pos.lpTokenBalance?.uiAmount?.toFixed(6) || pos.lpTokenBalance?.balance || "N/A"} ${pos.lpTokenBalance?.symbol || ""}\n`;
   });
   return response;
 };
 
-// Helper function to parse intent from natural language
+const formatPools = (pools: PoolInfo[]): string => {
+  if (!pools || pools.length === 0) {
+    return "No matching LP pools are registered or available.";
+  }
+
+  let response = "LP pools:\n";
+  pools.slice(0, 10).forEach((pool, index) => {
+    const tokenA = pool.tokenA?.symbol || pool.tokenA?.mint || pool.tokenA?.address || "tokenA";
+    const tokenB = pool.tokenB?.symbol || pool.tokenB?.mint || pool.tokenB?.address || "tokenB";
+    response +=
+      `\n${index + 1}. ${pool.displayName || pool.id} on ${pool.dex}\n` +
+      `   Pair: ${tokenA}/${tokenB}\n` +
+      `   APR: ${pool.apr?.toFixed(2) || pool.apy?.toFixed(2) || "N/A"}%\n` +
+      `   TVL: ${pool.tvl !== undefined ? `$${pool.tvl.toLocaleString()}` : "N/A"}\n`;
+  });
+
+  if (pools.length > 10) {
+    response += `\nShowing 10 of ${pools.length} pools.`;
+  }
+  return response;
+};
+
 const parseIntentFromMessage = (text: string): LpActionParams | null => {
   const lowerText = text.toLowerCase();
 
-  // Onboarding patterns
   if (
     lowerText.includes("start lp management") ||
     lowerText.includes("set me up") ||
     lowerText.includes("onboard") ||
-    lowerText.includes("get started") ||
-    lowerText.includes("help me get started")
+    lowerText.includes("get started")
   ) {
-    return { intent: "onboard_lp", userId: "" };
+    return { subaction: "onboard" };
   }
 
-  // Concentrated liquidity patterns
   if (
-    lowerText.includes("concentrated") ||
-    (lowerText.includes("range") && lowerText.includes("position")) ||
-    lowerText.includes("price range") ||
-    lowerText.includes("narrow range") ||
-    lowerText.includes("tight range")
+    lowerText.includes("auto-rebalance") ||
+    lowerText.includes("auto rebalance") ||
+    lowerText.includes("preference") ||
+    lowerText.includes("slippage")
   ) {
-    if (
-      lowerText.includes("create") ||
-      lowerText.includes("open") ||
-      lowerText.includes("add")
-    ) {
-      return { intent: "create_concentrated_lp", userId: "" };
-    }
-    if (
-      lowerText.includes("rebalance") ||
-      lowerText.includes("adjust") ||
-      lowerText.includes("move")
-    ) {
-      return { intent: "rebalance_concentrated_lp", userId: "" };
-    }
-    if (
-      lowerText.includes("show") ||
-      lowerText.includes("check") ||
-      lowerText.includes("view")
-    ) {
-      return { intent: "show_concentrated_lps", userId: "" };
-    }
+    return { subaction: "set_preferences" };
   }
 
-  // Deposit patterns
+  if (
+    lowerText.includes("rebalance") ||
+    lowerText.includes("reposition") ||
+    lowerText.includes("adjust range") ||
+    lowerText.includes("move range")
+  ) {
+    return { subaction: "reposition" };
+  }
+
+  if (
+    lowerText.includes("withdraw") ||
+    lowerText.includes("remove liquidity") ||
+    lowerText.includes("close position") ||
+    (lowerText.includes("exit") && lowerText.includes("position"))
+  ) {
+    return { subaction: "close" };
+  }
+
   if (
     lowerText.includes("add liquidity") ||
     lowerText.includes("deposit") ||
-    lowerText.includes("lp all my") ||
-    lowerText.includes("lp 100") ||
+    lowerText.includes("open position") ||
     (lowerText.includes("add") && lowerText.includes("pool"))
   ) {
-    return { intent: "deposit_lp", userId: "" };
+    return { subaction: "open" };
   }
 
-  // Withdrawal patterns
   if (
-    lowerText.includes("withdraw") ||
-    lowerText.includes("remove") ||
-    (lowerText.includes("exit") && lowerText.includes("position"))
+    lowerText.includes("show pools") ||
+    lowerText.includes("list pools") ||
+    lowerText.includes("find pools") ||
+    lowerText.includes("best pool")
   ) {
-    return { intent: "withdraw_lp", userId: "" };
+    return { subaction: "list_pools" };
   }
 
-  // Show positions patterns
   if (
     (lowerText.includes("show") &&
       (lowerText.includes("position") || lowerText.includes("lp"))) ||
     lowerText.includes("my lp") ||
     (lowerText.includes("check") && lowerText.includes("position"))
   ) {
-    return { intent: "show_lps", userId: "" };
-  }
-
-  // Preferences patterns
-  if (
-    lowerText.includes("auto-rebalance") ||
-    lowerText.includes("auto rebalance") ||
-    (lowerText.includes("enable") && lowerText.includes("rebalance")) ||
-    lowerText.includes("preference") ||
-    lowerText.includes("slippage")
-  ) {
-    return { intent: "set_lp_preferences", userId: "" };
-  }
-
-  // Pool discovery patterns
-  if (
-    lowerText.includes("pool") &&
-    (lowerText.includes("show") ||
-      lowerText.includes("find") ||
-      lowerText.includes("best"))
-  ) {
-    return { intent: "deposit_lp", userId: "" }; // Default to deposit intent for pool discovery
+    return { subaction: "list_positions" };
   }
 
   return null;
 };
 
-const _handleOnboardLp = async (
-  runtime: IAgentRuntime,
-  userId: string,
-  existingProfile: UserLpProfile | null,
-  config?: Partial<UserLpProfile["autoRebalanceConfig"]>,
-) => {
-  const vaultService = runtime.getService<IVaultService>("VaultService");
-  const userLpProfileService = runtime.getService<IUserLpProfileService>(
-    "UserLpProfileService",
-  );
+function subactionFromLegacyIntent(intent?: LpActionParams["intent"]): LpManagementSubaction | undefined {
+  switch (intent) {
+    case "onboard_lp":
+      return "onboard";
+    case "deposit_lp":
+    case "create_concentrated_lp":
+      return "open";
+    case "withdraw_lp":
+      return "close";
+    case "show_lps":
+    case "show_concentrated_lps":
+      return "list_positions";
+    case "rebalance_concentrated_lp":
+      return "reposition";
+    case "set_lp_preferences":
+      return "set_preferences";
+    default:
+      return undefined;
+  }
+}
 
-  if (!vaultService || !userLpProfileService) {
-    throw new Error("Could not get required services for onboarding.");
+function normalizeParams(message: Memory, handlerParams?: Record<string, unknown>): LpActionParams | null {
+  const contentParams = (message?.content || {}) as Record<string, unknown>;
+  const params = {
+    ...contentParams,
+    ...(handlerParams || {}),
+  } as LpActionParams;
+
+  if (!params.subaction && params.intent) {
+    params.subaction = subactionFromLegacyIntent(params.intent);
+  }
+  if (!params.subaction && typeof contentParams.text === "string") {
+    const parsed = parseIntentFromMessage(contentParams.text);
+    if (parsed) {
+      Object.assign(params, parsed);
+    }
   }
 
-  if (existingProfile) {
+  return params.subaction ? params : null;
+}
+
+function resolveChain(params: LpActionParams): {
+  chain?: "solana" | "evm";
+  chainId?: number;
+} {
+  const dex = (params.dex || params.dexName || "").toLowerCase();
+  let chain = params.chain?.toString().toLowerCase();
+  let chainId = params.chainId;
+
+  const numericChain = chain && /^\d+$/.test(chain) ? Number(chain) : undefined;
+  const evmChain = getChainConfig(numericChain ?? chain);
+  if (evmChain) {
+    chain = "evm";
+    chainId = evmChain.chainId;
+  }
+
+  if (!chain && SOLANA_DEXES.has(dex)) chain = "solana";
+  if (!chain && EVM_DEXES.has(dex)) chain = "evm";
+
+  if (chain !== "solana" && chain !== "evm") {
+    return { chain: undefined, chainId };
+  }
+
+  return { chain, chainId };
+}
+
+function getPoolParam(params: LpActionParams): string | undefined {
+  return params.pool || params.poolId;
+}
+
+function getPositionParam(params: LpActionParams): string | undefined {
+  return params.position || params.positionId;
+}
+
+function getAmountParam(params: LpActionParams): LpActionParams["amount"] {
+  if (params.amount !== undefined) return params.amount;
+  if (
+    params.tokenAAmount !== undefined ||
+    params.tokenBAmount !== undefined ||
+    params.lpTokenAmount !== undefined ||
+    params.percentage !== undefined
+  ) {
     return {
-      text: `You are already onboarded. Your vault public key is: ${existingProfile.vaultPublicKey}`,
+      tokenA: params.tokenAAmount,
+      tokenB: params.tokenBAmount,
+      lpToken: params.lpTokenAmount,
+      percentage: params.percentage,
     };
   }
-  const { publicKey, secretKeyEncrypted } =
-    await vaultService.createVault(userId);
-  const newProfile = await userLpProfileService.ensureProfile(
+  return undefined;
+}
+
+function getRangeParam(params: LpActionParams): LpActionParams["range"] {
+  return (
+    params.range || {
+      tickLowerIndex: params.tickLowerIndex,
+      tickUpperIndex: params.tickUpperIndex,
+      priceLower: params.priceLower,
+      priceUpper: params.priceUpper,
+    }
+  );
+}
+
+function getEvmWallet(runtime: IAgentRuntime) {
+  const rawPrivateKey = runtime.getSetting("EVM_PRIVATE_KEY");
+  if (!rawPrivateKey || typeof rawPrivateKey !== "string") {
+    throw new Error("EVM_PRIVATE_KEY is required for EVM LP operations.");
+  }
+  const privateKey = rawPrivateKey.startsWith("0x")
+    ? rawPrivateKey
+    : `0x${rawPrivateKey}`;
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  return { address: account.address, privateKey: privateKey as `0x${string}` };
+}
+
+async function getProfileServices(runtime: IAgentRuntime) {
+  const vault = runtime.getService<IVaultService>("VaultService");
+  const profileService = runtime.getService<IUserLpProfileService>(
+    "UserLpProfileService",
+  );
+  if (!vault || !profileService) {
+    throw new Error("LP vault/profile services are unavailable.");
+  }
+  return { vault, profileService };
+}
+
+async function requireProfile(
+  runtime: IAgentRuntime,
+  userId: string,
+): Promise<{
+  vault: IVaultService;
+  profileService: IUserLpProfileService;
+  profile: UserLpProfile;
+}> {
+  const { vault, profileService } = await getProfileServices(runtime);
+  const profile = await profileService.getProfile(userId);
+  if (!profile) {
+    throw new Error(
+      "No LP profile found. Use subaction=onboard before managing Solana LP positions.",
+    );
+  }
+  return { vault, profileService, profile };
+}
+
+async function operationAuth(
+  runtime: IAgentRuntime,
+  userId: string,
+  params: LpActionParams,
+) {
+  const { chain, chainId } = resolveChain(params);
+  if (chain === "evm") {
+    const wallet = getEvmWallet(runtime);
+    return { chain, chainId, wallet, owner: wallet.address };
+  }
+
+  const { vault, profile, profileService } = await requireProfile(runtime, userId);
+  const userVault = await vault.getVaultKeypair(
+    userId,
+    profile.encryptedSecretKey,
+  );
+  return {
+    chain: chain || "solana",
+    chainId,
+    userVault,
+    owner: profile.vaultPublicKey,
+    profile,
+    profileService,
+  };
+}
+
+async function handleOnboard(runtime: IAgentRuntime, userId: string) {
+  const { vault, profileService } = await getProfileServices(runtime);
+  const existingProfile = await profileService.getProfile(userId);
+  if (existingProfile) {
+    return {
+      success: true,
+      text: `You're already set up. Vault address: ${existingProfile.vaultPublicKey}`,
+    };
+  }
+
+  const { publicKey, secretKeyEncrypted } = await vault.createVault(userId);
+  const newProfile = await profileService.ensureProfile(
     userId,
     publicKey,
     secretKeyEncrypted,
-    config,
   );
   return {
-    content: `Welcome! I've created a new secure vault for you. **Your vault address is: ${newProfile.vaultPublicKey}**. Please send the assets you want me to manage to this address. Auto-rebalancing is currently **${newProfile.autoRebalanceConfig.enabled ? "ON" : "OFF"}**.`,
+    success: true,
+    text: `LP vault created. Vault address: ${newProfile.vaultPublicKey}. Auto-rebalancing is ${newProfile.autoRebalanceConfig.enabled ? "on" : "off"}.`,
   };
-};
+}
+
+async function handlePreferences(
+  runtime: IAgentRuntime,
+  userId: string,
+  params: LpActionParams,
+) {
+  const { profileService, profile } = await requireProfile(runtime, userId);
+  const newConfig = { ...profile.autoRebalanceConfig };
+  const updates: string[] = [];
+
+  if (params.autoRebalanceEnabled !== undefined) {
+    newConfig.enabled = params.autoRebalanceEnabled;
+    updates.push(`autoRebalance=${newConfig.enabled}`);
+  }
+  if (params.minGainThresholdPercent !== undefined) {
+    newConfig.minGainThresholdPercent = params.minGainThresholdPercent;
+    updates.push(`minGainThresholdPercent=${params.minGainThresholdPercent}`);
+  }
+  if (params.maxSlippageBps !== undefined || params.slippageBps !== undefined) {
+    newConfig.maxSlippageBps = params.maxSlippageBps ?? params.slippageBps;
+    updates.push(`maxSlippageBps=${newConfig.maxSlippageBps}`);
+  }
+  if (params.preferredDexes) {
+    newConfig.preferredDexes = params.preferredDexes;
+    updates.push(`preferredDexes=${params.preferredDexes.join(",")}`);
+  }
+
+  await profileService.updateProfile(userId, {
+    autoRebalanceConfig: newConfig,
+  });
+
+  return {
+    success: true,
+    text: updates.length ? `LP preferences updated: ${updates.join(", ")}` : "No LP preference changes were provided.",
+  };
+}
+
+function baseRoute(params: LpActionParams) {
+  const { chain, chainId } = resolveChain(params);
+  return {
+    chain,
+    chainId,
+    dex: params.dex || params.dexName,
+  };
+}
+
+async function handleLpOperation(
+  runtime: IAgentRuntime,
+  lp: LpManagementService,
+  userId: string,
+  params: LpActionParams,
+) {
+  const route = baseRoute(params);
+
+  switch (params.subaction) {
+    case "list_pools": {
+      const pools = await lp.listPools({
+        ...route,
+        tokenA: params.tokenA,
+        tokenB: params.tokenB,
+        feeTier: params.feeTier,
+      });
+      return { success: true, text: formatPools(pools), data: { pools } };
+    }
+
+    case "list_positions": {
+      const auth = await operationAuth(runtime, userId, params);
+      let positions = await lp.listPositions({
+        ...route,
+        chain: route.chain || auth.chain,
+        chainId: route.chainId || auth.chainId,
+        owner: auth.owner,
+      });
+      if (positions.length === 0 && auth.chain === "solana" && auth.profileService) {
+        const trackedPositions =
+          await auth.profileService.getTrackedPositions(userId);
+        positions = (
+          await Promise.all(
+            trackedPositions.map((tracked) =>
+              lp
+                .getPosition({
+                  chain: "solana",
+                  dex: tracked.dex,
+                  owner: auth.owner,
+                  pool: tracked.poolAddress,
+                  position: tracked.positionIdentifier,
+                })
+                .catch(() => null),
+            ),
+          )
+        ).filter(Boolean);
+      }
+      return {
+        success: true,
+        text: formatPositions(positions),
+        data: { positions },
+      };
+    }
+
+    case "get_position": {
+      const auth = await operationAuth(runtime, userId, params);
+      const position = await lp.getPosition({
+        ...route,
+        chain: route.chain || auth.chain,
+        chainId: route.chainId || auth.chainId,
+        owner: auth.owner,
+        pool: getPoolParam(params),
+        position: getPositionParam(params),
+      });
+      return {
+        success: true,
+        text: position ? formatPositions([position]) : "No matching LP position found.",
+        data: { position },
+      };
+    }
+
+    case "open": {
+      const auth = await operationAuth(runtime, userId, params);
+      const result = await lp.openPosition({
+        ...route,
+        chain: route.chain || auth.chain,
+        chainId: route.chainId || auth.chainId,
+        userVault: auth.userVault,
+        wallet: auth.wallet,
+        owner: auth.owner,
+        pool: getPoolParam(params),
+        amount: getAmountParam(params),
+        amounts: params.amounts,
+        range: getRangeParam(params),
+        slippageBps: params.slippageBps ?? params.maxSlippageBps,
+      });
+      return {
+        success: result.success,
+        text: result.success
+          ? `LP position opened on ${route.dex || "registered protocol"}. Transaction: ${result.transactionId || result.hash || "submitted"}`
+          : `LP open failed: ${result.error || "unknown error"}`,
+        data: result,
+      };
+    }
+
+    case "close": {
+      const auth = await operationAuth(runtime, userId, params);
+      const result = await lp.closePosition({
+        ...route,
+        chain: route.chain || auth.chain,
+        chainId: route.chainId || auth.chainId,
+        userVault: auth.userVault,
+        wallet: auth.wallet,
+        owner: auth.owner,
+        pool: getPoolParam(params),
+        position: getPositionParam(params),
+        amount: getAmountParam(params),
+        amounts: params.amounts,
+        slippageBps: params.slippageBps ?? params.maxSlippageBps,
+      });
+      return {
+        success: result.success,
+        text: result.success
+          ? `LP position closed on ${route.dex || "registered protocol"}. Transaction: ${result.transactionId || result.hash || "submitted"}`
+          : `LP close failed: ${result.error || "unknown error"}`,
+        data: result,
+      };
+    }
+
+    case "reposition": {
+      const auth = await operationAuth(runtime, userId, params);
+      const result = await lp.repositionPosition({
+        ...route,
+        chain: route.chain || auth.chain,
+        chainId: route.chainId || auth.chainId,
+        userVault: auth.userVault,
+        wallet: auth.wallet,
+        owner: auth.owner,
+        pool: getPoolParam(params),
+        position: getPositionParam(params),
+        amount: getAmountParam(params),
+        amounts: params.amounts,
+        range: getRangeParam(params),
+        slippageBps: params.slippageBps ?? params.maxSlippageBps,
+      });
+      return {
+        success: result.success,
+        text: result.success
+          ? `LP position repositioned on ${route.dex || "registered protocol"}. Transaction: ${result.transactionId || result.hash || "submitted"}`
+          : `LP reposition failed: ${result.error || "unknown error"}`,
+        data: result,
+      };
+    }
+
+    default:
+      return {
+        success: false,
+        text: `Unsupported LP subaction: ${params.subaction}`,
+      };
+  }
+}
 
 export const LpManagementAgentAction: Action = {
   name: "lp_management",
   description:
-    "Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, concentrated liquidity positions with custom price ranges, checking APR/yield, setting auto-rebalance preferences, and finding best pools. Use this action when users mention: liquidity, LP, pools, APR, yield, deposit, withdraw, concentrated, price range, narrow range, degenai, ai16z, SOL pairs, or want help getting started with LP management.",
+    "Single LP management action. Params: subaction=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences, chain=solana|evm, dex, pool, position, amount, range, tokenA, tokenB, chainId, slippageBps.",
   descriptionCompressed:
-    "manage Liquidity Pool (LP) operation includ: onboard LP management, deposit token pool, withdraw pool, show LP position, concentrat liquidity position w/ custom price range, check APR/yield, set auto-rebalance preference, find best pool use action user mention: liquidity, LP, pool, APR, yield, deposit, withdraw, concentrat, price range, narrow range, degenai, ai16z, SOL pair, want help get start w/ LP management",
+    "manage LP positions with subaction chain dex pool position amount range token filters",
 
   similes: [
     "LP_MANAGEMENT",
@@ -184,290 +543,83 @@ export const LpManagementAgentAction: Action = {
     "MANAGE_LIQUIDITY",
   ],
 
-  examples: [] as ActionExample[][], // Empty for now - add examples when specific LP workflows are documented
+  examples: [] as ActionExample[][],
 
   validate: async (
     _runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    if (!message?.content?.text) {
-      return false;
-    }
+    if (!message?.content) return false;
+    if ((message.content as LpActionParams).subaction) return true;
 
-    const text = message.content.text.toLowerCase();
-
+    const text = message.content.text?.toLowerCase() || "";
     const lpKeywords = [
       "liquidity",
       "lp",
       "pool",
-      "dex",
       "vault",
       "slippage",
       "apr",
       "apy",
       "tvl",
-      "swap",
-      "balance",
       "position",
       "yield",
       "deposit",
       "withdraw",
       "rebalance",
+      "reposition",
       "auto-rebalance",
       "auto rebalance",
-      "enable rebalance",
-      "preference",
       "concentrated",
-      "range",
       "price range",
-      "narrow",
-      "tight",
       "out of range",
-      "management",
-      "intent",
     ];
 
     return lpKeywords.some((keyword) => text.includes(keyword));
   },
 
-  handler: async (runtime, message, _state) => {
-    console.info(
-      "[LpManagementAgentAction] Handler called with message:",
-      message?.content?.text || "No text",
-    );
-
-    // Try to get params from message content
-    let params = message?.content as unknown as LpActionParams;
-
-    // If no structured params, try to parse from text
-    if (!params?.intent) {
-      const text = message.content?.text || "";
-      const parsedIntent = parseIntentFromMessage(text);
-      if (parsedIntent) {
-        params = parsedIntent;
-        console.info("[LpManagementAgentAction] Parsed intent:", params.intent);
-      } else {
-        return {
-          success: true,
-          text: "I can help you with LP management. Try saying things like 'help me get started with LP management', 'show my LP positions', or 'add liquidity to a pool'.",
-        };
-      }
-    }
-
-    const userId = message.entityId || "unknown-user";
-
-    const vault = runtime.getService<IVaultService>("VaultService");
-    const dex = runtime.getService<IDexInteractionService>("dex-interaction");
-    const profileService = runtime.getService<IUserLpProfileService>(
-      "UserLpProfileService",
-    );
-
-    if (!vault || !dex || !profileService) {
+  handler: async (runtime, message, _state, handlerParams) => {
+    const params = normalizeParams(message, handlerParams);
+    if (!params) {
       return {
-        success: false,
-        text: "LP management services are currently unavailable. Please try again later.",
+        success: true,
+        text: "Use lp_management with subaction=list_pools, open, close, reposition, list_positions, get_position, set_preferences, or onboard.",
       };
     }
 
-    try {
-      const profile = await profileService.getProfile(userId);
+    const userId = message.entityId || message.userId || "unknown-user";
 
-      if (params.intent !== "onboard_lp" && !profile) {
+    try {
+      if (params.subaction === "onboard") {
+        return await handleOnboard(runtime, userId);
+      }
+      if (params.subaction === "set_preferences") {
+        return await handlePreferences(runtime, userId, params);
+      }
+
+      const lp = await getLpManagementService(runtime);
+      if (!lp) {
         return {
-          success: true,
-          text: "It looks like you're new here! To manage LPs, you first need a secure vault. Say 'onboard me for lp management' to get started.",
+          success: false,
+          text: "LP management service is currently unavailable.",
         };
       }
 
-      switch (params.intent) {
-        case "onboard_lp": {
-          if (profile) {
-            return {
-              success: true,
-              text: `You're already set up! Your vault address is: ${profile.vaultPublicKey}`,
-            };
-          }
-          const { publicKey, secretKeyEncrypted } =
-            await vault.createVault(userId);
-          const newProfile = await profileService.ensureProfile(
-            userId,
-            publicKey,
-            secretKeyEncrypted,
-          );
-          return {
-            success: true,
-            text: `Welcome! I've created a new secure vault for you. **Your vault address is: ${newProfile.vaultPublicKey}**. Please send the assets you want me to manage to this address. Auto-rebalancing is currently **${newProfile.autoRebalanceConfig.enabled ? "ON" : "OFF"}**.`,
-          };
-        }
-
-        case "deposit_lp": {
-          if (!profile) throw new Error("Profile not found");
-          const {
-            dexName,
-            poolId,
-            tokenAAmount,
-            tokenBAmount,
-            maxSlippageBps,
-          } = params;
-
-          // If no specific pool info, show available pools
-          if (!dexName || !poolId) {
-            const pools = await dex.getPools();
-            if (pools.length === 0) {
-              return {
-                success: true,
-                text: "No pools available at the moment. Please check back later.",
-              };
-            }
-
-            let poolList = "Here are the available pools:\n\n";
-            pools.slice(0, 5).forEach((pool, idx) => {
-              poolList += `${idx + 1}. **${pool.displayName || pool.id}** on ${pool.dex}\n`;
-              poolList += `   - Tokens: ${pool.tokenA.symbol}/${pool.tokenB.symbol}\n`;
-              poolList += `   - APR: ${pool.apr?.toFixed(2) || "N/A"}%\n`;
-              poolList += `   - TVL: $${pool.tvl?.toLocaleString() || "N/A"}\n\n`;
-            });
-
-            return {
-              success: true,
-              text: `${poolList}\nTo deposit, specify the DEX and pool. For example: "deposit 100 USDC into pool X on Raydium"`,
-            };
-          }
-
-          const userVault = await vault.getVaultKeypair(
-            userId,
-            profile.encryptedSecretKey,
-          );
-          const result = await dex.addLiquidity({
-            userVault,
-            dexName,
-            poolId,
-            tokenAAmountLamports: tokenAAmount || "0",
-            tokenBAmountLamports: tokenBAmount,
-            slippageBps: maxSlippageBps || 50,
-          });
-
-          if (!result.success) {
-            return { success: false, text: `Deposit failed: ${result.error}` };
-          }
-
-          return {
-            success: true,
-            text: `✅ Deposit successful! Your funds are now earning yield in the ${poolId} pool on ${dexName}. Transaction ID: \`${result.transactionId}\``,
-          };
-        }
-
-        case "withdraw_lp": {
-          if (!profile) throw new Error("Profile not found");
-          const {
-            dexName: wd_dexName,
-            poolId: wd_poolId,
-            lpTokenAmount,
-            percentage: wd_percentage,
-          } = params;
-          if (!wd_dexName || !wd_poolId || (!lpTokenAmount && !wd_percentage)) {
-            return {
-              success: true,
-              text: 'To withdraw, please tell me the DEX, the pool, and the amount (e.g., "withdraw 50% from the SOL/USDC pool on Orca").',
-            };
-          }
-          const wd_userVault = await vault.getVaultKeypair(
-            userId,
-            profile.encryptedSecretKey,
-          );
-          const wd_result = await dex.removeLiquidity({
-            userVault: wd_userVault,
-            dexName: wd_dexName,
-            poolId: wd_poolId,
-            lpTokenAmountLamports: lpTokenAmount || "0",
-            slippageBps: profile.autoRebalanceConfig.maxSlippageBps || 50,
-          });
-
-          if (!wd_result.success) {
-            return {
-              success: false,
-              text: `Withdrawal failed: ${wd_result.error}`,
-            };
-          }
-
-          return {
-            success: true,
-            text: `✅ Withdrawal successful from ${wd_poolId}. Transaction ID: \`${wd_result.transactionId}\``,
-          };
-        }
-
-        case "show_lps": {
-          const positions = await dex.getAllUserLpPositions(userId);
-          return { success: true, text: formatPositions(positions) };
-        }
-
-        case "set_lp_preferences": {
-          if (!profile) throw new Error("Profile not found");
-          const {
-            autoRebalanceEnabled,
-            minGainThresholdPercent,
-            maxSlippageBps: pref_maxSlippageBps,
-          } = params;
-          const newConfig = { ...profile.autoRebalanceConfig };
-
-          let updateSummary = "LP preferences updated:\n";
-
-          if (autoRebalanceEnabled !== undefined) {
-            newConfig.enabled = autoRebalanceEnabled;
-            updateSummary += `- Auto-Rebalance: ${newConfig.enabled ? "**ON**" : "**OFF**"}\n`;
-          }
-          if (minGainThresholdPercent !== undefined) {
-            newConfig.minGainThresholdPercent = minGainThresholdPercent;
-            updateSummary += `- Minimum Gain Threshold: **${minGainThresholdPercent}%**\n`;
-          }
-          if (pref_maxSlippageBps !== undefined) {
-            newConfig.maxSlippageBps = pref_maxSlippageBps;
-            updateSummary += `- Max Slippage: **${pref_maxSlippageBps / 100}%**\n`;
-          }
-          await profileService.updateProfile(userId, {
-            autoRebalanceConfig: newConfig,
-          });
-          return { success: true, text: updateSummary };
-        }
-
-        case "create_concentrated_lp": {
-          if (!profile) throw new Error("Profile not found");
-          return {
-            success: true,
-            text: "Concentrated liquidity positions allow you to provide liquidity within a specific price range for higher capital efficiency. This feature is coming soon! For now, you can use standard liquidity pools.",
-          };
-        }
-
-        case "show_concentrated_lps": {
-          if (!profile) throw new Error("Profile not found");
-          return {
-            success: true,
-            text: "Concentrated liquidity position tracking is coming soon! For now, you can view your standard LP positions with 'show my positions'.",
-          };
-        }
-
-        case "rebalance_concentrated_lp": {
-          if (!profile) throw new Error("Profile not found");
-          return {
-            success: true,
-            text: "Concentrated liquidity rebalancing is coming soon! This will allow you to adjust your price ranges when the market moves.",
-          };
-        }
-
-        default:
-          return {
-            success: true,
-            text: `I'm not sure how to handle the intent '${params.intent}'. I can help you deposit, withdraw, show your LP positions, or manage concentrated liquidity ranges.`,
-          };
-      }
+      return await handleLpOperation(runtime, lp, userId, params);
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
+      if (error instanceof NoMatchingLpProtocolError) {
+        return {
+          success: false,
+          text: errorMessage,
+        };
+      }
       console.error(`[LpManagementAgentAction] Error: ${errorMessage}`);
       return {
         success: false,
-        text: `An unexpected error occurred: ${errorMessage}`,
+        text: `LP management failed: ${errorMessage}`,
       };
     }
   },

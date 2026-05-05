@@ -83,7 +83,7 @@
         "type": "string",
         "description": "Large model name",
         "required": false,
-        "default": "llama-3.3-70b-versatile"
+        "default": "openai/gpt-oss-120b"
       },
       "GROQ_TTS_MODEL": {
         "type": "string",

@@ -4,6 +4,31 @@
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 
+type InstagramUserState = {
+  user_id: number | null;
+  thread_id: string | null;
+  media_id: number | null;
+  room_id: string | null;
+  is_dm: boolean;
+  is_comment: boolean;
+};
+
+function formatInstagramUserStateForPrompt(stateData: InstagramUserState): string {
+  return [
+    "Instagram user state:",
+    `user_id: ${formatPromptValue(stateData.user_id)}`,
+    `thread_id: ${formatPromptValue(stateData.thread_id)}`,
+    `media_id: ${formatPromptValue(stateData.media_id)}`,
+    `room_id: ${formatPromptValue(stateData.room_id)}`,
+    `is_dm: ${stateData.is_dm}`,
+    `is_comment: ${stateData.is_comment}`,
+  ].join("\n");
+}
+
+function formatPromptValue(value: string | number | null): string {
+  return value === null ? "null" : String(value);
+}
+
 /**
  * Provider for Instagram user state
  *
@@ -30,7 +55,7 @@ export const userStateProvider: Provider = {
     const isDm = threadId !== undefined && threadId !== null;
     const isComment = mediaId !== undefined && mediaId !== null;
 
-    const stateData = {
+    const stateData: InstagramUserState = {
       user_id: userId ?? null,
       thread_id: threadId ?? null,
       media_id: mediaId ?? null,
@@ -40,7 +65,7 @@ export const userStateProvider: Provider = {
     };
 
     return {
-      text: JSON.stringify(stateData, null, 2),
+      text: formatInstagramUserStateForPrompt(stateData),
       values: {
         instagram_user_id: userId ?? "",
         instagram_thread_id: threadId ?? "",

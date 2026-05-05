@@ -1,78 +1,329 @@
-/**
- * OWNER_REMOTE_DESKTOP — Tier 2-B umbrella.
- *
- * Collapses remote-control session lifecycle into a single owner-only action
- * dispatched by a required `subaction` parameter. Routes to the existing
- * handlers in remote-desktop.ts / start-remote-session.ts /
- * revoke-remote-session.ts / list-remote-sessions.ts without rewriting the
- * underlying logic.
- */
-
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
   ActionResult,
-  HandlerOptions,
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { listRemoteSessionsAction } from "./list-remote-sessions.js";
-import { remoteDesktopAction } from "./remote-desktop.js";
-import { revokeRemoteSessionAction } from "./revoke-remote-session.js";
-import { startRemoteSessionAction } from "./start-remote-session.js";
+import {
+  detectRemoteDesktopBackend,
+  endRemoteSession as legacyEndRemoteSession,
+  getSessionStatus as legacyGetSessionStatus,
+  type RemoteDesktopSession,
+} from "../lifeops/remote-desktop.js";
+import {
+  getRemoteSessionService,
+  RemoteSessionError,
+} from "../remote/remote-session-service.js";
+import {
+  resolveActionArgs,
+  type SubactionsMap,
+} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "OWNER_REMOTE_DESKTOP";
 
-type Subaction = "start" | "end" | "status" | "list" | "revoke";
+type RemoteSubaction = "start" | "status" | "end" | "list" | "revoke";
 
-interface OwnerRemoteDesktopParameters {
-  subaction?: Subaction | string;
-  intent?: string;
+interface RemoteParams {
   sessionId?: string;
   confirmed?: boolean;
   pairingCode?: string;
   requesterIdentity?: string;
+  intent?: string;
 }
 
-function coerceSubaction(value: unknown): Subaction | undefined {
+const SUBACTIONS: SubactionsMap<RemoteSubaction> = {
+  start: {
+    description:
+      "Open a remote-control session via RemoteSessionService. Requires confirmed: true. " +
+      "If running in local mode (ELIZA_REMOTE_LOCAL_MODE=1) no pairing code is needed; " +
+      "otherwise a valid 6-digit pairing code is required.",
+    descriptionCompressed:
+      "open remote session via RemoteSessionService confirmed-true pairing-code-may-be-required local-mode-skips-code",
+    required: ["confirmed"],
+    optional: ["pairingCode"],
+  },
+  status: {
+    description:
+      "Look up one remote session by id via the legacy backend.",
+    descriptionCompressed:
+      "look up one remote session by id via legacy backend",
+    required: ["sessionId"],
+  },
+  end: {
+    description: "Close a remote session by id via the legacy backend.",
+    descriptionCompressed: "close remote session by id via legacy backend",
+    required: ["sessionId"],
+  },
+  list: {
+    description:
+      "List active remote sessions via RemoteSessionService with ids, statuses, ingress URLs, and local-mode hints.",
+    descriptionCompressed:
+      "list active remote sessions via service ids status ingress local-mode-hint",
+    required: [],
+  },
+  revoke: {
+    description:
+      "Revoke an active remote session by id via RemoteSessionService.",
+    descriptionCompressed:
+      "revoke active remote session by id via service",
+    required: ["sessionId"],
+  },
+};
+
+function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const n = value.trim().toLowerCase();
-  if (
-    n === "start" ||
-    n === "end" ||
-    n === "status" ||
-    n === "list" ||
-    n === "revoke"
-  ) {
-    return n;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function formatLegacySession(session: RemoteDesktopSession): string {
+  const lines = [
+    `Session ${session.id}`,
+    `  backend: ${session.backend}`,
+    `  status:  ${session.status}`,
+  ];
+  if (session.accessUrl) lines.push(`  url:     ${session.accessUrl}`);
+  if (session.accessCode) lines.push(`  code:    ${session.accessCode}`);
+  if (session.expiresAt) lines.push(`  expires: ${session.expiresAt}`);
+  if (session.error) lines.push(`  error:   ${session.error}`);
+  return lines.join("\n");
+}
+
+async function handleStart(
+  message: Memory,
+  params: RemoteParams,
+): Promise<ActionResult> {
+  const confirmed = params.confirmed === true;
+  if (!confirmed) {
+    const backend = await detectRemoteDesktopBackend();
+    return {
+      text:
+        `Starting a remote desktop session will expose this machine to the network via ${backend}. ` +
+        `Re-issue with confirmed: true to proceed.`,
+      success: false,
+      values: {
+        success: false,
+        error: "CONFIRMATION_REQUIRED",
+        requiresConfirmation: true,
+        backend,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "start",
+        requiresConfirmation: true,
+        backend,
+        intent: params.intent ?? null,
+      },
+    };
   }
-  return undefined;
+
+  const requesterIdentity =
+    coerceString(params.requesterIdentity) ??
+    String(message.entityId ?? "unknown");
+
+  try {
+    const result = await getRemoteSessionService().startSession({
+      requesterIdentity,
+      pairingCode: coerceString(params.pairingCode),
+      confirmed: true,
+    });
+
+    if (result.status === "denied") {
+      return {
+        text: "Pairing code was invalid or expired. Request a fresh code and retry.",
+        success: false,
+        values: {
+          success: false,
+          error: "PAIRING_DENIED",
+          sessionId: result.sessionId,
+        },
+        data: { actionName: ACTION_NAME, subaction: "start", session: result },
+      };
+    }
+
+    if (result.ingressUrl === null) {
+      return {
+        text: `Remote session ${result.sessionId} is authorized but the data plane is not configured (${result.reason ?? "unknown"}). Configure Tailscale (T9b) or the Eliza Cloud tunnel to complete pixel transport.`,
+        success: false,
+        values: {
+          success: false,
+          error: "DATA_PLANE_NOT_CONFIGURED",
+          requiresConfirmation: true,
+          sessionId: result.sessionId,
+          status: result.status,
+          ingressUrl: null,
+          reason: result.reason,
+          localMode: result.localMode,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "start",
+          requiresConfirmation: true,
+          session: result,
+        },
+      };
+    }
+
+    return {
+      text: `Remote session ${result.sessionId} active. Connect via ${result.ingressUrl}.`,
+      success: true,
+      values: {
+        success: true,
+        sessionId: result.sessionId,
+        status: result.status,
+        ingressUrl: result.ingressUrl,
+        localMode: result.localMode,
+      },
+      data: { actionName: ACTION_NAME, subaction: "start", session: result },
+    };
+  } catch (error) {
+    if (error instanceof RemoteSessionError) {
+      return {
+        text: error.message,
+        success: false,
+        values: { success: false, error: error.code },
+        data: { actionName: ACTION_NAME, subaction: "start" },
+      };
+    }
+    throw error;
+  }
+}
+
+async function handleStatus(params: RemoteParams): Promise<ActionResult> {
+  const sessionId = coerceString(params.sessionId);
+  if (!sessionId) {
+    return {
+      text: "Missing sessionId.",
+      success: false,
+      values: { success: false, error: "MISSING_SESSION_ID" },
+      data: { actionName: ACTION_NAME, subaction: "status" },
+    };
+  }
+  const session = await legacyGetSessionStatus(sessionId);
+  if (!session) {
+    return {
+      text: `No session found with id ${sessionId}.`,
+      success: false,
+      values: { success: false, error: "SESSION_NOT_FOUND" },
+      data: { actionName: ACTION_NAME, subaction: "status", sessionId },
+    };
+  }
+  return {
+    text: formatLegacySession(session),
+    success: true,
+    values: { success: true, status: session.status },
+    data: { actionName: ACTION_NAME, subaction: "status", session },
+  };
+}
+
+async function handleEnd(params: RemoteParams): Promise<ActionResult> {
+  const sessionId = coerceString(params.sessionId);
+  if (!sessionId) {
+    return {
+      text: "Missing sessionId.",
+      success: false,
+      values: { success: false, error: "MISSING_SESSION_ID" },
+      data: { actionName: ACTION_NAME, subaction: "end" },
+    };
+  }
+  const existing = await legacyGetSessionStatus(sessionId);
+  if (!existing) {
+    return {
+      text: `No session found with id ${sessionId}.`,
+      success: false,
+      values: { success: false, error: "SESSION_NOT_FOUND" },
+      data: { actionName: ACTION_NAME, subaction: "end", sessionId },
+    };
+  }
+  await legacyEndRemoteSession(sessionId);
+  return {
+    text: `Remote session ${sessionId} ended.`,
+    success: true,
+    values: { success: true, sessionId },
+    data: { actionName: ACTION_NAME, subaction: "end", sessionId },
+  };
+}
+
+async function handleList(): Promise<ActionResult> {
+  const sessions = await getRemoteSessionService().listActiveSessions();
+  if (sessions.length === 0) {
+    return {
+      text: "No active remote sessions.",
+      success: true,
+      values: { success: true, count: 0 },
+      data: { actionName: ACTION_NAME, subaction: "list", sessions: [] },
+    };
+  }
+  const lines = sessions.map(
+    (s) =>
+      `• ${s.id} — status=${s.status}${
+        s.ingressUrl
+          ? ` ingress=${s.ingressUrl}`
+          : ` ingress=<none:${s.reason ?? "unknown"}>`
+      }${s.localMode ? " (local)" : ""}`,
+  );
+  return {
+    text: `Active remote sessions (${sessions.length}):\n${lines.join("\n")}`,
+    success: true,
+    values: { success: true, count: sessions.length },
+    data: { actionName: ACTION_NAME, subaction: "list", sessions },
+  };
+}
+
+async function handleRevoke(params: RemoteParams): Promise<ActionResult> {
+  const sessionId = coerceString(params.sessionId);
+  if (!sessionId) {
+    return {
+      text: "Missing sessionId.",
+      success: false,
+      values: { success: false, error: "MISSING_SESSION_ID" },
+      data: { actionName: ACTION_NAME, subaction: "revoke" },
+    };
+  }
+  try {
+    await getRemoteSessionService().revokeSession(sessionId);
+    return {
+      text: `Remote session ${sessionId} revoked.`,
+      success: true,
+      values: { success: true, sessionId },
+      data: { actionName: ACTION_NAME, subaction: "revoke", sessionId },
+    };
+  } catch (error) {
+    if (error instanceof RemoteSessionError) {
+      return {
+        text: error.message,
+        success: false,
+        values: { success: false, error: error.code, sessionId },
+        data: { actionName: ACTION_NAME, subaction: "revoke", sessionId },
+      };
+    }
+    throw error;
+  }
 }
 
 export const ownerRemoteDesktopAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
-  suppressPostActionContinuation: true,
   similes: [
-    "REMOTE_DESKTOP",
-    "START_REMOTE_SESSION",
-    "REVOKE_REMOTE_SESSION",
-    "LIST_REMOTE_SESSIONS",
     "REMOTE_SESSION",
+    "VNC_SESSION",
     "REMOTE_CONTROL",
+    "PHONE_REMOTE_ACCESS",
+    "CONNECT_FROM_PHONE",
   ],
   description:
     "Owner-only. Manage remote-control desktop sessions so the owner can connect to this machine from another device. " +
-    "Subactions: start (open a session — requires confirmed: true and may require a pairing code), " +
-    "end (close a session by id via the legacy backend), " +
-    "revoke (revoke an active session by id via the remote-session service), " +
-    "status (look up one session by id), " +
-    "list (enumerate all active sessions). " +
-    "Use this only for remote-session lifecycle work. Do NOT use it for local Finder/Desktop automation, screenshots, browser flows, or file handling on this machine — those belong to LIFEOPS_COMPUTER_USE. " +
-    "Do NOT use it for website or app blocking (OWNER_WEBSITE_BLOCK / OWNER_APP_BLOCK) or screen-time analytics (OWNER_SCREEN_TIME).",
+    "Subactions: start (open a session via RemoteSessionService — requires confirmed:true and may require a pairing code; local-mode skips the code), " +
+    "status (look up one session by id via legacy backend), " +
+    "end (close a session by id via legacy backend), " +
+    "list (enumerate active sessions via RemoteSessionService), " +
+    "revoke (revoke an active session by id via RemoteSessionService).",
+  descriptionCompressed:
+    "remote desktop session lifecycle: start(confirmed pairing-code) status(sessionId) end(sessionId) list revoke(sessionId); two backends owner",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
@@ -80,15 +331,7 @@ export const ownerRemoteDesktopAction: Action & {
   parameters: [
     {
       name: "subaction",
-      description:
-        "One of: start, end, status, list, revoke. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "intent",
-      description:
-        "Freeform owner intent / reason for the session. Logged for audit.",
+      description: "One of: start, status, end, list, revoke.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -119,6 +362,13 @@ export const ownerRemoteDesktopAction: Action & {
       required: false,
       schema: { type: "string" as const },
     },
+    {
+      name: "intent",
+      description:
+        "Freeform owner intent / reason for the session. Logged for audit.",
+      required: false,
+      schema: { type: "string" as const },
+    },
   ],
 
   examples: [
@@ -133,7 +383,7 @@ export const ownerRemoteDesktopAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Remote session active. Connect via vnc://host:5900.",
-          action: "OWNER_REMOTE_DESKTOP",
+          action: ACTION_NAME,
         },
       },
     ],
@@ -146,7 +396,7 @@ export const ownerRemoteDesktopAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "No active remote sessions.",
-          action: "OWNER_REMOTE_DESKTOP",
+          action: ACTION_NAME,
         },
       },
     ],
@@ -159,7 +409,7 @@ export const ownerRemoteDesktopAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Remote session rs_abc123 revoked.",
-          action: "OWNER_REMOTE_DESKTOP",
+          action: ACTION_NAME,
         },
       },
     ],
@@ -170,7 +420,6 @@ export const ownerRemoteDesktopAction: Action & {
     message: Memory,
     state,
     options,
-    callback,
   ): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
@@ -181,74 +430,34 @@ export const ownerRemoteDesktopAction: Action & {
       };
     }
 
-    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
-      {}) as OwnerRemoteDesktopParameters;
-    const params =
-      (await extractActionParamsViaLlm<OwnerRemoteDesktopParameters>({
-        runtime,
-        message,
-        state,
-        actionName: ACTION_NAME,
-        actionDescription: ownerRemoteDesktopAction.description ?? "",
-        paramSchema: ownerRemoteDesktopAction.parameters ?? [],
-        existingParams: rawParams,
-        requiredFields: ["subaction"],
-      })) as OwnerRemoteDesktopParameters;
-    const subaction = coerceSubaction(params.subaction);
-    if (!subaction) {
-      return {
-        text: "Missing or invalid subaction. Use one of: start, end, status, list, revoke.",
-        success: false,
-        values: { success: false, error: "INVALID_SUBACTION" },
-        data: { actionName: ACTION_NAME },
-      };
-    }
-
-    if (subaction === "revoke") {
-      return (await revokeRemoteSessionAction.handler(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      )) as ActionResult;
-    }
-
-    if (subaction === "list") {
-      return (await listRemoteSessionsAction.handler(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      )) as ActionResult;
-    }
-
-    if (subaction === "start") {
-      // Prefer the service-backed start path (requires confirmed; optional pairing code).
-      return (await startRemoteSessionAction.handler(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      )) as ActionResult;
-    }
-
-    // status / end — forward to the legacy backend router.
-    const forwarded: HandlerOptions = {
-      ...(options ?? {}),
-      parameters: {
-        ...(options as HandlerOptions | undefined)?.parameters,
-        subaction,
-      },
-    } as HandlerOptions;
-    return (await remoteDesktopAction.handler(
+    const resolved = await resolveActionArgs<RemoteSubaction, RemoteParams>({
       runtime,
       message,
       state,
-      forwarded,
-      callback,
-    )) as ActionResult;
+      options,
+      actionName: ACTION_NAME,
+      subactions: SUBACTIONS,
+    });
+    if (!resolved.ok) {
+      return {
+        success: false,
+        text: resolved.clarification,
+        data: { actionName: ACTION_NAME, missing: resolved.missing },
+      };
+    }
+
+    const { subaction, params } = resolved;
+    switch (subaction) {
+      case "start":
+        return handleStart(message, params);
+      case "status":
+        return handleStatus(params);
+      case "end":
+        return handleEnd(params);
+      case "list":
+        return handleList();
+      case "revoke":
+        return handleRevoke(params);
+    }
   },
 };

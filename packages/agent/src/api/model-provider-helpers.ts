@@ -8,44 +8,46 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import {
+  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+} from "@elizaos/shared";
 import { resolveModelsCacheDir } from "../config/paths.js";
 
+type ModelOption = {
+  id: string;
+  name: string;
+  provider: string;
+  description: string;
+  recommended?: boolean;
+  free?: boolean;
+};
+
 export function getModelOptions(): {
-  nano: Array<{
-    id: string;
-    name: string;
-    provider: string;
-    description: string;
-  }>;
-  small: Array<{
-    id: string;
-    name: string;
-    provider: string;
-    description: string;
-  }>;
-  medium: Array<{
-    id: string;
-    name: string;
-    provider: string;
-    description: string;
-  }>;
-  large: Array<{
-    id: string;
-    name: string;
-    provider: string;
-    description: string;
-  }>;
-  mega: Array<{
-    id: string;
-    name: string;
-    provider: string;
-    description: string;
-  }>;
+  nano: ModelOption[];
+  small: ModelOption[];
+  medium: ModelOption[];
+  large: ModelOption[];
+  mega: ModelOption[];
 } {
   // All models available via Eliza Cloud (Vercel AI Gateway).
   // IDs use "provider/model" format to match the cloud API routing.
   // Every tier exposes the full catalog so users can assign any model to any slot.
   const allModels = [
+    {
+      id: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+      name: "GPT OSS 120B Nitro",
+      provider: "OpenAI",
+      description: "Recommended OpenRouter high-throughput reasoning model.",
+      recommended: true,
+    },
+    {
+      id: DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+      name: "GPT OSS 120B Free",
+      provider: "OpenAI",
+      description: "Free OpenRouter reasoning model.",
+      free: true,
+    },
     // Anthropic
     {
       id: "anthropic/claude-opus-4.7",
@@ -79,7 +81,7 @@ export function getModelOptions(): {
       description: "Flagship OpenAI model for coding and reasoning.",
     },
     {
-      id: "openai/gpt-5.5-mini",
+      id: "openai/gpt-5-mini",
       name: "GPT-5.5 Mini",
       provider: "OpenAI",
       description: "High-volume OpenAI mini model.",
@@ -462,7 +464,9 @@ export async function fetchOpenRouterModels(
 
   // Fetch chat/text models and embedding models in parallel
   const [chatRes, embedRes] = await Promise.all([
-    fetch("https://openrouter.ai/api/v1/models", { headers }).catch(() => null),
+    fetch("https://openrouter.ai/api/v1/models?output_modalities=all", {
+      headers,
+    }).catch(() => null),
     fetch("https://openrouter.ai/api/v1/embeddings/models", { headers }).catch(
       () => null,
     ),
@@ -475,9 +479,14 @@ export async function fetchOpenRouterModels(
     try {
       const data = (await chatRes.json()) as { data?: ORModel[] };
       for (const m of data.data ?? []) {
-        const outputs = m.architecture?.output_modalities ?? [];
+        const outputs = (m.architecture?.output_modalities ?? []).map((value) =>
+          value.toLowerCase(),
+        );
+        const modality = m.architecture?.modality?.toLowerCase() ?? "";
         let category: ModelCategory = "chat";
-        if (outputs.includes("image")) category = "image";
+        if (outputs.includes("text") || modality.includes("text->text")) {
+          category = "chat";
+        } else if (outputs.includes("image")) category = "image";
         else if (outputs.includes("audio")) category = "tts";
         models.push({ id: m.id, name: m.name ?? m.id, category });
       }
@@ -498,8 +507,11 @@ export async function fetchOpenRouterModels(
     }
   }
 
-  models.sort((a, b) => a.id.localeCompare(b.id));
-  return models;
+  const deduped = Array.from(
+    new Map(models.map((model) => [model.id, model])).values(),
+  );
+  deduped.sort((a, b) => a.id.localeCompare(b.id));
+  return deduped;
 }
 
 /** Fetch Vercel AI Gateway models — no auth required, response has `type` field. */
@@ -616,7 +628,11 @@ export async function getOrFetchProvider(
   }
 
   // Skip remote providers that need an API key when none is configured
-  const keylessProviders = new Set(["ollama", "vercel-ai-gateway"]);
+  const keylessProviders = new Set([
+    "ollama",
+    "openrouter",
+    "vercel-ai-gateway",
+  ]);
   if (!keyValue && !keylessProviders.has(providerId)) return [];
 
   const models = await fetchProviderModels(providerId, keyValue ?? "", baseUrl);

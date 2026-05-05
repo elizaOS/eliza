@@ -34,8 +34,12 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = [
+    "eliza-adapter",
     "pydantic>=2.0.0",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 dev = [
@@ -43,14 +47,10 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
 ]
-# `eliza` — LLM-based handler. `runtime-trust` — pattern handler (`--handler real`).
-runtime-trust = [
-    "elizaos>=2.0.0",
-]
-eliza = [
-    "elizaos>=2.0.0",
-    "elizaos-plugin-openai>=2.0.0",
-]
+# `eliza` routes through the TypeScript bridge. `runtime-trust` is retained
+# as a compatibility extra name for existing install commands.
+runtime-trust = []
+eliza = []
 
 [project.urls]
 Homepage = "https://github.com/elizaos/eliza"

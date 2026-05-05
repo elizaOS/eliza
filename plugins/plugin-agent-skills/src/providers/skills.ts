@@ -55,8 +55,9 @@ export const skillsSummaryProvider: Provider = {
 			};
 		}
 
-		// Build enhanced XML that includes scan status for skills with findings
-		const xml = service.generateSkillsPromptXml({ includeLocation: true });
+		const skillsToon = service.generateSkillsPromptToon({
+			includeLocation: true,
+		});
 
 		// Build scan status annotations for skills that have been scanned
 		const scanAnnotations: string[] = [];
@@ -76,7 +77,7 @@ export const skillsSummaryProvider: Provider = {
 
 		const text = `## Installed Skills (${skills.length})
 
-${xml}${scanSection}
+${skillsToon}${scanSection}
 
 *Use TOGGLE_SKILL to enable/disable skills. Use INSTALL_SKILL to add new skills. Use UNINSTALL_SKILL to remove installed skills.*`;
 

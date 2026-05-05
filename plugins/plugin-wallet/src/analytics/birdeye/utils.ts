@@ -179,35 +179,54 @@ export const extractAddresses = (text: string): BaseAddress[] => {
   if (!text?.match) return [];
   const addresses: BaseAddress[] = [];
 
-  // EVM-compatible chains (Ethereum, Arbitrum, Avalanche, BSC, Optimism, Polygon, Base, zkSync)
-  const evmAddresses = text.match(/0x[a-fA-F0-9]{40}/g);
-  if (evmAddresses) {
-    addresses.push(
-      ...evmAddresses.map((address) => ({
-        address,
-        chain: "evm" as BirdeyeSupportedChain, // we don't yet know the chain but can assume it's EVM-compatible
-      })),
-    );
-  }
-
-  // Solana addresses (base58 strings)
-  const solAddresses = text.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
-  if (solAddresses) {
-    addresses.push(
-      ...solAddresses.map((address) => ({
-        address,
-        chain: "solana" as BirdeyeSupportedChain,
-      })),
-    );
-  }
-
-  // Sui addresses (0x followed by 64 hex chars)
-  const suiAddresses = text.match(/0x[a-fA-F0-9]{64}/g);
+  // Sui addresses (0x followed by 64 hex chars). Extract first so the EVM
+  // matcher does not take the 40-char prefix of a Sui address.
+  const suiAddresses = text.match(/0x[a-fA-F0-9]{64}(?![a-fA-F0-9])/g);
   if (suiAddresses) {
     addresses.push(
       ...suiAddresses.map((address) => ({
         address,
         chain: "sui" as BirdeyeSupportedChain,
+      })),
+    );
+  }
+
+  // EVM-compatible chains (Ethereum, Arbitrum, Avalanche, BSC, Optimism, Polygon, Base, zkSync)
+  const evmAddresses = text.match(/0x[a-fA-F0-9]{40}(?![a-fA-F0-9])/g);
+  if (evmAddresses) {
+    addresses.push(
+      ...evmAddresses
+        .filter(
+          (address) =>
+            !addresses.some(
+              (existing) =>
+                existing.chain === "sui" &&
+                existing.address.startsWith(address),
+            ),
+        )
+        .map((address) => ({
+          address,
+          chain: "evm" as BirdeyeSupportedChain, // we don't yet know the chain but can assume it's EVM-compatible
+        })),
+    );
+  }
+
+  // Solana addresses (base58 strings)
+  const solAddresses = Array.from(text.matchAll(/[1-9A-HJ-NP-Za-km-z]{32,44}/g))
+    .filter((match) => {
+      const start = match.index ?? 0;
+      const end = start + match[0].length;
+      return (
+        !/[A-Za-z0-9]/.test(text[start - 1] ?? "") &&
+        !/[A-Za-z0-9]/.test(text[end] ?? "")
+      );
+    })
+    .map((match) => match[0]);
+  if (solAddresses) {
+    addresses.push(
+      ...solAddresses.map((address) => ({
+        address,
+        chain: "solana" as BirdeyeSupportedChain,
       })),
     );
   }
@@ -372,6 +391,38 @@ export const formatPrice = (price?: number): string => {
       ? price.toExponential(2)
       : price.toFixed(2)
     : "N/A";
+};
+
+export const formatToonScalar = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") {
+    return "null";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  const normalized = String(value).replace(/\s+/g, " ").trim();
+  if (/^[A-Za-z0-9._/@:+-]+$/.test(normalized)) {
+    return normalized;
+  }
+  return `"${normalized.replace(/"/g, '\\"')}"`;
+};
+
+export const formatToonTable = (
+  label: string,
+  rows: Array<Record<string, unknown>>,
+  fields: string[],
+): string => {
+  const indent = label.match(/^\s*/)?.[0] ?? "";
+  if (!rows.length) {
+    return `${label}[0]: []`;
+  }
+  const lines = [`${label}[${rows.length}]{${fields.join(",")}}:`];
+  for (const row of rows) {
+    lines.push(
+      `${indent}  - ${fields.map((field) => formatToonScalar(row[field])).join(",")}`,
+    );
+  }
+  return lines.join("\n");
 };
 
 // API helpers

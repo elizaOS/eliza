@@ -14,6 +14,7 @@
  * any optimizer code.
  */
 
+import { parseToonKeyValue } from "@elizaos/core";
 import type { LlmAdapter, OptimizationExample, PromptScorer } from "./types.js";
 
 interface ScorerOptions {
@@ -68,17 +69,30 @@ export function createPromptScorer(
 }
 
 /**
- * Extract the first action name from a planner XML blob. The planner emits
- * `<action><name>NAME</name>...` (nested) — older/flatter dialects used
- * `<action>NAME</action>`. Both are accepted. Falls back to the first
- * all-caps identifier on truncated completions.
+ * Extract the first action name from planner TOON output. Falls back to the
+ * first all-caps identifier on truncated completions.
  */
 export function extractPlannerAction(text: string): string | null {
   if (!text) return null;
-  const nestedMatch = text.match(/<name>\s*([A-Z0-9_]+)\s*<\/name>/i);
-  if (nestedMatch?.[1]) return nestedMatch[1].toUpperCase();
-  const flatMatch = text.match(/<action>\s*([A-Z0-9_]+)\s*<\/action>/i);
-  if (flatMatch?.[1]) return flatMatch[1].toUpperCase();
+  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+  const raw =
+    parsed?.action ??
+    parsed?.actionName ??
+    parsed?.name ??
+    parsed?.type ??
+    parsed?.actions;
+  if (typeof raw === "string" && raw.trim()) {
+    return raw.split(",")[0]?.trim().toUpperCase() ?? null;
+  }
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    if (typeof first === "string") return first.trim().toUpperCase();
+    if (first && typeof first === "object") {
+      const record = first as Record<string, unknown>;
+      const name = record.name ?? record.action ?? record.actionName ?? record.type;
+      if (typeof name === "string") return name.trim().toUpperCase();
+    }
+  }
   const nameMatch = text.match(/\b([A-Z][A-Z0-9_]{2,})\b/);
   return nameMatch?.[1] ?? null;
 }
@@ -86,8 +100,8 @@ export function extractPlannerAction(text: string): string | null {
 /**
  * Action-name comparator: returns 1.0 when both outputs resolve to the same
  * planner action name, 0.0 otherwise. This is the right primitive for
- * optimizing the `action_planner` task — Jaccard over XML tokens under-credits
- * correct choices whose surrounding XML varies stochastically.
+ * optimizing the `action_planner` task because token overlap under-credits
+ * correct choices when surrounding rationale varies stochastically.
  */
 export function scorePlannerAction(actual: string, expected: string): number {
   const actualAction = extractPlannerAction(actual);

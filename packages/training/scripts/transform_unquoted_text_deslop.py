@@ -13,7 +13,6 @@ Operates in-place on data/final/train_final.jsonl.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -83,7 +82,8 @@ def main() -> int:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 stats["decode_errors"] += 1
-                fout.write(line); continue
+                fout.write(line)
+                continue
             rec = transform_record(rec, idx, stats)
             fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
             if stats["total"] % 200000 == 0:

@@ -22,7 +22,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
 	estimateTokens,
 	extractBody,
-	generateSkillsXml,
+	generateSkillsToon,
 	parseFrontmatter,
 	validateFrontmatter,
 } from "../parser";
@@ -40,7 +40,7 @@ import type {
 	LoadedSkillWithSource,
 	LoadSkillOptions,
 	OttoInstallOption,
-	PromptXmlOptions,
+	PromptToonOptions,
 	Skill,
 	SkillCatalogEntry,
 	SkillConfigEntry,
@@ -1310,15 +1310,15 @@ export class AgentSkillsService extends Service {
 	}
 
 	/**
-	 * Generate XML for available skills (for system prompts).
+	 * Generate TOON for available skills (for system prompts).
 	 */
-	generateSkillsPromptXml(options: PromptXmlOptions = {}): string {
+	generateSkillsPromptToon(options: PromptToonOptions = {}): string {
 		const metadata = this.getSkillsMetadata();
 		const limited = options.maxSkills
 			? metadata.slice(0, options.maxSkills)
 			: metadata;
 
-		return generateSkillsXml(limited, {
+		return generateSkillsToon(limited, {
 			includeLocation: options.includeLocation ?? true,
 		});
 	}

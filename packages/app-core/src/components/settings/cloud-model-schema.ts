@@ -19,6 +19,8 @@ type ModelOption = {
   name: string;
   provider: string;
   description: string;
+  recommended?: boolean;
+  free?: boolean;
 };
 
 const TIER_KEYS = ["nano", "small", "medium", "large", "mega"] as const;
@@ -41,10 +43,16 @@ const TIER_DESCRIPTIONS: Record<TierKey, string> = {
 };
 
 function formatOption(m: ModelOption) {
+  const badges = [
+    m.recommended ? "recommended" : null,
+    m.free ? "free" : null,
+  ].filter(Boolean);
+  const badgeText = badges.length > 0 ? ` (${badges.join(", ")})` : "";
+
   return {
     value: m.id,
     label: m.name,
-    description: `${m.provider} — ${m.description}`,
+    description: `${m.provider}${badgeText} - ${m.description}`,
   };
 }
 

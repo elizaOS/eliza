@@ -21,6 +21,7 @@ import {
   ChannelType,
   type IAgentRuntime,
   ModelType,
+  parseToonKeyValue,
   type Plugin,
   createMessageMemory,
   stringToUuid,
@@ -263,13 +264,10 @@ async function ticTacToeModelHandler(
   // Get the optimal move
   const move = getOptimalMove(board, aiPlayer);
 
-  // Return canonical Eliza XML so the message service can parse it
   return [
-    "<response>",
-    "  <thought>Compute perfect move via minimax (no LLM).</thought>",
-    "  <actions>REPLY</actions>",
-    `  <text>${move}</text>`,
-    "</response>",
+    "thought: Compute perfect move via minimax (no LLM).",
+    "actions: REPLY",
+    `text: ${move}`,
   ].join("\n");
 }
 
@@ -424,8 +422,13 @@ function parseMoveFromAgentText(text: string): number | null {
   const direct = parseInt(trimmed, 10);
   if (!Number.isNaN(direct) && direct >= 0 && direct <= 8) return direct;
 
-  const xmlTextMatch = trimmed.match(/<text>\s*([0-8])\s*<\/text>/i);
-  if (xmlTextMatch) return parseInt(xmlTextMatch[1], 10);
+  const parsed = parseToonKeyValue<{ text?: unknown }>(trimmed);
+  if (typeof parsed?.text === "string") {
+    const toonMove = parseInt(parsed.text.trim(), 10);
+    if (!Number.isNaN(toonMove) && toonMove >= 0 && toonMove <= 8) {
+      return toonMove;
+    }
+  }
 
   const digitMatch = trimmed.match(/\b([0-8])\b/);
   return digitMatch ? parseInt(digitMatch[1], 10) : null;

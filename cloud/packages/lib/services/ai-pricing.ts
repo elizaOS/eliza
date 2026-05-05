@@ -32,7 +32,7 @@ import {
   type SupportedVideoModelDefinition,
 } from "./ai-pricing-definitions";
 
-const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all";
 const EXTERNAL_CACHE_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_OPENROUTER_IMAGE_OUTPUT_TOKENS = 1300;
 
@@ -997,6 +997,18 @@ function normalizeAnthropicCatalogModelSuffix(suffix: string): string {
   return s;
 }
 
+function stripOpenRouterModelVariant(model: string): string | null {
+  const slashIndex = model.indexOf("/");
+  if (slashIndex === -1) {
+    return null;
+  }
+  const variantIndex = model.indexOf(":", slashIndex >= 0 ? slashIndex : 0);
+  if (variantIndex === -1) {
+    return null;
+  }
+  return model.slice(0, variantIndex);
+}
+
 /** Manual gateway rename map + inverse (new id → legacy ids still in DB). */
 function collectGatewayPricingManualAliasCandidates(canonicalModel: string): string[] {
   const extras: string[] = [];
@@ -1046,6 +1058,10 @@ export function expandPricingCatalogModelCandidates(canonicalModel: string): str
   };
 
   pushWithTranslations(canonicalModel);
+  const baseVariantModel = stripOpenRouterModelVariant(canonicalModel);
+  if (baseVariantModel) {
+    pushWithTranslations(baseVariantModel);
+  }
   // Alias keys are gateway-style (`xai/...`, `mistral/...`); look them up using
   // either spelling so OpenRouter-form callers also resolve to known aliases.
   for (const aliasKey of expandOpenRouterModelIdCandidates(canonicalModel)) {

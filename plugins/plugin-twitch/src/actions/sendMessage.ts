@@ -9,12 +9,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  ModelType,
-  parseJSONObjectFromText,
-} from "@elizaos/core";
+import { composePromptFromState, ModelType } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
+import { parseToonKeyValue } from "../toon.js";
 import { normalizeChannel, TWITCH_SERVICE_NAME } from "../types.js";
 
 const SEND_MESSAGE_TEMPLATE = `You are helping to extract send message parameters for Twitch chat.
@@ -28,13 +25,9 @@ Extract the following:
 1. text: The message text to send
 2. channel: The channel name to send to (without # prefix), or "current" for the current channel
 
-Respond with a JSON object like:
-{
-  "text": "The message to send",
-  "channel": "current"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+text: The message to send
+channel: current`;
 
 interface SendMessageParams {
   text: string;
@@ -138,7 +131,9 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(
+        String(response),
+      );
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

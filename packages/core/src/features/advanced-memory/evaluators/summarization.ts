@@ -9,7 +9,7 @@ import {
 	type TextGenerationModelType,
 	type UUID,
 } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 import {
 	initialSummarizationTemplate,
 	updateSummarizationTemplate,
@@ -78,7 +78,7 @@ function toStringArray(value: unknown): string[] {
 }
 
 function parseSummaryResponse(text: string): SummaryResult {
-	const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+	const parsed = parseToonKeyValue<Record<string, unknown>>(text);
 	if (parsed) {
 		const summary =
 			typeof parsed.text === "string" && parsed.text.trim().length > 0
@@ -96,19 +96,10 @@ function parseSummaryResponse(text: string): SummaryResult {
 		}
 	}
 
-	const summaryMatch = text.match(/<text>([\s\S]*?)<\/text>/);
-	const topicsMatch = text.match(/<topics>([\s\S]*?)<\/topics>/);
-	const keyPointsMatches = text.matchAll(/<point>([\s\S]*?)<\/point>/g);
-
 	return {
-		summary: summaryMatch ? summaryMatch[1].trim() : "Summary not available",
-		topics: topicsMatch
-			? topicsMatch[1]
-					.split(",")
-					.map((t) => t.trim())
-					.filter(Boolean)
-			: [],
-		keyPoints: Array.from(keyPointsMatches).map((match) => match[1].trim()),
+		summary: "Summary not available",
+		topics: [],
+		keyPoints: [],
 	};
 }
 

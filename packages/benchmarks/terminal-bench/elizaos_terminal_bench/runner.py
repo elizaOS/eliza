@@ -77,7 +77,7 @@ class TerminalBenchRunner:
         output_path = Path(self.config.output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        self._use_sample_tasks = use_sample_tasks
+        self._use_sample_tasks = bool(use_sample_tasks or self.dataset.loaded_sample_tasks)
         self._setup_complete = True
         logger.info(f"Runner setup complete. Loaded {len(self.dataset)} tasks.")
 

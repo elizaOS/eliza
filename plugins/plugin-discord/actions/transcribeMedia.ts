@@ -12,7 +12,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import { mediaAttachmentIdTemplate } from "../generated/prompts/typescript/prompts.js";
@@ -41,7 +41,9 @@ const getMediaAttachmentId = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			attachmentId: string;
 		} | null;
 

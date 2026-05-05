@@ -162,6 +162,101 @@ export function encodeToonValue(value: unknown): string {
 	return encodeToon(value);
 }
 
+export const DEFAULT_TOON_CAPABILITY_FIELDS = [
+	"name",
+	"description",
+	"params",
+	"aliases",
+	"tags",
+	"example",
+] as const;
+
+export type ToonCapabilityField =
+	| (typeof DEFAULT_TOON_CAPABILITY_FIELDS)[number]
+	| (string & {});
+
+export type ToonCapabilityRow = Record<string, unknown>;
+
+const TOON_SECTION_KEY_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+
+function normalizeToonSectionKey(sectionKey: string): string {
+	const normalized = sectionKey.trim();
+	if (!TOON_SECTION_KEY_RE.test(normalized)) {
+		throw new Error(`Invalid TOON section key: ${sectionKey}`);
+	}
+	return normalized;
+}
+
+function normalizeToonCapabilityCell(value: unknown): string {
+	if (value == null) {
+		return "";
+	}
+
+	if (typeof value === "string") {
+		return value.replace(/\s+/g, " ").trim();
+	}
+
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+
+	if (Array.isArray(value)) {
+		return value
+			.map((entry) => normalizeToonCapabilityCell(entry))
+			.filter(Boolean)
+			.join("|");
+	}
+
+	if (isRecord(value)) {
+		return Object.entries(value)
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([key, entry]) => {
+				const normalizedEntry = normalizeToonCapabilityCell(entry);
+				return normalizedEntry ? `${key}:${normalizedEntry}` : "";
+			})
+			.filter(Boolean)
+			.join("|");
+	}
+
+	return String(value).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Render dynamic subactions/capabilities as a deterministic TOON table.
+ *
+ * Rows keep caller-provided order; fields keep the provided field order. Cell
+ * values are flattened to compact scalar strings so TOON can emit canonical
+ * `{field,...}` table rows instead of nested prose blocks.
+ */
+export function formatToonCapabilityRows(
+	sectionKey: string,
+	rows: readonly ToonCapabilityRow[],
+	fields: readonly ToonCapabilityField[] = DEFAULT_TOON_CAPABILITY_FIELDS,
+): string {
+	const normalizedKey = normalizeToonSectionKey(sectionKey);
+	const normalizedFields = [
+		...new Set(
+			fields
+				.map((field) => `${field}`.trim())
+				.filter((field) => TOON_SECTION_KEY_RE.test(field)),
+		),
+	];
+
+	if (normalizedFields.length === 0) {
+		return encodeToonValue({ [normalizedKey]: [] });
+	}
+
+	const normalizedRows = rows.map((row) => {
+		const normalizedRow: Record<string, string> = {};
+		for (const field of normalizedFields) {
+			normalizedRow[field] = normalizeToonCapabilityCell(row[field]);
+		}
+		return normalizedRow;
+	});
+
+	return encodeToonValue({ [normalizedKey]: normalizedRows });
+}
+
 export function normalizeStructuredRecord(
 	value: unknown,
 ): Record<string, unknown> | null {

@@ -8,7 +8,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -50,7 +54,9 @@ type OrderIntent =
   | { action: "fulfill"; orderName: string };
 
 function readNullableString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
+  return typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.trim().toLowerCase() !== "null"
     ? value.trim()
     : null;
 }
@@ -77,20 +83,25 @@ async function classifyIntent(
   text: string,
 ): Promise<OrderIntent | null> {
   const prompt = `Analyze the user message and determine what order action they want.
-Return a JSON object with one of these shapes:
-- { "action": "list", "query": "optional filter like 'unfulfilled' or 'last week' or null" }
-- { "action": "get", "orderName": "order number like #1001 or 1001" }
-- { "action": "fulfill", "orderName": "order number to fulfill" }
+Respond with TOON only in one of these shapes:
+action: list
+query: optional filter like unfulfilled or last week
+
+action: get
+orderName: order number like #1001 or 1001
+
+action: fulfill
+orderName: order number to fulfill
 
 User message: "${text}"
-
-Return ONLY the JSON object.`;
+`;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseJSONObjectFromText(response);
+    const parsed =
+      parseToonKeyValue<Record<string, unknown>>(response);
     if (parsed?.action) {
-      return parsed as unknown as OrderIntent;
+      return readOrderIntent(parsed as HandlerOptions);
     }
   }
   return null;

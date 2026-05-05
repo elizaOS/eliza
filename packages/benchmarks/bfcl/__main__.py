@@ -47,14 +47,14 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run a quick sample of 50 tests (uses Groq llama-3.1-8b-instant by default)
+  # Run a quick sample of 50 tests (uses Groq gpt-oss-120b by default)
   python -m benchmarks.bfcl run --sample 50
 
   # Run with specific provider
   python -m benchmarks.bfcl run --provider openai --sample 50
 
   # Run with specific model
-  python -m benchmarks.bfcl run --model groq/llama-3.3-70b-versatile --sample 50
+  python -m benchmarks.bfcl run --model groq/openai/gpt-oss-120b --sample 50
 
   # Run full benchmark
   python -m benchmarks.bfcl run --full
@@ -313,7 +313,7 @@ def show_models(args: argparse.Namespace) -> int:
             print("   - XAI_API_KEY")
             print("   - OPENROUTER_API_KEY")
         else:
-            print("\nDefault: Groq llama-3.1-8b-instant")
+            print("\nDefault: Groq openai/gpt-oss-120b")
             print("Override: --provider <name> or --model <provider/model>")
         
         print("\nUse --all to see all supported models")

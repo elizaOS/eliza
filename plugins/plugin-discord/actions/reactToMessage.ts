@@ -9,7 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { Message, TextChannel } from "discord.js";
@@ -274,7 +274,8 @@ export const reactToMessage: Action = {
 					prompt,
 				});
 
-				const parsedResponse = parseJSONObjectFromText(response);
+				const parsedResponse =
+					parseToonKeyValue<Record<string, unknown>>(response);
 				if (parsedResponse?.emoji) {
 					reactionInfo = {
 						messageRef: String(parsedResponse.messageRef || "last"),

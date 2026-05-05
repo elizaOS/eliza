@@ -1,7 +1,12 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { embed } from "ai";
 import { createGoogleClient } from "../providers";
+import {
+  emitModelUsed,
+  estimateEmbeddingUsage,
+  normalizeTokenUsage,
+} from "../utils/modelUsage";
 import { executeWithRetry } from "../utils/retry";
 
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-005";
@@ -38,7 +43,7 @@ export async function handleTextEmbedding(
         ? parseInt(dimensionSetting, 10)
         : undefined;
 
-  const { embedding } = await executeWithRetry("embedding request", () =>
+  const { embedding, usage } = await executeWithRetry("embedding request", () =>
     embed({
       model: vertex.textEmbeddingModel(modelName),
       value: text,
@@ -50,6 +55,13 @@ export async function handleTextEmbedding(
           }
         : {}),
     }),
+  );
+  emitModelUsed(
+    runtime,
+    ModelType.TEXT_EMBEDDING,
+    modelName,
+    normalizeTokenUsage(usage) ?? estimateEmbeddingUsage(text),
+    "google",
   );
 
   return embedding;

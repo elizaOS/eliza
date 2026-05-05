@@ -212,7 +212,14 @@ def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
 
 def _command_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = ["bun", "run", "src/index.ts", "--output", str(ctx.output_root)]
-    if ctx.request.agent.lower() == "eliza":
+    agent = ctx.request.extra_config.get("agent")
+    provider_name = ctx.request.provider.strip().lower()
+    if (
+        ctx.request.agent.lower() == "eliza"
+        or agent == "eliza"
+        or ctx.request.extra_config.get("eliza") is True
+        or provider_name == "eliza"
+    ):
         args.append("--eliza")
     limit = ctx.request.extra_config.get("limit")
     if isinstance(limit, int) and limit > 0:
@@ -220,6 +227,20 @@ def _command_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
     if ctx.request.extra_config.get("verbose") is True:
         args.append("--verbose")
     return args
+
+
+def _env_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    provider_name = ctx.request.provider.strip().lower()
+    env: dict[str, str] = {}
+    if provider_name in {"groq", "openai", "anthropic"}:
+        env["CONFIGBENCH_AGENT_PROVIDER"] = provider_name
+    if provider_name == "groq" and ctx.request.model.strip():
+        env["GROQ_SMALL_MODEL"] = ctx.request.model.strip()
+        env["GROQ_LARGE_MODEL"] = ctx.request.model.strip()
+    elif provider_name == "openai" and ctx.request.model.strip():
+        env["OPENAI_SMALL_MODEL"] = ctx.request.model.strip()
+        env["OPENAI_LARGE_MODEL"] = ctx.request.model.strip()
+    return env
 
 
 def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -311,7 +332,7 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
     if isinstance(system_raw, str) and system_raw.strip():
         system = system_raw.strip()
     elif ctx.request.provider.strip().lower() in {"eliza", "eliza-bridge", "eliza-ts"}:
-        system = "eliza-bridge" if ctx.request.provider.strip().lower() != "eliza" else "eliza"
+        system = "eliza-bridge"
     else:
         system = "baseline"
     data_dir = str(ctx.request.extra_config.get("data_dir", "trenches-chat-dataset/data"))
@@ -338,6 +359,9 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
 
 def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     handler = str(ctx.request.extra_config.get("handler", "oracle"))
+    provider_name = ctx.request.provider.strip().lower()
+    if handler == "eliza" and provider_name in {"openai", "groq", "openrouter"}:
+        handler = "llm"
     args = [
         "python",
         "run_benchmark.py",
@@ -346,7 +370,7 @@ def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str
         "--output",
         str(ctx.output_root / "trust-results.json"),
     ]
-    if handler == "eliza":
+    if handler in {"eliza", "llm"}:
         args.extend(["--model-provider", ctx.request.provider, "--model", ctx.request.model])
     categories = ctx.request.extra_config.get("categories")
     if isinstance(categories, list) and categories:
@@ -374,12 +398,9 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     provider_lower = ctx.request.provider.strip().lower()
     if ctx.request.extra_config.get("mock") is True or provider_lower == "mock":
         args.append("--mock")
-    elif ctx.request.extra_config.get("bridge") is True or provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
-        args.append("--bridge")
-        if ctx.request.model:
-            args.extend(["--model", ctx.request.model])
     else:
-        if ctx.request.provider:
+        args.append("--bridge")
+        if ctx.request.provider and provider_lower not in {"eliza", "eliza-bridge", "eliza-ts"}:
             args.extend(["--model-provider", ctx.request.provider])
         if ctx.request.model:
             args.extend(["--model", ctx.request.model])
@@ -409,6 +430,14 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     if isinstance(temperature, (int, float)):
         args.extend(["--temperature", str(float(temperature))])
     return args
+
+
+def _env_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    return {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+    }
 
 
 def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -529,18 +558,25 @@ def _score_from_evm(path: Path) -> ScoreSummary:
 
 
 def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return ["python", "-m", "benchmarks.solana.eliza_agent"]
+    return [
+        "python",
+        "-m",
+        "benchmarks.solana.eliza_agent",
+        "--output-dir",
+        str(ctx.output_root),
+    ]
 
 
 def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     env: dict[str, str] = {
         "MODEL_NAME": ctx.request.model.strip(),
+        "OUTPUT_DIR": str(ctx.output_root),
         "USE_EXTERNAL_SURFPOOL": "true"
         if bool(ctx.request.extra_config.get("use_external_surfpool", False))
         else "false",
     }
     max_messages = ctx.request.extra_config.get("max_messages")
-    if isinstance(max_messages, int) and max_messages > 0:
+    if isinstance(max_messages, int) and max_messages >= 0:
         env["MAX_MESSAGES"] = str(max_messages)
     environment_config = ctx.request.extra_config.get("environment_config")
     if isinstance(environment_config, str) and environment_config.strip():
@@ -1012,6 +1048,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="ConfigBench plugin configuration/security benchmark",
             cwd=str((benchmarks_root / "configbench").resolve()),
             command_builder=_command_configbench,
+            env_builder=_env_configbench,
             result_patterns=["configbench-results-*.json", "results/configbench-results-*.json"],
             score_extractor=_score_from_configbench,
             default_timeout_seconds=14400,
@@ -1093,6 +1130,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="WebShop benchmark with Eliza agent",
             cwd=str((benchmarks_root / "webshop").resolve()),
             command_builder=_command_webshop,
+            env_builder=_env_webshop,
             result_patterns=["webshop-results.json"],
             score_extractor=score_extractor_factory.for_benchmark("webshop"),
             default_extra_config={
@@ -1128,6 +1166,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             command_builder=_command_solana,
             env_builder=_env_solana,
             result_patterns=[
+                "eliza_*_metrics.json",
                 "benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
                 "packages/benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
             ],

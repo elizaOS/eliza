@@ -24,7 +24,7 @@ export interface A11yNode {
 
 /**
  * Extract the accessibility tree of the focused window / screen.
- * Returns a simplified XML-like string suitable for LLM consumption.
+ * Returns a simplified plain-text accessibility tree suitable for LLM consumption.
  *
  * Returns null if a11y data is unavailable on the current platform.
  */

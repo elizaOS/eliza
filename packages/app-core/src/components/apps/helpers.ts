@@ -45,7 +45,7 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/app-browser",
-  "@elizaos/app-form",
+  "@elizaos/plugin-form",
   "@elizaos/app-knowledge",
   "@elizaos/app-screenshare",
   "@elizaos/app-task-coordinator",
@@ -55,6 +55,9 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/app-contacts",
   "@elizaos/app-phone",
   "@elizaos/app-wifi",
+  // Shared wallet/inventory system package — provides components used by the
+  // app shell, not a standalone installable app.
+  "@elizaos/app-wallet",
 ] as const;
 
 const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(

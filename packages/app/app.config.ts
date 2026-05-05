@@ -19,8 +19,8 @@ interface AppWebConfig {
 }
 
 const config = {
-  appName: "elizaOS",
-  appId: "ai.elizaos.app",
+  appName: "Eliza",
+  appId: "app.eliza",
   orgName: "elizaos",
   repoName: "eliza",
   cliName: "eliza",
@@ -30,19 +30,19 @@ const config = {
   defaultApps: ["@elizaos/app-lifeops"],
 
   desktop: {
-    bundleId: "ai.elizaos.app",
+    bundleId: "app.eliza",
     urlScheme: "elizaos",
   },
 
   web: {
-    shortName: "elizaOS",
+    shortName: "Eliza",
     themeColor: "#08080a",
     backgroundColor: "#0a0a0a",
     shareImagePath: "/og-image.png",
   },
 
   branding: {
-    appName: "elizaOS",
+    appName: "Eliza",
     orgName: "elizaos",
     repoName: "eliza",
     docsUrl: "https://eliza.how",

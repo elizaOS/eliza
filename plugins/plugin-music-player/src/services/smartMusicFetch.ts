@@ -265,12 +265,12 @@ export class SmartMusicFetchService extends Service {
   ): Promise<{ success: boolean; url?: string; title?: string }> {
     try {
       // Try YouTube search service
-      const youtubeSearch = this.runtime?.getService("youtubeSearch") as any;
-      if (!youtubeSearch || !youtubeSearch.search) {
+      const musicLibrary = this.runtime?.getService("musicLibrary") as any;
+      if (!musicLibrary?.searchYouTube) {
         return { success: false };
       }
 
-      const results = await youtubeSearch.search(query, { limit: 1 });
+      const results = await musicLibrary.searchYouTube(query, { limit: 1 });
       if (results && results.length > 0) {
         return {
           success: true,

@@ -9,6 +9,10 @@ import {
 	type Media,
 	type Memory,
 	MemoryType,
+	type MessageConnectorChatContext,
+	type MessageConnectorQueryContext,
+	type MessageConnectorTarget,
+	type MessageConnectorUserContext,
 	Service,
 	setConnectorAdminWhitelist,
 	stringToUuid,
@@ -113,6 +117,63 @@ import {
 import { VoiceManager } from "./voice";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
+const DISCORD_CONNECTOR_CONTEXTS = ["social", "connectors"];
+const DISCORD_CONNECTOR_CAPABILITIES = [
+	"send_message",
+	"resolve_targets",
+	"list_rooms",
+	"chat_context",
+	"user_context",
+];
+
+function normalizeDiscordConnectorQuery(value: string): string {
+	return value
+		.trim()
+		.replace(/^<#(\d+)>$/, "$1")
+		.replace(/^<@!?(\d+)>$/, "$1")
+		.replace(/^#/, "")
+		.replace(/^@/, "")
+		.toLowerCase();
+}
+
+function scoreDiscordConnectorMatch(
+	query: string,
+	id: string,
+	labels: Array<string | null | undefined>,
+): number {
+	if (!query) {
+		return 0.45;
+	}
+	if (id === query) {
+		return 1;
+	}
+
+	let bestScore = 0;
+	for (const label of labels) {
+		const normalized = label?.trim().toLowerCase();
+		if (!normalized) {
+			continue;
+		}
+		if (normalized === query) {
+			bestScore = Math.max(bestScore, 0.95);
+		} else if (normalized.startsWith(query)) {
+			bestScore = Math.max(bestScore, 0.85);
+		} else if (normalized.includes(query)) {
+			bestScore = Math.max(bestScore, 0.7);
+		}
+	}
+	return bestScore;
+}
+
+function isDiscordTextTarget(channel: unknown): boolean {
+	const maybeChannel = channel as {
+		isTextBased?: () => boolean;
+		isVoiceBased?: () => boolean;
+	};
+	return Boolean(
+		maybeChannel?.isTextBased?.() && !maybeChannel?.isVoiceBased?.(),
+	);
+}
 
 function normalizeDiscordTargetUserId(value: unknown): string | null {
 	if (typeof value !== "string") {
@@ -912,6 +973,438 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 	}
 
+	private buildConnectorChannelTarget(
+		channel: Channel,
+		score = 0.5,
+	): MessageConnectorTarget | null {
+		if (!isDiscordTextTarget(channel)) {
+			return null;
+		}
+
+		const channelRecord = channel as Channel & {
+			guild?: Guild;
+			name?: string;
+			parentId?: string | null;
+			isThread?: () => boolean;
+			url?: string;
+		};
+		const parentId =
+			typeof channelRecord.parentId === "string"
+				? channelRecord.parentId
+				: undefined;
+		const isThread = Boolean(channelRecord.isThread?.());
+		if (
+			this.allowedChannelIds &&
+			!this.isChannelAllowed(channel.id) &&
+			!(parentId && this.isChannelAllowed(parentId))
+		) {
+			return null;
+		}
+
+		const guild = channelRecord.guild;
+		const roomId = createUniqueUuid(this.runtime, channel.id) as UUID;
+		const label =
+			typeof channelRecord.name === "string" && channelRecord.name.length > 0
+				? `${isThread ? "Thread" : "#"}${channelRecord.name}`
+				: channel.id;
+
+		return {
+			target: {
+				source: "discord",
+				roomId,
+				channelId: channel.id,
+				serverId: guild?.id,
+				threadId: isThread ? channel.id : undefined,
+			} as TargetInfo,
+			label,
+			kind: isThread ? "thread" : "channel",
+			description: guild?.name ? `${label} in ${guild.name}` : label,
+			score,
+			contexts: ["social", "connectors"],
+			metadata: {
+				discordChannelId: channel.id,
+				discordGuildId: guild?.id,
+				discordGuildName: guild?.name,
+				discordParentChannelId: parentId,
+				channelName: channelRecord.name,
+				isThread,
+				url: channelRecord.url,
+			},
+		};
+	}
+
+	private buildConnectorUserTarget(
+		user: User,
+		guild?: Guild | null,
+		displayName?: string,
+		score = 0.5,
+	): MessageConnectorTarget | null {
+		if (!user || user.bot) {
+			return null;
+		}
+
+		const label = displayName || user.globalName || user.username || user.id;
+		return {
+			target: {
+				source: "discord",
+				entityId: user.id as UUID,
+				serverId: guild?.id,
+			} as TargetInfo,
+			label: `@${label}`,
+			kind: "user",
+			description: guild?.name
+				? `Discord user in ${guild.name}`
+				: "Discord user",
+			score,
+			contexts: ["social", "connectors"],
+			metadata: {
+				discordUserId: user.id,
+				discordUsername: user.username,
+				discordGlobalName: user.globalName,
+				discordGuildId: guild?.id,
+				discordGuildName: guild?.name,
+			},
+		};
+	}
+
+	private dedupeConnectorTargets(
+		targets: MessageConnectorTarget[],
+	): MessageConnectorTarget[] {
+		const byKey = new Map<string, MessageConnectorTarget>();
+		for (const target of targets) {
+			const key = [
+				target.kind ?? "target",
+				target.target.channelId ?? "",
+				target.target.entityId ?? "",
+				target.target.threadId ?? "",
+			].join(":");
+			const existing = byKey.get(key);
+			if (!existing || (target.score ?? 0) > (existing.score ?? 0)) {
+				byKey.set(key, target);
+			}
+		}
+		return Array.from(byKey.values()).sort(
+			(a, b) => (b.score ?? 0) - (a.score ?? 0),
+		);
+	}
+
+	public async resolveConnectorTargets(
+		query: string,
+		context: MessageConnectorQueryContext,
+	): Promise<MessageConnectorTarget[]> {
+		if (!this.client) {
+			return [];
+		}
+
+		const normalizedQuery = normalizeDiscordConnectorQuery(query);
+		const results: MessageConnectorTarget[] = [];
+		const guilds = Array.from(this.client.guilds.cache.values());
+
+		for (const guild of guilds) {
+			const cachedChannels = Array.from(guild.channels.cache.values());
+			for (const channel of cachedChannels) {
+				if (!channel || !isDiscordTextTarget(channel)) {
+					continue;
+				}
+				const channelRecord = channel as Channel & { name?: string };
+				const score = scoreDiscordConnectorMatch(normalizedQuery, channel.id, [
+					channelRecord.name,
+				]);
+				if (score <= 0) {
+					continue;
+				}
+				const target = this.buildConnectorChannelTarget(channel, score);
+				if (target) {
+					results.push(target);
+				}
+			}
+
+			if (normalizedQuery.length >= 2) {
+				try {
+					const members = await guild.members.fetch({
+						query: normalizedQuery,
+						limit: 10,
+					});
+					for (const member of members.values()) {
+						const score = scoreDiscordConnectorMatch(
+							normalizedQuery,
+							member.id,
+							[
+								member.displayName,
+								member.user.username,
+								member.user.globalName,
+								member.user.tag,
+							],
+						);
+						const target = this.buildConnectorUserTarget(
+							member.user,
+							guild,
+							member.displayName,
+							score || 0.65,
+						);
+						if (target) {
+							results.push(target);
+						}
+					}
+				} catch (error) {
+					this.runtime.logger.debug(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							guildId: guild.id,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Discord connector member query failed",
+					);
+				}
+			}
+
+			for (const member of guild.members.cache.values()) {
+				const score = scoreDiscordConnectorMatch(normalizedQuery, member.id, [
+					member.displayName,
+					member.user.username,
+					member.user.globalName,
+					member.user.tag,
+				]);
+				if (score <= 0) {
+					continue;
+				}
+				const target = this.buildConnectorUserTarget(
+					member.user,
+					guild,
+					member.displayName,
+					score,
+				);
+				if (target) {
+					results.push(target);
+				}
+			}
+		}
+
+		if (DISCORD_SNOWFLAKE_PATTERN.test(normalizedQuery)) {
+			try {
+				const channel = await this.client.channels.fetch(normalizedQuery);
+				if (channel) {
+					const target = this.buildConnectorChannelTarget(channel, 1);
+					if (target) {
+						results.push(target);
+					}
+				}
+			} catch {
+				// Snowflake may be a user id; try user lookup below.
+			}
+			try {
+				const user = await this.client.users.fetch(normalizedQuery);
+				const target = this.buildConnectorUserTarget(user, null, undefined, 1);
+				if (target) {
+					results.push(target);
+				}
+			} catch {
+				// No exact user match.
+			}
+		}
+
+		if (context.target?.channelId) {
+			try {
+				const channel = await this.client.channels.fetch(
+					context.target.channelId,
+				);
+				if (channel) {
+					const target = this.buildConnectorChannelTarget(channel, 0.6);
+					if (target) {
+						results.push(target);
+					}
+				}
+			} catch {
+				// Ignore stale current-channel hints.
+			}
+		}
+
+		return this.dedupeConnectorTargets(results).slice(0, 25);
+	}
+
+	public async listConnectorRooms(
+		_context: MessageConnectorQueryContext,
+	): Promise<MessageConnectorTarget[]> {
+		if (!this.client) {
+			return [];
+		}
+
+		const targets: MessageConnectorTarget[] = [];
+		for (const guild of this.client.guilds.cache.values()) {
+			for (const channel of guild.channels.cache.values()) {
+				const target = this.buildConnectorChannelTarget(
+					channel as Channel,
+					0.5,
+				);
+				if (target) {
+					targets.push(target);
+				}
+			}
+		}
+		return this.dedupeConnectorTargets(targets).slice(0, 50);
+	}
+
+	public async listRecentConnectorTargets(
+		context: MessageConnectorQueryContext,
+	): Promise<MessageConnectorTarget[]> {
+		const targets: MessageConnectorTarget[] = [];
+		const currentRoom =
+			context.roomId && typeof context.runtime.getRoom === "function"
+				? await context.runtime.getRoom(context.roomId)
+				: null;
+		const currentChannelId =
+			context.target?.channelId ??
+			(currentRoom?.source === "discord" ? currentRoom.channelId : undefined);
+
+		if (currentChannelId && this.client) {
+			try {
+				const channel = await this.client.channels.fetch(currentChannelId);
+				if (channel) {
+					const target = this.buildConnectorChannelTarget(channel, 0.95);
+					if (target) {
+						targets.push(target);
+					}
+				}
+			} catch {
+				// Ignore stale current-channel hints.
+			}
+		}
+
+		targets.push(...(await this.listConnectorRooms(context)));
+		return this.dedupeConnectorTargets(targets).slice(0, 25);
+	}
+
+	public async getConnectorChatContext(
+		target: TargetInfo,
+		context: MessageConnectorQueryContext,
+	): Promise<MessageConnectorChatContext | null> {
+		if (!this.client) {
+			return null;
+		}
+
+		const room =
+			target.roomId && typeof context.runtime.getRoom === "function"
+				? await context.runtime.getRoom(target.roomId)
+				: null;
+		const channelId = target.channelId ?? room?.channelId;
+		if (!channelId) {
+			return null;
+		}
+
+		const channel = await this.client.channels.fetch(channelId);
+		if (!channel || !isDiscordTextTarget(channel)) {
+			return null;
+		}
+
+		const channelRecord = channel as Channel & {
+			name?: string;
+			topic?: string | null;
+			guild?: Guild;
+			messages?: {
+				fetch: (options: {
+					limit: number;
+				}) => Promise<Collection<string, Message>>;
+			};
+		};
+		const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
+		if (channelRecord.messages?.fetch) {
+			try {
+				const fetched = await channelRecord.messages.fetch({ limit: 10 });
+				for (const message of Array.from(fetched.values()).reverse()) {
+					if (!message.content?.trim()) {
+						continue;
+					}
+					recentMessages.push({
+						entityId: this.resolveDiscordEntityId(message.author.id),
+						name:
+							message.member?.displayName ||
+							message.author.globalName ||
+							message.author.username,
+						text: message.content,
+						timestamp: message.createdTimestamp,
+						metadata: {
+							discordMessageId: message.id,
+							discordUserId: message.author.id,
+						},
+					});
+				}
+			} catch (error) {
+				this.runtime.logger.debug(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						channelId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Discord connector chat context history fetch failed",
+				);
+			}
+		}
+
+		const label =
+			typeof channelRecord.name === "string" && channelRecord.name.length > 0
+				? `#${channelRecord.name}`
+				: channelId;
+		return {
+			target: {
+				source: "discord",
+				roomId: target.roomId ?? room?.id,
+				channelId,
+				serverId: target.serverId ?? channelRecord.guild?.id,
+				threadId: target.threadId,
+			} as TargetInfo,
+			label,
+			summary:
+				channelRecord.topic ||
+				(channelRecord.guild?.name
+					? `Discord channel in ${channelRecord.guild.name}`
+					: undefined),
+			recentMessages,
+			metadata: {
+				discordChannelId: channelId,
+				discordGuildId: channelRecord.guild?.id,
+				discordGuildName: channelRecord.guild?.name,
+			},
+		};
+	}
+
+	public async getConnectorUserContext(
+		entityId: UUID | string,
+		context: MessageConnectorQueryContext,
+	): Promise<MessageConnectorUserContext | null> {
+		if (!this.client) {
+			return null;
+		}
+
+		const discordUserId = await this.resolveDiscordTargetUserId(
+			String(entityId),
+		);
+		if (!discordUserId) {
+			return null;
+		}
+
+		const user = await this.client.users.fetch(discordUserId);
+		if (!user) {
+			return null;
+		}
+
+		return {
+			entityId,
+			label: user.globalName || user.username || user.id,
+			aliases: [user.username, user.globalName, user.tag].filter(
+				(value): value is string => Boolean(value),
+			),
+			handles: { discord: user.id },
+			metadata: {
+				discordUserId: user.id,
+				discordUsername: user.username,
+				discordGlobalName: user.globalName,
+				requestRoomId: context.roomId,
+			},
+		};
+	}
+
 	/**
 	 * Set up event listeners for the client.
 	 * Delegates to the extracted setupDiscordEventListeners() function.
@@ -947,11 +1440,38 @@ export class DiscordService extends Service implements IDiscordService {
 		serviceInstance: DiscordService,
 	) {
 		if (serviceInstance) {
-			runtime.registerSendHandler(
-				"discord",
-				serviceInstance.handleSendMessage.bind(serviceInstance),
-			);
-			runtime.logger.info("Registered send handler");
+			const sendHandler =
+				serviceInstance.handleSendMessage.bind(serviceInstance);
+			if (typeof runtime.registerMessageConnector === "function") {
+				runtime.registerMessageConnector({
+					source: "discord",
+					label: "Discord",
+					description:
+						"Discord connector for sending messages to channels, threads, and users.",
+					capabilities: [...DISCORD_CONNECTOR_CAPABILITIES],
+					supportedTargetKinds: ["channel", "thread", "user"],
+					contexts: [...DISCORD_CONNECTOR_CONTEXTS],
+					metadata: {
+						service: DISCORD_SERVICE_NAME,
+						supportsAttachments: true,
+						maxMessageLength: MAX_MESSAGE_LENGTH,
+					},
+					resolveTargets:
+						serviceInstance.resolveConnectorTargets.bind(serviceInstance),
+					listRecentTargets:
+						serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
+					listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
+					getChatContext:
+						serviceInstance.getConnectorChatContext.bind(serviceInstance),
+					getUserContext:
+						serviceInstance.getConnectorUserContext.bind(serviceInstance),
+					sendHandler,
+				});
+				runtime.logger.info("Registered Discord message connector");
+			} else {
+				runtime.registerSendHandler("discord", sendHandler);
+				runtime.logger.info("Registered send handler");
+			}
 		}
 	}
 

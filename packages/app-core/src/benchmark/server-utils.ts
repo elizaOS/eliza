@@ -2,6 +2,7 @@ import {
   type AgentRuntime,
   ChannelType,
   elizaLogger,
+  parseToonKeyValue,
   type Plugin,
   stringToUuid,
   type UUID,
@@ -226,6 +227,10 @@ export function extractTaskId(
   if (typeof bySnake === "string" && bySnake.trim()) return bySnake.trim();
   const byCamel = context?.taskId;
   if (typeof byCamel === "string" && byCamel.trim()) return byCamel.trim();
+  const byScenario = context?.scenario_id;
+  if (typeof byScenario === "string" && byScenario.trim()) {
+    return byScenario.trim();
+  }
   return "default-task";
 }
 
@@ -286,30 +291,12 @@ export function coerceParams(value: unknown): Record<string, unknown> {
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // fall through to XML parsing
+      // fall through to TOON parsing
     }
 
-    if (trimmed.startsWith("<")) {
-      const paramsByAction: Record<string, unknown> = {};
-      const actionMatches = [
-        ...trimmed.matchAll(/<([A-Za-z0-9_-]+)>([\s\S]*?)<\/\1>/g),
-      ];
-      for (const [, actionName, actionBody] of actionMatches) {
-        const actionParams: Record<string, unknown> = {};
-        const fieldMatches = [
-          ...actionBody.matchAll(/<([A-Za-z0-9_-]+)>([\s\S]*?)<\/\1>/g),
-        ];
-        for (const [, fieldName, fieldValue] of fieldMatches) {
-          actionParams[fieldName] = fieldValue.trim();
-        }
-        paramsByAction[actionName] =
-          Object.keys(actionParams).length > 0
-            ? actionParams
-            : actionBody.trim();
-      }
-      if (Object.keys(paramsByAction).length > 0) {
-        return paramsByAction;
-      }
+    const parsedToon = parseToonKeyValue<Record<string, unknown>>(trimmed);
+    if (parsedToon && Object.keys(parsedToon).length > 0) {
+      return parsedToon;
     }
   }
 
@@ -331,6 +318,12 @@ export function normalizeBenchmarkContext(
     Array.isArray(normalized.action_space)
   ) {
     normalized.actionSpace = normalized.action_space;
+  }
+  if (
+    !Array.isArray(normalized.actionSpace) &&
+    Array.isArray(normalized.available_actions)
+  ) {
+    normalized.actionSpace = normalized.available_actions;
   }
 
   if (normalized.task_id === undefined) {

@@ -2,9 +2,9 @@
  * Provider that injects active workspace and task-agent context into every prompt.
  *
  * Eliza needs to know what workspaces exist, which agents are running, and
- * their current status without having to call LIST_AGENTS every message. This
- * provider reads from the workspace service, PTY service, and coordinator to
- * build a live context summary that's always available in the prompt.
+ * their current status. This provider reads from the workspace service, PTY
+ * service, and coordinator to build a live context summary that's always
+ * available in the prompt.
  *
  * @module providers/active-workspace-context
  */
@@ -108,24 +108,29 @@ export const activeWorkspaceContextProvider: Provider = {
       return !currentTask || currentTask.status !== "active";
     });
 
-    const lines: string[] = ["# Active Workspaces & Task Agents"];
-    lines.push(
-      `Preferred framework: ${TASK_AGENT_FRAMEWORK_LABELS[frameworkState.preferred.id]} (${frameworkState.preferred.reason}).`,
-    );
+    const lines: string[] = [
+      "active_workspace_context:",
+      `  preferredFramework: ${TASK_AGENT_FRAMEWORK_LABELS[frameworkState.preferred.id]}`,
+      `  preferredReason: ${frameworkState.preferred.reason}`,
+      `  workspaceCount: ${workspaces.length}`,
+      `  sessionCount: ${sessions.length}`,
+      `  taskCount: ${tasks.length}`,
+    ];
 
     if (
       workspaces.length === 0 &&
       sessions.length === 0 &&
       tasks.length === 0
     ) {
-      lines.push("No active workspaces or task-agent sessions.");
+      lines.push("guidance:");
       lines.push(
-        "Use CREATE_TASK when the user needs anything more involved than a simple direct reply.",
+        "  createTask: Use CREATE_TASK when the user needs anything more involved than a simple direct reply.",
       );
     } else {
       if (workspaces.length > 0) {
-        lines.push("");
-        lines.push(`## Workspaces (${workspaces.length})`);
+        lines.push(
+          `workspaces[${workspaces.length}]{label,repo,branch,agents}:`,
+        );
         for (const workspace of workspaces) {
           const workspaceSessions = sessions.filter(
             (session) => session.workdir === workspace.path,
@@ -140,7 +145,7 @@ export const activeWorkspaceContextProvider: Provider = {
                   .join(", ")
               : "no task agents";
           lines.push(
-            `- "${workspace.label ?? workspace.id.slice(0, 8)}" -> ${workspace.repo ?? "scratch"} (${workspace.branch ?? "no branch"}, ${agentSummary})`,
+            `  ${workspace.label ?? workspace.id.slice(0, 8)},${workspace.repo ?? "scratch"},${workspace.branch ?? "no branch"},${agentSummary}`,
           );
         }
       }
@@ -153,22 +158,22 @@ export const activeWorkspaceContextProvider: Provider = {
       );
 
       if (standaloneSessions.length > 0) {
-        lines.push("");
-        lines.push(`## Standalone Sessions (${standaloneSessions.length})`);
+        lines.push(
+          `standaloneSessions[${standaloneSessions.length}]{label,agentType,status,sessionId}:`,
+        );
         for (const session of standaloneSessions) {
           const label =
             typeof session.metadata?.label === "string"
               ? session.metadata.label
               : session.name;
           lines.push(
-            `- "${label}" (${session.agentType}, ${formatTaskAgentStatus(session.status)}) [session: ${session.id}]`,
+            `  ${label},${session.agentType},${formatTaskAgentStatus(session.status)},${session.id}`,
           );
         }
       }
 
       if (tasks.length > 0) {
-        lines.push("");
-        lines.push(`## Current Task Status (${tasks.length})`);
+        lines.push(`tasks[${tasks.length}]{status,label,agentType,detail}:`);
         for (const task of tasks
           .slice()
           .sort((left, right) => right.registeredAt - left.registeredAt)) {
@@ -178,44 +183,50 @@ export const activeWorkspaceContextProvider: Provider = {
             latestDecision?.reasoning ||
             truncateTaskAgentText(task.originalTask, 110);
           lines.push(
-            `- [${task.status}] "${task.label}" (${task.agentType}) -> ${detail}`,
+            `  ${task.status},${task.label},${task.agentType},${detail.replace(/\s+/g, " ").trim()}`,
           );
         }
       }
 
       const pending = coordinator?.getPendingConfirmations?.() ?? [];
       if (pending.length > 0) {
-        lines.push("");
+        lines.push("pendingConfirmations:");
+        lines.push(`  count: ${pending.length}`);
         lines.push(
-          `## Pending Confirmations (${pending.length}) - supervision: ${coordinator?.getSupervisionLevel?.() ?? "unknown"}`,
+          `  supervision: ${coordinator?.getSupervisionLevel?.() ?? "unknown"}`,
+        );
+        lines.push(
+          `pendingItems[${pending.length}]{label,prompt,suggestedAction}:`,
         );
         for (const confirmation of pending) {
           lines.push(
-            `- "${confirmation.taskContext.label}" blocked on "${truncateTaskAgentText(confirmation.promptText, 140)}" -> suggested: ${confirmation.llmDecision.action ?? "review"}`,
+            `  ${confirmation.taskContext.label},${truncateTaskAgentText(confirmation.promptText, 140)},${confirmation.llmDecision.action ?? "review"}`,
           );
         }
       }
 
       if (reusableSessions.length > 0) {
-        lines.push("");
-        lines.push(`## Reusable Agents (${reusableSessions.length})`);
+        lines.push(
+          `reusableAgents[${reusableSessions.length}]{label,agentType,status,nextAction}:`,
+        );
         for (const session of reusableSessions) {
           const label =
             typeof session.metadata?.label === "string"
               ? session.metadata.label
               : session.name;
           lines.push(
-            `- "${label}" (${session.agentType}) is ${formatTaskAgentStatus(session.status)} and can take a new tracked task via SEND_TO_AGENT`,
+            `  ${label},${session.agentType},${formatTaskAgentStatus(session.status)},SEND_TO_AGENT`,
           );
         }
       }
     }
 
     if (sessions.length > 0 || tasks.length > 0) {
-      lines.push("");
-      lines.push(
-        "Use SEND_TO_AGENT to unblock a running agent or assign it a new tracked task, LIST_AGENTS to inspect progress, STOP_AGENT to cancel, and FINALIZE_WORKSPACE when the work should be published or wrapped up.",
-      );
+      lines.push("actions:");
+      lines.push("  unblockOrAssign: SEND_TO_AGENT");
+      lines.push("  inspectProgress: provider.active_workspace_context");
+      lines.push("  cancel: STOP_AGENT");
+      lines.push("  wrapUp: FINALIZE_WORKSPACE");
     }
 
     const text = lines.join("\n");

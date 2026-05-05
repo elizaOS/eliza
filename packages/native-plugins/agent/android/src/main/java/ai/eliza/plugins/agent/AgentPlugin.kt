@@ -64,7 +64,7 @@ class AgentPlugin : Plugin() {
 
     private fun readLocalAgentToken(): String? {
         return try {
-            val serviceClass = Class.forName("ai.elizaos.app.ElizaAgentService")
+            val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
             val method = serviceClass.getMethod("localAgentToken")
             (method.invoke(null) as? String)?.trim()?.takeIf { it.isNotEmpty() }
         } catch (_: Exception) {

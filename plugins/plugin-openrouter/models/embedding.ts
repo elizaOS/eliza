@@ -114,7 +114,7 @@ export async function handleTextEmbedding(
         totalTokens: data.usage.total_tokens,
       };
 
-      emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, text, usage);
+      emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, text, usage, embeddingModelName);
     }
 
     return embedding;

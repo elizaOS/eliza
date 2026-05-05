@@ -14,16 +14,13 @@ Known constraints (empirically discovered):
   - surfpool_env._partial_sign_transaction signs only index 0 (fee payer position)
 
 Modules:
-  - eliza_agent.py: Full ElizaOS runtime integration (AgentRuntime, Plugin,
-    handle_message). Uses EXECUTE_CODE action and SOLANA_CONTEXT provider.
-  - eliza_explorer.py: Standalone LangChain-based explorer (legacy).
-  - plugin/: ElizaOS plugin with EXECUTE_CODE action and SOLANA_CONTEXT provider.
+  - eliza_agent.py: compatibility entry point for the standalone explorer.
+  - eliza_explorer.py: OpenAI-compatible provider-backed explorer used by the
+    registry and orchestrator.
 
 Scope:
   - Phase 1 (deterministic templates): verified 236 reward, no LLM needed
-  - Phase 2 (LLM-assisted): verified with Anthropic Claude Sonnet 4
-  - eliza_agent.py uses the full Eliza runtime (Plugin, Action, Provider, handle_message)
-  - eliza_explorer.py is the legacy standalone version (no Eliza integration)
+  - Phase 2 (LLM-assisted): runs through OpenAI-compatible provider APIs
   - Templates use @solana/web3.js directly (not plugin-solana)
   - Swap benchmark: works with ENVIRONMENT_CONFIG=voyager/environments/swap_env.json
 """

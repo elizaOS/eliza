@@ -27,6 +27,8 @@ export interface WorkbenchRunInput {
   workflow: string;
   cwd?: string;
   stdin?: string;
+  trajectoryParentStepId?: string;
+  trajectoryChildStepId?: string;
 }
 
 export interface WorkbenchRunResult {
@@ -257,7 +259,7 @@ export class ClaudeCodeWorkbenchService extends Service {
     return requested;
   }
 
-  private buildChildEnv(): NodeJS.ProcessEnv {
+  private buildChildEnv(input?: WorkbenchRunInput): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {};
     const baseKeys = [
       "PATH",
@@ -289,6 +291,13 @@ export class ClaudeCodeWorkbenchService extends Service {
       ) {
         env[key] = value;
       }
+    }
+
+    if (input?.trajectoryParentStepId) {
+      env.ELIZA_PARENT_TRAJECTORY_STEP_ID = input.trajectoryParentStepId;
+    }
+    if (input?.trajectoryChildStepId) {
+      env.ELIZA_TRAJECTORY_CHILD_STEP_ID = input.trajectoryChildStepId;
     }
 
     return env;
@@ -344,7 +353,7 @@ export class ClaudeCodeWorkbenchService extends Service {
     try {
       const child = spawn(workflow.command, workflow.args, {
         cwd,
-        env: this.buildChildEnv(),
+        env: this.buildChildEnv(input),
         stdio: ["pipe", "pipe", "pipe"],
         shell: false,
       });

@@ -169,7 +169,7 @@ Examples:
         help="Use LLM to judge response quality",
     )
     
-    # ElizaOS integration options
+    # Agent integration options
     parser.add_argument(
         "--mock",
         action="store_true",
@@ -178,7 +178,7 @@ Examples:
     parser.add_argument(
         "--real-llm",
         action="store_true",
-        help="(deprecated, now the default) Use real LLM via ElizaOS",
+        help="(deprecated, now the default) Use real LLM via the Eliza TypeScript bridge",
     )
     parser.add_argument(
         "--temperature",
@@ -192,6 +192,12 @@ Examples:
         choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "eliza"],
         default=None,
         help="Force specific model provider (auto-detected if not set; 'eliza' uses TS agent)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model name to expose to the Eliza TypeScript bridge",
     )
 
     # Trajectory logging (for training/benchmarks)
@@ -289,7 +295,7 @@ def print_config(config: TauBenchConfig) -> None:
     print(f"   Timeout: {config.timeout_ms}ms")
     print(f"   Memory Tracking: {'✅' if config.enable_memory_tracking else '❌'}")
     print(f"   LLM Judge: {'✅' if config.use_llm_judge else '❌'}")
-    print(f"   Mode: {'🤖 Real LLM (ElizaOS)' if not config.use_mock else '🧪 Mock Mode'}")
+    print(f"   Mode: {'Eliza TS bridge' if not config.use_mock else 'Mock Mode'}")
     if not config.use_mock:
         print(f"   Temperature: {config.temperature}")
         print(f"   Provider: {config.model_provider or 'auto-detect'}")
@@ -391,20 +397,37 @@ def main() -> int:
         print_banner()
 
     config = create_config(args)
+    provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
+    if provider in {"eliza", "eliza-bridge", "eliza-ts"}:
+        provider = ""
+    if not provider:
+        if os.environ.get("GROQ_API_KEY"):
+            provider = "groq"
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.environ.get("OPENAI_API_KEY"):
+            provider = "openai"
+
+    model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
+    if not model_name:
+        model_name = "openai/gpt-oss-120b"
+
+    if not config.use_mock:
+        if provider:
+            os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
+        os.environ["BENCHMARK_MODEL_NAME"] = model_name
+        os.environ["OPENAI_LARGE_MODEL"] = model_name
+        os.environ["OPENAI_SMALL_MODEL"] = model_name
+        os.environ["GROQ_LARGE_MODEL"] = model_name
+        os.environ["GROQ_SMALL_MODEL"] = model_name
+        os.environ["OPENROUTER_LARGE_MODEL"] = model_name
+        os.environ["OPENROUTER_SMALL_MODEL"] = model_name
 
     if config.use_mock:
         logger.warning(
             "WARNING: Running in mock mode. Results are not representative of real agent performance."
         )
     else:
-        provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
-        if not provider:
-            if os.environ.get("GROQ_API_KEY"):
-                provider = "groq"
-            elif os.environ.get("OPENROUTER_API_KEY"):
-                provider = "openrouter"
-            elif os.environ.get("OPENAI_API_KEY"):
-                provider = "openai"
         key_var = {
             "openai": "OPENAI_API_KEY",
             "groq": "GROQ_API_KEY",

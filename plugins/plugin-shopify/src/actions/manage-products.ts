@@ -8,7 +8,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -63,7 +67,9 @@ type ProductIntent =
     };
 
 function readNullableString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
+  return typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.trim().toLowerCase() !== "null"
     ? value.trim()
     : null;
 }
@@ -109,20 +115,32 @@ async function classifyIntent(
   text: string,
 ): Promise<ProductIntent | null> {
   const prompt = `Analyze the user message and determine what product action they want.
-Return a JSON object with one of these shapes:
-- { "action": "list", "query": "search term or null" }
-- { "action": "create", "title": "product title", "description": "description or null", "productType": "type or null", "vendor": "vendor or null", "status": "ACTIVE or DRAFT or null" }
-- { "action": "update", "identifier": "product title or handle to find", "title": "new title or null", "description": "new description or null", "status": "ACTIVE or DRAFT or ARCHIVED or null" }
+Respond with TOON only in one of these shapes:
+action: list
+query: search term
+
+action: create
+title: product title
+description: description
+productType: type
+vendor: vendor
+status: ACTIVE or DRAFT
+
+action: update
+identifier: product title or handle to find
+title: new title
+description: new description
+status: ACTIVE or DRAFT or ARCHIVED
 
 User message: "${text}"
-
-Return ONLY the JSON object.`;
+`;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseJSONObjectFromText(response);
+    const parsed =
+      parseToonKeyValue<Record<string, unknown>>(response);
     if (parsed?.action) {
-      return parsed as unknown as ProductIntent;
+      return readProductIntent(parsed as HandlerOptions);
     }
   }
   return null;

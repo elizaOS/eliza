@@ -36,6 +36,7 @@ log = logging.getLogger("action-calling")
 PACKAGES_ROOT = Path(__file__).resolve().parents[2]
 TRAINING_ROOT = PACKAGES_ROOT / "training"
 DEFAULT_TEST = TRAINING_ROOT / "data" / "final" / "test.jsonl"
+SMOKE_TEST = Path(__file__).resolve().parent / "fixtures" / "smoke.jsonl"
 
 OPENAI_COMPAT_BASE_URLS = {
     "groq": "https://api.groq.com/openai/v1",
@@ -220,9 +221,12 @@ def main() -> int:
 
     toon_parser, format_record = _import_helpers()
 
-    records = _load_planner_records(Path(args.test_file), args.max_examples)
+    test_file = Path(args.test_file)
+    if not test_file.exists() and test_file == DEFAULT_TEST and SMOKE_TEST.exists():
+        test_file = SMOKE_TEST
+    records = _load_planner_records(test_file, args.max_examples)
     if not records:
-        raise SystemExit(f"no planner records found in {args.test_file}")
+        raise SystemExit(f"no planner records found in {test_file}")
     log.info("loaded %d planner records", len(records))
 
     client = None if args.provider == "mock" else _make_client(args)

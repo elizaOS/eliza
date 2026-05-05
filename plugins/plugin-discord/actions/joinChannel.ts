@@ -11,7 +11,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { BaseGuildVoiceChannel, TextChannel } from "discord.js";
@@ -48,13 +48,20 @@ const getJoinChannelInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			channelIdentifier: string;
 			isVoiceChannel: boolean;
 		} | null;
 
 		if (parsedResponse?.channelIdentifier) {
-			return parsedResponse;
+			return {
+				channelIdentifier: String(parsedResponse.channelIdentifier),
+				isVoiceChannel:
+					parsedResponse.isVoiceChannel === true ||
+					String(parsedResponse.isVoiceChannel).toLowerCase() === "true",
+			};
 		}
 	}
 	return null;

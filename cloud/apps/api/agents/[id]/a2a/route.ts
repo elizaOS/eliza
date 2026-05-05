@@ -218,7 +218,7 @@ async function handleChat(
   rpcId: string | number,
   authUser: { id: string; organization_id: string },
 ): Promise<Response> {
-  const { model = "gpt-4o-mini", messages } = params as {
+  const { model = "gpt-5-mini", messages } = params as {
     model?: string;
     messages: Array<{ role: string; content: string }>;
   };

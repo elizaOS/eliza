@@ -9,11 +9,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -50,6 +45,9 @@ import {
   hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
+  parseLifeOpsToonRecord,
+  runLifeOpsTextModel,
+  runLifeOpsToonModel,
   toActionData,
 } from "./lifeops-google-helpers.js";
 
@@ -281,6 +279,39 @@ function buildCalendarPlanFromParsed(
   };
 }
 
+function formatCalendarPromptValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "none";
+    }
+    return value
+      .map(
+        (entry, index) =>
+          `item ${index + 1}: ${formatCalendarPromptValue(entry)}`,
+      )
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return "none";
+    }
+    return entries
+      .map(([key, entry]) => `${key}: ${formatCalendarPromptValue(entry)}`)
+      .join("\n");
+  }
+  return String(value);
+}
+
 function buildCalendarPlanRepairPrompt(args: {
   currentMessage: string;
   intent: string;
@@ -292,7 +323,7 @@ function buildCalendarPlanRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the calendar planner was invalid or used the wrong schema.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return TOON only with exactly these fields:",
     "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
@@ -313,10 +344,10 @@ function buildCalendarPlanRepairPrompt(args: {
     `Current timezone: ${args.timeZone}`,
     `Current local datetime: ${args.localNow}`,
     `Current ISO datetime: ${args.nowIso}`,
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Previous invalid output:\n${args.rawResponse}`,
   ].join("\n");
 }
 
@@ -435,6 +466,40 @@ const CALENDAR_READ_DISAMBIGUATION_RULES = [
   "If the request asks for a schedule, agenda, or list of events over a time window, choose feed.",
 ] as const;
 
+const CALENDAR_MUTATION_INTENT_PATTERN =
+  /\b(?:add|book|cancel|change|clear|create|delete|edit|move|put|remove|rename|reschedule|reserve|set\s+up|update)\b|\bschedule\s+(?:a|an|the|my|with|for|meeting|appointment|call|event|block|lunch|dinner)\b/i;
+const CALENDAR_BROAD_FEED_PATTERN =
+  /\b(?:agenda|week ahead)\b|\b(?:show|list|what(?:'s| is)).*(?:calendar|schedule|agenda)\b|\bwhat do i have (?:today|tomorrow|this|on)\b/i;
+const CALENDAR_NEXT_EVENT_PATTERN =
+  /\b(?:next|upcoming|nearest)\s+(?:appointment|event|meeting)\b|\bwhat(?:'s| is) my next\b/i;
+
+function isSafeReadOnlyCalendarPlan(
+  plan: CalendarLlmPlan | null,
+  currentMessage: string,
+  intent: string,
+): boolean {
+  if (!plan || plan.shouldAct === false || !plan.subaction) {
+    return false;
+  }
+  const text = `${currentMessage}\n${intent}`;
+  if (CALENDAR_MUTATION_INTENT_PATTERN.test(text)) {
+    return false;
+  }
+
+  switch (plan.subaction) {
+    case "feed":
+      return CALENDAR_BROAD_FEED_PATTERN.test(text);
+    case "next_event":
+      return CALENDAR_NEXT_EVENT_PATTERN.test(text);
+    case "search_events":
+      return plan.queries.length > 0;
+    case "trip_window":
+      return Boolean(plan.tripLocation || plan.queries.length > 0);
+    default:
+      return false;
+  }
+}
+
 async function disambiguateCalendarReadPlanWithLlm(args: {
   runtime: IAgentRuntime;
   currentMessage: string;
@@ -458,45 +523,40 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     "If you choose trip_window, also return tripLocation when the place is recoverable from the request or recent conversation.",
     "",
     "Examples:",
-    '  "What\'s on my calendar today?" -> {"subaction":"feed"}',
-    '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
-    '  "find my return flight" -> {"subaction":"search_events"}',
-    '  "can you search my calendar and tell me if i have any flights to denver?" -> {"subaction":"search_events"}',
-    '  "puedes buscar en mi calendario y decirme si tengo un vuelo a denver" -> {"subaction":"search_events"}',
-    '  "what event do i have on April 19" -> {"subaction":"search_events"}',
-    '  "東京にいる間、何がありますか？" -> {"subaction":"trip_window","tripLocation":"東京"}',
-    '  "Can you help me with my calendar?" -> {"subaction":null}',
+    "request: What's on my calendar today?",
+    "subaction: feed",
     "",
-    "Return ONLY valid JSON with exactly these fields:",
+    "request: What's my next meeting?",
+    "subaction: next_event",
+    "",
+    "request: find my return flight",
+    "subaction: search_events",
+    "",
+    "request: 東京にいる間、何がありますか？",
+    "subaction: trip_window",
+    "tripLocation: 東京",
+    "",
+    "request: Can you help me with my calendar?",
+    "subaction: null",
+    "",
+    "Return TOON only with exactly these fields:",
     "  subaction: feed, next_event, search_events, trip_window, or null",
     "  tripLocation: optional string",
     "",
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Current planner candidate: ${JSON.stringify(args.candidateSubaction)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Current planner candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    return normalizeCalendarReadResolution(parsed);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar read disambiguation model call failed",
-    );
-    return null;
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.resolve_read_intent",
+    failureMessage: "Calendar read disambiguation model call failed",
+    source: "action:calendar",
+  });
+  return normalizeCalendarReadResolution(result?.parsed);
 }
 
 async function resolveCalendarLookupBoundaryWithLlm(args: {
@@ -516,39 +576,32 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "If the request contains a specific attendee, title, flight, dentist, place, date constraint, or other lookup key, choose search_events, even when it also names a time window like today, tomorrow, or this week.",
     "",
     "Examples:",
-    '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "次のミーティングはいつですか？" -> {"subaction":"next_event"}',
-    '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
-    '  "帰りの便を探して" -> {"subaction":"search_events"}',
+    "request: What's my next meeting?",
+    "subaction: next_event",
     "",
-    "Return ONLY valid JSON with exactly this field:",
+    "request: meetings with Sarah this week",
+    "subaction: search_events",
+    "",
+    "request: 帰りの便を探して",
+    "subaction: search_events",
+    "",
+    "Return TOON only with exactly this field:",
     "  subaction: next_event or search_events",
     "",
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Current candidate: ${JSON.stringify(args.candidateSubaction)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Current candidate:\n${args.candidateSubaction}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    return normalizeCalendarLookupReadSubaction(parsed?.subaction);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar lookup boundary model call failed",
-    );
-    return null;
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.resolve_lookup_boundary",
+    failureMessage: "Calendar lookup boundary model call failed",
+    source: "action:calendar",
+  });
+  return normalizeCalendarLookupReadSubaction(result?.parsed?.subaction);
 }
 
 async function resolveCalendarMutationBoundaryWithLlm(args: {
@@ -569,42 +622,35 @@ async function resolveCalendarMutationBoundaryWithLlm(args: {
     "Prefer create_event when the user gives a time/date and asks to add or schedule a meeting or appointment, regardless of language.",
     "",
     "Examples:",
-    '  "Schedule a meeting with Alex at 3pm tomorrow" -> {"subaction":"create_event"}',
-    '  "Agenda una reunión con Alex mañana a las 3pm" -> {"subaction":"create_event"}',
-    '  "明日の午後3時にアレックスとのミーティングを入れて" -> {"subaction":"create_event"}',
-    '  "Reschedule the dentist to Friday" -> {"subaction":"update_event"}',
-    '  "Cambia la cita del dentista al viernes" -> {"subaction":"update_event"}',
-    '  "Delete the team meeting tomorrow" -> {"subaction":"delete_event"}',
-    '  "今日の予定は何ですか？" -> {"subaction":null}',
+    "request: Schedule a meeting with Alex at 3pm tomorrow",
+    "subaction: create_event",
     "",
-    "Return ONLY valid JSON with exactly this field:",
+    "request: Reschedule the dentist to Friday",
+    "subaction: update_event",
+    "",
+    "request: Delete the team meeting tomorrow",
+    "subaction: delete_event",
+    "",
+    "request: 今日の予定は何ですか？",
+    "subaction: null",
+    "",
+    "Return TOON only with exactly this field:",
     "  subaction: create_event, update_event, delete_event, or null",
     "",
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Current candidate: ${JSON.stringify(args.candidateSubaction)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Current candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    return normalizeCalendarMutationSubaction(parsed?.subaction);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar mutation boundary model call failed",
-    );
-    return null;
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.resolve_mutation_boundary",
+    failureMessage: "Calendar mutation boundary model call failed",
+    source: "action:calendar",
+  });
+  return normalizeCalendarMutationSubaction(result?.parsed?.subaction);
 }
 
 async function finalizeCalendarPlan(args: {
@@ -615,7 +661,16 @@ async function finalizeCalendarPlan(args: {
   plan: CalendarLlmPlan | null;
 }): Promise<CalendarLlmPlan> {
   const { runtime, currentMessage, intent, recentConversation, plan } = args;
+  if (plan?.shouldAct === false) {
+    return plan;
+  }
+  const safeReadOnlyPlan = isSafeReadOnlyCalendarPlan(
+    plan,
+    currentMessage,
+    intent,
+  );
   if (
+    !safeReadOnlyPlan &&
     plan?.subaction !== "create_event" &&
     plan?.subaction !== "update_event" &&
     plan?.subaction !== "delete_event"
@@ -638,6 +693,10 @@ async function finalizeCalendarPlan(args: {
         response: undefined,
       };
     }
+  }
+
+  if (safeReadOnlyPlan && plan) {
+    return plan;
   }
 
   if (!shouldDisambiguateCalendarReadPlan(plan)) {
@@ -1828,7 +1887,7 @@ export async function extractCalendarPlanWithLlm(
     "Set shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for calendar help without enough specifics to safely act.",
     "When shouldAct=false, provide a short natural response that asks only for what is missing.",
     "",
-    "Return a JSON object with exactly these fields:",
+    "Return TOON only with exactly these fields:",
     "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
@@ -1839,14 +1898,14 @@ export async function extractCalendarPlanWithLlm(
     "  timeMax: optional ISO 8601 datetime",
     "  windowLabel: optional natural-language window label",
     "",
-    "Subactions and when to use each:",
-    "  feed — view today's, tomorrow's, or this week's schedule (e.g. 'what's on my calendar', 'what do I have today', 'this week's agenda')",
-    "  next_event — check the next upcoming event only (e.g. 'what's my next meeting', 'when is my next appointment')",
-    "  search_events — find events by title, attendee, location, or date range (e.g. 'find my flight', 'when is the dentist', 'meetings with John')",
-    "  create_event — schedule a new event (e.g. 'schedule a meeting tomorrow at 3pm', 'add lunch with Sarah on Friday')",
-    "  update_event — rename, reschedule, move, or edit an existing event (e.g. 'rename my meeting to standup', 'reschedule the dentist to Friday', 'move the call to 3pm')",
-    "  delete_event — remove or cancel an existing event (e.g. 'delete the team meeting', 'cancel my appointment', 'remove the duplicate event')",
-    "  trip_window — query what's happening during a trip or stay in a specific place (e.g. 'what's happening while I'm in Denver', 'my Tokyo itinerary')",
+    "subactions[7]{name,use}:",
+    "  feed,View schedule for today tomorrow or this week",
+    "  next_event,Check the next upcoming event only",
+    "  search_events,Find events by title attendee location or date range",
+    "  create_event,Schedule a new event",
+    "  update_event,Rename reschedule move or edit an existing event",
+    "  delete_event,Remove or cancel an existing event",
+    "  trip_window,Query what is happening during a trip or stay in a place",
     "Use only the exact subaction literals listed above.",
     "Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.",
     "If the user asks to put, add, book, schedule, or enter a new meeting, appointment, call, lunch, or block on the calendar at a stated time, prefer create_event over search_events.",
@@ -1866,27 +1925,48 @@ export async function extractCalendarPlanWithLlm(
     "For update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.",
     "For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.",
     "",
-    "Examples:",
-    '  "what\'s on my calendar tomorrow" → {"subaction":"feed","shouldAct":true,"response":null}',
-    '  "今日の予定は何ですか？" → {"subaction":"feed","shouldAct":true,"response":null}',
-    '  "what\'s my next meeting" → {"subaction":"next_event","shouldAct":true,"response":null}',
-    '  "schedule a meeting with Alex at 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Meeting with Alex"}',
-    '  "Agenda una reunión con Alex mañana a las 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Reunión con Alex"}',
-    '  "Planifie une réunion avec Alex demain à 15h" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Réunion avec Alex"}',
-    '  "明日の午後3時にアレックスとのミーティングを入れて" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"アレックスとのミーティング"}',
-    '  "find my return flight" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["return flight"]}',
-    '  "can you search my calendar and tell me if i have any flights to denver?" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["flight to denver","denver"]}',
-    '  "puedes buscar en mi calendario y decirme si tengo un vuelo a denver" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["vuelo a denver","denver"]}',
-    '  "what event do i have on April 19" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["april 19"]}',
-    '  "what do I have while I\'m in Tokyo" → {"subaction":"trip_window","shouldAct":true,"response":null,"queries":["tokyo"],"tripLocation":"Tokyo"}',
-    '  "rename my meeting to standup" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup"}',
-    '  "delete the team meeting tomorrow" → {"subaction":"delete_event","shouldAct":true,"response":null,"queries":["team meeting"]}',
-    '  "can you help me with my calendar?" → {"subaction":null,"shouldAct":false,"response":"What do you want to do on your calendar — check your schedule, find an event, or create one?","queries":[]}',
+    "Example TOON outputs:",
+    "request: what's on my calendar tomorrow",
+    "subaction: feed",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: schedule a meeting with Alex at 3pm",
+    "subaction: create_event",
+    "shouldAct: true",
+    "response: null",
+    "title: Meeting with Alex",
+    "",
+    "request: can you search my calendar and tell me if i have any flights to denver?",
+    "subaction: search_events",
+    "shouldAct: true",
+    "response: null",
+    "queries: flight to denver || denver",
+    "",
+    "request: what do I have while I'm in Tokyo",
+    "subaction: trip_window",
+    "shouldAct: true",
+    "response: null",
+    "queries: tokyo",
+    "tripLocation: Tokyo",
+    "",
+    "request: rename my meeting to standup",
+    "subaction: update_event",
+    "shouldAct: true",
+    "response: null",
+    "queries: meeting",
+    "title: standup",
+    "",
+    "request: can you help me with my calendar?",
+    "subaction: null",
+    "shouldAct: false",
+    "response: What do you want to do on your calendar — check your schedule, find an event, or create one?",
+    "queries:",
     "",
     "The user may speak any language. Detect the calendar intent regardless of language.",
     "When the user asks about what is happening in a specific location or during a trip, detect this as trip_window and extract the location, regardless of language.",
     "",
-    "Return ONLY valid JSON. No prose. No markdown. No XML. No <think>.",
+    "Return TOON only. No prose. No markdown. No hidden reasoning.",
     "",
     `Current timezone: ${timeZone}`,
     `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
@@ -1894,38 +1974,24 @@ export async function extractCalendarPlanWithLlm(
     `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
     "When the user says 'today', 'tomorrow', 'yesterday', or similar, resolve the calendar day from the LOCAL DATE ANCHORS above (not from the UTC datetime) and build timeMin/timeMax as a full local-day window in the current timezone.",
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
-  let rawResponse = "";
   const parseResponse = (raw: string): CalendarLlmPlan | null => {
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
+    const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(raw);
     return parsed ? buildCalendarPlanFromParsed(parsed) : null;
   };
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    rawResponse = typeof result === "string" ? result : "";
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar action planning model call failed",
-    );
+  const plannerResult = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.plan",
+    failureMessage: "Calendar action planning model call failed",
+    source: "action:calendar",
+  });
+  if (!plannerResult) {
     return {
       subaction: null,
       queries: [],
@@ -1933,7 +1999,9 @@ export async function extractCalendarPlanWithLlm(
     };
   }
 
-  const parsedPlan = parseResponse(rawResponse);
+  const parsedPlan = plannerResult.parsed
+    ? buildCalendarPlanFromParsed(plannerResult.parsed)
+    : null;
   if (parsedPlan) {
     return finalizeCalendarPlan({
       runtime,
@@ -1944,40 +2012,35 @@ export async function extractCalendarPlanWithLlm(
     });
   }
 
-  try {
-    const repairResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildCalendarPlanRepairPrompt({
-        currentMessage,
-        intent,
-        recentConversation,
-        rawResponse,
-        timeZone,
-        nowIso,
-        localNow,
-      }),
-    });
-    const repairedRaw = typeof repairResult === "string" ? repairResult : "";
-    return finalizeCalendarPlan({
-      runtime,
+  const repairResult = await runLifeOpsTextModel({
+    runtime,
+    prompt: buildCalendarPlanRepairPrompt({
       currentMessage,
       intent,
       recentConversation,
-      plan: parseResponse(repairedRaw),
-    });
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar action repair model call failed",
-    );
+      rawResponse: plannerResult.rawResponse,
+      timeZone,
+      nowIso,
+      localNow,
+    }),
+    actionType: "lifeops.calendar.plan_repair",
+    failureMessage: "Calendar action repair model call failed",
+    source: "action:calendar",
+  });
+  if (repairResult === null) {
     return {
       subaction: null,
       queries: [],
       shouldAct: null,
     };
   }
+  return finalizeCalendarPlan({
+    runtime,
+    currentMessage,
+    intent,
+    recentConversation,
+    plan: parseResponse(repairResult),
+  });
 }
 
 function resolveCalendarSearchQueries(args: {
@@ -2004,7 +2067,7 @@ async function inferCalendarSearchQueriesWithLlm(args: {
   const prompt = [
     "Extract up to 3 short calendar search queries for a calendar lookup request.",
     "The user may speak in any language.",
-    "Return ONLY valid JSON with exactly this field:",
+    "Return TOON only with exactly this field:",
     "  queries: array of up to 3 short strings",
     "Prefer noun phrases and exact dates that would help match calendar event titles, descriptions, locations, attendees, or travel itineraries.",
     "When the request is about a flight or travel itinerary, include the travel phrase and destination if present.",
@@ -2012,54 +2075,48 @@ async function inferCalendarSearchQueriesWithLlm(args: {
     "If nothing usable can be extracted, return an empty array.",
     "",
     "Examples:",
-    '  "can you search my calendar and tell me if i have any flights to denver?" -> {"queries":["flight to denver","denver"]}',
-    '  "puedes buscar en mi calendario y decirme si tengo un vuelo a denver" -> {"queries":["vuelo a denver","denver"]}',
-    '  "what event do i have on April 19" -> {"queries":["april 19"]}',
-    '  "meetings with Alex next week" -> {"queries":["alex","meeting"]}',
+    "request: can you search my calendar and tell me if i have any flights to denver?",
+    "queries: flight to denver || denver",
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
-    `Current planner output: ${JSON.stringify(args.llmPlan ?? null)}`,
+    "request: what event do i have on April 19",
+    "queries: april 19",
+    "",
+    "request: meetings with Alex next week",
+    "queries: alex || meeting",
+    "",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Current planner output:\n${formatCalendarPromptValue(args.llmPlan ?? null)}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    if (!parsed) {
-      return [];
-    }
-
-    const rawQueries: string[] = [];
-    if (Array.isArray(parsed.queries)) {
-      for (const value of parsed.queries) {
-        if (typeof value === "string") {
-          rawQueries.push(value);
-        }
-      }
-    } else if (
-      typeof parsed.queries === "string" &&
-      parsed.queries.trim().length > 0
-    ) {
-      rawQueries.push(...parsed.queries.split(/\s{0,256}\|\|\s{0,256}/));
-    }
-
-    return dedupeCalendarQueries(rawQueries);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar search-query extraction model call failed",
-    );
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_search_queries",
+    failureMessage: "Calendar search-query extraction model call failed",
+    source: "action:calendar",
+  });
+  const parsed = result?.parsed;
+  if (!parsed) {
     return [];
   }
+
+  const rawQueries: string[] = [];
+  if (Array.isArray(parsed.queries)) {
+    for (const value of parsed.queries) {
+      if (typeof value === "string") {
+        rawQueries.push(value);
+      }
+    }
+  } else if (
+    typeof parsed.queries === "string" &&
+    parsed.queries.trim().length > 0
+  ) {
+    rawQueries.push(...parsed.queries.split(/\s{0,256}\|\|\s{0,256}/));
+  }
+
+  return dedupeCalendarQueries(rawQueries);
 }
 
 function normalizeIsShortPreparationFlag(value: unknown): boolean {
@@ -2326,13 +2383,6 @@ function formatCreateEventRecentConversation(state: State | undefined): string {
   return conversation.length > 0 ? conversation : "(none)";
 }
 
-function parseCreateEventExtractionResponse(
-  rawResponse: string,
-): Record<string, unknown> {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(rawResponse);
-  return parsed && typeof parsed === "object" ? parsed : {};
-}
-
 function formatUpdateEventTargetContext(
   event: LifeOpsCalendarEvent | null,
 ): string {
@@ -2409,7 +2459,7 @@ async function inferCreateEventDetails(
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     "Use the calendar context below to ground any timing guess.",
     "Preserve names and places in their original language or script when useful.",
-    "Return XML only. No prose. Leave fields empty when unknown.",
+    "Return TOON only. No prose. Leave fields empty when unknown.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
@@ -2418,52 +2468,36 @@ async function inferCreateEventDetails(
     "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
     "Leave travelOriginAddress empty unless the request explicitly names the origin or departure place.",
     "",
-    "<response>",
-    "  <title>event title</title>",
-    "  <description>optional description</description>",
-    "  <location>optional location</location>",
-    "  <startAt>ISO datetime if explicit or resolvable from a date phrase</startAt>",
-    "  <endAt>ISO datetime if explicit</endAt>",
-    "  <durationMinutes>number if implied</durationMinutes>",
-    "  <windowPreset>tomorrow_morning|tomorrow_afternoon|tomorrow_evening</windowPreset>",
-    "  <timeZone>IANA timezone if stated</timeZone>",
-    "  <travelOriginAddress>optional origin address for travel-time calculation</travelOriginAddress>",
-    "  <isShortPreparation>true|false</isShortPreparation>",
-    "</response>",
+    "title: event title",
+    "description: optional description",
+    "location: optional location",
+    "startAt: ISO datetime if explicit or resolvable from a date phrase",
+    "endAt: ISO datetime if explicit",
+    "durationMinutes: number if implied",
+    "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
+    "timeZone: IANA timezone if stated",
+    "travelOriginAddress: optional origin address for travel-time calculation",
+    "isShortPreparation: true|false",
     "",
     `Current timezone: ${timeZone}`,
     `Calendar timezone for scheduling: ${calendarTimeZone}`,
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime: ${nowIso}`,
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
-    "<calendar_context>",
-    formatCreateEventCalendarContext(calendarContext),
-    "</calendar_context>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return parseCreateEventExtractionResponse(rawResponse);
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar create-event extraction model call failed",
-    );
-    return {};
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_create_event",
+    failureMessage: "Calendar create-event extraction model call failed",
+    source: "action:calendar",
+  });
+  return result?.parsed ?? {};
 }
 
 async function inferUpdateEventDetails(
@@ -2494,49 +2528,33 @@ async function inferUpdateEventDetails(
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
     "If the user only renames the event, leave startAt, endAt, location, description, and timeZone empty.",
-    "Return XML only. No prose.",
+    "Return TOON only. No prose.",
     "",
-    "<response>",
-    "  <title>new event title if changed</title>",
-    "  <description>updated description if changed</description>",
-    "  <location>updated location if changed</location>",
-    "  <startAt>updated ISO datetime if changed</startAt>",
-    "  <endAt>updated ISO datetime if changed</endAt>",
-    "  <timeZone>IANA timezone if changed or needed to interpret the update</timeZone>",
-    "</response>",
+    "title: new event title if changed",
+    "description: updated description if changed",
+    "location: updated location if changed",
+    "startAt: updated ISO datetime if changed",
+    "endAt: updated ISO datetime if changed",
+    "timeZone: IANA timezone if changed or needed to interpret the update",
     "",
     `Current timezone: ${timeZone}`,
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime: ${nowIso}`,
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
-    "<current_event>",
-    formatUpdateEventTargetContext(targetEvent),
-    "</current_event>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Current event:\n${formatUpdateEventTargetContext(targetEvent)}`,
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return parseCreateEventExtractionResponse(rawResponse);
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar update-event extraction model call failed",
-    );
-    return {};
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_update_event",
+    failureMessage: "Calendar update-event extraction model call failed",
+    source: "action:calendar",
+  });
+  return result?.parsed ?? {};
 }
 
 async function repairCreateEventDetails(
@@ -2570,59 +2588,40 @@ async function repairCreateEventDetails(
     "Use the calendar context below to ground any timing repair.",
     "Use the exact failure reason to correct only the broken fields.",
     "If the request includes travel time or commute language, preserve travelOriginAddress when it was recoverable.",
-    "Return XML only. No prose. Leave fields empty when unchanged or unknown.",
+    "Return TOON only. No prose. Leave fields empty when unchanged or unknown.",
     "",
-    "<response>",
-    "  <title>event title</title>",
-    "  <description>optional description</description>",
-    "  <location>optional location</location>",
-    "  <startAt>ISO datetime if explicit or resolvable from a date phrase</startAt>",
-    "  <endAt>ISO datetime if explicit</endAt>",
-    "  <durationMinutes>number if implied</durationMinutes>",
-    "  <windowPreset>tomorrow_morning|tomorrow_afternoon|tomorrow_evening</windowPreset>",
-    "  <timeZone>IANA timezone if stated</timeZone>",
-    "  <travelOriginAddress>optional origin address for travel-time calculation</travelOriginAddress>",
-    "</response>",
+    "title: event title",
+    "description: optional description",
+    "location: optional location",
+    "startAt: ISO datetime if explicit or resolvable from a date phrase",
+    "endAt: ISO datetime if explicit",
+    "durationMinutes: number if implied",
+    "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
+    "timeZone: IANA timezone if stated",
+    "travelOriginAddress: optional origin address for travel-time calculation",
     "",
     `Current timezone: ${timeZone}`,
     `Calendar timezone for scheduling: ${calendarTimeZone}`,
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime: ${nowIso}`,
     `Create failure: ${error.message}`,
-    `Previous extraction: ${JSON.stringify(previousExtraction)}`,
-    `Previous create request: ${JSON.stringify(failedRequest)}`,
+    `Previous extraction:\n${formatCalendarPromptValue(previousExtraction)}`,
+    `Previous create request:\n${formatCalendarPromptValue(failedRequest)}`,
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
-    "<calendar_context>",
-    formatCreateEventCalendarContext(calendarContext),
-    "</calendar_context>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return parseCreateEventExtractionResponse(rawResponse);
-  } catch (repairError) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error:
-          repairError instanceof Error
-            ? repairError.message
-            : String(repairError),
-      },
-      "Calendar create-event repair model call failed",
-    );
-    return {};
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.repair_create_event",
+    failureMessage: "Calendar create-event repair model call failed",
+    source: "action:calendar",
+  });
+  return result?.parsed ?? {};
 }
 
 function scoreCalendarEvent(
@@ -2762,9 +2761,7 @@ function extractCalendarGroundedMatchIds(
   rawResponse: string,
   allowedIds: Set<string>,
 ): string[] | null {
-  const parsed =
-    parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-    parseJSONObjectFromText(rawResponse);
+  const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(rawResponse);
   if (!parsed) {
     return null;
   }
@@ -2826,22 +2823,16 @@ async function groundCalendarSearchMatchesWithLlm(
     "Return NO matches when the candidate only shares a generic time window or vague travel context.",
     "If the request names a person, company, topic, or event name, only match candidates that explicitly mention that subject in the title, description, location, or attendees.",
     "Flights only count when the request is actually about flights/travel, or the flight text explicitly mentions the named subject.",
-    "Return TOON only. No prose. No <think>.",
+    "Return TOON only. No prose. No hidden reasoning.",
     "Use || to separate multiple ids.",
     "",
     "Example:",
     "matchIds: evt_1 || evt_2",
     "reason:",
     "",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<search_queries>",
-    queries.join(" || "),
-    "</search_queries>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
+    `Resolved intent:\n${intent}`,
+    `Search queries:\n${queries.join(" || ")}`,
+    `Recent conversation:\n${recentConversation}`,
     "",
     "Candidates:",
     ...candidates.map(
@@ -2850,20 +2841,16 @@ async function groundCalendarSearchMatchesWithLlm(
     ),
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return extractCalendarGroundedMatchIds(rawResponse, allowedIds);
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar search grounding model call failed",
-    );
-    return null;
-  }
+  const rawResponse = await runLifeOpsTextModel({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.ground_search_matches",
+    failureMessage: "Calendar search grounding model call failed",
+    source: "action:calendar",
+  });
+  return rawResponse === null
+    ? null
+    : extractCalendarGroundedMatchIds(rawResponse, allowedIds);
 }
 
 function buildCalendarGroundingCandidates(

@@ -1,5 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalReviewState,
@@ -37,13 +41,23 @@ function normalizeText(value: unknown): string | null {
 }
 
 function normalizeFiniteNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+  const parsedValue =
+    typeof value === "string" && value.trim().length > 0
+      ? Number(value)
+      : value;
+  if (typeof parsedValue !== "number" || !Number.isFinite(parsedValue)) {
     return null;
   }
-  return Math.max(0, Math.min(1, value));
+  return Math.max(0, Math.min(1, parsedValue));
 }
 
 function normalizeStringArray(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value
+      .split(/\n|,/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
   if (!Array.isArray(value)) {
     return [];
   }
@@ -83,6 +97,39 @@ function normalizeSuggestions(
     .filter((entry): entry is GoalSemanticSuggestionMetadata => entry !== null);
 }
 
+function formatPromptValue(value: unknown, depth = 0): string {
+  const indent = "  ".repeat(depth);
+  const childIndent = "  ".repeat(depth + 1);
+  if (value === null) return "null";
+  if (value === undefined) return "";
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "(none)";
+    return value
+      .map((entry) => `${childIndent}- ${formatPromptValue(entry, depth + 1)}`)
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return "(empty)";
+    return entries
+      .map(([key, entry]) => {
+        const formatted = formatPromptValue(entry, depth + 1);
+        return formatted.includes("\n")
+          ? `${indent}${key}:\n${formatted}`
+          : `${indent}${key}: ${formatted}`;
+      })
+      .join("\n");
+  }
+  return String(value);
+}
+
 function buildSemanticEvaluationPrompt(args: {
   evidence: Record<string, unknown>;
   goal: LifeOpsGoalDefinition;
@@ -93,14 +140,23 @@ function buildSemanticEvaluationPrompt(args: {
     "Do not rely only on linked support tasks. If the goal has direct evidence such as sleep data, use it.",
     "Do not bluff. If the evidence is too weak, say so clearly and lower confidence.",
     "",
-    "Return ONLY valid JSON with these fields:",
-    '- reviewState: one of "idle", "needs_attention", "on_track", "at_risk"',
+    "Return ONLY TOON with these fields:",
+    "reviewState: one of idle, needs_attention, on_track, at_risk",
     "- progressScore: number from 0 to 1 or null if not enough evidence",
     "- confidence: number from 0 to 1",
     "- explanation: short grounded explanation",
     "- evidenceSummary: short summary of the strongest evidence used",
-    "- missingEvidence: array of short evidence gaps",
-    '- suggestions: array of up to 3 objects with fields kind, title, detail; kind must be one of "create_support", "focus_now", "resolve_overdue", "review_progress", "tighten_cadence"',
+    "- missingEvidence: list of short evidence gaps; use missingEvidence[0], missingEvidence[1]",
+    "- suggestions: up to 3 entries; use suggestions[0]{kind,title,detail}. kind must be one of create_support, focus_now, resolve_overdue, review_progress, tighten_cadence",
+    "",
+    "TOON example:",
+    "reviewState: needs_attention",
+    "progressScore: 0.4",
+    "confidence: 0.65",
+    "explanation: Some supporting evidence exists, but the outcome evidence is thin.",
+    "evidenceSummary: One recent support task was completed.",
+    "missingEvidence[0]: Direct outcome measurement",
+    "suggestions[0]{kind,title,detail}: review_progress, Review goal evidence, Ask for the latest measurement before changing status.",
     "",
     "Guidance:",
     "- Use on_track only when the available evidence supports progress.",
@@ -108,9 +164,11 @@ function buildSemanticEvaluationPrompt(args: {
     "- Use needs_attention when the goal is grounded but the evidence is insufficient or the support structure is weak.",
     "- Use idle only when the goal is brand new and there is genuinely nothing to judge yet.",
     "",
-    `Now: ${JSON.stringify(args.nowIso)}`,
-    `Goal: ${JSON.stringify(args.goal)}`,
-    `Evidence: ${JSON.stringify(args.evidence)}`,
+    `Now: ${args.nowIso}`,
+    "Goal:",
+    formatPromptValue(args.goal),
+    "Evidence:",
+    formatPromptValue(args.evidence),
   ].join("\n");
 }
 
@@ -122,17 +180,29 @@ function buildSemanticRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the goal semantic evaluator was invalid.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return ONLY TOON with exactly these fields:",
     "reviewState, progressScore, confidence, explanation, evidenceSummary, missingEvidence, suggestions",
     "",
-    'reviewState must be one of "idle", "needs_attention", "on_track", "at_risk".',
-    "suggestions must be an array of objects with kind, title, detail.",
+    "reviewState must be one of idle, needs_attention, on_track, at_risk.",
+    "Use missingEvidence[0] for evidence gaps.",
+    "Use suggestions[0]{kind,title,detail} for suggestions.",
     "",
-    `Now: ${JSON.stringify(args.nowIso)}`,
-    `Goal: ${JSON.stringify(args.goal)}`,
-    `Evidence: ${JSON.stringify(args.evidence)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `Now: ${args.nowIso}`,
+    "Goal:",
+    formatPromptValue(args.goal),
+    "Evidence:",
+    formatPromptValue(args.evidence),
+    "Previous invalid output:",
+    args.rawResponse,
   ].join("\n");
+}
+
+function parseSemanticEvaluationOutput(
+  raw: string,
+): Record<string, unknown> | null {
+  return (
+    parseToonKeyValue<Record<string, unknown>>(raw)
+  );
 }
 
 function buildSemanticEvaluationResult(
@@ -172,7 +242,9 @@ export async function evaluateGoalProgressWithLlm(args: {
   const prompt = buildSemanticEvaluationPrompt(args);
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : "");
+    const parsed = parseSemanticEvaluationOutput(
+      typeof raw === "string" ? raw : "",
+    );
     const evaluation = parsed
       ? buildSemanticEvaluationResult(parsed, args.nowIso)
       : null;
@@ -187,7 +259,7 @@ export async function evaluateGoalProgressWithLlm(args: {
         rawResponse: typeof raw === "string" ? raw : "",
       }),
     });
-    const repairedParsed = parseJSONObjectFromText(
+    const repairedParsed = parseSemanticEvaluationOutput(
       typeof repairedRaw === "string" ? repairedRaw : "",
     );
     return repairedParsed

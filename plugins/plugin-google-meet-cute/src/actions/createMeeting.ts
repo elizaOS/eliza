@@ -1,5 +1,6 @@
 import {
   Action,
+  ActionResult,
   IAgentRuntime,
   Memory,
   HandlerCallback,
@@ -71,7 +72,7 @@ export const createMeetingAction: Action = {
     state?: State,
     params?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       const googleMeetService = runtime.getService(
         "google-meet-api",
@@ -111,7 +112,7 @@ export const createMeetingAction: Action = {
 You can share this link with participants to join the meeting.`;
 
       if (callback) {
-        callback({
+        await callback({
           text: response,
           metadata: {
             meetingId: meeting.id,
@@ -120,18 +121,37 @@ You can share this link with participants to join the meeting.`;
           },
         });
       }
+      return {
+        success: true,
+        text: response,
+        data: {
+          actionName: "CREATE_MEETING",
+          meetingId: meeting.id,
+          meetingUri: meeting.meetingUri,
+          meetingCode: meeting.meetingCode,
+          accessType,
+        },
+      };
     } catch (error) {
       logger.error(
         "Failed to create meeting:",
         error instanceof Error ? error.message : String(error),
       );
 
+      const text = `Failed to create meeting: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
       if (callback) {
-        callback({
-          text: `❌ Failed to create meeting: ${error instanceof Error ? error.message : "Unknown error"}`,
+        await callback({
+          text,
           error: true,
         });
       }
+      return {
+        success: false,
+        text,
+        data: { actionName: "CREATE_MEETING" },
+      };
     }
   },
 };

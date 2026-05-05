@@ -81,13 +81,6 @@
         "default": "eliza-agent",
         "sensitive": false
       },
-      "ROBLOX_POLL_INTERVAL": {
-        "type": "number",
-        "description": "Polling interval in seconds for Roblox data store operations.",
-        "required": false,
-        "default": 30,
-        "sensitive": false
-      },
       "ROBLOX_DRY_RUN": {
         "type": "boolean",
         "description": "When true, operations are simulated but not executed.",

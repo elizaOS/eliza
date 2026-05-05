@@ -192,7 +192,7 @@ def _parse_model_spec(spec: str) -> tuple[str, str, str | None]:
 
     Examples:
         ``vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1``
-        ``openai:gpt-4o-mini``
+        ``groq:openai/gpt-oss-120b``
     """
     raw = spec.strip()
     if not raw:
@@ -545,7 +545,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--agent", default="eliza", help="Agent label for this run")
     p_run.add_argument("--provider", default="groq", help="Model provider")
-    p_run.add_argument("--model", default="qwen3", help="Model name")
+    p_run.add_argument("--model", default="openai/gpt-oss-120b", help="Model name")
     p_run.add_argument("--extra", default=None, help="JSON object with benchmark-specific options")
     p_run.add_argument("--resume", action="store_true", help="Alias for idempotent run behavior")
     p_run.add_argument("--rerun-failed", action="store_true", help="Only re-run failed signatures")

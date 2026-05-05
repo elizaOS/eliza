@@ -11,8 +11,9 @@
  */
 
 import type { Plugin } from "@elizaos/core";
+// Side-effect: register coding-agent HTTP routes with the runtime route registry.
+import "./register-routes.js";
 import { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
-import { listAgentsAction } from "./actions/list-agents.js";
 // Actions - Issue management
 import { manageIssuesAction } from "./actions/manage-issues.js";
 // Actions - Workspace management
@@ -55,7 +56,6 @@ export const taskAgentPlugin: Plugin = {
     spawnAgentAction,
     sendToAgentAction,
     stopAgentAction,
-    listAgentsAction,
     taskHistoryAction,
     taskControlAction,
     taskShareAction,

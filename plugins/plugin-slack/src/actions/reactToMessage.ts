@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -28,15 +28,11 @@ Extract the following:
 3. channelId: The channel ID (optional, defaults to current channel)
 4. remove: Whether to remove the reaction instead of adding it (default: false)
 
-Respond with a JSON object like:
-{
-  "emoji": "thumbsup",
-  "messageTs": "1234567890.123456",
-  "channelId": null,
-  "remove": false
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+emoji: thumbsup
+messageTs: 1234567890.123456
+channelId:
+remove: false`;
 
 export const reactToMessage: Action = {
   name: "SLACK_REACT_TO_MESSAGE",
@@ -48,6 +44,7 @@ export const reactToMessage: Action = {
     "REMOVE_REACTION",
   ],
   description: "Add or remove an emoji reaction to a Slack message",
+  descriptionCompressed: "Add/remove Slack message reaction.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -127,7 +124,8 @@ export const reactToMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.emoji && parsedResponse?.messageTs) {
         reactionInfo = {
           emoji: String(parsedResponse.emoji),
@@ -135,7 +133,9 @@ export const reactToMessage: Action = {
           channelId: parsedResponse.channelId
             ? String(parsedResponse.channelId)
             : null,
-          remove: Boolean(parsedResponse.remove),
+          remove:
+            parsedResponse.remove === true ||
+            String(parsedResponse.remove).toLowerCase() === "true",
         };
         break;
       }

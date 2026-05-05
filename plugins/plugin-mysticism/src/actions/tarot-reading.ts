@@ -70,7 +70,7 @@ export const tarotReadingAction: Action = {
   similes: ["READ_TAROT", "DRAW_CARDS", "TAROT_SPREAD", "CARD_READING"],
   description:
     "Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
-  descriptionCompressed: "perform tarot card read, draw card spread reveal each one iteratively",
+  descriptionCompressed: "Start tarot reading; draw a card spread and reveal cards iteratively.",
 
   validate: async (
     runtime: IAgentRuntime,

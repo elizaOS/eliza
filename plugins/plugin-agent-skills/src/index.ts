@@ -20,12 +20,17 @@ export { useSkillAction } from "./actions/use-skill";
 export {
 	estimateTokens,
 	extractBody,
-	generateSkillsXml,
+	generateSkillsToon,
 	parseFrontmatter,
 	validateFrontmatter,
 	validateSkillDirectory,
 } from "./parser";
 export { agentSkillsPlugin, default } from "./plugin";
+export {
+	installAgentSkillsSearchDispatcher,
+	registerAgentSkillsSearchCategory,
+	SKILLS_SEARCH_CATEGORY,
+} from "./search-category";
 // Providers
 export { enabledSkillsProvider } from "./providers/enabled-skills";
 export {
@@ -77,7 +82,7 @@ export type {
 	OttoInstallOption,
 	// Otto extensions
 	OttoMetadata,
-	PromptXmlOptions,
+	PromptToonOptions,
 	// Core skill types
 	Skill,
 	SkillCatalogEntry,

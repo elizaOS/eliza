@@ -15,7 +15,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 	splitChunks,
 	trimTokens,
@@ -148,8 +148,10 @@ const getDateRange = async (
 			prompt,
 		});
 
-		// try parsing to a json object
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		// Try parsing the TOON response.
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			objective: string;
 			start: string | number;
 			end: string | number;

@@ -4268,7 +4268,7 @@ Original commit hashes, oldest first:
 - [`9ee9f0afc79d`](https://github.com/elizaOS/eliza/commit/9ee9f0afc79d9dfdba8f8da4fa8030ac7533dc2e) 2025-01-02 Odilitime: Merge branch 'develop' into tcm-trimTokens
 - [`c9f0b0a6cba7`](https://github.com/elizaOS/eliza/commit/c9f0b0a6cba76eb99b0409b41eeb9dbb1f441346) 2025-01-02 Odilitime: Merge branch 'develop' into tcm-trimTokens
 - [`edcac596582a`](https://github.com/elizaOS/eliza/commit/edcac596582a2c5abbe2595019644dc307e81091) 2025-01-03 Shakker Nerd: chore: pnpm lock file
-- [`7688f1c438a5`](https://github.com/elizaOS/eliza/commit/7688f1c438a5dd93718950116ed8774062798568) 2025-01-02 Ting Chien Meng: Default to TikToken truncation using the gpt-4o-mini model if tokenizer settings are not defined
+- [`7688f1c438a5`](https://github.com/elizaOS/eliza/commit/7688f1c438a5dd93718950116ed8774062798568) 2025-01-02 Ting Chien Meng: Default to TikToken truncation using the gpt-5-mini model if tokenizer settings are not defined
 - [`70793535192f`](https://github.com/elizaOS/eliza/commit/70793535192fc47bc626977e5b4985a7c28700cf) 2025-01-02 Ting Chien Meng: Remove 'model' parameter from trimTokens function; allow tokenizer model to be configured via environment settings
 - [`e97a9483e424`](https://github.com/elizaOS/eliza/commit/e97a9483e424f8d4d2d41def543433ef54ace6d7) 2025-01-02 Ting Chien Meng: Remove model parameter
 - [`70d90abe5f21`](https://github.com/elizaOS/eliza/commit/70d90abe5f210f8a8c0da682a51510ebe54a3444) 2025-01-03 Ting Chien Meng: use 4o as default model
@@ -10497,7 +10497,7 @@ Original commit hashes, oldest first:
 - [`c51dc40d7a0c`](https://github.com/elizaOS/eliza/commit/c51dc40d7a0ca004076fd83b5833744f46b25c7e) 2025-04-10 Sayo: improve start logic
 - [`e4c6d865ed17`](https://github.com/elizaOS/eliza/commit/e4c6d865ed1795447093630aed5421d8a7318c92) 2025-04-10 Sayo: Merge branch 'v2-develop' into sayo-cli-cleanup-r3
 - [`9cf49d594b9b`](https://github.com/elizaOS/eliza/commit/9cf49d594b9bdec9e6b5182b9f58d9542f94f902) 2025-04-10 Sayo: Merge pull request #4250 from elizaOS/sayo-cli-cleanup-r3
-- [`ac1591845244`](https://github.com/elizaOS/eliza/commit/ac1591845244569582d2090dab18caf21c0d3153) 2025-04-10 Ting Chien Meng: use gpt-4o-mini as vision model
+- [`ac1591845244`](https://github.com/elizaOS/eliza/commit/ac1591845244569582d2090dab18caf21c0d3153) 2025-04-10 Ting Chien Meng: use gpt-5-mini as vision model
 - [`191f3ee69e1e`](https://github.com/elizaOS/eliza/commit/191f3ee69e1eb34a011af3c787e37f82600a4127) 2025-04-10 tcm390: Merge pull request #4254 from elizaOS/tcm/deprecated-vision-model
 - [`54b046206a60`](https://github.com/elizaOS/eliza/commit/54b046206a6069424a5077be50f94a89e23c340b) 2025-04-10 Ting Chien Meng: openai tts
 - [`1c292389b8f8`](https://github.com/elizaOS/eliza/commit/1c292389b8f8270e1dce182fc95e8b874fdcd37c) 2025-04-10 tcm390: Merge pull request #4255 from elizaOS/tcm/openai-tts
@@ -21640,7 +21640,7 @@ Original commit hashes, oldest first:
 - [`6685637b813e`](https://github.com/elizaOS/eliza/commit/6685637b813e86c0bcabb07d64b7e437ee00e983) 2026-04-28 Shaw: wip: app-2004scape refactor, browser/babylon/clawville, app-core UI
 - [`bbdd0181b184`](https://github.com/elizaOS/eliza/commit/bbdd0181b184393c5a1642c6c72864e68a184624) 2026-04-28 Shaw: wip: distro-android boot animation + screen capture scripts
 - [`3b3b259111a1`](https://github.com/elizaOS/eliza/commit/3b3b259111a16dd382bda21ffd5112abf1a00185) 2026-04-28 Shaw: wip: biome exclude public/, experience graph types
-- [`b1a69917c8f7`](https://github.com/elizaOS/eliza/commit/b1a69917c8f7f53d5cf0bbd2c361039417e6ce2c) 2026-04-28 Shaw: wip: app-form, lifeops, elizamaker, companion, defense, hyperscape, experience
+- [`b1a69917c8f7`](https://github.com/elizaOS/eliza/commit/b1a69917c8f7f53d5cf0bbd2c361039417e6ce2c) 2026-04-28 Shaw: wip: plugin-form, lifeops, elizamaker, companion, defense, hyperscape, experience
 - [`c31724cefc9e`](https://github.com/elizaOS/eliza/commit/c31724cefc9e37d7e0343c2387406bb14fe4e913) 2026-04-28 Shaw: wip: lifeops actions/components, app-core, experience service
 - [`6900c45918f1`](https://github.com/elizaOS/eliza/commit/6900c45918f13144421dcc7c8b89161281204634) 2026-04-28 Shaw: wip: experience service — keywords, associatedEntityIds, mergedExperienceIds
 - [`792f7dc4e003`](https://github.com/elizaOS/eliza/commit/792f7dc4e00341674f042402df6138292d64dc39) 2026-04-28 Shaw: wip: lifeops components, dossier, followup, hooks, inbox, core

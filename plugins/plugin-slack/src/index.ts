@@ -12,8 +12,6 @@ import readChannel from "./actions/readChannel";
 import sendMessage from "./actions/sendMessage";
 import unpinMessage from "./actions/unpinMessage";
 
-// Providers
-import { channelStateProvider } from "./providers/channelState";
 import { memberListProvider } from "./providers/memberList";
 import { workspaceInfoProvider } from "./providers/workspaceInfo";
 
@@ -37,7 +35,7 @@ const slackPlugin: Plugin = {
     listPins,
     emojiList,
   ],
-  providers: [channelStateProvider, workspaceInfoProvider, memberListProvider],
+  providers: [workspaceInfoProvider, memberListProvider],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN") as string;
     const appToken = runtime.getSetting("SLACK_APP_TOKEN") as string;
@@ -198,8 +196,6 @@ export {
   stripSlackFormatting,
   truncateText,
 } from "./formatting";
-// Export providers
-export { channelStateProvider } from "./providers/channelState";
 export { memberListProvider } from "./providers/memberList";
 export { workspaceInfoProvider } from "./providers/workspaceInfo";
 // Export service for direct access

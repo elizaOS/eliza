@@ -9,6 +9,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { MusicService } from "../service";
+import { MUSIC_PLAYER_ACTION_DOCS } from "../prompts/musicPlayerInstructions";
 import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { ProgressiveMessage } from "../utils/progressiveMessage";
 import { confirmationRequired, isConfirmed } from "./confirmation";
@@ -22,8 +23,20 @@ interface DetectedMusicEntity {
   type: "song" | "artist" | "album" | string;
 }
 
-interface MusicEntityDetectionService {
+interface MusicLibraryLookupService {
   detectEntities(text: string): Promise<DetectedMusicEntity[] | null>;
+  searchYouTube(
+    query: string,
+    options?: { limit?: number; includeShorts?: boolean },
+  ): Promise<
+    Array<{
+      url: string;
+      title: string;
+      duration?: number;
+      channel?: string;
+      views?: number;
+    }>
+  >;
 }
 
 interface BaseGuildVoiceChannel {
@@ -271,12 +284,12 @@ const enhanceSearchQuery = async (
   refined = stripFillerTokens(refined);
 
   try {
-    const entityService = runtime.getService(
-      "musicEntityDetection",
-    ) as MusicEntityDetectionService | null;
-    if (entityService) {
+    const musicLibrary = runtime.getService(
+      "musicLibrary",
+    ) as MusicLibraryLookupService | null;
+    if (musicLibrary?.detectEntities) {
       const detectionSource = originalText || baseQuery;
-      const entities = await entityService.detectEntities(detectionSource);
+      const entities = await musicLibrary.detectEntities(detectionSource);
       if (entities && entities.length > 0) {
         const entityQuery = buildQueryFromEntities(entities, refined);
         if (entityQuery && entityQuery.length >= 3) {
@@ -431,7 +444,8 @@ export const playAudio: Action = {
     "Start playing a new song: provide a track name, artist, search words, or a media URL. " +
     "Requires confirmed:true before playback or queue changes. " +
     "Never use PLAY_AUDIO for pause, resume, stop, or skip — those are separate actions: " +
-    "PAUSE_MUSIC, RESUME_MUSIC, STOP_MUSIC, SKIP_TRACK. Do not pass action=pause or similar params to PLAY_AUDIO.",
+    "PAUSE_MUSIC, RESUME_MUSIC, STOP_MUSIC, SKIP_TRACK. Do not pass action=pause or similar params to PLAY_AUDIO. " +
+    MUSIC_PLAYER_ACTION_DOCS,
   descriptionCompressed:
     "Play new song by name/artist/URL. Not for pause/resume/stop/skip.",
   parameters: [
@@ -511,8 +525,9 @@ export const playAudio: Action = {
       // Showing this on web/CLI would just be noise. On Discord it's fine
       // because it gets edited away immediately.
       progress.update("🔍 Looking up track...");
-      // Get YouTube search service
-      const youtubeSearchService = runtime.getService("youtubeSearch") as any;
+      const musicLibraryLookup = runtime.getService(
+        "musicLibrary",
+      ) as MusicLibraryLookupService | null;
 
       // Lazy-load play-dl for video info
       const play = await import("@vookav2/play-dl").then((m) => m.default || m);
@@ -668,7 +683,7 @@ export const playAudio: Action = {
           logger.debug(`Searching for: ${searchQuery}`);
 
           try {
-            const searchResults = await youtubeSearchService.search(
+            const searchResults = await musicLibraryLookup?.searchYouTube(
               searchQuery,
               { limit: 3 },
             );

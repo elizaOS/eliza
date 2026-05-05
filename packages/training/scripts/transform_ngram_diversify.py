@@ -42,7 +42,6 @@ import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
 

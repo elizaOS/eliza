@@ -184,7 +184,11 @@ class BFCLAgent:
             "tools": generate_openai_tools_format(test_case.functions),
             "temperature": self.config.temperature,
         }
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "eliza-bfcl-benchmark/1.0",
+        }
         if self._model_config.api_key:
             headers["Authorization"] = f"Bearer {self._model_config.api_key}"
 

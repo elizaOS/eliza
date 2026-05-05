@@ -11,6 +11,7 @@ export const identityContextProvider: Provider = {
   description: "Provides information about the bot's Nostr identity",
   descriptionCompressed: "provide information bot Nostr identity",
   dynamic: true,
+  contexts: ["social", "connectors"],
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     // Only provide context for Nostr messages
     if (message.content.source !== "nostr") {

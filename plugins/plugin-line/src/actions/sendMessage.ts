@@ -10,7 +10,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import { isLineOutboundActionContext } from "../line-action-validate.js";
 import type { LineService } from "../service.js";
 import { isValidLineId, LINE_SERVICE_NAME, normalizeLineTarget } from "../types.js";
@@ -26,13 +26,9 @@ Extract the following:
 1. text: The message content to send
 2. to: The target user/group/room ID (or "current" to reply to the current chat)
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "text": "message to send",
-  "to": "target ID or 'current'"
-}
-\`\`\`
+Respond with TOON only:
+text: message to send
+to: target ID or current
 `;
 
 interface SendMessageParams {
@@ -80,7 +76,7 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response);
+      const parsed = parseToonKeyValue<Record<string, unknown>>(response);
       if (parsed?.text) {
         msgInfo = {
           text: String(parsed.text),

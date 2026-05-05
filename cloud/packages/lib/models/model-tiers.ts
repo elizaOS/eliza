@@ -14,6 +14,11 @@ import {
   expandOpenRouterModelIdCandidates,
   normalizeProviderKey,
 } from "@/lib/providers/model-id-translation";
+import {
+  OPENROUTER_DEFAULT_FREE_MODEL,
+  OPENROUTER_DEFAULT_TEXT_MODEL,
+  OPENROUTER_RECOMMENDED_TEXT_MODEL,
+} from "./catalog";
 
 export type ModelTier = "fast" | "pro" | "ultra";
 
@@ -60,7 +65,7 @@ function extractProvider(modelId: string): string {
 }
 
 const FAST_MODEL_ID = getEnvModelId("fast", "minimax/minimax-m2.7");
-const PRO_MODEL_ID = getEnvModelId("pro", "anthropic/claude-sonnet-4.6");
+const PRO_MODEL_ID = getEnvModelId("pro", OPENROUTER_DEFAULT_TEXT_MODEL);
 const ULTRA_MODEL_ID = getEnvModelId("ultra", "anthropic/claude-opus-4.7");
 
 export const MODEL_TIERS: Record<ModelTier, ModelTierConfig> = {
@@ -82,17 +87,17 @@ export const MODEL_TIERS: Record<ModelTier, ModelTierConfig> = {
   pro: {
     id: "pro",
     name: "Pro",
-    description: "Best for everyday tasks",
+    description: "Recommended for everyday tasks",
     modelId: PRO_MODEL_ID,
     provider: extractProvider(PRO_MODEL_ID),
     icon: "sparkles",
     pricing: {
-      inputPer1k: 0.0036,
-      outputPer1k: 0.018,
+      inputPer1k: 0.000039,
+      outputPer1k: 0.00018,
       currency: "USD",
     },
-    capabilities: ["text", "code", "reasoning", "vision", "function_calling", "long_context"],
-    contextWindow: 200000,
+    capabilities: ["text", "code", "reasoning", "function_calling", "long_context"],
+    contextWindow: 131072,
     recommended: true,
   },
   ultra: {
@@ -128,6 +133,8 @@ export interface AdditionalModel {
   description: string;
   modelId: string;
   provider: string;
+  recommended?: boolean;
+  free?: boolean;
 }
 
 /**
@@ -230,6 +237,22 @@ export const ADDITIONAL_IMAGE_MODELS: ImageModel[] = [
 export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0];
 
 export const ADDITIONAL_MODELS: AdditionalModel[] = [
+  {
+    id: "gpt-oss-120b-nitro",
+    name: "GPT OSS 120B Nitro",
+    description: "Recommended OpenRouter high-throughput reasoning model",
+    modelId: OPENROUTER_RECOMMENDED_TEXT_MODEL,
+    provider: "openai",
+    recommended: true,
+  },
+  {
+    id: "gpt-oss-120b-free",
+    name: "GPT OSS 120B Free",
+    description: "Free OpenRouter reasoning model",
+    modelId: OPENROUTER_DEFAULT_FREE_MODEL,
+    provider: "openai",
+    free: true,
+  },
   // OpenAI
   {
     id: "gpt-5.5",

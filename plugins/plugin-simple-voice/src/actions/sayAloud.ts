@@ -9,8 +9,10 @@ import type {
 import { logger } from "@elizaos/core";
 import type { SamTTSService } from "../services/SamTTSService";
 import {
+  SPEAK_ACTION_NAME,
   type SamTTSOptions,
   SPEECH_TRIGGERS,
+  TTS_SERVICE_TYPE,
   VOCALIZATION_PATTERNS,
 } from "../types";
 
@@ -95,7 +97,7 @@ function extractVoiceOptions(messageText: string): Partial<SamTTSOptions> {
 }
 
 export const sayAloudAction: Action = {
-  name: "SAY_ALOUD",
+  name: SPEAK_ACTION_NAME,
   description: "Speak text aloud using SAM retro speech synthesizer",
 
   examples: [
@@ -105,7 +107,7 @@ export const sayAloudAction: Action = {
         name: "{{agent}}",
         content: {
           text: "I'll say hello using my SAM voice.",
-          action: "SAY_ALOUD",
+          action: SPEAK_ACTION_NAME,
         },
       },
     ],
@@ -118,7 +120,7 @@ export const sayAloudAction: Action = {
         name: "{{agent}}",
         content: {
           text: "I'll read that message aloud for you now.",
-          action: "SAY_ALOUD",
+          action: SPEAK_ACTION_NAME,
         },
       },
     ],
@@ -126,7 +128,10 @@ export const sayAloudAction: Action = {
       { name: "{{user1}}", content: { text: "Speak in a higher voice" } },
       {
         name: "{{agent}}",
-        content: { text: "I'll speak in a higher pitch.", action: "SAY_ALOUD" },
+        content: {
+          text: "I'll speak in a higher pitch.",
+          action: SPEAK_ACTION_NAME,
+        },
       },
     ],
   ],
@@ -233,20 +238,20 @@ export const sayAloudAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info("[SAY_ALOUD] Processing speech request");
+    logger.info(`[${SPEAK_ACTION_NAME}] Processing speech request`);
 
-    const samService = runtime.getService("SAM_TTS") as SamTTSService;
+    const samService = runtime.getService(TTS_SERVICE_TYPE) as SamTTSService;
 
     const textToSpeak = extractTextToSpeak(message.content.text);
     const voiceOptions = extractVoiceOptions(message.content.text);
 
-    logger.info(`[SAY_ALOUD] Speaking: "${textToSpeak}"`);
+    logger.info(`[${SPEAK_ACTION_NAME}] Speaking: "${textToSpeak}"`);
 
     const audioBuffer = await samService.speakText(textToSpeak, voiceOptions);
 
     callback?.({
       text: `I spoke: "${textToSpeak}"`,
-      action: "SAY_ALOUD",
+      action: SPEAK_ACTION_NAME,
       audioData: Array.from(audioBuffer),
     });
 

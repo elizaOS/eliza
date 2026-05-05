@@ -214,19 +214,6 @@ declare module "@elizaos/app-knowledge/service-loader" {
   export const getKnowledgeTimeoutMs: () => number;
 }
 
-declare module "@elizaos/app-training/routes/trajectory" {
-  export const handleTrajectoryRoute: (
-    ...args: unknown[]
-  ) => Promise<boolean> | boolean;
-}
-
-declare module "@elizaos/app-training/routes/training" {
-  export type TrainingRouteHelpers = unknown;
-  export const handleTrainingRoutes: (
-    ...args: unknown[]
-  ) => Promise<boolean> | boolean;
-}
-
 declare module "@elizaos/app-training/core/context-types" {
   export type AgentContext = string;
   export const AGENT_CONTEXTS: AgentContext[];

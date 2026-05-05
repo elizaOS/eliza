@@ -42,38 +42,25 @@ const agent = {
 | `ROBLOX_PLACE_ID`        | No       | Specific place ID                        |
 | `ROBLOX_WEBHOOK_SECRET`  | No       | Secret for webhook validation            |
 | `ROBLOX_MESSAGING_TOPIC` | No       | Messaging topic (default: "eliza-agent") |
-| `ROBLOX_POLL_INTERVAL`   | No       | Poll interval in seconds (default: 30)   |
 | `ROBLOX_DRY_RUN`         | No       | Enable dry run mode (default: false)     |
 
-## Actions
+## Action
 
-### SEND_ROBLOX_MESSAGE
+### ROBLOX_ACTION
 
-Send a message to players in a Roblox game.
+Route Roblox game integration through one compact action surface.
+
+Supported subactions:
+
+- `message`: send a message to all players or target player IDs
+- `execute`: publish a game-side action payload such as `spawn_entity`, `give_coins`, or `teleport`
+- `get_player`: look up Roblox player information by username or user ID
 
 **Examples:**
 
 - "Tell everyone in the game that there's a special event happening"
-- "Send a welcome message to player123"
-
-### EXECUTE_ROBLOX_ACTION
-
-Execute a custom action in a Roblox game.
-
-**Examples:**
-
-- "Start a fireworks show in the game"
 - "Give player456 100 coins as a reward"
-- "Teleport everyone to the lobby"
-
-### GET_ROBLOX_PLAYER
-
-Look up information about a Roblox player.
-
-**Examples:**
-
 - "Who is player 12345678?"
-- "Look up the Roblox user JohnDoe123"
 
 ## Providers
 
@@ -167,7 +154,7 @@ Open Cloud does not provide a direct “agent voice” channel.
 ```
 plugin-roblox/
 ├── typescript/          # TypeScript implementation
-│   ├── actions/         # Agent actions
+│   ├── actions/         # ROBLOX_ACTION router
 │   ├── services/        # RobloxService
 │   ├── providers/       # Context providers
 │   ├── client/          # API client

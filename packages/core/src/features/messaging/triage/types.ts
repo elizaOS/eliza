@@ -66,6 +66,14 @@ export interface MessageRef {
 	hasAttachments: boolean;
 	isRead: boolean;
 	triageScore?: TriageScore;
+	/** Account/server scope: gmail address, discord server id, phone #, etc. */
+	worldId?: string;
+	/** Label/folder/channel/room/conversation id within a world. */
+	channelId?: string;
+	/** User/agent labels — persisted in the store and searchable. */
+	tags?: string[];
+	/** Connector-specific extras (also acts as an extension envelope). */
+	metadata?: Record<string, unknown>;
 }
 
 export interface DraftRequest {
@@ -76,6 +84,9 @@ export interface DraftRequest {
 	to: Array<{ identifier: string; displayName?: string }>;
 	subject?: string;
 	body: string;
+	worldId?: string;
+	channelId?: string;
+	metadata?: Record<string, unknown>;
 }
 
 export interface DraftRecord {
@@ -90,21 +101,89 @@ export interface DraftRecord {
 	createdAtMs: number;
 	sent: boolean;
 	sentExternalId?: string;
+	worldId?: string;
+	channelId?: string;
+	metadata?: Record<string, unknown>;
+	/** Set when scheduleSend has been invoked but the message hasn't gone out. */
+	scheduledForMs?: number;
+	scheduledId?: string;
 }
 
 export interface ListOptions {
 	sinceMs?: number;
 	limit?: number;
+	worldIds?: string[];
+	channelIds?: string[];
+}
+
+export interface MessageAdapterCapabilities {
+	list: boolean;
+	search: boolean;
+	manage: {
+		archive?: boolean;
+		trash?: boolean;
+		spam?: boolean;
+		label?: boolean;
+		tag?: boolean;
+		muteThread?: boolean;
+		markRead?: boolean;
+		unsubscribe?: boolean;
+	};
+	send: { reply?: boolean; new?: boolean; schedule?: boolean };
+	worlds: "single" | "multi";
+	channels: "explicit" | "implicit" | "none";
+}
+
+export interface SearchMessagesFilters {
+	sources?: MessageSource[];
+	worldIds?: string[];
+	channelIds?: string[];
+	sender?: { identifier?: string; displayName?: string };
+	/** Free-text content query — adapter or fallback in-memory match. */
+	content?: string;
+	/** AND-match all tags. */
+	tags?: string[];
+	sinceMs?: number;
+	untilMs?: number;
+	limit?: number;
+}
+
+export type ManageOperation =
+	| { kind: "archive" }
+	| { kind: "trash" }
+	| { kind: "spam" }
+	| { kind: "mark_read"; read: boolean }
+	| { kind: "label_add"; label: string }
+	| { kind: "label_remove"; label: string }
+	| { kind: "tag_add"; tag: string }
+	| { kind: "tag_remove"; tag: string }
+	| { kind: "mute_thread" }
+	| { kind: "unsubscribe" };
+
+export interface ManageResult {
+	ok: boolean;
+	/** Populated when ok=false (e.g. "not supported by adapter"). */
+	reason?: string;
 }
 
 export interface MessageAdapter {
 	readonly source: MessageSource;
 	isAvailable(runtime: IAgentRuntime): boolean;
+	capabilities(): MessageAdapterCapabilities;
 	listMessages(
 		runtime: IAgentRuntime,
 		opts: ListOptions,
 	): Promise<MessageRef[]>;
 	getMessage(runtime: IAgentRuntime, id: string): Promise<MessageRef | null>;
+	searchMessages?(
+		runtime: IAgentRuntime,
+		filters: SearchMessagesFilters,
+	): Promise<MessageRef[]>;
+	manageMessage?(
+		runtime: IAgentRuntime,
+		messageId: string,
+		op: ManageOperation,
+	): Promise<ManageResult>;
 	createDraft(
 		runtime: IAgentRuntime,
 		draft: DraftRequest,
@@ -113,6 +192,11 @@ export interface MessageAdapter {
 		runtime: IAgentRuntime,
 		draftId: string,
 	): Promise<{ externalId: string }>;
+	scheduleSend?(
+		runtime: IAgentRuntime,
+		draftId: string,
+		sendAtMs: number,
+	): Promise<{ scheduledId: string }>;
 }
 
 export class NotYetImplementedError extends Error {

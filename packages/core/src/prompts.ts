@@ -168,7 +168,18 @@ Common patterns:
 
 {{recentMessages}}
 
-Extract the operation, key (if applicable), value (if applicable), and level from the user's message.`;
+Extract the operation, key (if applicable), value (if applicable), level, description, and type from the user's message.
+
+Output TOON only. Return exactly one TOON document, no prose or fences.
+Use only these fields:
+operation: get|set|delete|list|check
+key: OPENAI_API_KEY
+value: secret_value
+level: global|world|user
+description: short_description
+type: api_key|secret|credential|url|config
+
+Omit unknown optional fields. No XML or JSON.`;
 
 export const EXTRACT_SECRET_OPERATION_TEMPLATE = extractSecretOperationTemplate;
 
@@ -183,11 +194,12 @@ Common patterns:
 Recent Messages:
 {{recentMessages}}
 
-Output JSON with:
-- key: The name of the secret needed (e.g. OPENAI_API_KEY)
-- reason: Why it is needed (optional)
+Output TOON only. Return exactly one TOON document, no prose or fences.
+Use:
+key: OPENAI_API_KEY
+reason: why it is needed
 
-If no specific secret is requested, return null json.`;
+If no specific secret is requested, leave key empty. No XML or JSON.`;
 
 export const EXTRACT_SECRET_REQUEST_TEMPLATE = extractSecretRequestTemplate;
 
@@ -207,7 +219,14 @@ Common patterns:
 
 {{recentMessages}}
 
-Extract the secrets from the user's message. If the key name isn't explicitly specified, infer an appropriate UPPERCASE_WITH_UNDERSCORES name based on the context.`;
+Extract the secrets from the user's message. If the key name isn't explicitly specified, infer an appropriate UPPERCASE_WITH_UNDERSCORES name based on the context.
+
+Output TOON only. Return exactly one TOON document, no prose or fences.
+Use:
+secrets[n]{key,value,description,type}:
+level: global|world|user
+
+Omit description/type/level when unknown. No XML or JSON.`;
 
 export const EXTRACT_SECRETS_TEMPLATE = extractSecretsTemplate;
 
@@ -442,14 +461,16 @@ Classify the request across these dimensions:
 6. DEPENDENCIES:
 - List dependencies between tasks or external factors
 
-Respond in this exact format:
-COMPLEXITY: [simple|medium|complex|enterprise]
-PLANNING: [direct_action|sequential_planning|strategic_planning]
-CAPABILITIES: [comma-separated list]
-STAKEHOLDERS: [comma-separated list]
-CONSTRAINTS: [comma-separated list]
-DEPENDENCIES: [comma-separated list]
-CONFIDENCE: [0.0-1.0]`;
+Respond using TOON:
+complexity: simple|medium|complex|enterprise
+planning: direct_action|sequential_planning|strategic_planning
+capabilities[n]: analysis,communication
+stakeholders[n]: person_or_group
+constraints[n]: limitation_or_requirement
+dependencies[n]: dependency
+confidence: 0.0-1.0
+
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.`;
 
 export const MESSAGE_CLASSIFIER_TEMPLATE = messageClassifierTemplate;
 
@@ -751,116 +772,90 @@ export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;
 
 export const factExtractionTemplate = `# Task: Classify and extract facts from this message
 
-You maintain a two-store fact memory for an AI assistant. For each message you decide what to insert, strengthen, decay, or contradict in that memory. You return a single JSON object with an \`ops\` array — nothing else.
+You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return TOON ops only.
 
-## The two stores
+Stores:
+- durable: stable identity-level claims that matter in a year.
+  Categories: identity, health, relationship, life_event, business_role, preference, goal.
+- current: time-bound state about right now or the near term.
+  Categories: feeling, physical_state, working_on, going_through, schedule_context.
 
-**durable** — stable identity-level claims that will still matter in a year. Categories:
-- identity: where someone lives, name preferences, demographics ("lives in Berlin", "born 1990")
-- health: lasting conditions, allergies, recurring patterns ("flat cortisol curve", "allergic to penicillin", "always struggles in mornings")
-- relationship: persistent people in their life ("has a sister Mia", "married to Alex")
-- life_event: dated milestones ("founded $company in 2024", "moved to Berlin in 2023")
-- business_role: long-term roles ("senior engineer at $company since 2024")
-- preference: stable likes/dislikes ("prefers concise answers", "dislikes group calls")
-- goal: long-arc objectives ("wants to launch indie product by 2027")
+Rules:
+- If a claim feels stale or surprising to retrieve in a year, use current.
+- Empty output is right for small talk or questions with no new claim.
+- Before add_durable/add_current, scan known facts. If meaning already exists, emit strengthen with that factId.
+- Paraphrases count as duplicates. Match meaning, not surface form.
 
-**current** — time-bound state about right now or the near term. Categories:
-- feeling: short-term emotional state ("anxious this morning", "excited about launch")
-- physical_state: short-term body state ("low energy this week", "headache today")
-- working_on: active task ("debugging auth flow", "drafting Q4 plan")
-- going_through: ongoing life situation ("navigating divorce", "recovering from surgery")
-- schedule_context: near-term schedule ("traveling to Tokyo next week", "deadline Friday")
+Ops:
+- add_durable: claim, category, structured_fields; optional verification_status, reason.
+- add_current: claim, category, structured_fields; optional valid_at, reason.
+- strengthen: factId, optional reason.
+- decay: factId, optional reason.
+- contradict: factId, reason, optional proposedText.
 
-If a claim feels stale or surprising to retrieve a year from now, it is **current**, not durable. When in doubt, prefer current.
+Examples:
 
-## Operations
-
-- \`add_durable\`: insert a new durable fact. Always include \`claim\`, \`category\`, \`structured_fields\`. Optionally \`verification_status\` (default \`self_reported\`) and \`reason\`.
-- \`add_current\`: insert a new current fact. Always include \`claim\`, \`category\`, \`structured_fields\`. Optionally \`valid_at\` (ISO timestamp; defaults to now if omitted) and \`reason\`.
-- \`strengthen\`: an existing fact in the retrieved list is restated or reaffirmed. Include the existing \`factId\` and a short \`reason\`. **Do not add_* a duplicate.**
-- \`decay\`: an existing current fact looks resolved or no longer mentioned. Include \`factId\` and \`reason\`.
-- \`contradict\`: an existing fact is directly contradicted by the message. Include \`factId\`, \`reason\`, and \`proposedText\` if the user supplied a replacement.
-
-If the message is small talk or asks a question without supplying any new claim, return \`{"ops": []}\`. Empty output is the right answer most of the time.
-
-## Dedup rule (read this twice)
-
-Before emitting \`add_durable\` or \`add_current\`, scan the **Known durable facts** and **Known current facts** lists below. If a similar claim already exists, emit \`strengthen\` with that fact's \`factId\` instead of inserting a duplicate. Reword paraphrases also count as matches — match on meaning, not surface form.
-
-## Examples
-
-### Example 1 — durable health
 Message: "I have a flat cortisol curve confirmed via lab"
-\`\`\`json
-{"ops":[{"op":"add_durable","claim":"flat cortisol curve","category":"health","structured_fields":{"condition":"flat cortisol curve","source":"lab"},"verification_status":"confirmed"}]}
-\`\`\`
+ops[1]:
+  - op: add_durable
+    claim: flat cortisol curve
+    category: health
+    structured_fields:
+      condition: flat cortisol curve
+      source: lab
+    verification_status: confirmed
 
-### Example 2 — current feeling
 Message: "I'm anxious this morning"
-\`\`\`json
-{"ops":[{"op":"add_current","claim":"anxious this morning","category":"feeling","structured_fields":{"emotion":"anxious","window":"morning"}}]}
-\`\`\`
+ops[1]:
+  - op: add_current
+    claim: anxious this morning
+    category: feeling
+    structured_fields:
+      emotion: anxious
+      window: morning
 
-### Example 3 — current working_on
-Message: "Currently debugging the auth flow"
-\`\`\`json
-{"ops":[{"op":"add_current","claim":"debugging the auth flow","category":"working_on","structured_fields":{"task":"debugging","subject":"auth flow"}}]}
-\`\`\`
-
-### Example 4 — current going_through
-Message: "I'm going through a divorce"
-\`\`\`json
-{"ops":[{"op":"add_current","claim":"navigating a divorce","category":"going_through","structured_fields":{"situation":"divorce"}}]}
-\`\`\`
-
-### Example 5 — durable life_event
-Message: "I founded Acme Corp in 2024"
-\`\`\`json
-{"ops":[{"op":"add_durable","claim":"founded Acme Corp in 2024","category":"life_event","structured_fields":{"event":"founded company","company":"Acme Corp","year":2024}},{"op":"add_durable","claim":"founder of Acme Corp","category":"business_role","structured_fields":{"role":"founder","company":"Acme Corp","since":2024}}]}
-\`\`\`
-
-### Example 6 — durable identity
-Message: "I live in Berlin"
-\`\`\`json
-{"ops":[{"op":"add_durable","claim":"lives in Berlin","category":"identity","structured_fields":{"location":"Berlin"}}]}
-\`\`\`
-
-### Example 7 — dedup as strengthen
-Known durable facts include: \`[fact_abc] (durable.identity) lives in Berlin\`
+Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
 Message: "Berlin's been treating me well"
-\`\`\`json
-{"ops":[{"op":"strengthen","factId":"fact_abc","reason":"user reaffirmed living in Berlin"}]}
-\`\`\`
+ops[1]:
+  - op: strengthen
+    factId: fact_abc
+    reason: user reaffirmed living in Berlin
 
-### Example 8 — contradict
-Known durable facts include: \`[fact_abc] (durable.identity) lives in Berlin\`
+Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
 Message: "Actually I moved to Tokyo last month"
-\`\`\`json
-{"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"user moved to Tokyo, contradicts Berlin"},{"op":"add_durable","claim":"moved to Tokyo last month","category":"life_event","structured_fields":{"event":"relocation","to":"Tokyo"}}]}
-\`\`\`
+ops[2]:
+  - op: contradict
+    factId: fact_abc
+    proposedText: lives in Tokyo
+    reason: user moved to Tokyo, contradicts Berlin
+  - op: add_durable
+    claim: moved to Tokyo last month
+    category: life_event
+    structured_fields:
+      event: relocation
+      to: Tokyo
 
-## Inputs
-
-# Current Context
+Inputs:
 Agent Name: {{agentName}}
 Message Sender: {{senderName}} (ID: {{senderId}})
 Now: {{now}}
 
-# Recent Messages
+Recent messages:
 {{recentMessages}}
 
-# Known durable facts (top similarity matches; format: [factId] (durable.category) claim)
+Known durable facts (format: [factId] (durable.category) claim):
 {{knownDurable}}
 
-# Known current facts (top similarity matches; format: [factId] (current.category, since <validAt>) claim)
+Known current facts (format: [factId] (current.category, since validAt) claim):
 {{knownCurrent}}
 
-# Latest message (this is what you are extracting from)
+Latest message:
 {{message}}
 
-## Output
-
-Return exactly one JSON object: \`{"ops":[...]}\`. No code fences, no markdown, no prose, no XML, no \`<think>\`. If nothing should change, return \`{"ops":[]}\`.`;
+Output:
+TOON only. Return exactly one TOON document. No prose, no fences, no JSON, no XML, no <think>.
+If nothing should change, return:
+ops[0]:`;
 
 export const FACT_EXTRACTION_TEMPLATE = factExtractionTemplate;
 

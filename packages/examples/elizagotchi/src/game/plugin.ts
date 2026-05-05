@@ -710,7 +710,17 @@ function actionNameFromCommand(cmd: GameCommand | null): {
   }
 }
 
-function toXmlResponse(params: {
+function renderToonField(key: string, value: string, indent = ""): string {
+  if (value.includes("\n")) {
+    return `${indent}${key}:\n${value
+      .split(/\r?\n/)
+      .map((line) => `${indent}  ${line}`)
+      .join("\n")}`;
+  }
+  return `${indent}${key}: ${value}`;
+}
+
+function toToonResponse(params: {
   thought: string;
   actionName: string;
   text?: string;
@@ -718,32 +728,24 @@ function toXmlResponse(params: {
   actionParams?: Record<string, string>;
 }): string {
   const providers = params.providers ?? [];
+  const lines = [
+    renderToonField("thought", params.thought),
+    renderToonField("actions", params.actionName),
+  ];
+  if (providers.length > 0) {
+    lines.push(renderToonField("providers", providers.join(",")));
+  }
+  lines.push(renderToonField("text", params.text ?? ""));
 
-  const paramsXml =
-    params.actionParams && Object.keys(params.actionParams).length > 0
-      ? `<params>${Object.entries(params.actionParams)
-          .map(([k, v]) => `<${k}>${escapeXml(v)}</${k}>`)
-          .join("")}</params>`
-      : "";
+  if (params.actionParams && Object.keys(params.actionParams).length > 0) {
+    lines.push("params:");
+    lines.push(`  ${params.actionName}:`);
+    for (const [key, value] of Object.entries(params.actionParams)) {
+      lines.push(renderToonField(key, value, "    "));
+    }
+  }
 
-  return (
-    `<thought>${escapeXml(params.thought)}</thought>` +
-    `<actions>${escapeXml(params.actionName)}</actions>` +
-    (providers.length > 0
-      ? `<providers>${providers.map(escapeXml).join("</providers><providers>")}</providers>`
-      : "") +
-    `<text>${escapeXml(params.text ?? "")}</text>` +
-    paramsXml
-  );
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  return lines.join("\n");
 }
 
 async function elizagotchiModelHandler(
@@ -755,14 +757,14 @@ async function elizagotchiModelHandler(
 
   // Allow a dedicated tick command that doesn't require natural language parsing
   if (userText === "__tick__") {
-    return toXmlResponse({
+    return toToonResponse({
       thought: "Advance simulation tick",
       actionName: "ELIZAGOTCHI_TICK",
     });
   }
 
   if (userText === "__export__") {
-    return toXmlResponse({
+    return toToonResponse({
       thought: "Export save data",
       actionName: "ELIZAGOTCHI_EXPORT",
     });
@@ -771,7 +773,7 @@ async function elizagotchiModelHandler(
   if (userText.startsWith("__import__:")) {
     const encoded = userText.slice("__import__:".length);
     const saveJson = decodeURIComponent(encoded);
-    return toXmlResponse({
+    return toToonResponse({
       thought: "Import save data",
       actionName: "ELIZAGOTCHI_IMPORT",
       actionParams: { saveJson },
@@ -781,7 +783,7 @@ async function elizagotchiModelHandler(
   if (userText.startsWith("__reset__:")) {
     const encoded = userText.slice("__reset__:".length);
     const name = decodeURIComponent(encoded);
-    return toXmlResponse({
+    return toToonResponse({
       thought: "Reset with chosen name",
       actionName: "ELIZAGOTCHI_RESET",
       actionParams: { name },
@@ -791,7 +793,7 @@ async function elizagotchiModelHandler(
   const cmd = parseCommand(userText) as GameCommand | null;
   const resolved = actionNameFromCommand(cmd);
 
-  return toXmlResponse({
+  return toToonResponse({
     thought: `Route to ${resolved.actionName}`,
     actionName: resolved.actionName,
     actionParams: resolved.params,

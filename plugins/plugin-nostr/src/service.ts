@@ -2,7 +2,17 @@
  * Nostr service implementation for ElizaOS.
  */
 
-import { type EventPayload, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  type Content,
+  type EventPayload,
+  type IAgentRuntime,
+  logger,
+  type MessageConnectorQueryContext,
+  type MessageConnectorTarget,
+  type MessageConnectorUserContext,
+  Service,
+  type TargetInfo,
+} from "@elizaos/core";
 import { type Event, finalizeEvent, getPublicKey, SimplePool, verifyEvent } from "nostr-tools";
 import { decrypt, encrypt } from "nostr-tools/nip04";
 import {
@@ -18,8 +28,19 @@ import {
   type NostrSettings,
   normalizePubkey,
   pubkeyToNpub,
+  splitMessageForNostr,
   validatePrivateKey,
 } from "./types.js";
+
+const NOSTR_CONNECTOR_CONTEXTS = ["social", "connectors"];
+const NOSTR_CONNECTOR_CAPABILITIES = ["send_message", "resolve_targets", "user_context"];
+
+function getNostrTargetMetadata(target: TargetInfo): Record<string, unknown> | undefined {
+  const metadata = (target as { metadata?: unknown }).metadata;
+  return metadata && typeof metadata === "object"
+    ? (metadata as Record<string, unknown>)
+    : undefined;
+}
 
 export class NostrService extends Service implements INostrService {
   static serviceType = NOSTR_SERVICE_NAME;
@@ -39,6 +60,38 @@ export class NostrService extends Service implements INostrService {
     const service = new NostrService(runtime);
     await service.initialize();
     return service;
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: NostrService): void {
+    if (!serviceInstance) {
+      return;
+    }
+
+    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+    if (typeof runtime.registerMessageConnector === "function") {
+      runtime.registerMessageConnector({
+        source: "nostr",
+        label: "Nostr",
+        description: "Nostr encrypted DM connector using NIP-04.",
+        capabilities: [...NOSTR_CONNECTOR_CAPABILITIES],
+        supportedTargetKinds: ["user", "contact"],
+        contexts: [...NOSTR_CONNECTOR_CONTEXTS],
+        metadata: {
+          service: NOSTR_SERVICE_NAME,
+        },
+        resolveTargets: serviceInstance.resolveConnectorTargets.bind(serviceInstance),
+        listRecentTargets: serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
+        getUserContext: serviceInstance.getConnectorUserContext.bind(serviceInstance),
+        sendHandler,
+      });
+      runtime.logger.info(
+        { src: "plugin:nostr", agentId: runtime.agentId },
+        "Registered Nostr DM connector"
+      );
+      return;
+    }
+
+    runtime.registerSendHandler("nostr", sendHandler);
   }
 
   /**
@@ -332,6 +385,104 @@ export class NostrService extends Service implements INostrService {
    */
   getRelays(): string[] {
     return this.settings?.relays || [];
+  }
+
+  async handleSendMessage(
+    _runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content
+  ): Promise<void> {
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      throw new Error("Nostr DM connector requires non-empty text content.");
+    }
+
+    const metadata = getNostrTargetMetadata(target);
+    const targetPubkey =
+      (typeof metadata?.nostrPubkey === "string" ? metadata.nostrPubkey : undefined) ??
+      (typeof target.entityId === "string" ? target.entityId : undefined) ??
+      target.channelId ??
+      target.threadId;
+
+    if (!targetPubkey) {
+      throw new Error("Nostr DM connector requires a pubkey target.");
+    }
+
+    const chunks = splitMessageForNostr(text);
+    for (const chunk of chunks) {
+      const result = await this.sendDm({ toPubkey: targetPubkey, text: chunk });
+      if (!result.success) {
+        throw new Error(result.error ?? "Failed to send Nostr DM");
+      }
+    }
+  }
+
+  async resolveConnectorTargets(
+    query: string,
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return this.listRecentConnectorTargets(_context);
+    }
+
+    let pubkey: string;
+    try {
+      pubkey = normalizePubkey(trimmed);
+    } catch {
+      return [];
+    }
+
+    return [this.buildPubkeyTarget(pubkey, 1)];
+  }
+
+  async listRecentConnectorTargets(
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    const allowFrom = this.settings?.allowFrom ?? [];
+    return allowFrom.map((pubkey, index) => this.buildPubkeyTarget(pubkey, 0.8 - index * 0.01));
+  }
+
+  async getConnectorUserContext(
+    entityId: string,
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorUserContext | null> {
+    let pubkey: string;
+    try {
+      pubkey = normalizePubkey(entityId);
+    } catch {
+      return null;
+    }
+
+    return {
+      entityId,
+      label: pubkeyToNpub(pubkey),
+      aliases: [pubkey, pubkeyToNpub(pubkey)],
+      handles: {
+        nostr: pubkeyToNpub(pubkey),
+      },
+      metadata: {
+        nostrPubkey: pubkey,
+        relays: this.getRelays(),
+      },
+    };
+  }
+
+  private buildPubkeyTarget(pubkey: string, score: number): MessageConnectorTarget {
+    return {
+      target: {
+        source: "nostr",
+        entityId: pubkey,
+      } as TargetInfo,
+      label: pubkeyToNpub(pubkey),
+      kind: "user",
+      description: "Nostr encrypted DM recipient",
+      score,
+      contexts: [...NOSTR_CONNECTOR_CONTEXTS],
+      metadata: {
+        nostrPubkey: pubkey,
+      },
+    };
   }
 
   /**

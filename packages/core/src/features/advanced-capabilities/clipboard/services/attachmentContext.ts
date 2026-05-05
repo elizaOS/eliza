@@ -4,7 +4,7 @@ import {
 	type Media,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 } from "../../../../types/index.ts";
 
 type AttachmentWithInlineData = Media & {
@@ -42,8 +42,8 @@ function selectionPrompt(messageText: string, attachments: Media[]): string {
 		"Available attachments:",
 		choices,
 		"",
-		"Respond with XML:",
-		"<response><attachmentId>attachment-id</attachmentId></response>",
+		"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
+		"attachmentId: attachment-id",
 	].join("\n");
 }
 
@@ -68,7 +68,10 @@ async function describeImageAttachment(
 		imageUrl,
 	});
 	if (typeof response === "string") {
-		const parsed = parseKeyValueXml(response) as Record<string, unknown> | null;
+		const parsed = parseToonKeyValue(response) as Record<
+			string,
+			unknown
+		> | null;
 		if (parsed) {
 			const value =
 				(typeof parsed.text === "string" ? parsed.text : "") ||
@@ -173,7 +176,7 @@ export async function resolveAttachmentSelection(
 		prompt: selectionPrompt(text, attachments),
 		stopSequences: [],
 	});
-	const parsed = parseKeyValueXml(String(response)) as Record<
+	const parsed = parseToonKeyValue(String(response)) as Record<
 		string,
 		unknown
 	> | null;

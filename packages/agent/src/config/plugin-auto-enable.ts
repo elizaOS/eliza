@@ -137,7 +137,8 @@ const FEATURE_PLUGINS: Record<string, string> = {
   diagnosticsOtel: "@elizaos/plugin-diagnostics-otel",
   webhooks: "@elizaos/plugin-webhooks",
   gmailWatch: "@elizaos/plugin-gmail-watch",
-  // personality and form are now built-in advanced capabilities
+  form: "@elizaos/plugin-form",
+  // personality is a built-in advanced capability
   x402: "@elizaos/plugin-x402",
   // Media generation plugins
   fal: "@elizaos/plugin-fal",

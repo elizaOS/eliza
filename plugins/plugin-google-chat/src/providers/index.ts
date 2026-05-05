@@ -1,6 +1,6 @@
 /**
- * Export all Google Chat providers.
+ * Google Chat provider exports.
+ *
+ * Chat and user context are supplied by core PLATFORM_* providers through the
+ * registered Google Chat message connector hooks.
  */
-
-export { spaceStateProvider } from "./spaceState.js";
-export { userContextProvider } from "./userContext.js";

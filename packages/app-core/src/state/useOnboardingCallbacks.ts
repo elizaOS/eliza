@@ -50,7 +50,7 @@ import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-ru
 import { isElizaCloudOnboardingTarget } from "../onboarding/server-target";
 import { buildOnboardingRuntimeConfig } from "../onboarding-config";
 import { PREMADE_VOICES } from "../voice/types";
-import { buildWalletRpcUpdateRequest } from "../wallet-rpc";
+import { buildWalletRpcUpdateRequest } from "@elizaos/app-wallet/wallet-rpc";
 import {
   clearPersistedActiveServer,
   clearPersistedOnboardingStep,
@@ -602,7 +602,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             );
           }
 
-          await client.provisionCloudSandbox({
+          const provisionedAgent = await client.provisionCloudSandbox({
             cloudApiBase,
             authToken,
             name: onboardingName,
@@ -612,13 +612,13 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             },
           });
 
-          client.setBaseUrl(cloudApiBase);
+          client.setBaseUrl(provisionedAgent.bridgeUrl);
           client.setToken(authToken);
           persistMobileRuntimeModeForServerTarget(onboardingServerTarget);
           savePersistedActiveServer(
             createPersistedActiveServer({
               kind: "cloud",
-              apiBase: cloudApiBase,
+              apiBase: provisionedAgent.bridgeUrl,
               accessToken: authToken,
             }),
           );

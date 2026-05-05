@@ -44,7 +44,7 @@ export type {
   X402ValidationResult,
 } from "@elizaos/core";
 
-export type { Network } from "./payment-config.ts";
+export type { Network } from "./payment-config.js";
 export {
   atomicAmountForPriceInCents,
   BUILT_IN_NETWORKS,
@@ -59,18 +59,18 @@ export {
   registerX402Config,
   toResourceUrl,
   toX402Network,
-} from "./payment-config.ts";
+} from "./payment-config.js";
 export {
   applyPaymentProtection,
   createPaymentAwareHandler,
   isRoutePaymentWrapped,
   X402_ROUTE_PAYMENT_WRAPPED,
-} from "./payment-wrapper.ts";
+} from "./payment-wrapper.js";
 export {
   resolveEffectiveX402,
   X402_EVENT_PAYMENT_REQUIRED,
   X402_EVENT_PAYMENT_VERIFIED,
-} from "./x402-resolve.ts";
+} from "./x402-resolve.js";
 
 export {
   type Accepts,
@@ -81,4 +81,4 @@ export {
   validateX402Response,
   type X402Response,
   type X402ScanNetwork,
-} from "./x402-types.ts";
+} from "./x402-types.js";

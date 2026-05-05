@@ -117,7 +117,7 @@ def _make_mock_llm_query():
     return mock_llm_query
 
 
-def get_llm_query_fn(provider: str):
+def get_llm_query_fn(provider: str, client: object | None = None):
     """Return the selected benchmark query function."""
     normalized = provider.strip().lower()
     if normalized == "mock":
@@ -125,7 +125,7 @@ def get_llm_query_fn(provider: str):
 
     from eliza_adapter.context_bench import make_eliza_llm_query
 
-    return make_eliza_llm_query()
+    return make_eliza_llm_query(client=client)
 
 
 async def run_benchmark(
@@ -184,17 +184,31 @@ async def run_benchmark(
         bar = "█" * filled + "░" * (bar_len - filled)
         print(f"\r{suite}: [{bar}] {completed}/{total} ({pct:.1f}%)", end="", flush=True)
 
-    llm_fn = get_llm_query_fn(provider)
+    bridge_manager = None
+    if provider.strip().lower() != "mock":
+        from eliza_adapter.server_manager import ElizaServerManager
 
-    runner = ContextBenchRunner(
-        config=config,
-        llm_query_fn=llm_fn,
-        seed=42,
+        bridge_manager = ElizaServerManager()
+        bridge_manager.start()
+
+    llm_fn = get_llm_query_fn(
+        provider,
+        client=bridge_manager.client if bridge_manager is not None else None,
     )
 
-    print("Running benchmark...")
-    print()
-    results = await runner.run_full_benchmark(progress_callback=on_progress)
+    try:
+        runner = ContextBenchRunner(
+            config=config,
+            llm_query_fn=llm_fn,
+            seed=42,
+        )
+
+        print("Running benchmark...")
+        print()
+        results = await runner.run_full_benchmark(progress_callback=on_progress)
+    finally:
+        if bridge_manager is not None:
+            bridge_manager.stop()
 
     print("\n")
 

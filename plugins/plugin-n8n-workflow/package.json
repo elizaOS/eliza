@@ -8,13 +8,34 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./plugin-routes": {
+      "types": "./src/plugin-routes.ts",
+      "import": "./src/plugin-routes.ts",
+      "default": "./src/plugin-routes.ts"
+    },
+    "./register-routes": {
+      "types": "./src/register-routes.ts",
+      "import": "./src/register-routes.ts",
+      "default": "./src/register-routes.ts"
+    },
+    "./routes/*": {
+      "types": "./src/routes/*.ts",
+      "import": "./src/routes/*.ts",
+      "default": "./src/routes/*.ts"
+    },
+    "./lib/*": {
+      "types": "./src/lib/*.ts",
+      "import": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc --noEmitOnError false || true",
@@ -50,6 +71,8 @@
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-n8n-workflow#readme",
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {

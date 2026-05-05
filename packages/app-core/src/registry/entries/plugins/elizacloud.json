@@ -30,38 +30,40 @@
       "type": "string",
       "required": false,
       "sensitive": false,
+      "default": "openai/gpt-oss-120b:nitro",
       "label": "Cloud Small Model",
-      "help": "Small/fast model for quick tasks (overrides SMALL_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash, vast/qwen3.6-35b-a3b-awq (Cloud-hosted, autoscaled)",
-      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "help": "Small/fast model for quick tasks (overrides SMALL_MODEL). Default: openai/gpt-oss-120b:nitro",
+      "placeholder": "openai/gpt-oss-120b:nitro",
       "advanced": false
     },
     "SMALL_MODEL": {
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "gpt-5-mini",
+      "default": "openai/gpt-oss-120b:nitro",
       "label": "Model",
       "help": "Fallback identifier for the small language model if ELIZAOS_CLOUD_SMALL_MODEL is not set.",
-      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "placeholder": "openai/gpt-oss-120b:nitro",
       "advanced": false
     },
     "ELIZAOS_CLOUD_LARGE_MODEL": {
       "type": "string",
       "required": false,
       "sensitive": false,
+      "default": "openai/gpt-oss-120b:nitro",
       "label": "Cloud Large Model",
-      "help": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash, vast/qwen3.6-35b-a3b-awq (Cloud-hosted, autoscaled)",
-      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "help": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: openai/gpt-oss-120b:nitro",
+      "placeholder": "openai/gpt-oss-120b:nitro",
       "advanced": false
     },
     "LARGE_MODEL": {
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "gpt-5",
+      "default": "openai/gpt-oss-120b:nitro",
       "label": "Model",
       "help": "Fallback identifier for the large language model if ELIZAOS_CLOUD_LARGE_MODEL is not set.",
-      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "placeholder": "openai/gpt-oss-120b:nitro",
       "advanced": false
     },
     "ELIZAOS_CLOUD_EMBEDDING_MODEL": {

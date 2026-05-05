@@ -29,12 +29,12 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Variables :**
 - `OPENAI_API_KEY` — Votre clé API secrète depuis platform.openai.com
 - `OPENAI_BASE_URL` — Laissez vide pour le défaut OpenAI ; définissez une URL proxy si vous utilisez un point de terminaison personnalisé
-- `OPENAI_SMALL_MODEL` — ex. `gpt-4o-mini` (utilisé pour les tâches rapides/économiques)
+- `OPENAI_SMALL_MODEL` — ex. `gpt-5-mini` (utilisé pour les tâches rapides/économiques)
 - `OPENAI_LARGE_MODEL` — ex. `gpt-4o` (utilisé pour le raisonnement complexe)
 - `OPENAI_EMBEDDING_MODEL` — ex. `text-embedding-3-small` (pour la recherche sémantique)
 - `OPENAI_TTS_MODEL` / `OPENAI_TTS_VOICE` — ex. `tts-1` / `alloy` (pour la synthèse vocale)
 - `OPENAI_IMAGE_DESCRIPTION_MODEL` — ex. `gpt-4o` (pour la compréhension d'images)
-**Conseils :** OpenAI est le fournisseur par défaut pour la plupart des fonctionnalités. Si vous avez des crédits, configurez-le en premier. Utilisez `gpt-4o-mini` comme petit modèle pour réduire les coûts.
+**Conseils :** OpenAI est le fournisseur par défaut pour la plupart des fonctionnalités. Si vous avez des crédits, configurez-le en premier. Utilisez `gpt-5-mini` comme petit modèle pour réduire les coûts.
 
 <div id="anthropic">
 
@@ -88,7 +88,7 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Minimum requis :** `OPENROUTER_API_KEY`
 **Variables :**
 - `OPENROUTER_API_KEY` — Depuis openrouter.ai/keys
-- `OPENROUTER_SMALL_MODEL` — ex. `openai/gpt-4o-mini` ou `meta-llama/llama-3.3-70b`
+- `OPENROUTER_SMALL_MODEL` — ex. `openai/gpt-5-mini` ou `meta-llama/llama-3.3-70b`
 - `OPENROUTER_LARGE_MODEL` — ex. `anthropic/claude-sonnet-4-6`
 - `OPENROUTER_IMAGE_MODEL` — ex. `openai/gpt-4o` (pour les tâches de vision)
 - `OPENROUTER_IMAGE_GENERATION_MODEL` — ex. `openai/dall-e-3`

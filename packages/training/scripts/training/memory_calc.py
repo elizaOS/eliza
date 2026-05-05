@@ -34,7 +34,7 @@ component dominates at a given seq_len. Consumed by:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 

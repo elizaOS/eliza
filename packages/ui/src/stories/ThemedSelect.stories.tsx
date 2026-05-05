@@ -15,7 +15,7 @@ const sampleGroups = [
   {
     label: "Models",
     items: [
-      { id: "gpt-4", text: "GPT-4", hint: "Most capable" },
+      { id: "gpt-5.5", text: "GPT-4", hint: "Most capable" },
       { id: "gpt-3.5", text: "GPT-3.5", hint: "Fast" },
       { id: "claude", text: "Claude", hint: "Anthropic" },
     ],

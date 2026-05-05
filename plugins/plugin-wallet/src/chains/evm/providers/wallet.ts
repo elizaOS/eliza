@@ -629,7 +629,7 @@ export const evmWalletProvider: Provider = {
         },
         values: {
           address: walletData.address,
-          chains: JSON.stringify(walletData.chains),
+          chains: balanceText,
         },
       };
     } catch (error) {
@@ -674,7 +674,7 @@ async function directFetchWalletData(
     },
     values: {
       address: address as string,
-      chains: JSON.stringify(chainDetails),
+      chains: balanceText,
     },
   };
 }

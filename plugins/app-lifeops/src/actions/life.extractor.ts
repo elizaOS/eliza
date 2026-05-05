@@ -1,8 +1,7 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { runExtractorPipeline } from "./extractor-pipeline.js";
@@ -177,6 +176,11 @@ const REPLY_ONLY_OPERATION_PLAN: ExtractedLifeOperationPlan = {
   shouldAct: false,
 };
 
+function promptText(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "(empty)";
+}
+
 function normalizeOperationPlan(
   parsed: Record<string, unknown>,
 ): ExtractedLifeOperationPlan | null {
@@ -210,19 +214,21 @@ function buildRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the LifeOps operation planner was invalid.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return ONLY a TOON record with exactly these fields:",
     "  operation: one of the allowed operations, or null when this should be reply-only/no-op",
     "  confidence: number from 0 to 1",
     "  shouldAct: boolean",
-    '  missing: array of missing fields from ["title","schedule","target","goal","phone_number","reminder_intensity","details"]',
+    "  missing: list of missing fields from title, schedule, target, goal, phone_number, reminder_intensity, details",
     "",
-    "Do not add prose, markdown, XML, or code fences.",
+    "Do not add prose, markdown, code fences, or any other format.",
     "",
     `Allowed operations: ${LIFE_OPERATION_VALUES.join(", ")}, or null`,
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation.join("\n"))}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `Current request: ${promptText(args.currentMessage)}`,
+    `Resolved intent: ${promptText(args.intent)}`,
+    "Recent conversation:",
+    promptText(args.recentConversation.join("\n")),
+    "Previous invalid output:",
+    promptText(args.rawResponse),
   ].join("\n");
 }
 
@@ -278,22 +284,43 @@ async function recoverCoreLifeOperationWithLlm(args: {
     "query_overview is for asking what is still left, active, or remaining today.",
     "Use null only when the request is casual chat or not a core LifeOps action.",
     "",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return ONLY a TOON record with exactly these fields:",
     "  operation: create_definition, complete_occurrence, snooze_occurrence, query_overview, or null",
     "  confidence: number from 0 to 1",
     "  shouldAct: boolean",
-    '  missing: array of missing fields from ["title","schedule","target","goal","phone_number","reminder_intensity","details"]',
+    "  missing: list of missing fields from title, schedule, target, goal, phone_number, reminder_intensity, details",
     "",
     "Examples:",
-    '  "remind me to brush my teeth every night" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "Je viens de me brosser les dents" -> {"operation":"complete_occurrence","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "remind me later" -> {"operation":"snooze_occurrence","confidence":0.9,"shouldAct":true,"missing":[]}',
-    '  "¿Qué me queda por hacer hoy?" -> {"operation":"query_overview","confidence":0.88,"shouldAct":true,"missing":[]}',
-    '  "yeah lol" -> {"operation":null,"confidence":0.6,"shouldAct":false,"missing":[]}',
+    '  Input: "remind me to brush my teeth every night"',
+    "  operation: create_definition",
+    "  confidence: 0.95",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "Je viens de me brosser les dents"',
+    "  operation: complete_occurrence",
+    "  confidence: 0.95",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "remind me later"',
+    "  operation: snooze_occurrence",
+    "  confidence: 0.9",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "¿Qué me queda por hacer hoy?"',
+    "  operation: query_overview",
+    "  confidence: 0.88",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "yeah lol"',
+    "  operation: null",
+    "  confidence: 0.6",
+    "  shouldAct: false",
+    "  missing: []",
     "",
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation.join("\\n"))}`,
+    `Current request: ${promptText(args.currentMessage)}`,
+    `Resolved intent: ${promptText(args.intent)}`,
+    "Recent conversation:",
+    promptText(args.recentConversation.join("\n")),
   ].join("\n");
 
   try {
@@ -302,8 +329,7 @@ async function recoverCoreLifeOperationWithLlm(args: {
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeCoreLifeOperationPlan(parsed) : null;
   } catch (error) {
     args.runtime.logger?.warn?.(
@@ -342,11 +368,11 @@ export async function extractLifeOperationWithLlm(args: {
     "A goal horizon like this year, this month, by June, or before my trip does not create a routine cadence by itself.",
     "Use create_goal for aspirations with a target or horizon unless the user explicitly asks for reminders, recurrence, or a routine schedule.",
     "",
-    "Return a JSON object with exactly these fields:",
+    "Return a TOON record with exactly these fields:",
     "  operation: one of the allowed operations below, or null when this should be reply-only/no-op",
     "  confidence: number from 0 to 1",
     "  shouldAct: boolean",
-    '  missing: array of missing fields from ["title","schedule","target","goal","phone_number","reminder_intensity","details"]',
+    "  missing: list of missing fields from title, schedule, target, goal, phone_number, reminder_intensity, details",
     "",
     "Operations and when to use each:",
     "  create_definition — create a new habit, routine, task, one-off alarm, or reminder (e.g. 'remind me to brush my teeth every night', 'set an alarm for 7am', 'set a reminder for tomorrow at 9')",
@@ -368,36 +394,54 @@ export async function extractLifeOperationWithLlm(args: {
     "  query_overview — broad status summary or remaining LifeOps items (e.g. 'what's active', 'show me everything', 'overview', \"what's still left for today\", 'what do i still need to do today')",
     "",
     "Examples:",
-    '  "I brushed my teeth" -> {"operation":"complete_occurrence","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "less reminders please" -> {"operation":"set_reminder_preference","confidence":0.9,"shouldAct":true,"missing":[]}',
-    '  "remind me to take vitamins every morning" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "set an alarm for 7 am" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "set a reminder for tomorrow at 9" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "please remind me about my Invisalign on weekdays after lunch" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "help me remember to drink water" -> {"operation":"create_definition","confidence":0.9,"shouldAct":true,"missing":[]}',
-    '  "help me remember to stretch during the day" -> {"operation":"create_definition","confidence":0.9,"shouldAct":true,"missing":[]}',
-    '  "make sure I brush my teeth when I wake up and before bed" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
-    '  "I want to learn guitar this year" -> {"operation":"create_goal","confidence":0.9,"shouldAct":true,"missing":[]}',
-    '  "I want to run a marathon by October" -> {"operation":"create_goal","confidence":0.9,"shouldAct":true,"missing":[]}',
-    '  "how am I doing on my reading goal" -> {"operation":"review_goal","confidence":0.9,"shouldAct":true,"missing":[]}',
-    '  "give me my weekly goal review" -> {"operation":"review_goal","confidence":0.88,"shouldAct":true,"missing":[]}',
-    '  "what\'s still left for today" -> {"operation":"query_overview","confidence":0.88,"shouldAct":true,"missing":[]}',
-    '  "¿Qué me queda por hacer hoy?" -> {"operation":"query_overview","confidence":0.88,"shouldAct":true,"missing":[]}',
-    '  "lol yeah. can you help me add a todo for my life?" -> {"operation":"create_definition","confidence":0.82,"shouldAct":false,"missing":["title","schedule"]}',
-    '  "yeah lol" -> {"operation":null,"confidence":0.62,"shouldAct":false,"missing":[]}',
+    '  Input: "I brushed my teeth"',
+    "  operation: complete_occurrence",
+    "  confidence: 0.95",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "less reminders please"',
+    "  operation: set_reminder_preference",
+    "  confidence: 0.9",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "remind me to take vitamins every morning"',
+    "  operation: create_definition",
+    "  confidence: 0.95",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "I want to learn guitar this year"',
+    "  operation: create_goal",
+    "  confidence: 0.9",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "what\'s still left for today"',
+    "  operation: query_overview",
+    "  confidence: 0.88",
+    "  shouldAct: true",
+    "  missing: []",
+    '  Input: "lol yeah. can you help me add a todo for my life?"',
+    "  operation: create_definition",
+    "  confidence: 0.82",
+    "  shouldAct: false",
+    "  missing: [title, schedule]",
+    '  Input: "yeah lol"',
+    "  operation: null",
+    "  confidence: 0.62",
+    "  shouldAct: false",
+    "  missing: []",
     "",
-    "Return ONLY valid JSON. No prose. No markdown. No XML. No <think>.",
+    "Return ONLY valid TOON. No prose. No markdown. No code fences. No <think>.",
     "",
     `Allowed operations: ${LIFE_OPERATION_VALUES.join(", ")}, or null`,
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation.join("\n"))}`,
+    `Current request: ${promptText(currentMessage)}`,
+    `Resolved intent: ${promptText(intent)}`,
+    "Recent conversation:",
+    promptText(recentConversation.join("\n")),
   ].join("\n");
 
   const parseResponse = (rawResponse: string) => {
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeOperationPlan(parsed) : null;
   };
 

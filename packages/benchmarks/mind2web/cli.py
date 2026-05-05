@@ -3,11 +3,11 @@
 Mind2Web Benchmark CLI for ElizaOS.
 
 Examples:
-  # Run with sample tasks (uses real LLM by default)
-  python -m benchmarks.mind2web --sample
+  # Run with the Eliza TypeScript bridge
+  python -m benchmarks.mind2web --sample --provider eliza
 
-  # Run with Groq (fast and cheap)
-  GROQ_API_KEY=your_key python -m benchmarks.mind2web --sample --provider groq
+  # Run directly with Groq (fast local provider path)
+  GROQ_API_KEY=your_key python -m benchmarks.mind2web --sample --provider groq --model openai/gpt-oss-120b
 
   # Run with OpenAI
   OPENAI_API_KEY=your_key python -m benchmarks.mind2web --sample --provider openai
@@ -144,14 +144,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--real-llm",
         action="store_true",
-        help="(deprecated, now the default) Use real LLM via ElizaOS runtime",
+        help="Deprecated alias for --provider eliza when no provider is specified",
     )
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["groq", "openai", "anthropic", "auto", "eliza"],
+        choices=[
+            "groq",
+            "openai",
+            "openrouter",
+            "anthropic",
+            "auto",
+            "eliza",
+            "eliza-bridge",
+            "eliza-ts",
+        ],
         default="auto",
-        help="Model provider to use (default: auto-detect from env; 'eliza' uses TS agent)",
+        help="Model provider to use (default: auto-detect from env; 'eliza' uses the TS agent bridge)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model name for OpenAI-compatible providers",
     )
     parser.add_argument(
         "--temperature",
@@ -162,14 +177,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--groq-small-model",
         type=str,
-        default="qwen3",
-        help="Groq small model name (default: qwen3)",
+        default="openai/gpt-oss-120b",
+        help="Groq small model name (default: openai/gpt-oss-120b)",
     )
     parser.add_argument(
         "--groq-large-model",
         type=str,
-        default="qwen3",
-        help="Groq large model name (default: qwen3)",
+        default="openai/gpt-oss-120b",
+        help="Groq large model name (default: openai/gpt-oss-120b)",
     )
 
     # Runtime behavior
@@ -214,6 +229,10 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
     }
     split = split_map.get(args.split, Mind2WebSplit.TEST_TASK)
 
+    provider = args.provider if args.provider != "auto" else None
+    if args.real_llm and provider is None and not args.mock:
+        provider = "eliza"
+
     return Mind2WebConfig(
         output_dir=output_dir,
         split=split,
@@ -222,7 +241,8 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
         max_steps_per_task=max(1, args.max_steps),
         timeout_ms=max(1000, args.timeout),
         use_mock=bool(args.mock),
-        model_provider=args.provider if args.provider != "auto" else None,
+        model_provider=provider,
+        model_name=args.model,
         temperature=args.temperature,
         groq_small_model=args.groq_small_model,
         groq_large_model=args.groq_large_model,
@@ -288,11 +308,13 @@ def main() -> int:
         has_key = bool(
             os.environ.get("GROQ_API_KEY")
             or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY")
             or os.environ.get("ANTHROPIC_API_KEY")
         )
         if not has_key:
             logger.error(
-                "ERROR: No API key found. Set OPENAI_API_KEY or use --mock for testing without LLMs."
+                "ERROR: No API key found. Set GROQ_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, "
+                "or use --mock for testing without LLMs."
             )
             return 1
 

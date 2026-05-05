@@ -15,6 +15,7 @@ import type {
 	State,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
+import type { CacheOptions } from "../types";
 import type { SkillSearchResult } from "../types";
 import { createAgentSkillsActionValidator } from "./validators";
 
@@ -98,6 +99,87 @@ function describeChips(actions: SkillResultAction[]): string {
 	return actions.map((a) => map[a.kind]).join(" · ");
 }
 
+export async function runSkillSearch(
+	service: AgentSkillsService,
+	query: string,
+	limit = 10,
+	options: CacheOptions = {},
+): Promise<ActionResult> {
+	const normalizedQuery = query.trim();
+	const results = await service.search(normalizedQuery, limit, options);
+
+	if (results.length === 0) {
+		const text = [
+			"skills_search:",
+			`  query: ${normalizedQuery}`,
+			"  resultCount: 0",
+			"results[0]:",
+		].join("\n");
+		return {
+			success: true,
+			text,
+			values: { resultCount: 0, category: "skills" },
+			data: {
+				actionName: "SEARCH",
+				category: "skills",
+				query: normalizedQuery,
+				results: [] as SkillSearchResultWithActions[],
+			},
+		};
+	}
+
+	const enriched: SkillSearchResultWithActions[] = results.map((r) => {
+		const loaded = service.getLoadedSkill(r.slug);
+		const installed = Boolean(loaded);
+		const enabled = installed && service.isSkillEnabled(r.slug);
+		const state: SkillSearchInstalledState = !installed
+			? "not-installed"
+			: enabled
+				? "enabled"
+				: "disabled";
+		return {
+			...r,
+			installed,
+			enabled,
+			state,
+			actions: buildResultActions(r.slug, state),
+		};
+	});
+
+	const lines = [
+		"skills_search:",
+		`  query: ${normalizedQuery}`,
+		`  resultCount: ${enriched.length}`,
+		`results[${enriched.length}]{slug,displayName,state,summary,actions}:`,
+		...enriched.map((result) =>
+			[
+				`  ${result.slug}`,
+				result.displayName,
+				result.state,
+				result.summary.replace(/\s+/g, " ").trim(),
+				describeChips(result.actions),
+			].join(","),
+		),
+		"next_actions:",
+		"  use: USE_SKILL for enabled skills",
+		"  toggle: ENABLE_SKILL or DISABLE_SKILL for installed skills",
+		"  install: INSTALL_SKILL for not-installed skills",
+		"  details: GET_SKILL_DETAILS for a selected slug",
+	];
+
+	return {
+		success: true,
+		text: lines.join("\n"),
+		values: { resultCount: enriched.length, category: "skills" },
+		data: {
+			actionName: "SEARCH",
+			category: "skills",
+			query: normalizedQuery,
+			results: enriched,
+		},
+	};
+}
+
 export const searchSkillsAction: Action = {
 	name: "SEARCH_SKILLS",
 	similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
@@ -128,65 +210,11 @@ export const searchSkillsAction: Action = {
 		}
 
 		const query = message.content?.text || "";
-		const results = await service.search(query, 10);
-
-		if (results.length === 0) {
-			const text = `No skills found matching "${query}".`;
-			if (callback) await callback({ text });
-			return {
-				success: true,
-				text,
-				data: { results: [] as SkillSearchResultWithActions[] },
-			};
-		}
-
-		const enriched: SkillSearchResultWithActions[] = results.map((r) => {
-			const loaded = service.getLoadedSkill(r.slug);
-			const installed = Boolean(loaded);
-			const enabled = installed && service.isSkillEnabled(r.slug);
-			const state: SkillSearchInstalledState = !installed
-				? "not-installed"
-				: enabled
-					? "enabled"
-					: "disabled";
-			return {
-				...r,
-				installed,
-				enabled,
-				state,
-				actions: buildResultActions(r.slug, state),
-			};
-		});
-
-		const skillList = enriched
-			.map((r, i) => {
-				const stateBadge =
-					r.state === "enabled"
-						? "[on]"
-						: r.state === "disabled"
-							? "[off]"
-							: "[not installed]";
-				const chips = describeChips(r.actions);
-				return (
-					`${i + 1}. **${r.displayName}** (\`${r.slug}\`) ${stateBadge}\n` +
-					`   ${r.summary}\n` +
-					`   → ${chips}`
-				);
-			})
-			.join("\n\n");
-
-		const text =
-			`## Skills matching "${query}"\n\n` +
-			`${skillList}\n\n` +
-			`Use USE_SKILL with a slug to invoke an enabled skill, ENABLE_SKILL/DISABLE_SKILL to toggle, or INSTALL_SKILL to add a new one.`;
-
+		const result = await runSkillSearch(service, query, 10);
+		const text = result.text ?? "";
 		if (callback) await callback({ text });
 
-		return {
-			success: true,
-			text,
-			data: { results: enriched },
-		};
+		return result;
 	},
 
 	examples: [

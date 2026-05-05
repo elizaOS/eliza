@@ -80,8 +80,8 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
             message: { type: "string", description: "The message to send" },
             model: {
               type: "string",
-              description: "Model to use (default: gpt-4o-mini)",
-              enum: ["gpt-4o-mini", "gpt-4o", "claude-sonnet-4-6"],
+              description: "Model to use (default: gpt-5-mini)",
+              enum: ["gpt-5-mini", "gpt-4o", "claude-sonnet-4-6"],
             },
           },
           required: ["message"],
@@ -252,7 +252,7 @@ async function handleToolCall(
   }
 
   if (name === "chat") {
-    const { message, model = "gpt-4o-mini" } = args as {
+    const { message, model = "gpt-5-mini" } = args as {
       message: string;
       model?: string;
     };

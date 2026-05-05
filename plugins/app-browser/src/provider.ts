@@ -6,7 +6,7 @@ import {
   getStewardPendingApprovals,
   getStewardWalletStatus,
 } from "@elizaos/app-steward";
-import type { Provider } from "@elizaos/core";
+import { encodeToonValue, type Provider } from "@elizaos/core";
 
 async function formatWorkspaceSummary(): Promise<{
   text: string;
@@ -22,32 +22,31 @@ async function formatWorkspaceSummary(): Promise<{
     ? await getStewardPendingApprovals().catch(() => [])
     : [];
 
-  const lines = [
-    `Eliza browser workspace (${mode}): ${tabs.length} tab${tabs.length === 1 ? "" : "s"} open.`,
-  ];
-  if (tabs.length === 0) {
-    lines.push("- No tabs are open.");
-  }
-  for (const tab of tabs.slice(0, 8)) {
-    lines.push(
-      `- ${tab.id} [${tab.visible ? "visible" : "background"}] ${tab.url}`,
-    );
-  }
-
-  if (!steward.configured) {
-    lines.push("Eliza wallet: Steward not configured.");
-  } else if (!steward.connected) {
-    lines.push(
-      `Eliza wallet: Steward unavailable${steward.error ? ` (${steward.error})` : "."}`,
-    );
-  } else {
-    lines.push(
-      `Eliza wallet: Steward connected${pendingApprovals.length > 0 ? ` with ${pendingApprovals.length} pending approval${pendingApprovals.length === 1 ? "" : "s"}` : " with no pending approvals"}.`,
-    );
-  }
+  const stewardState = !steward.configured
+    ? "not_configured"
+    : !steward.connected
+      ? "unavailable"
+      : "connected";
+  const text = encodeToonValue({
+    app_browser_workspace: {
+      mode,
+      tabCount: tabs.length,
+      tabs: tabs.slice(0, 8).map((tab) => ({
+        id: tab.id,
+        visible: tab.visible,
+        url: tab.url,
+        title: tab.title,
+      })),
+      steward: {
+        state: stewardState,
+        pendingApprovals: pendingApprovals.length,
+        error: steward.error ?? "",
+      },
+    },
+  });
 
   return {
-    text: lines.join("\n"),
+    text,
     tabs,
     mode,
     pendingCount: pendingApprovals.length,
@@ -77,8 +76,13 @@ export const appBrowserWorkspaceProvider: Provider = {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
-        text: `Eliza browser workspace error: ${message}`,
-        data: { available: true, error: message },
+        text: encodeToonValue({
+          app_browser_workspace: {
+            available: false,
+            error: message,
+          },
+        }),
+        data: { available: false, error: message },
       };
     }
   },

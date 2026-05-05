@@ -8,18 +8,14 @@
  * - {{#if condition}}...{{/if}} for conditionals
  */
 
-export const swapTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+export const swapTemplate = `Respond using TOON like this. Use null for any value that cannot be determined.
 
 Example response:
-\`\`\`json
-{
-    "inputTokenSymbol": "SOL",
-    "outputTokenSymbol": "USDC",
-    "inputTokenCA": "So11111111111111111111111111111111111111112",
-    "outputTokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    "amount": 1.5
-}
-\`\`\`
+inputTokenSymbol: SOL
+outputTokenSymbol: USDC
+inputTokenCA: So11111111111111111111111111111111111111112
+outputTokenCA: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+amount: 1.5
 
 {{recentMessages}}
 
@@ -34,36 +30,32 @@ Extract the following information about the requested token swap:
 - Output token contract address if provided
 - Amount to swap
 
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.`;
+Respond using TOON with only the extracted values. Use null for any value that cannot be determined.
+
+IMPORTANT: Your response must ONLY contain the TOON document. No preamble or explanation.`;
 
 export const SWAP_TEMPLATE = swapTemplate;
 
-export const transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+export const transferTemplate = `Respond using TOON with only the extracted values. Use null for any value that cannot be determined.
 
 Example responses:
 For SPL tokens:
-\`\`\`json
-{
-    "tokenAddress": "BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump",
-    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-    "amount": "1000"
-}
-\`\`\`
+tokenAddress: BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump
+recipient: 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa
+amount: 1000
 
 For SOL:
-\`\`\`json
-{
-    "tokenAddress": null,
-    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-    "amount": 1.5
-}
-\`\`\`
+tokenAddress: null
+recipient: 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa
+amount: 1.5
 
 {{recentMessages}}
 
 Extract the following information about the requested transfer:
 - Token contract address (use null for SOL transfers)
 - Recipient wallet address
-- Amount to transfer`;
+- Amount to transfer
+
+IMPORTANT: Your response must ONLY contain the TOON document. No preamble or explanation.`;
 
 export const TRANSFER_TEMPLATE = transferTemplate;

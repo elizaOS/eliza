@@ -31,7 +31,7 @@ import {
 	type TriggerType,
 	type TriggerWakeMode,
 } from "../../../types/trigger";
-import { parseKeyValueXml, stringToUuid } from "../../../utils";
+import { parseToonKeyValue, stringToUuid } from "../../../utils";
 
 const CREATE_TASK_KEYWORDS = getValidationKeywordTerms(
 	"action.createTask.request",
@@ -163,7 +163,7 @@ export const createTaskAction: Action = {
 
 		try {
 			const extracted =
-				parseKeyValueXml<TriggerExtraction>(
+				parseToonKeyValue<TriggerExtraction>(
 					await runtime.useModel(ModelType.TEXT_SMALL, {
 						prompt: `${EXTRACTION_PROMPT_PREFIX}Request: ${text}`,
 						stopSequences: [],

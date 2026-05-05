@@ -6,6 +6,8 @@
  * Browser: stack-based fallback.
  */
 export interface TrajectoryContext {
+	/** Active trajectory identifier, when the logger separates trajectory and step ids. */
+	trajectoryId?: string;
 	trajectoryStepId?: string;
 	/** Current runtime run identifier associated with the active trajectory step. */
 	runId?: string;

@@ -46,7 +46,7 @@ export interface CostBreakdown {
  * Calculates the cost for a model request based on token usage.
  * Includes 20% platform markup on top of provider costs.
  *
- * @param model - Model identifier (e.g., "gpt-4o-mini").
+ * @param model - Model identifier (e.g., "gpt-5-mini").
  * @param provider - Provider name (e.g., "openai").
  * @param inputTokens - Number of input tokens.
  * @param outputTokens - Number of output tokens.
@@ -76,19 +76,19 @@ export async function calculateCost(
 /**
  * Extracts the provider name from a model identifier.
  *
- * Supports both prefixed format ("openai/gpt-4o-mini") and non-prefixed format ("gpt-4o-mini").
+ * Supports both prefixed format ("openai/gpt-5-mini") and non-prefixed format ("gpt-5-mini").
  *
  * @param model - Model identifier.
  * @returns Provider name (defaults to "openai" if unknown).
  */
 export function getProviderFromModel(model: string): string {
-  // Handle provider-prefixed format: "openai/gpt-4o-mini" or "anthropic/claude-3"
+  // Handle provider-prefixed format: "openai/gpt-5-mini" or "anthropic/claude-3"
   if (model.includes("/")) {
     const [provider] = model.split("/");
     return normalizeProviderKey(provider);
   }
 
-  // Handle non-prefixed format: "gpt-4o-mini"
+  // Handle non-prefixed format: "gpt-5-mini"
   if (model.startsWith("gpt-")) return "openai";
   if (model.startsWith("claude-")) return "anthropic";
   if (model.startsWith("gemini-")) return "google";
@@ -147,8 +147,8 @@ export function getSafeModelParams(
 /**
  * Normalizes a model name by removing the provider prefix if present.
  *
- * @param model - Model identifier (e.g., "openai/gpt-4o-mini" or "gpt-4o-mini").
- * @returns Model name without provider prefix (e.g., "gpt-4o-mini").
+ * @param model - Model identifier (e.g., "openai/gpt-5-mini" or "gpt-5-mini").
+ * @returns Model name without provider prefix (e.g., "gpt-5-mini").
  */
 export function normalizeModelName(model: string): string {
   if (model.includes("/")) {

@@ -1,7 +1,12 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
-import { getGroqApiModelId, isGroqNativeModel } from "@/lib/models";
+import {
+  getGroqApiModelId,
+  isGroqNativeModel,
+  OPENROUTER_DEFAULT_FREE_MODEL,
+  OPENROUTER_RECOMMENDED_TEXT_MODEL,
+} from "@/lib/models";
 import { toOpenRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
 
@@ -112,6 +117,16 @@ function isAnthropicNativeModel(model: string): boolean {
   return model.startsWith("anthropic/") || model.startsWith("claude-");
 }
 
+function requiresOpenRouterRouting(model: string): boolean {
+  const openRouterModel = toOpenRouterModelId(model);
+  return (
+    openRouterModel === OPENROUTER_RECOMMENDED_TEXT_MODEL ||
+    openRouterModel === OPENROUTER_DEFAULT_FREE_MODEL ||
+    openRouterModel === "openai/gpt-oss-120b" ||
+    (openRouterModel.includes("/") && openRouterModel.split("/")[1]?.includes(":"))
+  );
+}
+
 function normalizeOpenAIModelId(model: string): string {
   return model.startsWith("openai/") ? model.slice("openai/".length) : model;
 }
@@ -135,6 +150,10 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
 
   if (getOpenRouterApiKey()) {
     return true;
+  }
+
+  if (requiresOpenRouterRouting(model)) {
+    return false;
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -165,6 +184,10 @@ export function getLanguageModel(model: string) {
 
   if (getOpenRouterApiKey()) {
     return getOpenRouterClient().languageModel(toOpenRouterModelId(model));
+  }
+
+  if (requiresOpenRouterRouting(model)) {
+    throw new Error("OPENROUTER_API_KEY environment variable is required for this model");
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -223,6 +246,10 @@ export function resolveAiProviderSource(
 
   if (getOpenRouterApiKey()) {
     return "openrouter";
+  }
+
+  if (requiresOpenRouterRouting(model)) {
+    return null;
   }
 
   if (getVercelAIGatewayApiKey()) {

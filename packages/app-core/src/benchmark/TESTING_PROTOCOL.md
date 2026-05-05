@@ -16,10 +16,11 @@ Covers:
 From the repository root:
 
 ```bash
-bunx vitest run src/benchmark/*.test.ts
+bunx vitest run test/benchmarks/action-selection-runner.test.ts
 ```
 
-This runs all benchmark unit tests in `src/benchmark/*.test.ts`.
+This runs the cheap benchmark bridge unit smoke for action selection and
+parameter capture.
 
 For a watchable execution run:
 

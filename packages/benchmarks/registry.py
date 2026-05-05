@@ -811,7 +811,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if model.provider:
             args.extend(["--provider", model.provider])
         if model.model:
-            args.extend(["--model", model.model])
+            model_name = model.model
+            provider_name = (model.provider or "").strip().lower()
+            if provider_name == "groq" and not model_name.startswith("groq/"):
+                model_name = f"groq/{model_name}"
+            args.extend(["--model", model_name])
         if extra.get("mock") is True:
             args.append("--mock")
         sample = extra.get("sample")
@@ -837,6 +841,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _realm_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.realm.cli", "--output", str(output_dir)]
+        data_path = extra.get("data_path")
+        if isinstance(data_path, str) and data_path.strip():
+            args.extend(["--data-path", data_path.strip()])
         categories = extra.get("categories")
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
@@ -871,11 +878,36 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
         # Route LLM calls through the elizaOS TS benchmark server when the caller
-        # asks for the eliza agent (either via model.provider or extra.agent).
+        # asks for the eliza agent; otherwise forward real provider/model labels
+        # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = extra.get("agent")
         provider_name = (model.provider or "").strip().lower()
         if agent == "eliza" or provider_name == "eliza":
             args.extend(["--provider", "eliza"])
+        elif provider_name in {"mock", ""}:
+            args.extend(["--provider", "mock"])
+        elif provider_name in {"openai", "groq", "openrouter"}:
+            args.extend(["--provider", provider_name])
+            if model.model:
+                args.extend(["--model", model.model])
+        elif model.provider:
+            raise ValueError(f"mint: unsupported provider '{model.provider}'")
+        if extra.get("no_ablation") is True:
+            args.append("--no-ablation")
+        if extra.get("no_tools") is True:
+            args.append("--no-tools")
+        if extra.get("no_feedback") is True:
+            args.append("--no-feedback")
+        if extra.get("no_docker") is True:
+            args.append("--no-docker")
+        if extra.get("no_report") is True:
+            args.append("--no-report")
+        max_turns = extra.get("max_turns")
+        if isinstance(max_turns, int) and max_turns > 0:
+            args.extend(["--max-turns", str(max_turns)])
+        timeout = extra.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
         return args
 
     def _mint_result(output_dir: Path) -> Path:
@@ -901,14 +933,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "all": "all",
             }
             mapped_envs = [env_aliases.get(env, env) for env in cast(list[str], envs)]
-            args.extend(["--env", *mapped_envs])
+            for env in mapped_envs:
+                args.extend(["--env", env])
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
+        if extra.get("no_docker") is True:
+            args.append("--no-docker")
         # Agent runtime selection
         agent = extra.get("agent")
         if agent == "eliza" or extra.get("elizaos") is True:
-            args.extend(["--runtime", "elizaos"])
+            args.extend(["--runtime", "bridge"])
         else:
             args.extend(["--runtime", "mock"])
         _ = model
@@ -947,6 +982,19 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         quick = extra.get("quick")
         if quick is True:
             args.append("--quick")
+        context_lengths = extra.get("context_lengths")
+        if isinstance(context_lengths, list) and all(isinstance(x, int) for x in context_lengths):
+            args.extend(["--context-lengths", ",".join(str(x) for x in cast(list[int], context_lengths))])
+        elif isinstance(context_lengths, str) and context_lengths.strip():
+            args.extend(["--context-lengths", context_lengths.strip()])
+        positions = extra.get("positions")
+        if isinstance(positions, list) and all(isinstance(x, str) for x in positions):
+            args.extend(["--positions", ",".join(cast(list[str], positions))])
+        elif isinstance(positions, str) and positions.strip():
+            args.extend(["--positions", positions.strip()])
+        tasks_per_position = extra.get("tasks_per_position")
+        if isinstance(tasks_per_position, int) and tasks_per_position > 0:
+            args.extend(["--tasks-per-position", str(tasks_per_position)])
         _ = model
         return args
 
@@ -1232,16 +1280,26 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if agent == "eliza":
             args.extend(["--real-llm", "--provider", "eliza"])
         else:
-            if model.provider:
+            provider_name = (model.provider or "").strip().lower()
+            if model.provider and provider_name != "mock":
                 args.extend(["--provider", model.provider])
             real_llm = extra.get("real_llm")
             if real_llm is True:
                 args.append("--real-llm")
+            if model.model:
+                if provider_name == "groq":
+                    args.extend(["--groq-small-model", model.model])
+                    args.extend(["--groq-large-model", model.model])
+                else:
+                    args.extend(["--model", model.model])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
+        max_steps = extra.get("max_steps")
+        if isinstance(max_steps, int) and max_steps > 0:
+            args.extend(["--max-steps", str(max_steps)])
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
@@ -1307,22 +1365,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
         The explorer is env-driven (no CLI flags). Caller propagates settings
         via environment variables: ``MODEL_NAME``, ``MAX_MESSAGES``,
-        ``ENVIRONMENT_CONFIG``, ``USE_EXTERNAL_SURFPOOL``, and ``MODE``
-        (set ``MODE=eliza`` to route LLM calls through the elizaOS TS
-        benchmark server instead of an in-process AgentRuntime).
+        ``ENVIRONMENT_CONFIG``, ``USE_EXTERNAL_SURFPOOL``, and ``OUTPUT_DIR``.
         """
         args = [
-            python, "-m", "benchmarks.solana.eliza_explorer",
+            python, "-m", "benchmarks.solana.eliza_explorer", "--output-dir", str(output_dir),
         ]
         # All knobs flow through env vars read by ``eliza_explorer.main``.
         _ = model
         _ = extra
-        _ = output_dir
         return args
 
     def _solana_result(output_dir: Path) -> Path:
-        gym_metrics = repo_root / "benchmarks" / "solana" / "solana-gym-env" / "metrics"
-        return find_latest_file(gym_metrics, glob_pattern="eliza_*_metrics.json")
+        return find_latest_file(output_dir, glob_pattern="eliza_*_metrics.json")
 
     def _osworld_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for OSWorld benchmark."""
@@ -1380,10 +1434,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     ) -> list[str]:
         """Build command for HyperliquidBench.
 
-        Defaults to ``--mode python`` (in-process elizaos.AgentRuntime). When
-        the caller asks for the eliza bridge (via ``model.provider == "eliza"``
-        or ``extra.agent == "eliza"``), routes plan generation through the TS
-        benchmark server. Always runs in ``--demo`` mode unless the caller
+        Defaults to the eliza TypeScript bridge. Set ``extra.agent`` to
+        ``deterministic`` or ``python`` for the local deterministic smoke path.
+        Always runs in ``--demo`` mode unless the caller
         explicitly opts in to ``--no-demo`` (which requires ``HL_PRIVATE_KEY``
         and a non-mainnet network).
         """
@@ -1396,10 +1449,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         agent = extra.get("agent")
         provider_name = (model.provider or "").strip().lower()
-        if agent == "eliza" or provider_name == "eliza":
-            args.extend(["--mode", "eliza"])
+        if agent in {"deterministic", "python"}:
+            args.extend(["--mode", "deterministic"])
         else:
-            args.extend(["--mode", "python"])
+            args.extend(["--mode", "eliza"])
 
         if model.model:
             args.extend(["--model", model.model])
@@ -1449,19 +1502,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="hyperliquid_bench-*.json")
 
     def _gauntlet_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        """Build command for Solana Gauntlet benchmark with ElizaOS agent.
-
-        Defaults to ``agents/eliza_agent.py`` (in-process Python AgentRuntime).
-        When the caller asks for the eliza bridge (via ``model.provider == "eliza"``
-        or ``extra.agent == "eliza"``), routes through ``agents/eliza_bridge_agent.py``
-        which uses the elizaOS TypeScript benchmark bridge instead.
-        """
+        """Build command for Solana Gauntlet benchmark with Eliza bridge agent."""
         agent = extra.get("agent")
-        provider_name = (model.provider or "").strip().lower()
-        if agent == "eliza" or provider_name == "eliza":
-            agent_path = repo("benchmarks/gauntlet/agents/eliza_bridge_agent.py")
-        else:
+        if agent == "python":
             agent_path = repo("benchmarks/gauntlet/agents/eliza_agent.py")
+        else:
+            agent_path = repo("benchmarks/gauntlet/agents/eliza_bridge_agent.py")
 
         args = [
             python,
@@ -1670,15 +1716,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
         Routes through the click-based ``benchmark.harness`` CLI installed by
         the ``trust-marketplace-benchmark`` pyproject. Defaults to the bundled
-        ``trenches-chat-dataset`` checked into the benchmark dir; callers can
-        override via ``data_dir``. Defaults to the ``baseline`` system unless
-        another system is requested via ``extra.system`` or ``model.provider``.
+        smoke fixture when the full ``trenches-chat-dataset`` checkout is not
+        present; callers can override via ``data_dir``. Defaults to the
+        ``baseline`` system unless another system is requested via
+        ``extra.system`` or ``model.provider``.
         """
         data_dir_raw = extra.get("data_dir")
         if isinstance(data_dir_raw, str) and data_dir_raw.strip():
             data_dir = data_dir_raw.strip()
         else:
-            data_dir = "trenches-chat-dataset/data"
+            full_data_dir = repo_root / "benchmarks/social-alpha/trenches-chat-dataset/data"
+            data_dir = "trenches-chat-dataset/data" if full_data_dir.exists() else "fixtures/smoke-data"
         args = [
             python,
             "-m",
@@ -1693,10 +1741,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             system = system_raw.strip()
         else:
             provider_lower = (model.provider or "").strip().lower()
-            if provider_lower in {"eliza-bridge", "eliza-ts"}:
+            if provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
                 system = "eliza-bridge"
-            elif provider_lower == "eliza":
-                system = "eliza"
             else:
                 system = "baseline"
         args.extend(["--system", system])
@@ -1722,6 +1768,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _trust_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         handler_raw = extra.get("handler")
         handler = handler_raw if isinstance(handler_raw, str) and handler_raw.strip() else "oracle"
+        provider_name = (model.provider or "").strip().lower()
+        if handler == "eliza" and provider_name in {"openai", "groq", "openrouter"}:
+            handler = "llm"
         args = [
             python,
             repo("benchmarks/trust/run_benchmark.py"),
@@ -1730,7 +1779,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir / "trust-results.json"),
         ]
-        if handler == "eliza":
+        if handler in {"eliza", "llm"}:
             if model.provider:
                 args.extend(["--model-provider", model.provider])
             if model.model:
@@ -1757,9 +1806,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """Build command for WebShop benchmark.
 
         Defaults to the bundled sample task set and disables trajectory logging
-        unless the caller opts in. Provider/model selection is forwarded so the
-        in-process ``elizaos`` agent picks up the requested LLM (or the
-        ``--mock`` flag bypasses it for smoke tests).
+        unless the caller opts in. Non-mock runs route through the Eliza
+        TypeScript benchmark bridge; ``--mock`` bypasses it for smoke tests.
         """
         args = [
             python,
@@ -1771,12 +1819,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_lower = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")
-        elif extra.get("bridge") is True or provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
-            args.append("--bridge")
-            if model.model:
-                args.extend(["--model", model.model])
         else:
-            if model.provider:
+            args.append("--bridge")
+            if model.provider and provider_lower not in {"eliza", "eliza-bridge", "eliza-ts"}:
                 args.extend(["--model-provider", model.provider])
             if model.model:
                 args.extend(["--model", model.model])
@@ -2261,7 +2306,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 paths=(),
                 notes=(
                     "Requires VM provider: Docker (with KVM), VMware, or VirtualBox. "
-                    "Uses Eliza agent with message_service.handle_message(). "
+                    "Uses the Eliza TypeScript benchmark bridge. "
                     "Set provider_name, path_to_vm (VMware), observation_type, domain, task_id via extra config."
                 ),
             ),
@@ -2278,10 +2323,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 env_vars=(),
                 paths=("benchmarks/HyperliquidBench/dataset/domains-hl.yaml",),
                 notes=(
-                    "Defaults to --mode python (in-process elizaos.AgentRuntime) with --demo "
+                    "Defaults to --mode eliza (eliza TS benchmark server) with --demo "
                     "and --network testnet, so no funds are at risk. "
-                    "Set agent=eliza (or model.provider=eliza) to route plan generation through "
-                    "the eliza TS benchmark server (eliza_adapter.hyperliquid). "
+                    "Set agent=deterministic for the local offline smoke path. "
                     "Live network runs require building the Rust toolchain "
                     "(cd benchmarks/HyperliquidBench && cargo build --release -p hl-runner -p hl-evaluator) "
                     "AND HL_PRIVATE_KEY plus extra.no_demo=true. "
@@ -2391,10 +2435,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel="benchmarks/social-alpha",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("benchmarks/social-alpha/trenches-chat-dataset",),
+                paths=("benchmarks/social-alpha/fixtures/smoke-data",),
                 notes=(
                     "Defaults to the rule-based BaselineSystem (no LLM). Set system=eliza|full|smart|oracle "
                     "via extra to swap implementations; eliza/full additionally need provider keys. "
+                    "Uses the bundled smoke fixture when the full dataset is absent. "
                     "Score: composite Trust Marketplace Score (0..1)."
                 ),
             ),

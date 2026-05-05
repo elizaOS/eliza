@@ -20,9 +20,9 @@
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/cloud-sdk": ["../../../cloud/packages/sdk/dist/index.d.ts"],
-      "@elizaos/core": ["../../../packages/core/dist/node"],
-      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/dist/index.d.ts"],
+      "@elizaos/core": ["../../packages/core/dist/node"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"]
     }
   },
   "include": ["./**/*.ts"],

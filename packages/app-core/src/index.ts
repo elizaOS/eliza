@@ -7,6 +7,15 @@ export {
   readRequestBody,
   readRequestBodyBuffer,
 } from "@elizaos/agent";
+// Inventory constants moved to @elizaos/app-wallet — re-exported for
+// compatibility while consumers migrate.
+// TODO: remove once consumers import from @elizaos/app-wallet.
+export {
+  BSC_GAS_READY_THRESHOLD,
+  HEX_ADDRESS_RE,
+  isAvaxChainName,
+  isBscChainName,
+} from "@elizaos/app-wallet/inventory/constants";
 export type { RestartHandler } from "@elizaos/shared";
 export {
   RESTART_EXIT_CODE,
@@ -29,12 +38,6 @@ export {
 export * from "./bridge/index";
 export * from "./chat/index";
 export * from "./components/index";
-export {
-  BSC_GAS_READY_THRESHOLD,
-  HEX_ADDRESS_RE,
-  isAvaxChainName,
-  isBscChainName,
-} from "./components/inventory/constants";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown";
 export type {
   CompanionInferenceNotice,
@@ -70,6 +73,8 @@ export { CHANNEL_PLUGIN_MAP } from "./runtime/channel-plugin-map";
 export * from "./security/agent-vault-id";
 export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
+
+export * from "./account-pool.js";
 
 export * from "./shell/index";
 export * from "./state/index";

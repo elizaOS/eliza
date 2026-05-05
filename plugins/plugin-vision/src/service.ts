@@ -5,11 +5,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
+  encodeToonValue,
   type IAgentRuntime,
   logger,
   ModelType,
+  recordLlmCall,
   Service,
   type ServiceTypeName,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
 import sharp from "sharp";
 import { AudioCaptureService, type AudioConfig } from "./audio-capture";
@@ -41,6 +44,13 @@ import { VisionModels } from "./vision-models";
 import { VisionWorkerManager } from "./vision-worker-manager";
 
 const execAsync = promisify(exec);
+const SCENE_DESCRIPTION_PROMPT = encodeToonValue({
+  task: "describe_visual_scene",
+  instructions: [
+    "Describe visible people, objects, UI, text, and notable scene changes.",
+    "Keep the answer concise and factual.",
+  ],
+});
 
 interface CameraDevice {
   id: string;
@@ -916,6 +926,19 @@ export class VisionService extends Service {
   }
 
   private async describeSceneWithVLM(imageUrl: string): Promise<string> {
+    return withStandaloneTrajectory(
+      this.runtime,
+      {
+        source: "plugin-vision:scene-description",
+        metadata: { modelType: ModelType.IMAGE_DESCRIPTION },
+      },
+      () => this.describeSceneWithVLMInTrajectory(imageUrl),
+    );
+  }
+
+  private async describeSceneWithVLMInTrajectory(
+    imageUrl: string,
+  ): Promise<string> {
     try {
       // Convert base64 image URL to buffer for Florence-2
       if (imageUrl.startsWith("data:image/")) {
@@ -925,7 +948,26 @@ export class VisionService extends Service {
         // Use Florence-2 for all image descriptions
         if (this.florence2.isInitialized()) {
           try {
-            const result = await this.florence2.analyzeImage(imageBuffer);
+            const result = await recordLlmCall(
+              this.runtime,
+              {
+                model: "florence2-local",
+                systemPrompt: "",
+                userPrompt: encodeToonValue({
+                  task: "describe_visual_scene",
+                  image: {
+                    source: "camera_frame",
+                    mimeType: "image/jpeg",
+                    bytes: imageBuffer.byteLength,
+                  },
+                }),
+                temperature: 0,
+                maxTokens: 0,
+                purpose: "background",
+                actionType: "florence2.analyzeImage",
+              },
+              () => this.florence2.analyzeImage(imageBuffer),
+            );
             if (result.caption) {
               logger.debug(
                 "[VisionService] Florence-2 description:",
@@ -946,7 +988,10 @@ export class VisionService extends Service {
       try {
         const result = await this.runtime.useModel(
           ModelType.IMAGE_DESCRIPTION,
-          imageUrl,
+          {
+            imageUrl,
+            prompt: SCENE_DESCRIPTION_PROMPT,
+          },
         );
 
         if (result && typeof result === "object" && "description" in result) {

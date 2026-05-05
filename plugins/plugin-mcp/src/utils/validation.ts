@@ -24,10 +24,30 @@ export interface ToolSelection {
   readonly noToolAvailable?: boolean;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalReasoning(parsed: Record<string, unknown>): { readonly reasoning?: string } {
+  return typeof parsed.reasoning === "string" ? { reasoning: parsed.reasoning } : {};
+}
+
 export function validateToolSelectionName(
   parsed: unknown,
   state: State
 ): ValidationResult<ToolSelectionName> {
+  if (isRecord(parsed) && parsed.noToolAvailable === true) {
+    return {
+      success: true,
+      data: {
+        serverName: "",
+        toolName: "",
+        noToolAvailable: true,
+        ...optionalReasoning(parsed),
+      },
+    };
+  }
+
   const basicResult = validateJsonSchema<ToolSelectionName>(parsed, toolSelectionNameSchema);
   if (basicResult.success === false) {
     return { success: false, error: basicResult.error };
@@ -59,8 +79,15 @@ export function validateToolSelectionArgument(
   parsed: unknown,
   toolInputSchema: Readonly<Record<string, unknown>>
 ): ValidationResult<ToolSelectionArgument> {
+  const normalizedParsed =
+    isRecord(parsed) &&
+    typeof parsed.toolArguments === "string" &&
+    ["", "{}"].includes(parsed.toolArguments.trim())
+      ? { ...parsed, toolArguments: {} }
+      : parsed;
+
   const basicResult = validateJsonSchema<ToolSelectionArgument>(
-    parsed,
+    normalizedParsed,
     toolSelectionArgumentSchema
   );
   if (basicResult.success === false) {
@@ -81,6 +108,18 @@ export function validateToolSelectionArgument(
 }
 
 export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
+  if (isRecord(selection) && selection.noResourceAvailable === true) {
+    return {
+      success: true,
+      data: {
+        serverName: "",
+        uri: "",
+        noResourceAvailable: true,
+        ...optionalReasoning(selection),
+      },
+    };
+  }
+
   return validateJsonSchema<ResourceSelection>(selection, ResourceSelectionSchema);
 }
 
@@ -167,14 +206,16 @@ function createFeedbackPrompt(
   itemsDescription: string,
   userMessage: string
 ): string {
-  return `Error parsing JSON: ${errorMessage}
+  return `The previous ${itemType} selection could not be parsed or validated: ${errorMessage}
 
 Your original response:
 ${originalResponse}
 
-Please try again with valid JSON for ${itemType} selection.
+Reply again as compact TOON/plain text for ${itemType} selection.
 Available ${itemType}s:
 ${itemsDescription}
 
-User request: ${userMessage}`;
+User request: ${userMessage}
+
+Use exact names from the list. For tools, use serverName, toolName, reasoning, and noToolAvailable. For resources, use serverName, uri, reasoning, and noResourceAvailable.`;
 }

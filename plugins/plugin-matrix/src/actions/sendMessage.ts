@@ -11,7 +11,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
 import type { MatrixService } from "../service.js";
 import { isValidMatrixRoomAlias, isValidMatrixRoomId, MATRIX_SERVICE_NAME } from "../types.js";
 
@@ -26,13 +26,9 @@ Extract the following:
 1. text: The message text to send
 2. roomId: The room ID (!room:server) or alias (#alias:server), or "current" for the current room
 
-Respond with a JSON object like:
-{
-  "text": "The message to send",
-  "roomId": "current"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+text: The message to send
+roomId: current`;
 
 interface SendMessageParams {
   text: string;
@@ -86,7 +82,7 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response as string);
+      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

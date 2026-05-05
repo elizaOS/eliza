@@ -141,6 +141,8 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["OPENAI_SMALL_MODEL"] = request.model
     env["GROQ_LARGE_MODEL"] = request.model
     env["GROQ_SMALL_MODEL"] = request.model
+    env["OPENROUTER_LARGE_MODEL"] = request.model
+    env["OPENROUTER_SMALL_MODEL"] = request.model
     provider = request.provider.strip().lower()
     if provider in PROVIDER_DUMMY_KEY:
         provider_key = PROVIDER_KEY_ENV.get(provider)

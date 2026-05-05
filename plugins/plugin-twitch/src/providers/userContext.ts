@@ -25,6 +25,7 @@ export const userContextProvider: Provider = {
   descriptionCompressed: "provide information Twitch user current conversation",
 
   dynamic: true,
+  contexts: ["social", "connectors"],
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -42,7 +43,7 @@ export const userContextProvider: Provider = {
     const twitchService =
       runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
 
-    if (!twitchService || !twitchService.isConnected()) {
+    if (!twitchService?.isConnected()) {
       return {
         data: {},
         values: {},

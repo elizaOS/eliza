@@ -9,8 +9,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   type AgentRuntime,
+  assertActiveTrajectoryForLlmCall,
   EventType,
   getTrajectoryContext,
+  isLlmGenerationModelType,
+  normalizeTrajectoryLlmPurpose,
 } from "@elizaos/core";
 import { detectRuntimeModel } from "../api/agent-model.js";
 import {
@@ -763,6 +766,18 @@ export function installPromptOptimizations(
 
   runtime.useModel = (async (...args: Parameters<typeof originalUseModel>) => {
     const modelType = String(args[0] ?? "").toUpperCase();
+    const llmPurpose = normalizeTrajectoryLlmPurpose(
+      getTrajectoryContext()?.purpose,
+      modelType === "ACTION_PLANNER" ? "planner" : "action",
+    );
+    if (isLlmGenerationModelType(modelType)) {
+      assertActiveTrajectoryForLlmCall({
+        actionType: "runtime.useModel",
+        modelType,
+        purpose: llmPurpose,
+      });
+    }
+
     const normalizedTrajectoryStepId = getActiveTrajectoryStepId();
     const trajectoryLogger = normalizedTrajectoryStepId
       ? ensureTrajectoryLoggerTracking(runtime)
@@ -819,7 +834,7 @@ export function installPromptOptimizations(
     // budgets still apply because providers cannot accept overflow prompts.
     if (isTextLarge && !shouldPreserveFullPromptForTrajectoryCapture()) {
       // --- Context-aware action compaction (when enabled) ---
-      // Strips <params> from actions not relevant to the user's intent.
+      // Strips param detail from actions not relevant to the user's intent.
       // All action names remain visible — only param detail is stripped.
       let workingPrompt = ELIZA_ACTION_COMPACTION
         ? compactActionsForIntent(originalPrompt)
@@ -931,7 +946,7 @@ export function installPromptOptimizations(
         toOptionalNumber(payloadRecord.maxOutputTokens) ??
         outputReserveTokens ??
         0,
-      purpose: "action",
+      purpose: llmPurpose,
       actionType: "runtime.useModel",
       latencyMs: Math.max(0, Date.now() - startedAt),
       promptTokens,

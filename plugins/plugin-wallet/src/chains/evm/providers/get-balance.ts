@@ -4,7 +4,7 @@ import {
   ModelType,
   type Provider,
   type ProviderResult,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { getToken } from "@lifi/sdk";
 import { type Address, formatUnits, parseAbi } from "viem";
@@ -46,7 +46,7 @@ export const tokenBalanceProvider: Provider = {
       maxTokens: 100,
     });
 
-    const parsed = parseKeyValueXml(response);
+    const parsed = parseToonKeyValue(response);
 
     if (!parsed || parsed.error || !parsed.token || !parsed.chain) {
       return { text: "", data: {}, values: {} };

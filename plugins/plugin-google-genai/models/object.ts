@@ -2,8 +2,9 @@ import type {
   IAgentRuntime,
   ModelTypeName,
   ObjectGenerationParams,
+  RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, recordLlmCall } from "@elizaos/core";
 import {
   createGoogleGenAI,
   getLargeModel,
@@ -30,28 +31,45 @@ async function generateObjectByModelType(
   logger.info(`Using ${modelType} model: ${modelName}`);
 
   try {
-    let enhancedPrompt = params.prompt;
-    if (params.schema) {
-      enhancedPrompt += `\n\nPlease respond with a JSON object that follows this schema:\n${JSON.stringify(params.schema, null, 2)}`;
-    }
+    const config = {
+      temperature,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
+      safetySettings: getSafetySettings(),
+      ...(params.schema ? { responseJsonSchema: params.schema } : {}),
+    };
 
-    const response = await genAI.models.generateContent({
+    const details: RecordLlmCallDetails = {
       model: modelName,
-      contents: enhancedPrompt,
-      config: {
-        temperature,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 8192,
-        responseMimeType: "application/json",
-        safetySettings: getSafetySettings(),
-      },
+      systemPrompt: params.schema ? JSON.stringify(params.schema) : "",
+      userPrompt: params.prompt,
+      temperature,
+      maxTokens: 8192,
+      purpose: "external_llm",
+      actionType: `google-genai.${modelType}.generateContent`,
+    };
+
+    const response = await recordLlmCall(runtime, details, async () => {
+      const result = await genAI.models.generateContent({
+        model: modelName,
+        contents: params.prompt,
+        config,
+      });
+      const responseText = result.text || "";
+      details.response = responseText;
+      details.promptTokens = await countTokens(params.prompt);
+      details.completionTokens = await countTokens(responseText);
+      return result;
     });
 
     const text = response.text || "";
 
-    const promptTokens = await countTokens(enhancedPrompt);
-    const completionTokens = await countTokens(text);
+    const promptTokens =
+      details.promptTokens ?? (await countTokens(params.prompt));
+    const completionTokens =
+      details.completionTokens ?? (await countTokens(text));
 
     emitModelUsageEvent(runtime, modelType as ModelTypeName, params.prompt, {
       promptTokens,

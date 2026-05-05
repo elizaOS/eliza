@@ -20,7 +20,7 @@ import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
-import { WALLET_STATUS_WIDGET } from "../components/chat/widgets/wallet-status";
+import { WALLET_STATUS_WIDGET } from "@elizaos/app-wallet/widgets/wallet-status";
 
 // -- Static component registry -----------------------------------------------
 

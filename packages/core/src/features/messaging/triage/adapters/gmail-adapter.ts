@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "../../../../types/index.ts";
-import type { MessageSource } from "../types.ts";
+import type { MessageAdapterCapabilities, MessageSource } from "../types.ts";
 import { BaseMessageAdapter } from "./base.ts";
 
 /**
@@ -14,5 +14,18 @@ export class GmailMessageAdapter extends BaseMessageAdapter {
 			runtime.getService("gmail") !== null &&
 			runtime.getService("gmail") !== undefined
 		);
+	}
+
+	capabilities(): MessageAdapterCapabilities {
+		// Gmail accounts are world-scoped, labels are explicit channels.
+		// All operational flags default off until the T5X adapter wires them up.
+		return {
+			list: false,
+			search: false,
+			manage: {},
+			send: {},
+			worlds: "multi",
+			channels: "explicit",
+		};
 	}
 }

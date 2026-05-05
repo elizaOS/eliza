@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
   stringToUuid,
   type UUID,
@@ -59,7 +59,7 @@ interface AutonomyServiceLike {
 }
 
 function parseExtraction(text: string): TriggerExtraction {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
   if (!parsed) return {};
   const normalize = (v: unknown): string | undefined => {
     if (v == null) return undefined;

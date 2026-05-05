@@ -1,7 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { parseKeyValueXml } from "@elizaos/core";
+import { parseToonKeyValue } from "@elizaos/core";
 import { config } from "dotenv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -36,7 +36,7 @@ try {
 		hasApiKey = true;
 		callLLM = async (prompt: string) => {
 			const resp = await client.chat.completions.create({
-				model: isGroq ? "llama-3.3-70b-versatile" : "gpt-4o-mini",
+				model: isGroq ? "llama-3.3-70b-versatile" : "gpt-5-mini",
 				max_tokens: 256,
 				messages: [{ role: "user", content: prompt }],
 			});
@@ -77,7 +77,7 @@ data: additional calldata hex string, or empty
 IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
 				const raw = await callLLM(prompt);
-				const parsed = parseKeyValueXml(raw);
+				const parsed = parseToonKeyValue(raw);
 
 				expect(parsed).not.toBeNull();
 				expect(String(parsed?.fromChain).toLowerCase()).toContain("ethereum");

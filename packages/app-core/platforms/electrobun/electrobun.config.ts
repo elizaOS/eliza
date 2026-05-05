@@ -157,17 +157,20 @@ function resolveBrandConfigCopySource({
 	const fileConfig = explicitConfigPath
 		? readJsonFile(path.resolve(explicitConfigPath))
 		: readJsonFile(defaultBrandConfigPath);
+	const configDirName =
+		trimEnv("ELIZA_CONFIG_DIR_NAME") ||
+		(explicitConfigPath &&
+		typeof fileConfig.configDirName === "string" &&
+		fileConfig.configDirName.trim()
+			? fileConfig.configDirName
+			: appName);
 	const brandConfig = {
 		...fileConfig,
 		appName,
 		appId,
 		urlScheme,
 		namespace: namespace || fileConfig.namespace || "elizaos",
-		configDirName:
-			typeof fileConfig.configDirName === "string" &&
-			fileConfig.configDirName.trim()
-				? fileConfig.configDirName
-				: appName,
+		configDirName,
 		...(appDescription
 			? { appDescription }
 			: typeof fileConfig.appDescription === "string"

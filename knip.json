@@ -187,6 +187,9 @@
     "packages/*": {
       "entry": ["src/index.ts", "index.ts"]
     },
+    "plugins/plugin-wallet": {
+      "entry": ["src/index.ts", "src/sdk/index.ts", "index.ts"]
+    },
     "plugins/*": {
       "entry": ["src/index.ts", "index.ts"]
     }

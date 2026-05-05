@@ -16,11 +16,21 @@ import {
   scanProviderCredentials,
 } from "../bridge";
 import type { UiLanguage } from "../i18n";
+import {
+  ANDROID_LOCAL_AGENT_API_BASE,
+  ANDROID_LOCAL_AGENT_LABEL,
+  ANDROID_LOCAL_AGENT_SERVER_ID,
+  readPersistedMobileRuntimeMode,
+} from "../onboarding/mobile-runtime-mode";
+import { isAndroid } from "../platform";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {
+  clearPersistedActiveServer,
   loadPersistedActiveServer,
   loadPersistedOnboardingComplete,
+  savePersistedActiveServer,
   type PersistedActiveServer,
+  savePersistedOnboardingComplete,
 } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
 
@@ -45,6 +55,37 @@ export interface RestoringSessionCtx {
   restoredActiveServer: PersistedActiveServer;
   shouldPreserveCompletedOnboarding: boolean;
   hadPriorOnboarding: boolean;
+}
+
+function isAndroidLocalAgentApiBase(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return (
+      parsed.protocol === "http:" &&
+      parsed.port === "31337" &&
+      (parsed.hostname === "127.0.0.1" ||
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "::1")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isAndroidLocalActiveServer(server: PersistedActiveServer): boolean {
+  return (
+    server.kind === "local" || isAndroidLocalAgentApiBase(server.apiBase)
+  );
+}
+
+function androidLoopbackActiveServer(): PersistedActiveServer {
+  return {
+    id: ANDROID_LOCAL_AGENT_SERVER_ID,
+    kind: "remote",
+    label: ANDROID_LOCAL_AGENT_LABEL,
+    apiBase: ANDROID_LOCAL_AGENT_API_BASE,
+  };
 }
 
 export async function applyRestoredConnection(args: {
@@ -87,6 +128,35 @@ function activeServerToTarget(
   }
 }
 
+export function canRestoreActiveServer(args: {
+  server: PersistedActiveServer;
+  clientApiAvailable: boolean;
+  forceLocal: boolean;
+  isDesktop: boolean;
+}): boolean {
+  if (args.server.apiBase) {
+    return true;
+  }
+
+  if (args.server.kind === "local") {
+    return args.forceLocal || args.isDesktop || args.clientApiAvailable;
+  }
+
+  return false;
+}
+
+function preserveCloudAuthTokenForOnboarding(
+  server: PersistedActiveServer,
+): void {
+  if (server.kind !== "cloud") return;
+  const token = server.accessToken?.trim();
+  if (!token) return;
+  client.setToken(token);
+  if (typeof globalThis !== "undefined") {
+    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ = token;
+  }
+}
+
 /**
  * Runs the restoring-session phase.
  * Probes the local Eliza install and/or API to detect an existing connection,
@@ -110,8 +180,8 @@ export async function runRestoringSession(
 
   const forceLocal = deps.forceLocalBootstrapRef.current;
   deps.forceLocalBootstrapRef.current = false;
-  const persistedActiveServer = loadPersistedActiveServer();
-  const hadPrior = loadPersistedOnboardingComplete();
+  let persistedActiveServer = loadPersistedActiveServer();
+  let hadPrior = loadPersistedOnboardingComplete();
   if (cancelled.current) return;
 
   const desktopInstall =
@@ -136,8 +206,53 @@ export async function runRestoringSession(
     : null;
   if (cancelled.current) return;
 
-  const restoredActiveServer =
+  let restoredActiveServer =
     persistedActiveServer ?? (probed ? probed.activeServer : null);
+
+  if (isAndroid && restoredActiveServer) {
+    const mobileRuntimeMode = readPersistedMobileRuntimeMode();
+    if (
+      isAndroidLocalActiveServer(restoredActiveServer) &&
+      mobileRuntimeMode !== "local"
+    ) {
+      clearPersistedActiveServer();
+      savePersistedOnboardingComplete(false);
+      persistedActiveServer = null;
+      restoredActiveServer = null;
+      hadPrior = false;
+      deps.onboardingCompletionCommittedRef.current = false;
+    } else if (restoredActiveServer.kind === "local") {
+      restoredActiveServer = androidLoopbackActiveServer();
+      persistedActiveServer = restoredActiveServer;
+      savePersistedActiveServer(restoredActiveServer);
+    } else if (!restoredActiveServer.apiBase) {
+      clearPersistedActiveServer();
+      savePersistedOnboardingComplete(false);
+      persistedActiveServer = null;
+      restoredActiveServer = null;
+      hadPrior = false;
+      deps.onboardingCompletionCommittedRef.current = false;
+    }
+  }
+
+  if (
+    restoredActiveServer &&
+    !canRestoreActiveServer({
+      server: restoredActiveServer,
+      clientApiAvailable: client.apiAvailable,
+      forceLocal,
+      isDesktop,
+    })
+  ) {
+    preserveCloudAuthTokenForOnboarding(restoredActiveServer);
+    clearPersistedActiveServer();
+    savePersistedOnboardingComplete(false);
+    persistedActiveServer = null;
+    restoredActiveServer = null;
+    hadPrior = false;
+    deps.onboardingCompletionCommittedRef.current = false;
+  }
+
   const preserveCompleted =
     hadPrior && !deps.onboardingCompletionCommittedRef.current;
 

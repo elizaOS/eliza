@@ -96,7 +96,7 @@ OpenRouter 提供对所有主要提供者模型的访问。使用带有提供者
 | 模型 ID | 描述 |
 |---------|------|
 | `openai/gpt-4o` | GPT-4o 多模态 |
-| `openai/gpt-4o-mini` | 快速高效 |
+| `openai/gpt-5-mini` | 快速高效 |
 | `openai/o1` | 推理模型 |
 | `openai/o3-mini` | 快速推理 |
 

@@ -86,11 +86,11 @@ export OPENAI_API_KEY=sk-...
 
 | Modèle | Contexte | Idéal pour |
 |--------|----------|------------|
-| `gpt-4.1` | 1M | Dernier modèle phare |
-| `gpt-4.1-mini` | 1M | Tâches rapides et économiques |
-| `gpt-4.1-nano` | 1M | Ultra-rapide, coût minimal |
+| `gpt-5.5` | 1M | Dernier modèle phare |
+| `gpt-5-mini` | 1M | Tâches rapides et économiques |
+| `gpt-5.5-nano` | 1M | Ultra-rapide, coût minimal |
 | `gpt-4o` | 128k | Raisonnement multimodal |
-| `gpt-4o-mini` | 128k | Tâches multimodales rapides |
+| `gpt-5-mini` | 128k | Tâches multimodales rapides |
 
 <div id="reasoning-models">
 
@@ -128,7 +128,7 @@ export OPENAI_API_KEY=sk-...
 
 | Type de modèle elizaOS | Modèle OpenAI |
 |------------------------|--------------|
-| `TEXT_SMALL` | `gpt-4o-mini` |
+| `TEXT_SMALL` | `gpt-5-mini` |
 | `TEXT_LARGE` | `gpt-4o` |
 | `TEXT_EMBEDDING` | `text-embedding-3-small` |
 | `IMAGE` | `dall-e-3` |

@@ -10,17 +10,13 @@ Extract the following information about the requested vote:
 - Governor address
 - Chain to execute on
 
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined:
+Respond using TOON like this. Use null for any value that cannot be determined:
+proposalId: proposal ID, or null
+support: 0 for against, 1 for yes, 2 for abstain, or null
+governor: governor contract address, or null
+chain: chain to execute on, or null
 
-```json
-{
-    "proposalId": string | null,
-    "support": number | null,
-    "governor": string | null,
-    "chain": string | null
-}
-```
-
+IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.
 
 
 

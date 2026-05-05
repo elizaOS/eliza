@@ -9,12 +9,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  ModelType,
-  parseJSONObjectFromText,
-} from "@elizaos/core";
+import { composePromptFromState, ModelType } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
+import { parseToonKeyValue } from "../toon.js";
 import { normalizeChannel, TWITCH_SERVICE_NAME } from "../types.js";
 
 const JOIN_CHANNEL_TEMPLATE = `You are helping to extract a Twitch channel name.
@@ -26,12 +23,8 @@ Recent conversation:
 
 Extract the channel name to join (without the # prefix).
 
-Respond with a JSON object like:
-{
-  "channel": "channelname"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+channel: channelname`;
 
 export const joinChannel: Action = {
   name: "TWITCH_JOIN_CHANNEL",
@@ -123,7 +116,9 @@ export const joinChannel: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(
+        String(response),
+      );
       if (parsed?.channel) {
         channelName = normalizeChannel(String(parsed.channel));
         break;

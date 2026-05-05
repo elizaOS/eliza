@@ -562,7 +562,7 @@ class TestElizaExplorerConstruction:
         from benchmarks.evm.eliza_explorer import ElizaExplorer
         explorer = ElizaExplorer(max_messages=3)
         assert explorer.max_messages == 3
-        assert explorer.model_name == "qwen/qwen3-32b"
+        assert explorer.model_name == "openai/gpt-oss-120b"
         assert explorer.chain == "general"
         assert explorer.env_config is None
         assert explorer.run_id.startswith("evm_")
@@ -614,7 +614,7 @@ class TestElizaExplorerConstruction:
         explorer = ElizaExplorer(max_messages=1, run_index=42)
         m = explorer.metrics
         assert m["run_index"] == 42
-        assert m["model"] == "qwen/qwen3-32b"
+        assert m["model"] == "openai/gpt-oss-120b"
         assert isinstance(m["messages"], list)
         assert isinstance(m["errors"], list)
         assert isinstance(m["contracts_discovered"], dict)

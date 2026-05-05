@@ -63,13 +63,12 @@ export function clearCapturedAction(): void {
 // Message handler template
 // ---------------------------------------------------------------------------
 
-const BENCHMARK_MESSAGE_TEMPLATE = `<task>Execute the benchmark task for {{agentName}}.</task>
+const BENCHMARK_MESSAGE_TEMPLATE = `task: Execute the benchmark task for {{agentName}}.
 
-<providers>
+providers:
 {{providers}}
-</providers>
 
-<critical_instructions>
+critical_instructions:
 You are {{agentName}}, an AI agent executing a benchmark task.
 
 STEP 1: Find the "# Benchmark Task" section in the providers above. Read:
@@ -82,57 +81,56 @@ STEP 2: Choose ONE action to take based on the benchmark type.
 STEP 3: Use EXACTLY this response format:
 
 For AgentBench tasks (command-based):
-<response>
-<thought>I will [action] because [reason]</thought>
-<actions>BENCHMARK_ACTION</actions>
-<text>[Brief status]</text>
-<params>
-<BENCHMARK_ACTION>
-<command>[YOUR ACTION - e.g., search[laptop], click[42], ask[question], ls, SELECT * FROM users]</command>
-</BENCHMARK_ACTION>
-</params>
-</response>
+thought: I will [action] because [reason]
+actions: BENCHMARK_ACTION
+text: [Brief status]
+params:
+  BENCHMARK_ACTION:
+    command: [YOUR ACTION - e.g., search[laptop], click[42], ask[question], ls, SELECT * FROM users]
 
 For Tool-calling tasks (tau-bench):
-<response>
-<thought>I need to call [tool] because [reason]</thought>
-<actions>BENCHMARK_ACTION</actions>
-<text>[Brief status]</text>
-<params>
-<BENCHMARK_ACTION>
-<tool_name>[TOOL NAME]</tool_name>
-<arguments>[JSON OBJECT OF ARGUMENTS]</arguments>
-</BENCHMARK_ACTION>
-</params>
-</response>
+thought: I need to call [tool] because [reason]
+actions: BENCHMARK_ACTION
+text: [Brief status]
+params:
+  BENCHMARK_ACTION:
+    tool_name: [TOOL NAME]
+    arguments:
+      key: value
 
 For Web navigation tasks (mind2web):
-<response>
-<thought>I should [operation] on [element] because [reason]</thought>
-<actions>BENCHMARK_ACTION</actions>
-<text>[Brief status]</text>
-<params>
-<BENCHMARK_ACTION>
-<operation>[CLICK|TYPE|SELECT]</operation>
-<element_id>[BACKEND NODE ID]</element_id>
-<value>[TEXT FOR TYPE/SELECT, empty for CLICK]</value>
-</BENCHMARK_ACTION>
-</params>
-</response>
+thought: I should [operation] on [element] because [reason]
+actions: BENCHMARK_ACTION
+text: [Brief status]
+params:
+  BENCHMARK_ACTION:
+    operation: [CLICK|TYPE|SELECT]
+    element_id: [BACKEND NODE ID]
+    value: [TEXT FOR TYPE/SELECT, empty for CLICK]
 
 For question-answering / text tasks:
-<response>
-<thought>Based on the context, the answer is...</thought>
-<actions>REPLY</actions>
-<text>[YOUR ANSWER HERE]</text>
-</response>
+thought: Based on the context, the answer is...
+actions: REPLY
+text: [YOUR ANSWER HERE]
+
+For JSON-plan tasks (hyperliquid_bench):
+thought: I will provide the requested plan JSON.
+actions: REPLY
+text: {"steps":[...]}
+
+For Vending-Bench tasks:
+thought: I will manage inventory and cash flow.
+actions: REPLY
+text: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
 
 RULES:
 - Always use BENCHMARK_ACTION (not the raw action name) for action-based benchmarks
-- For pure Q&A benchmarks (context-bench), use REPLY with the answer in <text>
+- For pure Q&A benchmarks (context-bench, rlm-bench, gaia), use REPLY with the answer in text
+- For hyperliquid_bench and vending-bench, use REPLY with the exact JSON payload in text
 - Never use REPLY for benchmarks that need tool/command execution
+- Output TOON only. Do not output XML tags or markdown fences.
 - Be precise and decisive — choose the best action immediately
-</critical_instructions>`;
+`;
 
 // ---------------------------------------------------------------------------
 // Provider
@@ -140,6 +138,24 @@ RULES:
 
 function formatContextAsText(ctx: BenchmarkContext): string {
   const sections: string[] = [];
+  const benchmark = ctx.benchmark.trim().toLowerCase();
+  const isQuestionAnswerBenchmark = new Set([
+    "context-bench",
+    "context_bench",
+    "rlm-bench",
+    "rlm_bench",
+    "gaia",
+  ]).has(benchmark);
+  const isJsonPlanBenchmark = new Set([
+    "hyperliquid_bench",
+    "hyperliquid-bench",
+    "hyperliquidbench",
+  ]).has(benchmark);
+  const isJsonActionBenchmark = new Set([
+    "vending-bench",
+    "vending_bench",
+  ]).has(benchmark);
+  const isAdhdBenchmark = benchmark === "adhdbench";
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -167,7 +183,22 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   }
 
   // Tau-bench: tools
-  if (ctx.tools && ctx.tools.length > 0) {
+  if (isQuestionAnswerBenchmark) {
+    sections.push(
+      `Answer the benchmark question directly. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+    sections.push(
+      `Put only the final answer in the response text. Do not include commentary unless the task explicitly asks for it.`,
+    );
+  } else if (isJsonPlanBenchmark) {
+    sections.push(
+      `Return only the requested JSON plan in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isJsonActionBenchmark) {
+    sections.push(
+      `Return only one Vending-Bench JSON action in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (ctx.tools && ctx.tools.length > 0) {
     const toolLines = ctx.tools.map((t) => {
       const name = t.name ?? "unknown";
       const desc = t.description ?? "";
@@ -242,17 +273,27 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `DO NOT respond directly to the customer yet. First call the appropriate tool using BENCHMARK_ACTION.`,
     );
     sections.push(
-      `Your response MUST include <actions>BENCHMARK_ACTION</actions> with <tool_name> and <arguments> params.`,
+      `Your response MUST include actions: BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name and params.BENCHMARK_ACTION.arguments.`,
     );
     sections.push(
       `Only use REPLY after you have gathered all needed information via tool calls.`,
+    );
+  } else if (isAdhdBenchmark) {
+    sections.push(
+      `Select exactly one action from the Available Actions list for the current ADHDBench turn.`,
+    );
+    sections.push(
+      `If the selected action is REPLY, IGNORE, or NONE, put that action name directly in actions.`,
+    );
+    sections.push(
+      `For every other selected action, use BENCHMARK_ACTION and set params.BENCHMARK_ACTION.command to the selected action name exactly.`,
     );
   } else {
     sections.push(
       `Analyze the above context and take the appropriate action using BENCHMARK_ACTION.`,
     );
     sections.push(
-      `Your response MUST include <actions>BENCHMARK_ACTION</actions> with the correct params.`,
+      `Your response MUST include actions: BENCHMARK_ACTION with the correct params.`,
     );
   }
 

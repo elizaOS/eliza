@@ -6,6 +6,9 @@ import {
 	EventType,
 	type IAgentRuntime,
 	logger,
+	type MessageConnectorChatContext,
+	type MessageConnectorTarget,
+	type MessageConnectorUserContext,
 	type Room,
 	Service,
 	type TargetInfo,
@@ -27,6 +30,56 @@ import type {
 	FeishuWorldPayload,
 } from "./types";
 import { FeishuChatType, FeishuEventTypes } from "./types";
+
+function normalizeFeishuQuery(query: string): string {
+	return query.trim().toLowerCase();
+}
+
+function scoreFeishuCandidate(
+	values: Array<string | undefined>,
+	query: string,
+): number {
+	const normalized = normalizeFeishuQuery(query);
+	if (!normalized) {
+		return 0.45;
+	}
+	const candidates = values
+		.filter(
+			(value): value is string =>
+				typeof value === "string" && value.trim().length > 0,
+		)
+		.map((value) => value.trim().toLowerCase());
+	if (candidates.some((candidate) => candidate === normalized)) {
+		return 1;
+	}
+	return candidates.some((candidate) => candidate.includes(normalized))
+		? 0.8
+		: 0;
+}
+
+function feishuChatToConnectorTarget(
+	chat: FeishuChat,
+	score = 0.55,
+	roomId?: UUID,
+): MessageConnectorTarget {
+	return {
+		target: {
+			source: FEISHU_SERVICE_NAME,
+			channelId: chat.chatId,
+			roomId,
+		},
+		label: chat.name || chat.chatId,
+		kind: chat.chatType === FeishuChatType.P2P ? "user" : "group",
+		description: chat.description || "Feishu/Lark chat",
+		score,
+		contexts: ["social", "connectors"],
+		metadata: {
+			chatType: chat.chatType,
+			ownerOpenId: chat.ownerOpenId,
+			tenantKey: chat.tenantKey,
+		},
+	};
+}
 
 /**
  * Feishu service for ElizaOS.
@@ -462,11 +515,114 @@ export class FeishuService extends Service {
 		serviceInstance: FeishuService,
 	): void {
 		if (serviceInstance?.client && serviceInstance?.messageManager) {
-			runtime.registerSendHandler(
-				"feishu",
-				serviceInstance.handleSendMessage.bind(serviceInstance),
-			);
-			logger.info("[Feishu] Registered send handler");
+			const sendHandler =
+				serviceInstance.handleSendMessage.bind(serviceInstance);
+
+			if (typeof runtime.registerMessageConnector === "function") {
+				runtime.registerMessageConnector({
+					source: FEISHU_SERVICE_NAME,
+					label: "Feishu/Lark",
+					capabilities: [
+						"send_message",
+						"send_card",
+						"send_image",
+						"send_file",
+					],
+					supportedTargetKinds: ["group", "room", "user", "channel"],
+					contexts: ["social", "connectors"],
+					description:
+						"Send Feishu/Lark text, card, image, and file messages to known chats.",
+					sendHandler,
+					resolveTargets: async (query, context) => {
+						const chats = await serviceInstance.listConnectorChats(
+							context.runtime,
+						);
+						return chats
+							.map(({ chat, roomId }) => ({
+								chat,
+								roomId,
+								score: scoreFeishuCandidate(
+									[chat.chatId, chat.name, chat.description, chat.ownerOpenId],
+									query,
+								),
+							}))
+							.filter(({ score }) => score > 0)
+							.sort((left, right) => right.score - left.score)
+							.slice(0, 10)
+							.map(({ chat, score, roomId }) =>
+								feishuChatToConnectorTarget(chat, score, roomId),
+							);
+					},
+					listRecentTargets: async (context) =>
+						(await serviceInstance.listConnectorChats(context.runtime))
+							.slice(0, 10)
+							.map(({ chat, roomId }) =>
+								feishuChatToConnectorTarget(chat, 0.55, roomId),
+							),
+					listRooms: async (context) =>
+						(await serviceInstance.listConnectorChats(context.runtime)).map(
+							({ chat, roomId }) =>
+								feishuChatToConnectorTarget(chat, 0.55, roomId),
+						),
+					getChatContext: async (target, context) => {
+						const room = target.roomId
+							? await context.runtime.getRoom(target.roomId)
+							: null;
+						const chatId = String(
+							target.channelId ?? room?.channelId ?? "",
+						).trim();
+						if (!chatId) {
+							return null;
+						}
+						const chat =
+							serviceInstance.knownChats.get(chatId) ||
+							({
+								chatId,
+								chatType:
+									room?.type === ChannelType.DM
+										? FeishuChatType.P2P
+										: FeishuChatType.GROUP,
+								name: room?.name,
+							} satisfies FeishuChat);
+						return {
+							target: {
+								source: FEISHU_SERVICE_NAME,
+								roomId: target.roomId,
+								channelId: chatId,
+							},
+							label: chat.name || chat.chatId,
+							summary:
+								chat.chatType === FeishuChatType.P2P
+									? "Feishu/Lark direct chat"
+									: "Feishu/Lark group chat",
+							metadata: {
+								chatType: chat.chatType,
+								ownerOpenId: chat.ownerOpenId,
+								tenantKey: chat.tenantKey,
+							},
+						} satisfies MessageConnectorChatContext;
+					},
+					getUserContext: async (entityId, context) => {
+						const entity =
+							typeof context.runtime.getEntityById === "function"
+								? await context.runtime.getEntityById(String(entityId) as UUID)
+								: null;
+						if (!entity) {
+							return null;
+						}
+						return {
+							entityId,
+							label: entity.names?.[0],
+							aliases: entity.names,
+							handles: {},
+							metadata: entity.metadata,
+						} satisfies MessageConnectorUserContext;
+					},
+				});
+			} else {
+				runtime.registerSendHandler(FEISHU_SERVICE_NAME, sendHandler);
+			}
+			logger.info("[Feishu] Registered message connector");
 		} else {
 			logger.warn(
 				"[Feishu] Cannot register send handler - client not initialized",
@@ -517,17 +673,73 @@ export class FeishuService extends Service {
 		// Copy over Feishu-specific fields if present
 		// Card can be passed via data.card or metadata
 		const contentData = content.data as Record<string, unknown> | undefined;
-		if (contentData?.card) {
-			feishuContent.card = contentData.card as FeishuMessageContent["card"];
+		const feishuData = (
+			contentData?.feishu && typeof contentData.feishu === "object"
+				? contentData.feishu
+				: contentData
+		) as Record<string, unknown> | undefined;
+		if (feishuData?.card) {
+			feishuContent.card = feishuData.card as FeishuMessageContent["card"];
 		}
-		if (contentData?.imageKey) {
-			feishuContent.imageKey = contentData.imageKey as string;
+		if (feishuData?.imageKey) {
+			feishuContent.imageKey = feishuData.imageKey as string;
 		}
-		if (contentData?.fileKey) {
-			feishuContent.fileKey = contentData.fileKey as string;
+		if (feishuData?.fileKey) {
+			feishuContent.fileKey = feishuData.fileKey as string;
 		}
 
 		await this.messageManager.sendMessage(chatId, feishuContent);
 		logger.info(`[Feishu] Message sent to chat ID: ${chatId}`);
+	}
+
+	async sendRoomMessage(target: string, content: Content): Promise<void> {
+		await this.handleSendMessage(
+			this.runtime,
+			{ source: FEISHU_SERVICE_NAME, channelId: target } as TargetInfo,
+			content,
+		);
+	}
+
+	async sendDirectMessage(target: string, content: Content): Promise<void> {
+		await this.sendRoomMessage(target, content);
+	}
+
+	private async listConnectorChats(
+		runtime: IAgentRuntime,
+	): Promise<Array<{ chat: FeishuChat; roomId?: UUID }>> {
+		const chats = new Map<string, { chat: FeishuChat; roomId?: UUID }>();
+		for (const chat of this.knownChats.values()) {
+			chats.set(chat.chatId, { chat });
+		}
+
+		if (typeof runtime.getRoomsForParticipant !== "function") {
+			return Array.from(chats.values());
+		}
+
+		const roomIds = await runtime
+			.getRoomsForParticipant(runtime.agentId)
+			.catch(() => [] as UUID[]);
+		for (const roomId of roomIds) {
+			const room = await runtime.getRoom(roomId).catch(() => null);
+			if (room?.source !== FEISHU_SERVICE_NAME || !room.channelId) {
+				continue;
+			}
+			const known = chats.get(room.channelId)?.chat;
+			chats.set(room.channelId, {
+				chat:
+					known ||
+					({
+						chatId: room.channelId,
+						chatType:
+							room.type === ChannelType.DM
+								? FeishuChatType.P2P
+								: FeishuChatType.GROUP,
+						name: room.name,
+					} satisfies FeishuChat),
+				roomId,
+			});
+		}
+
+		return Array.from(chats.values());
 	}
 }

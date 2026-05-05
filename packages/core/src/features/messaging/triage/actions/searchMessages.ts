@@ -1,0 +1,95 @@
+import { logger } from "../../../../logger.ts";
+import type {
+	Action,
+	ActionExample,
+	ActionResult,
+	HandlerCallback,
+	HandlerOptions,
+	IAgentRuntime,
+	Memory,
+	State,
+} from "../../../../types/index.ts";
+import { getDefaultTriageService } from "../triage-service.ts";
+import { parseSearchMessagesParams } from "./_shared.ts";
+
+export const searchMessagesAction: Action = {
+	name: "SEARCH_MESSAGES",
+	description:
+		"Search across connected message channels with combinable filters: source/connector, world (account), channel, sender, content keyword, tags, time range. Returns merged hits with citations.",
+	descriptionCompressed:
+		"search msgs cross-connector: filters source world channel sender content tags since until limit; combinable any-subset",
+	similes: [
+		"SEARCH_INBOX",
+		"FIND_MESSAGE",
+		"SEARCH_EMAIL",
+		"SEARCH_CHATS",
+		"CROSS_CHANNEL_SEARCH",
+	],
+	examples: [
+		[
+			{
+				name: "User",
+				content: { text: "Find emails from Alice about the launch this week" },
+			},
+			{
+				name: "Agent",
+				content: {
+					text: "Searching across connected channels.",
+					action: "SEARCH_MESSAGES",
+				},
+			},
+		],
+	] as ActionExample[][],
+
+	validate: async (
+		_runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+	): Promise<boolean> => true,
+
+	handler: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		const filters = parseSearchMessagesParams(options);
+		const service = getDefaultTriageService();
+		const hits = await service.search(runtime, filters);
+
+		const sourcesHit = new Set(hits.map((m) => m.source));
+		const text =
+			hits.length === 0
+				? "No matching messages found across connected channels."
+				: `Found ${hits.length} match(es) across ${sourcesHit.size} channel(s).`;
+
+		logger.info(
+			`[SearchMessages] ${hits.length} hits across [${[...sourcesHit].join(",")}]`,
+		);
+
+		if (callback) {
+			await callback({ text, action: "SEARCH_MESSAGES" });
+		}
+
+		return {
+			success: true,
+			text,
+			data: {
+				count: hits.length,
+				messages: hits.map((m) => ({
+					id: m.id,
+					source: m.source,
+					worldId: m.worldId ?? null,
+					channelId: m.channelId ?? null,
+					from: m.from.identifier,
+					subject: m.subject ?? null,
+					snippet: m.snippet,
+					receivedAtMs: m.receivedAtMs,
+					tags: m.tags ?? [],
+					priority: m.triageScore?.priority ?? null,
+				})),
+			},
+		};
+	},
+};

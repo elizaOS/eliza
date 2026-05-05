@@ -6,7 +6,6 @@
 
 export { LpManagerAgent, loadConfigFromEnv } from "./agent";
 export { character } from "./character";
-export { LpMonitoringService } from "./services/LpMonitoringService";
 export type {
   AgentStatus,
   LpAgentConfig,

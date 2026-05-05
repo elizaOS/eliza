@@ -1042,7 +1042,7 @@ POST /api/eliza/rooms/{roomId}/messages
 
 **Features**:
 
-- AI-assisted character building using GPT-4o-mini
+- AI-assisted character building using gpt-5-mini
 - Progressive JSON generation
 - Live preview of character definition
 - Import/export elizaOS-compatible JSON

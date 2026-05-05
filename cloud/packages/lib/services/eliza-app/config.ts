@@ -7,6 +7,7 @@
  */
 
 import { getPromptPreset, type PromptPreset } from "@/lib/eliza/prompt-presets";
+import { OPENROUTER_DEFAULT_TEXT_MODEL } from "@/lib/models";
 import { logger } from "@/lib/utils/logger";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -37,8 +38,8 @@ function optionalRuntimeEnv(name: string, fallback = ""): string {
   return process.env[name] || (!isProduction ? fallback : "");
 }
 
-const ELIZA_APP_SMALL_MODEL = process.env.ELIZA_APP_SMALL_MODEL || "minimax/minimax-m2.7";
-const ELIZA_APP_LARGE_MODEL = process.env.ELIZA_APP_LARGE_MODEL || "anthropic/claude-sonnet-4.6";
+const ELIZA_APP_SMALL_MODEL = process.env.ELIZA_APP_SMALL_MODEL || OPENROUTER_DEFAULT_TEXT_MODEL;
+const ELIZA_APP_LARGE_MODEL = process.env.ELIZA_APP_LARGE_MODEL || OPENROUTER_DEFAULT_TEXT_MODEL;
 
 export const elizaAppConfig = {
   // Frontend URL (the consumer-facing app, e.g. eliza.app)

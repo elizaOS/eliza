@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
 import type {
   SwarmCoordinatorContext,
   TaskContext,
@@ -70,41 +70,40 @@ type ScreenshotSemanticResult = {
   contentVerificationError?: string;
 };
 
-function extractJsonBlock(raw: string): string {
-  const trimmed = raw.trim();
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  return (fenceMatch?.[1] ?? trimmed).trim();
+function normalizeValidationResponse(parsed: unknown): ValidationResponse | null {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  const verdict = record.verdict;
+  const summary =
+    typeof record.summary === "string" ? record.summary.trim() : "";
+  if (
+    (verdict !== "pass" && verdict !== "revise" && verdict !== "escalate") ||
+    !summary
+  ) {
+    return null;
+  }
+  const followUpPrompt =
+    typeof record.followUpPrompt === "string"
+      ? record.followUpPrompt.trim()
+      : "";
+  const checklist = Array.isArray(record.checklist)
+    ? record.checklist.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      )
+    : undefined;
+  return {
+    verdict,
+    summary,
+    ...(followUpPrompt ? { followUpPrompt } : {}),
+    ...(checklist && checklist.length > 0 ? { checklist } : {}),
+  };
 }
 
 function parseValidationResponse(raw: string): ValidationResponse | null {
-  try {
-    const parsed = JSON.parse(
-      extractJsonBlock(raw),
-    ) as Partial<ValidationResponse>;
-    const verdict = parsed.verdict;
-    const summary = parsed.summary?.trim();
-    if (
-      (verdict !== "pass" && verdict !== "revise" && verdict !== "escalate") ||
-      !summary
-    ) {
-      return null;
-    }
-    const followUpPrompt = parsed.followUpPrompt?.trim();
-    const checklist = Array.isArray(parsed.checklist)
-      ? parsed.checklist.filter(
-          (item): item is string =>
-            typeof item === "string" && item.trim().length > 0,
-        )
-      : undefined;
-    return {
-      verdict,
-      summary,
-      ...(followUpPrompt ? { followUpPrompt } : {}),
-      ...(checklist && checklist.length > 0 ? { checklist } : {}),
-    };
-  } catch {
-    return null;
-  }
+  return normalizeValidationResponse(parseToonKeyValue<Record<string, unknown>>(raw));
 }
 
 function getValidationRootDir(): string {
@@ -636,8 +635,13 @@ function buildValidationPrompt(
 
   return [
     "You are validating whether an orchestrated task is actually finished.",
-    "Return strict JSON only with this shape:",
-    '{"verdict":"pass|revise|escalate","summary":"short summary","followUpPrompt":"only if verdict=revise","checklist":["optional evidence notes"]}',
+    "Return TOON only with this shape:",
+    "verdict: pass",
+    "summary: short summary",
+    "followUpPrompt: only if verdict=revise",
+    "checklist[2]:",
+    "  optional evidence note",
+    "  optional evidence note",
     "",
     `Task title: ${task.label}`,
     `Original request: ${task.originalTask}`,

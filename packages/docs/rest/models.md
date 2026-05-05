@@ -86,7 +86,7 @@ List available AI models. Optionally filter by a specific provider or refresh th
   "providers": {
     "openai": [
       { "id": "gpt-4o", "name": "GPT-4o", "category": "chat" },
-      { "id": "gpt-4o-mini", "name": "GPT-4o Mini", "category": "chat" },
+      { "id": "gpt-5-mini", "name": "GPT-4o Mini", "category": "chat" },
       { "id": "text-embedding-3-large", "name": "text-embedding-3-large", "category": "embedding" }
     ],
     "anthropic": [

@@ -35,6 +35,26 @@ export class MessageRefStore {
 		return null;
 	}
 
+	addTag(messageId: string, tag: string): MessageRef | null {
+		const existing = this.messages.get(messageId);
+		if (!existing) return null;
+		const tags = existing.tags ? [...existing.tags] : [];
+		if (!tags.includes(tag)) tags.push(tag);
+		const next: MessageRef = { ...existing, tags };
+		this.messages.set(messageId, next);
+		return next;
+	}
+
+	removeTag(messageId: string, tag: string): MessageRef | null {
+		const existing = this.messages.get(messageId);
+		if (!existing) return null;
+		if (!existing.tags || existing.tags.length === 0) return existing;
+		const tags = existing.tags.filter((t) => t !== tag);
+		const next: MessageRef = { ...existing, tags };
+		this.messages.set(messageId, next);
+		return next;
+	}
+
 	saveDraft(record: DraftRecord): void {
 		this.drafts.set(record.draftId, record);
 	}
@@ -50,6 +70,22 @@ export class MessageRefStore {
 			...existing,
 			sent: true,
 			sentExternalId: externalId,
+		};
+		this.drafts.set(draftId, next);
+		return next;
+	}
+
+	markDraftScheduled(
+		draftId: string,
+		sendAtMs: number,
+		scheduledId: string,
+	): DraftRecord | null {
+		const existing = this.drafts.get(draftId);
+		if (!existing) return null;
+		const next: DraftRecord = {
+			...existing,
+			scheduledForMs: sendAtMs,
+			scheduledId,
 		};
 		this.drafts.set(draftId, next);
 		return next;

@@ -9,6 +9,7 @@ import type {
 	Relationship,
 	UUID,
 } from "../../../types/index.ts";
+import { encodeToonValue } from "../../../utils/toon";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RELATIONSHIPS");
@@ -81,7 +82,11 @@ async function formatRelationships(
 		const lines: string[] = [];
 		for (const [key, value] of Object.entries(metadata)) {
 			if (value && typeof value === "object") {
-				lines.push(`${key}: ${JSON.stringify(value)}`);
+				try {
+					lines.push(encodeToonValue({ [key]: value }).trim());
+				} catch {
+					lines.push(`${key}: ${String(value)}`);
+				}
 			} else {
 				lines.push(`${key}: ${String(value)}`);
 			}

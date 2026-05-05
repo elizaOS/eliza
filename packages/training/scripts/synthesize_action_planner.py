@@ -36,7 +36,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.eliza_record import (  # noqa: E402
-    ACTION_IGNORE, ACTION_REPLY, ACTION_RESPOND, ACTION_STOP,
     build, stable_id,
 )
 

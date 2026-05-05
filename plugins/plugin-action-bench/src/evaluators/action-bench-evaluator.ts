@@ -1,4 +1,4 @@
-import { IAgentRuntime, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { IAgentRuntime, ModelType, parseToonKeyValue } from "@elizaos/core";
 import {
   TestStep,
   StepResult,
@@ -116,12 +116,10 @@ ${config.criteria}
 3. Provide a score from 0-10 (10 = perfect, 0 = completely wrong)
 4. Explain your reasoning
 
-IMPORTANT: Respond ONLY with XML in this exact format:
-<response>
-<score>7</score>
-<passed>true</passed>
-<reasoning>The response meets the criteria because...</reasoning>
-</response>
+Respond with TOON only:
+score: 7
+passed: true
+reasoning: The response meets the criteria because...
 `;
 
       const result = await this.runtime.useModel(ModelType.TEXT_LARGE, {
@@ -129,7 +127,7 @@ IMPORTANT: Respond ONLY with XML in this exact format:
         temperature: 0.1,
       });
 
-      const parsed = parseKeyValueXml(result);
+      const parsed = parseToonKeyValue(result);
       if (!parsed) {
         throw new Error("Failed to parse LLM evaluation response");
       }

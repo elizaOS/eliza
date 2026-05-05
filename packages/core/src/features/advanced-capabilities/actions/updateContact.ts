@@ -20,7 +20,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_CONTACT");
@@ -31,7 +31,7 @@ const UPDATE_CONTACT_TERMS = getValidationKeywordTerms(
 	},
 );
 
-interface UpdateContactXmlResult {
+interface UpdateContactToonResult {
 	contactName?: string;
 	operation?: string;
 	categories?: string;
@@ -110,7 +110,7 @@ export const updateContactAction: Action = {
 			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt,
 			});
-			const parsed = parseKeyValueXml<UpdateContactXmlResult>(response);
+			const parsed = parseToonKeyValue<UpdateContactToonResult>(response);
 			if (!parsed) {
 				logger.warn("[UpdateContact] Failed to parse response");
 				await callback?.({

@@ -158,7 +158,6 @@ def diversify(text: str, *, idx: int, stats: dict) -> str:
     new_text = text
     fired = False
     for i, pat in enumerate(REFUSAL_PATTERNS):
-        prev = new_text
         new_text, n = pat.subn("", new_text, count=1)
         if n:
             fired = True
@@ -236,7 +235,8 @@ def main() -> int:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 stats["decode_errors"] += 1
-                fout.write(line); continue
+                fout.write(line)
+                continue
             rec = transform_record(rec, idx, stats)
             fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
             if stats["total"] % 200000 == 0:

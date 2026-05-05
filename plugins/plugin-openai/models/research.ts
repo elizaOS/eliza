@@ -10,6 +10,7 @@
 import type {
   IAgentRuntime,
   JsonValue,
+  RecordLlmCallDetails,
   ResearchAnnotation,
   ResearchCodeInterpreterCall,
   ResearchFileSearchCall,
@@ -21,7 +22,7 @@ import type {
   ResearchTool,
   ResearchWebSearchCall,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, recordLlmCall } from "@elizaos/core";
 import { getApiKey, getBaseURL, getResearchModel, getResearchTimeout } from "../utils/config";
 
 // ============================================================================
@@ -340,24 +341,37 @@ export async function handleResearch(
 
   logger.debug(`[OpenAI] Research request body: ${JSON.stringify(requestBody, null, 2)}`);
 
-  // Make the API request
-  const response = await fetch(`${baseURL}/responses`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(timeout),
+  const details: RecordLlmCallDetails = {
+    model: modelName,
+    systemPrompt: params.instructions ?? "",
+    userPrompt: params.input,
+    temperature: 0,
+    maxTokens: 0,
+    purpose: "external_llm",
+    actionType: "openai.responses.create",
+  };
+  const data = await recordLlmCall(runtime, details, async () => {
+    // Make the API request
+    const response = await fetch(`${baseURL}/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(timeout),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error(`[OpenAI] Research request failed: ${response.status} ${errorText}`);
+      throw new Error(`Deep research request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const responseData = (await response.json()) as ResponsesApiResponse;
+    details.response = responseData.output_text ?? "";
+    return responseData;
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    logger.error(`[OpenAI] Research request failed: ${response.status} ${errorText}`);
-    throw new Error(`Deep research request failed: ${response.status} ${response.statusText}`);
-  }
-
-  const data = (await response.json()) as ResponsesApiResponse;
 
   if (data.error) {
     logger.error(`[OpenAI] Research API error: ${data.error.message}`);

@@ -86,11 +86,11 @@ export OPENAI_API_KEY=sk-...
 
 | 模型 | 上下文 | 最适合 |
 |------|--------|--------|
-| `gpt-4.1` | 1M | 最新旗舰模型 |
-| `gpt-4.1-mini` | 1M | 快速、经济的任务 |
-| `gpt-4.1-nano` | 1M | 超快速、最低成本 |
+| `gpt-5.5` | 1M | 最新旗舰模型 |
+| `gpt-5-mini` | 1M | 快速、经济的任务 |
+| `gpt-5.5-nano` | 1M | 超快速、最低成本 |
 | `gpt-4o` | 128k | 多模态推理 |
-| `gpt-4o-mini` | 128k | 快速多模态任务 |
+| `gpt-5-mini` | 128k | 快速多模态任务 |
 
 <div id="reasoning-models">
 
@@ -128,7 +128,7 @@ export OPENAI_API_KEY=sk-...
 
 | elizaOS 模型类型 | OpenAI 模型 |
 |-----------------|------------|
-| `TEXT_SMALL` | `gpt-4o-mini` |
+| `TEXT_SMALL` | `gpt-5-mini` |
 | `TEXT_LARGE` | `gpt-4o` |
 | `TEXT_EMBEDDING` | `text-embedding-3-small` |
 | `IMAGE` | `dall-e-3` |

@@ -7,20 +7,68 @@ const providerName = "roblox-game-state";
 export const gameStateProvider: Provider = {
   name: providerName,
   description: "Provides information about the connected Roblox game/experience",
+  descriptionCompressed:
+    "Read Roblox connection state, experience metadata, and messaging topic.",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State
   ): Promise<ProviderResult> => {
+    const apiKeyConfigured = Boolean(runtime.getSetting("ROBLOX_API_KEY"));
+    const universeIdSetting = runtime.getSetting("ROBLOX_UNIVERSE_ID");
+    const universeId = typeof universeIdSetting === "string" ? universeIdSetting : undefined;
+    const configured = apiKeyConfigured && Boolean(universeId);
+
     try {
       const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
       if (!service) {
-        return { text: "", data: {}, values: {} };
+        return {
+          text: [
+            "Roblox:",
+            `configured: ${configured}`,
+            "service: unavailable",
+            `apiKey: ${apiKeyConfigured ? "configured" : "missing"}`,
+            `universeId: ${universeId ?? "missing"}`,
+          ].join("\n"),
+          data: {
+            configured,
+            apiKeyConfigured,
+            universeId: universeId ?? null,
+            serviceAvailable: false,
+            clientAvailable: false,
+          },
+          values: {
+            configured,
+            serviceAvailable: false,
+            clientAvailable: false,
+          },
+        };
       }
 
       const client = service.getClient(runtime.agentId);
       if (!client) {
-        return { text: "", data: {}, values: {} };
+        return {
+          text: [
+            "Roblox:",
+            `configured: ${configured}`,
+            "service: available",
+            "client: unavailable",
+            `apiKey: ${apiKeyConfigured ? "configured" : "missing"}`,
+            `universeId: ${universeId ?? "missing"}`,
+          ].join("\n"),
+          data: {
+            configured,
+            apiKeyConfigured,
+            universeId: universeId ?? null,
+            serviceAvailable: true,
+            clientAvailable: false,
+          },
+          values: {
+            configured,
+            serviceAvailable: true,
+            clientAvailable: false,
+          },
+        };
       }
 
       const config = client.getConfig();
@@ -33,39 +81,68 @@ export const gameStateProvider: Provider = {
       }
 
       const parts: string[] = [
-        "## Roblox Game Connection",
-        "",
-        `- **Universe ID**: ${config.universeId}`,
+        "Roblox:",
+        "configured: true",
+        "service: available",
+        "client: available",
+        `universeId: ${config.universeId}`,
       ];
 
       if (config.placeId) {
-        parts.push(`- **Place ID**: ${config.placeId}`);
+        parts.push(`placeId: ${config.placeId}`);
       }
 
       if (experienceInfo) {
-        parts.push(`- **Experience Name**: ${experienceInfo.name}`);
+        parts.push(`experienceName: ${experienceInfo.name}`);
         if (experienceInfo.playing !== undefined) {
-          parts.push(`- **Active Players**: ${experienceInfo.playing}`);
+          parts.push(`activePlayers: ${experienceInfo.playing}`);
         }
         if (experienceInfo.visits !== undefined) {
-          parts.push(`- **Total Visits**: ${experienceInfo.visits.toLocaleString()}`);
+          parts.push(`totalVisits: ${experienceInfo.visits}`);
         }
-        parts.push(
-          `- **Creator**: ${experienceInfo.creator.name} (${experienceInfo.creator.type})`
-        );
+        parts.push(`creator: ${experienceInfo.creator.name} (${experienceInfo.creator.type})`);
+      } else {
+        parts.push("experience: unavailable");
       }
 
-      parts.push(`- **Messaging Topic**: ${config.messagingTopic}`);
+      parts.push(`messagingTopic: ${config.messagingTopic}`);
 
       if (config.dryRun) {
-        parts.push("");
-        parts.push("*Dry run mode is enabled - actions are simulated*");
+        parts.push("dryRun: true");
       }
 
-      return { text: parts.join("\n"), data: {}, values: {} };
+      return {
+        text: parts.join("\n"),
+        data: {
+          configured: true,
+          serviceAvailable: true,
+          clientAvailable: true,
+          universeId: config.universeId,
+          placeId: config.placeId ?? null,
+          messagingTopic: config.messagingTopic,
+          dryRun: config.dryRun,
+          experienceInfo,
+        },
+        values: {
+          configured: true,
+          serviceAvailable: true,
+          clientAvailable: true,
+          universeId: config.universeId,
+          placeId: config.placeId ?? null,
+          messagingTopic: config.messagingTopic,
+          dryRun: config.dryRun,
+          experienceName: experienceInfo?.name ?? null,
+          activePlayers: experienceInfo?.playing ?? null,
+        },
+      };
     } catch (error) {
       runtime.logger.error({ error }, "Error in gameStateProvider");
-      return { text: "", data: {}, values: {} };
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        text: `Roblox provider error: ${message}`,
+        data: { configured, error: message },
+        values: { configured, error: true },
+      };
     }
   },
 };

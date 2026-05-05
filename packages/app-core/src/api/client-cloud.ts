@@ -68,7 +68,12 @@ type DirectCloudAgent = {
   bridge_url?: string | null;
   webUiUrl?: string | null;
   web_ui_url?: string | null;
+  apiBase?: string | null;
+  api_base?: string | null;
   containerUrl?: string | null;
+  container_url?: string | null;
+  runtimeUrl?: string | null;
+  runtime_url?: string | null;
   errorMessage?: string | null;
   error_message?: string | null;
   createdAt?: string;
@@ -180,12 +185,131 @@ function resolveDirectCloudAuthApiBase(cloudBase: string): string {
   return normalized;
 }
 
+function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
+  const baseUrl = client.getBaseUrl().trim();
+  if (baseUrl && isDirectCloudBase(client)) {
+    return resolveDirectCloudAuthApiBase(baseUrl);
+  }
+  if (shouldUseNativeCloudHttp()) {
+    return resolveDirectCloudAuthApiBase(
+      getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
+    );
+  }
+  return null;
+}
+
+function readDirectCloudToken(client: ElizaClient): string | null {
+  const token =
+    client.getRestAuthToken() ??
+    ((globalThis as Record<string, unknown>)
+      .__ELIZA_CLOUD_AUTH_TOKEN__ as unknown);
+  return typeof token === "string" && token.trim() ? token.trim() : null;
+}
+
+function parseDirectCloudJson(data: unknown): unknown {
+  if (typeof data !== "string") return data;
+  if (!data.trim()) return {};
+  return JSON.parse(data);
+}
+
+function directCloudBodyData(body: BodyInit | null | undefined): unknown {
+  if (body == null) return undefined;
+  if (typeof body !== "string") return body;
+  const trimmed = body.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return body;
+  }
+}
+
+async function directCloudRequest<T>(
+  client: ElizaClient,
+  path: string,
+  init?: RequestInit,
+): Promise<T | null> {
+  const apiBase = resolveDirectCloudClientApiBase(client);
+  if (!apiBase) return null;
+
+  const token = readDirectCloudToken(client);
+  if (!token) return null;
+
+  const url = `${apiBase}${path}`;
+  const method = init?.method ?? "GET";
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+  new Headers(init?.headers).forEach((value, key) => {
+    headers[key] = value;
+  });
+
+  if (shouldUseNativeCloudHttp()) {
+    const data = directCloudBodyData(init?.body);
+    const res = await CapacitorHttp.request({
+      url,
+      method,
+      headers,
+      ...(data !== undefined ? { data } : {}),
+      responseType: "json",
+      connectTimeout: 10_000,
+      readTimeout: 10_000,
+    });
+    if (res.status < 200 || res.status >= 300) {
+      throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
+        status: res.status,
+        data: res.data,
+        url,
+      });
+    }
+    return parseDirectCloudJson(res.data) as T;
+  }
+
+  const res = await fetch(url, { ...init, method, headers });
+  const data = await res.json().catch(async () => ({
+    error: await res.text().catch(() => res.statusText),
+  }));
+  if (!res.ok) {
+    throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
+      status: res.status,
+      data,
+      url,
+    });
+  }
+  return data as T;
+}
+
+function isDirectCloudAuthError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    ((err as { status?: unknown }).status === 401 ||
+      (err as { status?: unknown }).status === 403)
+  );
+}
+
+function directTopUpUrl(): string {
+  return `${DEFAULT_DIRECT_CLOUD_BASE_URL}/dashboard/settings?tab=billing`;
+}
+
 function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
   const id = stringOrNull(input.agentId) ?? stringOrNull(input.id) ?? "";
   const agentName =
     stringOrNull(input.agentName) ?? stringOrNull(input.name) ?? id;
   const bridgeUrl = input.bridgeUrl ?? input.bridge_url ?? null;
   const webUiUrl = input.webUiUrl ?? input.web_ui_url ?? null;
+  const runtimeUrl =
+    input.apiBase ??
+    input.api_base ??
+    input.containerUrl ??
+    input.container_url ??
+    input.runtimeUrl ??
+    input.runtime_url ??
+    bridgeUrl ??
+    "";
   const createdAt =
     stringOrNull(input.createdAt) ??
     stringOrNull(input.created_at) ??
@@ -207,7 +331,7 @@ function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
     agent_config: input.agentConfig ?? input.agent_config ?? {},
     created_at: createdAt,
     updated_at: updatedAt,
-    containerUrl: input.containerUrl ?? bridgeUrl ?? "",
+    containerUrl: runtimeUrl,
     webUiUrl,
     database_status:
       stringOrNull(input.databaseStatus) ??
@@ -556,22 +680,164 @@ declare module "./client-base" {
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (directBase) {
+    if (!readDirectCloudToken(this)) {
+      return {
+        connected: false,
+        enabled: true,
+        hasApiKey: false,
+        reason: "not-authenticated",
+        topUpUrl: directTopUpUrl(),
+      };
+    }
+    try {
+      const user = await directCloudRequest<Record<string, unknown>>(
+        this,
+        "/api/v1/user",
+      );
+      const data =
+        user && typeof user.data === "object" && user.data !== null
+          ? (user.data as Record<string, unknown>)
+          : user;
+      return {
+        connected: true,
+        enabled: true,
+        hasApiKey: true,
+        cloudVoiceProxyAvailable: true,
+        userId: typeof data?.id === "string" ? data.id : undefined,
+        organizationId:
+          typeof data?.organization_id === "string"
+            ? data.organization_id
+            : undefined,
+        topUpUrl: directTopUpUrl(),
+      };
+    } catch (err) {
+      if (isDirectCloudAuthError(err)) {
+        return {
+          connected: false,
+          enabled: true,
+          hasApiKey: true,
+          reason: "auth-rejected",
+          topUpUrl: directTopUpUrl(),
+        };
+      }
+      throw err;
+    }
+  }
   return this.fetch("/api/cloud/status");
 };
 
 ElizaClient.prototype.getCloudCredits = async function (this: ElizaClient) {
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (directBase) {
+    if (!readDirectCloudToken(this)) {
+      return {
+        connected: false,
+        balance: null,
+        error: "Not connected to Eliza Cloud.",
+        topUpUrl: directTopUpUrl(),
+      };
+    }
+    try {
+      const data = await directCloudRequest<Record<string, unknown>>(
+        this,
+        "/api/v1/credits/balance",
+      );
+      const balance =
+        typeof data?.balance === "number"
+          ? data.balance
+          : typeof data?.balance === "string"
+            ? Number(data.balance)
+            : null;
+      return {
+        connected: true,
+        balance: Number.isFinite(balance) ? balance : null,
+        low: typeof balance === "number" ? balance < 2 : undefined,
+        critical: typeof balance === "number" ? balance < 0.5 : undefined,
+        topUpUrl: directTopUpUrl(),
+      };
+    } catch (err) {
+      if (isDirectCloudAuthError(err)) {
+        return {
+          connected: false,
+          balance: null,
+          authRejected: true,
+          error: "Eliza Cloud rejected the saved API key.",
+          topUpUrl: directTopUpUrl(),
+        };
+      }
+      throw err;
+    }
+  }
   return this.fetch("/api/cloud/credits");
 };
 
 ElizaClient.prototype.getCloudBillingSummary = async function (
   this: ElizaClient,
 ) {
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (directBase && !readDirectCloudToken(this)) {
+    return {
+      balance: null,
+      currency: "USD",
+      topUpUrl: directTopUpUrl(),
+      embeddedCheckoutEnabled: false,
+      hostedCheckoutEnabled: true,
+      cryptoEnabled: false,
+    };
+  }
+  const direct = directBase
+    ? await directCloudRequest<Record<string, unknown>>(
+        this,
+        "/api/v1/credits/summary",
+      )
+    : null;
+  if (direct) {
+    const organization =
+      typeof direct.organization === "object" && direct.organization !== null
+        ? (direct.organization as Record<string, unknown>)
+        : {};
+    const pricing =
+      typeof direct.pricing === "object" && direct.pricing !== null
+        ? (direct.pricing as Record<string, unknown>)
+        : {};
+    const balance =
+      typeof organization.creditBalance === "number"
+        ? organization.creditBalance
+        : typeof organization.creditBalance === "string"
+          ? Number(organization.creditBalance)
+          : null;
+    return {
+      ...direct,
+      balance: Number.isFinite(balance) ? balance : null,
+      currency: "USD",
+      topUpUrl: directTopUpUrl(),
+      embeddedCheckoutEnabled: false,
+      hostedCheckoutEnabled: true,
+      cryptoEnabled:
+        typeof pricing.x402Enabled === "boolean" ? pricing.x402Enabled : false,
+      low: typeof balance === "number" ? balance < 2 : undefined,
+      critical: typeof balance === "number" ? balance < 0.5 : undefined,
+    };
+  }
   return this.fetch("/api/cloud/billing/summary");
 };
 
 ElizaClient.prototype.getCloudBillingSettings = async function (
   this: ElizaClient,
 ) {
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (directBase && !readDirectCloudToken(this)) {
+    return { success: false, error: "Not connected to Eliza Cloud." };
+  }
+  const direct = directBase
+    ? await directCloudRequest<CloudBillingSettings>(
+        this,
+        "/api/v1/billing/settings",
+      )
+    : null;
+  if (direct) return direct;
   return this.fetch("/api/cloud/billing/settings");
 };
 
@@ -579,6 +845,21 @@ ElizaClient.prototype.updateCloudBillingSettings = async function (
   this: ElizaClient,
   request,
 ) {
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (directBase && !readDirectCloudToken(this)) {
+    return { success: false, error: "Not connected to Eliza Cloud." };
+  }
+  const direct = directBase
+    ? await directCloudRequest<CloudBillingSettings>(
+        this,
+        "/api/v1/billing/settings",
+        {
+          method: "PUT",
+          body: JSON.stringify(request),
+        },
+      )
+    : null;
+  if (direct) return direct;
   return this.fetch("/api/cloud/billing/settings", {
     method: "PUT",
     body: JSON.stringify(request),

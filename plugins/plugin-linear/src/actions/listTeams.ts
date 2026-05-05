@@ -12,6 +12,7 @@ import {
 import type { Team, User } from "@linear/sdk";
 import { listTeamsTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
+import { getBooleanValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 interface TeamWithDetails extends Team {
@@ -107,17 +108,12 @@ export const listTeamsAction: Action = {
 
         if (response) {
           try {
-            const parsed = JSON.parse(
-              response
-                .replace(/^```(?:json)?\n?/, "")
-                .replace(/\n?```$/, "")
-                .trim()
-            );
+            const parsed = parseLinearPromptResponse(response);
 
-            nameFilter = parsed.nameFilter;
-            specificTeam = parsed.specificTeam;
-            myTeams = parsed.myTeams === true;
-            includeDetails = parsed.includeDetails === true;
+            nameFilter = getStringValue(parsed.nameFilter);
+            specificTeam = getStringValue(parsed.specificTeam);
+            myTeams = getBooleanValue(parsed.myTeams) === true;
+            includeDetails = getBooleanValue(parsed.includeDetails) === true;
           } catch (parseError) {
             logger.warn("Failed to parse team filters:", parseError);
           }

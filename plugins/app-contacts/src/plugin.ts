@@ -1,79 +1,25 @@
 /**
  * elizaOS runtime plugin for the Contacts overlay app.
  *
- * Wraps the existing @elizaos/capacitor-contacts native plugin with a single
- * LIST_CONTACTS action. Session-gated so the action is only available while
- * the Contacts app is active.
+ * Contacts are exposed as a dynamic provider, not a LIST_CONTACTS action:
+ * reading the address book is read-only context for planning, while live
+ * operations such as calling remain in the Phone app actions. The agent
+ * Android adapter applies hosted-app session gating when this package's
+ * `/plugin` export is registered.
  */
 
-import { Contacts } from "@elizaos/capacitor-contacts";
-import type {
-  Action,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  Plugin,
-} from "@elizaos/core";
-import { hasRoleAccess } from "@elizaos/shared/eliza-core-roles";
+import type { Plugin } from "@elizaos/core";
+import { contactsProvider } from "./providers/contacts";
 
 const CONTACTS_APP_NAME = "@elizaos/app-contacts";
-
-const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 200;
-
-const listContactsAction: Action = {
-  name: "LIST_CONTACTS",
-  similes: ["GET_CONTACTS", "SHOW_CONTACTS", "READ_CONTACTS"],
-  description:
-    "List names from the device address book. Android-only. Returns the display names of up to `limit` contacts (default 25).",
-  descriptionCompressed: "List contact names from the device address book.",
-
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
-    return hasRoleAccess(runtime, message, "USER");
-  },
-
-  handler: async (_runtime, _message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | { limit?: number }
-      | undefined;
-
-    const requested = Number.isFinite(params?.limit)
-      ? Number(params?.limit)
-      : DEFAULT_LIMIT;
-    const limit = Math.max(1, Math.min(MAX_LIMIT, Math.trunc(requested)));
-
-    const { contacts } = await Contacts.listContacts({ limit });
-    const names = contacts
-      .map((c) => c.displayName)
-      .filter((name) => name.length > 0);
-
-    return {
-      text: names.length === 0 ? "No contacts found." : names.join(", "),
-      success: true,
-      data: { count: names.length, names },
-    };
-  },
-
-  parameters: [
-    {
-      name: "limit",
-      description: "Maximum number of contacts to return (1-200).",
-      required: false,
-      schema: {
-        type: "number" as const,
-        minimum: 1,
-        maximum: MAX_LIMIT,
-        default: DEFAULT_LIMIT,
-      },
-    },
-  ],
-};
 
 export const appContactsPlugin: Plugin = {
   name: CONTACTS_APP_NAME,
   description:
-    "Contacts overlay: read the device address book via the @elizaos/capacitor-contacts native plugin. Actions apply only while the Contacts app session is active.",
-  actions: [listContactsAction],
+    "Contacts overlay: read-only Android address-book context via the @elizaos/capacitor-contacts native plugin. The Android runtime adapter gates the provider to the active Contacts app session.",
+  providers: [contactsProvider],
 };
 
 export default appContactsPlugin;
+
+export { contactsProvider } from "./providers/contacts";

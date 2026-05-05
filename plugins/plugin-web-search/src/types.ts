@@ -1,10 +1,19 @@
+import type {
+    SearchOptions as CoreSearchOptions,
+    SearchResponse as CoreSearchResponse,
+    ImageSearchOptions,
+    NewsSearchOptions,
+    VideoSearchOptions,
+} from "@elizaos/core";
+
 export type SearchResult = {
     title: string;
     url: string;
+    description: string;
     content: string;
     rawContent?: string;
     score: number;
-    publishedDate?: string;
+    publishedDate?: Date;
 };
 
 export type SearchImage = {
@@ -12,19 +21,22 @@ export type SearchImage = {
     description?: string;
 };
 
-export type SearchResponse = {
+export type SearchResponse = Omit<CoreSearchResponse, "results"> & {
     answer?: string;
     query: string;
-    responseTime: number;
+    responseTime?: number;
     images: SearchImage[];
     results: SearchResult[];
 };
 
-export interface SearchOptions {
+export interface SearchOptions extends CoreSearchOptions {
     limit?: number;
     type?: "news" | "general";
+    topic?: "news" | "general";
     includeAnswer?: boolean;
     searchDepth?: "basic" | "advanced";
     includeImages?: boolean;
     days?: number;
 }
+
+export type { ImageSearchOptions, NewsSearchOptions, VideoSearchOptions };

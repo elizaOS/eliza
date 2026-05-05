@@ -13,7 +13,11 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent/config/owner-contacts";
 import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
 import type {
@@ -699,32 +703,90 @@ function normalizeGeneratedWorkflowBody(value: string): string | null {
   return cleaned.length > 0 ? cleaned : null;
 }
 
-function parseJsonObjectFromModelText(
+function formatReminderPromptValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  const text =
+    value instanceof Date ? value.toISOString() : String(value).trim();
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : "null";
+}
+
+function normalizeModelNullString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (
+    trimmed.length === 0 ||
+    trimmed.toLowerCase() === "null" ||
+    trimmed.toLowerCase() === "none"
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
+function normalizeModelNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = normalizeModelNullString(value);
+  if (normalized === null) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseStructuredObjectFromModelText(
   value: string,
 ): Record<string, unknown> | null {
-  const trimmed = value.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/u);
-  const candidate = fenced?.[1]?.trim() ?? trimmed;
-  try {
-    const parsed = JSON.parse(candidate);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    const start = candidate.indexOf("{");
-    const end = candidate.lastIndexOf("}");
-    if (start < 0 || end <= start) {
-      return null;
-    }
-    try {
-      const parsed = JSON.parse(candidate.slice(start, end + 1));
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
-    } catch {
-      return null;
-    }
+  const parsedToon = parseToonKeyValue<Record<string, unknown>>(value);
+  if (isRecord(parsedToon)) {
+    return parsedToon;
   }
+  return null;
+}
+
+function normalizeSemanticClassifierModelRecord(
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = { ...record };
+  const confidence = normalizeModelNumber(normalized.confidence);
+  if (confidence !== null) {
+    normalized.confidence = confidence;
+  }
+
+  const existingSnoozeRequest = normalized.snoozeRequest;
+  if (isRecord(existingSnoozeRequest)) {
+    const snoozeRequest = { ...existingSnoozeRequest };
+    const minutes = normalizeModelNumber(snoozeRequest.minutes);
+    if (minutes !== null) {
+      snoozeRequest.minutes = minutes;
+    }
+    const preset = normalizeModelNullString(snoozeRequest.preset);
+    if (preset !== null) {
+      snoozeRequest.preset = preset;
+    }
+    normalized.snoozeRequest = snoozeRequest;
+    return normalized;
+  }
+
+  const snoozeMinutes = normalizeModelNumber(normalized.snoozeMinutes);
+  if (snoozeMinutes !== null) {
+    normalized.snoozeRequest = { minutes: snoozeMinutes };
+    return normalized;
+  }
+
+  const snoozePreset = normalizeModelNullString(normalized.snoozePreset);
+  normalized.snoozeRequest =
+    snoozePreset !== null ? { preset: snoozePreset } : null;
+  return normalized;
 }
 
 function serializeContactRouteCandidates(
@@ -999,32 +1061,41 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       const context = input.context ?? {};
       const prompt = [
         "Classify whether the owner reply resolves one specific reminder.",
-        "Return one JSON object only. Do not include markdown.",
+        "Return TOON only. Do not include prose, markdown, code fences, or hidden reasoning.",
         "",
         "Allowed decisions:",
-        '- {"decision":"explicit_resolution","resolution":"completed|acknowledged|skipped|snoozed","snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
-        '- {"decision":"needs_clarification","resolution":null,"snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
-        '- {"decision":"unrelated","resolution":null,"snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
-        '- {"decision":"abstain","resolution":null,"snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
+        "- explicit_resolution: the reply clearly completes, acknowledges, skips, or snoozes this reminder",
+        "- needs_clarification: the owner intends to act but the snooze/meaning is underspecified",
+        "- unrelated: the reply is about something else",
+        "- abstain: ambiguous, context-heavy, or not confidently bound to this reminder",
         "",
         "Use abstain when the reply is ambiguous, context-heavy, or you cannot confidently bind it to the reminder.",
         "Only resolve standalone replies like done/yes/later when the context says standalone resolution is allowed.",
-        'For snoozed, include snoozeRequest as {"minutes":30} or {"preset":"15m|30m|1h|tonight|tomorrow_morning"}; otherwise ask for clarification.',
+        "For snoozed, set snoozeMinutes to a positive integer or snoozePreset to 15m, 30m, 1h, tonight, or tomorrow_morning; otherwise ask for clarification.",
         "",
-        "Reminder context:",
-        JSON.stringify({
-          title: context.title ?? null,
-          attemptedAt: context.attemptedAt ?? null,
-          respondedAt:
-            context.respondedAt instanceof Date
-              ? context.respondedAt.toISOString()
-              : (context.respondedAt ?? null),
-          channel: context.channel ?? null,
-          allowStandaloneResolution: context.allowStandaloneResolution ?? null,
-        }),
+        "Return exactly these TOON fields:",
+        "decision: explicit_resolution | needs_clarification | unrelated | abstain",
+        "resolution: completed | acknowledged | skipped | snoozed | null",
+        "snoozeMinutes: positive integer minutes or null",
+        "snoozePreset: 15m | 30m | 1h | tonight | tomorrow_morning | null",
+        "confidence: number from 0.0 to 1.0",
+        "reason: short_reason",
         "",
-        "Owner reply:",
-        input.text,
+        "Reminder context TOON:",
+        `title: ${formatReminderPromptValue(context.title ?? null)}`,
+        `attemptedAt: ${formatReminderPromptValue(context.attemptedAt ?? null)}`,
+        `respondedAt: ${formatReminderPromptValue(
+          context.respondedAt instanceof Date
+            ? context.respondedAt.toISOString()
+            : (context.respondedAt ?? null),
+        )}`,
+        `channel: ${formatReminderPromptValue(context.channel ?? null)}`,
+        `allowStandaloneResolution: ${formatReminderPromptValue(
+          context.allowStandaloneResolution ?? null,
+        )}`,
+        "",
+        "Owner reply TOON:",
+        `text: ${formatReminderPromptValue(input.text)}`,
       ].join("\n");
       try {
         const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
@@ -1033,8 +1104,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         if (typeof response !== "string") {
           return null;
         }
-        const parsed = parseJsonObjectFromModelText(response);
-        return parseReminderOwnerResponseSemanticClassification(parsed);
+        const parsed = parseStructuredObjectFromModelText(response);
+        return parseReminderOwnerResponseSemanticClassification(
+          parsed ? normalizeSemanticClassifierModelRecord(parsed) : null,
+        );
       } catch {
         return null;
       }

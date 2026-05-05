@@ -11,7 +11,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
 import type { MatrixService } from "../service.js";
 import { MATRIX_SERVICE_NAME } from "../types.js";
 
@@ -26,13 +26,9 @@ Extract the following:
 1. emoji: The emoji to react with (single emoji character)
 2. eventId: The event ID of the message to react to (starts with $)
 
-Respond with a JSON object like:
-{
-  "emoji": "👍",
-  "eventId": "$event123"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+emoji: 👍
+eventId: $event123`;
 
 export const sendReaction: Action = {
   name: "MATRIX_SEND_REACTION",
@@ -81,7 +77,7 @@ export const sendReaction: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response as string);
+      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
       if (parsed?.emoji && parsed?.eventId) {
         reactionInfo = {
           emoji: String(parsed.emoji),

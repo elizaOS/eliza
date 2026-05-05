@@ -61,7 +61,7 @@ decision_note:
 - talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document. No prose before or after it. No hidden reasoning.
 
 Example:
 name: {{agentName}}
@@ -491,7 +491,7 @@ function buildTeacherSystemPrompt(): string {
 Your task is to generate realistic multi-turn group chat conversations.
 
 IMPORTANT RULES:
-1. Output ONLY valid JSON. No markdown, no explanation, no preamble.
+1. Output ONLY TOON/plain text. No markdown, no explanation, no preamble.
 2. Each message must have "name" (speaker name) and "content" (message text).
 3. Messages should feel natural - casual, varied length, sometimes with typos.
 4. Group chats should have 3-6 participants plus optionally the agent.
@@ -500,13 +500,11 @@ IMPORTANT RULES:
 7. Messages should be diverse in tone: some short, some long, some with emoji.
 
 Output format:
-{
-  "messages": [
-    {"name": "Alice", "content": "hey everyone"},
-    {"name": "Bob", "content": "what's up"},
-    ...
-  ]
-}`;
+messages:
+- name: Alice
+  content: hey everyone
+- name: Bob
+  content: what's up`;
 }
 
 function buildTeacherUserPrompt(
@@ -561,11 +559,89 @@ ${extraInstructions}
 ${blueprint.generationHint}
 
 Remember:
-- Output ONLY the JSON with "messages" array
+- Output ONLY TOON/plain text with a messages list
 - Each message has "name" and "content"
 - Make it feel natural and realistic
 - Vary message lengths and tones
 - The last message should be the one the classifier evaluates`;
+}
+
+function stripOutputFences(raw: string): string {
+  return raw
+    .replace(/^```(?:toon|json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function parseTeacherToonMessages(
+  raw: string,
+): { messages: Array<{ name: string; content: string }> } {
+  const text = stripOutputFences(raw);
+  const lines = text.split(/\r?\n/);
+  const messages: Array<{ name: string; content: string }> = [];
+  let current: { name?: string; content?: string } | null = null;
+
+  const flush = () => {
+    if (current?.name && current.content !== undefined) {
+      messages.push({
+        name: current.name.trim(),
+        content: current.content.trim(),
+      });
+    }
+    current = null;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || /^messages(?::|\[)/i.test(trimmed)) continue;
+
+    const rowMatch = trimmed.match(/^-\s*([^|:]+?)\s*\|\s*(.*)$/);
+    if (rowMatch) {
+      flush();
+      messages.push({
+        name: rowMatch[1]!.trim(),
+        content: rowMatch[2]!.trim(),
+      });
+      continue;
+    }
+
+    const itemNameMatch = trimmed.match(/^-\s*name:\s*(.*)$/i);
+    if (itemNameMatch) {
+      flush();
+      current = { name: itemNameMatch[1]!.trim() };
+      continue;
+    }
+
+    const nameMatch = trimmed.match(/^name:\s*(.*)$/i);
+    if (nameMatch) {
+      current ??= {};
+      current.name = nameMatch[1]!.trim();
+      continue;
+    }
+
+    const contentMatch = trimmed.match(/^content:\s*(.*)$/i);
+    if (contentMatch) {
+      current ??= {};
+      current.content = contentMatch[1]!.trim();
+    }
+  }
+
+  flush();
+
+  if (messages.length === 0) {
+    throw new Error("No TOON messages found in teacher output");
+  }
+
+  return { messages };
+}
+
+function parseTeacherJsonMessages(
+  raw: string,
+): { messages: Array<{ name: string; content: string }> } {
+  const cleaned = stripOutputFences(raw);
+  return JSON.parse(cleaned) as {
+    messages: Array<{ name: string; content: string }>;
+  };
 }
 
 // ==================== Core generation ====================
@@ -603,23 +679,25 @@ export async function generateSample(
   // Parse the teacher's output
   let parsed: { messages: Array<{ name: string; content: string }> };
   try {
-    // Strip markdown code fences if present
-    const cleaned = raw.replace(/```json\n?|\n?```/g, "").trim();
-    parsed = JSON.parse(cleaned);
+    parsed = parseTeacherToonMessages(raw);
   } catch {
-    // If parsing fails, create a minimal sample
-    parsed = {
-      messages: [
-        { name: participants[0]!, content: "Hey everyone" },
-        {
-          name: participants[1]!,
-          content:
-            blueprint.decision === "RESPOND"
-              ? `${agentName}, can you help?`
-              : "What's for lunch?",
-        },
-      ],
-    };
+    try {
+      parsed = parseTeacherJsonMessages(raw);
+    } catch {
+      // If parsing fails, create a minimal sample
+      parsed = {
+        messages: [
+          { name: participants[0]!, content: "Hey everyone" },
+          {
+            name: participants[1]!,
+            content:
+              blueprint.decision === "RESPOND"
+                ? `${agentName}, can you help?`
+                : "What's for lunch?",
+          },
+        ],
+      };
+    }
   }
 
   // Convert to training format

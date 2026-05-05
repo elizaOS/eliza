@@ -14,7 +14,6 @@ import {
 	type UUID,
 	type World,
 } from "../../../types/index.ts";
-import { composePrompt } from "../../../utils.ts";
 
 const canModifyRole = (
 	currentRole: Role,
@@ -55,21 +54,64 @@ Only extract role assignments if:
 3. The target user is a valid server member
 4. The new role is one of: OWNER, ADMIN, or NONE
 
-Return the results in this JSON format:
-{
-"roleAssignments": [
-  {
-    "entityId": "<UUID of the entity being assigned to>",
-    "newRole": "ROLE_NAME"
-  }
-]
-}
+Return the results as structured roleAssignments fields:
+roleAssignments[1]{entityId,newRole}:
+  UUID-of-the-entity,ROLE_NAME
 
-If no valid role assignments are found, return an empty array.`;
+If no valid role assignments are found, return no roleAssignments entries.`;
 
 interface RoleAssignment {
 	entityId: string;
 	newRole: Role;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeRole(value: unknown): Role | null {
+	const normalized =
+		typeof value === "string" ? value.trim().toUpperCase() : "";
+	return (Object.values(Role) as string[]).includes(normalized)
+		? (normalized as Role)
+		: null;
+}
+
+function extractRoleAssignments(result: unknown): RoleAssignment[] {
+	const assignments: RoleAssignment[] = [];
+
+	const addAssignment = (rawEntityId: unknown, rawRole: unknown): void => {
+		const entityId = typeof rawEntityId === "string" ? rawEntityId.trim() : "";
+		const newRole = normalizeRole(rawRole);
+		if (!entityId || !newRole) {
+			return;
+		}
+		assignments.push({ entityId, newRole });
+	};
+
+	const traverse = (node: unknown): void => {
+		if (Array.isArray(node)) {
+			for (const item of node) {
+				traverse(item);
+			}
+			return;
+		}
+
+		if (!isRecord(node)) {
+			return;
+		}
+
+		if ("entityId" in node && "newRole" in node) {
+			addAssignment(node.entityId, node.newRole);
+		}
+
+		for (const value of Object.values(node)) {
+			traverse(value);
+		}
+	};
+
+	traverse(result);
+	return assignments;
 }
 
 export const updateRoleAction: ElizaAction = {
@@ -192,12 +234,14 @@ export const updateRoleAction: ElizaAction = {
 
 		const requesterRole = world.metadata.roles[message.entityId] || Role.NONE;
 
-		const extractionPrompt = composePrompt({
-			state: {
-				...state.values,
-				content: state.text,
-			},
-			template: dedent`
+		const serverMembers = entities
+			.map((entity) => {
+				const names = entity.names?.filter(Boolean).join(", ") || "Unknown";
+				return `- entityId: ${entity.id}\n  names: ${names}`;
+			})
+			.join("\n");
+
+		const extractionPrompt = dedent`
 				# Task: Parse Role Assignment
 
 				I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
@@ -207,50 +251,60 @@ export const updateRoleAction: ElizaAction = {
 				- ADMIN: Ability to manage channels and moderate content
 				- NONE: Regular user with no special permissions
 
+				# Current server members:
+				${serverMembers || "No members available"}
+
+				# Current speaker role:
+				${requesterRole}
+
 				# Current context:
-				{{content}}
+				${state.text}
 
-				Format your response as a JSON array of objects, each with:
-				- entityId: The name or ID of the user
+				Return only assignments that are clearly requested and match a current server member.
+				Each entry has:
+				- entityId: The exact entityId from Current server members
 				- newRole: The role to assign (OWNER, ADMIN, or NONE)
+			`;
 
-				Example:
-				\`\`\`json
-				[
-					{
-						"entityId": "John",
-						"newRole": "ADMIN"
+		const parsed = await runtime.dynamicPromptExecFromState({
+			state,
+			params: { prompt: extractionPrompt },
+			schema: [
+				{
+					field: "roleAssignments",
+					description:
+						"Role assignments clearly requested by the speaker, or an empty list when none are valid",
+					type: "array",
+					items: {
+						description: "One role assignment",
+						type: "object",
+						properties: [
+							{
+								field: "entityId",
+								description: "Exact entityId from Current server members",
+								required: true,
+							},
+							{
+								field: "newRole",
+								description: "One of OWNER, ADMIN, or NONE",
+								required: true,
+							},
+						],
 					},
-					{
-						"entityId": "Sarah",
-						"newRole": "OWNER"
-					}
-				]
-				\`\`\`
-			`,
-		});
-
-		const result = await runtime.useModel<
-			typeof ModelType.OBJECT_LARGE,
-			RoleAssignment[]
-		>(ModelType.OBJECT_LARGE, {
-			prompt: extractionPrompt,
-			schema: {
-				type: "array",
-				items: {
-					type: "object",
-					properties: {
-						entityId: { type: "string" },
-						newRole: {
-							type: "string",
-							enum: Object.values(Role),
-						},
-					},
-					required: ["entityId", "newRole"],
+					required: false,
+					validateField: false,
+					streamField: false,
 				},
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				preferredEncapsulation: "toon",
+				contextCheckLevel: 0,
+				maxRetries: 1,
 			},
-			output: "array",
 		});
+
+		const result = extractRoleAssignments(parsed);
 
 		if (!result?.length) {
 			await callback?.({

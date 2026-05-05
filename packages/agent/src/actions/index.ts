@@ -18,7 +18,7 @@ export * from "./send-message.js";
 export * from "./settings-actions.js";
 export * from "./stream-control.js";
 export * from "./sync-plugin.js";
-export * from "./terminal.ts";
+export * from "./terminal.js";
 export * from "./toggle-plugin.js";
 export * from "./uninstall-plugin.js";
 export * from "./update-plugin.js";

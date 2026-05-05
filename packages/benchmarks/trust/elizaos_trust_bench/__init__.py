@@ -15,9 +15,9 @@ from elizaos_trust_bench.types import (
     TrustTestCase,
 )
 
-# ElizaTrustHandler is optional — requires elizaos + elizaos-plugin-openai
+# ElizaTrustHandler is bridge-backed; the legacy Python runtime handler was removed.
 try:
-    from elizaos_trust_bench.eliza_handler import ElizaTrustHandler
+    from eliza_adapter.trust import ElizaBridgeTrustHandler as ElizaTrustHandler
 except ImportError:
     ElizaTrustHandler = None  # type: ignore[misc, assignment]
 

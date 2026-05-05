@@ -394,10 +394,7 @@ class _UserState:
 
         archetype = self.classify_archetype()
 
-        # Use the balanced calculator logic (ported from Python plugin)
-        from elizaos_plugin_social_alpha.trust_score import (
-            TrustScoreMetrics, calculate_balanced_trust_score,
-        )
+        from benchmark.trust_score import TrustScoreMetrics, calculate_balanced_trust_score
 
         metrics = TrustScoreMetrics(
             total_calls=n,
@@ -429,7 +426,7 @@ class FullSystem(SocialAlphaSystem):
     """
 
     def __init__(self, cache_dir: str | Path = ".benchmark_cache",
-                 model: str = "gpt-4o-mini") -> None:
+                 model: str = "openai/gpt-oss-120b") -> None:
         self._api_key = os.environ.get("OPENAI_API_KEY", "")
         self._model = model  # explicit model, don't trust env for this
         if not self._api_key:

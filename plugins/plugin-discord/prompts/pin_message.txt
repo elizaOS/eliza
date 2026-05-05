@@ -9,13 +9,8 @@ Examples:
 - "pin john's message about the meeting" -> messageRef: "john meeting"
 - "pin message 123456789" -> messageRef: "123456789"
 
-Your response must be formatted as a JSON block:
-```json
-{
-  "messageRef": "<last|previous|message-id|search-text>"
-}
-```
-
+Respond with TOON only:
+messageRef: <last|previous|message-id|search-text>
 
 
 

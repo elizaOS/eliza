@@ -4,8 +4,12 @@
   "type": "module",
   "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
   "sideEffects": [
+    "./src/widgets/index.ts",
+    "./src/api/client-lifeops.ts",
+    "./src/ui.ts",
     "./dist/widgets/index.js",
-    "./dist/api/client-lifeops.js"
+    "./dist/api/client-lifeops.js",
+    "./dist/ui.js"
   ],
   "main": "./dist/index.js",
   "exports": {

@@ -10,7 +10,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import { isLineOutboundActionContext } from "../line-action-validate.js";
 import type { LineService } from "../service.js";
 import {
@@ -34,16 +34,12 @@ Extract the following:
 4. longitude: Longitude coordinate (number)
 5. to: The target user/group/room ID (or "current" to reply to the current chat)
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "title": "Place Name",
-  "address": "123 Main St, City",
-  "latitude": 35.6762,
-  "longitude": 139.6503,
-  "to": "target ID or 'current'"
-}
-\`\`\`
+Respond with TOON only:
+title: Place Name
+address: 123 Main St, City
+latitude: 35.6762
+longitude: 139.6503
+to: target ID or current
 `;
 
 interface LocationParams {
@@ -98,12 +94,12 @@ export const sendLocation: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response);
+      const parsed = parseToonKeyValue<Record<string, unknown>>(response);
       if (
         parsed?.title &&
         parsed?.address &&
-        typeof parsed?.latitude === "number" &&
-        typeof parsed?.longitude === "number"
+        Number.isFinite(Number(parsed?.latitude)) &&
+        Number.isFinite(Number(parsed?.longitude))
       ) {
         locationInfo = {
           title: String(parsed.title),

@@ -85,6 +85,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
@@ -709,7 +710,7 @@ function isLikelyOpenAiTextModel(value: string | undefined): boolean {
  *
  * A common failure mode is routing the OpenAI plugin through Groq's
  * OpenAI-compatible base URL while leaving OpenAI defaults (`gpt-5.5`,
- * `gpt-5.5-mini`) in place. Structured XML/object generation then fails during
+ * `gpt-5-mini`) in place. Structured output generation then fails during
  * message handling because Groq does not serve those model IDs.
  *
  * When we can confidently detect that state, rewrite the effective runtime
@@ -1491,12 +1492,13 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       }
     | undefined;
   if (effectivelyEnabled) {
-    const nano = llmText?.nanoModel || models?.nano || "openai/gpt-5.5-nano";
+    const nano =
+      llmText?.nanoModel || models?.nano || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const small =
-      llmText?.smallModel || models?.small || "minimax/minimax-m2.7";
+      llmText?.smallModel || models?.small || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const medium = llmText?.mediumModel || models?.medium || small;
     const large =
-      llmText?.largeModel || models?.large || "anthropic/claude-opus-4-7";
+      llmText?.largeModel || models?.large || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const mega = llmText?.megaModel || models?.mega || large;
     const responseHandlerModel =
       llmText?.responseHandlerModel || llmText?.shouldRespondModel;
@@ -2940,7 +2942,7 @@ export async function startEliza(
   // 2f. Install the multi-account pool shims and apply selected direct API
   //     accounts before plugin resolution snapshots process.env.
   try {
-    const accountPool = await import("@elizaos/app-core/services/account-pool");
+    const accountPool = await import("@elizaos/app-core/account-pool");
     accountPool.getDefaultAccountPool();
     await accountPool.applyAccountPoolApiCredentials({
       activeBackend: resolveServiceRoutingInConfig(
@@ -3932,9 +3934,7 @@ export async function startEliza(
           );
 
           try {
-            const accountPool = await import(
-              "@elizaos/app-core/services/account-pool"
-            );
+            const accountPool = await import("@elizaos/app-core/account-pool");
             accountPool.getDefaultAccountPool();
             await accountPool.applyAccountPoolApiCredentials({
               activeBackend: resolveServiceRoutingInConfig(

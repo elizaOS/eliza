@@ -31,7 +31,7 @@ vi.doMock("@elizaos/agent/triggers/runtime", () => ({
     taskToTriggerSummaryMock(...args),
 }));
 
-vi.doMock("../../src/api/n8n-routes", () => ({
+vi.doMock("@elizaos/plugin-n8n-workflow/routes/n8n-routes", () => ({
   handleN8nRoutes: (...args: unknown[]) => handleN8nRoutesMock(...args),
 }));
 

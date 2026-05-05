@@ -5,8 +5,8 @@
  *
  * Expected LLM response format:
  *
- *   <action>CHAT_PUBLIC</action>
- *   <message>Heading to the bank to stash my logs.</message>
+ *   action: CHAT_PUBLIC
+ *   message: Heading to the bank to stash my logs.
  *
  * Server-side: `BotSdkActionRouter.chatPublic` → `MessagingService.queueChatMessage`.
  */
@@ -20,7 +20,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParam } from "./param-parser.js";
 
 const MAX_MESSAGE_LENGTH = 80;
@@ -37,7 +37,7 @@ export const chatPublic: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "CHAT_PUBLIC");
+    return hasActionRequest(message, "CHAT_PUBLIC");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -59,7 +59,7 @@ export const chatPublic: Action = {
     const chatMessage =
       extractParam(llmText, "message") ?? extractParam(llmText, "text");
     if (!chatMessage) {
-      const err = "CHAT_PUBLIC requires <message>text</message>.";
+      const err = "CHAT_PUBLIC requires message: text.";
       callback?.({ text: err, action: "CHAT_PUBLIC" });
       return { success: false, text: err };
     }

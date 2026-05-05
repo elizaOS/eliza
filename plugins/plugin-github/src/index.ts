@@ -19,14 +19,41 @@
  * default to `"user"`; the other actions default to `"agent"`.
  */
 
-import type { Plugin, Route } from "@elizaos/core";
+import type http from "node:http";
+import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
+import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
+import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
 import { assignIssueAction } from "./actions/assign-issue.js";
 import { createIssueAction } from "./actions/create-issue.js";
 import { listPrsAction } from "./actions/list-prs.js";
 import { notificationTriageAction } from "./actions/notification-triage.js";
 import { reviewPrAction } from "./actions/review-pr.js";
-import { createGitHubRouteHandler } from "./routes/github-routes.js";
+import { handleGitHubRoutes } from "./routes/github-routes.js";
+import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
+
+function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const url = new URL(
+      httpReq.url ?? "/api/github/token",
+      "http://localhost",
+    );
+    const state = { current: runtime } as CompatRuntimeState;
+    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
+    await handleGitHubRoutes({
+      req: httpReq,
+      res: httpRes,
+      method,
+      pathname: url.pathname,
+    });
+  };
+}
 
 export { assignIssueAction } from "./actions/assign-issue.js";
 export { createIssueAction } from "./actions/create-issue.js";
@@ -74,6 +101,9 @@ export const githubPlugin: Plugin = {
     notificationTriageAction,
   ],
   routes: githubRoutes,
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    registerGitHubSearchCategory(runtime);
+  },
 };
 
 export default githubPlugin;

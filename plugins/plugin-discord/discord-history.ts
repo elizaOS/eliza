@@ -28,6 +28,32 @@ import type {
 	ChannelSpiderState,
 } from "./types";
 
+function formatToonScalar(value: unknown): string {
+	if (value == null) return "";
+	if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+	if (Array.isArray(value)) {
+		return value.map((item) => formatToonScalar(item)).join(", ");
+	}
+	if (typeof value === "object") {
+		return Object.entries(value as Record<string, unknown>)
+			.map(([key, entry]) => `${key}:${formatToonScalar(entry)}`)
+			.join(", ");
+	}
+	return String(value);
+}
+
+function formatSpiderStateToon(state: ChannelSpiderState): string {
+	return [
+		"state:",
+		...Object.entries(state).map(
+			([key, value]) => `  ${key}: ${formatToonScalar(value)}`,
+		),
+	].join("\n");
+}
+
 /**
  * Subset of DiscordService fields needed by history functions.
  */
@@ -250,7 +276,7 @@ export async function saveSpiderState(
 			entityId,
 			roomId,
 			content: {
-				text: JSON.stringify(state),
+				text: formatSpiderStateToon(state),
 				source: "discord-spider",
 			},
 			metadata: {

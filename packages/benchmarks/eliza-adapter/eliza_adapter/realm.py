@@ -67,6 +67,34 @@ _VALID_ACTIONS = {
 }
 
 
+def _benchmark_action_params(params: dict[str, object]) -> dict[str, object]:
+    """Return params captured under BENCHMARK_ACTION, if present."""
+    nested = params.get("BENCHMARK_ACTION")
+    if isinstance(nested, dict):
+        return nested
+    return params
+
+
+def _extract_benchmark_action(
+    params: dict[str, object],
+    task_tools: list[str],
+) -> tuple[str | None, str | None]:
+    """Extract a REALM control action or concrete tool name from bridge params."""
+    bench_params = _benchmark_action_params(params)
+    tool_set = {tool.lower(): tool for tool in task_tools}
+    for key in ("action", "name", "command", "tool_name", "operation"):
+        raw = bench_params.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        value = raw.strip()
+        upper = value.upper()
+        if upper in _VALID_ACTIONS:
+            return upper, None
+        if value.lower() in tool_set:
+            return None, tool_set[value.lower()]
+    return None, None
+
+
 def _extract_action(text: str) -> str | None:
     """Find the first valid REALM action name in *text*."""
     if not text:
@@ -237,16 +265,36 @@ class ElizaREALMAgent:
                 # Resolve the selected action: explicit actions[0] wins,
                 # else parse from response text/thought.
                 selected_action: str | None = None
+                direct_tool_name: str | None = None
                 if response.actions:
                     candidate = str(response.actions[0]).strip().upper()
                     if candidate in _VALID_ACTIONS:
                         selected_action = candidate
+                    elif candidate == "BENCHMARK_ACTION":
+                        selected_action, direct_tool_name = _extract_benchmark_action(
+                            response.params,
+                            task.available_tools,
+                        )
                 if selected_action is None:
                     for source in (response.text, response.thought):
                         if source:
                             selected_action = _extract_action(source)
                             if selected_action:
                                 break
+                if selected_action is None and "BENCHMARK_ACTION" in response.actions:
+                    if direct_tool_name and not plan:
+                        plan = [{
+                            "action": direct_tool_name,
+                            "description": f"Execute {direct_tool_name}",
+                            "parameters": {},
+                        }]
+                    selected_action = (
+                        "EXECUTE_STEP"
+                        if plan and len(executed_steps) < len(plan)
+                        else "GENERATE_PLAN"
+                        if not plan
+                        else "COMPLETE_TASK"
+                    )
 
                 logger.info(
                     "[eliza-realm] Iteration %d: action=%s",
@@ -257,8 +305,9 @@ class ElizaREALMAgent:
                 # Dispatch the selected action against our plan/executed-step state.
                 if selected_action == "GENERATE_PLAN":
                     parsed_plan = _parse_plan_json(response.text or "", task.available_tools)
-                    if not parsed_plan and response.params.get("plan"):
-                        raw_plan = response.params.get("plan")
+                    bench_params = _benchmark_action_params(response.params)
+                    raw_plan = response.params.get("plan") or bench_params.get("plan")
+                    if not parsed_plan and raw_plan:
                         if isinstance(raw_plan, list):
                             parsed_plan = _parse_plan_json(
                                 json.dumps(raw_plan), task.available_tools

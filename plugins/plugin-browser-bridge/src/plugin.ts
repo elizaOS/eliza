@@ -15,12 +15,12 @@ import {
 } from "@elizaos/agent/api/http-helpers";
 import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
 import { resolveCanonicalOwnerId } from "@elizaos/core";
-import { browserBridgeActions } from "./actions.ts";
+import { browserBridgeActions } from "./actions.js";
 import {
   type BrowserBridgeRouteContext,
   handleBrowserBridgeRoutes,
-} from "./routes.ts";
-import { browserBridgeSchema } from "./schema.ts";
+} from "./routes.js";
+import { browserBridgeSchema } from "./schema.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);

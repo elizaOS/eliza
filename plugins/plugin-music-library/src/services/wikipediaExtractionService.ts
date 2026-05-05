@@ -1,6 +1,11 @@
-import { type IAgentRuntime, logger, ModelType, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
-import type { WikipediaService } from "./wikipediaClient";
+import type { WikipediaClient } from "./wikipediaClient";
 
 const WIKIPEDIA_EXTRACTION_SERVICE_NAME = "wikipediaExtraction";
 
@@ -49,30 +54,90 @@ type WikipediaExtractionSourceData =
       genre?: string[];
     };
 
+function formatPromptValue(value: unknown, depth = 0): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item != null)
+      .slice(0, 12)
+      .map((item) => {
+        const rendered = formatPromptValue(item, depth + 1);
+        return rendered ? `${"  ".repeat(depth)}- ${rendered}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry != null && entry !== "")
+      .slice(0, 16)
+      .map(([key, entry]) => {
+        const rendered = formatPromptValue(entry, depth + 1);
+        if (!rendered) return "";
+        if (rendered.includes("\n")) {
+          return `${"  ".repeat(depth)}${key}:\n${rendered}`;
+        }
+        return `${"  ".repeat(depth)}${key}: ${rendered}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(value);
+}
+
+function formatWikipediaDataForPrompt(
+  wikiData: WikipediaExtractionSourceData,
+): string {
+  return formatPromptValue(wikiData);
+}
+
+function toStringList(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    return items.length > 0 ? items : undefined;
+  }
+  if (typeof value === "string") {
+    const items = value
+      .split(/[,;]|\n| and | & /)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    return items.length > 0 ? items : undefined;
+  }
+  return undefined;
+}
+
 /**
  * Service that uses LLMs to dynamically extract relevant information from Wikipedia
  * Based on context (e.g., DJ intro, music selection), extracts different information
  */
-export class WikipediaExtractionService extends Service {
-  static serviceType: string = WIKIPEDIA_EXTRACTION_SERVICE_NAME;
+export class WikipediaExtractionHelper {
   capabilityDescription =
     "Uses LLM to dynamically extract music information from Wikipedia based on context";
 
   private cache: Map<string, { data: ExtractedMusicInfo; timestamp: number }> =
     new Map();
   private readonly CACHE_TTL = 3600000; // 1 hour in milliseconds
+  private readonly runtime?: IAgentRuntime;
+  private readonly wikipediaClient: WikipediaClient | null;
 
-  static async start(
-    runtime: IAgentRuntime,
-  ): Promise<WikipediaExtractionService> {
-    logger.debug(
-      `Starting WikipediaExtractionService for agent ${runtime.character.name}`,
-    );
-    return new WikipediaExtractionService(runtime);
+  constructor(
+    runtime?: IAgentRuntime,
+    wikipediaClient?: WikipediaClient | null,
+  ) {
+    this.runtime = runtime;
+    this.wikipediaClient = wikipediaClient ?? null;
   }
 
-  private getWikipediaService(): WikipediaService | null {
-    return this.runtime?.getService("wikipedia") as WikipediaService | null;
+  private getWikipediaService(): WikipediaClient | null {
+    return this.wikipediaClient;
   }
 
   async stop(): Promise<void> {
@@ -191,8 +256,8 @@ export class WikipediaExtractionService extends Service {
   ): string {
     const basePrompt = `Extract relevant music information from the following Wikipedia data based on the context.
 
-Wikipedia Data:
-${JSON.stringify(wikiData, null, 2)}
+Wikipedia data (TOON):
+${formatWikipediaDataForPrompt(wikiData)}
 
 Context: ${context.purpose}
 ${context.currentArtist ? `Current Artist: ${context.currentArtist}` : ""}
@@ -215,7 +280,16 @@ ${context.currentAlbum ? `Current Album: ${context.currentAlbum}` : ""}
 - Chart positions or commercial success (if notable)
 - Cultural impact or significance
 
-Format as JSON with keys: interestingFacts (array of strings - prioritize the most interesting/entertaining facts), genres (array), relatedArtists (array), influences (array), year (number if available).`
+Return TOON with these fields:
+interestingFacts[3]:
+  - most interesting fact
+genres[3]:
+  - genre
+relatedArtists[3]:
+  - artist
+influences[3]:
+  - influence
+year: number if available`
         );
 
       case "music_selection":
@@ -228,7 +302,15 @@ Format as JSON with keys: interestingFacts (array of strings - prioritize the mo
 - Artists that influenced this artist
 - Artists that were influenced by this artist
 
-Format as JSON with keys: relatedArtists (array), influences (array), genres (array), selectionSuggestions (array of artist/song names).`
+Return TOON with these fields:
+relatedArtists[3]:
+  - artist
+influences[3]:
+  - influence
+genres[3]:
+  - genre
+selectionSuggestions[3]:
+  - artist or song name`
         );
 
       case "related_artists":
@@ -240,7 +322,13 @@ Format as JSON with keys: relatedArtists (array), influences (array), genres (ar
 - Similar artists or genre peers
 - Associated acts or collaborators
 
-Format as JSON with keys: influences (array), relatedArtists (array), similarArtists (array).`
+Return TOON with these fields:
+influences[3]:
+  - influence
+relatedArtists[3]:
+  - artist
+similarArtists[3]:
+  - similar artist`
         );
 
       default:
@@ -252,7 +340,15 @@ Format as JSON with keys: influences (array), relatedArtists (array), similarArt
 - Influences
 - Interesting facts
 
-Format as JSON with keys: genres (array), relatedArtists (array), influences (array), interestingFacts (array).`
+Return TOON with these fields:
+genres[3]:
+  - genre
+relatedArtists[3]:
+  - artist
+influences[3]:
+  - influence
+interestingFacts[3]:
+  - fact`
         );
     }
   }
@@ -267,35 +363,37 @@ Format as JSON with keys: genres (array), relatedArtists (array), influences (ar
     const extracted: ExtractedMusicInfo = {};
 
     try {
-      // Try to extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+      const parsedToon = parseToonKeyValue<Record<string, unknown>>(response);
+      if (parsedToon) {
         extracted.relatedArtists =
-          parsed.relatedArtists || parsed.similarArtists;
-        extracted.influences = parsed.influences;
-        extracted.genres = parsed.genres;
-        extracted.interestingFacts = parsed.interestingFacts;
-        extracted.selectionSuggestions = parsed.selectionSuggestions;
-      } else {
-        // Fallback: try to extract lists from text
-        extracted.relatedArtists = this.extractList(
-          response,
-          /related[:\s]+(.*?)(?:\n|$)/i,
+          toStringList(parsedToon.relatedArtists) ||
+          toStringList(parsedToon.similarArtists);
+        extracted.influences = toStringList(parsedToon.influences);
+        extracted.genres = toStringList(parsedToon.genres);
+        extracted.interestingFacts = toStringList(parsedToon.interestingFacts);
+        extracted.selectionSuggestions = toStringList(
+          parsedToon.selectionSuggestions,
         );
-        extracted.influences = this.extractList(
-          response,
-          /influenc[es]*[:\s]+(.*?)(?:\n|$)/i,
-        );
-        extracted.genres = this.extractList(
-          response,
-          /genre[s]*[:\s]+(.*?)(?:\n|$)/i,
-        );
-        extracted.interestingFacts = this.extractList(
-          response,
-          /fact[s]*[:\s]+(.*?)(?:\n|$)/i,
-        );
+        return extracted;
       }
+
+      // Fallback: try to extract lists from straight text.
+      extracted.relatedArtists = this.extractList(
+        response,
+        /related[:\s]+(.*?)(?:\n|$)/i,
+      );
+      extracted.influences = this.extractList(
+        response,
+        /influenc[es]*[:\s]+(.*?)(?:\n|$)/i,
+      );
+      extracted.genres = this.extractList(
+        response,
+        /genre[s]*[:\s]+(.*?)(?:\n|$)/i,
+      );
+      extracted.interestingFacts = this.extractList(
+        response,
+        /fact[s]*[:\s]+(.*?)(?:\n|$)/i,
+      );
     } catch (error) {
       logger.warn(`Failed to parse extraction response: ${error}`);
     }
@@ -338,3 +436,8 @@ Format as JSON with keys: genres (array), relatedArtists (array), influences (ar
     }
   }
 }
+
+export const WIKIPEDIA_EXTRACTION_HELPER_NAME =
+  WIKIPEDIA_EXTRACTION_SERVICE_NAME;
+
+export { WikipediaExtractionHelper as WikipediaExtractionService };

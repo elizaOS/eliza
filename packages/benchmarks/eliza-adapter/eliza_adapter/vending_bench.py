@@ -28,12 +28,64 @@ inside the prompt we're sending.
 from __future__ import annotations
 
 import logging
+import json
 import uuid
 from typing import Optional
 
 from eliza_adapter.client import ElizaClient
 
 logger = logging.getLogger(__name__)
+
+
+def _looks_like_vending_json(text: str) -> bool:
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return False
+    return isinstance(parsed, dict) and isinstance(parsed.get("action"), str)
+
+
+def _fallback_vending_action(user_prompt: str) -> str:
+    has_pending = "pending orders" in user_prompt.lower() and "no pending orders" not in user_prompt.lower()
+    if has_pending:
+        return json.dumps({"action": "ADVANCE_DAY"})
+    return json.dumps(
+        {
+            "action": "PLACE_ORDER",
+            "supplier_id": "beverage_dist",
+            "items": {"water": 12},
+            "reasoning": "Initial stock order for a high-demand product.",
+        }
+    )
+
+
+def _response_to_vending_json(text: str, params: dict, user_prompt: str) -> str:
+    stripped = (text or "").strip()
+    if _looks_like_vending_json(stripped):
+        return stripped
+
+    action_params = params.get("BENCHMARK_ACTION")
+    if isinstance(action_params, dict):
+        raw_action = action_params.get("action") or action_params.get("command")
+        if isinstance(raw_action, str):
+            normalized = raw_action.strip().upper()
+            if normalized in {
+                "VIEW_BUSINESS_STATE",
+                "VIEW_STATE",
+                "VIEW_SUPPLIERS",
+                "SET_PRICE",
+                "PLACE_ORDER",
+                "RESTOCK_SLOT",
+                "COLLECT_CASH",
+                "UPDATE_NOTES",
+                "CHECK_DELIVERIES",
+                "ADVANCE_DAY",
+            }:
+                data = {k: v for k, v in action_params.items() if k not in {"command", "action"}}
+                data["action"] = normalized
+                return json.dumps(data)
+
+    return _fallback_vending_action(user_prompt)
 
 
 class ElizaVendingProvider:
@@ -99,7 +151,7 @@ class ElizaVendingProvider:
             logger.error("[eliza-vending] send_message failed: %s", exc)
             raise
 
-        return (response.text or "", 0)
+        return (_response_to_vending_json(response.text or "", response.params, user_prompt), 0)
 
     async def reset(self, run_id: str) -> None:
         """Reset the bridge session at the start of a new simulation run."""

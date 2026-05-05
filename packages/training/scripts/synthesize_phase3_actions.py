@@ -73,7 +73,7 @@ log = logging.getLogger("synth-phase3")
 class TeacherCfg:
     provider: str
     model: str
-    max_tokens: int = 1024
+    max_tokens: int = 2048
     temperature: float = 0.7
 
 
@@ -100,9 +100,95 @@ def call_anthropic(cfg: TeacherCfg, system: str, user: str) -> str:
     return "".join(parts).strip()
 
 
+def call_openai_compat(cfg: TeacherCfg, system: str, user: str, *,
+                       base_url: str, api_key_env: str) -> str:
+    """OpenAI-compatible /v1/chat/completions caller. See evaluator
+    synthesizer for the same code; kept duplicated to keep each
+    synthesizer file standalone."""
+    import json as _json
+    import urllib.request
+    api_key = os.environ.get(api_key_env)
+    if not api_key:
+        raise RuntimeError(
+            f"{api_key_env} not set. Export it before running this script "
+            f"(or use --dry-run for stubbed output)."
+        )
+    payload = {
+        "model": cfg.model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": cfg.temperature,
+        "max_tokens": cfg.max_tokens,
+        "reasoning_effort": "low",
+    }
+    body = _json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "milady-synth/1.0 (+https://github.com/elizaOS/eliza)",
+        },
+        method="POST",
+    )
+    import urllib.error, time, random as _random
+    last_exc: Exception | None = None
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                result = _json.loads(resp.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            if e.code in (429, 500, 502, 503, 504):
+                retry_after = e.headers.get("Retry-After")
+                if retry_after and retry_after.isdigit():
+                    delay = float(retry_after)
+                else:
+                    delay = (2 ** attempt) + _random.uniform(0, 0.5)
+                time.sleep(min(delay, 60.0))
+                continue
+            raise
+        except (urllib.error.URLError, TimeoutError) as e:
+            last_exc = e
+            time.sleep((2 ** attempt) + _random.uniform(0, 0.5))
+            continue
+    else:
+        raise RuntimeError(f"teacher request failed after retries: {last_exc}")
+
+    msg = result["choices"][0]["message"]
+    content = (msg.get("content") or "").strip()
+    if not content:
+        content = (msg.get("reasoning") or "").strip()
+    return content
+
+
+def call_groq(cfg: TeacherCfg, system: str, user: str) -> str:
+    return call_openai_compat(
+        cfg, system, user,
+        base_url="https://api.groq.com/openai/v1",
+        api_key_env="GROQ_API_KEY",
+    )
+
+
+def call_openai(cfg: TeacherCfg, system: str, user: str) -> str:
+    return call_openai_compat(
+        cfg, system, user,
+        base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        api_key_env="OPENAI_API_KEY",
+    )
+
+
 def call_teacher(cfg: TeacherCfg, system: str, user: str) -> str:
     if cfg.provider == "anthropic":
         return call_anthropic(cfg, system, user)
+    if cfg.provider == "groq":
+        return call_groq(cfg, system, user)
+    if cfg.provider == "openai":
+        return call_openai(cfg, system, user)
     raise ValueError(f"unknown teacher provider: {cfg.provider}")
 
 

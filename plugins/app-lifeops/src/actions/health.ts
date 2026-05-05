@@ -19,20 +19,19 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
 import type { HealthDataPoint } from "../lifeops/health-bridge.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
+  hasLifeOpsAccess,
+  runLifeOpsToonModel,
+} from "./lifeops-google-helpers.js";
+import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "./lifeops-grounded-reply.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 
@@ -152,11 +151,18 @@ async function resolveHealthPlanWithLlm(args: {
     typeof args.message.content?.text === "string"
       ? args.message.content.text
       : "";
+  const paramsText = Object.entries(args.params ?? {})
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join("\n");
   const prompt = [
     "Plan the HEALTH action for this request.",
     "The user may speak in any language.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"today"|"trend"|"by_metric"|"status"|null,"metric":"steps"|"heart_rate"|"sleep_hours"|"calories"|"distance_meters"|"active_minutes"|null,"days":number|null,"shouldAct":true|false,"response":"string|null"}',
+    "Return TOON only with exactly these fields:",
+    "subaction: today|trend|by_metric|status|null",
+    "metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes|null",
+    "days: number|null",
+    "shouldAct: true|false",
+    "response: string|null",
     "",
     "Choose status when the user asks about health backend connection or availability.",
     "Choose trend when the user asks for fitness/health activity over a window of days, a week, or recent history.",
@@ -168,49 +174,33 @@ async function resolveHealthPlanWithLlm(args: {
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "",
     "Examples (any language):",
-    '  "How many steps did I take today?" -> {"subaction":"today","metric":null,"days":null,"shouldAct":true,"response":null}',
-    '  "Show me my fitness trend this week" -> {"subaction":"trend","metric":null,"days":7,"shouldAct":true,"response":null}',
-    '  "Tell me my heart rate" -> {"subaction":"by_metric","metric":"heart_rate","days":null,"shouldAct":true,"response":null}',
-    '  "Is my health integration connected?" -> {"subaction":"status","metric":null,"days":null,"shouldAct":true,"response":null}',
-    '  "¿Cuántos pasos di hoy?" -> {"subaction":"today","metric":null,"days":null,"shouldAct":true,"response":null}',
+    '  "How many steps did I take today?" -> subaction: today; metric: null; days: null; shouldAct: true; response: null',
+    '  "Show me my fitness trend this week" -> subaction: trend; metric: null; days: 7; shouldAct: true; response: null',
+    '  "Tell me my heart rate" -> subaction: by_metric; metric: heart_rate; days: null; shouldAct: true; response: null',
+    '  "Is my health integration connected?" -> subaction: status; metric: null; days: null; shouldAct: true; response: null',
+    '  "¿Cuántos pasos di hoy?" -> subaction: today; metric: null; days: null; shouldAct: true; response: null',
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Structured parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    "Current request:",
+    currentMessage || "(empty)",
+    "Resolved intent:",
+    args.intent || "(none)",
+    "Structured parameters:",
+    paramsText || "(none)",
+    "Recent conversation:",
+    recentConversation || "(none)",
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
-    const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
-    if (!parsed) {
-      return {
-        subaction: null,
-        metric: null,
-        days: null,
-        shouldAct: null,
-      };
-    }
-    return {
-      subaction: normalizeHealthSubaction(parsed.subaction),
-      metric: normalizeHealthMetric(parsed.metric),
-      days: normalizeDays(parsed.days),
-      shouldAct: normalizeShouldAct(parsed.shouldAct),
-      response: normalizePlannerResponse(parsed.response),
-    };
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:health",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Health planning model call failed",
-    );
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "HEALTH.plan",
+    failureMessage: "Health planning model call failed",
+    source: "action:health",
+    modelType: ModelType.TEXT_SMALL,
+    purpose: "planner",
+  });
+  const parsed = result?.parsed;
+  if (!parsed) {
     return {
       subaction: null,
       metric: null,
@@ -218,6 +208,13 @@ async function resolveHealthPlanWithLlm(args: {
       shouldAct: null,
     };
   }
+  return {
+    subaction: normalizeHealthSubaction(parsed.subaction),
+    metric: normalizeHealthMetric(parsed.metric),
+    days: normalizeDays(parsed.days),
+    shouldAct: normalizeShouldAct(parsed.shouldAct),
+    response: normalizePlannerResponse(parsed.response),
+  };
 }
 
 function formatSummary(summary: {

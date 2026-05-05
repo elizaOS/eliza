@@ -21,7 +21,7 @@ In `package.json`:
 
 ## 3. Implement the actual feature
 
-The default `helloAction` is only a smoke action. Add real actions, providers, and UI for whatever the user asked for. Keep one passing test in `tests/` that exercises the new code path.
+The default runtime plugin is intentionally empty. Add real actions, providers, and UI for whatever the user asked for. Keep one passing test in `tests/` that exercises the new code path.
 
 ## 4. Verify before signaling done
 

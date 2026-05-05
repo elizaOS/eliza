@@ -124,6 +124,7 @@ public class ElizaAgentService extends Service {
     private Thread stdoutPump;
     private Thread stderrPump;
     private WatchdogThread watchdog;
+    private Thread startWorker;
     private volatile boolean shuttingDown;
     private int restartAttempts;
     private String currentStatus = "starting";
@@ -172,8 +173,7 @@ public class ElizaAgentService extends Service {
         if (ACTION_RESTART.equals(action)) {
             Log.i(TAG, "Restart requested via intent.");
             restartAttempts = 0;
-            stopAgentProcess();
-            startAgentProcess();
+            requestAgentStart(true);
             return START_STICKY;
         }
         if (ACTION_UPDATE_STATUS.equals(action)) {
@@ -186,11 +186,7 @@ public class ElizaAgentService extends Service {
         }
 
         // ACTION_START or null (default) — boot the agent if it isn't already up.
-        synchronized (processLock) {
-            if (agentProcess == null || !agentProcess.isAlive()) {
-                startAgentProcess();
-            }
-        }
+        requestAgentStart(false);
         if (watchdog == null) {
             watchdog = new WatchdogThread();
             watchdog.start();
@@ -577,6 +573,32 @@ public class ElizaAgentService extends Service {
     }
 
     // ── Process lifecycle ────────────────────────────────────────────────
+
+    private void requestAgentStart(boolean restartFirst) {
+        synchronized (processLock) {
+            if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
+                return;
+            }
+            if (startWorker != null && startWorker.isAlive()) {
+                return;
+            }
+            currentStatus = restartFirst ? "restarting" : "starting";
+            updateNotification();
+            startWorker = new Thread(() -> {
+                try {
+                    if (restartFirst) {
+                        stopAgentProcess();
+                    }
+                    startAgentProcess();
+                } finally {
+                    synchronized (processLock) {
+                        startWorker = null;
+                    }
+                }
+            }, "ElizaAgent-start");
+            startWorker.start();
+        }
+    }
 
     private void startAgentProcess() {
         synchronized (processLock) {

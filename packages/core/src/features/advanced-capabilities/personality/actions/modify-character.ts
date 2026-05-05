@@ -11,7 +11,8 @@ import type {
 } from "../../../../types/index.ts";
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
-import { parseKeyValueXml } from "../../../../utils.ts";
+import { encodeToonValue } from "../../../../utils/toon";
+import { parseToonKeyValue } from "../../../../utils.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
 	MAX_PREFS_PER_USER,
@@ -420,7 +421,7 @@ export const modifyCharacterAction: Action = {
 
 				await callback?.({
 					text: `I've successfully updated my character. ${modificationSummary}`,
-					thought: `Applied character modification: ${JSON.stringify(modification)}`,
+					thought: `Applied character modification: ${modificationSummary}`,
 					actions: ["MODIFY_CHARACTER"],
 				});
 
@@ -720,8 +721,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseStructuredRecord(
 	response: string,
 ): Record<string, unknown> | null {
-	const parsed = parseKeyValueXml<Record<string, unknown>>(response);
+	const parsed = parseToonKeyValue<Record<string, unknown>>(response);
 	return isRecord(parsed) ? parsed : null;
+}
+
+function formatPromptData(value: unknown): string {
+	try {
+		return encodeToonValue(value);
+	} catch {
+		return String(value);
+	}
 }
 
 async function buildRecentConversationContext(
@@ -1194,7 +1203,7 @@ async function evaluateModificationSafety(
 ORIGINAL REQUEST: "${requestText}"
 
 PARSED MODIFICATION:
-${JSON.stringify(modification, null, 2)}
+${formatPromptData(modification)}
 
 AGENT'S CURRENT CORE VALUES:
 - Helpful, honest, and ethical

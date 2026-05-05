@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -26,13 +26,9 @@ Extract the following:
 1. messageTs: The message timestamp to unpin (format: 1234567890.123456)
 2. channelId: The channel ID (optional, defaults to current channel)
 
-Respond with a JSON object like:
-{
-  "messageTs": "1234567890.123456",
-  "channelId": null
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+messageTs: 1234567890.123456
+channelId:`;
 
 export const unpinMessage: Action = {
   name: "SLACK_UNPIN_MESSAGE",
@@ -43,6 +39,7 @@ export const unpinMessage: Action = {
     "REMOVE_PIN",
   ],
   description: "Unpin a message from a Slack channel",
+  descriptionCompressed: "Unpin Slack message.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -120,7 +117,8 @@ export const unpinMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.messageTs) {
         unpinInfo = {
           messageTs: String(parsedResponse.messageTs),

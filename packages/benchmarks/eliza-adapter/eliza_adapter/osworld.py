@@ -55,9 +55,41 @@ def _resize_screenshot_b64(raw: bytes, max_dimension: int = 1280) -> str:
 
 def _parse_actions(response_text: str, params: dict[str, Any]) -> list[str]:
     """Extract pyautogui code blocks (or terminal markers) from a response."""
+    def action_values(value: Any) -> list[str]:
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        if not isinstance(value, dict):
+            return []
+
+        out: list[str] = []
+        for key in ("command", "code", "value", "action"):
+            raw = value.get(key)
+            if isinstance(raw, str) and raw.strip():
+                out.append(raw.strip())
+
+        args = value.get("arguments")
+        if isinstance(args, str) and args.strip():
+            out.append(args.strip())
+        elif isinstance(args, dict):
+            for key in ("command", "code", "value", "action"):
+                raw = args.get(key)
+                if isinstance(raw, str) and raw.strip():
+                    out.append(raw.strip())
+        return out
+
+    param_actions: list[str] = []
     raw_actions = params.get("actions")
     if isinstance(raw_actions, list) and raw_actions:
-        return [str(a).strip() for a in raw_actions if str(a).strip()]
+        param_actions.extend(str(a).strip() for a in raw_actions if str(a).strip())
+
+    param_actions.extend(action_values(params.get("BENCHMARK_ACTION")))
+    param_actions.extend(action_values(params))
+
+    for action in param_actions:
+        if action in ("WAIT", "DONE", "FAIL"):
+            return [action]
+        if "pyautogui" in action or "\n" in action:
+            return [action]
 
     if not response_text:
         return []

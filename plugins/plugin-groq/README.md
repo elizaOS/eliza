@@ -43,7 +43,7 @@ Set the following environment variables:
 | `GROQ_API_KEY`     | Yes      | -                                | Your Groq API key     |
 | `GROQ_BASE_URL`    | No       | `https://api.groq.com/openai/v1` | Custom API base URL   |
 | `GROQ_SMALL_MODEL` | No       | `openai/gpt-oss-20b`           | Model for small tasks |
-| `GROQ_LARGE_MODEL` | No       | `llama-3.3-70b-versatile`        | Model for large tasks |
+| `GROQ_LARGE_MODEL` | No       | `openai/gpt-oss-120b`            | Model for large tasks |
 | `GROQ_TTS_MODEL`   | No       | `canopylabs/orpheus-v1-english`  | Text-to-speech model  |
 | `GROQ_TTS_VOICE`   | No       | `troy`                           | TTS voice name        |
 | `GROQ_TTS_RESPONSE_FORMAT` | No | `wav`                          | TTS response format   |

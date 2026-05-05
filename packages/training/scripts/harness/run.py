@@ -26,9 +26,9 @@ if str(ROOT) not in sys.path:
 
 from scripts.lib.toon import ToonDecoder  # noqa: E402
 
-from . import emit, validate as v
-from .personas import Persona, PERSONAS, by_name
-from .prompt import (
+from . import emit, validate as v  # noqa: E402
+from .personas import Persona, PERSONAS  # noqa: E402
+from .prompt import (  # noqa: E402
     build_canonical_record,
     build_tool_specs,
     build_user_messages,

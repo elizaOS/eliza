@@ -4,6 +4,7 @@
  */
 
 import { sanitizeSpeechText } from "@elizaos/shared";
+import { parseToonKeyValue } from "@elizaos/core";
 import { MAX_SPOKEN_CHARS, MOUTH_OPEN_STEP } from "./voice-chat-types";
 
 // ── Text processing helpers ───────────────────────────────────────────
@@ -24,13 +25,12 @@ export function capSpeechLength(input: string): string {
   return `${body.trim()}...`;
 }
 
-// ── Hidden XML block stripping ────────────────────────────────────────
+// ── Hidden model block stripping ──────────────────────────────────────
 
 /**
- * Hidden XML block tags whose content should never be spoken.  During
+ * Hidden model block tags whose content should never be spoken. During
  * streaming the closing tag may not have arrived yet, so we strip from
- * the opening tag to end-of-string (matching the display path's
- * `HIDDEN_XML_BLOCK_RE` which uses `(?:</tag>|$)`).
+ * the opening tag to end-of-string.
  *
  * The upstream `sanitizeSpeechText` only strips *closed* `<think>` blocks,
  * so an in-progress `<think>reasoning so far` leaks "reasoning so far"
@@ -39,32 +39,25 @@ export function capSpeechLength(input: string): string {
 const HIDDEN_VOICE_BLOCK_RE =
   /<(think|thought|analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 
-export function extractVoiceText(input: string): string {
-  let text = input;
+function extractToonVoiceText(input: string): string | null {
+  const parsed = parseToonKeyValue<Record<string, unknown>>(input);
+  if (!parsed) return null;
 
-  if (text.includes("<response>")) {
-    const openTag = "<text>";
-    const closeTag = "</text>";
-    const start = text.indexOf(openTag);
-    if (start >= 0) {
-      const contentStart = start + openTag.length;
-      const end = text.indexOf(closeTag, contentStart);
-      text =
-        end >= 0 ? text.slice(contentStart, end) : text.slice(contentStart);
-    } else {
-      return "";
-    }
+  if (typeof parsed.text === "string") {
+    return parsed.text;
   }
 
+  if ("actions" in parsed || "params" in parsed || "providers" in parsed) {
+    return "";
+  }
+
+  return null;
+}
+
+export function extractVoiceText(input: string): string {
+  let text = extractToonVoiceText(input) ?? input;
+
   text = text.replace(HIDDEN_VOICE_BLOCK_RE, " ");
-  text = text.replace(
-    /\s{0,32}<actions>[\s\S]{0,16384}?(?:<\/actions>|$)\s{0,32}/g,
-    " ",
-  );
-  text = text.replace(
-    /\s{0,32}<params>[\s\S]{0,16384}?(?:<\/params>|$)\s{0,32}/g,
-    " ",
-  );
   text = text.replace(/<\/?[a-zA-Z][^>]*$|<\/?$/s, "");
 
   return text;

@@ -206,7 +206,7 @@ function detectHeuristicSignals(text: string): string[] {
 
 export const securityEvaluator: Evaluator = {
 	name: "securityEvaluator",
-	alwaysRun: true,
+	alwaysRun: false,
 
 	description:
 		"Pre-processing security gate that uses fast heuristics to detect prompt " +

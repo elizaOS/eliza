@@ -20,7 +20,7 @@ import { asUUID, ModelType } from "../../../types/index.ts";
 import {
 	composePromptFromState,
 	parseJSONObjectFromText,
-	parseKeyValueXml,
+	parseToonKeyValue,
 } from "../../../utils.ts";
 import {
 	extractScheduleFollowUpResponseFromText,
@@ -209,7 +209,7 @@ export const scheduleFollowUpAction: Action = {
 		});
 
 		const parsedResponse =
-			parseKeyValueXml<ParsedScheduleFollowUpResponse>(response) ??
+			parseToonKeyValue<ParsedScheduleFollowUpResponse>(response) ??
 			(parseJSONObjectFromText(
 				response,
 			) as ParsedScheduleFollowUpResponse | null) ??

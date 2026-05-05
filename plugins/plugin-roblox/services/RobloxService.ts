@@ -7,7 +7,6 @@ class RobloxAgentManager {
   public runtime: IAgentRuntime;
   public client: RobloxClient;
   public config: RobloxConfig;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
 
   constructor(runtime: IAgentRuntime, config: RobloxConfig) {
@@ -26,45 +25,12 @@ class RobloxAgentManager {
       { universeId: this.config.universeId },
       "Roblox agent manager started"
     );
-
-    if (this.config.pollInterval > 0) {
-      this.startPolling();
-    }
   }
 
   async stop(): Promise<void> {
     this.isRunning = false;
-    this.stopPolling();
     this.runtime.logger.info("Roblox agent manager stopped");
   }
-
-  private startPolling(): void {
-    if (this.pollTimer) {
-      return;
-    }
-
-    const pollIntervalMs = this.config.pollInterval * 1000;
-    this.pollTimer = setInterval(() => {
-      this.poll().catch((error) => {
-        this.runtime.logger.error({ error }, "Error during Roblox polling");
-      });
-    }, pollIntervalMs);
-
-    this.runtime.logger.debug(
-      { intervalSeconds: this.config.pollInterval },
-      "Roblox polling started"
-    );
-  }
-
-  private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-      this.runtime.logger.debug("Roblox polling stopped");
-    }
-  }
-
-  private async poll(): Promise<void> {}
 
   async sendMessage(content: string, targetPlayerIds?: number[]): Promise<void> {
     await this.client.sendAgentMessage({

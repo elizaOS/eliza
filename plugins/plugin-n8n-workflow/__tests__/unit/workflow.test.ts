@@ -750,7 +750,7 @@ describe("detectUnknownParameters", () => {
           parameters: {
             resource: "text",
             operation: "response",
-            model: "gpt-4o-mini",
+            model: "gpt-5-mini",
             prompt: "Hello world",
           },
         },
@@ -815,7 +815,7 @@ describe("detectUnknownParameters", () => {
           parameters: {
             resource: "text",
             operation: "response",
-            model: "gpt-4o-mini",
+            model: "gpt-5-mini",
           },
         },
       ],

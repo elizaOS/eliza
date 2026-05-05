@@ -41,7 +41,7 @@ async function generateObjectWithModel(
         });
 
     if (usage) {
-      emitModelUsageEvent(runtime, modelType, params.prompt, usage);
+      emitModelUsageEvent(runtime, modelType, params.prompt, usage, modelName);
     }
     return object as Record<string, JsonValue>;
   } catch (error: unknown) {

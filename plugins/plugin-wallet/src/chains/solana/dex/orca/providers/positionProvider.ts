@@ -23,6 +23,8 @@ export interface FetchedPositionStatistics {
 
 export const positionProvider: Provider = {
   name: "orca-lp-position-provider",
+  description: "Provides Orca LP position status.",
+  descriptionCompressed: "Orca LP positions status.",
   dynamic: true,
   relevanceKeywords: [
     "orca",
@@ -76,14 +78,29 @@ export const positionProvider: Provider = {
       const rpcUrl = runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
       const connection = new Connection(rpcUrl as string);
       const positions = await fetchPositions(connection, ownerAddress);
-      const positionsString = JSON.stringify(positions);
-      return positionsString;
+      return {
+        text: formatPositionsForPrompt(positions),
+        data: { positions },
+      };
     } catch (error) {
       logger.error("Error in Orca position provider:", error);
       return null;
     }
   },
 };
+
+function formatPositionsForPrompt(positions: FetchedPositionStatistics[]): string {
+  if (positions.length === 0) {
+    return "Orca LP positions:\npositions:";
+  }
+  const lines = ["Orca LP positions:"];
+  positions.forEach((position, index) => {
+    lines.push(
+      `positions[${index}]{whirlpoolAddress,positionMint,inRange,distanceCenterPositionFromPoolPriceBps,positionWidthBps}: ${position.whirlpoolAddress.toString()},${position.positionMint.toString()},${position.inRange},${position.distanceCenterPositionFromPoolPriceBps},${position.positionWidthBps}`
+    );
+  });
+  return lines.join("\n");
+}
 
 const fetchPositions = async (
   connection: Connection,

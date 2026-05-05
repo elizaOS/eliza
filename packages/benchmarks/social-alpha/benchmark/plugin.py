@@ -1,15 +1,9 @@
 """
 Social Alpha Benchmark Plugin for ElizaOS.
 
-Provides actions and a provider that allow an ElizaOS AgentRuntime to perform
-social-alpha tasks:
-  - EXTRACT_RECOMMENDATION: parse a message for trading signals
-  - PROCESS_CALL: record a trade call and update trust metrics
-  - GET_TRUST_SCORE: query trust score for a user
-  - GET_LEADERBOARD: produce a ranked list of users
-
-The plugin also installs a multi-provider model handler (same approach as the
-GAIA benchmark) so LLM calls go through the runtime's model system.
+Historically this file also exposed Python Eliza action/provider factories.
+Those runtime hooks have been removed from benchmarks; Eliza-backed runs now
+use ``eliza_adapter.social_alpha`` and the TypeScript benchmark bridge.
 
 All mutable state lives in module-level stores (reset via ``reset_plugin_state``).
 """
@@ -20,12 +14,7 @@ import json
 import math
 import os
 import re
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from elizaos.runtime import AgentRuntime
-    from elizaos.types.memory import Memory
-    from elizaos.types.state import State
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Shared in-process state
@@ -197,10 +186,7 @@ def _compute_trust_score(user_id: str) -> float:
     archetype = _classify_archetype(user_id)
     m = _compute_user_metrics(user_id)
 
-    from elizaos_plugin_social_alpha.trust_score import (
-        TrustScoreMetrics,
-        calculate_balanced_trust_score,
-    )
+    from benchmark.trust_score import TrustScoreMetrics, calculate_balanced_trust_score
 
     metrics = TrustScoreMetrics(
         total_calls=n,
@@ -255,144 +241,8 @@ Rules:
 
 
 def create_social_alpha_actions() -> list:
-    """Create the EXTRACT_RECOMMENDATION and PROCESS_CALL actions."""
-    from elizaos.types.components import (
-        Action,
-        ActionParameter,
-        ActionParameterSchema,
-        ActionResult,
-        HandlerCallback,
-        HandlerOptions,
-    )
-
-    actions: list[Action] = []
-
-    # --- EXTRACT_RECOMMENDATION ---
-
-    async def extract_validate(
-        runtime: AgentRuntime,
-        message: Memory,
-        state: State | None = None,
-    ) -> bool:
-        return True
-
-    async def extract_handler(
-        runtime: AgentRuntime,
-        message: Memory,
-        state: State | None = None,
-        options: HandlerOptions | None = None,
-        callback: HandlerCallback | None = None,
-        responses: list[Memory] | None = None,
-    ) -> ActionResult:
-        from elizaos.types.model import ModelType
-
-        msg_text = ""
-        if options and options.parameters:
-            msg_text = str(options.parameters.get("message", ""))
-        if not msg_text and message.content and message.content.text:
-            msg_text = str(message.content.text)
-
-        prompt_user = _EXTRACTION_USER.format(message=msg_text[:500].replace('"', '\\"'))
-        result_text: str = await runtime.use_model(
-            ModelType.TEXT_LARGE,
-            {
-                "system": _EXTRACTION_SYSTEM,
-                "prompt": prompt_user,
-                "temperature": 0.0,
-                "max_tokens": 200,
-            },
-        )
-
-        # Parse the JSON from the LLM
-        parsed = _parse_extraction_json(result_text)
-
-        return ActionResult(
-            text=json.dumps(parsed),
-            data={"actionName": "EXTRACT_RECOMMENDATION", **parsed},
-            success=True,
-        )
-
-    actions.append(Action(
-        name="EXTRACT_RECOMMENDATION",
-        description="Extract a trading recommendation (BUY/SELL/NOISE) from a chat message",
-        similes=["extract", "classify", "parse recommendation"],
-        handler=extract_handler,
-        validate=extract_validate,
-        parameters=[
-            ActionParameter(
-                name="message",
-                description="The chat message text to analyse",
-                required=True,
-                schema=ActionParameterSchema(type="string"),
-            ),
-        ],
-    ))
-
-    # --- PROCESS_CALL ---
-
-    async def process_call_validate(
-        runtime: AgentRuntime,
-        message: Memory,
-        state: State | None = None,
-    ) -> bool:
-        return True
-
-    async def process_call_handler(
-        runtime: AgentRuntime,
-        message: Memory,
-        state: State | None = None,
-        options: HandlerOptions | None = None,
-        callback: HandlerCallback | None = None,
-        responses: list[Memory] | None = None,
-    ) -> ActionResult:
-        params: dict[str, str] = {}
-        if options and options.parameters:
-            for key in ("user_id", "token_address", "recommendation_type",
-                        "conviction", "price_at_call", "timestamp"):
-                val = options.parameters.get(key)
-                if val is not None:
-                    params[key] = str(val)
-
-        user_id = params.get("user_id", "")
-        token_address = params.get("token_address", "")
-        rec_type = params.get("recommendation_type", "BUY")
-        conviction = params.get("conviction", "MEDIUM")
-        price = float(params.get("price_at_call", "0"))
-        ts = int(float(params.get("timestamp", "0")))
-
-        _add_call(user_id, token_address, rec_type, conviction, price, ts)
-        if token_address not in _token_initial_prices:
-            _token_initial_prices[token_address] = price
-
-        return ActionResult(
-            text=f"Recorded {rec_type} call for user {user_id} on {token_address}",
-            data={"actionName": "PROCESS_CALL", "user_id": user_id},
-            success=True,
-        )
-
-    actions.append(Action(
-        name="PROCESS_CALL",
-        description="Record a trading call and update trust metrics for a user",
-        similes=["process call", "record trade", "update trust"],
-        handler=process_call_handler,
-        validate=process_call_validate,
-        parameters=[
-            ActionParameter(name="user_id", description="User ID", required=True,
-                            schema=ActionParameterSchema(type="string")),
-            ActionParameter(name="token_address", description="Token address", required=True,
-                            schema=ActionParameterSchema(type="string")),
-            ActionParameter(name="recommendation_type", description="BUY or SELL", required=True,
-                            schema=ActionParameterSchema(type="string")),
-            ActionParameter(name="conviction", description="HIGH/MEDIUM/LOW", required=True,
-                            schema=ActionParameterSchema(type="string")),
-            ActionParameter(name="price_at_call", description="Price at call time", required=True,
-                            schema=ActionParameterSchema(type="string")),
-            ActionParameter(name="timestamp", description="Unix ms timestamp", required=True,
-                            schema=ActionParameterSchema(type="string")),
-        ],
-    ))
-
-    return actions
+    """Compatibility stub for the removed Python Eliza actions."""
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -401,31 +251,8 @@ def create_social_alpha_actions() -> list:
 
 
 def create_social_alpha_provider():  # noqa: ANN201
-    """Create a SOCIAL_ALPHA_CONTEXT provider that injects call history / trust data."""
-    from elizaos.types.components import Provider, ProviderResult
-
-    async def get_context(
-        runtime: AgentRuntime,
-        message: Memory,
-        state: State,
-    ) -> ProviderResult:
-        total_users = len(_user_calls)
-        total_calls = sum(len(c) for c in _user_calls.values())
-        total_tokens = len(_token_initial_prices)
-
-        text = (
-            f"[Social Alpha Context]\n"
-            f"Tracked users: {total_users} | Total calls: {total_calls} | "
-            f"Tracked tokens: {total_tokens}"
-        )
-
-        return ProviderResult(text=text)
-
-    return Provider(
-        name="SOCIAL_ALPHA_CONTEXT",
-        get=get_context,
-        description="Injects current social-alpha call history and trust score summaries",
-    )
+    """Compatibility stub for the removed Python Eliza provider."""
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +261,7 @@ def create_social_alpha_provider():  # noqa: ANN201
 
 
 async def social_alpha_model_handler(
-    runtime: AgentRuntime,
+    runtime: Any,
     params: dict[str, object],
 ) -> str:
     """
@@ -484,7 +311,7 @@ async def social_alpha_model_handler(
     if not isinstance(runtime_model, str):
         runtime_model = ""
     env_model = os.environ.get("OPENAI_LARGE_MODEL", "")
-    model = str(params.get("model") or runtime_model or env_model or "gpt-4o-mini")
+    model = str(params.get("model") or runtime_model or env_model or "openai/gpt-oss-120b")
     temperature = float(params.get("temperature", 0.0))
     max_tokens = int(params.get("max_tokens", params.get("maxTokens", 4096)))
 
@@ -568,31 +395,8 @@ def _parse_extraction_json(text: str) -> dict[str, str | bool]:
 
 
 def create_social_alpha_benchmark_plugin():  # noqa: ANN201
-    """Create the social-alpha benchmark ElizaOS plugin."""
-    from elizaos.types.model import ModelType
-    from elizaos.types.plugin import Plugin
-
-    actions = create_social_alpha_actions()
-    provider = create_social_alpha_provider()
-
-    async def init_plugin(
-        config: dict[str, str | int | float | bool | None],
-        runtime: AgentRuntime,
-    ) -> None:
-        runtime.logger.info("Initializing social-alpha benchmark plugin")
-
-    return Plugin(
-        name="social-alpha-benchmark",
-        description="Social Alpha benchmark plugin — extraction, trust scoring, and ranking via Eliza runtime",
-        init=init_plugin,
-        config={},
-        actions=actions,
-        providers=[provider],
-        models={
-            ModelType.TEXT_LARGE: social_alpha_model_handler,
-            ModelType.TEXT_SMALL: social_alpha_model_handler,
-        },
-    )
+    """Compatibility stub for the removed Python Eliza plugin."""
+    return None
 
 
 # Default plugin instance

@@ -20,7 +20,11 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
@@ -109,7 +113,7 @@ async function extractSearchPlan(
   params: SearchAcrossChannelsParams,
 ): Promise<ExtractedSearchPlan> {
   // If caller already provided a concrete query, trust it.
-  if (params.query && params.query.trim()) {
+  if (params.query?.trim()) {
     return {
       query: params.query.trim(),
       person: params.person ?? null,
@@ -142,8 +146,14 @@ async function extractSearchPlan(
   const prompt = [
     "Plan a SEARCH_ACROSS_CHANNELS request.",
     "The user may speak in any language. Do NOT translate the search query — keep the user's wording.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"x"|"x-dm"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
+    "Return TOON only with exactly these fields:",
+    "query: string|null",
+    "person: string|null",
+    "startIso: ISO8601|null",
+    "endIso: ISO8601|null",
+    "channels[0]: gmail|telegram|discord|imessage|whatsapp|signal|x|x-dm|calendly|calendar|memory",
+    "shouldAct: true|false",
+    "clarification: string|null",
     "",
     "Rules:",
     "- query: the substantive search phrase (entity, topic, keywords). Strip filler like 'find', 'search for', 'show me'.",
@@ -155,16 +165,16 @@ async function extractSearchPlan(
     "- shouldAct: false ONLY if the request is too vague to derive a query.",
     "- clarification: when shouldAct is false, ask the minimum clarifying question in the user's language.",
     "",
-    `Current request: ${JSON.stringify(intent)}`,
-    `Recent conversation: ${JSON.stringify(recentTexts(state).join("\n"))}`,
+    "Current request:",
+    intent || "(empty)",
+    "Recent conversation:",
+    recentTexts(state).join("\n") || "(none)",
   ].join("\n");
 
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const text = typeof raw === "string" ? raw : "";
-  const parsed = parseJSONObjectFromText(text) as Record<
-    string,
-    unknown
-  > | null;
+  const parsed =
+    parseToonKeyValue<Record<string, unknown>>(text);
 
   if (!parsed) {
     return {

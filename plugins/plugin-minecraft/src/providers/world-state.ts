@@ -4,8 +4,9 @@ import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minec
 
 export const minecraftWorldStateProvider: Provider = {
   name: "MC_WORLD_STATE",
-  description: "Minecraft world state: position, health, inventory, nearby entities",
-  descriptionCompressed: "minecraft world state: position, health, inventory, nearby entity",
+  description: "Minecraft world state: connection, position, health, inventory, nearby entities",
+  descriptionCompressed:
+    "Read live Minecraft connection, position, health, inventory, and nearby entities.",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,
@@ -25,7 +26,7 @@ export const minecraftWorldStateProvider: Provider = {
       const state = await service.getWorldState();
       if (!state.connected) {
         return {
-          text: "Minecraft bot is not connected. Use MC_CONNECT to join a server.",
+          text: "Minecraft bot is not connected. Use MC_ACTION connect to join a server.",
           values: { connected: false },
           data: {},
         };

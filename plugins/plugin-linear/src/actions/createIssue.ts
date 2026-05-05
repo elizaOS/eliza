@@ -12,6 +12,12 @@ import {
 import { createIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateIssueParameters, LinearIssueInput } from "../types/index.js";
+import {
+  getPriorityNumberValue,
+  getStringArrayValue,
+  getStringValue,
+  parseLinearPromptResponse,
+} from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const createIssueAction: Action = {
@@ -104,28 +110,29 @@ export const createIssueAction: Action = {
         }
 
         try {
-          const cleanedResponse = response
-            .replace(/^```(?:json)?\n?/, "")
-            .replace(/\n?```$/, "")
-            .trim();
-          const parsed = JSON.parse(cleanedResponse);
+          const parsed = parseLinearPromptResponse(response);
+          if (Object.keys(parsed).length === 0) {
+            throw new Error("No fields found in model response");
+          }
 
           issueData = {
-            title: parsed.title || undefined,
-            description: parsed.description || undefined,
-            priority: parsed.priority ? Number(parsed.priority) : undefined,
+            title: getStringValue(parsed.title),
+            description: getStringValue(parsed.description),
+            priority: getPriorityNumberValue(parsed.priority),
           };
 
-          if (parsed.teamKey) {
+          const teamKey = getStringValue(parsed.teamKey);
+          if (teamKey) {
             const teams = await linearService.getTeams();
-            const team = teams.find((t) => t.key.toLowerCase() === parsed.teamKey.toLowerCase());
+            const team = teams.find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
             if (team) {
               issueData.teamId = team.id;
             }
           }
 
-          if (parsed.assignee && parsed.assignee !== "") {
-            const cleanAssignee = parsed.assignee.replace(/^@/, "");
+          const assignee = getStringValue(parsed.assignee);
+          if (assignee) {
+            const cleanAssignee = assignee.replace(/^@/, "");
 
             const users = await linearService.getUsers();
             const user = users.find(
@@ -138,16 +145,15 @@ export const createIssueAction: Action = {
             }
           }
 
-          if (parsed.labels && Array.isArray(parsed.labels) && parsed.labels.length > 0) {
+          const parsedLabels = getStringArrayValue(parsed.labels);
+          if (parsedLabels && parsedLabels.length > 0) {
             const labels = await linearService.getLabels(issueData.teamId);
             const labelIds: string[] = [];
 
-            for (const labelName of parsed.labels) {
-              if (labelName && labelName !== "") {
-                const label = labels.find((l) => l.name.toLowerCase() === labelName.toLowerCase());
-                if (label) {
-                  labelIds.push(label.id);
-                }
+            for (const labelName of parsedLabels) {
+              const label = labels.find((l) => l.name.toLowerCase() === labelName.toLowerCase());
+              if (label) {
+                labelIds.push(label.id);
               }
             }
 

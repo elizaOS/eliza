@@ -3,9 +3,10 @@ import type {
   ActionExample,
   HandlerOptions,
   IAgentRuntime,
+  SearchCategoryRegistration,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
 import type {
   RelationshipsGraphService,
@@ -147,6 +148,40 @@ type SearchEntityParams = {
   limit?: number;
 };
 
+const ENTITY_SEARCH_CATEGORY: SearchCategoryRegistration = {
+  category: "entities",
+  label: "Rolodex",
+  description: "Search contacts and cross-platform identities.",
+  contexts: ["social", "knowledge"],
+  filters: [
+    {
+      name: "platform",
+      label: "Platform",
+      description: 'Optional platform source, for example "discord".',
+      type: "string",
+    },
+  ],
+  resultSchemaSummary:
+    "Contact results with primaryEntityId, displayName, platforms, and factCount.",
+  capabilities: ["contacts", "identities", "relationships"],
+  source: "agent:entities",
+};
+
+function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
+  try {
+    runtime.getSearchCategory(category, { includeDisabled: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function registerEntitySearchCategory(runtime: IAgentRuntime): void {
+  if (!hasSearchCategory(runtime, ENTITY_SEARCH_CATEGORY.category)) {
+    runtime.registerSearchCategory(ENTITY_SEARCH_CATEGORY);
+  }
+}
+
 export const searchEntityAction: Action = {
   name: "SEARCH_ENTITY",
   similes: [
@@ -164,11 +199,14 @@ export const searchEntityAction: Action = {
     "search Rolodex person name, handle, platform return match contact w/ cross-platform identity result include line number copy clipboard",
 
   validate: async (runtime, message, state) => {
+    registerEntitySearchCategory(runtime);
     if (!(await hasAdminAccess(runtime, message))) return false;
-    return hasContextSignalSyncForKey(message, state, "search_entity");
+    void hasContextSignalSyncForKey(message, state, "search_entity");
+    return false;
   },
 
   handler: async (runtime, message, state, options) => {
+    registerEntitySearchCategory(runtime);
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied.",
@@ -555,7 +593,7 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parseLinkEntityExtraction(text: string): LinkEntityExtraction {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
   if (!parsed) return {};
   const normalize = (v: unknown): string | undefined => {
     if (v == null) return undefined;

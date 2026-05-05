@@ -88,7 +88,7 @@ describeFn("OpenAI Vision Provider (Real API)", () => {
       provider: "openai",
       openai: {
         apiKey: OPENAI_API_KEY,
-        model: "gpt-4o-mini", // Use the faster/cheaper model for testing
+        model: "gpt-5-mini", // Use the faster/cheaper model for testing
         maxTokens: 500,
       },
     };
@@ -382,7 +382,7 @@ describeFn("Cross-Provider Vision Comparison (Real API)", () => {
         provider: "openai",
         openai: {
           apiKey: OPENAI_API_KEY,
-          model: "gpt-4o-mini",
+          model: "gpt-5-mini",
           maxTokens: 300,
         },
       },
@@ -443,7 +443,7 @@ describeFn("Error Handling (Real API)", () => {
         provider: "openai",
         openai: {
           apiKey: "sk-invalid-key-12345",
-          model: "gpt-4o-mini",
+          model: "gpt-5-mini",
         },
       },
       {},
@@ -467,7 +467,7 @@ describeFn("Error Handling (Real API)", () => {
         provider: "openai",
         openai: {
           apiKey: OPENAI_API_KEY,
-          model: "gpt-4o-mini",
+          model: "gpt-5-mini",
         },
       },
       {},

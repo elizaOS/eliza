@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { parseToonKeyValue } from "@elizaos/core";
 import { runExtractorPipeline } from "./extractor-pipeline.js";
 
 const VALID_CADENCE_KINDS = new Set([
@@ -31,6 +31,17 @@ const EMPTY_UPDATE_FIELDS: ExtractedUpdateFields = {
   priority: null,
   description: null,
 };
+
+function promptText(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "(empty)";
+}
+
+function parseStructuredRecord(raw: string): Record<string, unknown> | null {
+  return (
+    parseToonKeyValue<Record<string, unknown>>(raw)
+  );
+}
 
 function parseTimeOfDay(value: string): string | null {
   const normalized = value.trim().toLowerCase();
@@ -156,18 +167,19 @@ function buildRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the LifeOps update extractor was invalid.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return ONLY valid TOON with exactly these fields:",
     "title, cadenceKind, windows, weekdays, timeOfDay, everyMinutes, priority, description",
     "",
     "Use null for any field the user did not ask to change.",
     "cadenceKind must be one of: once, daily, weekly, times_per_day, interval.",
     'timeOfDay must be HH:MM 24h format like "06:00" when present.',
     "",
-    `Current task: ${JSON.stringify(args.currentTitle)}`,
-    `Current cadence kind: ${JSON.stringify(args.currentCadenceKind)}`,
-    `Current windows: ${JSON.stringify(args.currentWindows)}`,
-    `User request: ${JSON.stringify(args.intent)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `Current task: ${promptText(args.currentTitle)}`,
+    `Current cadence kind: ${promptText(args.currentCadenceKind)}`,
+    `Current windows: [${args.currentWindows.join(", ")}]`,
+    `User request: ${promptText(args.intent)}`,
+    "Previous invalid output:",
+    promptText(args.rawResponse),
   ].join("\n");
 }
 
@@ -196,7 +208,7 @@ export async function extractUpdateFieldsWithLlm(args: {
     `Current task: "${currentTitle}"`,
     `Current schedule: ${currentCadenceKind}, windows: [${currentWindows.join(", ")}]`,
     "",
-    "Return JSON with these fields (null = no change requested):",
+    "Return a TOON record with these fields (null = no change requested):",
     "- title: new name if user wants to rename",
     "- cadenceKind: new schedule type if changing (once/daily/weekly/times_per_day/interval)",
     "- windows: new time windows if changing (morning/afternoon/evening/night)",
@@ -207,20 +219,23 @@ export async function extractUpdateFieldsWithLlm(args: {
     "- description: new description if changing",
     "",
     "Examples:",
-    '  "change workout to 6am" -> {"timeOfDay":"06:00"}',
-    '  "make it weekly instead of daily" -> {"cadenceKind":"weekly"}',
-    '  "rename to Morning run" -> {"title":"Morning run"}',
+    'Input: "change workout to 6am"',
+    "timeOfDay: 06:00",
+    'Input: "make it weekly instead of daily"',
+    "cadenceKind: weekly",
+    'Input: "rename to Morning run"',
+    "title: Morning run",
     "",
-    "Return ONLY valid JSON. No prose.",
+    "Return ONLY valid TOON. No prose, markdown, code fences, or any other format.",
     "",
-    `User request: ${JSON.stringify(intent)}`,
+    `User request: ${promptText(intent)}`,
   ].join("\n");
 
   const { parsed } = await runExtractorPipeline({
     runtime,
     prompt,
     parser: (raw) => {
-      const parsedObject = parseJSONObjectFromText(raw);
+      const parsedObject = parseStructuredRecord(raw);
       return parsedObject ? buildUpdateFields(parsedObject) : null;
     },
     buildRepairPrompt: (rawFirstPass) =>

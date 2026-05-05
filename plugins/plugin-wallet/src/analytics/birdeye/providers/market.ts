@@ -4,6 +4,7 @@ import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 //import type { IToken } from '../types';
 import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type { CacheWrapper, GetCacheTimedOptions } from "../types/shared";
+import { formatToonScalar, formatToonTable } from "../utils";
 
 export async function getCacheTimed<T>(
   runtime: IAgentRuntime,
@@ -47,7 +48,7 @@ export async function getCacheTimed<T>(
 export const marketProvider: Provider = {
   name: "BIRDEYE_CRYPTOCURRENCY_MARKET_DATA",
   description: "Birdeye get latest cryptocurrencies overview",
-  descriptionCompressed: "birdeye get latest cryptocurrency overview",
+  descriptionCompressed: "Read latest Birdeye cryptocurrency market overview.",
   dynamic: true,
   //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
@@ -109,7 +110,11 @@ export const marketProvider: Provider = {
         );
         return {
           values: {},
-          text: "Birdeye market data service is currently unavailable. Please try again later.",
+          text: [
+            "birdeye_market_data:",
+            "  status: unavailable",
+            "  reason: missing getTokensMarketData",
+          ].join("\n"),
           data: {},
         };
       }
@@ -126,18 +131,23 @@ export const marketProvider: Provider = {
 
       const results = await Promise.all(ps);
 
-      let latestTxt = "\nCurrent Birdeye Market Data:\n";
-      latestTxt +=
-        "CA, symbol, price (in USD), Market Capitalization, 24h change %, liquidity (in USD)\n";
-
       const result = results[0]; // birdeye Results
+      const rows = [];
 
       // FIXME: Market cap column is currently not populated from Birdeye API response
       // Need to calculate or fetch market cap data separately
       for (const ca of CAs) {
         // Check if result[ca] exists before accessing it
         if (!result[ca]) {
-          latestTxt += `${[ca, "(Unknown)", "", "", "", ""].join(",")}\n`;
+          rows.push({
+            chain: "solana",
+            address: ca,
+            symbol: "unknown",
+            priceUsd: "unknown",
+            marketCapUsd: "unknown",
+            change24hPct: "unknown",
+            liquidityUsd: "unknown",
+          });
           continue;
         }
 
@@ -150,7 +160,15 @@ export const marketProvider: Provider = {
         if (t.symbol === "WBTC") t.symbol = "BTC";
         if (t.symbol === "WETH") t.symbol = "ETH";
         //console.log('t', t)
-        latestTxt += `${[ca, t.symbol, t.priceUsd.toFixed(4), "", t.priceChange24h.toFixed(2), t.liquidity.toFixed(2)].join(",")}\n`;
+        rows.push({
+          chain: "solana",
+          address: ca,
+          symbol: t.symbol,
+          priceUsd: t.priceUsd.toFixed(4),
+          marketCapUsd: "unknown",
+          change24hPct: t.priceChange24h.toFixed(2),
+          liquidityUsd: t.liquidity.toFixed(2),
+        });
       }
 
       //console.log('BIRDEYE_CRYPTOCURRENCY_MARKET_DATA - birdye market data text', latestTxt)
@@ -162,7 +180,19 @@ export const marketProvider: Provider = {
       const values = {};
 
       // Combine all text sections
-      const text = `${latestTxt}\n`;
+      const text = [
+        "birdeye_market_data:",
+        "  status: ok",
+        formatToonTable("  tokens", rows, [
+          "chain",
+          "address",
+          "symbol",
+          "priceUsd",
+          "marketCapUsd",
+          "change24hPct",
+          "liquidityUsd",
+        ]),
+      ].join("\n");
 
       return {
         data,
@@ -175,7 +205,11 @@ export const marketProvider: Provider = {
       );
       return {
         values: {},
-        text: "Unable to fetch cryptocurrency market data at this time. Please try again later.",
+        text: [
+          "birdeye_market_data:",
+          "  status: error",
+          `  reason: ${formatToonScalar(err instanceof Error ? err.message : String(err))}`,
+        ].join("\n"),
         data: {},
       };
     }

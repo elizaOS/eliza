@@ -9,8 +9,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
@@ -21,6 +20,7 @@ import {
   INTERNAL_URL,
   messageText,
 } from "./lifeops-google-helpers.js";
+import { formatPromptSection } from "./prompt-format.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 
@@ -146,7 +146,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
   const prompt = [
     "Plan the SUBSCRIPTIONS action for this request.",
     "Use the current request, recent conversation, and any already-extracted parameters.",
-    "Return a JSON object with exactly these fields:",
+    "Return TOON only with exactly these fields:",
     "  mode: one of audit, cancel, status, or null",
     "  serviceName: subscription service display name or null",
     "  serviceSlug: normalized service slug or null",
@@ -162,21 +162,21 @@ async function resolveSubscriptionsPlanWithLlm(args: {
     "- Use audit for subscription reviews, audits, and lists of recurring services.",
     "- When the user is confirming an already discussed cancellation, set confirmed=true and carry forward the same service from context.",
     "- Use user_browser when the request explicitly says to use the user's browser. Otherwise prefer agent_browser.",
-    "- Return only JSON.",
+    "- Return only TOON.",
     "",
     "Examples:",
     '  "Cancel Fixture Access Wall; if the site needs login, pause and tell me what credential is missing."',
-    '  -> {"mode":"cancel","serviceName":"Fixture Access Wall","serviceSlug":"fixture-access-wall","executor":"agent_browser","queryWindowDays":null,"confirmed":false,"shouldAct":true,"response":null}',
+    "  -> mode: cancel; serviceName: Fixture Access Wall; serviceSlug: fixture-access-wall; executor: agent_browser; queryWindowDays: null; confirmed: false; shouldAct: true; response: null",
     '  "yes go ahead" after a pending cancellation for Netflix',
-    '  -> {"mode":"cancel","serviceName":"Netflix","serviceSlug":"netflix","executor":"agent_browser","queryWindowDays":null,"confirmed":true,"shouldAct":true,"response":null}',
+    "  -> mode: cancel; serviceName: Netflix; serviceSlug: netflix; executor: agent_browser; queryWindowDays: null; confirmed: true; shouldAct: true; response: null",
     '  "audit my subscriptions from the last 90 days"',
-    '  -> {"mode":"audit","serviceName":null,"serviceSlug":null,"executor":null,"queryWindowDays":90,"confirmed":null,"shouldAct":true,"response":null}',
+    "  -> mode: audit; serviceName: null; serviceSlug: null; executor: null; queryWindowDays: 90; confirmed: null; shouldAct: true; response: null",
     '  "what happened with that subscription cancellation?"',
-    '  -> {"mode":"status","serviceName":null,"serviceSlug":null,"executor":null,"queryWindowDays":null,"confirmed":null,"shouldAct":true,"response":null}',
+    "  -> mode: status; serviceName: null; serviceSlug: null; executor: null; queryWindowDays: null; confirmed: null; shouldAct: true; response: null",
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Existing parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    formatPromptSection("Current request", currentMessage),
+    formatPromptSection("Existing parameters", args.params),
+    formatPromptSection("Recent conversation", recentConversation),
   ].join("\n");
 
   try {
@@ -184,9 +184,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {};
     }

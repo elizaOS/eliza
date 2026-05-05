@@ -22,10 +22,13 @@ classifiers = [
 ]
 
 dependencies = [
-    "elizaos>=1.0.0",
+    "eliza-adapter",
     "pydantic>=2.0.0",
     "httpx>=0.25.0",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 dev = [

@@ -22,7 +22,7 @@ export interface CredentialThreatDetection {
 }
 
 export class CredentialProtector extends Service {
-	static serviceType = "credential-protector" as const;
+	static serviceType = "credential-protector:core" as const;
 
 	capabilityDescription =
 		"Detects and prevents credential theft attempts, protects sensitive data";

@@ -17,7 +17,7 @@ python scripts/run_benchmark.py list
 python scripts/run_benchmark.py baselines
 
 # Quick run (L0 only, 2 scale points, ~5 min)
-python scripts/run_benchmark.py run --quick --model gpt-4o-mini
+python scripts/run_benchmark.py run --quick --model openai/gpt-oss-120b
 
 # Full run (all levels, all scales, both configs)
 python scripts/run_benchmark.py run --full --model gpt-4o

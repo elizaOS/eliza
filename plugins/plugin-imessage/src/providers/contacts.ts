@@ -3,8 +3,8 @@
  *
  * Injects the user's Apple Contacts (as loaded by `IMessageService` at
  * startup) into the agent's state so the LLM can resolve a person's name
- * ("text Shaw") to an actual handle it can pass to the `sendMessage`
- * action. Without this provider, the agent has no way to bridge from a
+ * ("text Shaw") to an actual handle it can pass to unified `SEND_MESSAGE`.
+ * Without this provider, the agent has no way to bridge from a
  * contact name to a phone number or email, since the sendMessage action
  * only accepts raw handles (E.164 phones, emails, or `chat_id:` refs).
  *
@@ -68,13 +68,11 @@ function groupContactsByName(contacts: ReadonlyMap<string, { name: string }>): C
 export const contactsProvider: Provider = {
   name: "imessageContacts",
   description:
-    "Exposes the user's Apple Contacts (name → phone/email) so the agent can resolve a person's name to a handle and pass it to the iMessage sendMessage action.",
+    "Exposes the user's Apple Contacts (name → phone/email) so the agent can resolve a person's name to a handle for unified SEND_MESSAGE.",
   descriptionCompressed: "Apple Contacts (name→phone/email) for iMessage handle resolution.",
 
-  // Non-dynamic so this runs on every state composition — otherwise the
-  // LLM only sees the contact list when something explicitly asks for it,
-  // and the agent has no signal that contacts are available at all.
-  dynamic: false,
+  dynamic: true,
+  contexts: ["phone", "social", "connectors"],
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const imessageService = runtime.getService<IMessageService>(IMESSAGE_SERVICE_NAME);
@@ -112,7 +110,7 @@ export const contactsProvider: Provider = {
       `The user's Apple Contacts are available for iMessage. ${groups.length} contact(s) loaded${truncated ? ` (showing first ${MAX_CONTACTS_IN_STATE})` : ""}.`,
       "When the user asks you to text, message, or iMessage a person by name,",
       "look up that person below and pass their phone number (preferred) or email",
-      'to the "send-imessage" action\'s target field. If the name is ambiguous or',
+      'to SEND_MESSAGE with source "imessage". If the name is ambiguous or',
       "missing, ask the user to clarify instead of guessing.",
       "",
       "Contacts:",

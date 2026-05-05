@@ -18,7 +18,7 @@ import type {
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSessionProgressRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "./contracts.ts";
+} from "./contracts.js";
 
 export const BROWSER_BRIDGE_ROUTE_SERVICE_TYPE = "lifeops_browser_plugin";
 

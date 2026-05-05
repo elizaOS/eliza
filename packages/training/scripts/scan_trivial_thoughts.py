@@ -187,12 +187,12 @@ def main() -> None:
     print(f"non-trivial w/ thought:   {non_trivial_with_thought:>12,d} "
           f"({summary['non_trivial_pct_of_reasoning']}%)", file=sys.stderr)
     if by_thought:
-        print(f"\nby trivial phrase:", file=sys.stderr)
+        print("\nby trivial phrase:", file=sys.stderr)
         for phrase, n in sorted(by_thought.items(), key=lambda kv: -kv[1]):
             print(f"  {n:>8,d}  {phrase!r}", file=sys.stderr)
 
     if by_source:
-        print(f"\nby source (top 40 by trivial count):", file=sys.stderr)
+        print("\nby source (top 40 by trivial count):", file=sys.stderr)
         rows = sorted(
             by_source.items(),
             key=lambda kv: -len(kv[1]),

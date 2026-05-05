@@ -75,7 +75,8 @@ class MINTRunner:
         if runtime is not None and isinstance(runtime, ModelRuntime):
             self._runtime = runtime
 
-        # Optional: elizaOS trajectory logger plugin service (Python)
+        # Optional bridge-side trajectory metadata. Python runtime trajectory
+        # instrumentation has been removed from the benchmark package.
         self._trajectory_logger_service: object | None = trajectory_logger_service
         self._trajectory_dataset: str = trajectory_dataset
         self._trajectory_ids: list[str] = []
@@ -137,18 +138,17 @@ class MINTRunner:
 
         logger.info(f"[MINTRunner] Loaded {len(tasks)} tasks")
 
-        # Run baseline (no tools, no feedback)
-        logger.info("[MINTRunner] Running baseline configuration (no tools, no feedback)")
-        baseline_results = await self._run_configuration(
-            tasks, enable_tools=False, enable_feedback=False, name="baseline"
-        )
-
-        # Optional ablation configurations
+        baseline_results: Optional[ConfigurationResult] = None
         tools_only_results: Optional[ConfigurationResult] = None
         feedback_only_results: Optional[ConfigurationResult] = None
         full_results: Optional[ConfigurationResult] = None
 
         if self.config.run_ablation:
+            logger.info("[MINTRunner] Running baseline configuration (no tools, no feedback)")
+            baseline_results = await self._run_configuration(
+                tasks, enable_tools=False, enable_feedback=False, name="baseline"
+            )
+
             if self.config.enable_tools:
                 logger.info("[MINTRunner] Running tools-only configuration")
                 tools_only_results = await self._run_configuration(
@@ -167,13 +167,39 @@ class MINTRunner:
                     tasks, enable_tools=True, enable_feedback=True, name="full"
                 )
 
-        elif self.config.enable_tools or self.config.enable_feedback:
-            # Single configuration run
-            full_results = await self._run_configuration(
+        else:
+            name = (
+                "full"
+                if self.config.enable_tools and self.config.enable_feedback
+                else "tools_only"
+                if self.config.enable_tools
+                else "feedback_only"
+                if self.config.enable_feedback
+                else "baseline"
+            )
+            logger.info("[MINTRunner] Running single configuration: %s", name)
+            selected_results = await self._run_configuration(
                 tasks,
                 enable_tools=self.config.enable_tools,
                 enable_feedback=self.config.enable_feedback,
-                name="full",
+                name=name,
+            )
+            if name == "baseline":
+                baseline_results = selected_results
+            elif name == "tools_only":
+                tools_only_results = selected_results
+            elif name == "feedback_only":
+                feedback_only_results = selected_results
+            else:
+                full_results = selected_results
+
+        if baseline_results is None:
+            baseline_results = ConfigurationResult(
+                config_name="baseline",
+                enable_tools=False,
+                enable_feedback=False,
+                metrics=self.metrics_calculator.calculate([]),
+                results=[],
             )
 
         # Calculate comparisons
@@ -218,47 +244,17 @@ class MINTRunner:
             summary=summary,
         )
 
-        # Save results
-        if self.config.generate_report:
-            await self._save_results(results)
+        await self._save_results(results)
 
-        # Export elizaOS trajectories (ART + GRPO) for training use.
+        # Python runtime trajectory export has been removed. When the bridge
+        # records trajectories, export happens on the TypeScript side.
         if self._trajectory_logger_service is not None and self._trajectory_ids:
-            try:
-                # Prefer the plugin service export API if available.
-                from elizaos_plugin_trajectory_logger.runtime_service import (
-                    TrajectoryExportConfig,
-                    TrajectoryLoggerRuntimeService,
-                )
-
-                out_dir = Path(self.config.output_dir) / "eliza_trajectories"
-                out_dir.mkdir(parents=True, exist_ok=True)
-
-                svc = self._trajectory_logger_service
-                if isinstance(svc, TrajectoryLoggerRuntimeService):
-                    # Export both formats for training pipelines.
-                    art_res = svc.export(
-                        TrajectoryExportConfig(
-                            dataset_name=self._trajectory_dataset,
-                            export_format="art",
-                            output_dir=str(out_dir),
-                            max_trajectories=len(self._trajectory_ids),
-                        )
-                    )
-                    grpo_res = svc.export(
-                        TrajectoryExportConfig(
-                            dataset_name=self._trajectory_dataset,
-                            export_format="grpo",
-                            output_dir=str(out_dir),
-                            max_trajectories=len(self._trajectory_ids),
-                        )
-                    )
-                    logger.info(
-                        f"[MINTRunner] Exported trajectories for training: "
-                        f"art={art_res.dataset_url} grpo={grpo_res.dataset_url}"
-                    )
-            except Exception as e:
-                logger.warning(f"[MINTRunner] Failed to export elizaOS trajectories: {e}")
+            logger.info(
+                "[MINTRunner] Skipping Python trajectory export; bridge-side "
+                "trajectory export owns dataset %s (%d ids)",
+                self._trajectory_dataset,
+                len(self._trajectory_ids),
+            )
 
         logger.info(
             f"[MINTRunner] Benchmark completed in {duration:.1f}s. "
@@ -370,15 +366,17 @@ class MINTRunner:
         recommendations: list[str] = []
 
         # Determine best configuration
-        configs = [
-            ("baseline", baseline.metrics.overall_success_rate),
-        ]
+        configs: list[tuple[str, float]] = []
+        if baseline.metrics.total_tasks > 0:
+            configs.append(("baseline", baseline.metrics.overall_success_rate))
         if tools_only:
             configs.append(("tools", tools_only.metrics.overall_success_rate))
         if feedback_only:
             configs.append(("feedback", feedback_only.metrics.overall_success_rate))
         if full:
             configs.append(("full", full.metrics.overall_success_rate))
+        if not configs:
+            configs.append(("baseline", baseline.metrics.overall_success_rate))
 
         best_config = max(configs, key=lambda x: x[1])
         best_rate = best_config[1]
@@ -477,11 +475,12 @@ class MINTRunner:
         logger.info(f"[MINTRunner] Saved JSON results to {json_path}")
 
         # Generate and save markdown report
-        report_path = output_dir / "MINT-BENCHMARK-REPORT.md"
-        report = self.reporter.generate_report(results)
-        with open(report_path, "w") as f:
-            f.write(report)
-        logger.info(f"[MINTRunner] Saved markdown report to {report_path}")
+        if self.config.generate_report:
+            report_path = output_dir / "MINT-BENCHMARK-REPORT.md"
+            report = self.reporter.generate_report(results)
+            with open(report_path, "w") as f:
+                f.write(report)
+            logger.info(f"[MINTRunner] Saved markdown report to {report_path}")
 
         # Save trajectories if configured
         if self.config.save_trajectories and results.full_results:

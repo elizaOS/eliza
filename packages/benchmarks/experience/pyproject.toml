@@ -31,13 +31,15 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    "eliza-adapter",
     "pydantic>=2.0.0",
 ]
 
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
+
 [project.optional-dependencies]
 eliza = [
-    "elizaos",
-    "elizaos-plugin-openai",
 ]
 dev = [
     "pytest>=7.0.0",

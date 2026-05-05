@@ -3,9 +3,8 @@
  *
  * This module provides implementations of {@link IStreamExtractor}:
  * - PassthroughExtractor - Simple passthrough (no filtering)
- * - XmlTagExtractor - Extract content from a specific XML tag
- * - ResponseStreamExtractor - Action-aware XML (for DefaultMessageService)
  * - ActionStreamFilter - Content-type aware filter (for action handlers)
+ * - ToonFieldStreamExtractor - Extract top-level TOON fields safely
  *
  * For the interface definition, see types/streaming.ts.
  * Implementations can use these or create their own extractors.
@@ -55,86 +54,8 @@ export class StreamError extends Error {
 // Shared constants and utilities
 // ============================================================================
 
-/** Safe margin to keep when streaming to avoid splitting closing tags */
-const SAFE_MARGIN = 10;
-
-/** Maximum buffer size to prevent memory exhaustion (100KB) */
-const MAX_BUFFER = 100 * 1024;
-
 /** Maximum chunk size to prevent DoS (1MB) */
 const MAX_CHUNK_SIZE = 1024 * 1024;
-
-/** Pre-compiled regex for actions tag extraction */
-const ACTIONS_REGEX = /<actions>([\s\S]*?)<\/actions>/;
-
-/**
- * Result of attempting to extract content from an XML tag.
- */
-interface TagExtractionResult {
-	/** Content extracted (empty string if nothing yet) */
-	content: string;
-	/** Whether the closing tag was found */
-	closed: boolean;
-	/** Updated buffer after extraction */
-	buffer: string;
-	/** Whether we're now inside the tag */
-	insideTag: boolean;
-}
-
-/**
- * Extracts content from an XML tag in a streaming-friendly way.
- * Shared utility used by multiple extractors.
- *
- * @param buffer - Current accumulated buffer
- * @param openTag - Opening tag (e.g., "<text>")
- * @param closeTag - Closing tag (e.g., "</text>")
- * @param insideTag - Whether we're currently inside the tag
- * @param safeMargin - Margin to keep for potential split tags
- * @returns Extraction result with content and updated state
- */
-function extractTagContent(
-	buffer: string,
-	openTag: string,
-	closeTag: string,
-	insideTag: boolean,
-	safeMargin: number = SAFE_MARGIN,
-): TagExtractionResult {
-	let currentBuffer = buffer;
-	let currentInsideTag = insideTag;
-
-	// Look for opening tag if not inside
-	if (!currentInsideTag) {
-		const idx = currentBuffer.indexOf(openTag);
-		if (idx !== -1) {
-			currentInsideTag = true;
-			currentBuffer = currentBuffer.slice(idx + openTag.length);
-		} else {
-			return {
-				content: "",
-				closed: false,
-				buffer: currentBuffer,
-				insideTag: false,
-			};
-		}
-	}
-
-	// Check for closing tag
-	const closeIdx = currentBuffer.indexOf(closeTag);
-	if (closeIdx !== -1) {
-		const content = currentBuffer.slice(0, closeIdx);
-		const newBuffer = currentBuffer.slice(closeIdx + closeTag.length);
-		return { content, closed: true, buffer: newBuffer, insideTag: false };
-	}
-
-	// Stream safe content (keep margin for potential closing tag split)
-	if (currentBuffer.length > safeMargin) {
-		const content = currentBuffer.slice(0, -safeMargin);
-		const newBuffer = currentBuffer.slice(-safeMargin);
-		return { content, closed: false, buffer: newBuffer, insideTag: true };
-	}
-
-	return { content: "", closed: false, buffer: currentBuffer, insideTag: true };
-}
 
 /**
  * Validates and limits chunk size to prevent DoS attacks.
@@ -151,20 +72,6 @@ function validateChunkSize(chunk: string): void {
 			},
 		);
 	}
-}
-
-/**
- * Trims buffer to prevent unbounded growth.
- */
-function trimBuffer(
-	buffer: string,
-	maxSize: number = MAX_BUFFER,
-	keepSize: number = 1024,
-): string {
-	if (buffer.length > maxSize) {
-		return buffer.slice(-keepSize);
-	}
-	return buffer;
 }
 
 // ============================================================================
@@ -191,228 +98,24 @@ export class PassthroughExtractor implements IStreamExtractor {
 }
 
 // ============================================================================
-// XmlTagExtractor - Simple XML tag content extraction
-// ============================================================================
-
-/**
- * Extracts content from a specific XML tag, streaming it progressively.
- * Use when you have a simple XML format like `<response><text>content</text></response>`.
- *
- * @example
- * ```ts
- * const extractor = new XmlTagExtractor('text');
- * extractor.push('<response><text>Hello'); // Returns 'Hel' (keeps margin for split tags)
- * extractor.push(' world!</text></response>'); // Returns 'lo world!'
- * ```
- */
-export class XmlTagExtractor implements IStreamExtractor {
-	private readonly openTag: string;
-	private readonly closeTag: string;
-
-	private buffer = "";
-	private insideTag = false;
-	private finished = false;
-
-	constructor(tagName: string) {
-		this.openTag = `<${tagName}>`;
-		this.closeTag = `</${tagName}>`;
-	}
-
-	get done(): boolean {
-		return this.finished;
-	}
-
-	push(chunk: string): string {
-		if (this.finished) return "";
-
-		validateChunkSize(chunk);
-		this.buffer += chunk;
-
-		// Trim buffer if too large and not inside tag
-		if (!this.insideTag) {
-			this.buffer = trimBuffer(this.buffer);
-		}
-
-		const result = extractTagContent(
-			this.buffer,
-			this.openTag,
-			this.closeTag,
-			this.insideTag,
-			SAFE_MARGIN,
-		);
-
-		this.buffer = result.buffer;
-		this.insideTag = result.insideTag;
-
-		if (result.closed) {
-			this.finished = true;
-		}
-
-		return result.content;
-	}
-
-	reset(): void {
-		this.buffer = "";
-		this.insideTag = false;
-		this.finished = false;
-	}
-}
-
-// ============================================================================
-// ResponseStreamExtractor - Action-aware XML extraction (DefaultMessageService)
-// ============================================================================
-
-/** Response strategy based on <actions> content */
-type ResponseStrategy = "pending" | "direct" | "delegated";
-
-/**
- * Extracts streamable text from XML-structured LLM responses with action-based routing.
- *
- * This is the default implementation used by DefaultMessageService.
- * It understands the `<actions>` tag to determine whether to stream `<text>` content.
- *
- * Strategy:
- * - Parse <actions> to determine if response is direct (REPLY) or delegated (other actions)
- * - If direct: stream <text> content immediately
- * - If delegated: skip <text> (action handler will generate its own response via ActionStreamFilter)
- *
- * For simpler use cases without action routing, use {@link XmlTagExtractor} instead.
- */
-export class ResponseStreamExtractor implements IStreamExtractor {
-	private static readonly STREAM_TAGS = ["text"] as const;
-	private static readonly OPEN_TEXT_TAG = "<text>";
-	private static readonly CLOSE_TEXT_TAG = "</text>";
-
-	private buffer = "";
-	private insideTag = false;
-	private currentTag: string | null = null;
-	private finished = false;
-	private responseStrategy: ResponseStrategy = "pending";
-
-	get done(): boolean {
-		return this.finished;
-	}
-
-	reset(): void {
-		this.buffer = "";
-		this.insideTag = false;
-		this.currentTag = null;
-		this.finished = false;
-		this.responseStrategy = "pending";
-	}
-
-	push(chunk: string): string {
-		validateChunkSize(chunk);
-		this.buffer += chunk;
-
-		// Detect strategy from <actions> tag (comes before <text>)
-		if (this.responseStrategy === "pending") {
-			this.detectResponseStrategy();
-		}
-
-		// Look for streamable tags
-		if (!this.insideTag) {
-			const tag = ResponseStreamExtractor.STREAM_TAGS[0];
-			const openTag = ResponseStreamExtractor.OPEN_TEXT_TAG;
-			const closeTag = ResponseStreamExtractor.CLOSE_TEXT_TAG;
-			const idx = this.buffer.indexOf(openTag);
-
-			if (idx !== -1) {
-				// Check if we should stream this tag
-				if (!this.shouldStreamTag(tag)) {
-					// Skip tag entirely - wait for closing tag and remove
-					const closeIdx = this.buffer.indexOf(closeTag);
-					if (closeIdx !== -1) {
-						this.buffer = this.buffer.slice(closeIdx + closeTag.length);
-					}
-				} else {
-					this.insideTag = true;
-					this.currentTag = tag;
-					this.buffer = this.buffer.slice(idx + openTag.length);
-				}
-			}
-		}
-
-		// Trim buffer if too large and not inside tag
-		if (!this.insideTag) {
-			this.buffer = trimBuffer(this.buffer);
-			return "";
-		}
-
-		// Extract content from current tag using shared helper
-		const closeTag = `</${this.currentTag}>`;
-		const closeIdx = this.buffer.indexOf(closeTag);
-
-		if (closeIdx !== -1) {
-			const content = this.buffer.slice(0, closeIdx);
-			this.buffer = this.buffer.slice(closeIdx + closeTag.length);
-			this.insideTag = false;
-			this.currentTag = null;
-			this.finished = true;
-			return content;
-		}
-
-		// Stream safe content (keep margin for potential closing tag split)
-		if (this.buffer.length > SAFE_MARGIN) {
-			const toStream = this.buffer.slice(0, -SAFE_MARGIN);
-			this.buffer = this.buffer.slice(-SAFE_MARGIN);
-			return toStream;
-		}
-
-		return "";
-	}
-
-	/** Detect response strategy from <actions> tag using pre-compiled regex */
-	private detectResponseStrategy(): void {
-		const match = this.buffer.match(ACTIONS_REGEX);
-		if (match) {
-			const actions = this.parseActions(match[1]);
-			this.responseStrategy = this.isDirectReply(actions)
-				? "direct"
-				: "delegated";
-		}
-	}
-
-	/** Parse comma-separated actions */
-	private parseActions(raw: string): string[] {
-		return raw
-			.split(",")
-			.map((a) => a.trim().toUpperCase())
-			.filter(Boolean);
-	}
-
-	/** Check if actions represent a direct reply */
-	private isDirectReply(actions: string[]): boolean {
-		return actions.length === 1 && actions[0] === "REPLY";
-	}
-
-	/** Determine if a tag should be streamed based on strategy */
-	private shouldStreamTag(tag: string): boolean {
-		return tag === "text" && this.responseStrategy === "direct";
-	}
-}
-
-// ============================================================================
 // ActionStreamFilter - For action handler response filtering
 // ============================================================================
 
 /** Detected content type from first character */
-type ContentType = "json" | "xml" | "text";
+type ContentType = "structured" | "text";
 
 /**
  * Filters action handler output for streaming.
  * Used by runtime.ts processActions() for each action's useModel calls.
  *
  * Auto-detects content type from first non-whitespace character:
- * - JSON (starts with { or [) → Don't stream (structured data for parsing)
- * - XML (starts with <) → Look for <text> tag and stream its content
+ * - structured (starts with { or [) -> don't stream
  * - Plain text → Stream immediately
  */
 export class ActionStreamFilter implements IStreamExtractor {
 	private buffer = "";
 	private decided = false;
 	private contentType: ContentType | null = null;
-	private insideTextTag = false;
 	private finished = false;
 
 	get done(): boolean {
@@ -423,7 +126,6 @@ export class ActionStreamFilter implements IStreamExtractor {
 		this.buffer = "";
 		this.decided = false;
 		this.contentType = null;
-		this.insideTextTag = false;
 		this.finished = false;
 	}
 
@@ -444,14 +146,11 @@ export class ActionStreamFilter implements IStreamExtractor {
 
 		// Route based on content type
 		switch (this.contentType) {
-			case "json":
-				return ""; // Never stream JSON
+			case "structured":
+				return "";
 
 			case "text":
 				return this.handlePlainText();
-
-			case "xml":
-				return this.handleXml();
 
 			default:
 				return "";
@@ -464,8 +163,7 @@ export class ActionStreamFilter implements IStreamExtractor {
 		if (trimmed.length === 0) return null;
 
 		const firstChar = trimmed[0];
-		if (firstChar === "{" || firstChar === "[") return "json";
-		if (firstChar === "<") return "xml";
+		if (firstChar === "{" || firstChar === "[") return "structured";
 		return "text";
 	}
 
@@ -474,31 +172,6 @@ export class ActionStreamFilter implements IStreamExtractor {
 		const toStream = this.buffer;
 		this.buffer = "";
 		return toStream;
-	}
-
-	/** Handle XML content - extract and stream <text> tag content */
-	private handleXml(): string {
-		const result = extractTagContent(
-			this.buffer,
-			"<text>",
-			"</text>",
-			this.insideTextTag,
-			SAFE_MARGIN,
-		);
-
-		this.buffer = result.buffer;
-		this.insideTextTag = result.insideTag;
-
-		if (result.closed) {
-			this.finished = true;
-		}
-
-		// Trim buffer if not inside tag and not found yet
-		if (!this.insideTextTag && !result.closed) {
-			this.buffer = trimBuffer(this.buffer, 1024, 1024);
-		}
-
-		return result.content;
 	}
 }
 
@@ -509,7 +182,7 @@ export class ActionStreamFilter implements IStreamExtractor {
 /**
  * Passthrough extractor that can be marked complete externally.
  *
- * WHY: When using ValidationStreamExtractor inside dynamicPromptExecFromState,
+ * WHY: When using ToonFieldStreamExtractor inside dynamicPromptExecFromState,
  * extraction/completion is handled internally. But the outer streaming context
  * still needs to know when streaming is complete for retry/fallback logic.
  *
@@ -561,10 +234,6 @@ export class MarkableExtractor implements IStreamExtractor {
 	}
 }
 
-// ============================================================================
-// ValidationStreamExtractor - Validation-aware streaming
-// ============================================================================
-
 import type { SchemaRow, StreamEvent } from "../types/state";
 import type { IStreamingRetryState } from "../types/streaming";
 
@@ -583,37 +252,30 @@ export type ExtractorState =
  */
 export type FieldState =
 	| "pending" // Haven't seen this field yet
-	| "partial" // Found opening tag but no closing tag
-	| "complete" // Found both tags, content extracted
+	| "partial" // Found a field start but not the next top-level boundary
+	| "complete" // Field content extracted
 	| "invalid"; // Validation codes didn't match
 
 /**
- * Configuration for ValidationStreamExtractor.
+ * Configuration for ToonFieldStreamExtractor.
  */
-export interface ValidationStreamExtractorConfig {
-	/** Validation level (0-3) */
+export interface ToonFieldStreamExtractorConfig {
+	/** Validation level (0-3). Level 2+ buffers until flush. */
 	level: 0 | 1 | 2 | 3;
 	/** Schema rows with field definitions */
 	schema: SchemaRow[];
-	/** Which fields to stream to the consumer */
+	/** Which top-level TOON fields to stream to the consumer */
 	streamFields: string[];
-	/** Expected validation codes per field */
-	expectedCodes: Map<string, string>;
 	/**
 	 * Callback for streaming chunks.
 	 * WHY accumulated: consumers (voice detection, client-side merge) need the
-	 * full field text to avoid re-deriving it from deltas — which caused the
-	 * dual-extractor garbling bug when two pipelines accumulated differently.
-	 * The extractor already tracks this as `content` in emitFieldContent, so
-	 * surfacing it is zero-cost.
+	 * full field text to avoid re-deriving it from deltas.
 	 */
 	onChunk: (chunk: string, field?: string, accumulated?: string) => void;
 	/** Rich event callback for sophisticated consumers */
 	onEvent?: (event: StreamEvent) => void;
 	/** Abort signal for cancellation */
 	abortSignal?: AbortSignal;
-	/** Whether the consumer has an onEvent handler */
-	hasRichConsumer?: boolean;
 }
 
 /**
@@ -628,35 +290,35 @@ export interface ValidationDiagnosis {
 	incompleteFields: string[];
 }
 
+// ============================================================================
+// ToonFieldStreamExtractor - TOON top-level field extraction
+// ============================================================================
+
+const TOON_TOP_LEVEL_FIELD_RE =
+	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
+
 /**
- * Validation-aware stream extractor for dynamicPromptExecFromState.
+ * Extracts configured top-level scalar fields from TOON without streaming
+ * surrounding control fields such as thought/actions/providers.
  *
- * WHY THIS EXISTS:
- * LLMs can silently truncate output when they hit token limits. This is catastrophic
- * for structured outputs - you might get half a JSON object. Traditional streaming
- * has no validation - you might stream half a broken response.
- *
- * This extractor bridges the gap: it enables streaming while detecting truncation.
- * It uses "validation codes" - random UUIDs that the LLM must echo. If the echoed
- * code matches, we know that part wasn't truncated.
- *
- * VALIDATION LEVELS:
- * - Level 0 (Trusted): No codes, stream immediately. Fast but no safety.
- * - Level 1 (Progressive): Per-field codes, emit as each field validates.
- * - Level 2 (First Checkpoint): Code at start only, buffer until validated.
- * - Level 3 (Full): Codes at start AND end, maximum safety.
+ * This intentionally avoids decoding partial TOON documents. It processes
+ * complete lines, tracks top-level field boundaries, and only emits values for
+ * fields explicitly listed in `streamFields`.
  */
-export class ValidationStreamExtractor implements IStreamExtractor {
-	private buffer = "";
+export class ToonFieldStreamExtractor implements IStreamExtractor {
+	private lineBuffer = "";
+	private currentField: string | null = null;
 	private fieldContents: Map<string, string> = new Map();
-	private validatedFields: Set<string> = new Set();
 	private emittedContent: Map<string, string> = new Map();
+	private validatedFields: Set<string> = new Set();
 	private fieldStates: Map<string, FieldState> = new Map();
 	private state: ExtractorState = "streaming";
+	private readonly streamFieldSet: Set<string>;
 
-	constructor(private readonly config: ValidationStreamExtractorConfig) {
-		for (const field of config.streamFields) {
-			this.fieldStates.set(field, "pending");
+	constructor(private readonly config: ToonFieldStreamExtractorConfig) {
+		this.streamFieldSet = new Set(config.streamFields);
+		for (const row of config.schema) {
+			this.fieldStates.set(row.field, "pending");
 		}
 	}
 
@@ -665,7 +327,6 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 	}
 
 	push(chunk: string): string {
-		// Check for cancellation - transition to failed for any non-terminal state
 		if (this.config.abortSignal?.aborted) {
 			if (this.state !== "complete" && this.state !== "failed") {
 				this.state = "failed";
@@ -681,26 +342,19 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 		if (this.state !== "streaming") return "";
 
 		validateChunkSize(chunk);
-		this.buffer += chunk;
-
-		// Extract field contents from buffer
-		this.extractFieldContents();
-
-		// For levels 0-1, check if we can emit validated content
-		if (this.config.level <= 1) {
-			this.checkPerFieldEmission();
-		}
-
-		return ""; // We emit via callbacks, not return value
+		this.lineBuffer += chunk;
+		this.processAvailableLines(false);
+		return "";
 	}
 
 	flush(): string {
-		// Don't overwrite failed state (e.g., from abort)
 		if (this.state === "failed") {
 			return "";
 		}
 
-		// For levels 2-3, emit all buffered content when validation passes
+		this.processAvailableLines(true);
+		this.completeCurrentField();
+
 		if (this.config.level >= 2) {
 			for (const field of this.config.streamFields) {
 				const content = this.fieldContents.get(field) || "";
@@ -709,40 +363,34 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 				}
 			}
 		}
+
 		this.state = "complete";
 		this.emitEvent({ eventType: "complete", timestamp: Date.now() });
 		return "";
 	}
 
 	reset(): void {
-		this.buffer = "";
+		this.lineBuffer = "";
+		this.currentField = null;
 		this.fieldContents.clear();
-		this.validatedFields.clear();
 		this.emittedContent.clear();
-		for (const field of this.config.streamFields) {
-			this.fieldStates.set(field, "pending");
+		this.validatedFields.clear();
+		for (const row of this.config.schema) {
+			this.fieldStates.set(row.field, "pending");
 		}
 		this.state = "streaming";
 	}
 
-	/**
-	 * Signal a retry attempt. Returns info about validated fields for smart retry prompts.
-	 */
 	signalRetry(retryCount: number): { validatedFields: string[] } {
 		this.state = "retrying";
-
 		this.emitEvent({
 			eventType: "retry_start",
 			retryCount,
 			timestamp: Date.now(),
 		});
-
 		return { validatedFields: Array.from(this.validatedFields) };
 	}
 
-	/**
-	 * Signal an unrecoverable error.
-	 */
 	signalError(message: string): void {
 		this.state = "failed";
 		this.emitEvent({
@@ -752,9 +400,6 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 		});
 	}
 
-	/**
-	 * Get fields that passed validation (for smart retry context).
-	 */
 	getValidatedFields(): Map<string, string> {
 		const result = new Map<string, string>();
 		for (const field of this.validatedFields) {
@@ -766,9 +411,6 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 		return result;
 	}
 
-	/**
-	 * Diagnose what went wrong for error reporting.
-	 */
 	diagnose(): ValidationDiagnosis {
 		const missingFields: string[] = [];
 		const invalidFields: string[] = [];
@@ -792,148 +434,128 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 		return { missingFields, invalidFields, incompleteFields };
 	}
 
-	/**
-	 * Get current extractor state.
-	 */
 	getState(): ExtractorState {
 		return this.state;
 	}
 
-	// Private helpers
+	private processAvailableLines(final: boolean): void {
+		let newlineIndex = this.lineBuffer.search(/\r?\n/);
+		while (newlineIndex !== -1) {
+			const newlineLength =
+				this.lineBuffer[newlineIndex] === "\r" &&
+				this.lineBuffer[newlineIndex + 1] === "\n"
+					? 2
+					: 1;
+			const line = this.lineBuffer.slice(0, newlineIndex);
+			this.lineBuffer = this.lineBuffer.slice(newlineIndex + newlineLength);
+			this.processLine(line);
+			newlineIndex = this.lineBuffer.search(/\r?\n/);
+		}
 
-	private extractFieldContents(): void {
-		// Pre-compute all field tags for boundary detection
-		const allOpenTags = this.config.schema.map((row) => `<${row.field}>`);
-
-		for (const row of this.config.schema) {
-			const field = row.field;
-			const openTag = `<${field}>`;
-			const closeTag = `</${field}>`;
-
-			const openIdx = this.buffer.indexOf(openTag);
-			if (openIdx === -1) continue;
-
-			const contentStart = openIdx + openTag.length;
-			const closeIdx = this.buffer.indexOf(closeTag, contentStart);
-
-			if (closeIdx !== -1) {
-				// Complete field found
-				const content = this.buffer.substring(contentStart, closeIdx);
-				this.fieldContents.set(field, content);
-				this.fieldStates.set(field, "complete");
-			} else if (this.fieldStates.get(field) !== "complete") {
-				// Partial field - still streaming
-				this.fieldStates.set(field, "partial");
-
-				// Find the end boundary for partial content:
-				// Either the next field's opening tag or end of buffer
-				let partialEnd = this.buffer.length;
-				for (const otherTag of allOpenTags) {
-					if (otherTag === openTag) continue; // Skip self
-					const otherIdx = this.buffer.indexOf(otherTag, contentStart);
-					if (otherIdx !== -1 && otherIdx < partialEnd) {
-						partialEnd = otherIdx;
-					}
-				}
-
-				const partialContent = this.buffer.substring(contentStart, partialEnd);
-				this.fieldContents.set(field, partialContent);
-			}
+		if (final && this.lineBuffer.length > 0) {
+			this.processLine(this.lineBuffer);
+			this.lineBuffer = "";
 		}
 	}
 
-	private checkPerFieldEmission(): void {
-		for (const field of this.config.streamFields) {
-			const state = this.fieldStates.get(field);
-			if (state === "invalid") continue; // Skip already invalid fields
+	private processLine(line: string): void {
+		const isTopLevel = !/^[\t ]/.test(line);
+		const fieldMatch = isTopLevel ? line.match(TOON_TOP_LEVEL_FIELD_RE) : null;
 
-			const content = this.fieldContents.get(field);
-			if (!content) continue;
+		if (fieldMatch) {
+			this.completeCurrentField();
+			const rawKey = fieldMatch[1] ?? "";
+			const field = this.baseToonFieldName(rawKey);
+			const rawValue = fieldMatch[2] ?? "";
+			this.fieldStates.set(field, "partial");
 
-			// Check validation codes if required
-			const expectedCode = this.config.expectedCodes.get(field);
-			if (expectedCode) {
-				const startCodeValid = this.checkValidationCode(
-					field,
-					"start",
-					expectedCode,
-				);
-				const endCodeValid = this.checkValidationCode(
-					field,
-					"end",
-					expectedCode,
-				);
-
-				if (state === "complete") {
-					if (startCodeValid && endCodeValid) {
-						this.validatedFields.add(field);
-						this.emitFieldContent(field, content);
-						this.emitEvent({
-							eventType: "field_validated",
-							field,
-							timestamp: Date.now(),
-						});
-					} else if (startCodeValid && !endCodeValid) {
-						// Start valid but end invalid
-						this.fieldStates.set(field, "invalid");
-						this.emitEvent({
-							eventType: "error",
-							field,
-							error: `End validation code mismatch for ${field}`,
-							timestamp: Date.now(),
-						});
-					} else {
-						this.fieldStates.set(field, "invalid");
-						this.emitEvent({
-							eventType: "error",
-							field,
-							error: `Validation codes mismatch for ${field}`,
-							timestamp: Date.now(),
-						});
-					}
-				}
-			} else {
-				// No validation codes for this field
-				if (this.config.level === 0) {
-					// Level 0: Stream immediately as content arrives (no validation)
-					this.emitFieldContent(field, content);
-				} else if (state === "complete") {
-					// Levels 1-3: Stream when field is complete (even without per-field validation)
-					// Per-field validation is optional; fields without codes stream on completion
-					this.emitFieldContent(field, content);
-				}
-				// For partial state at levels 1-3: wait until complete before streaming
+			if (!this.streamFieldSet.has(field)) {
+				this.fieldStates.set(field, rawValue.trim() ? "complete" : "partial");
+				this.currentField = null;
+				return;
 			}
+
+			this.currentField = field;
+			if (rawValue.trim().length > 0) {
+				this.appendFieldContent(field, this.parseInlineValue(rawValue));
+				this.completeCurrentField();
+			}
+			return;
+		}
+
+		if (this.currentField && this.streamFieldSet.has(this.currentField)) {
+			this.appendFieldContent(
+				this.currentField,
+				this.normalizeContinuationLine(line),
+			);
 		}
 	}
 
-	private checkValidationCode(
-		field: string,
-		position: "start" | "end",
-		expectedCode: string,
-	): boolean {
-		const codeField = `code_${field}_${position}`;
-		const openTag = `<${codeField}>`;
-		const closeTag = `</${codeField}>`;
+	private completeCurrentField(): void {
+		if (!this.currentField) {
+			return;
+		}
 
-		const openIdx = this.buffer.indexOf(openTag);
-		if (openIdx === -1) return false;
+		const field = this.currentField;
+		this.fieldStates.set(field, "complete");
+		this.validatedFields.add(field);
+		if (this.config.level <= 1) {
+			const content = this.fieldContents.get(field) || "";
+			if (content) {
+				this.emitFieldContent(field, content);
+			}
+		}
+		this.currentField = null;
+	}
 
-		const contentStart = openIdx + openTag.length;
-		const closeIdx = this.buffer.indexOf(closeTag, contentStart);
-		if (closeIdx === -1) return false;
+	private appendFieldContent(field: string, value: string): void {
+		const previous = this.fieldContents.get(field);
+		if (previous === undefined || previous.length === 0) {
+			this.fieldContents.set(field, value);
+			return;
+		}
+		this.fieldContents.set(field, `${previous}\n${value}`);
+	}
 
-		const actualCode = this.buffer.substring(contentStart, closeIdx).trim();
-		return actualCode === expectedCode;
+	private parseInlineValue(rawValue: string): string {
+		const value = rawValue.trim();
+		if (value.length === 0) {
+			return "";
+		}
+
+		if (value.startsWith('"') && value.endsWith('"')) {
+			try {
+				return JSON.parse(value) as string;
+			} catch {
+				return value.slice(1, -1);
+			}
+		}
+
+		if (value.startsWith("'") && value.endsWith("'")) {
+			return value.slice(1, -1);
+		}
+
+		return value;
+	}
+
+	private normalizeContinuationLine(line: string): string {
+		if (line.startsWith("  ")) {
+			return line.slice(2);
+		}
+		if (line.startsWith("\t")) {
+			return line.slice(1);
+		}
+		return line;
+	}
+
+	private baseToonFieldName(rawKey: string): string {
+		return rawKey.split(/[[{]/, 1)[0] ?? rawKey;
 	}
 
 	private emitFieldContent(field: string, content: string): void {
 		const previouslyEmitted = this.emittedContent.get(field) || "";
 
-		// Defensive check: if content shrinks (shouldn't happen, indicates extraction bug),
-		// reset and emit the full new content rather than producing invalid substring
 		if (content.length < previouslyEmitted.length) {
-			// Content shrunk unexpectedly - reset tracking and emit full content
 			this.emittedContent.set(field, content);
 			if (content) {
 				this.config.onChunk(content, field, content);
@@ -948,7 +570,6 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 		}
 
 		const newContent = content.substring(previouslyEmitted.length);
-
 		if (newContent) {
 			this.config.onChunk(newContent, field, content);
 			this.emitEvent({

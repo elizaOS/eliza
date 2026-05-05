@@ -6,7 +6,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { DEFAULT_MAX_RETRIES, type McpSettings, type ValidationResult } from "../types";
-import { parseJSON } from "./json";
+import { parseStructuredModelOutput } from "./json";
 
 export type Input = string | Record<string, unknown>;
 
@@ -42,9 +42,17 @@ export async function withModelRetry<T>({
 }: WithModelRetryOptions<T>): Promise<T | null> {
   const maxRetries = getMaxRetries(runtime);
 
-  const parsedJson = typeof input === "string" ? parseJSON<Record<string, unknown>>(input) : input;
-
-  const validationResult = validationFn(parsedJson);
+  let validationResult: ValidationResult<T>;
+  try {
+    const parsedInput =
+      typeof input === "string"
+        ? parseStructuredModelOutput<Record<string, unknown>>(input)
+        : input;
+    validationResult = validationFn(parsedInput);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    validationResult = { success: false, error: errorMessage };
+  }
 
   if (validationResult.success) {
     return validationResult.data;
@@ -60,9 +68,9 @@ export async function withModelRetry<T>({
       message.content.text ?? ""
     );
 
-    const retrySelection = (await runtime.useModel(ModelType.OBJECT_LARGE, {
+    const retrySelection = (await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: feedbackPrompt,
-    })) as Record<string, unknown>;
+    })) as Input;
 
     return withModelRetry({
       runtime,

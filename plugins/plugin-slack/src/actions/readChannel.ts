@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -28,15 +28,11 @@ Extract the following:
 3. before: Optional message timestamp to fetch messages before
 4. after: Optional message timestamp to fetch messages after
 
-Respond with a JSON object like:
-{
-  "channelRef": "current",
-  "limit": 10,
-  "before": null,
-  "after": null
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+channelRef: current
+limit: 10
+before:
+after:`;
 
 export const readChannel: Action = {
   name: "SLACK_READ_CHANNEL",
@@ -48,6 +44,7 @@ export const readChannel: Action = {
     "LIST_MESSAGES",
   ],
   description: "Read message history from a Slack channel",
+  descriptionCompressed: "Read Slack channel message history.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -127,7 +124,8 @@ export const readChannel: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse) {
         readInfo = {
           channelRef: parsedResponse.channelRef

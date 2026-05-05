@@ -18,7 +18,7 @@ import {
   durableReplayAbortReservation,
   durableReplayCommitReservation,
   durableReplayTryReserve,
-} from "./x402-replay-durable.ts";
+} from "./x402-replay-durable.js";
 
 const inflight = new Set<string>();
 const consumedMemory = new Map<string, number>();

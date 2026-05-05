@@ -76,7 +76,8 @@ You provide a valuable service. Some guidelines about money:
 export const mysticalKnowledgeProvider: Provider = {
   name: "MYSTICAL_KNOWLEDGE",
   description: "Provides mystical domain knowledge to ground the agent's interpretations",
-  descriptionCompressed: "provide mystical domain knowledge ground agent interpretation",
+  descriptionCompressed:
+    "Provide mysticism reading guidelines, crisis boundaries, and interpretation knowledge.",
 
   dynamic: true,
   relevanceKeywords: [

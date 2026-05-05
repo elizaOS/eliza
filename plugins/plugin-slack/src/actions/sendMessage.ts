@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -27,14 +27,10 @@ Extract the following:
 2. channelRef: The channel to send to (default: "current" for the current channel, or a channel name/ID)
 3. threadTs: Optional thread timestamp to reply in a thread (default: null)
 
-Respond with a JSON object like:
-{
-  "text": "The message to send",
-  "channelRef": "current",
-  "threadTs": null
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+text: The message to send
+channelRef: current
+threadTs:`;
 
 export const sendMessage: Action = {
   name: "SLACK_SEND_MESSAGE",
@@ -46,6 +42,7 @@ export const sendMessage: Action = {
     "SEND_TO_CHANNEL",
   ],
   description: "Send a message to a Slack channel or thread",
+  descriptionCompressed: "Send Slack channel/thread message.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -124,7 +121,8 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.text) {
         messageInfo = {
           text: String(parsedResponse.text),

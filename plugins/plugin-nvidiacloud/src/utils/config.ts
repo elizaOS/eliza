@@ -44,12 +44,12 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
 }
 
 /**
- * Defaults chosen from live NVIDIA Build probes for reliable XML/control output.
+ * Defaults chosen from live NVIDIA Build probes for reliable structured output.
  *
  * WHY not default to newer reasoning-flavored models:
- * ElizaOS frequently asks for strict XML. Models that burn completion tokens on
+ * ElizaOS frequently asks for strict TOON. Models that burn completion tokens on
  * hidden/reasoning output can return empty visible text or hit length limits
- * before the XML arrives.
+ * before the visible output arrives.
  */
 const DEFAULT_SMALL = "meta/llama-3.1-8b-instruct";
 const DEFAULT_LARGE = "meta/llama-3.1-405b-instruct";

@@ -4,6 +4,7 @@ import type { Agent, Character } from "./agent";
 import type {
 	Action,
 	ActionResult,
+	AgentContext,
 	Evaluator,
 	HandlerCallback,
 	Provider,
@@ -45,10 +46,129 @@ import type {
 } from "./plugin";
 import type { ChannelType, Content, UUID } from "./primitives";
 import type { JsonValue } from "./proto.js";
+import type {
+	SearchCategoryEnumerationOptions,
+	SearchCategoryLookupOptions,
+	SearchCategoryRegistration,
+} from "./search";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { Task, TaskWorker } from "./task";
 import type { ToolPolicyConfig, ToolProfileId } from "./tools";
+
+export {
+	type SearchCategoryEnumerationOptions,
+	type SearchCategoryFilter,
+	type SearchCategoryFilterOption,
+	type SearchCategoryFilterType,
+	type SearchCategoryLookupOptions,
+	type SearchCategoryRegistration,
+	SearchCategoryRegistryError,
+	type SearchCategoryRegistryErrorCode,
+} from "./search";
+
+export type MessageTargetKind =
+	| "room"
+	| "channel"
+	| "thread"
+	| "user"
+	| "contact"
+	| "group"
+	| "server"
+	| "email"
+	| "phone"
+	| (string & {});
+
+export type MessageConnectorCapability = "send_message" | (string & {});
+
+export interface MessageConnectorQueryContext {
+	runtime: IAgentRuntime;
+	roomId?: UUID;
+	entityId?: UUID;
+	source?: string;
+	target?: TargetInfo;
+	contexts?: AgentContext[];
+	metadata?: Metadata;
+}
+
+export interface MessageConnectorTarget {
+	target: TargetInfo;
+	label?: string;
+	kind?: MessageTargetKind;
+	description?: string;
+	score?: number;
+	contexts?: AgentContext[];
+	metadata?: Metadata;
+}
+
+export interface MessageConnectorChatMessageContext {
+	entityId?: UUID;
+	name?: string;
+	text: string;
+	timestamp?: number;
+	metadata?: Metadata;
+}
+
+export interface MessageConnectorChatContext {
+	target: TargetInfo;
+	label?: string;
+	summary?: string;
+	recentMessages?: MessageConnectorChatMessageContext[];
+	metadata?: Metadata;
+}
+
+export interface MessageConnectorUserContext {
+	entityId: UUID | string;
+	label?: string;
+	aliases?: string[];
+	handles?: Record<string, string>;
+	metadata?: Metadata;
+}
+
+export interface MessageConnector {
+	source: string;
+	label: string;
+	capabilities: MessageConnectorCapability[];
+	supportedTargetKinds: MessageTargetKind[];
+	description?: string;
+	contexts: AgentContext[];
+	metadata?: Metadata;
+	resolveTargets?: (
+		query: string,
+		context: MessageConnectorQueryContext,
+	) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[];
+	listRecentTargets?: (
+		context: MessageConnectorQueryContext,
+	) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[];
+	listRooms?: (
+		context: MessageConnectorQueryContext,
+	) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[];
+	getChatContext?: (
+		target: TargetInfo,
+		context: MessageConnectorQueryContext,
+	) =>
+		| Promise<MessageConnectorChatContext | null>
+		| MessageConnectorChatContext
+		| null;
+	getUserContext?: (
+		entityId: UUID | string,
+		context: MessageConnectorQueryContext,
+	) =>
+		| Promise<MessageConnectorUserContext | null>
+		| MessageConnectorUserContext
+		| null;
+}
+
+export type MessageConnectorMetadata = Partial<
+	Omit<MessageConnector, "source" | "label">
+> & {
+	label?: string;
+};
+
+export type MessageConnectorRegistration = MessageConnectorMetadata & {
+	source: string;
+	sendHandler: SendHandlerFunction;
+};
 
 /**
  * Represents the core runtime environment for an agent.
@@ -451,8 +571,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "xml" | "toon";
-			forceFormat?: "json" | "xml" | "toon";
+			preferredEncapsulation?: "json" | "toon";
+			forceFormat?: "json" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -539,7 +659,18 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	endRun(): void;
 	getCurrentRunId(): UUID;
 
+	registerSearchCategory(registration: SearchCategoryRegistration): void;
+	getSearchCategories(
+		options?: SearchCategoryEnumerationOptions,
+	): SearchCategoryRegistration[];
+	getSearchCategory(
+		category: string,
+		options?: SearchCategoryLookupOptions,
+	): SearchCategoryRegistration;
+
 	registerSendHandler(source: string, handler: SendHandlerFunction): void;
+	registerMessageConnector(registration: MessageConnectorRegistration): void;
+	getMessageConnectors(): MessageConnector[];
 	sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
 
 	/**

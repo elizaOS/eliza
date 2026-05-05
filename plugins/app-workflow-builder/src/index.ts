@@ -1,1 +1,1 @@
-export { registerWorkflowBuilderApp } from "./register.js";
+export {};

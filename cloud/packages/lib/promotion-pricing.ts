@@ -10,7 +10,7 @@
  * - Some costs are hidden from users to avoid discouraging engagement
  *
  * AI Model Costs (base):
- * - GPT-4o-mini: $0.00015/1k input, $0.0006/1k output
+ * - gpt-5-mini: $0.00015/1k input, $0.0006/1k output
  * - Claude Sonnet: $0.003/1k input, $0.015/1k output
  * - Gemini 2.5 Flash Image: $0.01/image (from pricing-constants)
  */

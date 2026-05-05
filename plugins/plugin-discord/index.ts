@@ -22,9 +22,9 @@ import unpinMessage from "./actions/unpinMessage";
 import { printBanner } from "./banner";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
-import { channelStateProvider } from "./providers/channelState";
 import { guildInfoProvider } from "./providers/guildInfo";
 import { voiceStateProvider } from "./providers/voiceState";
+import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
@@ -57,9 +57,11 @@ const discordPlugin: Plugin = {
 		deleteMessage,
 		setupCredentials,
 	],
-	providers: [channelStateProvider, voiceStateProvider, guildInfoProvider],
+	providers: [voiceStateProvider, guildInfoProvider],
 	tests: [new DiscordTestSuite()],
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+		registerDiscordSearchCategory(runtime);
+
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;
 		const applicationId = runtime.getSetting(

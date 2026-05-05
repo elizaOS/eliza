@@ -12,6 +12,13 @@ import {
 import { searchIssuesTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearSearchFilters, SearchIssuesParameters } from "../types/index.js";
+import {
+  getBooleanValue,
+  getNumberValue,
+  getStringArrayValue,
+  getStringValue,
+  parseLinearPromptResponse,
+} from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 const searchTemplate = searchIssuesTemplate;
@@ -123,24 +130,25 @@ export const searchIssuesAction: Action = {
           filters = { query: content };
         } else {
           try {
-            const cleanedResponse = response
-              .replace(/^```(?:json)?\n?/, "")
-              .replace(/\n?```$/, "")
-              .trim();
-            const parsed = JSON.parse(cleanedResponse);
-
-            filters = {
-              query: parsed.query,
-              limit: parsed.limit || 10,
-            };
-
-            if (parsed.states && parsed.states.length > 0) {
-              filters.state = parsed.states;
+            const parsed = parseLinearPromptResponse(response);
+            if (Object.keys(parsed).length === 0) {
+              throw new Error("No fields found in model response");
             }
 
-            if (parsed.assignees && parsed.assignees.length > 0) {
+            filters = {
+              query: getStringValue(parsed.query),
+              limit: getNumberValue(parsed.limit) || 10,
+            };
+
+            const states = getStringArrayValue(parsed.states);
+            if (states && states.length > 0) {
+              filters.state = states;
+            }
+
+            const assignees = getStringArrayValue(parsed.assignees);
+            if (assignees && assignees.length > 0) {
               const processedAssignees = [];
-              for (const assignee of parsed.assignees) {
+              for (const assignee of assignees) {
                 if (assignee.toLowerCase() === "me") {
                   try {
                     const currentUser = await linearService.getCurrentUser();
@@ -157,11 +165,12 @@ export const searchIssuesAction: Action = {
               }
             }
 
-            if (parsed.hasAssignee === false) {
+            if (getBooleanValue(parsed.hasAssignee) === false) {
               filters.query = filters.query ? `${filters.query} unassigned` : "unassigned";
             }
 
-            if (parsed.priorities && parsed.priorities.length > 0) {
+            const parsedPriorities = getStringArrayValue(parsed.priorities);
+            if (parsedPriorities && parsedPriorities.length > 0) {
               const priorityMap: Record<string, number> = {
                 urgent: 1,
                 high: 2,
@@ -172,7 +181,7 @@ export const searchIssuesAction: Action = {
                 "3": 3,
                 "4": 4,
               };
-              const priorities = parsed.priorities
+              const priorities = parsedPriorities
                 .map((p: string) => priorityMap[p.toLowerCase()])
                 .filter(Boolean);
               if (priorities.length > 0) {
@@ -180,12 +189,14 @@ export const searchIssuesAction: Action = {
               }
             }
 
-            if (parsed.teams && parsed.teams.length > 0) {
-              filters.team = parsed.teams[0];
+            const teams = getStringArrayValue(parsed.teams);
+            if (teams && teams.length > 0) {
+              filters.team = teams[0];
             }
 
-            if (parsed.labels && parsed.labels.length > 0) {
-              filters.label = parsed.labels;
+            const labels = getStringArrayValue(parsed.labels);
+            if (labels && labels.length > 0) {
+              filters.label = labels;
             }
 
             Object.keys(filters).forEach((key) => {

@@ -1,4 +1,6 @@
 export {
+  annotateCatalogModel,
+  annotateCatalogModels,
   type CatalogModel,
   FALLBACK_TEXT_SELECTOR_MODELS,
   formatSelectorProvider,
@@ -12,8 +14,10 @@ export {
   isSelectableTextModel,
   isVastNativeModel,
   mergeCatalogModels,
+  OPENROUTER_DEFAULT_TEXT_MODEL,
   OPENROUTER_DEFAULT_FREE_MODEL,
   OPENROUTER_FREE_MODEL_MAP,
+  OPENROUTER_RECOMMENDED_TEXT_MODEL,
   type SelectorModel,
   STATIC_TEXT_CATALOG_MODELS,
   sortSelectorModels,

@@ -26,6 +26,26 @@
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
+    },
+    "./plugin": {
+      "types": "./plugin.ts",
+      "import": "./plugin.ts",
+      "default": "./plugin.ts"
+    },
+    "./register-routes": {
+      "types": "./register-routes.ts",
+      "import": "./register-routes.ts",
+      "default": "./register-routes.ts"
+    },
+    "./routes/*": {
+      "types": "./routes/*.ts",
+      "import": "./routes/*.ts",
+      "default": "./routes/*.ts"
+    },
+    "./lib/*": {
+      "types": "./lib/*.ts",
+      "import": "./lib/*.ts",
+      "default": "./lib/*.ts"
     }
   },
   "files": [
@@ -50,6 +70,8 @@
     "vitest": "^4.1.4"
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "zod": "^4.4.2"
   },
   "scripts": {
@@ -89,67 +111,72 @@
       },
       "ELIZAOS_CLOUD_NANO_MODEL": {
         "type": "string",
-        "description": "Nano/cheapest text model for lightweight routing and should-respond tasks (overrides NANO_MODEL). Examples: openai/gpt-5.4-nano, google/gemini-2.5-flash-lite, groq/llama-3.1-8b-instant",
+        "description": "Nano/cheapest text model for lightweight routing and should-respond tasks (overrides NANO_MODEL). Default: openai/gpt-oss-120b:nitro",
         "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "NANO_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the nano language model if ELIZAOS_CLOUD_NANO_MODEL is not set.",
         "required": false,
-        "default": "openai/gpt-5.4-nano",
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_SMALL_MODEL": {
         "type": "string",
-        "description": "Small/fast model for quick tasks (overrides SMALL_MODEL). Examples: gpt-5.4-mini, claude-haiku-4-5-20251001.5, gemini-2.5-flash, glm-5.1",
+        "description": "Small/fast model for quick tasks (overrides SMALL_MODEL). Default: openai/gpt-oss-120b:nitro",
         "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "SMALL_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the small language model if ELIZAOS_CLOUD_SMALL_MODEL is not set.",
         "required": false,
-        "default": "gpt-5.4-mini",
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_MEDIUM_MODEL": {
         "type": "string",
-        "description": "Medium planning model for multi-step reasoning (overrides MEDIUM_MODEL). Examples: claude-sonnet-4.6, gpt-5.4, gemini-2.5-pro, glm-5.1",
+        "description": "Medium planning model for multi-step reasoning (overrides MEDIUM_MODEL). Default: openai/gpt-oss-120b:nitro",
         "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "MEDIUM_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the medium language model if ELIZAOS_CLOUD_MEDIUM_MODEL is not set.",
         "required": false,
-        "default": "claude-sonnet-4.6",
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_LARGE_MODEL": {
         "type": "string",
-        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Examples: claude-sonnet-4.6, claude-opus-4-7, gpt-5.4, glm-5.1",
+        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: openai/gpt-oss-120b:nitro",
         "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "LARGE_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the large language model if ELIZAOS_CLOUD_LARGE_MODEL is not set.",
         "required": false,
-        "default": "claude-sonnet-4.6",
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_MEGA_MODEL": {
         "type": "string",
         "description": "Mega/top-tier model for the heaviest generation tasks (overrides MEGA_MODEL). Falls back to the large tier when unset.",
         "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "MEGA_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the mega language model if ELIZAOS_CLOUD_MEGA_MODEL is not set.",
         "required": false,
-        "default": "claude-sonnet-4.6",
+        "default": "openai/gpt-oss-120b:nitro",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL": {

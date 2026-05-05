@@ -8,8 +8,8 @@
  *   2. Pull a wider similarity pool from the `facts` table and partition into
  *      `durable` and `current` lists in TS (the runtime search API does not
  *      filter on metadata).
- *   3. One LLM call (TEXT_SMALL, temp=0) emits a JSON `ops` array validated
- *      by `ExtractorOutputSchema`. No XML/TOON fallback — strict JSON only.
+ *   3. One LLM call (TEXT_SMALL, temp=0) emits a TOON `ops` array validated
+ *      by `ExtractorOutputSchema`. Legacy JSON responses are still accepted.
  *   4. Write-time embedding-similarity dedup upgrades near-duplicate
  *      `add_*` ops to `strengthen` against the closest existing fact in the
  *      same `kind` + `category`.
@@ -20,7 +20,6 @@
  */
 
 import { v4 } from "uuid";
-import { factExtractionTemplate } from "../../../prompts.ts";
 import type {
 	ActionResult,
 	Evaluator,
@@ -41,6 +40,7 @@ import type {
 } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { asUUID, type JsonValue } from "../../../types/primitives.ts";
+import { tryParseToonValue } from "../../../utils/toon";
 import { composePrompt } from "../../../utils.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
@@ -60,6 +60,93 @@ const DECAY_DELTA = 0.15;
 const FACT_DECAY_FLOOR = 0.2;
 const NEW_FACT_CONFIDENCE = 0.7;
 const DEDUP_SIMILARITY_THRESHOLD = 0.92;
+
+const FACT_EXTRACTION_TOON_TEMPLATE = `# Task: Classify and extract facts from this message
+
+You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return TOON ops only.
+
+Stores:
+- durable: stable identity-level claims that matter in a year.
+  Categories: identity, health, relationship, life_event, business_role, preference, goal.
+- current: time-bound state about right now or the near term.
+  Categories: feeling, physical_state, working_on, going_through, schedule_context.
+
+Rules:
+- If a claim feels stale or surprising to retrieve in a year, use current.
+- Empty output is right for small talk or questions with no new claim.
+- Before add_durable/add_current, scan known facts. If meaning already exists, emit strengthen with that factId.
+- Paraphrases count as duplicates. Match meaning, not surface form.
+
+Ops:
+- add_durable: claim, category, structured_fields; optional verification_status, reason.
+- add_current: claim, category, structured_fields; optional valid_at, reason.
+- strengthen: factId, optional reason.
+- decay: factId, optional reason.
+- contradict: factId, reason, optional proposedText.
+
+Examples:
+
+Message: "I have a flat cortisol curve confirmed via lab"
+ops[1]:
+  - op: add_durable
+    claim: flat cortisol curve
+    category: health
+    structured_fields:
+      condition: flat cortisol curve
+      source: lab
+    verification_status: confirmed
+
+Message: "I'm anxious this morning"
+ops[1]:
+  - op: add_current
+    claim: anxious this morning
+    category: feeling
+    structured_fields:
+      emotion: anxious
+      window: morning
+
+Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
+Message: "Berlin's been treating me well"
+ops[1]:
+  - op: strengthen
+    factId: fact_abc
+    reason: user reaffirmed living in Berlin
+
+Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
+Message: "Actually I moved to Tokyo last month"
+ops[2]:
+  - op: contradict
+    factId: fact_abc
+    proposedText: lives in Tokyo
+    reason: user moved to Tokyo, contradicts Berlin
+  - op: add_durable
+    claim: moved to Tokyo last month
+    category: life_event
+    structured_fields:
+      event: relocation
+      to: Tokyo
+
+Inputs:
+Agent Name: {{agentName}}
+Message Sender: {{senderName}} (ID: {{senderId}})
+Now: {{now}}
+
+Recent messages:
+{{recentMessages}}
+
+Known durable facts (format: [factId] (durable.category) claim):
+{{knownDurable}}
+
+Known current facts (format: [factId] (current.category, since validAt) claim):
+{{knownCurrent}}
+
+Latest message:
+{{message}}
+
+Output:
+TOON only. Return exactly one TOON document. No prose, no fences, no JSON, no XML, no <think>.
+If nothing should change, return:
+ops[0]:`;
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -252,8 +339,29 @@ function parseExtractorResponse(
 ): ExtractorOp[] | null {
 	const trimmed = raw.trim();
 	if (!trimmed) return null;
-	// Locate the first balanced JSON object in the response. Strict JSON only:
-	// no XML, no TOON, no fenced-block fallback.
+
+	const parsedToon = tryParseToonValue(trimmed);
+	if (
+		parsedToon &&
+		typeof parsedToon === "object" &&
+		!Array.isArray(parsedToon)
+	) {
+		const validated = ExtractorOutputSchema.safeParse(parsedToon);
+		if (!validated.success) {
+			runtime.logger.warn(
+				{
+					src: "plugin:advanced-capabilities:evaluator:fact-extractor",
+					agentId: runtime.agentId,
+					issues: validated.error.issues,
+				},
+				"Fact extractor TOON output failed schema validation",
+			);
+			return null;
+		}
+		return validated.data.ops;
+	}
+
+	// Legacy JSON fallback for older prompts and cached model outputs.
 	const start = trimmed.indexOf("{");
 	if (start === -1) return null;
 	const end = trimmed.lastIndexOf("}");
@@ -269,7 +377,7 @@ function parseExtractorResponse(
 				agentId: runtime.agentId,
 				error: error instanceof Error ? error.message : String(error),
 			},
-			"Fact extractor returned non-JSON output",
+			"Fact extractor returned invalid structured output",
 		);
 		return null;
 	}
@@ -662,7 +770,7 @@ async function handler(
 			knownCurrent: formatKnownLines(knownCurrent, "current"),
 			message: message.content.text,
 		},
-		template: factExtractionTemplate,
+		template: FACT_EXTRACTION_TOON_TEMPLATE,
 	});
 
 	const response = await runtime.useModel(ModelType.TEXT_SMALL, {

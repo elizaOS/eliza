@@ -184,7 +184,7 @@ Multi-turn agent behavior test. Both `airline` and `retail` domains.
 
 ```bash
 cd /home/shaw/milady/eliza/packages/benchmarks/tau-bench
-python -m tau_bench.run --agent eliza-adapter --user-model gpt-4 \
+python -m tau_bench.run --agent eliza-adapter --user-model gpt-5.5 \
     --task airline --num-trials 50
 ```
 

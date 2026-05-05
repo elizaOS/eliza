@@ -2,7 +2,7 @@ import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import {
   ModelType,
   parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import {
   findKeywordTermMatch,
@@ -360,7 +360,7 @@ export async function extractRoleIntentWithLlm(args: {
   }
 
   const parsed =
-    parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+    parseToonKeyValue<Record<string, unknown>>(rawResponse) ??
     parseJSONObjectFromText(rawResponse);
   if (!parsed) {
     return {
