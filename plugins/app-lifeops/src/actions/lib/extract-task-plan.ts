@@ -15,6 +15,7 @@ import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import {
   LIFEOPS_REMINDER_INTENSITIES,
@@ -543,9 +544,13 @@ export async function extractUnlockModeWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-extract-task-plan-unlock" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        }),
+    );
     const raw = typeof result === "string" ? result : "";
     const parsed = parseStructuredRecord(raw);
     if (!parsed?.mode) return null;

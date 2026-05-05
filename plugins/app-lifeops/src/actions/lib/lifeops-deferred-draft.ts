@@ -8,7 +8,11 @@
  * decision so the umbrella action can stay focused on dispatch.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, parseToonKeyValue } from "@elizaos/core";
+import {
+  ModelType,
+  parseToonKeyValue,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import type {
   CreateLifeOpsDefinitionRequest,
@@ -484,9 +488,13 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-deferred-draft" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+        }),
+    );
     const raw = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
     const mode =

@@ -6,7 +6,7 @@
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
 
-import { ModelType } from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -1942,10 +1942,13 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
 
       let response: unknown;
       try {
-        // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
-        response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt,
-        });
+        response = await runWithTrajectoryContext(
+          { purpose: "lifeops-gmail-reply-draft" },
+          () =>
+            this.runtime.useModel(ModelType.TEXT_LARGE, {
+              prompt,
+            }),
+        );
       } catch (error) {
         this.logLifeOpsWarn(
           "gmail_reply_draft_model",
