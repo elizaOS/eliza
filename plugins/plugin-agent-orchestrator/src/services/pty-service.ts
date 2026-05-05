@@ -443,6 +443,69 @@ async function seedClaudeTrustForWorkdirUnsafe(
 }
 
 /**
+ * Pre-acknowledge the `--dangerously-skip-permissions` one-time confirmation
+ * dialog by writing `bypassPermissionsAcknowledged: true` at the top level of
+ * `~/.claude.json`. Without this, Claude Code shows a blocking "Bypass
+ * Permissions confirmation" gate that the PTY worker's default permission
+ * fallback answers with bare Enter (option 1 = "No, exit"), killing the
+ * subprocess with exit code 1 before any work runs.
+ *
+ * This is a global setting (not per-workdir) because the CLI only checks it
+ * once regardless of which directory it runs in.
+ */
+async function seedClaudeBypassPermissionsAck(
+  overrideConfigPath?: string,
+): Promise<void> {
+  const configPath = overrideConfigPath ?? join(homedir(), ".claude.json");
+  const prior = claudeConfigWriteQueue.get(configPath) ?? Promise.resolve();
+  const next = prior
+    .catch(() => undefined)
+    .then(() => seedClaudeBypassPermissionsAckUnsafe(configPath));
+  claudeConfigWriteQueue.set(configPath, next);
+  try {
+    await next;
+  } finally {
+    if (claudeConfigWriteQueue.get(configPath) === next) {
+      claudeConfigWriteQueue.delete(configPath);
+    }
+  }
+}
+
+export const seedClaudeBypassPermissionsAckForTesting =
+  seedClaudeBypassPermissionsAck;
+
+async function seedClaudeBypassPermissionsAckUnsafe(
+  configPath: string,
+): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(configPath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      logger.warn(
+        `[pty-service] seedClaudeBypassPermissionsAck: failed to read ${configPath}: ${err}`,
+      );
+      return;
+    }
+    raw = "{}";
+  }
+  let parsed: ClaudeConfig;
+  try {
+    parsed = JSON.parse(raw) as ClaudeConfig;
+  } catch (err) {
+    logger.warn(
+      `[pty-service] seedClaudeBypassPermissionsAck: ${configPath} is not valid JSON: ${err}`,
+    );
+    return;
+  }
+  if (parsed.bypassPermissionsAcknowledged === true) {
+    return;
+  }
+  parsed.bypassPermissionsAcknowledged = true;
+  await writeFile(configPath, JSON.stringify(parsed, null, 2), "utf8");
+}
+
+/**
  * Retrieve the SwarmCoordinator from the PTYService registered on the runtime.
  * Returns undefined if PTYService or coordinator is not available.
  */
@@ -840,6 +903,11 @@ export class PTYService {
     if (resolvedAgentType === "claude") {
       await seedClaudeTrustForWorkdir(workdir).catch((err) =>
         this.log(`Failed to pre-seed claude trust for ${workdir}: ${err}`),
+      );
+      await seedClaudeBypassPermissionsAck().catch((err) =>
+        this.log(
+          `Failed to pre-seed claude bypass-permissions ack: ${err}`,
+        ),
       );
     }
 

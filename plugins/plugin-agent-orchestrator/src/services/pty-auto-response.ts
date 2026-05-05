@@ -121,7 +121,7 @@ export async function pushDefaultRules(
     // session is non-coordinator (adapter auto-response still on).
     rules.push({
       pattern:
-        /WARNING.{0,200}Bypass Permissions mode|Bypass Permissions mode.{0,200}accept all responsibility/is,
+        /WARNING.{0,200}Bypass Permissions mode|Bypass Permissions mode.{0,200}accept all responsibility|Bypass Permissions confirmation/is,
       type: "permission",
       response: "",
       responseType: "keys" as const,
