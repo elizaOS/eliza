@@ -15,6 +15,7 @@ import {
 	type State,
 	type UUID,
 } from "../../../types/index.ts";
+import { encodeToonValue } from "../../../utils/toon";
 import { parseKeyValueXml } from "../../../utils.ts";
 import type { JsonValue, PlanningContext, RetryPolicy } from "../types.ts";
 
@@ -37,6 +38,14 @@ interface ActionStep {
 	retryPolicy?: RetryPolicy;
 	onError?: "abort" | "continue" | "skip";
 	_dependencyStrings?: string[];
+}
+
+function formatPromptData(value: unknown): string {
+	try {
+		return encodeToonValue(value);
+	} catch {
+		return String(value);
+	}
 }
 
 interface PlanState {
@@ -539,7 +548,7 @@ EXECUTION MODEL: ${context.preferences?.executionModel || "sequential"}
 MAX STEPS: ${context.preferences?.maxSteps || 10}
 
 ${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
-${state ? `CURRENT STATE: ${JSON.stringify(state.values)}` : ""}
+${state ? `CURRENT STATE:\n${formatPromptData(state.values)}` : ""}
 
 Create a detailed plan with the following TOON structure:
 goal: ${context.goal}
@@ -1131,9 +1140,11 @@ Focus on:
 	): string {
 		return `You are an expert AI adaptation system. A plan execution has encountered an issue and needs adaptation.
 
-ORIGINAL PLAN: ${JSON.stringify(plan, null, 2)}
+ORIGINAL PLAN:
+${formatPromptData(plan)}
 CURRENT STEP INDEX: ${currentStepIndex}
-COMPLETED RESULTS: ${JSON.stringify(results, null, 2)}
+COMPLETED RESULTS:
+${formatPromptData({ results })}
 ${error ? `ERROR: ${error.message}` : ""}
 
 Analyze the situation and provide an adapted plan that:

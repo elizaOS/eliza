@@ -9,6 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -32,13 +33,9 @@ Extract the following:
 1. text: The message text to send
 2. channelRef: The channel to send to (default: "current" for the current channel)
 
-Respond with a JSON object like:
-{
-  "text": "The message to send",
-  "channelRef": "current"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+text: The message to send
+channelRef: current`;
 
 const spec = requireActionSpec("SEND_MESSAGE");
 
@@ -87,7 +84,9 @@ export const sendMessage: Action = {
 				prompt,
 			});
 
-			const parsedResponse = parseJSONObjectFromText(response);
+			const parsedResponse =
+				parseKeyValueXml<Record<string, unknown>>(response) ??
+				parseJSONObjectFromText(response);
 			if (parsedResponse?.text) {
 				messageInfo = {
 					text: String(parsedResponse.text),

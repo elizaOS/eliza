@@ -180,10 +180,7 @@ class ExperienceBenchmarkRunner:
         model_plugin_factory: "Callable | None" = None,
         progress_callback: "Callable[[str, int, int], None] | None" = None,
     ) -> BenchmarkResult:
-        """Run the Eliza agent experience benchmark.
-
-        This runs the experience benchmark through a real Eliza agent,
-        testing the full pipeline: Provider -> Model -> Action -> Evaluator.
+        """Run the Eliza agent experience benchmark through the TS bridge.
 
         Args:
             model_plugin_factory: Factory function that returns a model Plugin.
@@ -192,17 +189,15 @@ class ExperienceBenchmarkRunner:
         Returns:
             BenchmarkResult with eliza_agent metrics populated.
         """
-        from elizaos_experience_bench.eliza_runner import (
-            AgentBenchmarkConfig,
-            ElizaAgentExperienceRunner,
-            run_eliza_agent_experience_benchmark,
+        from eliza_adapter.experience import (
+            ElizaBridgeExperienceRunner,
+            ElizaExperienceConfig,
         )
+        from eliza_adapter.server_manager import ElizaServerManager
 
-        print(f"\n[ExperienceBench] Running ELIZA AGENT benchmark...")
-        print(f"  This tests the full Eliza canonical flow:")
-        print(f"  Provider -> MESSAGE_HANDLER_TEMPLATE -> Actions -> Evaluators")
+        print(f"\n[ExperienceBench] Running ELIZA AGENT benchmark via TS bridge...")
 
-        agent_config = AgentBenchmarkConfig(
+        bridge_config = ElizaExperienceConfig(
             num_learning_scenarios=self.config.num_learning_cycles,
             num_background_experiences=min(self.config.num_experiences, 200),
             domains=self.config.domains,
@@ -210,25 +205,47 @@ class ExperienceBenchmarkRunner:
             top_k_values=self.config.top_k_values,
         )
 
-        agent_result = await run_eliza_agent_experience_benchmark(
-            model_plugin_factory=model_plugin_factory,
-            config=agent_config,
-            progress_callback=progress_callback,
-        )
+        _ = model_plugin_factory
+        bridge_manager = ElizaServerManager()
+        bridge_manager.start()
+        try:
+            bridge_result = await ElizaBridgeExperienceRunner(
+                config=bridge_config,
+                client=bridge_manager.client,
+            ).run(progress_callback=progress_callback)
+        finally:
+            bridge_manager.stop()
 
-        # Build the combined result with both direct and agent metrics
+        agent_data = bridge_result.get("eliza_agent", {})
+        direct_data = bridge_result.get("direct_retrieval", {})
+
         result = BenchmarkResult(
             config=self.config,
-            total_experiences=agent_result.agent_metrics.total_experiences_in_service
-            if agent_result.agent_metrics
-            else 0,
+            total_experiences=int(bridge_result.get("total_experiences", 0) or 0),
         )
 
-        if agent_result.agent_metrics is not None:
-            result.eliza_agent = agent_result.agent_metrics
+        if isinstance(agent_data, dict):
+            result.eliza_agent = ElizaAgentMetrics(
+                learning_success_rate=float(agent_data.get("learning_success_rate", 0.0)),
+                total_experiences_recorded=int(agent_data.get("total_experiences_recorded", 0)),
+                total_experiences_in_service=int(agent_data.get("total_experiences_in_service", 0)),
+                avg_learning_latency_ms=float(agent_data.get("avg_learning_latency_ms", 0.0)),
+                agent_recall_rate=float(agent_data.get("agent_recall_rate", 0.0)),
+                agent_keyword_incorporation_rate=float(
+                    agent_data.get("agent_keyword_incorporation_rate", 0.0)
+                ),
+                avg_retrieval_latency_ms=float(agent_data.get("avg_retrieval_latency_ms", 0.0)),
+                direct_recall_rate=float(agent_data.get("direct_recall_rate", 0.0)),
+                direct_mrr=float(agent_data.get("direct_mrr", 0.0)),
+            )
 
-        if agent_result.direct_retrieval_metrics is not None:
-            result.retrieval = agent_result.direct_retrieval_metrics
+        if isinstance(direct_data, dict):
+            result.retrieval = RetrievalMetrics(
+                precision_at_k=direct_data.get("precision_at_k", {}) if isinstance(direct_data.get("precision_at_k"), dict) else {},
+                recall_at_k=direct_data.get("recall_at_k", {}) if isinstance(direct_data.get("recall_at_k"), dict) else {},
+                mean_reciprocal_rank=float(direct_data.get("mean_reciprocal_rank", 0.0)),
+                hit_rate_at_k=direct_data.get("hit_rate_at_k", {}) if isinstance(direct_data.get("hit_rate_at_k"), dict) else {},
+            )
 
         return result
 

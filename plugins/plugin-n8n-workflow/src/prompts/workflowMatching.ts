@@ -12,7 +12,7 @@ Rules:
 - Return "none" if no workflow matches the request
 - If multiple workflows match equally well, include all in matches array and set lower confidence
 
-Return a JSON object with:
+Return structured data with:
 - matchedWorkflowId: string | null - The best matching workflow ID, or null if no good match
 - confidence: "high" | "medium" | "low" | "none" - How confident you are in the match
 - matches: Array of {id, name, score} - All potential matches with scores (0-100)

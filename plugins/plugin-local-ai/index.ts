@@ -768,31 +768,25 @@ export const localAiPlugin: Plugin = {
         temperature: params.temperature,
       });
 
-      // Build XML schema hint from the provided schema
+      // Build TOON schema hint from the provided schema
       let schemaHint = "";
       if (params.schema) {
         const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `<${key}>value</${key}>`).join("\n");
+        schemaHint = schemaKeys.map((key) => `${key}: value`).join("\n");
       }
 
-      // Enhance the prompt to request XML output
-      const xmlPrompt = `${params.prompt}
+      const structuredPrompt = `${params.prompt}
 
-Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
+Respond with TOON only. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
 
-IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
-<code><![CDATA[
-your code here
-]]></code>
+For multiline values such as code, put the key on one line and indent the value on following lines.
 
 Example response format:
-<response>
-<thought>Your reasoning here</thought>
-<text>Your response text here</text>
-</response>`;
+thought: Your reasoning here
+text: Your response text here`;
 
       const textResponse = await localAIManager.generateText({
-        prompt: xmlPrompt,
+        prompt: structuredPrompt,
         stopSequences: params.stopSequences,
         runtime,
         modelType: ModelType.TEXT_SMALL,
@@ -801,24 +795,24 @@ Example response format:
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
+        const parsedStructured = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
-        if (parsedXml) {
-          logger.debug("Parsed XML result:", parsedXml);
+        if (parsedStructured) {
+          logger.debug("Parsed structured result:", parsedStructured);
 
           // Validate against schema if provided
           if (params.schema) {
             for (const key of Object.keys(params.schema)) {
-              if (!(key in parsedXml)) {
-                (parsedXml as Record<string, unknown>)[key] = null;
+              if (!(key in parsedStructured)) {
+                (parsedStructured as Record<string, unknown>)[key] = null;
               }
             }
           }
 
-          return parsedXml;
+          return parsedStructured;
         }
 
-        logger.warn("parseKeyValueXml returned null, attempting manual extraction");
+        logger.warn("parseKeyValueXml returned null, attempting legacy XML extraction");
         const result: Record<string, unknown> = {};
 
         const extractTag = (text: string, tagName: string): string | null => {
@@ -881,11 +875,11 @@ Example response format:
           return result;
         }
 
-        throw new Error("Could not parse XML response");
+        throw new Error("Could not parse structured response");
       } catch (parseError) {
-        logger.error("Failed to parse XML:", parseError);
+        logger.error("Failed to parse structured response:", parseError);
         logger.error("Raw response:", textResponse);
-        throw new Error("Invalid XML returned from model");
+        throw new Error("Invalid structured response returned from model");
       }
     },
 
@@ -897,31 +891,25 @@ Example response format:
         temperature: params.temperature,
       });
 
-      // Build XML schema hint from the provided schema
+      // Build TOON schema hint from the provided schema
       let schemaHint = "";
       if (params.schema) {
         const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `<${key}>value</${key}>`).join("\n");
+        schemaHint = schemaKeys.map((key) => `${key}: value`).join("\n");
       }
 
-      // Enhance the prompt to request XML output
-      const xmlPrompt = `${params.prompt}
+      const structuredPrompt = `${params.prompt}
 
-Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
+Respond with TOON only. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
 
-IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
-<code><![CDATA[
-your code here
-]]></code>
+For multiline values such as code, put the key on one line and indent the value on following lines.
 
 Example response format:
-<response>
-<thought>Your reasoning here</thought>
-<text>Your response text here</text>
-</response>`;
+thought: Your reasoning here
+text: Your response text here`;
 
       const textResponse = await localAIManager.generateText({
-        prompt: xmlPrompt,
+        prompt: structuredPrompt,
         stopSequences: params.stopSequences,
         runtime,
         modelType: ModelType.TEXT_LARGE,
@@ -930,24 +918,24 @@ Example response format:
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
+        const parsedStructured = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
-        if (parsedXml) {
-          logger.debug("Parsed XML result:", parsedXml);
+        if (parsedStructured) {
+          logger.debug("Parsed structured result:", parsedStructured);
 
           // Validate against schema if provided
           if (params.schema) {
             for (const key of Object.keys(params.schema)) {
-              if (!(key in parsedXml)) {
-                (parsedXml as Record<string, unknown>)[key] = null;
+              if (!(key in parsedStructured)) {
+                (parsedStructured as Record<string, unknown>)[key] = null;
               }
             }
           }
 
-          return parsedXml;
+          return parsedStructured;
         }
 
-        logger.warn("parseKeyValueXml returned null, attempting manual extraction");
+        logger.warn("parseKeyValueXml returned null, attempting legacy XML extraction");
         const result: Record<string, unknown> = {};
 
         const extractTag = (text: string, tagName: string): string | null => {
@@ -1010,11 +998,11 @@ Example response format:
           return result;
         }
 
-        throw new Error("Could not parse XML response");
+        throw new Error("Could not parse structured response");
       } catch (parseError) {
-        logger.error("Failed to parse XML:", parseError);
+        logger.error("Failed to parse structured response:", parseError);
         logger.error("Raw response:", textResponse);
-        throw new Error("Invalid XML returned from model");
+        throw new Error("Invalid structured response returned from model");
       }
     },
 

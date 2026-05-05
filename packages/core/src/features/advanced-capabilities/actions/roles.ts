@@ -19,13 +19,13 @@ import { composePrompt, parseKeyValueXml } from "../../../utils.ts";
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_ROLE");
 
-/** Shape of individual assignment in XML response */
+/** Shape of individual assignment in structured responses. */
 interface RoleAssignmentXml {
 	entityId?: string;
 	newRole?: string;
 }
 
-/** Shape of the role extraction XML response */
+/** Shape of the role extraction structured response. */
 interface RoleExtractionResult {
 	assignments?:
 		| {
@@ -273,7 +273,7 @@ assignments[1]:
 IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`,
 		});
 
-		// Extract role assignments using text model with XML parsing
+		// Extract role assignments using the TOON-first compatibility parser.
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt: extractionPrompt,
 			stopSequences: [],
@@ -281,7 +281,7 @@ IMPORTANT: Your response must ONLY contain the TOON document above. Do not inclu
 
 		const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
 
-		// Handle the parsed XML structure
+		// Handle the parsed structured response.
 		const assignmentArray = normalizeRoleAssignments(parsedXml?.assignments);
 		const assignments: RoleAssignment[] = assignmentArray
 			.filter(

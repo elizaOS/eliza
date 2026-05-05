@@ -11,14 +11,9 @@ Examples:
 - "get detailed info on @admin" -> userIdentifier: "admin", detailed: true
 - "who am I?" -> userIdentifier: "self", detailed: false
 
-Your response must be formatted as a JSON block:
-```json
-{
-  "userIdentifier": "<username|user-id|mention|self>",
-  "detailed": true/false
-}
-```
-
+Respond with TOON only:
+userIdentifier: <username|user-id|mention|self>
+detailed: true/false
 
 
 

@@ -14,6 +14,7 @@ import {
 	deterministicShuffle,
 	getDeterministicNames,
 } from "./utils/deterministic";
+import { compressPromptDescription } from "./utils/prompt-compression";
 import {
 	encodeToonValue,
 	parseToonActionParams,
@@ -242,6 +243,18 @@ function formatActionTags(action: Action): string | null {
 	return `  tags[${tags.length}]: ${tags.join(", ")}`;
 }
 
+function renderCompressedDescription(item: {
+	description?: string;
+	descriptionCompressed?: string;
+	compressedDescription?: string;
+}): string {
+	return (
+		item.descriptionCompressed ??
+		item.compressedDescription ??
+		(item.description ? compressPromptDescription(item.description) : "")
+	);
+}
+
 export function formatActionNames(actions: Action[], seed = "actions"): string {
 	if (!actions?.length) return "";
 
@@ -259,7 +272,7 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 	)
 		.map((action) => {
 			const lines = [
-				`- ${action.name}: ${action.description || "No description available"}`,
+				`- ${action.name}: ${renderCompressedDescription(action) || "No description available"}`,
 			];
 			const exampleSummary = formatActionExampleSummary(action);
 			const similes = formatActionSimiles(action);
@@ -315,7 +328,7 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
 			}
 
 			const suffix = modifiers.length > 0 ? ` [${modifiers.join("; ")}]` : "";
-			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${param.description}`;
+			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${renderCompressedDescription(param)}`;
 		})
 		.join("; ");
 }

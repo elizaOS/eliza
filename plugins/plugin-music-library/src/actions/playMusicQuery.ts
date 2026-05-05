@@ -7,6 +7,7 @@ import {
   logger,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   type State,
 } from "@elizaos/core";
 import type { YouTubeSearchService } from "../services/youtubeSearch";
@@ -187,21 +188,19 @@ Determine:
    - keywords: Other important keywords
    - modifier: If asking for specific version (cover, remix, acoustic, live, instrumental)
 
-Respond with ONLY a JSON object:
-{
-    "needsResearch": true/false,
-    "queryType": "[one of the types above]",
-    "artist": "artist name if mentioned",
-    "album": "album name if mentioned",
-    "song": "song name if mentioned",
-    "genre": "genre if mentioned",
-    "mood": "mood if mentioned",
-    "decade": "decade if mentioned",
-    "year": "year if mentioned",
-    "keywords": "other important keywords",
-    "modifier": "cover|remix|acoustic|live|instrumental if requested",
-    "searchQuery": "if direct_search, the query to use"
-}`;
+Respond with TOON only:
+needsResearch: true/false
+queryType: [one of the types above]
+artist: artist name if mentioned
+album: album name if mentioned
+song: song name if mentioned
+genre: genre if mentioned
+mood: mood if mentioned
+decade: decade if mentioned
+year: year if mentioned
+keywords: other important keywords
+modifier: cover|remix|acoustic|live|instrumental if requested
+searchQuery: if direct_search, the query to use`;
 
     const rawResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
@@ -211,7 +210,17 @@ Respond with ONLY a JSON object:
       return null;
     }
 
-    // Extract JSON from response
+    const parsedToon = parseKeyValueXml<Record<string, unknown>>(response);
+    if (parsedToon?.queryType) {
+      return {
+        ...parsedToon,
+        needsResearch:
+          parsedToon.needsResearch === true ||
+          String(parsedToon.needsResearch).toLowerCase() === "true",
+      } as unknown as MusicQueryIntent;
+    }
+
+    // Legacy fallback: extract JSON from response
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return null;

@@ -16,14 +16,9 @@ Examples:
 - "leave voice" -> channelIdentifier: "current", isVoiceChannel: true
 - "stop listening to this channel" -> channelIdentifier: "current", isVoiceChannel: false
 
-Your response must be formatted as a JSON block with this structure:
-```json
-{
-  "channelIdentifier": "<actual-channel-name-or-id-or-current>",
-  "isVoiceChannel": true/false
-}
-```
-
+Respond with TOON only:
+channelIdentifier: <actual-channel-name-or-id-or-current>
+isVoiceChannel: true/false
 
 
 

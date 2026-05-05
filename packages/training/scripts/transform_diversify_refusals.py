@@ -158,7 +158,6 @@ def diversify(text: str, *, idx: int, stats: dict) -> str:
     new_text = text
     fired = False
     for i, pat in enumerate(REFUSAL_PATTERNS):
-        prev = new_text
         new_text, n = pat.subn("", new_text, count=1)
         if n:
             fired = True

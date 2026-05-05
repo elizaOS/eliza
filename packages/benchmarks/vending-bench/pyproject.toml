@@ -23,6 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    "aiohttp>=3.9.0",
     "elizaos>=1.0.0",
 ]
 

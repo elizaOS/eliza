@@ -185,6 +185,11 @@ describe("Header", () => {
       ),
     ).toBe(true);
     expect(
+      document.documentElement.classList.contains(
+        "eliza-electrobun-macos-titlebar",
+      ),
+    ).toBe(true);
+    expect(
       screen.getByTestId("desktop-window-titlebar-drag-zone"),
     ).toBeTruthy();
     const paddedRow = titlebar.querySelector("[data-window-titlebar-padding]");
@@ -202,6 +207,16 @@ describe("Header", () => {
     render(<Header hideCloudCredits />);
 
     expect(screen.queryByTestId("desktop-window-titlebar")).toBeNull();
+    expect(
+      document.documentElement.classList.contains(
+        "eliza-electrobun-custom-titlebar",
+      ),
+    ).toBe(false);
+    expect(
+      document.documentElement.classList.contains(
+        "eliza-electrobun-macos-titlebar",
+      ),
+    ).toBe(false);
   });
 
   it("skips the custom title bar outside macOS desktop runtime", () => {

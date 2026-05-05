@@ -382,7 +382,11 @@ def main(
         console.print("[green]Ground truth generated. Exiting.[/]")
         return
 
-    # Initialize system
+    # Initialize system. The legacy Python Eliza system is removed; keep
+    # ``--system eliza`` as an alias for the TypeScript bridge.
+    if system_name == "eliza":
+        system_name = "eliza-bridge"
+
     if system_name == "oracle":
         console.print("\n[bold magenta]System: OracleSystem (perfect-knowledge validator)[/]")
         sys_instance: SocialAlphaSystem = OracleSystem(gt["calls"], gt["users"], gt["tokens"])
@@ -398,21 +402,6 @@ def main(
         if api_base:
             os.environ["OPENAI_BASE_URL"] = api_base
         sys_instance = FullSystem(cache_dir=cache_dir, model=model or "gpt-4o-mini")
-    elif system_name == "eliza":
-        cache_dir = data_path / ".." / ".benchmark_cache"
-        console.print(f"\n[bold blue]System: ElizaSystem (Eliza AgentRuntime + social-alpha plugin)[/]")
-        console.print(f"  Cache dir: {cache_dir.resolve()}")
-        try:
-            from .systems.eliza_system import ElizaSystem
-        except ImportError as exc:
-            console.print(f"[red]ElizaSystem is not available: {exc}[/]")
-            console.print("[yellow]Use --system eliza-bridge for the TypeScript bridge or a local baseline system.[/]")
-            sys.exit(1)
-        from dotenv import load_dotenv
-        load_dotenv(Path(__file__).resolve().parents[3] / ".env")  # load from workspace root
-        if api_base:
-            os.environ["OPENAI_BASE_URL"] = api_base
-        sys_instance = ElizaSystem(cache_dir=cache_dir, model=model or "gpt-4o-mini")
     elif system_name in ("eliza-bridge", "eliza-ts"):
         cache_dir = data_path / ".." / ".benchmark_cache"
         console.print(

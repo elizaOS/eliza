@@ -32,7 +32,7 @@ import random
 import re
 import sys
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -1360,7 +1360,6 @@ def main() -> int:
     log.info("Generating %d records each for %d actions = %d total target",
              args.n_per, len(targets), args.n_per * len(targets))
 
-    rng = random.Random(args.seed)
     encoder = ToonEncoder()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

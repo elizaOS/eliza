@@ -29,16 +29,17 @@ User message: {{text}}
 Available clipboard entries:
 {{entries}}
 
-Respond with XML containing:
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+
+Fields:
 - id: The ID of the clipboard entry to read (required)
 - from: Starting line number (optional)
 - lines: Number of lines to read (optional)
 
-<response>
-<id>entry-id</id>
-<from>1</from>
-<lines>10</lines>
-</response>`;
+Example:
+id: entry-id
+from: 1
+lines: 10`;
 
 async function extractReadInfo(
 	runtime: IAgentRuntime,

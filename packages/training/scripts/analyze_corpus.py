@@ -27,7 +27,6 @@ cost is the per-source 5-gram set used for Jaccard.
 from __future__ import annotations
 
 import argparse
-import gzip
 import json
 import logging
 import math

@@ -10,6 +10,7 @@ import {
   logger,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
@@ -36,13 +37,9 @@ Extract the following:
 - text: The message content to send
 - toPubkey: The target pubkey (npub or hex format, or "current" for the current conversation)
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "text": "message content here",
-  "toPubkey": "npub1... or hex pubkey or current"
-}
-\`\`\``;
+Respond with TOON only:
+text: message content here
+toPubkey: npub1... or hex pubkey or current`;
 
 export const sendDm: Action = {
   name: "NOSTR_SEND_DM",
@@ -85,7 +82,9 @@ export const sendDm: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(String(response));
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
+        parseJSONObjectFromText(String(response));
       if (parsed?.text) {
         dmInfo = {
           text: String(parsed.text),

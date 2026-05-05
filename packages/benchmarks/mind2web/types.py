@@ -175,8 +175,8 @@ class Mind2WebConfig:
     model_provider: str | None = None  # groq, openai, anthropic, etc.
     model_name: str | None = None
     temperature: float = 0.0
-    groq_small_model: str | None = "qwen3"
-    groq_large_model: str | None = "qwen3"
+    groq_small_model: str | None = "openai/gpt-oss-120b"
+    groq_large_model: str | None = "openai/gpt-oss-120b"
 
     # Evaluation mode
     use_mock: bool = False

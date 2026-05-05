@@ -1,3 +1,5 @@
+import { parseKeyValueXml } from "@elizaos/core";
+
 /**
  * Prompt construction and response parsing for the Swarm Coordinator's
  * LLM-driven coordination decisions.
@@ -182,8 +184,13 @@ export function buildCoordinationPrompt(
     `include "keyDecision" with a brief one-line summary. Skip this for routine tool approvals.\n` +
     `- Look for explicit "DECISION:" markers in the agent's output — these are the agent deliberately ` +
     `surfacing design choices. Always capture these as keyDecision.\n\n` +
-    `Respond with ONLY a JSON object:\n` +
-    `{"action": "respond|complete|escalate|ignore", "response": "...", "useKeys": false, "keys": [], "reasoning": "...", "keyDecision": "..."}`
+    `Respond with TOON only:\n` +
+    `action: respond|complete|escalate|ignore\n` +
+    `response: response text\n` +
+    `useKeys: false\n` +
+    `keys[0]: enter\n` +
+    `reasoning: brief reasoning\n` +
+    `keyDecision: optional one-line decision`
   );
 }
 
@@ -262,8 +269,13 @@ export function buildIdleCheckPrompt(
     `- NEVER write a third-person status report about the agent. Do NOT write things like "The agent is still setting up" or "The agent needs to continue its work" — that text would be piped into the agent's stdin and confuse it into thinking a new user message arrived describing itself.\n` +
     `- NEVER describe the situation in the response field. If you need to explain your reasoning, put it in the "reasoning" field instead.\n` +
     `- Keep the response under 20 words when possible. Short nudges work best.\n\n` +
-    `Respond with ONLY a JSON object:\n` +
-    `{"action": "respond|complete|escalate|ignore", "response": "...", "useKeys": false, "keys": [], "reasoning": "...", "keyDecision": "..."}`
+    `Respond with TOON only:\n` +
+    `action: respond|complete|escalate|ignore\n` +
+    `response: response text\n` +
+    `useKeys: false\n` +
+    `keys[0]: enter\n` +
+    `reasoning: brief reasoning\n` +
+    `keyDecision: optional one-line decision`
   );
 }
 
@@ -324,8 +336,13 @@ export function buildTurnCompletePrompt(
     `- If output is only spinner text, use "ignore" and wait for the next turn.\n` +
     `- Use "respond" when the agent hasn't started, or when code was written but not yet committed/pushed/PR'd.\n\n` +
     `If the agent's output reveals a significant decision, include "keyDecision" with a brief summary.\n\n` +
-    `Respond with ONLY a JSON object:\n` +
-    `{"action": "respond|complete|escalate|ignore", "response": "...", "useKeys": false, "keys": [], "reasoning": "...", "keyDecision": "..."}`
+    `Respond with TOON only:\n` +
+    `action: respond|complete|escalate|ignore\n` +
+    `response: response text\n` +
+    `useKeys: false\n` +
+    `keys[0]: enter\n` +
+    `reasoning: brief reasoning\n` +
+    `keyDecision: optional one-line decision`
   );
 }
 
@@ -336,7 +353,7 @@ export function buildTurnCompletePrompt(
  * to be processed by Eliza's full ElizaOS pipeline (with conversation memory,
  * personality, and actions). Unlike buildCoordinationPrompt(), this omits the
  * "You are Eliza" preamble (she already IS Eliza in the pipeline) and asks
- * for a fenced JSON action block at the end of her response.
+ * for a TOON action block at the end of her response.
  */
 export function buildBlockedEventMessage(
   taskCtx: TaskContextSummary,
@@ -382,10 +399,13 @@ export function buildBlockedEventMessage(
     `- When in doubt, escalate.\n\n` +
     `If the agent's output reveals a significant decision that sibling agents should know about, include "keyDecision" with a brief summary.\n` +
     `Look for explicit "DECISION:" markers in the agent's output — always capture these as keyDecision.\n\n` +
-    `Include a JSON action block at the end of your response:\n` +
-    "```json\n" +
-    `{"action": "respond|complete|escalate|ignore", "response": "...", "useKeys": false, "keys": [], "reasoning": "...", "keyDecision": "..."}\n` +
-    "```"
+    `Include a TOON action block at the end of your response:\n` +
+    `action: respond|complete|escalate|ignore\n` +
+    `response: response text\n` +
+    `useKeys: false\n` +
+    `keys[0]: enter\n` +
+    `reasoning: brief reasoning\n` +
+    `keyDecision: optional one-line decision`
   );
 }
 
@@ -435,10 +455,13 @@ export function buildTurnCompleteEventMessage(
     `- Do NOT ask the agent to re-verify work it already completed.\n` +
     `- If the agent's output reveals a significant creative or architectural decision, include "keyDecision" with a brief summary.\n` +
     `- Look for explicit "DECISION:" markers in the agent's output — always capture these as keyDecision.\n\n` +
-    `Include a JSON action block at the end of your response:\n` +
-    "```json\n" +
-    `{"action": "respond|complete|escalate|ignore", "response": "...", "useKeys": false, "keys": [], "reasoning": "...", "keyDecision": "..."}\n` +
-    "```"
+    `Include a TOON action block at the end of your response:\n` +
+    `action: respond|complete|escalate|ignore\n` +
+    `response: response text\n` +
+    `useKeys: false\n` +
+    `keys[0]: enter\n` +
+    `reasoning: brief reasoning\n` +
+    `keyDecision: optional one-line decision`
   );
 }
 
@@ -449,22 +472,32 @@ export function buildTurnCompleteEventMessage(
 export function parseCoordinationResponse(
   llmOutput: string,
 ): CoordinationLLMResponse | null {
-  const jsonMatch = llmOutput.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(llmOutput) ??
+      (() => {
+        const jsonMatch = llmOutput.match(/\{[\s\S]*\}/);
+        return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      })();
+    if (!parsed) return null;
 
+    const action = typeof parsed.action === "string" ? parsed.action : "";
     const validActions = ["respond", "escalate", "ignore", "complete"];
-    if (!validActions.includes(parsed.action)) return null;
+    if (!validActions.includes(action)) return null;
 
     const result: CoordinationLLMResponse = {
-      action: parsed.action,
-      reasoning: parsed.reasoning || "No reasoning provided",
+      action: action as CoordinationLLMResponse["action"],
+      reasoning:
+        typeof parsed.reasoning === "string"
+          ? parsed.reasoning
+          : "No reasoning provided",
     };
 
-    if (parsed.action === "respond") {
-      if (parsed.useKeys && Array.isArray(parsed.keys)) {
+    if (action === "respond") {
+      const useKeys =
+        parsed.useKeys === true ||
+        String(parsed.useKeys).toLowerCase() === "true";
+      if (useKeys && Array.isArray(parsed.keys)) {
         result.useKeys = true;
         result.keys = parsed.keys.map(String);
       } else if (typeof parsed.response === "string") {

@@ -55,17 +55,11 @@ Only extract role assignments if:
 3. The target user is a valid server member
 4. The new role is one of: OWNER, ADMIN, or NONE
 
-Return the results in this JSON format:
-{
-"roleAssignments": [
-  {
-    "entityId": "<UUID of the entity being assigned to>",
-    "newRole": "ROLE_NAME"
-  }
-]
-}
+Return the results as structured roleAssignments fields:
+roleAssignments[1]{entityId,newRole}:
+  UUID-of-the-entity,ROLE_NAME
 
-If no valid role assignments are found, return an empty array.`;
+If no valid role assignments are found, return no roleAssignments entries.`;
 
 interface RoleAssignment {
 	entityId: string;
@@ -210,23 +204,13 @@ export const updateRoleAction: ElizaAction = {
 				# Current context:
 				{{content}}
 
-				Format your response as a JSON array of objects, each with:
+				Return the role assignments as the structured array requested by the schema. Each entry has:
 				- entityId: The name or ID of the user
 				- newRole: The role to assign (OWNER, ADMIN, or NONE)
 
 				Example:
-				\`\`\`json
-				[
-					{
-						"entityId": "John",
-						"newRole": "ADMIN"
-					},
-					{
-						"entityId": "Sarah",
-						"newRole": "OWNER"
-					}
-				]
-				\`\`\`
+				entityId: John
+				newRole: ADMIN
 			`,
 		});
 

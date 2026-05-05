@@ -2,7 +2,7 @@
 Multi-Provider Model System for GAIA Benchmark
 
 Supports multiple LLM providers:
-- Groq (default: llama-3.1-8b-instant)
+- Groq (default: openai/gpt-oss-120b)
 - OpenAI
 - Anthropic
 - Ollama
@@ -47,7 +47,7 @@ class ModelProvider(str, Enum):
 
 # Default models for each provider
 DEFAULT_MODELS: dict[ModelProvider, str] = {
-    ModelProvider.GROQ: "llama-3.1-8b-instant",
+    ModelProvider.GROQ: "openai/gpt-oss-120b",
     ModelProvider.OPENAI: "gpt-5",
     ModelProvider.ANTHROPIC: "claude-sonnet-4-6",
     ModelProvider.OLLAMA: "llama3.2:latest",
@@ -60,9 +60,10 @@ DEFAULT_MODELS: dict[ModelProvider, str] = {
 # Popular models per provider
 SUPPORTED_MODELS: dict[ModelProvider, list[str]] = {
     ModelProvider.GROQ: [
+        "openai/gpt-oss-120b",        # Default Groq model for benchmarks
         # Llama models
-        "llama-3.1-8b-instant",       # Fast, good quality - DEFAULT
-        "llama-3.3-70b-versatile",    # Best Llama on Groq
+        "llama-3.1-8b-instant",       # Fast, low-cost fallback
+        "llama-3.3-70b-versatile",
         "llama-3.1-70b-versatile",
         "llama-3.2-90b-vision-preview",  # Vision capable
         "llama-3.2-11b-vision-preview",
@@ -206,9 +207,9 @@ class ModelConfig:
         - "provider:model_name" (alternate syntax)
 
         Examples:
-        - "llama-3.1-8b-instant" -> Groq
+        - "openai/gpt-oss-120b" -> Groq
         - "gpt-5" -> OpenAI
-        - "groq/llama-3.1-8b-instant" -> Groq
+        - "groq/openai/gpt-oss-120b" -> Groq
         - "openrouter/qwen/qwen-2.5-32b-instruct" -> OpenRouter
         """
         # Check for explicit provider prefix
@@ -594,7 +595,7 @@ def get_default_config() -> ModelConfig:
     Get default model configuration.
 
     Priority:
-    1. Groq with llama-3.1-8b-instant (if GROQ_API_KEY set)
+    1. Groq with gpt-oss-120b (if GROQ_API_KEY set)
     2. OpenAI with gpt-5 (if OPENAI_API_KEY set)
     3. Ollama with llama3.2:latest (always available locally)
     """
@@ -602,7 +603,7 @@ def get_default_config() -> ModelConfig:
     if os.getenv("GROQ_API_KEY"):
         return ModelConfig(
             provider=ModelProvider.GROQ,
-            model_name="llama-3.1-8b-instant",
+            model_name="openai/gpt-oss-120b",
         )
 
     # Check OpenAI
@@ -649,7 +650,7 @@ PRESETS: dict[str, ModelConfig] = {
     ),
     "groq-best": ModelConfig(
         provider=ModelProvider.GROQ,
-        model_name="llama-3.3-70b-versatile",
+        model_name="openai/gpt-oss-120b",
     ),
 
     # OpenAI presets

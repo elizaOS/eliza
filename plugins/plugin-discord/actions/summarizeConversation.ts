@@ -15,6 +15,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 	splitChunks,
@@ -149,7 +150,7 @@ const getDateRange = async (
 		});
 
 		// try parsing to a json object
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
 			objective: string;
 			start: string | number;
 			end: string | number;

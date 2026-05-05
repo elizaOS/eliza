@@ -3,12 +3,9 @@ AgentBench benchmark runner.
 
 Orchestrates benchmark execution across all environments and generates reports.
 
-This runner supports two modes:
-1. Full ElizaOS pipeline: Uses message_service.handle_message() with Memory objects,
-   provider context, and the complete agent flow. This is the canonical way.
-2. Direct mode: Uses runtime.generate_text() directly for mock/test runtimes.
-
-The full ElizaOS mode is used when the runtime has a message_service attribute.
+This runner supports direct adapter execution for mock/test runtimes. Eliza
+agent execution is injected by ``eliza_adapter.agentbench.ElizaAgentHarness``
+through ``runtime._app_harness``.
 """
 
 import asyncio
@@ -48,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 def _is_full_elizaos_runtime(runtime: AgentRuntimeProtocol | None) -> bool:
-    """Check if the runtime is a full ElizaOS runtime with message service."""
+    """Return whether a legacy Python Eliza runtime was supplied."""
     if runtime is None:
         return False
     # Check for message_service attribute which indicates full ElizaOS runtime
@@ -104,27 +101,11 @@ class AgentBenchRunner:
 
     Coordinates execution across all environments and generates comprehensive reports.
 
-    This runner supports two execution modes:
-
-    1. **Full ElizaOS Pipeline** (recommended):
-       When a real ElizaOS AgentRuntime is provided, uses the complete message
-       processing pipeline with:
-       - Memory objects for all messages
-       - Provider context gathering (compose_state)
-       - message_service.handle_message() for processing
-       - Conversation history preservation
-
-    2. **Direct Mode** (for testing):
-       When a mock runtime is provided, directly calls generate_text() on the
-       runtime. This is useful for testing the harness without a full ElizaOS
-       setup.
+    Bridge-backed Eliza execution is injected through ``runtime._app_harness``
+    by ``eliza_adapter.agentbench``. Without that injected harness, adapters run
+    directly against the provided mock/test runtime.
 
     Usage:
-        # Full ElizaOS mode
-        runtime = AgentRuntime(character=character, plugins=[...])
-        await runtime.initialize()
-        runner = AgentBenchRunner(config=config, runtime=runtime)
-
         # Direct/mock mode
         runner = AgentBenchRunner(config=config, runtime=SmartMockRuntime())
     """
@@ -148,12 +129,14 @@ class AgentBenchRunner:
             self._harness = external_harness  # type: ignore[assignment]
             logger.info("[AgentBenchRunner] Using externally supplied benchmark harness")
 
-        # Initialize harness if we have a full ElizaOS runtime
+        # The Python Eliza runtime path has been removed. If someone passes a
+        # legacy runtime, do not import the old harness; the bridge should be
+        # injected through _app_harness instead.
         elif _is_full_elizaos_runtime(runtime):
-            from elizaos_agentbench.eliza_harness import ElizaAgentHarness
-
-            self._harness = ElizaAgentHarness(runtime)  # type: ignore[arg-type]
-            logger.info("[AgentBenchRunner] Using full ElizaOS pipeline with message_service")
+            logger.warning(
+                "[AgentBenchRunner] Ignoring legacy Python Eliza runtime; "
+                "use eliza_adapter.agentbench.ElizaAgentHarness via _app_harness"
+            )
 
     def _create_adapter(
         self,
@@ -207,9 +190,8 @@ class AgentBenchRunner:
                 env_config = self.config.get_env_config(env)
 
                 for task in tasks[: env_config.max_tasks]:
-                    # Use harness for full ElizaOS pipeline, otherwise use adapter directly
+                    # Use injected bridge harness when present, otherwise run adapter directly.
                     if self._harness is not None:
-                        # Full ElizaOS mode: uses message_service.handle_message()
                         result = await self._harness.run_task(task, adapter)
                         # Clear conversation between tasks for fresh context
                         await self._harness.clear_conversation()

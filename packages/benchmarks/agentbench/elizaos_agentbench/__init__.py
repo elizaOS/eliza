@@ -11,21 +11,13 @@ AgentBench evaluates agents across 8 diverse environments:
 - Web Shopping: Online product search and purchase
 - Web Browsing: General web navigation
 
-The benchmark supports two execution modes:
-1. Full ElizaOS Pipeline: Uses message_service.handle_message() with the complete
-   agent flow including providers, memory, and conversation history.
-2. Direct Mode: Uses runtime.generate_text() directly for testing.
+The benchmark supports bridge-backed Eliza execution through
+``eliza_adapter.agentbench`` and direct mock execution for harness validation.
 
 Usage:
     from elizaos_agentbench import AgentBenchRunner, AgentBenchConfig
-    from elizaos_agentbench.eliza_harness import create_benchmark_runtime
-
-    # Create full ElizaOS runtime
-    runtime = await create_benchmark_runtime()
-
-    # Run benchmarks with full pipeline
     config = AgentBenchConfig(output_dir="./results")
-    runner = AgentBenchRunner(config=config, runtime=runtime)
+    runner = AgentBenchRunner(config=config)
     report = await runner.run_benchmarks()
 """
 
@@ -61,7 +53,7 @@ __all__ = [
     # Runner
     "AgentBenchRunner",
     "EnvironmentAdapter",
-    # ElizaOS Integration
+    # Bridge compatibility helpers
     "ElizaAgentHarness",
     "create_benchmark_runtime",
     "create_benchmark_character",

@@ -9,6 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
@@ -27,14 +28,10 @@ Extract the following:
 2. newText: The new text content for the message
 3. channelId: The channel ID (optional, defaults to current channel)
 
-Respond with a JSON object like:
-{
-  "messageTs": "1234567890.123456",
-  "newText": "The updated message content",
-  "channelId": null
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+messageTs: 1234567890.123456
+newText: The updated message content
+channelId:`;
 
 export const editMessage: Action = {
   name: "SLACK_EDIT_MESSAGE",
@@ -45,6 +42,7 @@ export const editMessage: Action = {
     "SLACK_UPDATE",
   ],
   description: "Edit an existing Slack message",
+  descriptionCompressed: "Edit Slack message.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -123,7 +121,9 @@ export const editMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response);
       if (parsedResponse?.messageTs && parsedResponse?.newText) {
         editInfo = {
           messageTs: String(parsedResponse.messageTs),

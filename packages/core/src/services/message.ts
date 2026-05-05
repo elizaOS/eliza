@@ -71,7 +71,6 @@ import {
 	composePromptFromState,
 	getLocalServerUrl,
 	parseBooleanFromText,
-	parseJSONObjectFromText,
 	parseKeyValueXml,
 	truncateToCompleteSentence,
 } from "../utils";
@@ -108,8 +107,8 @@ import {
 import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
 
 /**
- * Reserved XML response keys that are NOT action names.
- * Used when scanning parsedXml for standalone action param blocks.
+ * Reserved structured response keys that are NOT action names.
+ * Used when scanning legacy parsed XML for standalone action param blocks.
  */
 export const RESERVED_XML_KEYS = new Set([
 	"actions",
@@ -272,7 +271,7 @@ function applyDualPressureToClassifierAction(
 }
 
 /**
- * Extract action params from standalone XML blocks in a parsedXml object.
+ * Extract action params from standalone XML blocks in a parsed response object.
  *
  * When the LLM outputs `<actions>REPLY,START_CODING_TASK</actions>` alongside
  * `<START_CODING_TASK><repo>...</repo></START_CODING_TASK>`, the XML parser
@@ -302,6 +301,33 @@ export function extractStandaloneActionParams(
 		}
 	}
 	return fragments.join("\n");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getPlannerActionObjectName(action: Record<string, unknown>): string {
+	const rawName = action.name ?? action.action ?? action.actionName;
+	return typeof rawName === "string" ? unwrapPlannerIdentifier(rawName) : "";
+}
+
+function attachInlineToonActionParams(
+	parsedXml: Record<string, unknown>,
+	actionName: string,
+	params: unknown,
+): void {
+	if (!actionName || !isRecord(params) || Object.keys(params).length === 0) {
+		return;
+	}
+
+	const existingParams = parsedXml.params;
+	const nextParams =
+		isRecord(existingParams) && !Array.isArray(existingParams)
+			? { ...existingParams }
+			: {};
+	nextParams[actionName.trim().toUpperCase()] = params;
+	parsedXml.params = nextParams;
 }
 
 export function extractPlannerActionNames(
@@ -365,7 +391,18 @@ export function extractPlannerActionNames(
 		}
 		if (Array.isArray(parsedXml.actions)) {
 			return parsedXml.actions
-				.map((action) => unwrapPlannerIdentifier(String(action)))
+				.map((action) => {
+					if (isRecord(action)) {
+						const actionName = getPlannerActionObjectName(action);
+						attachInlineToonActionParams(
+							parsedXml,
+							actionName,
+							action.params,
+						);
+						return actionName;
+					}
+					return unwrapPlannerIdentifier(String(action));
+				})
 				.filter((action) => action.length > 0);
 		}
 		return [];
@@ -1407,8 +1444,9 @@ function buildCanonicalActionRepairPrompt(args: {
 		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
 		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
 		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
-		"Return ONLY XML with top-level fields from this schema: <response><actions>...</actions><providers>...</providers><params>...</params></response>.",
-		"Do not include <text> unless there is truly no matching runtime action.",
+		"Return ONLY TOON with top-level fields: actions, providers, params, and optional text.",
+		"Use actions[n]: ACTION_NAME for selected actions and a params object keyed by action name when inputs are needed.",
+		"Do not include text unless there is truly no matching runtime action.",
 		"",
 		`user_message:\n${args.userText}`,
 		"",
@@ -1423,7 +1461,12 @@ function buildCanonicalActionRepairPrompt(args: {
 		"Example:",
 		'user_message: "Pull up a dossier on Satya Nadella."',
 		'planner_actions_raw: ["LOOKUP"]',
-		"output: <response><actions><action>DOSSIER</action></actions><params><DOSSIER><subject>Satya Nadella</subject></DOSSIER></params></response>",
+		"output:",
+		"actions[1]: DOSSIER",
+		"providers[0]:",
+		"params:",
+		"  DOSSIER:",
+		"    subject: Satya Nadella",
 	].join("\n");
 }
 
@@ -1454,11 +1497,54 @@ async function repairCanonicalPlannerActions(args: {
 		availableActionNames,
 	});
 
-	const repairResponse = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-		prompt: repairPrompt,
+	return args.runtime.dynamicPromptExecFromState({
+		state: { values: {}, data: {}, text: "" } as State,
+		params: {
+			prompt: repairPrompt,
+		},
+		schema: [
+			{
+				field: "actions",
+				description: "Selected canonical runtime action names",
+				type: "array",
+				items: { description: "One canonical runtime action name" },
+				required: true,
+				validateField: false,
+				streamField: false,
+			},
+			{
+				field: "providers",
+				description: "Optional provider names needed before the action",
+				type: "array",
+				items: { description: "One provider name" },
+				required: false,
+				validateField: false,
+				streamField: false,
+			},
+			{
+				field: "params",
+				description:
+					"Optional TOON object keyed by action name with repaired action params",
+				type: "object",
+				required: false,
+				validateField: false,
+				streamField: false,
+			},
+			{
+				field: "text",
+				description: "Optional fallback reply only when no runtime action matches",
+				required: false,
+				validateField: false,
+				streamField: false,
+			},
+		],
+		options: {
+			modelType: ModelType.TEXT_LARGE,
+			preferredEncapsulation: "toon",
+			contextCheckLevel: 0,
+			maxRetries: 1,
+		},
 	});
-
-	return parseKeyValueXml<Record<string, unknown>>(repairResponse);
 }
 
 function shouldRunProviderFollowup(
@@ -1557,15 +1643,9 @@ Examples:
 	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> PUBLISH_DEVICE_INTENT
 	- "if you get stuck in the browser or on my computer, call me" -> CALL_USER
 
-${draftSection}Return XML only:
-<response>
-  <thought>short reasoning</thought>
-  <actions>
-    <action>
-      <name>ACTION_NAME</name>
-    </action>
-  </actions>
-</response>`;
+${draftSection}Return TOON only:
+thought: short reasoning
+actions[1]: ACTION_NAME`;
 }
 
 const ROUTING_REASSESS_ACTIONS = new Set(
@@ -2208,18 +2288,21 @@ ${draftReplySection}rules[${4 + draftReplyRules.length}]:
 ${draftReplyRules.join("\n")}
 
 output:
-Return JSON or XML containing only provider names. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document containing only provider names. No prose before or after it. No <think>.
 
 Examples:
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "Which file are you referring to?"
-  output: {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+  output:
+  providers[2]: AVAILABLE_DOCUMENTS,KNOWLEDGE
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "I don't have the file in my context. Which file contains the QA codeword?"
-  output: {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+  output:
+  providers[2]: AVAILABLE_DOCUMENTS,KNOWLEDGE
 - user asks: "thanks, that's all"
   draft reply: "Glad to help."
-  output: {"providers":[]}`;
+  output:
+  providers[0]:`;
 }
 
 async function recoverProvidersForTurn(args: {
@@ -2228,22 +2311,33 @@ async function recoverProvidersForTurn(args: {
 	draftReply?: string;
 	attachments?: GenerateTextAttachment[];
 }): Promise<string[]> {
-	const prompt = composePromptFromState({
-		state: args.state,
-		template: buildProviderSelectionPrompt(args.draftReply),
-	});
-
 	try {
-		const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			...(args.attachments ? { attachments: args.attachments } : {}),
+		const parsed = await args.runtime.dynamicPromptExecFromState({
+			state: args.state,
+			params: {
+				prompt: buildProviderSelectionPrompt(args.draftReply),
+				...(args.attachments ? { attachments: args.attachments } : {}),
+			},
+			schema: [
+				{
+					field: "providers",
+					description: "Provider names to call before replying, or an empty array",
+					type: "array",
+					items: { description: "One provider name" },
+					required: true,
+					validateField: false,
+					streamField: false,
+				},
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				preferredEncapsulation: "toon",
+				contextCheckLevel: 0,
+				maxRetries: 1,
+			},
 		});
-		const rawResponse = typeof result === "string" ? result : "";
-		const parsed =
-			parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-			parseJSONObjectFromText(rawResponse);
 		const normalizedProviders = normalizePlannerProviders(
-			parsed ?? { providers: rawResponse },
+			parsed ?? { providers: [] },
 			args.runtime,
 		);
 		if (normalizedProviders.length > 0) {
@@ -2302,11 +2396,11 @@ rules[5]:
 - return only the structured output, with no prose
 
 output:
-Return JSON or XML only.
+TOON only. Return exactly one TOON document.
 
 Examples:
-- user asks: "what is the qa codeword from the uploaded file?" -> {"useKnowledgeProviders":true}
-- user asks: "thanks, that's all" -> {"useKnowledgeProviders":false}`;
+- user asks: "what is the qa codeword from the uploaded file?" -> useKnowledgeProviders: true
+- user asks: "thanks, that's all" -> useKnowledgeProviders: false`;
 }
 
 async function shouldUseKnowledgeProviders(
@@ -2314,24 +2408,34 @@ async function shouldUseKnowledgeProviders(
 	state: State,
 	attachments?: GenerateTextAttachment[],
 ): Promise<boolean> {
-	const prompt = composePromptFromState({
-		state,
-		template: buildKnowledgeProviderDecisionPrompt(),
-	});
-
 	try {
-		const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			...(attachments ? { attachments } : {}),
+		const parsed = await runtime.dynamicPromptExecFromState({
+			state,
+			params: {
+				prompt: buildKnowledgeProviderDecisionPrompt(),
+				...(attachments ? { attachments } : {}),
+			},
+			schema: [
+				{
+					field: "useKnowledgeProviders",
+					description:
+						"true when uploaded-document or knowledge providers should be consulted before replying",
+					type: "boolean",
+					required: true,
+					validateField: false,
+					streamField: false,
+				},
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				preferredEncapsulation: "toon",
+				contextCheckLevel: 0,
+				maxRetries: 1,
+			},
 		});
-		const rawResponse = typeof result === "string" ? result : "";
-		const parsed =
-			parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-			parseJSONObjectFromText(rawResponse);
 		const value =
 			parsed?.useKnowledgeProviders ??
-			parsed?.use_knowledge_providers ??
-			rawResponse;
+			parsed?.use_knowledge_providers;
 		if (typeof value === "boolean") {
 			return value;
 		}
@@ -5633,7 +5737,7 @@ export class DefaultMessageService implements IMessageService {
 
 		// Use dynamicPromptExecFromState for structured output with validation
 		setTrajectoryPurpose("response");
-		const parsedXml = await runtime.dynamicPromptExecFromState({
+		const parsedPlanner = await runtime.dynamicPromptExecFromState({
 			state,
 			params: {
 				prompt,
@@ -5654,7 +5758,9 @@ export class DefaultMessageService implements IMessageService {
 				{
 					field: "actions",
 					description:
-						"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+						"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+					type: "array",
+					items: { description: "One action name or action entry" },
 					required: false,
 					validateField: false,
 					streamField: false,
@@ -5663,6 +5769,8 @@ export class DefaultMessageService implements IMessageService {
 					field: "providers",
 					description:
 						"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+					type: "array",
+					items: { description: "One provider name" },
 					required: false,
 					validateField: false,
 					streamField: false,
@@ -5683,7 +5791,7 @@ export class DefaultMessageService implements IMessageService {
 			],
 			options: {
 				modelType: ModelType.ACTION_PLANNER,
-				preferredEncapsulation: "xml",
+				preferredEncapsulation: "toon",
 				maxRetries: opts.maxRetries,
 				// Stream through the filtered context callback for real-time output
 				onStreamChunk: streamingCtx?.onStreamChunk,
@@ -5691,22 +5799,22 @@ export class DefaultMessageService implements IMessageService {
 		});
 
 		runtime.logger.debug(
-			{ src: "service:message", parsedXml },
+			{ src: "service:message", parsedPlanner },
 			"Parsed Response Content",
 		);
 
-		if (parsedXml) {
+		if (parsedPlanner) {
 			// Mark streaming as complete now that we have a valid response
 			streamingExtractor?.markComplete();
 			const rawPlannerActions = extractPlannerActionNames(
-				parsedXml as Record<string, unknown>,
+				parsedPlanner as Record<string, unknown>,
 			);
 			let finalActions = normalizePlannerActions(
-				parsedXml as Record<string, unknown>,
+				parsedPlanner as Record<string, unknown>,
 				runtime,
 			);
 			let normalizedProviders = normalizePlannerProviders(
-				parsedXml as Record<string, unknown>,
+				parsedPlanner as Record<string, unknown>,
 				runtime,
 			);
 
@@ -5716,7 +5824,7 @@ export class DefaultMessageService implements IMessageService {
 					message,
 					rawPlannerActions,
 					rawPlannerProviders: normalizedProviders,
-					plannerReplyText: String(parsedXml.text || ""),
+					plannerReplyText: String(parsedPlanner.text || ""),
 				});
 				if (repairedPlannerOutput) {
 					const repairedActions = normalizePlannerActions(
@@ -5736,19 +5844,19 @@ export class DefaultMessageService implements IMessageService {
 							runtime,
 						);
 						if (repairedPlannerOutput.params) {
-							parsedXml.params = repairedPlannerOutput.params;
+							parsedPlanner.params = repairedPlannerOutput.params;
 						}
 					}
 				}
 			}
 
 			responseContent = {
-				...parsedXml,
-				thought: String(parsedXml.thought || ""),
+				...parsedPlanner,
+				thought: String(parsedPlanner.thought || ""),
 				actions: finalActions,
 				providers: normalizedProviders,
-				text: String(parsedXml.text || ""),
-				simple: parsedXml.simple === true || parsedXml.simple === "true",
+				text: String(parsedPlanner.text || ""),
+				simple: parsedPlanner.simple === true || parsedPlanner.simple === "true",
 			};
 		} else {
 			// dynamicPromptExecFromState returned null - use streamed text if available
@@ -5795,7 +5903,7 @@ Your previous response was cut off. The user already received this text:
 "${escapedStreamedText}"
 
 Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Output ONLY the continuation, starting immediately after the last character above.`;
+Return TOON only with the continuation in the text field, starting immediately after the last character above.`;
 
 				const continuationParsed = await runtime.dynamicPromptExecFromState({
 					state,
@@ -5813,7 +5921,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					],
 					options: {
 						modelType: ModelType.ACTION_PLANNER,
-						preferredEncapsulation: "xml",
+						preferredEncapsulation: "toon",
 						contextCheckLevel: 0, // Fast mode for continuations - we trust the model
 						onStreamChunk: streamingCtx?.onStreamChunk,
 					},
@@ -5911,7 +6019,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{
 						field: "actions",
 						description:
-							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+						type: "array",
+						items: { description: "One action name or action entry" },
 						required: false,
 						validateField: false,
 						streamField: false,
@@ -5920,6 +6030,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 						field: "providers",
 						description:
 							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						type: "array",
+						items: { description: "One provider name" },
 						required: false,
 						validateField: false,
 						streamField: false,
@@ -5938,7 +6050,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "xml",
+					preferredEncapsulation: "toon",
 					maxRetries: 1,
 				},
 			});
@@ -6014,7 +6126,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{
 						field: "actions",
 						description:
-							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+						type: "array",
+						items: { description: "One action name or action entry" },
 						required: true,
 						validateField: false,
 						streamField: false,
@@ -6023,6 +6137,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 						field: "providers",
 						description:
 							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						type: "array",
+						items: { description: "One provider name" },
 						required: false,
 						validateField: false,
 						streamField: false,
@@ -6041,7 +6157,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "xml",
+					preferredEncapsulation: "toon",
 					maxRetries: 1,
 				},
 			});
@@ -6108,7 +6224,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					},
 					{
 						field: "actions",
-						description: "Exactly one action entry inside <actions>.",
+						description: "Exactly one action name.",
+						type: "array",
+						items: { description: "One action name" },
 						required: true,
 						validateField: false,
 						streamField: false,
@@ -6116,7 +6234,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "xml",
+					preferredEncapsulation: "toon",
 					maxRetries: 1,
 				},
 			});
@@ -6170,7 +6288,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		// Action parameter repair (Python parity):
 		// If the model selected actions with missing or invalid params, do a
-		// second pass asking for ONLY a corrected <params> block.
+		// second pass asking for ONLY corrected TOON params.
 		const actionByName = new Map<string, Action>();
 		for (const action of runtime.actions) {
 			const normalizedName = action.name.trim().toUpperCase();
@@ -6267,17 +6385,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"",
 				"# Parameter Repair",
 				"You selected actions whose params are missing or invalid.",
-				"Return ONLY XML with a top-level <params> field that fixes those actions.",
+				"Return ONLY TOON with a top-level params object that fixes those actions.",
 				"Do not change the selected actions.",
 				"Example:",
-				"<response>",
-				"  <params>",
-				"    <SEND_MESSAGE>",
-				"      <target>room-or-channel-id</target>",
-				"      <text>message body</text>",
-				"    </SEND_MESSAGE>",
-				"  </params>",
-				"</response>",
+				"params:",
+				"  SEND_MESSAGE:",
+				"    target: room-or-channel-id",
+				"    text: message body",
 				"",
 				"Current params:",
 				existingParamBlock,
@@ -6288,11 +6402,29 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"Do not include thought, actions, providers, text, or any other fields.",
 			].join("\n");
 
-			const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-				prompt: repairPrompt,
+			const repairParsed = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: repairPrompt,
+				},
+				schema: [
+					{
+						field: "params",
+						description:
+							"TOON object keyed by action name containing corrected action params",
+						type: "object",
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.TEXT_LARGE,
+					preferredEncapsulation: "toon",
+					contextCheckLevel: 0,
+					maxRetries: 1,
+				},
 			});
-			const repairParsed =
-				parseKeyValueXml<Record<string, unknown>>(repairResponse);
 			if (repairParsed?.params) {
 				responseContent.params = repairParsed.params as Content["params"];
 				existingParams = parseActionParams(responseContent.params);
@@ -7184,7 +7316,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			],
 			options: {
 				modelSize: "large",
-				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
+				preferredEncapsulation: "toon",
 				requiredFields: ["text"],
 				// Stream the final summary to the user
 				onStreamChunk: opts.onStreamChunk,

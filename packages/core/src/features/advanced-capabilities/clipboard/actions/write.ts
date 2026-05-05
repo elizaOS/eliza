@@ -34,16 +34,17 @@ User message: {{text}}
 Recent conversation:
 {{messageHistory}}
 
-Respond with XML containing:
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+
+Fields:
 - title: A short, descriptive title for the note (required)
 - content: The main content to save (required)
 - tags: Comma-separated tags for categorization (optional)
 
-<response>
-<title>The note title</title>
-<content>The content to save</content>
-<tags>tag1, tag2</tags>
-</response>`;
+Example:
+title: The note title
+content: The content to save
+tags: tag1, tag2`;
 
 async function extractWriteInfo(
 	runtime: IAgentRuntime,

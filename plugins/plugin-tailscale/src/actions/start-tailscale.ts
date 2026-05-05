@@ -6,6 +6,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  parseKeyValueXml,
 } from "@elizaos/core";
 import { z } from "zod";
 import { getTunnelService } from "../types";
@@ -17,15 +18,13 @@ const portPayloadSchema = z.object({
   }),
 });
 
-const PORT_PROMPT_TEMPLATE = `Respond with a JSON object containing the port number to start the tunnel on.
+const PORT_PROMPT_TEMPLATE = `Extract the port number to start the tunnel on.
 The user said: "{{userMessage}}"
 
 Extract the port number from their message, or use the default port 3000 if not specified.
 
-Response format:
-\`\`\`json
-{ "port": 3000 }
-\`\`\``;
+Respond with TOON only:
+port: 3000`;
 
 const DEFAULT_PORT = 3000;
 
@@ -34,6 +33,11 @@ function isValidPort(value: number): boolean {
 }
 
 function parsePort(value: string): number {
+  const toonParsed = parseKeyValueXml<Record<string, unknown>>(value);
+  const toonResult = portPayloadSchema.safeParse(toonParsed);
+  if (toonResult.success && isValidPort(toonResult.data.port))
+    return toonResult.data.port;
+
   try {
     const parsed: unknown = JSON.parse(value);
     const result = portPayloadSchema.safeParse(parsed);

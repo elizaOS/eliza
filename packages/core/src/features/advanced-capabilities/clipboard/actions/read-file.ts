@@ -90,8 +90,10 @@ async function extractReadFileInput(
 			"",
 			`User message: ${text}`,
 			"",
-			"Respond with XML:",
-			"<response><filePath>relative/or/absolute/path</filePath><from>1</from><lines>40</lines></response>",
+			"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
+			"filePath: relative/or/absolute/path",
+			"from: 1",
+			"lines: 40",
 		].join("\n"),
 		stopSequences: [],
 	});

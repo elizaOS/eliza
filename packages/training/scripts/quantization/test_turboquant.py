@@ -33,7 +33,6 @@ import json
 import logging
 import math
 import os
-import statistics
 import time
 from pathlib import Path
 

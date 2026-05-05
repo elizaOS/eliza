@@ -57,7 +57,7 @@ def _maybe_load_dotenv() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="ElizaOS WebShop Benchmark CLI")
+    p = argparse.ArgumentParser(description="WebShop Benchmark CLI")
     p.add_argument("--sample", action="store_true", help="Use built-in sample tasks/products")
     p.add_argument("--hf", action="store_true", help="Load tasks from HuggingFace (tasks only)")
     p.add_argument("--split", type=str, default="test", help="HF split (default: test)")
@@ -72,14 +72,14 @@ def parse_args() -> argparse.Namespace:
 
     # Eliza integration
     p.add_argument("--mock", action="store_true", help="Use mock agent instead of real LLM (for testing)")
-    p.add_argument("--real-llm", action="store_true", help="(deprecated, now the default) Use real LLM via ElizaOS runtime")
+    p.add_argument("--real-llm", action="store_true", help="(deprecated) Non-mock runs use the TypeScript bridge")
     p.add_argument(
         "--bridge",
         action="store_true",
         help=(
             "Route all LLM/agent calls through the eliza TypeScript benchmark "
-            "server (auto-spawned via ElizaServerManager). Bypasses the in-process "
-            "Python AgentRuntime entirely."
+            "server (auto-spawned via ElizaServerManager). This is the default "
+            "for non-mock runs."
         ),
     )
     p.add_argument("--temperature", type=float, default=0.0, help="LLM temperature")
@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama"],
+        choices=["openai", "groq", "openrouter"],
         default=None,
         help="Force provider (auto-detect if unset)",
     )
@@ -117,7 +117,7 @@ def create_config(args: argparse.Namespace) -> WebShopConfig:
         out = f"./benchmark_results/webshop/{ts}"
 
     use_mock = bool(args.mock)
-    use_bridge = bool(args.bridge)
+    use_bridge = bool(args.bridge) or not use_mock
 
     return WebShopConfig(
         output_dir=out,
@@ -133,7 +133,7 @@ def create_config(args: argparse.Namespace) -> WebShopConfig:
         model_provider=args.model_provider,
         model_name=args.model,
         enable_trajectory_logging=(
-            bool(args.trajectories) or (not use_mock and not use_bridge)
+            bool(args.trajectories) and not use_bridge
         )
         and not bool(args.no_trajectories),
         trajectory_export_format=str(args.trajectory_format),
@@ -166,14 +166,29 @@ def main() -> int:
         args.sample = True
 
     config = create_config(args)
-    if config.model_provider:
-        os.environ["BENCHMARK_MODEL_PROVIDER"] = config.model_provider
-    if args.model:
-        os.environ["BENCHMARK_MODEL_NAME"] = args.model
-        os.environ["OPENAI_LARGE_MODEL"] = args.model
-        os.environ["OPENAI_SMALL_MODEL"] = args.model
-        os.environ["GROQ_LARGE_MODEL"] = args.model
-        os.environ["GROQ_SMALL_MODEL"] = args.model
+    provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
+    if not provider:
+        if os.environ.get("GROQ_API_KEY"):
+            provider = "groq"
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.environ.get("OPENAI_API_KEY"):
+            provider = "openai"
+
+    model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
+    if not model_name:
+        model_name = "openai/gpt-oss-120b" if provider in {"groq", "openrouter"} else "gpt-4o-mini"
+
+    if config.use_bridge and not config.use_mock:
+        if provider:
+            os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
+        os.environ["BENCHMARK_MODEL_NAME"] = model_name
+        os.environ["OPENAI_LARGE_MODEL"] = model_name
+        os.environ["OPENAI_SMALL_MODEL"] = model_name
+        os.environ["GROQ_LARGE_MODEL"] = model_name
+        os.environ["GROQ_SMALL_MODEL"] = model_name
+        os.environ["OPENROUTER_LARGE_MODEL"] = model_name
+        os.environ["OPENROUTER_SMALL_MODEL"] = model_name
 
     if config.use_mock:
         logger.warning(
@@ -184,14 +199,6 @@ def main() -> int:
             "Bridge mode: routing all LLM calls through the eliza TypeScript benchmark server."
         )
     else:
-        provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
-        if not provider:
-            if os.environ.get("GROQ_API_KEY"):
-                provider = "groq"
-            elif os.environ.get("OPENROUTER_API_KEY"):
-                provider = "openrouter"
-            elif os.environ.get("OPENAI_API_KEY"):
-                provider = "openai"
         key_var = {
             "openai": "OPENAI_API_KEY",
             "groq": "GROQ_API_KEY",

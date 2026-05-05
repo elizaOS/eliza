@@ -116,12 +116,10 @@ ${config.criteria}
 3. Provide a score from 0-10 (10 = perfect, 0 = completely wrong)
 4. Explain your reasoning
 
-IMPORTANT: Respond ONLY with XML in this exact format:
-<response>
-<score>7</score>
-<passed>true</passed>
-<reasoning>The response meets the criteria because...</reasoning>
-</response>
+Respond with TOON only:
+score: 7
+passed: true
+reasoning: The response meets the criteria because...
 `;
 
       const result = await this.runtime.useModel(ModelType.TEXT_LARGE, {

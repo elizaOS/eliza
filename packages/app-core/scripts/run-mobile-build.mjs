@@ -2152,7 +2152,7 @@ async function buildAndroid() {
 
   await buildWeb();
   await ensurePlatform("android");
-  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+  await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -2258,7 +2258,7 @@ async function buildAndroidSystem() {
 
   await buildWeb();
   await ensurePlatform("android");
-  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+  await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -2321,7 +2321,7 @@ async function buildIos() {
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
-  await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
+  await run("bun", ["x", "capacitor", "sync", "ios"], { cwd: appDir });
 
   const buildTarget = resolveIosBuildTarget();
   console.log(

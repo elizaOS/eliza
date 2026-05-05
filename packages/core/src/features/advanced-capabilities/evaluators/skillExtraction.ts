@@ -30,6 +30,7 @@ import type {
 import { ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
+import { tryParseToonValue } from "../../../utils/toon";
 
 interface TrajectoryStep {
 	stepId?: string;
@@ -81,22 +82,17 @@ procedures. You will look at one completed trajectory (a sequence of steps,
 each with a system prompt, user prompt, and model response) and decide whether
 there is a generalizable, repeatable procedure worth saving as a SKILL.md.
 
-Output format (strict): respond with a single fenced JSON block.
+Output format: TOON only. Return exactly one TOON document, no prose or fences.
 
 If there is NO generalizable skill, output exactly:
-\`\`\`json
-{ "extract": false, "reason": "<short reason>" }
-\`\`\`
+extract: false
+reason: short reason
 
 If there IS a generalizable skill, output:
-\`\`\`json
-{
-  "extract": true,
-  "name": "lowercase-hyphen-name",
-  "description": "<one-sentence description, ≤200 chars>",
-  "body": "<markdown body for the skill — instructions, steps, examples>"
-}
-\`\`\`
+extract: true
+name: lowercase-hyphen-name
+description: one-sentence description, <=200 chars
+body: "markdown body for the skill with \\n escapes for line breaks"
 
 Rules:
 - name MUST be lowercase a-z, 0-9, hyphens only, no leading/trailing/double hyphens.
@@ -122,6 +118,19 @@ interface ExtractionDraft {
 }
 
 function parseExtractionResponse(raw: string): ExtractionDraft | null {
+	const toon = tryParseToonValue(raw);
+	if (toon && typeof toon === "object" && !Array.isArray(toon)) {
+		const obj = toon as Record<string, unknown>;
+		const extract = obj.extract === true;
+		const draft: ExtractionDraft = { extract };
+		if (typeof obj.reason === "string") draft.reason = obj.reason;
+		if (typeof obj.name === "string") draft.name = obj.name;
+		if (typeof obj.description === "string")
+			draft.description = obj.description;
+		if (typeof obj.body === "string") draft.body = obj.body;
+		return draft;
+	}
+
 	const fenceMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
 	const jsonText = fenceMatch ? fenceMatch[1] : raw.trim();
 	if (!jsonText) {

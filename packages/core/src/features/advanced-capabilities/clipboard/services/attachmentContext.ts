@@ -42,8 +42,8 @@ function selectionPrompt(messageText: string, attachments: Media[]): string {
 		"Available attachments:",
 		choices,
 		"",
-		"Respond with XML:",
-		"<response><attachmentId>attachment-id</attachmentId></response>",
+		"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
+		"attachmentId: attachment-id",
 	].join("\n");
 }
 

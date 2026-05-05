@@ -307,6 +307,40 @@ describe("context-gated providers", () => {
 		).toEqual(["GeneralProvider", "walletBalance"]);
 	});
 
+	it("renders provider descriptions from compressed fields and spec fallbacks", async () => {
+		const runtime = {
+			agentId: "agent",
+			actions: [],
+			providers: [
+				{
+					name: "TIME",
+					description:
+						"Provides the current UTC date and time for prompt context.",
+					get: async () => ({ text: "" }),
+					dynamic: true,
+				},
+				{
+					name: "CustomProvider",
+					description:
+						"This provider is used to provide detailed information about a custom integration.",
+					compressedDescription: "custom integration info.",
+					get: async () => ({ text: "" }),
+					dynamic: true,
+				},
+			],
+		} as unknown as IAgentRuntime;
+
+		const result = await providersProvider.get(
+			runtime,
+			message,
+			createState({ primaryContext: "wallet" }),
+		);
+
+		expect(result.text).toContain("- TIME: Current UTC date/time.");
+		expect(result.text).toContain("- CustomProvider: custom integration info.");
+		expect(result.text).not.toContain("Provides the current UTC date and time");
+	});
+
 	it("keeps only generic chat actions for non-actionable chatter", async () => {
 		const runtime = {
 			agentId: "agent",

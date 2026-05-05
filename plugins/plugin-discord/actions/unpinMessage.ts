@@ -9,6 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -43,7 +44,9 @@ const getMessageRef = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response);
+		const parsedResponse =
+			parseKeyValueXml<Record<string, unknown>>(response) ??
+			parseJSONObjectFromText(response);
 		if (parsedResponse?.messageRef) {
 			return {
 				messageRef: String(parsedResponse.messageRef),

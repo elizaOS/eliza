@@ -64,15 +64,15 @@ class ProviderConfig:
 
 
 # Default model configurations
-# Groq is the default provider with llama-3.1-8b-instant as the default model
+# Groq is the default provider with gpt-oss-120b as the default model.
 PROVIDER_CONFIGS: dict[ModelProvider, ProviderConfig] = {
     ModelProvider.GROQ: ProviderConfig(
         provider=ModelProvider.GROQ,
         api_key_env="GROQ_API_KEY",
         base_url_env="GROQ_BASE_URL",
         default_base_url="https://api.groq.com/openai/v1",
-        small_model="llama-3.1-8b-instant",  # Default - fast and efficient
-        large_model="llama-3.3-70b-versatile",  # For complex tasks
+        small_model="openai/gpt-oss-120b",
+        large_model="openai/gpt-oss-120b",  # For complex tasks
         priority=100,  # Highest priority - our default
     ),
     ModelProvider.OPENAI: ProviderConfig(
@@ -150,7 +150,6 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         provider=ModelProvider.GROQ,
         model_id="llama-3.1-8b-instant",
         display_name="Llama 3.1 8B Instant (Groq)",
-        is_default=True,  # This is our default model
         max_tokens=8192,
         cost_per_1k_tokens=0.00005,
     ),
@@ -160,6 +159,14 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         display_name="Llama 3.3 70B Versatile (Groq)",
         max_tokens=32768,
         cost_per_1k_tokens=0.00059,
+    ),
+    "groq/openai/gpt-oss-120b": ModelConfig(
+        provider=ModelProvider.GROQ,
+        model_id="openai/gpt-oss-120b",
+        display_name="GPT OSS 120B (Groq)",
+        is_default=True,
+        max_tokens=32768,
+        cost_per_1k_tokens=0.00015,
     ),
     "groq/qwen-qwq-32b": ModelConfig(
         provider=ModelProvider.GROQ,
@@ -364,7 +371,7 @@ def get_default_model_config() -> Optional[BenchmarkModelConfig]:
     Priority:
     1. BFCL_MODEL env var (if set to specific model)
     2. BFCL_PROVIDER env var (if set to specific provider)
-    3. Groq with llama-3.1-8b-instant (if GROQ_API_KEY set)
+    3. Groq with gpt-oss-120b (if GROQ_API_KEY set)
     4. First available provider by priority
     """
     # Check for explicit model override
@@ -409,7 +416,7 @@ def get_default_model_config() -> Optional[BenchmarkModelConfig]:
         except ValueError:
             logger.warning(f"Unknown provider: {explicit_provider}")
     
-    # Use default: Groq with llama-3.1-8b-instant
+    # Use default: Groq with gpt-oss-120b
     available = get_available_providers()
     if not available:
         logger.warning("No model providers available")

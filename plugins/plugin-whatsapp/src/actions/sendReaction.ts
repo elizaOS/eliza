@@ -8,7 +8,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  composePromptFromState,
+  ModelType,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+} from "@elizaos/core";
 
 export const WHATSAPP_SEND_REACTION_ACTION = "WHATSAPP_SEND_REACTION";
 
@@ -23,11 +28,9 @@ The user wants to react to a WhatsApp message. Extract the following:
 
 Based on the conversation, extract the reaction parameters.
 
-Respond with a JSON object:
-{
-  "messageId": "wamid.xxx",
-  "emoji": "👍"
-}
+Respond with TOON only:
+messageId: wamid.xxx
+emoji: 👍
 `;
 
 interface ReactionParams {
@@ -90,7 +93,8 @@ export const sendReactionAction: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response) as unknown as ReactionParams | null;
+      const parsed = (parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response)) as unknown as ReactionParams | null;
       if (!parsed?.messageId || !parsed.emoji) {
         // Try to use context from message
         const messageId = message.content?.messageId as string;

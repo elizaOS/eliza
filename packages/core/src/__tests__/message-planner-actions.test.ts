@@ -39,6 +39,22 @@ describe("extractPlannerActionNames", () => {
 			}),
 		).toEqual(["CALENDAR_ACTION", "REQUEST_FIELD_FILL"]);
 	});
+
+	it("parses TOON action objects and promotes inline params", () => {
+		const parsed = {
+			actions: [
+				{
+					name: "SEND_MESSAGE",
+					params: { target: "room-1", text: "hello" },
+				},
+			],
+		};
+
+		expect(extractPlannerActionNames(parsed)).toEqual(["SEND_MESSAGE"]);
+		expect(parsed.params).toEqual({
+			SEND_MESSAGE: { target: "room-1", text: "hello" },
+		});
+	});
 });
 
 describe("extractPlannerProviderNames", () => {

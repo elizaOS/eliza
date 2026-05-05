@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-} from "./service-routing";
+} from "./service-routing.js";
 
 describe("buildDefaultElizaCloudServiceRouting", () => {
   it("routes all default capabilities to cloud-proxy by default", () => {

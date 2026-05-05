@@ -8,7 +8,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+} from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -45,19 +50,33 @@ async function classifyIntent(
   text: string,
 ): Promise<CustomerIntent | null> {
   const prompt = `Analyze the user message and determine what customer action they want.
-Return a JSON object with one of these shapes:
-- { "action": "list", "query": null }
-- { "action": "search", "query": "customer name, email, or other search term" }
+Respond with TOON only in one of these shapes:
+action: list
+query:
+
+action: search
+query: customer name, email, or other search term
 
 User message: "${text}"
-
-Return ONLY the JSON object.`;
+`;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseJSONObjectFromText(response);
-    if (parsed?.action) {
-      return parsed as unknown as CustomerIntent;
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(response) ??
+      parseJSONObjectFromText(response);
+    const action = parsed?.action;
+    const query =
+      typeof parsed?.query === "string" &&
+      parsed.query.trim().length > 0 &&
+      parsed.query.trim().toLowerCase() !== "null"
+        ? parsed.query.trim()
+        : null;
+    if (action === "list") {
+      return { action, query };
+    }
+    if (action === "search" && query) {
+      return { action, query };
     }
   }
   return null;

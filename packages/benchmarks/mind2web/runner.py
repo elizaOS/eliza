@@ -9,14 +9,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from benchmarks.mind2web.dataset import Mind2WebDataset
 from benchmarks.mind2web.eliza_agent import (
-    ELIZAOS_AVAILABLE,
     create_mind2web_agent,
 )
 from benchmarks.mind2web.evaluator import Mind2WebEvaluator
@@ -29,6 +30,8 @@ from benchmarks.mind2web.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+_ELIZA_BRIDGE_PROVIDERS = {"eliza", "eliza-bridge", "eliza-ts"}
 
 
 class Mind2WebRunner:
@@ -48,7 +51,7 @@ class Mind2WebRunner:
         self.dataset = Mind2WebDataset(split=config.split)
         self.evaluator = Mind2WebEvaluator()
         self._start_time = 0.0
-        self._elizaos_mode = not config.use_mock and ELIZAOS_AVAILABLE
+        self._bridge_manager: Any | None = None
 
     async def run_benchmark(self) -> Mind2WebReport:
         """Run the Mind2Web benchmark.
@@ -58,44 +61,101 @@ class Mind2WebRunner:
         """
         self._start_time = time.time()
 
-        # Load dataset
-        await self.dataset.load(
-            use_huggingface=self.use_huggingface,
-            use_sample=self.use_sample,
+        try:
+            # Load dataset
+            await self.dataset.load(
+                use_huggingface=self.use_huggingface,
+                use_sample=self.use_sample,
+            )
+
+            tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
+            if not tasks:
+                raise RuntimeError("No tasks loaded from dataset")
+
+            logger.info(f"Running Mind2Web benchmark on {len(tasks)} tasks")
+
+            # Run tasks
+            results: list[Mind2WebResult] = []
+            for task in tasks:
+                for trial in range(1, max(1, self.config.num_trials) + 1):
+                    result = await self._run_task(task, trial_number=trial)
+                    results.append(result)
+
+                    # Log progress
+                    if result.success:
+                        logger.info(
+                            f"Task {task.annotation_id} trial {trial}: SUCCESS "
+                            f"(step_acc={result.step_accuracy:.2%})"
+                        )
+                    else:
+                        logger.info(
+                            f"Task {task.annotation_id} trial {trial}: "
+                            f"step_acc={result.step_accuracy:.2%}, elem_acc={result.element_accuracy:.2%}"
+                        )
+
+            # Generate report
+            report = self._generate_report(results)
+
+            # Save results
+            await self._save_results(report)
+
+            return report
+        finally:
+            self._stop_bridge_manager()
+
+    def _uses_eliza_bridge(self) -> bool:
+        provider = (self.config.model_provider or "").strip().lower()
+        return not self.config.use_mock and provider in _ELIZA_BRIDGE_PROVIDERS
+
+    def _ensure_bridge_manager(self) -> Any:
+        if self._bridge_manager is None:
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            self._configure_bridge_model_env()
+            self._bridge_manager = ElizaServerManager()
+            self._bridge_manager.start()
+            logger.info("[Mind2WebRunner] Running with Eliza TypeScript bridge")
+        return self._bridge_manager
+
+    def _stop_bridge_manager(self) -> None:
+        if self._bridge_manager is not None:
+            self._bridge_manager.stop()
+            self._bridge_manager = None
+
+    def _configure_bridge_model_env(self) -> None:
+        provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+        if not provider:
+            if os.environ.get("GROQ_API_KEY"):
+                provider = "groq"
+            elif os.environ.get("OPENROUTER_API_KEY"):
+                provider = "openrouter"
+            elif os.environ.get("OPENAI_API_KEY"):
+                provider = "openai"
+            else:
+                provider = "openai"
+
+        model_name = (
+            (self.config.model_name or "").strip()
+            or os.environ.get("BENCHMARK_MODEL_NAME", "").strip()
         )
+        if not model_name:
+            if provider in {"groq", "openrouter"}:
+                model_name = (
+                    (self.config.groq_large_model or "").strip()
+                    or (self.config.groq_small_model or "").strip()
+                    or "openai/gpt-oss-120b"
+                )
+            else:
+                model_name = "gpt-4o-mini"
 
-        tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
-        if not tasks:
-            raise RuntimeError("No tasks loaded from dataset")
-
-        logger.info(f"Running Mind2Web benchmark on {len(tasks)} tasks")
-
-        # Run tasks
-        results: list[Mind2WebResult] = []
-        for task in tasks:
-            for trial in range(1, max(1, self.config.num_trials) + 1):
-                result = await self._run_task(task, trial_number=trial)
-                results.append(result)
-
-                # Log progress
-                if result.success:
-                    logger.info(
-                        f"Task {task.annotation_id} trial {trial}: SUCCESS "
-                        f"(step_acc={result.step_accuracy:.2%})"
-                    )
-                else:
-                    logger.info(
-                        f"Task {task.annotation_id} trial {trial}: "
-                        f"step_acc={result.step_accuracy:.2%}, elem_acc={result.element_accuracy:.2%}"
-                    )
-
-        # Generate report
-        report = self._generate_report(results)
-
-        # Save results
-        await self._save_results(report)
-
-        return report
+        os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
+        os.environ["BENCHMARK_MODEL_NAME"] = model_name
+        os.environ["OPENAI_LARGE_MODEL"] = model_name
+        os.environ["OPENAI_SMALL_MODEL"] = model_name
+        os.environ["GROQ_LARGE_MODEL"] = model_name
+        os.environ["GROQ_SMALL_MODEL"] = model_name
+        os.environ["OPENROUTER_LARGE_MODEL"] = model_name
+        os.environ["OPENROUTER_SMALL_MODEL"] = model_name
 
     async def _run_task(
         self, task: Mind2WebTask, *, trial_number: int
@@ -111,10 +171,11 @@ class Mind2WebRunner:
         """
         start_time = time.time()
 
-        if self.config.model_provider == "eliza":
+        if self._uses_eliza_bridge():
             from eliza_adapter.mind2web import ElizaMind2WebAgent
 
-            agent = ElizaMind2WebAgent(self.config)
+            bridge_manager = self._ensure_bridge_manager()
+            agent = ElizaMind2WebAgent(self.config, client=bridge_manager.client)
         else:
             agent = create_mind2web_agent(self.config)
 
@@ -215,10 +276,20 @@ class Mind2WebRunner:
         else:
             status = "needs_improvement"
 
+        mode = (
+            "mock"
+            if self.config.use_mock
+            else "eliza-bridge"
+            if (self.config.model_provider or "").strip().lower() in _ELIZA_BRIDGE_PROVIDERS
+            else "real-llm"
+            if self.config.model_provider
+            else "heuristic"
+        )
+
         summary: dict[str, str | int | float | bool] = {
             "status": status,
             "timestamp": datetime.now().isoformat(),
-            "mode": "real-llm" if self._elizaos_mode else "mock",
+            "mode": mode,
             "split": self.config.split.value,
             "model_provider": self.config.model_provider or "auto",
         }

@@ -3,19 +3,15 @@ CLI entry point for HyperliquidBench.
 
 Two modes are supported via ``--mode``:
 
-* ``python`` (default) — runs the in-process Python ``elizaos`` ``AgentRuntime``
-  defined in ``eliza_agent.py``. This is the original path.
-* ``eliza`` — routes plan generation through the eliza TypeScript benchmark
+* ``eliza`` (default) — routes plan generation through the eliza TypeScript benchmark
   server via ``eliza_adapter.hyperliquid.ElizaHyperliquidAgent``. The Rust
-  execution path (``hl-runner`` + ``hl-evaluator``) is reused unchanged in
-  both modes.
+  execution path (``hl-runner`` + ``hl-evaluator``) is reused unchanged.
+* ``deterministic`` / ``python`` — local deterministic demo plan generation,
+  retained for smoke tests and offline harness validation.
 
 Examples:
-    # Python runtime, demo, default coverage scenario
+    # Eliza TS bridge, demo (starts the benchmark server automatically)
     python -m benchmarks.HyperliquidBench --demo
-
-    # Eliza TS bridge, demo (requires ELIZA_BENCH_URL/TOKEN, or ElizaServerManager)
-    python -m benchmarks.HyperliquidBench --mode eliza --demo
 
     # Free-form coverage scenario with specific coins
     python -m benchmarks.HyperliquidBench --coins ETH,BTC,SOL --max-steps 7
@@ -33,6 +29,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -44,17 +41,17 @@ def _parse_args() -> argparse.Namespace:
         description="Run HyperliquidBench scenarios through an Eliza agent",
     )
 
-    # Mode selection — controls whether planning happens in-process via the
-    # Python elizaos runtime or via the eliza TS benchmark server bridge.
+    # Mode selection: bridge-backed Eliza by default; deterministic local path
+    # remains for offline smoke tests.
     parser.add_argument(
         "--mode",
         type=str,
-        default="python",
-        choices=["python", "eliza"],
+        default="eliza",
+        choices=["eliza", "deterministic", "python"],
         help=(
-            "Agent backend. 'python' uses the in-process elizaos.AgentRuntime "
-            "(default). 'eliza' routes plan generation through the eliza "
-            "TypeScript benchmark server via eliza_adapter.hyperliquid."
+            "Agent backend. 'eliza' routes plan generation through the eliza "
+            "TypeScript benchmark server via eliza_adapter.hyperliquid (default). "
+            "'deterministic'/'python' use the local deterministic smoke agent."
         ),
     )
 
@@ -118,8 +115,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o",
-        help="Model name for plan generation (default: gpt-4o)",
+        default=None,
+        help=(
+            "Model name for plan generation. Defaults to openai/gpt-oss-120b "
+            "for Groq/OpenRouter, otherwise gpt-4o-mini."
+        ),
     )
     parser.add_argument(
         "--temperature",
@@ -234,12 +234,36 @@ async def _main() -> int:
 
     demo_mode = args.demo and not args.no_demo
 
+    provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    if not provider:
+        if os.environ.get("GROQ_API_KEY"):
+            provider = "groq"
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.environ.get("OPENAI_API_KEY"):
+            provider = "openai"
+
+    model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
+    if not model_name:
+        model_name = "openai/gpt-oss-120b" if provider in {"groq", "openrouter"} else "gpt-4o-mini"
+
+    if args.mode == "eliza":
+        if provider:
+            os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
+        os.environ["BENCHMARK_MODEL_NAME"] = model_name
+        os.environ["OPENAI_LARGE_MODEL"] = model_name
+        os.environ["OPENAI_SMALL_MODEL"] = model_name
+        os.environ["GROQ_LARGE_MODEL"] = model_name
+        os.environ["GROQ_SMALL_MODEL"] = model_name
+        os.environ["OPENROUTER_LARGE_MODEL"] = model_name
+        os.environ["OPENROUTER_SMALL_MODEL"] = model_name
+
     config = HLBenchConfig(
         bench_root=bench_root,
         demo_mode=demo_mode,
         network=args.network,
         builder_code=args.builder_code,
-        model_name=args.model,
+        model_name=model_name,
         temperature=args.temperature,
         max_iterations=args.max_iterations,
         verbose=args.verbose,
@@ -272,25 +296,37 @@ async def _main() -> int:
         return 1
 
     # Pick the agent backend.
+    bridge_manager = None
     if args.mode == "eliza":
         from eliza_adapter.hyperliquid import ElizaHyperliquidAgent as _BridgeAgent
+        from eliza_adapter.server_manager import ElizaServerManager
 
-        agent: object = _BridgeAgent(config=config, verbose=args.verbose)
+        bridge_manager = ElizaServerManager()
+        bridge_manager.start()
+        agent: object = _BridgeAgent(
+            config=config,
+            client=bridge_manager.client,
+            verbose=args.verbose,
+        )
         logging.info("Using eliza TS bridge agent (eliza_adapter.hyperliquid)")
     else:
         from .eliza_agent import ElizaHyperliquidAgent as _PythonAgent
 
         agent = _PythonAgent(config=config, verbose=args.verbose)
-        logging.info("Using in-process Python elizaos AgentRuntime")
+        logging.info("Using local deterministic HyperliquidBench smoke agent")
 
     try:
         results = await agent.run_benchmark(scenarios=scenarios)  # type: ignore[attr-defined]
     finally:
-        await agent.cleanup()  # type: ignore[attr-defined]
+        try:
+            await agent.cleanup()  # type: ignore[attr-defined]
+        finally:
+            if bridge_manager is not None:
+                bridge_manager.stop()
 
     summary = _build_results_summary(results)
     summary["mode"] = args.mode
-    summary["model"] = args.model
+    summary["model"] = model_name
     summary["network"] = args.network
     summary["demo_mode"] = demo_mode
 

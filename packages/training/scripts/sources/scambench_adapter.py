@@ -59,7 +59,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import _load_prompt_registry, render_handlebars  # noqa: E402
-from lib.eliza_record import build, stable_id  # noqa: E402
+from lib.eliza_record import build  # noqa: E402
 from lib.toon import ToonEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw" / "scambench" / "data"

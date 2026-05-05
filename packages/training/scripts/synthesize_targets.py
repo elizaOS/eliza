@@ -31,7 +31,6 @@ import os
 import random
 import re
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,7 +41,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import build, stable_id  # noqa: E402
+from lib.eliza_record import ElizaRecord, build, stable_id  # noqa: E402
 from lib.toon import ToonEncoder  # noqa: E402
 
 REGISTRY_FILE = ROOT / "datasets.yaml"

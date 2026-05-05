@@ -223,11 +223,44 @@ describe("Actions", () => {
 				},
 			]);
 
-			expect(formatted).toContain("- MOVE: Move the agent.");
+			expect(formatted).toContain("- MOVE: Move agent.");
 			expect(formatted).toContain("params[1]:");
 			expect(formatted).toContain("direction:string");
 			expect(formatted).toContain("values=north|south");
 			expect(formatted).toContain('examples="north"|"south"');
+		});
+
+		it("prefers compressed action and parameter descriptions, including alias", () => {
+			const formatted = formatActions([
+				{
+					name: "SEND_THING",
+					description:
+						"This action is used to send a direct message to the user when the conversation needs a response.",
+					compressedDescription: "send direct msg to user.",
+					parameters: [
+						{
+							name: "target",
+							description: "The identifier for the target user.",
+							compressedDescription: "target user id.",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					examples: [],
+					similes: [],
+					handler: async () => {
+						throw new Error("Not implemented");
+					},
+					validate: async () => {
+						throw new Error("Not implemented");
+					},
+				},
+			]);
+
+			expect(formatted).toContain("- SEND_THING: send direct msg to user.");
+			expect(formatted).toContain("target:string - target user id.");
+			expect(formatted).not.toContain("This action is used");
+			expect(formatted).not.toContain("The identifier for the target user.");
 		});
 
 		it("includes action-tagged example hints when available", () => {
@@ -492,7 +525,7 @@ describe("Actions", () => {
 				"In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent",
 			);
 			expect(ignoreDoc?.descriptionCompressed).toContain(
-				"addressed to someone else in a group",
+				"group msg addressed elsewhere",
 			);
 		});
 

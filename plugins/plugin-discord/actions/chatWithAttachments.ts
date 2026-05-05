@@ -14,6 +14,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 	trimTokens,
@@ -46,7 +47,7 @@ const getAttachmentIds = async (
 			prompt,
 		});
 		// try parsing to a json object
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
 			objective: string;
 			attachmentIds: string[];
 		} | null;

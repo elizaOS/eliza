@@ -11,4 +11,4 @@ Examples:
 - "Fetch weather data hourly and store in Google Sheets" → ["weather", "http", "schedule", "google sheets", "store"]
 - "When new Stripe payment, create invoice in QuickBooks" → ["stripe", "webhook", "quickbooks", "invoice", "payment"]
 
-Return a JSON object with a "keywords" array containing 1-5 relevant search terms.`;
+Return structured data with a "keywords" array containing 1-5 relevant search terms.`;

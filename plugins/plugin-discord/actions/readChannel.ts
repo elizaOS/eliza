@@ -9,6 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -45,7 +46,7 @@ const getChannelInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
 			channelIdentifier: string;
 			messageCount: number;
 			summarize?: boolean;
@@ -61,7 +62,9 @@ const getChannelInfo = async (
 			return {
 				channelIdentifier: parsedResponse.channelIdentifier,
 				messageCount,
-				summarize: parsedResponse.summarize || false,
+				summarize:
+					parsedResponse.summarize === true ||
+					String(parsedResponse.summarize).toLowerCase() === "true",
 				focusUser: parsedResponse.focusUser || null,
 			};
 		}

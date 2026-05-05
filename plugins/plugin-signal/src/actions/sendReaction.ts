@@ -8,6 +8,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
@@ -32,15 +33,11 @@ Extract the following:
 3. targetAuthor: The phone number of the message author
 4. remove: Whether to remove the reaction instead of adding it (default: false)
 
-Respond with a JSON object like:
-{
-  "emoji": "👍",
-  "targetTimestamp": 1234567890000,
-  "targetAuthor": "+1234567890",
-  "remove": false
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+emoji: 👍
+targetTimestamp: 1234567890000
+targetAuthor: +1234567890
+remove: false`;
 
 export const sendReaction: Action = {
   name: "SIGNAL_SEND_REACTION",
@@ -103,7 +100,9 @@ export const sendReaction: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response);
       if (
         parsedResponse?.emoji &&
         parsedResponse?.targetTimestamp &&
@@ -113,7 +112,9 @@ export const sendReaction: Action = {
           emoji: String(parsedResponse.emoji),
           targetTimestamp: Number(parsedResponse.targetTimestamp),
           targetAuthor: String(parsedResponse.targetAuthor),
-          remove: Boolean(parsedResponse.remove),
+          remove:
+            parsedResponse.remove === true ||
+            String(parsedResponse.remove).toLowerCase() === "true",
         };
         break;
       }

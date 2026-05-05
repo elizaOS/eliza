@@ -1,8 +1,7 @@
-"""
-ElizaOS WebShop benchmark.
+"""WebShop benchmark.
 
-This package implements an end-to-end WebShop-style shopping benchmark using the
-ElizaOS Python runtime (canonical message_service.handle_message flow).
+Non-mock Eliza execution is routed through the TypeScript benchmark bridge. The
+legacy Python ``AgentRuntime`` path has been removed from this package.
 """
 
 from __future__ import annotations
@@ -10,4 +9,3 @@ from __future__ import annotations
 __version__ = "0.1.0"
 
 __all__ = ["__version__"]
-

@@ -152,7 +152,7 @@ export function buildTriagePrompt(ctx: TriageContext): string {
     `Event: ${eventDesc}\n\n` +
     `"routine" = simple approval, permission, config, yes/no, tool consent, obvious pass/fail.\n` +
     `"creative" = needs task context, error recovery, design choice, ambiguous situation, approach selection.\n\n` +
-    `Respond with ONLY a JSON object: {"tier": "routine"} or {"tier": "creative"}`
+    `Respond with TOON only:\ntier: routine\n\nor:\ntier: creative`
   );
 }
 
@@ -160,6 +160,11 @@ export function buildTriagePrompt(ctx: TriageContext): string {
  * Parse the LLM's triage response. Returns null on failure.
  */
 export function parseTriageResponse(llmOutput: string): TriageTier | null {
+  const toonMatch = llmOutput.match(/^\s*tier:\s*(routine|creative)\s*$/im);
+  if (toonMatch?.[1] === "routine" || toonMatch?.[1] === "creative") {
+    return toonMatch[1];
+  }
+
   const matches = llmOutput.matchAll(/\{[\s\S]*?\}/g);
   for (const match of matches) {
     try {

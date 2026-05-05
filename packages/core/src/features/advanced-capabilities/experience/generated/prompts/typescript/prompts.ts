@@ -29,15 +29,12 @@ Extract ONLY experiences that are:
 Focus on technical knowledge, patterns, and cause-effect relationships that transfer to other contexts.
 Avoid personal details, user-specific information, or routine interactions.
 
-Respond with JSON array of experiences (max 3):
-[{
-  "type": "DISCOVERY|CORRECTION|SUCCESS|LEARNING",
-  "learning": "What was learned (generic, transferable)",
-  "context": "What situation triggered this (anonymized)",
-  "confidence": 0.0-1.0,
-  "reasoning": "Why this is novel and valuable"
-}]
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+Use an experiences table with max 3 rows:
+experiences[1]{type,learning,context,confidence,reasoning}:
+  DISCOVERY,What was learned,What triggered this,0.8,Why this is novel and valuable
 
-Return empty array [] if no novel experiences found.`;
+Return this when no novel experiences are found:
+experiences[0]:`;
 
 export const EXTRACT_EXPERIENCES_TEMPLATE = extractExperiencesTemplate;

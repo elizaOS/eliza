@@ -11,6 +11,7 @@ import type {
 } from "../../../../types/index.ts";
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
+import { encodeToonValue } from "../../../../utils/toon";
 import { parseKeyValueXml } from "../../../../utils.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
@@ -724,6 +725,14 @@ function parseStructuredRecord(
 	return isRecord(parsed) ? parsed : null;
 }
 
+function formatPromptData(value: unknown): string {
+	try {
+		return encodeToonValue(value);
+	} catch {
+		return String(value);
+	}
+}
+
 async function buildRecentConversationContext(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -1194,7 +1203,7 @@ async function evaluateModificationSafety(
 ORIGINAL REQUEST: "${requestText}"
 
 PARSED MODIFICATION:
-${JSON.stringify(modification, null, 2)}
+${formatPromptData(modification)}
 
 AGENT'S CURRENT CORE VALUES:
 - Helpful, honest, and ethical

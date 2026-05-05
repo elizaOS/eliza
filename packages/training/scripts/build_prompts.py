@@ -620,7 +620,6 @@ def build_lifeops_entries() -> list[dict[str, Any]]:
 
 def main() -> None:
     v1_entries = load_v1_entries()
-    v1_by_task = {e["task_id"]: e for e in v1_entries}
 
     core_entries = build_core_entries()
     plugin_entries = build_plugin_entries()

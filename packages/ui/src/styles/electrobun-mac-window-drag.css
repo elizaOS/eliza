@@ -8,11 +8,11 @@
  * - We still ship these rules so CEF or future web engines get sensible defaults
  *   without duplicating policy only in native code.
  *
- * html.eliza-electrobun-frameless is toggled from apps/app/src/main.tsx
+ * html.eliza-electrobun-macos-titlebar is toggled from apps/app/src/main.tsx
  * and html.eliza-electrobun-custom-titlebar is toggled by Header when the
  * main macOS Electrobun shell renders its custom titlebar.
  */
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) {
+html.eliza-electrobun-macos-titlebar {
   /**
    * Leading inset so the header nav (Chat, Apps, ...) clears the traffic-light
    * cluster while staying on the same vertical row. Electrobun repositions
@@ -23,38 +23,29 @@ html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) {
   --eliza-mobile-nav-offset: 0px;
 }
 
-html.eliza-electrobun-frameless:not(.eliza-electrobun-custom-titlebar) body {
+html.eliza-electrobun-macos-titlebar.eliza-electrobun-frameless:not(
+    .eliza-electrobun-custom-titlebar
+  )
+  body {
   -webkit-app-region: drag;
 }
 
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-window-titlebar="true"] {
+html.eliza-electrobun-macos-titlebar [data-window-titlebar="true"] {
   -webkit-app-region: drag;
 }
 
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-window-drag="true"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-window-drag="true"]
-  *,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-window-drag="true"]::before,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-window-drag="true"]::after,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-camera-drag="true"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-camera-drag="true"]
-  *,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-camera-drag="true"]::before,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-no-camera-drag="true"]::after {
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"],
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"] *,
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"]::before,
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"]::after,
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"],
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"] *,
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"]::before,
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"]::after {
   -webkit-app-region: no-drag;
 }
 
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-window-titlebar-padding] {
+html.eliza-electrobun-macos-titlebar [data-window-titlebar-padding] {
   padding-inline-start: max(
     env(safe-area-inset-left, 0px),
     var(--eliza-macos-frame-left-inset)
@@ -66,63 +57,50 @@ html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
   );
 }
 
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) a,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) button,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) input,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  textarea,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) select,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) option,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) label,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) summary,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) iframe,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) canvas,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) video,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) audio,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  electrobun-wgpu,
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="button"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="link"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="menuitem"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="menuitemcheckbox"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="menuitemradio"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="option"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="radio"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="checkbox"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="switch"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="tab"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="slider"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="listbox"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="combobox"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="spinbutton"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="textbox"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [role="searchbox"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [contenteditable="true"],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [aria-haspopup],
-html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
-  [data-shell-scroll-region="true"] {
+html.eliza-electrobun-macos-titlebar [data-window-titlebar-banner="true"] {
+  padding-inline-start: max(
+    env(safe-area-inset-left, 0px),
+    var(--eliza-macos-frame-left-inset)
+  );
+}
+
+html.eliza-electrobun-macos-titlebar a,
+html.eliza-electrobun-macos-titlebar button,
+html.eliza-electrobun-macos-titlebar input,
+html.eliza-electrobun-macos-titlebar textarea,
+html.eliza-electrobun-macos-titlebar select,
+html.eliza-electrobun-macos-titlebar option,
+html.eliza-electrobun-macos-titlebar label,
+html.eliza-electrobun-macos-titlebar summary,
+html.eliza-electrobun-macos-titlebar iframe,
+html.eliza-electrobun-macos-titlebar canvas,
+html.eliza-electrobun-macos-titlebar video,
+html.eliza-electrobun-macos-titlebar audio,
+html.eliza-electrobun-macos-titlebar electrobun-wgpu,
+html.eliza-electrobun-macos-titlebar [role="button"],
+html.eliza-electrobun-macos-titlebar [role="link"],
+html.eliza-electrobun-macos-titlebar [role="menuitem"],
+html.eliza-electrobun-macos-titlebar [role="menuitemcheckbox"],
+html.eliza-electrobun-macos-titlebar [role="menuitemradio"],
+html.eliza-electrobun-macos-titlebar [role="option"],
+html.eliza-electrobun-macos-titlebar [role="radio"],
+html.eliza-electrobun-macos-titlebar [role="checkbox"],
+html.eliza-electrobun-macos-titlebar [role="switch"],
+html.eliza-electrobun-macos-titlebar [role="tab"],
+html.eliza-electrobun-macos-titlebar [role="slider"],
+html.eliza-electrobun-macos-titlebar [role="listbox"],
+html.eliza-electrobun-macos-titlebar [role="combobox"],
+html.eliza-electrobun-macos-titlebar [role="spinbutton"],
+html.eliza-electrobun-macos-titlebar [role="textbox"],
+html.eliza-electrobun-macos-titlebar [role="searchbox"],
+html.eliza-electrobun-macos-titlebar [contenteditable="true"],
+html.eliza-electrobun-macos-titlebar [aria-haspopup],
+html.eliza-electrobun-macos-titlebar [data-shell-scroll-region="true"] {
   -webkit-app-region: no-drag;
 }
 
 /* Onboarding full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
-html.eliza-electrobun-frameless .onboarding-screen canvas {
+html.eliza-electrobun-macos-titlebar.eliza-electrobun-frameless .onboarding-screen
+  canvas {
   -webkit-app-region: drag;
 }

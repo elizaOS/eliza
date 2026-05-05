@@ -12,6 +12,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type Service,
 	ServiceType,
@@ -42,7 +43,7 @@ const getMediaUrl = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
 			mediaUrl: string;
 		} | null;
 

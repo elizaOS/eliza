@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -285,6 +285,15 @@ const mockVoicebenchPlugin: Plugin = {
   },
 };
 
+const voicebenchEmbeddingFallbackPlugin: Plugin = {
+  name: "voicebench-embedding-fallback",
+  description:
+    "Deterministic embedding handler for VoiceBench providers without embeddings",
+  models: {
+    [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
+  },
+};
+
 function parseArg(name: string): string | undefined {
   const prefix = `--${name}=`;
   const arg = process.argv.find((entry) => entry.startsWith(prefix));
@@ -444,6 +453,29 @@ function loadDatasetSamples(datasetPath: string): {
   if (rawSamples.length === 0) {
     throw new Error(`Dataset has no samples: ${datasetPath}`);
   }
+  const resolveAudioPath = (rawPath: string): string => {
+    const direct = rawPath.startsWith("/") ? rawPath : resolve(parent, rawPath);
+    if (existsSync(direct)) {
+      return direct;
+    }
+    const marker = "benchmarks/voicebench/";
+    const markerIndex = rawPath.indexOf(marker);
+    if (markerIndex >= 0) {
+      const repoRelative = rawPath.slice(markerIndex + marker.length);
+      const remapped = resolve(VOICEBENCH_DIR, repoRelative);
+      if (existsSync(remapped)) {
+        return remapped;
+      }
+    }
+    const fallbackAudio = process.env.VOICEBENCH_AUDIO_PATH;
+    if (fallbackAudio) {
+      const fallback = resolve(fallbackAudio);
+      if (existsSync(fallback)) {
+        return fallback;
+      }
+    }
+    throw new Error(`Dataset audio file not found: ${direct}`);
+  };
   const samples: DatasetSample[] = rawSamples.map((sample, idx) => {
     const id = String(sample.id ?? `sample-${idx + 1}`);
     const audioPathValue = sample.audioPath ?? sample.audio_path;
@@ -454,9 +486,7 @@ function loadDatasetSamples(datasetPath: string): {
       sample.text ?? sample.expectedText ?? sample.label;
     return {
       id,
-      audioPath: audioPathValue.startsWith("/")
-        ? audioPathValue
-        : resolve(parent, audioPathValue),
+      audioPath: resolveAudioPath(audioPathValue),
       expectedText:
         typeof expectedTextValue === "string" ? expectedTextValue : null,
     };
@@ -524,7 +554,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
   }
 
   if (profile !== "elevenlabs") {
-    return [groq];
+    return [groq, voicebenchEmbeddingFallbackPlugin];
   }
 
   let elevenLabsModule: ElevenLabsPluginModule;
@@ -543,7 +573,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error("Failed to load ElevenLabs TypeScript plugin");
   }
 
-  return [groq, elevenLabs];
+  return [groq, elevenLabs, voicebenchEmbeddingFallbackPlugin];
 }
 
 async function createRuntime(
@@ -687,9 +717,11 @@ async function main(): Promise<void> {
     if (!messageService) {
       throw new Error("VoiceBench runtime did not initialize messageService");
     }
-    const trajectoryService = runtime.getService(
-      "trajectory_logger",
-    ) as TrajectoryLoggerServiceLike | null;
+    const trajectoryService =
+      (runtime.getService(
+        "trajectory_logger",
+      ) as TrajectoryLoggerServiceLike | null) ??
+      (runtime.getService("trajectories") as TrajectoryLoggerServiceLike | null);
     for (const mode of config.modes) {
       for (const sample of samples) {
         const sampleAudioBytes = readFileSync(sample.audioPath);

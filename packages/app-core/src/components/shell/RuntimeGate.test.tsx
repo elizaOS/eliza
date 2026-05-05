@@ -85,6 +85,17 @@ const MOCK_AGENT = {
   web_ui_url: "http://cloud.example.com",
   webUiUrl: undefined as string | undefined,
   bridge_url: undefined as string | undefined,
+  containerUrl: "",
+  error_message: null as string | null,
+};
+
+const MOCK_STOPPED_AGENT_WITHOUT_URL = {
+  ...MOCK_AGENT,
+  status: "stopped",
+  web_ui_url: null,
+  webUiUrl: null,
+  bridge_url: null,
+  containerUrl: "",
 };
 
 function setupApp(overrides: { elizaCloudConnected?: boolean } = {}) {
@@ -105,6 +116,8 @@ function setupApp(overrides: { elizaCloudConnected?: boolean } = {}) {
     elizaCloudLoginBusy: false,
     handleCloudLogin: vi.fn(),
     uiLanguage: "en",
+    uiTheme: "dark",
+    setUiTheme: vi.fn(),
     completeOnboarding: completeOnboardingMock,
   });
 }
@@ -116,6 +129,14 @@ describe("RuntimeGate — Use local embeddings checkbox", () => {
       success: true,
       provider: "elizacloud",
       restarting: false,
+    });
+    clientMock.provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "" },
+    });
+    clientMock.getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: MOCK_AGENT,
     });
   });
 
@@ -205,5 +226,32 @@ describe("RuntimeGate — Use local embeddings checkbox", () => {
         { useLocalEmbeddings: true },
       ),
     );
+  });
+
+  it("provisions a cloud agent without a runtime URL before completing setup", async () => {
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [MOCK_STOPPED_AGENT_WITHOUT_URL],
+    });
+    clientMock.getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: MOCK_AGENT,
+    });
+    setupApp({ elizaCloudConnected: true });
+
+    render(<RuntimeGate />);
+    fireEvent.click(screen.getByText("Select Cloud"));
+
+    await waitFor(() =>
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+    await waitFor(() =>
+      expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+        "http://cloud.example.com",
+      ),
+    );
+    expect(completeOnboardingMock).toHaveBeenCalled();
   });
 });

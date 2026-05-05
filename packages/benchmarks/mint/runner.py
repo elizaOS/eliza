@@ -218,9 +218,7 @@ class MINTRunner:
             summary=summary,
         )
 
-        # Save results
-        if self.config.generate_report:
-            await self._save_results(results)
+        await self._save_results(results)
 
         # Export elizaOS trajectories (ART + GRPO) for training use.
         if self._trajectory_logger_service is not None and self._trajectory_ids:
@@ -477,11 +475,12 @@ class MINTRunner:
         logger.info(f"[MINTRunner] Saved JSON results to {json_path}")
 
         # Generate and save markdown report
-        report_path = output_dir / "MINT-BENCHMARK-REPORT.md"
-        report = self.reporter.generate_report(results)
-        with open(report_path, "w") as f:
-            f.write(report)
-        logger.info(f"[MINTRunner] Saved markdown report to {report_path}")
+        if self.config.generate_report:
+            report_path = output_dir / "MINT-BENCHMARK-REPORT.md"
+            report = self.reporter.generate_report(results)
+            with open(report_path, "w") as f:
+                f.write(report)
+            logger.info(f"[MINTRunner] Saved markdown report to {report_path}")
 
         # Save trajectories if configured
         if self.config.save_trajectories and results.full_results:

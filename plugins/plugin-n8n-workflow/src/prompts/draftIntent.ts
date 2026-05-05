@@ -16,7 +16,7 @@ Rules:
 - If the user provides additional context or answers clarification questions about the same topic, treat as "modify".
 - For "modify", extract the modification request as a clear instruction.
 
-Return a JSON object with:
+Return structured data with:
 - intent: "confirm" | "cancel" | "modify" | "new"
 - modificationRequest: string (only for "modify" — what the user wants changed)
 - reason: string (brief explanation of your classification)`;

@@ -12,6 +12,7 @@ import type {
 import {
   composePromptFromState,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
 } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
@@ -28,13 +29,9 @@ Extract the following:
 1. text: The message text to send
 2. channel: The channel name to send to (without # prefix), or "current" for the current channel
 
-Respond with a JSON object like:
-{
-  "text": "The message to send",
-  "channel": "current"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+text: The message to send
+channel: current`;
 
 interface SendMessageParams {
   text: string;
@@ -138,7 +135,9 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(String(response));
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
+        parseJSONObjectFromText(String(response));
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

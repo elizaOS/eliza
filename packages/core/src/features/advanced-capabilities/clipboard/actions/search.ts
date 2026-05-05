@@ -25,14 +25,15 @@ const EXTRACT_TEMPLATE = `Extract the search query from the user's message.
 
 User message: {{text}}
 
-Respond with XML containing:
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+
+Fields:
 - query: The search terms to find in clipboard entries (required)
 - maxResults: Maximum number of results to return (optional, default 5)
 
-<response>
-<query>search terms</query>
-<maxResults>5</maxResults>
-</response>`;
+Example:
+query: search terms
+maxResults: 5`;
 
 async function extractSearchInfo(
 	runtime: IAgentRuntime,

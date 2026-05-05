@@ -348,13 +348,20 @@ def main() -> int:
 
     def tier_for(slug: str) -> str:
         base = slug.split(":", 1)[1] if slug.startswith("synth:") else slug
-        if base in TIER_S: return "S"
-        if base in TIER_A: return "A"
-        if base in TIER_B: return "B"
-        if base in TIER_C: return "C"
-        if base in TIER_D: return "D"
-        if base in TIER_E_HERMES_COMBINED: return "E"
-        if base in TIER_F_N8N: return "F"
+        if base in TIER_S:
+            return "S"
+        if base in TIER_A:
+            return "A"
+        if base in TIER_B:
+            return "B"
+        if base in TIER_C:
+            return "C"
+        if base in TIER_D:
+            return "D"
+        if base in TIER_E_HERMES_COMBINED:
+            return "E"
+        if base in TIER_F_N8N:
+            return "F"
         return "B"  # default for un-tiered (mostly synth lifeops/ea)
 
     # Pre-allocate Tier E and Tier F budgets across their combined pools.

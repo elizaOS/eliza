@@ -1,0 +1,285 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { compressPromptDescription } from "../packages/prompts/scripts/prompt-compression.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, "..");
+
+const SPEC_GROUPS = [
+  {
+    kind: "action",
+    root: "packages/prompts/specs/actions",
+    collectionKey: "actions",
+    requireParameters: true,
+  },
+  {
+    kind: "provider",
+    root: "packages/prompts/specs/providers",
+    collectionKey: "providers",
+  },
+  {
+    kind: "evaluator",
+    root: "packages/prompts/specs/evaluators",
+    collectionKey: "evaluators",
+  },
+];
+
+const PROMPT_SCAN_FILES = [
+  "packages/core/src/prompts.ts",
+  "packages/core/src/services/message.ts",
+];
+
+const PROMPT_SCAN_DIRS = ["packages/prompts/prompts"];
+
+const STRUCTURED_FORMAT_ALLOWLIST = [
+  {
+    file: "packages/prompts/prompts/extract_secret_request.txt",
+    match: "Output JSON with:",
+    reason: "secret request extractor returns JSON/null to existing parser",
+  },
+  {
+    file: "packages/core/src/prompts.ts",
+    match: "Output JSON with:",
+    reason: "generated copy of extract_secret_request JSON/null parser prompt",
+  },
+];
+
+const FORMAT_INSTRUCTION_PATTERNS = [
+  /\bReturn\s+(?:ONLY\s+|only\s+|strict\s+|valid\s+)*(?:JSON|XML)\b/i,
+  /\bReturn\s+(?:JSON|XML)\s+or\s+(?:JSON|XML)\b/i,
+  /\bRespond with\s+(?:ONLY\s+|only\s+|strict\s+|valid\s+)*(?:JSON|XML)\b/i,
+  /\bOutput\s+(?:ONLY\s+|only\s+|strict\s+|valid\s+)*(?:JSON|XML)\b/i,
+  /\bvalid\s+(?:JSON|XML)\s+only\b/i,
+  /\b(?:JSON|XML)\s+only\b/i,
+];
+
+const NEGATED_FORMAT_PATTERN =
+  /\b(?:do not|don't|no|without)\b[^\n]*(?:JSON|XML)|(?:JSON|XML)[^\n]*\b(?:not allowed|forbidden)\b/i;
+
+function readJson(relativePath) {
+  const filePath = path.join(REPO_ROOT, relativePath);
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function listFiles(root, predicate) {
+  const absoluteRoot = path.join(REPO_ROOT, root);
+  const out = [];
+  const stack = [absoluteRoot];
+
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (!dir || !fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (entry.isFile() && predicate(full)) {
+        out.push(path.relative(REPO_ROOT, full));
+      }
+    }
+  }
+
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
+function listJsonFiles(root) {
+  return listFiles(root, (filePath) => filePath.endsWith(".json"));
+}
+
+function getCompressedAlias(doc) {
+  if (
+    typeof doc.descriptionCompressed === "string" &&
+    doc.descriptionCompressed.trim()
+  ) {
+    return doc.descriptionCompressed.trim();
+  }
+  if (
+    typeof doc.compressedDescription === "string" &&
+    doc.compressedDescription.trim()
+  ) {
+    return doc.compressedDescription.trim();
+  }
+  return "";
+}
+
+function getNormalizedCompressed(doc) {
+  const alias = getCompressedAlias(doc);
+  if (alias) return alias;
+  return typeof doc.description === "string"
+    ? compressPromptDescription(doc.description)
+    : "";
+}
+
+function validateCompressedDoc(doc, label, violations) {
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    violations.push(`${label}: entry must be an object`);
+    return;
+  }
+
+  if (typeof doc.name !== "string" || !doc.name.trim()) {
+    violations.push(`${label}: missing name`);
+  }
+  if (typeof doc.description !== "string" || !doc.description.trim()) {
+    violations.push(`${label}: missing description`);
+  }
+
+  if (
+    typeof doc.descriptionCompressed === "string" &&
+    typeof doc.compressedDescription === "string" &&
+    doc.descriptionCompressed !== doc.compressedDescription
+  ) {
+    violations.push(
+      `${label}: descriptionCompressed and compressedDescription aliases differ`,
+    );
+  }
+
+  const compressed = getNormalizedCompressed(doc);
+  if (!compressed) {
+    violations.push(
+      `${label}: missing compressed description after normalization`,
+    );
+    return;
+  }
+  if (compressed.length > 160) {
+    violations.push(
+      `${label}: compressed description is ${compressed.length} chars (max 160)`,
+    );
+  }
+  if (/\s{2,}|\n|\r|\t/.test(compressed)) {
+    violations.push(
+      `${label}: compressed description is not whitespace-normalized`,
+    );
+  }
+}
+
+function auditSpecs() {
+  const violations = [];
+  let itemCount = 0;
+  let parameterCount = 0;
+
+  for (const group of SPEC_GROUPS) {
+    for (const relativePath of listJsonFiles(group.root)) {
+      const root = readJson(relativePath);
+      const items = root[group.collectionKey];
+      if (!Array.isArray(items)) {
+        violations.push(
+          `${relativePath}: missing ${group.collectionKey} array`,
+        );
+        continue;
+      }
+
+      items.forEach((item, index) => {
+        itemCount += 1;
+        const name =
+          item && typeof item === "object" && typeof item.name === "string"
+            ? item.name
+            : `#${index}`;
+        const label = `${relativePath}:${group.kind}:${name}`;
+        validateCompressedDoc(item, label, violations);
+
+        if (group.requireParameters && Array.isArray(item?.parameters)) {
+          item.parameters.forEach((param, paramIndex) => {
+            parameterCount += 1;
+            const paramName =
+              param &&
+              typeof param === "object" &&
+              typeof param.name === "string"
+                ? param.name
+                : `#${paramIndex}`;
+            validateCompressedDoc(
+              param,
+              `${label}:parameter:${paramName}`,
+              violations,
+            );
+          });
+        }
+      });
+    }
+  }
+
+  return { violations, itemCount, parameterCount };
+}
+
+function listPromptFiles() {
+  const files = new Set(PROMPT_SCAN_FILES);
+  for (const dir of PROMPT_SCAN_DIRS) {
+    for (const file of listFiles(dir, (filePath) =>
+      filePath.endsWith(".txt"),
+    )) {
+      files.add(file);
+    }
+  }
+  return [...files].sort((a, b) => a.localeCompare(b));
+}
+
+function auditPromptFormats() {
+  const violations = [];
+  const usedAllowlist = new Set();
+  let scannedLineCount = 0;
+
+  for (const file of listPromptFiles()) {
+    const absolutePath = path.join(REPO_ROOT, file);
+    if (!fs.existsSync(absolutePath)) continue;
+    const lines = fs.readFileSync(absolutePath, "utf8").split(/\r?\n/);
+    lines.forEach((line, index) => {
+      scannedLineCount += 1;
+      if (NEGATED_FORMAT_PATTERN.test(line)) return;
+      if (!FORMAT_INSTRUCTION_PATTERNS.some((pattern) => pattern.test(line))) {
+        return;
+      }
+
+      const allowlistIndex = STRUCTURED_FORMAT_ALLOWLIST.findIndex(
+        (entry) => entry.file === file && line.includes(entry.match),
+      );
+      if (allowlistIndex >= 0) {
+        usedAllowlist.add(allowlistIndex);
+        return;
+      }
+
+      violations.push(
+        `${file}:${index + 1}: model-facing JSON/XML instruction is not allowlisted: ${line.trim()}`,
+      );
+    });
+  }
+
+  STRUCTURED_FORMAT_ALLOWLIST.forEach((entry, index) => {
+    if (!usedAllowlist.has(index)) {
+      violations.push(
+        `allowlist:${entry.file}: unused structured-format allowlist entry "${entry.match}" (${entry.reason})`,
+      );
+    }
+  });
+
+  return { violations, scannedLineCount };
+}
+
+function main() {
+  const specResult = auditSpecs();
+  const promptResult = auditPromptFormats();
+  const violations = [...specResult.violations, ...promptResult.violations];
+
+  console.log(
+    `[prompt-compliance] specs: ${specResult.itemCount} docs, ${specResult.parameterCount} params`,
+  );
+  console.log(
+    `[prompt-compliance] prompt lines scanned: ${promptResult.scannedLineCount}`,
+  );
+
+  if (violations.length > 0) {
+    console.error(`[prompt-compliance] ${violations.length} violation(s):`);
+    for (const violation of violations) {
+      console.error(`- ${violation}`);
+    }
+    process.exit(1);
+  }
+
+  console.log("[prompt-compliance] ok");
+}
+
+main();

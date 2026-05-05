@@ -8,7 +8,6 @@ synthesis tests still run.
 
 from __future__ import annotations
 
-import json
 import shutil
 import sys
 from pathlib import Path

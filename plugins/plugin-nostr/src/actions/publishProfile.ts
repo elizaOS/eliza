@@ -9,6 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
@@ -30,13 +31,9 @@ Extract any of the following profile fields that should be updated:
 - lud16: Lightning address (user@domain.com)
 - website: Website URL
 
-Respond with a JSON object containing only the fields to update:
-\`\`\`json
-{
-  "name": "optional name",
-  "about": "optional bio"
-}
-\`\`\``;
+Respond with TOON only. Include only fields to update:
+name: optional name
+about: optional bio`;
 
 export const publishProfile: Action = {
   name: "NOSTR_PUBLISH_PROFILE",
@@ -79,7 +76,9 @@ export const publishProfile: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(String(response));
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
+        parseJSONObjectFromText(String(response));
       if (parsed) {
         profileInfo = {
           name: parsed.name ? String(parsed.name) : undefined,

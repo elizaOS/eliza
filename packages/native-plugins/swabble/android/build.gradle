@@ -34,7 +34,7 @@ android {
 repositories {
     google()
     maven {
-        url = uri(rootProject.ext.mavenCentralMirrorUrl)
+        url = uri(rootProject.ext.has('mavenCentralMirrorUrl') ? rootProject.ext.mavenCentralMirrorUrl : 'https://repo.maven.apache.org/maven2')
     }
     mavenCentral()
 }
