@@ -191,9 +191,12 @@ def _spec_combined() -> DatasetSpec:
             files.append(sb_manifest)
             path_in_repo[sb_manifest] = "scambench/manifest.json"
 
-    # Synthesized small sets.
+    # Synthesized small sets. evaluators/ + phase3/ are the Phase-4 and
+    # Phase-3 fillers added in 2026-05 to close the runtime-phase coverage
+    # gap (see docs/dataset/COVERAGE_AUDIT.md, EVALUATOR_SYNTHESIS.md).
     synth_base = DATA / "synthesized"
-    for sub in ("action_examples", "action_pairs", "core_prompts"):
+    for sub in ("action_examples", "action_pairs", "core_prompts",
+                "evaluators", "phase3"):
         d = synth_base / sub
         if not d.exists():
             continue
