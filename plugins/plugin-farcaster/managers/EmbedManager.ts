@@ -1,12 +1,12 @@
 import { type IAgentRuntime, type Media, ModelType } from "@elizaos/core";
 import type { EmbedCast, EmbedUrl, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
 
-export function isEmbedUrl(embed: NeynarEmbed): embed is EmbedUrl {
-  return "url" in embed && typeof (embed as EmbedUrl).url === "string";
+export function isEmbedUrl(embed: EmbedCast | EmbedUrl): embed is EmbedUrl {
+  return "url" in embed;
 }
 
-export function isEmbedCast(embed: NeynarEmbed): embed is EmbedCast {
-  return "cast" in embed && typeof (embed as EmbedCast).cast === "object";
+export function isEmbedCast(embed: EmbedCast | EmbedUrl): embed is EmbedCast {
+  return "cast" in embed;
 }
 
 function getMediaTypeFromUrl(
