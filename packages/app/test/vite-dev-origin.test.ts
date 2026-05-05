@@ -31,7 +31,8 @@ describe("resolveViteDevServerRuntime", () => {
       origin: "https://192.168.1.42",
       hmr: {
         host: "192.168.1.42",
-        port: 443,
+        port: 2138,
+        clientPort: 443,
         protocol: "wss",
       },
     });
@@ -50,7 +51,8 @@ describe("resolveViteDevServerRuntime", () => {
       origin: "http://10.0.0.2:9000",
       hmr: {
         host: "10.0.0.99",
-        port: 9000,
+        port: 2138,
+        clientPort: 9000,
         protocol: "ws",
       },
     });
