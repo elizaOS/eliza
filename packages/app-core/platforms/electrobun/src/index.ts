@@ -606,13 +606,12 @@ function loadWindowState(statePath: string): PersistedWindowState {
 			}
 		}
 	} catch {}
-	// No saved state → first launch. Open maximized so the user gets a
-	// usable workspace immediately instead of a small window in the
-	// corner they have to resize themselves.
-	return {
-		...DEFAULT_WINDOW_STATE,
-		shouldMaximize: MAXIMIZE_ON_LAUNCH_SENTINEL,
-	};
+	// No saved state → first launch. Open at the default 1440×900 window
+	// size (centered-ish near top-left) instead of maximizing. Maximizing on
+	// first launch buries the welcome content in a vast empty workspace and
+	// gives a "this is overwhelming" impression. The user can always
+	// maximize themselves; subsequent launches restore their last size.
+	return { ...DEFAULT_WINDOW_STATE };
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
