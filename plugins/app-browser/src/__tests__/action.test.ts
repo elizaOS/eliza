@@ -54,9 +54,16 @@ describe("browser workspace action router", () => {
     });
   });
 
-  it("infers compact navigation actions from message text", () => {
+  it("requires an explicit subaction and rejects message-text inference", () => {
+    expect(
+      parseBrowserWorkspaceActionRequest(
+        message("open https://example.com in the browser"),
+      ),
+    ).toBeNull();
+
     const parsed = parseBrowserWorkspaceActionRequest(
       message("open https://example.com in the browser"),
+      options({ subaction: "open" }),
     );
 
     expect(parsed).toMatchObject({
