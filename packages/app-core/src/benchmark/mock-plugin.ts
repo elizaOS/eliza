@@ -64,7 +64,9 @@ function extractRlmAnswer(prompt: string): string | null {
 function extractArithmeticAnswer(prompt: string): string | null {
   const match =
     /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(prompt) ??
-    /Question:\s*(?:what is\s*)?(-?\d+)\s+(times|multiplied by|plus|minus)\s+(-?\d+)/i.exec(prompt);
+    /Question:\s*(?:what is\s*)?(-?\d+)\s+(times|multiplied by|plus|minus)\s+(-?\d+)/i.exec(
+      prompt,
+    );
   if (!match) return null;
   const left = Number(match[1]);
   const op = match[2].toLowerCase();
@@ -149,23 +151,33 @@ function buildClawBenchReplyToon(): string {
 
 function extractAdhdAction(prompt: string): string {
   const lower = prompt.toLowerCase();
-  const messageMatch = /Current user message:\s*([\s\S]*?)(?:\n\n|$)/i.exec(prompt);
+  const messageMatch = /Current user message:\s*([\s\S]*?)(?:\n\n|$)/i.exec(
+    prompt,
+  );
   const message = (messageMatch?.[1] ?? prompt).toLowerCase();
-  if (/what time|hello|hey|how are|favourite color|favorite color|status update/.test(message)) {
+  if (
+    /what time|hello|hey|how are|favourite color|favorite color|status update/.test(
+      message,
+    )
+  ) {
     return "REPLY";
   }
-  if (/send a message|tell alice|message to/.test(message)) return "SEND_MESSAGE";
+  if (/send a message|tell alice|message to/.test(message))
+    return "SEND_MESSAGE";
   if (/mute this|too noisy/.test(message)) return "MUTE_ROOM";
   if (/unmute/.test(message)) return "UNMUTE_ROOM";
   if (/follow the/.test(message)) return "FOLLOW_ROOM";
   if (/stop following|unfollow/.test(message)) return "UNFOLLOW_ROOM";
   if (/find all|search/.test(message)) return "SEARCH_CONTACTS";
   if (/make .* admin|update role/.test(message)) return "UPDATE_ROLE";
-  if (/remind me|follow.?up|tomorrow/.test(message)) return "SCHEDULE_FOLLOW_UP";
+  if (/remind me|follow.?up|tomorrow/.test(message))
+    return "SCHEDULE_FOLLOW_UP";
   if (/add .* contact|add my new colleague/.test(message)) return "ADD_CONTACT";
   if (/remove .* contact/.test(message)) return "REMOVE_CONTACT";
-  if (/notification preferences|settings/.test(message)) return "UPDATE_SETTINGS";
-  if (/clear everything|start fresh|reset/.test(message)) return "RESET_SESSION";
+  if (/notification preferences|settings/.test(message))
+    return "UPDATE_SETTINGS";
+  if (/clear everything|start fresh|reset/.test(message))
+    return "RESET_SESSION";
   if (/phone number|contact info/.test(message)) return "UPDATE_CONTACT_INFO";
   if (/generate .*picture|image/.test(message)) return "GENERATE_IMAGE";
   if (/ignore that last/.test(message)) return "IGNORE";
@@ -175,7 +187,10 @@ function extractAdhdAction(prompt: string): string {
 
 function buildAdhdBenchToon(prompt: string): string {
   const action = extractAdhdAction(prompt);
-  const text = action === "REPLY" ? "Replying directly with the requested information." : `Selected ${action}`;
+  const text =
+    action === "REPLY"
+      ? "Replying directly with the requested information."
+      : `Selected ${action}`;
   if (["REPLY", "IGNORE", "NONE"].includes(action)) {
     return buildToonResponse(prompt, {
       thought: `Selecting ${action} for this ADHDBench turn.`,
@@ -272,28 +287,48 @@ function buildCompletion(prompt: string): string {
     });
   }
 
-  if (/Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) || /RLM benchmark task/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) ||
+    /RLM benchmark task/i.test(prompt)
+  ) {
     return buildReplyToon(extractRlmAnswer(prompt) ?? "UNKNOWN");
   }
 
-  if (/Benchmark:\*{0,2}\s*gaia/i.test(prompt) || /GAIA benchmark task|FINAL ANSWER/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*gaia/i.test(prompt) ||
+    /GAIA benchmark task|FINAL ANSWER/i.test(prompt)
+  ) {
     const answer = extractArithmeticAnswer(prompt) ?? "mock-answer";
     return buildReplyToon(`FINAL ANSWER: ${answer}`);
   }
 
-  if (/Benchmark:\*{0,2}\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(prompt) || /Hyperliquid DEX|HyperliquidBench/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(
+      prompt,
+    ) ||
+    /Hyperliquid DEX|HyperliquidBench/i.test(prompt)
+  ) {
     return buildHyperliquidPlanToon();
   }
 
-  if (/Benchmark:\*{0,2}\s*(vending-bench|vending_bench)/i.test(prompt) || /Vending-Bench|vending machine business/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*(vending-bench|vending_bench)/i.test(prompt) ||
+    /Vending-Bench|vending machine business/i.test(prompt)
+  ) {
     return buildVendingActionToon(prompt);
   }
 
-  if (/Benchmark:\*{0,2}\s*clawbench/i.test(prompt) || /ClawBench|Review my inbox/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*clawbench/i.test(prompt) ||
+    /ClawBench|Review my inbox/i.test(prompt)
+  ) {
     return buildClawBenchReplyToon();
   }
 
-  if (/Benchmark:\*{0,2}\s*adhdbench/i.test(prompt) || /ADHDBench/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*adhdbench/i.test(prompt) ||
+    /ADHDBench/i.test(prompt)
+  ) {
     return buildAdhdBenchToon(prompt);
   }
 

@@ -2,8 +2,8 @@ import {
   type AgentRuntime,
   ChannelType,
   elizaLogger,
-  parseToonKeyValue,
   type Plugin,
+  parseToonKeyValue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";

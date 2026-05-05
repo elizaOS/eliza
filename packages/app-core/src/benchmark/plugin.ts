@@ -151,10 +151,9 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "hyperliquid-bench",
     "hyperliquidbench",
   ]).has(benchmark);
-  const isJsonActionBenchmark = new Set([
-    "vending-bench",
-    "vending_bench",
-  ]).has(benchmark);
+  const isJsonActionBenchmark = new Set(["vending-bench", "vending_bench"]).has(
+    benchmark,
+  );
   const isAdhdBenchmark = benchmark === "adhdbench";
 
   sections.push(`# Benchmark Task`);
