@@ -276,7 +276,15 @@ for (const packagePath of localPackages) {
   }
 
   if (pkg.name === "@elizaos/plugin-sql") {
-    for (const rootDep of ["drizzle-orm", "pg"]) {
+    const pluginSqlRootDeps = [
+      "@electric-sql/pglite",
+      "@neondatabase/serverless",
+      "drizzle-orm",
+      "pg",
+      "uuid",
+      "ws",
+    ];
+    for (const rootDep of pluginSqlRootDeps) {
       linkRootDependency({
         packageName: rootDep,
         target: path.join(packageDir, "node_modules", rootDep),
