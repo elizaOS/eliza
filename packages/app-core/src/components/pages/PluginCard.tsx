@@ -346,7 +346,7 @@ export function PluginCard({
                 onReleaseStreamChange(p.id, "beta");
               }}
             >
-              alpha
+              beta
             </Button>
           </div>
         )}
