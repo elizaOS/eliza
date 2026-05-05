@@ -128,7 +128,6 @@ import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
-import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
@@ -810,7 +809,7 @@ async function handleCompatRoute(
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
-  if (await handleComputerUseCompatRoutes(req, res, state)) return true;
+  // Computer-use compat routes — extracted to plugin-computeruse via Plugin.routes (rawPath).
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 

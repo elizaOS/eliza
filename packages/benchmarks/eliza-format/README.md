@@ -22,3 +22,17 @@ python -m benchmarks.orchestrator run \
 ```
 
 Defaults to 200 examples per bucket. Override via `--extra '{"max_per_bucket": N}'`.
+
+## No-credential smoke
+
+```
+python -m benchmarks.orchestrator run \
+    --benchmarks eliza-format \
+    --provider mock \
+    --model smoke \
+    --extra '{"test_file":"packages/benchmarks/eliza-format/fixtures/smoke.jsonl","max_per_bucket":1}' \
+    --force
+```
+
+The mock provider replays expected answers from the fixture and writes the same
+`summary.json` shape as real HF/API runs.

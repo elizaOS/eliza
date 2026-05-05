@@ -1,47 +1,58 @@
 declare module "@elizaos/capacitor-agent" {
-  export type * from "../../../eliza/packages/native-plugins/agent/src/index";
-  export { Agent } from "../../../eliza/packages/native-plugins/agent/src/index";
+  export const Agent: {
+    getStatus(): Promise<{ status: string }>;
+  };
 }
 
 declare module "@elizaos/capacitor-camera" {
-  export * from "../../../eliza/packages/native-plugins/camera/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-canvas" {
-  export * from "../../../eliza/packages/native-plugins/canvas/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-desktop" {
-  export type * from "../../../eliza/packages/native-plugins/desktop/src/index";
-  export { Desktop } from "../../../eliza/packages/native-plugins/desktop/src/index";
+  export const Desktop: {
+    getVersion(): Promise<{ runtime: string }>;
+    registerShortcut(options: {
+      id: string;
+      accelerator: string;
+    }): Promise<void>;
+    addListener<TEvent extends string>(
+      eventName: TEvent,
+      listener: (event: unknown) => void,
+    ): Promise<{ remove(): void | Promise<void> }>;
+    setTrayMenu(options: { menu: readonly unknown[] }): Promise<void>;
+  };
 }
 
 declare module "@elizaos/capacitor-gateway" {
-  export * from "../../../eliza/packages/native-plugins/gateway/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-location" {
-  export * from "../../../eliza/packages/native-plugins/location/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-mobile-signals" {
-  export * from "../../../eliza/packages/native-plugins/mobile-signals/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-screencapture" {
-  export * from "../../../eliza/packages/native-plugins/screencapture/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-swabble" {
-  export * from "../../../eliza/packages/native-plugins/swabble/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-talkmode" {
-  export * from "../../../eliza/packages/native-plugins/talkmode/src/index";
+  export {};
 }
 
 declare module "@elizaos/capacitor-websiteblocker" {
-  export * from "../../../eliza/packages/native-plugins/websiteblocker/src/index";
+  export {};
 }
 
 declare module "@elizaos/signal-native";

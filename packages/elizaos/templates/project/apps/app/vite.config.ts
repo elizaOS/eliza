@@ -84,24 +84,43 @@ const emptyNodeModuleEntry = hasLocalElizaWorkspace
  * Pinned @elizaos/core from the repo root (must match the agent/runtime lock).
  */
 function getElizaPinnedElizaCoreVersion(): string {
+  const packageJsonPaths = [
+    path.join(projectRoot, "package.json"),
+    path.join(here, "package.json"),
+    ...(hasLocalElizaWorkspace ? [path.join(elizaRoot, "package.json")] : []),
+  ];
+
+  for (const packageJsonPath of packageJsonPaths) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+        overrides?: Record<string, string>;
+      };
+      const spec =
+        raw.dependencies?.["@elizaos/core"] ??
+        raw.devDependencies?.["@elizaos/core"] ??
+        raw.overrides?.["@elizaos/core"] ??
+        "";
+      const v = String(spec)
+        .trim()
+        .replace(/^[\^~]/, "");
+      if (v && v !== "workspace:*" && /^\d/.test(v)) {
+        const first = v.split(/\s+/)[0];
+        if (first) return first;
+      }
+    } catch {
+      /* try the next package.json */
+    }
+  }
+
   try {
     const raw = JSON.parse(
-      fs.readFileSync(path.join(elizaRoot, "package.json"), "utf8"),
+      fs.readFileSync(requireResolve("@elizaos/core/package.json"), "utf8"),
     ) as {
-      dependencies?: Record<string, string>;
-      overrides?: Record<string, string>;
+      version?: string;
     };
-    const spec =
-      raw.dependencies?.["@elizaos/core"] ??
-      raw.overrides?.["@elizaos/core"] ??
-      "";
-    const v = String(spec)
-      .trim()
-      .replace(/^[\^~]/, "");
-    if (v && v !== "workspace:*" && /^\d/.test(v)) {
-      const first = v.split(/\s+/)[0];
-      if (first) return first;
-    }
+    if (raw.version && /^\d/.test(raw.version)) return raw.version;
   } catch {
     /* fall through */
   }
@@ -124,36 +143,51 @@ function elizaCoreAlphaPrerelease(dir: string): number {
 function findElizaCoreBundleInBunStore(
   kind: "browser" | "node",
 ): string | null {
-  const bunDir = path.join(elizaRoot, "node_modules/.bun");
+  const bunDirs = [
+    path.join(projectRoot, "node_modules/.bun"),
+    path.join(here, "node_modules/.bun"),
+    ...(hasLocalElizaWorkspace
+      ? [path.join(elizaRoot, "node_modules/.bun")]
+      : []),
+  ];
   const rel =
     kind === "browser"
       ? "node_modules/@elizaos/core/dist/browser/index.browser.js"
       : "node_modules/@elizaos/core/dist/node/index.node.js";
-  if (!fs.existsSync(bunDir)) return null;
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(bunDir);
-  } catch {
-    return null;
-  }
   const pinned = getElizaPinnedElizaCoreVersion();
   const pinnedPrefix = `@elizaos+core@${pinned}+`;
 
-  const withDist = entries.filter((dir) => {
-    if (!dir.startsWith("@elizaos+core@")) return false;
-    return fs.existsSync(path.join(bunDir, dir, rel));
-  });
+  const candidates: Array<{ bunDir: string; dir: string }> = [];
+  for (const bunDir of bunDirs) {
+    if (!fs.existsSync(bunDir)) continue;
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(bunDir);
+    } catch {
+      continue;
+    }
+    for (const dir of entries) {
+      if (!dir.startsWith("@elizaos+core@")) continue;
+      if (fs.existsSync(path.join(bunDir, dir, rel))) {
+        candidates.push({ bunDir, dir });
+      }
+    }
+  }
 
-  const pinnedMatch = withDist.find((d) => d.startsWith(pinnedPrefix));
-  if (pinnedMatch) return path.join(bunDir, pinnedMatch, rel);
-
-  if (withDist.length === 0) return null;
-
-  withDist.sort(
-    (a, b) => elizaCoreAlphaPrerelease(b) - elizaCoreAlphaPrerelease(a),
+  const pinnedMatch = candidates.find(({ dir }) =>
+    dir.startsWith(pinnedPrefix),
   );
-  const best = withDist[0];
-  return best ? path.join(bunDir, best, rel) : null;
+  if (pinnedMatch) {
+    return path.join(pinnedMatch.bunDir, pinnedMatch.dir, rel);
+  }
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort(
+    (a, b) => elizaCoreAlphaPrerelease(b.dir) - elizaCoreAlphaPrerelease(a.dir),
+  );
+  const best = candidates[0];
+  return best ? path.join(best.bunDir, best.dir, rel) : null;
 }
 
 /**
@@ -232,6 +266,18 @@ function wildcardReplacement(value: string): string {
   return value.replace(/\*/g, () => `$${++index}`);
 }
 
+function resolvePackageExportTarget(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  for (const condition of ["browser", "import", "default", "types"]) {
+    const conditionalValue = record[condition];
+    if (typeof conditionalValue === "string") return conditionalValue;
+  }
+  return null;
+}
+
 function createPackageExportAliases(options: {
   packageDir: string;
   packageExports?: Record<string, unknown>;
@@ -241,15 +287,16 @@ function createPackageExportAliases(options: {
   const aliases: Array<{ find: RegExp; replacement: string }> = [];
 
   for (const [key, value] of Object.entries(options.packageExports || {})) {
-    if (typeof value !== "string") continue;
+    const target = resolvePackageExportTarget(value);
+    if (!target) continue;
 
     const aliasKey =
       key === "."
         ? options.packageName
         : `${options.packageName}/${key.replace(/^\.\//, "")}`;
-    const replacementPath = path.resolve(options.packageDir, value);
+    const replacementPath = path.resolve(options.packageDir, target);
 
-    if (aliasKey.includes("*") || value.includes("*")) {
+    if (aliasKey.includes("*") || target.includes("*")) {
       aliases.push({
         find: new RegExp(`^${escapeRegex(aliasKey).replace(/\\\*/g, "(.*)")}$`),
         replacement: wildcardReplacement(replacementPath),
@@ -276,6 +323,30 @@ function createPackageExportAliases(options: {
 
   return aliases;
 }
+
+function resolveNativePluginAliasEntries(): Array<{
+  find: RegExp;
+  replacement: string;
+}> {
+  if (!hasLocalElizaWorkspace || !fs.existsSync(nativePluginsRoot)) return [];
+
+  return fs
+    .readdirSync(nativePluginsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter(
+      (name) =>
+        fs.existsSync(path.join(nativePluginsRoot, name, "package.json")) &&
+        fs.existsSync(path.join(nativePluginsRoot, name, "src/index.ts")),
+    )
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({
+      find: new RegExp(`^@elizaos/capacitor-${escapeRegex(name)}$`),
+      replacement: path.join(nativePluginsRoot, `${name}/src/index.ts`),
+    }));
+}
+
+const NATIVE_PLUGIN_ALIAS_ENTRIES = resolveNativePluginAliasEntries();
 
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
@@ -886,6 +957,7 @@ function watchWorkspacePackagesPlugin(): Plugin {
   return {
     name: "watch-workspace-packages",
     configureServer(server) {
+      if (!hasLocalElizaWorkspace) return;
       server.watcher.add(path.resolve(elizaRoot, "packages"));
       server.watcher.add(nativePluginsRoot);
       server.watcher.on("change", (file) => {
@@ -915,6 +987,7 @@ function companionAssetsPlugin(): Plugin {
   return {
     name: "companion-assets",
     configureServer(server) {
+      if (!fs.existsSync(companionPublic)) return;
       // Serve companion public as fallback (after app public)
       server.middlewares.use((req, res, next) => {
         if (!req.url) return next();
@@ -1018,72 +1091,23 @@ export default defineConfig({
       ...["util/types", "stream/promises", "stream/web"].flatMap((sub) => [
         {
           find: `node:${sub}`,
-          replacement: path.join(
-            appCoreSrcRoot,
-            "platform/empty-node-module.ts",
-          ),
+          replacement: emptyNodeModuleEntry,
         },
         {
           find: sub,
-          replacement: path.join(
-            appCoreSrcRoot,
-            "platform/empty-node-module.ts",
-          ),
+          replacement: emptyNodeModuleEntry,
         },
       ]),
-      // Capacitor plugins — resolve to local plugin sources
+      // Capacitor plugins — local source mode resolves real plugin sources;
+      // package mode uses browser-safe stubs for renderer builds.
+      ...NATIVE_PLUGIN_ALIAS_ENTRIES,
       {
-        find: /^@elizaos\/capacitor-agent$/,
-        replacement: path.join(nativePluginsRoot, "agent/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-camera$/,
-        replacement: path.join(nativePluginsRoot, "camera/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-canvas$/,
-        replacement: path.join(nativePluginsRoot, "canvas/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-desktop$/,
-        replacement: path.join(nativePluginsRoot, "desktop/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-gateway$/,
-        replacement: path.join(nativePluginsRoot, "gateway/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-location$/,
-        replacement: path.join(nativePluginsRoot, "location/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-mobile-signals$/,
-        replacement: path.join(
-          nativePluginsRoot,
-          "mobile-signals/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-screencapture$/,
-        replacement: path.join(nativePluginsRoot, "screencapture/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-swabble$/,
-        replacement: path.join(nativePluginsRoot, "swabble/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-talkmode$/,
-        replacement: path.join(nativePluginsRoot, "talkmode/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/capacitor-websiteblocker$/,
-        replacement: path.join(
-          nativePluginsRoot,
-          "websiteblocker/src/index.ts",
-        ),
+        find: /^@elizaos\/capacitor-.+$/,
+        replacement: nativePluginStubEntry,
       },
       // Dynamic aliases for all eliza/plugins/app-* packages
       ...(() => {
+        if (!hasLocalElizaWorkspace) return [];
         const appPluginsDir = path.resolve(elizaRoot, "plugins");
         const aliases = [];
         if (!fs.existsSync(appPluginsDir)) return aliases;
@@ -1114,10 +1138,12 @@ export default defineConfig({
         return aliases;
       })(),
       ...(() => {
+        if (!hasLocalElizaWorkspace) return [];
         const sharedPkgPath = path.resolve(
           elizaRoot,
           "packages/shared/package.json",
         );
+        if (!fs.existsSync(sharedPkgPath)) return [];
         const sharedPkgDir = path.dirname(sharedPkgPath);
         const sharedPkg = JSON.parse(fs.readFileSync(sharedPkgPath, "utf8"));
         return createPackageExportAliases({
@@ -1129,10 +1155,24 @@ export default defineConfig({
       // Force local @elizaos/app-core when workspace-linked (prevents stale
       // bun cache copies from overriding the symlinked local source).
       ...(() => {
+        const packageAgnosticAliases = [
+          {
+            find: /^@elizaos\/agent$/,
+            replacement: emptyNodeModuleEntry,
+          },
+          {
+            find: /^@elizaos\/core$/,
+            replacement: resolveElizaCoreBundlePath(),
+          },
+        ];
+
+        if (!hasLocalElizaWorkspace) return packageAgnosticAliases;
+
         const appCorePkgPath = path.resolve(
           elizaRoot,
           "packages/app-core/package.json",
         );
+        if (!fs.existsSync(appCorePkgPath)) return packageAgnosticAliases;
         const appCorePkgDir = path.dirname(appCorePkgPath);
         const appCorePkg = JSON.parse(fs.readFileSync(appCorePkgPath, "utf8"));
 
@@ -1143,6 +1183,9 @@ export default defineConfig({
           preferJsAlias: true,
         });
         const uiPkgPath = path.resolve(elizaRoot, "packages/ui/package.json");
+        if (!fs.existsSync(uiPkgPath)) {
+          return [...generatedAliases, ...packageAgnosticAliases];
+        }
         const uiPkgDir = path.dirname(uiPkgPath);
         const uiPkg = JSON.parse(fs.readFileSync(uiPkgPath, "utf8"));
         const _autonomousSource = path.resolve(
@@ -1164,10 +1207,7 @@ export default defineConfig({
           // to an empty module so Vite never traverses the server-side tree.
           {
             find: /^@elizaos\/agent$/,
-            replacement: path.join(
-              appCoreSrcRoot,
-              "platform/empty-node-module.ts",
-            ),
+            replacement: emptyNodeModuleEntry,
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins
           // that bundle their own older core) to the
@@ -1375,8 +1415,9 @@ export default defineConfig({
       },
     },
     fs: {
-      // Allow serving files from the app directory and elizaossrc
-      allow: [here, elizaRoot],
+      // Allow serving files from the app package, workspace root/node_modules,
+      // and the optional local elizaOS checkout.
+      allow: hasLocalElizaWorkspace ? [here, projectRoot, elizaRoot] : [here, projectRoot],
     },
     watch: {
       // Polling is only needed in Docker/WSL where native fs events are unreliable
