@@ -1307,6 +1307,72 @@ public class ElizaAgentService extends Service {
 
     // ── Static helpers for callers ───────────────────────────────────────
 
+    /**
+     * SharedPreferences group used by Capacitor's @capacitor/preferences
+     * plugin. Mirrors PreferencesConfiguration.DEFAULTS.group in v8.
+     */
+    private static final String CAPACITOR_PREFS_GROUP = "CapacitorStorage";
+
+    /**
+     * Storage key for the persisted mobile runtime mode. Must match
+     * MOBILE_RUNTIME_MODE_STORAGE_KEY in
+     * eliza/packages/app-core/src/onboarding/mobile-runtime-mode.ts.
+     */
+    private static final String RUNTIME_MODE_KEY = "eliza:mobile-runtime-mode";
+
+    /**
+     * Whether the on-device agent should auto-start at app boot.
+     *
+     * - On AOSP / ElizaOS-branded devices (`ro.elizaos.product` set or any
+     *   white-label fork's `ro.<brand>os.product`), the device IS the
+     *   agent: always start.
+     * - On stock Android, only start when the user has explicitly picked
+     *   the Local runtime in the onboarding picker (mobile-runtime-mode
+     *   == "local"). Cloud and Remote modes do not need this service.
+     *   Capacitor APKs strip assets/agent/ post-merge
+     *   (apps/app/android/app/build.gradle:82), so unconditional start
+     *   would surface a FileNotFoundException in
+     *   ElizaAgentService.copyAssetIfMissing on stock-Android Capacitor.
+     */
+    public static boolean shouldAutoStart(Context context) {
+        if (isBrandedDevice()) {
+            return true;
+        }
+        String mode = readRuntimeMode(context);
+        return "local".equals(mode);
+    }
+
+    private static boolean isBrandedDevice() {
+        if (!readSystemProperty("ro.elizaos.product").isEmpty()) return true;
+        // White-label forks set ro.<brand>os.product (e.g. ro.miladyos.product).
+        // We can't enumerate every fork's namespace from native code, so
+        // probe the most common ones used by current forks. Forks that
+        // need a different sysprop should override shouldAutoStart locally.
+        return !readSystemProperty("ro.miladyos.product").isEmpty();
+    }
+
+    private static String readRuntimeMode(Context context) {
+        try {
+            return context
+                .getSharedPreferences(CAPACITOR_PREFS_GROUP, Context.MODE_PRIVATE)
+                .getString(RUNTIME_MODE_KEY, null);
+        } catch (Exception e) {
+            Log.w(TAG, "Unable to read runtime mode preference", e);
+            return null;
+        }
+    }
+
+    private static String readSystemProperty(String key) {
+        try {
+            Class<?> spClass = Class.forName("android.os.SystemProperties");
+            java.lang.reflect.Method get = spClass.getMethod("get", String.class);
+            Object result = get.invoke(null, key);
+            return result instanceof String ? (String) result : "";
+        } catch (ReflectiveOperationException | SecurityException e) {
+            return "";
+        }
+    }
+
     /** Start the foreground service (safe to call repeatedly). */
     public static void start(Context context) {
         Intent intent = new Intent(context, ElizaAgentService.class);

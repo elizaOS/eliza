@@ -454,10 +454,15 @@ const ANDROID_PERMISSIONS = [
 ];
 
 function replaceOrInsertGradleString(content, key, value) {
-  const quoted = `${key} "${value}"`;
-  const assignmentRe = new RegExp(`${key}\\s*(?:=\\s*)?["'][^"']+["']`);
-  if (assignmentRe.test(content)) {
-    return content.replace(assignmentRe, quoted);
+  // AGP-modern uses `key = "value"`, AGP-legacy uses `key "value"`. Match
+  // either and preserve the existing assignment shape so we don't flip
+  // styles unnecessarily. The namespace declaration ships in the modern
+  // form on Android Gradle Plugin 8+ generated projects, while
+  // applicationId is still emitted in the legacy form by Capacitor's
+  // template — both must be patchable.
+  const re = new RegExp(`(${key}\\s*=?\\s*)["'][^"']+["']`);
+  if (re.test(content)) {
+    return content.replace(re, `$1"${value}"`);
   }
   return content;
 }
