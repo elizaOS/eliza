@@ -30,7 +30,12 @@ export const fetchFeedTopAction: Action = {
       name: "limit",
       description: "Maximum ranked tweets to return.",
       required: false,
-      schema: { type: "number", minimum: 1, maximum: 50, default: DEFAULT_LIMIT },
+      schema: {
+        type: "number",
+        minimum: 1,
+        maximum: 50,
+        default: DEFAULT_LIMIT,
+      },
     },
     {
       name: "fetchCount",
