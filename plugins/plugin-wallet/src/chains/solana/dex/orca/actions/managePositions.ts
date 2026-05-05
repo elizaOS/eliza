@@ -282,7 +282,7 @@ async function handleRepositioning(
         elizaLogger.log(`Repositioning position: ${positionMintAddress}`);
 
         let closeSuccess = false;
-        let closeTxId;
+        let closeTxId: string | undefined;
         while (!closeSuccess) {
           try {
             const { instructions: closeInstructions, quote } = await closePositionInstructions(
@@ -306,7 +306,7 @@ async function handleRepositioning(
             newLowerPrice = newPriceBounds.newLowerPrice;
             newUpperPrice = newPriceBounds.newUpperPrice;
             let openSuccess = false;
-            let openTxId;
+            let openTxId: string | undefined;
             while (!openSuccess) {
               try {
                 const { instructions: openInstructions, positionMint: newPositionMint } =

@@ -163,9 +163,8 @@ async function loadEvmDexes(
     try {
       switch (dex) {
         case "uniswap": {
-          const { uniswapPlugin, UniswapV3LpService } = await import(
-            "../chains/evm/dex/uniswap/index.ts"
-          );
+          const { uniswapPlugin: _uniswapPlugin, UniswapV3LpService } =
+            await import("../chains/evm/dex/uniswap/index.ts");
           const service = await UniswapV3LpService.start(runtime);
           // Register with DexInteractionService
           registerEvmService(runtime, service);
@@ -173,18 +172,18 @@ async function loadEvmDexes(
           break;
         }
         case "pancakeswap": {
-          const { pancakeswapPlugin, PancakeSwapV3LpService } = await import(
-            "../chains/evm/dex/pancakeswp/index.ts"
-          );
+          const {
+            pancakeswapPlugin: _pancakeswapPlugin,
+            PancakeSwapV3LpService,
+          } = await import("../chains/evm/dex/pancakeswp/index.ts");
           const service = await PancakeSwapV3LpService.start(runtime);
           registerEvmService(runtime, service);
           logger.info(`[LP Manager] Loaded PancakeSwap V3 DEX`);
           break;
         }
         case "aerodrome": {
-          const { aerodromePlugin, AerodromeLpService } = await import(
-            "../chains/evm/dex/aerodrome/index.ts"
-          );
+          const { aerodromePlugin: _aerodromePlugin, AerodromeLpService } =
+            await import("../chains/evm/dex/aerodrome/index.ts");
           const service = await AerodromeLpService.start(runtime);
           registerEvmService(runtime, service);
           logger.info(`[LP Manager] Loaded Aerodrome DEX`);
