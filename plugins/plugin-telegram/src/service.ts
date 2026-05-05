@@ -1516,7 +1516,8 @@ export class TelegramService extends Service {
 
     if (
       normalizedQuery &&
-      (TELEGRAM_CHAT_ID_PATTERN.test(normalizedQuery) || query.trim().startsWith('@'))
+      (TELEGRAM_CHAT_ID_PATTERN.test(normalizedQuery) ||
+        query.trim().startsWith('@'))
     ) {
       const lookup = TELEGRAM_CHAT_ID_PATTERN.test(normalizedQuery)
         ? normalizedQuery
@@ -1588,7 +1589,9 @@ export class TelegramService extends Service {
       room?.id ??
       (createUniqueUuid(
         this.runtime,
-        parts.threadId ? `${parts.chatId}-${parts.threadId}` : String(parts.chatId),
+        parts.threadId
+          ? `${parts.chatId}-${parts.threadId}`
+          : String(parts.chatId),
       ) as UUID);
     const memories = await context.runtime.getMemories({
       tableName: 'messages',
@@ -1624,7 +1627,9 @@ export class TelegramService extends Service {
       } as TargetInfo,
       label:
         room?.name ||
-        (chat ? getTelegramChatDisplayName(chat, String(parts.chatId)) : channelId),
+        (chat
+          ? getTelegramChatDisplayName(chat, String(parts.chatId))
+          : channelId),
       summary: chat ? `Telegram ${chat.type}` : undefined,
       recentMessages,
       metadata: {
@@ -1644,8 +1649,7 @@ export class TelegramService extends Service {
         ? await context.runtime.getEntityById(String(entityId) as UUID)
         : null;
     const telegramMetadata =
-      entity?.metadata?.telegram &&
-      typeof entity.metadata.telegram === 'object'
+      entity?.metadata?.telegram && typeof entity.metadata.telegram === 'object'
         ? (entity.metadata.telegram as Record<string, unknown>)
         : null;
     const telegramId =
@@ -1685,7 +1689,8 @@ export class TelegramService extends Service {
     serviceInstance: TelegramService,
   ) {
     if (serviceInstance?.bot) {
-      const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+      const sendHandler =
+        serviceInstance.handleSendMessage.bind(serviceInstance);
       if (typeof runtime.registerMessageConnector === 'function') {
         runtime.registerMessageConnector({
           source: 'telegram',
@@ -1759,7 +1764,10 @@ export class TelegramService extends Service {
       const metadataThreadId =
         typeof metadata?.threadId === 'string' ? metadata.threadId : undefined;
       if (room?.channelId) {
-        const parts = parseTelegramTargetParts(room.channelId, metadataThreadId);
+        const parts = parseTelegramTargetParts(
+          room.channelId,
+          metadataThreadId,
+        );
         chatId = parts.chatId;
         threadId = parts.threadId;
       }
@@ -1810,7 +1818,12 @@ export class TelegramService extends Service {
     try {
       // Use existing MessageManager method, pass chatId and content
       // Assuming sendMessage handles splitting, markdown, etc.
-      await this.messageManager.sendMessage(chatId, content, undefined, threadId);
+      await this.messageManager.sendMessage(
+        chatId,
+        content,
+        undefined,
+        threadId,
+      );
       logger.info(
         { src: 'plugin:telegram', agentId: runtime.agentId, chatId, threadId },
         'Message sent',

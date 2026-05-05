@@ -888,9 +888,8 @@ export class AgentRuntime implements IAgentRuntime {
 				plugin: pluginName,
 				serviceType,
 				serviceClass: getServiceClassLabel(serviceClass),
-				existingServiceClasses: existingServiceClasses.map(
-					getServiceClassLabel,
-				),
+				existingServiceClasses:
+					existingServiceClasses.map(getServiceClassLabel),
 			},
 			"Duplicate serviceType registration can make getService() ambiguous; use a distinct serviceType or getServicesByType()",
 		);
