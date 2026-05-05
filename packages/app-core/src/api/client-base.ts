@@ -384,13 +384,29 @@ export class ElizaClient {
         .json()
         .catch(() => ({ error: res.statusText }))) as Record<
         string,
-        string
+        unknown
       > | null;
+      const message =
+        typeof body?.error === "string"
+          ? body.error
+          : typeof body?.message === "string"
+            ? body.message
+            : `HTTP ${res.status}`;
+      const code = typeof body?.code === "string" ? body.code : undefined;
+      const headerRetryAfter = Number(res.headers.get("Retry-After"));
+      const bodyRetryAfter = Number(body?.retryAfter);
+      const retryAfter = Number.isFinite(bodyRetryAfter)
+        ? bodyRetryAfter
+        : Number.isFinite(headerRetryAfter)
+          ? headerRetryAfter
+          : undefined;
       throw new ApiError({
         kind: "http",
         path,
         status: res.status,
-        message: body?.error ?? `HTTP ${res.status}`,
+        message,
+        code,
+        retryAfter,
       });
     }
     return res;
