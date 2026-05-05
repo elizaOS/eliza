@@ -455,7 +455,7 @@ const ANDROID_PERMISSIONS = [
 
 function replaceOrInsertGradleString(content, key, value) {
   const quoted = `${key} "${value}"`;
-  const assignmentRe = new RegExp(`${key}\\s+["'][^"']+["']`);
+  const assignmentRe = new RegExp(`${key}\\s*(?:=\\s*)?["'][^"']+["']`);
   if (assignmentRe.test(content)) {
     return content.replace(assignmentRe, quoted);
   }
@@ -2152,7 +2152,7 @@ async function buildAndroid() {
 
   await buildWeb();
   await ensurePlatform("android");
-  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+  await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -2258,7 +2258,7 @@ async function buildAndroidSystem() {
 
   await buildWeb();
   await ensurePlatform("android");
-  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+  await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -2280,17 +2280,10 @@ async function buildAndroidSystem() {
     ]),
   };
 
-  // AOSP product builds set ELIZA_GRADLE_AOSP_BUILD=true upstream so
-  // gradle bakes BuildConfig.AOSP_BUILD=true into the privileged APK.
-  // The Capacitor APK path leaves it false; both share the same gradle
-  // because the packages/app/android/ tree is regenerated each run.
-  const gradleArgs = [":app:assembleRelease"];
-  if (
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
-  ) {
-    gradleArgs.unshift("-PelizaAospBuild=true");
-  }
+  // This target always produces the privileged AOSP APK, so bake the local
+  // agent flag into BuildConfig and preserve assets/agent. The regular
+  // Capacitor target leaves this property unset and strips those assets.
+  const gradleArgs = ["-PelizaAospBuild=true", ":app:assembleRelease"];
   await run(
     "./gradlew",
     [":capacitor-cordova-android-plugins:writeReleaseAarMetadata"],
@@ -2321,7 +2314,7 @@ async function buildIos() {
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
-  await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
+  await run("bun", ["x", "capacitor", "sync", "ios"], { cwd: appDir });
 
   const buildTarget = resolveIosBuildTarget();
   console.log(

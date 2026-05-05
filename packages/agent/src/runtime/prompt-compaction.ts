@@ -279,9 +279,8 @@ export function compactCodingExamplesForIntent(prompt: string): string {
   // match to end-of-string and remove everything after the examples header.
   if (!prompt.includes("# Available Actions")) return prompt;
   // Strip everything from the examples header up to (but not including)
-  // the "# Available Actions" header. The examples section contains its own
-  // <actions> tags as part of the examples, so we can't use <actions> as a
-  // boundary — we must match the markdown header specifically.
+  // the "# Available Actions" header. Match the markdown header specifically
+  // so example bodies cannot affect the boundary.
   return prompt.replace(
     /# (?:Coding|Task) Agent Action Call Examples[\s\S]*?(?=\n# Available Actions)/,
     "",
@@ -293,15 +292,13 @@ export function compactCodingExamplesForIntent(prompt: string): string {
  * the prompt with a version where only intent-relevant actions keep full
  * parameter detail — the rest are stubs with just name + description.
  *
- * Supports two prompt encodings:
- *   - TOON (current default): the actions provider emits
- *       actions[N]:
- *       - ACTION: description
- *         aliases[..]: ...
- *         tags[..]: ...
- *         params[..]: ...
- *         example: ...
- *   - XML (legacy): <actions><action><name>..</name>...</action>...</actions>
+ * Supports the TOON prompt encoding emitted by the actions provider:
+ *   actions[N]:
+ *   - ACTION: description
+ *     aliases[..]: ...
+ *     tags[..]: ...
+ *     params[..]: ...
+ *     example: ...
  *
  * If no intents are detected (general chat), only universal actions
  * (REPLY, NONE, IGNORE) keep full params — all others are stubbed.
@@ -325,16 +322,11 @@ export function compactActionsForIntent(prompt: string): string {
   // stubs so the LLM knows they exist but doesn't waste context on params.
   const fullParamActions = buildFullParamActionSet(intentCategories);
 
-  // Try TOON-format first (current default), then fall back to XML for
-  // legacy prompts that still emit <actions>...</actions> blocks.
-  const toonCompacted = compactToonActionsBlock(prompt, fullParamActions);
-  if (toonCompacted !== null) return toonCompacted;
-  return compactXmlActionsBlock(prompt, fullParamActions);
+  return compactToonActionsBlock(prompt, fullParamActions) ?? prompt;
 }
 
 /**
- * Locate and compact a TOON-formatted "Available Actions" block. Returns
- * `null` if no TOON block is found, so the caller can try XML.
+ * Locate and compact a TOON-formatted "Available Actions" block.
  */
 function compactToonActionsBlock(
   prompt: string,
@@ -418,52 +410,6 @@ function compactToonActionsBlock(
   const after = prompt.slice(blockEnd);
   const separator = bodyLines.length > 0 && bodyLines[0] === "" ? "\n" : "";
   return `${before}${separator}${compactedBody}${after}`;
-}
-
-/**
- * Legacy XML compaction: locate a `<actions>...</actions>` block and stub
- * non-relevant `<action>` entries. Returns the original prompt unchanged
- * when no XML block is present.
- */
-function compactXmlActionsBlock(
-  prompt: string,
-  fullParamActions: Set<string>,
-): string {
-  const actionsStart = prompt.indexOf("<actions>");
-  if (actionsStart === -1) return prompt;
-  const actionsEnd = prompt.indexOf("</actions>", actionsStart);
-  if (actionsEnd === -1) return prompt;
-
-  const actionsBlock = prompt.slice(
-    actionsStart + "<actions>".length,
-    actionsEnd,
-  );
-
-  const actionRegex = /<action>([\s\S]*?)<\/action>/g;
-  const compactedActions: string[] = [];
-
-  for (const match of actionsBlock.matchAll(actionRegex)) {
-    const actionInner = match[1];
-    const nameMatch = actionInner.match(/<name>([\s\S]*?)<\/name>/);
-    if (!nameMatch) continue;
-
-    const actionName = nameMatch[1].trim();
-
-    if (fullParamActions.has(actionName)) {
-      compactedActions.push(`  <action>${actionInner}</action>`);
-    } else {
-      const descMatch = actionInner.match(
-        /<description>([\s\S]*?)<\/description>/,
-      );
-      const desc = descMatch?.[1]?.trim() ?? "";
-      compactedActions.push(
-        `  <action>\n    <name>${actionName}</name>\n    <description>${desc}</description>\n  </action>`,
-      );
-    }
-  }
-
-  const compactedBlock = `<actions>\n${compactedActions.join("\n")}\n</actions>`;
-  return `${prompt.slice(0, actionsStart)}${compactedBlock}${prompt.slice(actionsEnd + "</actions>".length)}`;
 }
 
 export function compactModelPrompt(prompt: string): string {

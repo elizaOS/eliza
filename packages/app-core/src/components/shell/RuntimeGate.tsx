@@ -125,6 +125,57 @@ type CloudStage =
   | "provisioning"
   | "connecting";
 
+function normalizeRuntimeUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  let end = trimmed.length;
+  while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
+  return trimmed.slice(0, end);
+}
+
+function isCloudControlPlaneUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return (
+      host === "api.elizacloud.ai" ||
+      host === "elizacloud.ai" ||
+      host === "www.elizacloud.ai" ||
+      host === "dev.elizacloud.ai"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function resolveCloudAgentApiBase(agent: CloudCompatAgent): string | undefined {
+  const directAgent = agent as CloudCompatAgent & {
+    apiBase?: string | null;
+    api_base?: string | null;
+    bridgeUrl?: string | null;
+    container_url?: string | null;
+    runtimeUrl?: string | null;
+    runtime_url?: string | null;
+  };
+  const candidates = [
+    directAgent.apiBase,
+    directAgent.api_base,
+    agent.bridge_url,
+    directAgent.bridgeUrl,
+    agent.containerUrl,
+    directAgent.container_url,
+    directAgent.runtimeUrl,
+    directAgent.runtime_url,
+    agent.web_ui_url,
+    agent.webUiUrl,
+  ]
+    .map(normalizeRuntimeUrl)
+    .filter((value): value is string => Boolean(value));
+
+  return candidates.find((value) => !isCloudControlPlaneUrl(value));
+}
+
 // TODO: replace with real onboarding artwork per runtime choice
 // const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
 //   cloud: "app-heroes/agentDOD.png",
@@ -132,7 +183,7 @@ type CloudStage =
 //   remote: "app-heroes/log-viewer.png",
 // };
 
-function resolveRuntimeChoices(args: {
+export function resolveRuntimeChoices(args: {
   isAndroid: boolean;
   isIOS: boolean;
   isDesktop: boolean;
@@ -140,9 +191,12 @@ function resolveRuntimeChoices(args: {
   showLocalOption: boolean;
   localProbePending: boolean;
 }): RuntimeChoice[] {
-  if (args.isAndroid && args.localProbePending) return [];
-  if (args.isAndroid && args.showLocalOption) return ["local"];
-  if (args.isIOS || args.isAndroid) return ["cloud", "remote"];
+  if (args.isAndroid) {
+    return args.showLocalOption
+      ? ["cloud", "local", "remote"]
+      : ["cloud", "remote"];
+  }
+  if (args.isIOS) return ["cloud", "remote"];
   if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
   return ["cloud", "remote"];
 }
@@ -412,31 +466,38 @@ export function RuntimeGate() {
     (agent: CloudCompatAgent) => {
       setCloudStage("connecting");
 
-      const apiBase =
-        agent.web_ui_url ||
-        agent.webUiUrl ||
-        agent.bridge_url ||
-        agent.containerUrl ||
-        undefined;
+      const apiBase = resolveCloudAgentApiBase(agent);
+      if (!apiBase) {
+        setError(
+          t("runtimegate.cloudAgentMissingUrl", {
+            defaultValue:
+              "Cloud agent is not reachable yet. Retry after it finishes starting.",
+          }),
+        );
+        setCloudStage("agent-list");
+        return;
+      }
+
+      const accessToken = client.getRestAuthToken() ?? undefined;
+
       savePersistedActiveServer({
         id: `cloud:${agent.agent_id}`,
         kind: "cloud",
         label: agent.agent_name,
-        ...(apiBase ? { apiBase } : {}),
+        apiBase,
+        ...(accessToken ? { accessToken } : {}),
       });
       addAgentProfile({
         kind: "cloud",
         label: agent.agent_name,
         cloudAgentId: agent.agent_id,
-        apiBase: apiBase ?? undefined,
+        apiBase,
+        ...(accessToken ? { accessToken } : {}),
       });
 
-      if (apiBase) {
-        client.setBaseUrl(apiBase);
-      }
+      client.setBaseUrl(apiBase);
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setState("onboardingServerTarget", "elizacloud");
-      startupCoordinator.dispatch({ type: "SPLASH_CLOUD_SKIP" });
       // Apply embedding preference before handing off. Non-blocking: if this
       // fails the user can adjust it from Settings → Provider.
       if (useLocalEmbeddings) {
@@ -453,7 +514,7 @@ export function RuntimeGate() {
       }
       completeOnboarding();
     },
-    [completeOnboarding, setState, startupCoordinator, useLocalEmbeddings],
+    [completeOnboarding, setState, t, useLocalEmbeddings],
   );
 
   const finishAsLocal = useCallback(() => {
@@ -588,6 +649,10 @@ export function RuntimeGate() {
 
   const provisionAndConnect = useCallback(
     async (agentId: string) => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
       setCloudStage("provisioning");
       setProvisionStatus(
         t("runtimegate.startingProvisioning", {
@@ -595,6 +660,16 @@ export function RuntimeGate() {
         }),
       );
       const provRes = await client.provisionCloudCompatAgent(agentId);
+      if (!provRes.success) {
+        setError(
+          provRes.error ||
+            t("runtimegate.provisioningFailed", {
+              defaultValue: "Provisioning failed",
+            }),
+        );
+        setCloudStage("agent-list");
+        return;
+      }
       const jobId = provRes.data?.jobId;
 
       if (!jobId) {
@@ -642,6 +717,29 @@ export function RuntimeGate() {
     [finishAsCloud, t],
   );
 
+  const handleConnectCloudAgent = useCallback(
+    (agent: CloudCompatAgent) => {
+      if (agent.status === "failed") {
+        return;
+      }
+      if (agent.status !== "running" || !resolveCloudAgentApiBase(agent)) {
+        void provisionAndConnect(agent.agent_id).catch((err) => {
+          setError(
+            err instanceof Error
+              ? err.message
+              : t("runtimegate.unknownError", {
+                  defaultValue: "Unknown error",
+                }),
+          );
+          setCloudStage("agent-list");
+        });
+        return;
+      }
+      finishAsCloud(agent);
+    },
+    [finishAsCloud, provisionAndConnect, t],
+  );
+
   // ── Cloud: auto-pick first agent, or auto-create one ─────────────
   // The user asked for a single-agent assumption during onboarding: if
   // they already have agents, pick the first one; if not, create one
@@ -670,6 +768,23 @@ export function RuntimeGate() {
       if (agentList.length > 0) {
         const primary = agentList[0];
         if (primary) {
+          if (primary.status === "failed") {
+            setError(
+              primary.error_message ||
+                t("runtimegate.cloudAgentFailed", {
+                  defaultValue: "Cloud agent failed to start.",
+                }),
+            );
+            setCloudStage("agent-list");
+            return;
+          }
+          if (
+            primary.status !== "running" ||
+            !resolveCloudAgentApiBase(primary)
+          ) {
+            await provisionAndConnect(primary.agent_id);
+            return;
+          }
           finishAsCloud(primary);
           return;
         }
@@ -994,7 +1109,7 @@ export function RuntimeGate() {
                           variant="outline"
                           size="sm"
                           className="shrink-0 rounded-lg border-[#f0b90b]/40 bg-[#f0b90b]/15 text-[#f0b90b] font-semibold hover:bg-[#f0b90b]/25 hover:border-[#f0b90b]/60"
-                          onClick={() => finishAsCloud(agent)}
+                          onClick={() => handleConnectCloudAgent(agent)}
                           disabled={agent.status === "failed"}
                         >
                           {t("common.connect", {

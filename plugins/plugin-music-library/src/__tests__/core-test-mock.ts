@@ -19,11 +19,16 @@ vi.mock("@elizaos/core", () => {
   }
 
   return {
+    ChannelType: {
+      DM: "DM",
+    },
     ModelType: {
       TEXT_LARGE: "TEXT_LARGE",
       TEXT_SMALL: "TEXT_SMALL",
     },
     Service,
+    encodeToonValue: (value: unknown) => JSON.stringify(value),
     logger,
+    parseToonKeyValue: vi.fn(() => null),
   };
 });

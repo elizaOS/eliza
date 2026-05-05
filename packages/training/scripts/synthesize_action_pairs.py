@@ -587,7 +587,6 @@ def gen_update_role(encoder: ToonEncoder, rng: random.Random, n: int) -> Iterabl
 def gen_should_room(encoder: ToonEncoder, rng: random.Random, n: int,
                     task_id: str) -> Iterable[dict]:
     """Shared generator for should_{mute,unmute,follow,unfollow}_room."""
-    is_unfollow_or_unmute = task_id.startswith("should_un")
     yes_phrasings_mute = ["mute {room}", "silence {room}", "shush {room}"]
     yes_phrasings_unmute = ["unmute {room}", "start listening to {room} again"]
     yes_phrasings_follow = ["follow {room}", "join {room} actively", "stay engaged with {room}"]

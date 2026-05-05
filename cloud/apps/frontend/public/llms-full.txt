@@ -805,7 +805,7 @@ knowledgeable, thorough, patient, analytical, helpful
 
 | Provider      | Models                           | Best For                    |
 | ------------- | -------------------------------- | --------------------------- |
-| **OpenAI**    | GPT-4o, GPT-4o-mini, GPT-4-turbo | General purpose, coding     |
+| **OpenAI**    | GPT-4o, gpt-5-mini, GPT-4-turbo | General purpose, coding     |
 | **Anthropic** | Claude Sonnet 4.6, Claude Opus 4.7 | Long-form content, analysis |
 | **Google**    | Gemini Pro, Gemini Flash         | Multimodal, fast responses  |
 
@@ -993,7 +993,7 @@ Fill in the agent's personality:
 
 Choose your AI model provider and model:
 
-- OpenAI (GPT-4o, GPT-4o-mini)
+- OpenAI (GPT-4o, gpt-5-mini)
 - Anthropic (Claude Sonnet 4.6)
 - Google (Gemini Pro)
 
@@ -2270,7 +2270,7 @@ You can use an agent ID as the model to chat with your custom AI agents:
 | Model                        | Provider  | Description              |
 | ---------------------------- | --------- | ------------------------ |
 | `gpt-4o`                     | OpenAI    | Most capable GPT-4 model |
-| `gpt-4o-mini`                | OpenAI    | Fast and efficient       |
+| `gpt-5-mini`                | OpenAI    | Fast and efficient       |
 | `claude-sonnet-4-6` | Anthropic | Latest Claude model      |
 | `gemini-1.5-pro`             | Google    | Gemini Pro model         |
 
@@ -2950,7 +2950,7 @@ Check crypto payment status.
 | Service              | Unit       | Price          |
 | -------------------- | ---------- | -------------- |
 | GPT-4o               | 1M tokens  | $2.50 / $10.00 |
-| GPT-4o-mini          | 1M tokens  | $0.15 / $0.60  |
+| gpt-5-mini          | 1M tokens  | $0.15 / $0.60  |
 | Claude Sonnet 4.6    | 1M tokens  | $3.00 / $15.00 |
 | Claude 3.5 Haiku     | 1M tokens  | $1.00 / $5.00  |
 | Embeddings (3-small) | 1M tokens  | $0.02          |
@@ -4016,8 +4016,8 @@ The `/api/v1/models` response is the source of truth for the full live catalog. 
 | Model         | Context | Best For                |
 | ------------- | ------- | ----------------------- |
 | `gpt-4o`      | 128K    | General purpose, vision |
-| `gpt-4o-mini` | 128K    | Fast, cost-effective    |
-| `gpt-4-turbo` | 128K    | Complex reasoning       |
+| `gpt-5-mini` | 128K    | Fast, cost-effective    |
+| `gpt-5.5` | 128K    | Complex reasoning       |
 
 ### Anthropic
 
@@ -4059,11 +4059,11 @@ The `/api/v1/models` response is the source of truth for the full live catalog. 
 
 ## Model Selection Tips
 
-  Start with `gpt-4o-mini` or `claude-sonnet-4-6` for a good balance.
+  Start with `gpt-5-mini` or `claude-sonnet-4-6` for a good balance.
 
 | Use Case          | Recommended Model   |
 | ----------------- | ------------------- |
-| General chat      | `gpt-4o-mini`       |
+| General chat      | `gpt-5-mini`       |
 | Complex reasoning | `gpt-4o`            |
 | Code generation   | `claude-sonnet-4-6` |
 | Long documents    | `gemini-1.5-pro`    |
@@ -6545,7 +6545,7 @@ For social media interactions:
 
 | Provider    | Models                           |
 | ----------- | -------------------------------- |
-| `openai`    | gpt-4o, gpt-4o-mini, gpt-4-turbo |
+| `openai`    | gpt-4o, gpt-5-mini, gpt-5.5 |
 | `anthropic` | claude-sonnet-4-6, claude-opus-4-7 |
 | `google`    | gemini-1.5-pro, gemini-1.5-flash |
 

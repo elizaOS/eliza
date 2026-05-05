@@ -49,6 +49,7 @@ class TerminalBenchDataset:
         self.data_path = Path(data_path) if data_path else None
         self.version = version
         self.use_sample_tasks = use_sample_tasks
+        self.loaded_sample_tasks = False
         self.tasks: list[TerminalTask] = []
         self._loaded = False
 
@@ -59,6 +60,7 @@ class TerminalBenchDataset:
 
         if self.use_sample_tasks:
             self._load_sample_tasks()
+            self.loaded_sample_tasks = True
             self._loaded = True
             logger.info(f"Loaded {len(self.tasks)} sample tasks")
             return
@@ -221,6 +223,7 @@ class TerminalBenchDataset:
             "Using sample tasks instead."
         )
         self._load_sample_tasks()
+        self.loaded_sample_tasks = True
 
     async def download_dataset(
         self, target_dir: Path, version: Optional[str] = None

@@ -26,15 +26,12 @@ import { registerAospLlamaLoader as __elizaAospLlamaLoader } from "./runtime/aos
 // configurations). Mirror the `__elizaAospLlamaLoader` pattern.
 import { ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap } from "./runtime/aosp-local-inference-bootstrap.js";
 
-// Pull @elizaos/app-{wifi,contacts,phone}'s `/plugin` subpath into the
-// mobile bundle. Each plugin imports from `@elizaos/agent` (the barrel
-// that re-exports `runtime/eliza.ts`), so importing them HERE — after the
-// aosp-* imports have already dragged eliza.ts through evaluation via
-// their own deps — sidesteps the init cycle that would otherwise leave
-// the plugins' named exports undefined. The imported modules are
-// Object.assign'd into STATIC_ELIZA_PLUGINS so plugin-resolver.ts picks
-// them up before falling through to a runtime `import("@elizaos/app-*/
-// plugin")` that has no node_modules tree to resolve on-device.
+// Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
+// mobile bundle. The adapter imports each app package's `/plugin` subpath,
+// applies the agent-side hosted-app session gate, and Object.assigns those
+// modules into STATIC_ELIZA_PLUGINS so plugin-resolver.ts picks them up before
+// falling through to a runtime `import("@elizaos/app-*/plugin")` that has no
+// node_modules tree to resolve on-device.
 //
 // Dynamic + try/catch instead of a static `import` so non-mobile builds
 // (the Docker agent server image, desktop CLI on a fresh machine) don't

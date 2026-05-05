@@ -14,6 +14,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	SearchCategoryRegistration,
 	State,
 	UUID,
 } from "../../types";
@@ -43,6 +44,47 @@ const SEARCH_KNOWLEDGE_TERMS = getValidationKeywordTerms(
 );
 const KNOWLEDGE_PATH_PATTERN =
 	/(?:\/[\w.-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
+
+const KNOWLEDGE_SEARCH_CATEGORY: SearchCategoryRegistration = {
+	category: "knowledge",
+	label: "Knowledge base",
+	description: "Search stored knowledge documents and fragments.",
+	contexts: ["knowledge"],
+	filters: [
+		{
+			name: "scope",
+			label: "Scope",
+			description: "Optional scope: room, world, entity, or agent.",
+			type: "enum",
+			options: [
+				{ label: "Room", value: "room" },
+				{ label: "World", value: "world" },
+				{ label: "Entity", value: "entity" },
+				{ label: "Agent", value: "agent" },
+			],
+		},
+	],
+	resultSchemaSummary:
+		"StoredKnowledgeItem[] with id, content.text, similarity, metadata, and worldId.",
+	capabilities: ["semantic", "documents", "fragments"],
+	source: "core:knowledge",
+	serviceType: KnowledgeService.serviceType,
+};
+
+function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
+	try {
+		runtime.getSearchCategory(category, { includeDisabled: true });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export function registerKnowledgeSearchCategory(runtime: IAgentRuntime): void {
+	if (!hasSearchCategory(runtime, KNOWLEDGE_SEARCH_CATEGORY.category)) {
+		runtime.registerSearchCategory(KNOWLEDGE_SEARCH_CATEGORY);
+	}
+}
 
 export const processKnowledgeAction: Action = {
 	name: "PROCESS_KNOWLEDGE",
@@ -91,6 +133,7 @@ export const processKnowledgeAction: Action = {
 		state?: State,
 		options?: unknown,
 	): Promise<boolean> => {
+		registerKnowledgeSearchCategory(runtime);
 		const __avLegacyValidate: ExtendedValidator = async (
 			runtime: IAgentRuntime,
 			message: Memory,
@@ -112,9 +155,8 @@ export const processKnowledgeAction: Action = {
 			return hasKeyword || hasPath;
 		};
 		try {
-			return Boolean(
-				await __avLegacyValidate(runtime, message, state, options),
-			);
+			await __avLegacyValidate(runtime, message, state, options);
+			return false;
 		} catch {
 			return false;
 		}
@@ -128,6 +170,7 @@ export const processKnowledgeAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		try {
+			registerKnowledgeSearchCategory(runtime);
 			const service = runtime.getService<KnowledgeService>(
 				KnowledgeService.serviceType,
 			);
@@ -339,14 +382,20 @@ export const searchKnowledgeAction: Action = {
 				throw new Error("Knowledge service not available");
 			}
 
+			const params = _options?.parameters as
+				| { query?: string; limit?: number }
+				| undefined;
 			const text = message.content.text || "";
 
-			const query = text
-				.replace(
-					/^(search|find|look up|query)\s+(your\s+)?knowledge\s+(base\s+)?(for\s+)?/i,
-					"",
-				)
-				.trim();
+			const query =
+				typeof params?.query === "string" && params.query.trim()
+					? params.query.trim()
+					: text
+							.replace(
+								/^(search|find|look up|query)\s+(your\s+)?knowledge\s+(base\s+)?(for\s+)?/i,
+								"",
+							)
+							.trim();
 
 			if (!query) {
 				const response: Content = {
@@ -379,8 +428,12 @@ export const searchKnowledgeAction: Action = {
 					text: `I couldn't find any information about "${query}" in my knowledge base.`,
 				};
 			} else {
+				const limit =
+					typeof params?.limit === "number"
+						? Math.max(1, Math.min(20, Math.floor(params.limit)))
+						: 3;
 				const formattedResults = results
-					.slice(0, 3)
+					.slice(0, limit)
 					.map((item, index) => `${index + 1}. ${item.content.text}`)
 					.join("\n\n");
 

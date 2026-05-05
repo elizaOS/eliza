@@ -27,7 +27,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import {
 	type AppControlClient,
 	createAppControlClient,
@@ -248,7 +248,8 @@ async function extractNames(
 		"name: <kebab-case-slug>   (lowercase letters, digits, dashes; no spaces; 3-40 chars; cannot start with a digit)",
 		"displayName: <Title Case Display Name>   (1-40 chars)",
 		"",
-		`Request: ${JSON.stringify({ intent })}`,
+		"Request (TOON):",
+		`intent: ${intent.replace(/\s+/g, " ").trim()}`,
 	].join("\n");
 
 	let raw = "";
@@ -390,12 +391,40 @@ async function dispatchCodingAgent({
 		},
 	};
 
-	const result = await createTask.handler(
+	const result = await spawnWithTrajectoryLink(
 		runtime,
-		fakeMessage,
-		undefined,
-		handlerOptions,
-		callback,
+		{
+			source: "plugin-app-control:app-create",
+			metadata: { appName, label, workdir },
+		},
+		async (trajectory) => {
+			if (trajectory.parentStepId) {
+				const parameters = handlerOptions.parameters as Record<string, unknown>;
+				const existingMetadata =
+					parameters.metadata &&
+					typeof parameters.metadata === "object" &&
+					!Array.isArray(parameters.metadata)
+						? (parameters.metadata as Record<string, unknown>)
+						: {};
+				parameters.metadata = {
+					...existingMetadata,
+					parentTrajectoryStepId: trajectory.parentStepId,
+					trajectoryLinkSource: "plugin-app-control:app-create",
+				};
+			}
+
+			const createTaskResult = await createTask.handler(
+				runtime,
+				fakeMessage,
+				undefined,
+				handlerOptions,
+				callback,
+			);
+			for (const agent of readTaskAgents(createTaskResult)) {
+				await trajectory.linkChild(agent.sessionId);
+			}
+			return createTaskResult;
+		},
 	);
 	if (!result?.success) {
 		return {
@@ -426,22 +455,21 @@ function buildCreatePrompt(
 	workdir: string,
 ): string {
 	return [
-		`You are building a brand-new Eliza app called "${displayName}".`,
-		`The user's intent: ${intent}`,
-		"",
-		`The app source directory is ${workdir}. It has already been scaffolded from the min-project template.`,
-		"Work in that source directory, not in the task agent's scratch directory.",
-		"Read SCAFFOLD.md in the source directory for layout and conventions. The completion line below is canonical if SCAFFOLD.md disagrees.",
-		"Edit and add files as needed to implement the user's intent.",
-		"",
-		"Before signaling completion, run these commands from the source directory in order:",
-		"1. bun run typecheck",
-		"2. bun run lint",
-		"3. bun run test",
-		"",
-		"After all three commands pass, emit exactly one completion line in this canonical schema:",
+		"task: build_eliza_app",
+		`appName: ${appName}`,
+		`displayName: ${displayName}`,
+		`intent: ${intent}`,
+		`sourceDir: ${workdir}`,
+		"workspaceRule: work in sourceDir, not the task agent scratch directory",
+		"referenceDocs: read SCAFFOLD.md for layout and conventions",
+		"implementation: edit and add files needed for the intent",
+		"verificationCommands[3]:",
+		"  bun run typecheck",
+		"  bun run lint",
+		"  bun run test",
+		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
 		`APP_CREATE_DONE {"appName":"${appName}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
-		"Use files changed or added relative to the source directory. Do not emit legacy fields such as name, testsPassed, or lintClean.",
+		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
 	].join("\n");
 }
 
@@ -451,21 +479,20 @@ function buildEditPrompt(
 	workdir: string,
 ): string {
 	return [
-		`You are modifying the existing Eliza app "${app.displayName}" (${app.name}).`,
-		`Source lives in ${workdir}.`,
-		`User's request: ${intent}`,
-		"",
-		"Read SCAFFOLD.md or AGENTS.md in the workdir if present, otherwise read README.md.",
-		"Implement the requested change minimally — do not refactor unrelated code.",
-		"",
-		"Before signaling completion, run these commands from the source directory in order:",
-		"1. bun run typecheck",
-		"2. bun run lint",
-		"3. bun run test",
-		"",
-		"After all three commands pass, emit exactly one completion line in this canonical schema:",
+		"task: edit_eliza_app",
+		`appName: ${app.name}`,
+		`displayName: ${app.displayName}`,
+		`intent: ${intent}`,
+		`sourceDir: ${workdir}`,
+		"referenceDocs: read SCAFFOLD.md or AGENTS.md if present, otherwise README.md",
+		"implementation: minimal requested change; no unrelated refactors",
+		"verificationCommands[3]:",
+		"  bun run typecheck",
+		"  bun run lint",
+		"  bun run test",
+		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
 		`APP_CREATE_DONE {"appName":"${app.name}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
-		"Use files changed or added relative to the source directory. Do not emit legacy fields such as name, testsPassed, or lintClean.",
+		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
 	].join("\n");
 }
 

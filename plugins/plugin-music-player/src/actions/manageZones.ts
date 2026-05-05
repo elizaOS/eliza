@@ -12,6 +12,18 @@ interface MusicZoneService {
   getZoneManager(): ZoneManager;
 }
 
+function formatMetadata(metadata: Record<string, unknown>): string {
+  return Object.entries(metadata)
+    .map(([key, value]) => {
+      if (Array.isArray(value)) return `${key}: ${value.join(", ")}`;
+      if (value && typeof value === "object") {
+        return `${key}: ${Object.keys(value).join(", ")}`;
+      }
+      return `${key}: ${String(value)}`;
+    })
+    .join("\n");
+}
+
 /**
  * Action to manage audio zones dynamically
  * Allows users to create, delete, and modify zones at runtime
@@ -251,7 +263,7 @@ async function handleListZones(
     }
 
     const metadata = zone.metadata
-      ? `\nMetadata: ${JSON.stringify(zone.metadata)}`
+      ? `\nMetadata:\n${formatMetadata(zone.metadata)}`
       : "";
     await callback({
       text: `Zone "${zone.name}":

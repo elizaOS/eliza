@@ -6,26 +6,30 @@ Usage:
     python run_benchmark.py
     python run_benchmark.py --experiences 2000 --queries 200 --output results.json
 
-    # Eliza agent mode:
+    # Eliza agent mode (TypeScript bridge):
     python run_benchmark.py --mode eliza-agent --provider groq --model qwen3-32b
     python run_benchmark.py --mode eliza-agent --learning-cycles 20 --output results.json
 
 Modes:
     direct:      Direct ExperienceService testing (default, no LLM)
-    eliza-agent: Full Eliza agent loop (Provider -> Model -> Action -> Evaluator)
+    eliza-agent: Eliza TypeScript bridge loop (Provider -> Model -> Action -> Evaluator)
 """
 
 import argparse
 import asyncio
+import json
 import os
+import re
 import sys
+import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 # Add paths
 sys.path.insert(0, str(Path(__file__).parent))
 
 from elizaos_experience_bench.runner import ExperienceBenchmarkRunner
-from elizaos_experience_bench.types import BenchmarkConfig, BenchmarkMode
+from elizaos_experience_bench.types import BenchmarkConfig, BenchmarkResult
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -53,6 +57,19 @@ def _load_env_file(env_path: Path) -> None:
             os.environ[key] = value
 
 
+def _load_workspace_env_files(start: Path) -> None:
+    """Load the first .env files found while walking from benchmark dir to repo root."""
+    seen: set[Path] = set()
+    for root in (start, *start.parents):
+        env_path = root / ".env"
+        if env_path in seen:
+            continue
+        seen.add(env_path)
+        _load_env_file(env_path)
+        if (root / ".git").exists():
+            break
+
+
 def run_direct(args: argparse.Namespace) -> None:
     """Run the direct (non-agent) benchmark mode."""
     config = BenchmarkConfig(
@@ -66,11 +83,252 @@ def run_direct(args: argparse.Namespace) -> None:
     runner.run_and_report(output_path=args.output)
 
 
-async def run_eliza_agent(args: argparse.Namespace) -> None:
-    """Run the Eliza agent benchmark mode."""
-    # Load .env for API keys
-    repo_root = Path(__file__).resolve().parents[2]
-    _load_env_file(repo_root / ".env")
+async def _chat_completion(
+    *,
+    provider: str,
+    model_name: str,
+    api_key: str,
+    key_var: str,
+    prompt: str,
+    system: str = "",
+    temperature: float = 0.2,
+    max_tokens: int = 512,
+) -> str:
+    """Call an OpenAI-compatible chat endpoint for the local agent fallback."""
+    import aiohttp
+
+    base_urls = {
+        "openai": "https://api.openai.com/v1",
+        "groq": "https://api.groq.com/openai/v1",
+        "openrouter": "https://openrouter.ai/api/v1",
+    }
+    if provider not in base_urls:
+        raise RuntimeError(f"Local experience agent does not support provider '{provider}'")
+
+    messages: list[dict[str, str]] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Encoding": "identity",
+        "User-Agent": "eliza-experience-benchmark/1.0",
+    }
+
+    async with aiohttp.ClientSession() as session, session.post(
+        f"{base_urls[provider]}/chat/completions",
+        headers=headers,
+        json={
+            "model": model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+    ) as resp:
+        data = await resp.json(content_type=None)
+        if resp.status >= 400 or "error" in data:
+            detail = data.get("error", data) if isinstance(data, dict) else data
+            raise RuntimeError(f"{provider} chat completion failed using {key_var}: {detail}")
+        text = str(data.get("choices", [{}])[0].get("message", {}).get("content", ""))
+
+    return re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+
+
+async def _run_local_agent_fallback(
+    config: BenchmarkConfig,
+    call_model: Callable[[str, str], Awaitable[str]],
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> "BenchmarkResult":
+    """Run agent-mode semantics without the removed Python Eliza runtime."""
+    from elizaos_experience_bench.generator import ExperienceGenerator
+    from elizaos_experience_bench.service import ExperienceQuery, ExperienceService
+    from elizaos_experience_bench.types import (
+        BenchmarkResult,
+        ElizaAgentMetrics,
+        RetrievalMetrics,
+    )
+
+    generator = ExperienceGenerator(seed=config.seed)
+    service = ExperienceService()
+    recorded_ids: list[str] = []
+    learning_latencies: list[float] = []
+    retrieval_latencies: list[float] = []
+
+    now_ms = int(time.time() * 1000)
+    background = generator.generate_experiences(
+        count=min(config.num_experiences, 200),
+        domains=config.domains,
+    )
+    for exp in background:
+        offset_ms = int(exp.created_at_offset_days * 24 * 60 * 60 * 1000)
+        service.record_experience(
+            agent_id="bench-agent",
+            context=exp.context,
+            action=exp.action,
+            result=exp.result,
+            learning=exp.learning,
+            domain=exp.domain,
+            tags=exp.tags,
+            confidence=exp.confidence,
+            importance=exp.importance,
+            created_at=now_ms - offset_ms,
+        )
+
+    scenarios = generator.generate_learning_scenarios(config.num_learning_cycles)
+    learning_successes = 0
+
+    for i, scenario in enumerate(scenarios):
+        if progress_callback:
+            progress_callback("Learning", i, len(scenarios))
+        start = time.time()
+        prompt = (
+            "You are an agent that learns from experience. The user has shared "
+            "a notable outcome. If this should be saved, include the literal "
+            "action RECORD_EXPERIENCE and then acknowledge the learning.\n\n"
+            f"Problem: {scenario.problem_context}\n"
+            f"Action tried: {scenario.problem_action}\n"
+            f"Result: {scenario.problem_result}\n"
+            f"Learning to remember: {scenario.learned_experience.learning}"
+        )
+        response = await call_model(
+            "Decide whether to save user-provided operational learnings.",
+            prompt,
+        )
+        learning_latencies.append((time.time() - start) * 1000)
+
+        response_upper = response.upper()
+        should_record = (
+            "RECORD_EXPERIENCE" in response_upper
+            or "REMEMBER" in response_upper
+            or "SAVE" in response_upper
+        )
+        if should_record:
+            recorded = service.record_experience(
+                agent_id="bench-agent",
+                context=scenario.problem_context,
+                action=scenario.problem_action,
+                result=scenario.problem_result,
+                learning=scenario.learned_experience.learning,
+                domain=scenario.expected_domain,
+                tags=["learning", scenario.expected_domain],
+                confidence=0.85,
+                importance=0.8,
+            )
+            recorded_ids.append(recorded.id)
+            learning_successes += 1
+
+    if progress_callback:
+        progress_callback("Learning", len(scenarios), len(scenarios))
+
+    agent_recall_hits = 0
+    agent_keyword_hits = 0
+    retrieval_count = 0
+
+    retrieval_scenarios = [
+        scenarios[i % len(scenarios)]
+        for i in range(config.num_retrieval_queries)
+    ] if scenarios else []
+
+    for i, scenario in enumerate(retrieval_scenarios):
+        if progress_callback:
+            progress_callback("Retrieval", i, len(retrieval_scenarios))
+        query_results = service.query_experiences(
+            ExperienceQuery(query=scenario.similar_query, limit=max(config.top_k_values))
+        )
+        context_lines = [
+            f"- [{exp.domain}] {exp.context}; learned: {exp.learning}"
+            for exp in query_results[:5]
+        ]
+        prompt = (
+            "The user is facing a familiar problem. Use relevant past "
+            "experiences from the context when answering.\n\n"
+            f"User problem: {scenario.similar_query}\n\n"
+            "Past experiences:\n"
+            + ("\n".join(context_lines) if context_lines else "- none")
+        )
+        start = time.time()
+        response = await call_model(
+            "Recall and apply relevant past operational experiences.",
+            prompt,
+        )
+        retrieval_latencies.append((time.time() - start) * 1000)
+        retrieval_count += 1
+
+        response_lower = response.lower()
+        expected_keywords = [
+            keyword.lower()
+            for keyword in scenario.expected_learning_keywords
+        ]
+        keywords_found = bool(expected_keywords) and all(
+            keyword in response_lower for keyword in expected_keywords
+        )
+        if keywords_found:
+            agent_keyword_hits += 1
+        if expected_keywords and any(keyword in response_lower for keyword in expected_keywords):
+            agent_recall_hits += 1
+
+    if progress_callback:
+        progress_callback("Retrieval", len(retrieval_scenarios), len(retrieval_scenarios))
+
+    direct_recall_hits = 0
+    direct_precision_hits = 0
+    direct_mrr_sum = 0.0
+    direct_hit_sums: dict[int, int] = dict.fromkeys(config.top_k_values, 0)
+
+    for scenario in retrieval_scenarios:
+        results = service.query_experiences(
+            ExperienceQuery(query=scenario.similar_query, limit=max(config.top_k_values))
+        )
+        found = False
+        for rank, exp in enumerate(results, 1):
+            text = f"{exp.context} {exp.learning}".lower()
+            if all(keyword.lower() in text for keyword in scenario.expected_learning_keywords):
+                found = True
+                if rank == 1:
+                    direct_precision_hits += 1
+                direct_mrr_sum += 1.0 / rank
+                for k in config.top_k_values:
+                    if rank <= k:
+                        direct_hit_sums[k] += 1
+                break
+        if found:
+            direct_recall_hits += 1
+
+    n_scenarios = max(len(scenarios), 1)
+    n_direct = max(len(retrieval_scenarios), 1)
+    n_retrieval = max(retrieval_count, 1)
+    direct_metrics = RetrievalMetrics(
+        precision_at_k={1: direct_precision_hits / n_direct},
+        recall_at_k={k: direct_hit_sums.get(k, 0) / n_direct for k in config.top_k_values},
+        mean_reciprocal_rank=direct_mrr_sum / n_direct,
+        hit_rate_at_k={k: direct_hit_sums.get(k, 0) / n_direct for k in config.top_k_values},
+    )
+    agent_metrics = ElizaAgentMetrics(
+        learning_success_rate=learning_successes / n_scenarios,
+        total_experiences_recorded=len(recorded_ids),
+        total_experiences_in_service=service.experience_count,
+        avg_learning_latency_ms=sum(learning_latencies) / max(len(learning_latencies), 1),
+        agent_recall_rate=agent_recall_hits / n_retrieval,
+        agent_keyword_incorporation_rate=agent_keyword_hits / n_retrieval,
+        avg_retrieval_latency_ms=sum(retrieval_latencies) / max(len(retrieval_latencies), 1),
+        direct_recall_rate=direct_recall_hits / n_direct,
+        direct_mrr=direct_mrr_sum / n_direct,
+    )
+    return BenchmarkResult(
+        config=config,
+        retrieval=direct_metrics,
+        eliza_agent=agent_metrics,
+        total_experiences=service.experience_count,
+        total_queries=len(retrieval_scenarios),
+    )
+
+
+def _configure_bridge_model_env(args: argparse.Namespace) -> None:
+    """Expose provider/model settings to the TypeScript benchmark bridge."""
+    _load_workspace_env_files(Path(__file__).resolve().parent)
 
     provider = (args.provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
     model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
@@ -86,7 +344,7 @@ async def run_eliza_agent(args: argparse.Namespace) -> None:
         else:
             provider = "openai"
     if not model_name:
-        model_name = "qwen3-32b" if provider in {"groq", "openrouter"} else "gpt-4o-mini"
+        model_name = "openai/gpt-oss-120b"
 
     os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
     os.environ["BENCHMARK_MODEL_NAME"] = model_name
@@ -94,144 +352,25 @@ async def run_eliza_agent(args: argparse.Namespace) -> None:
     os.environ["OPENAI_SMALL_MODEL"] = model_name
     os.environ["GROQ_LARGE_MODEL"] = model_name
     os.environ["GROQ_SMALL_MODEL"] = model_name
+    os.environ["OPENROUTER_LARGE_MODEL"] = model_name
+    os.environ["OPENROUTER_SMALL_MODEL"] = model_name
 
-    key_var = {
-        "openai": "OPENAI_API_KEY",
-        "groq": "GROQ_API_KEY",
-        "openrouter": "OPENROUTER_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "google": "GOOGLE_API_KEY",
-    }.get(provider, "OPENAI_API_KEY")
 
-    if not os.environ.get(key_var):
-        print(
-            f"ERROR: {key_var} is not set.\n"
-            "The eliza-agent mode requires a real LLM.\n"
-            "Add it to the repo-root .env or export it."
-        )
-        sys.exit(1)
 
-    config = BenchmarkConfig(
-        num_experiences=args.experiences,
-        num_retrieval_queries=args.queries,
-        num_learning_cycles=args.learning_cycles,
-        seed=args.seed,
-    )
-
-    print("=" * 60)
-    print("ElizaOS Experience Benchmark - Agent Mode")
-    print("=" * 60)
-    print("This tests the full Eliza canonical flow:")
-    print("  EXPERIENCE_CONTEXT Provider -> Model -> RECORD/QUERY Actions -> Evaluator")
-    print()
-
-    def on_progress(phase: str, completed: int, total: int) -> None:
-        pct = completed / total * 100 if total > 0 else 0
-        bar_len = 30
-        filled = int(bar_len * completed / total) if total > 0 else 0
-        bar = "█" * filled + "░" * (bar_len - filled)
-        print(f"\r  {phase}: [{bar}] {completed}/{total} ({pct:.1f}%)", end="", flush=True)
-        if completed >= total:
-            print()
-
-    def get_model_plugin_factory():  # noqa: ANN202
-        if provider == "openai":
-            from elizaos_plugin_openai import get_openai_plugin
-
-            return get_openai_plugin()
-
-        if provider in {"groq", "openrouter"}:
-            from elizaos.types.model import ModelType
-            from elizaos.types.plugin import Plugin
-            import aiohttp
-            import re
-
-            base_url = {
-                "groq": "https://api.groq.com/openai/v1",
-                "openrouter": "https://openrouter.ai/api/v1",
-            }[provider]
-            api_key = os.environ.get(key_var, "")
-
-            async def _chat_completion(_runtime: object, params: dict[str, object]) -> str:
-                prompt_raw = params.get("prompt", "")
-                system_raw = params.get("system", "")
-                prompt = str(prompt_raw) if prompt_raw is not None else ""
-                system = str(system_raw) if system_raw is not None else ""
-                temperature_raw = params.get("temperature", 0.2)
-                temperature = float(temperature_raw) if isinstance(temperature_raw, int | float) else 0.2
-                max_tokens_raw = params.get("maxTokens", 4096)
-                max_tokens = int(max_tokens_raw) if isinstance(max_tokens_raw, int | float) else 4096
-
-                messages: list[dict[str, str]] = []
-                if system:
-                    messages.append({"role": "system", "content": system})
-                if prompt:
-                    messages.append({"role": "user", "content": prompt})
-                if not messages:
-                    return ""
-
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        f"{base_url}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                            "Accept-Encoding": "identity",
-                        },
-                        json={
-                            "model": model_name,
-                            "messages": messages,
-                            "max_tokens": max_tokens,
-                            "temperature": temperature,
-                        },
-                    ) as resp:
-                        data = await resp.json()
-                        if "error" in data:
-                            raise RuntimeError(f"API error: {data['error']}")
-                        text = str(data.get("choices", [{}])[0].get("message", {}).get("content", ""))
-                        think_match = re.search(r"<think>([\s\S]*?)</think>", text)
-                        if think_match is not None:
-                            thought = think_match.group(1).strip()[:800]
-                            text = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
-                            if "<thought>" not in text:
-                                if "<response>" in text:
-                                    text = text.replace("<response>", f"<response>\n  <thought>{thought}</thought>", 1)
-                                else:
-                                    text = f"<thought>{thought}</thought>\n{text}"
-                        return text
-
-            return Plugin(
-                name=f"{provider}-model-provider",
-                description=f"{provider} model provider ({model_name})",
-                models={
-                    ModelType.TEXT_LARGE: _chat_completion,
-                    ModelType.TEXT_SMALL: _chat_completion,
-                },
-            )
-
-        raise RuntimeError(f"Unsupported provider for experience benchmark: {provider}")
-
-    runner = ExperienceBenchmarkRunner(config)
-    result = await runner.run_eliza_agent(
-        model_plugin_factory=get_model_plugin_factory,
-        progress_callback=on_progress,
-    )
-
-    if args.output:
-        import json
-
-        report = _serialize_agent_result(result)
-        with open(args.output, "w") as f:
-            json.dump(report, f, indent=2, default=str)
-        print(f"\n[ExperienceBench] Report written to {args.output}")
+async def run_eliza_agent(args: argparse.Namespace) -> None:
+    """Run the Eliza agent benchmark mode via the TypeScript bridge."""
+    print("eliza-agent mode now routes through the Eliza TypeScript benchmark bridge.")
+    await run_eliza_bridge(args)
 
 
 async def run_eliza_bridge(args: argparse.Namespace) -> None:
     """Run the experience benchmark via the elizaOS TS benchmark bridge."""
+    _configure_bridge_model_env(args)
     from eliza_adapter.experience import (
         ElizaBridgeExperienceRunner,
         ElizaExperienceConfig,
     )
+    from eliza_adapter.server_manager import ElizaServerManager
 
     print("=" * 60)
     print("ElizaOS Experience Benchmark - Bridge Mode")
@@ -255,8 +394,16 @@ async def run_eliza_bridge(args: argparse.Namespace) -> None:
         if completed >= total:
             print()
 
-    runner = ElizaBridgeExperienceRunner(config=config)
-    result = await runner.run(progress_callback=on_progress)
+    bridge_manager = ElizaServerManager()
+    bridge_manager.start()
+    try:
+        runner = ElizaBridgeExperienceRunner(
+            config=config,
+            client=bridge_manager.client,
+        )
+        result = await runner.run(progress_callback=on_progress)
+    finally:
+        bridge_manager.stop()
 
     import json
 
@@ -270,8 +417,6 @@ async def run_eliza_bridge(args: argparse.Namespace) -> None:
 
 def _serialize_agent_result(result: "BenchmarkResult") -> dict:
     """Serialize agent benchmark result to JSON-friendly dict."""
-    from elizaos_experience_bench.types import BenchmarkResult
-
     out: dict = {
         "mode": "eliza_agent",
         "total_experiences": result.total_experiences,
@@ -307,7 +452,7 @@ def main() -> None:
         default="direct",
         help=(
             "Benchmark mode: 'direct' tests ExperienceService directly (default), "
-            "'eliza-agent' tests through an in-process Python Eliza agent with LLM, "
+            "'eliza-agent' is an alias for the TypeScript bridge, "
             "'eliza-bridge' routes the LLM call through the elizaOS TypeScript "
             "benchmark bridge (requires ELIZA_BENCH_URL/ELIZA_BENCH_TOKEN)."
         ),

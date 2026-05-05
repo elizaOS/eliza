@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -29,12 +29,8 @@ Recent conversation:
 Extract the following:
 1. userId: The Slack user ID to look up (format: U followed by alphanumeric characters, e.g., U0123456789)
 
-Respond with a JSON object like:
-{
-  "userId": "U0123456789"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+userId: U0123456789`;
 
 export const getUserInfo: Action = {
   name: "SLACK_GET_USER_INFO",
@@ -46,6 +42,7 @@ export const getUserInfo: Action = {
     "WHO_IS",
   ],
   description: "Get information about a Slack user",
+  descriptionCompressed: "Get Slack user info.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -120,7 +117,8 @@ export const getUserInfo: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.userId) {
         userInfo = {
           userId: String(parsedResponse.userId),

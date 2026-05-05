@@ -27,7 +27,7 @@ describe("Chat API", () => {
     const response = await api.post(
       "/api/v1/chat",
       {
-        id: "openai/gpt-4o-mini",
+        id: "openai/gpt-5-mini",
         messages: [{ role: "user", content: "Say hello in one word" }],
       },
       { authenticated: true },
@@ -44,7 +44,7 @@ describe("Chat API", () => {
 describe("Chat Completions API (OpenAI-compat)", () => {
   test("POST /api/v1/chat/completions requires auth", async () => {
     const response = await api.post("/api/v1/chat/completions", {
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       messages: [{ role: "user", content: "Hello" }],
     });
     expect([200, 401, 403]).toContain(response.status);
@@ -54,7 +54,7 @@ describe("Chat Completions API (OpenAI-compat)", () => {
     const response = await api.post(
       "/api/v1/chat/completions",
       {
-        model: "openai/gpt-4o-mini",
+        model: "openai/gpt-5-mini",
         messages: [{ role: "user", content: "Say ok" }],
         max_tokens: 16,
         stream: false,

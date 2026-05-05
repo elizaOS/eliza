@@ -26,8 +26,8 @@ import {
   type Network,
   toResourceUrl,
   toX402Network,
-} from "./payment-config.ts";
-import { validateX402Startup } from "./startup-validator.ts";
+} from "./payment-config.js";
+import { validateX402Startup } from "./startup-validator.js";
 import type {
   EIP712Authorization,
   EIP712Domain,
@@ -40,25 +40,25 @@ import type {
   VerifyPaymentResult,
   X402Request,
   X402Runtime,
-} from "./types.ts";
+} from "./types.js";
 import {
   facilitatorVerifyResponseMatchesRoute,
   isFacilitatorBindingRelaxed,
-} from "./x402-facilitator-binding.ts";
+} from "./x402-facilitator-binding.js";
 import {
   replayGuardAbortAsync,
   replayGuardCommit,
   replayGuardTryBegin,
-} from "./x402-replay-guard.ts";
+} from "./x402-replay-guard.js";
 import {
   collectReplayKeysToCheck,
   decodePaymentProofForParsing,
-} from "./x402-replay-keys.ts";
+} from "./x402-replay-keys.js";
 import {
   resolveEffectiveX402,
   X402_EVENT_PAYMENT_REQUIRED,
   X402_EVENT_PAYMENT_VERIFIED,
-} from "./x402-resolve.ts";
+} from "./x402-resolve.js";
 import {
   buildFacilitatorPaymentRequirements,
   buildStandardPaymentRequired,
@@ -67,14 +67,14 @@ import {
   isX402StandardPaymentPayload,
   settlePaymentPayloadViaFacilitatorPost,
   verifyPaymentPayloadViaFacilitatorPost,
-} from "./x402-standard-payment.ts";
+} from "./x402-standard-payment.js";
 import {
   createAccepts,
   createX402Response,
   type OutputSchema,
   type PaymentExtraMetadata,
   type X402Response,
-} from "./x402-types.ts";
+} from "./x402-types.js";
 
 /**
  * x402 **seller** middleware for plugin HTTP routes.

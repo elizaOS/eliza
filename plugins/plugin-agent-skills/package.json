@@ -42,8 +42,6 @@
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
     "lint": "bunx @biomejs/biome check --write --unsafe --config-path ./biome.json .",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "lint:check": "bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched",
     "format": "bunx @biomejs/biome format --write . --no-errors-on-unmatched",
     "format:check": "bunx @biomejs/biome format . --no-errors-on-unmatched",

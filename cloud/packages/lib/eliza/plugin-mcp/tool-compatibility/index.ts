@@ -30,7 +30,7 @@ export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
   ) {
     provider = "openai";
     supportsStructuredOutputs =
-      modelString.includes("gpt-4") || modelString.includes("o1") || modelString.includes("o3");
+      modelString.includes("gpt-5.5") || modelString.includes("o1") || modelString.includes("o3");
     isReasoningModel = modelString.includes("o1") || modelString.includes("o3");
   } else if (providerString.includes("anthropic") || modelString.includes("claude")) {
     provider = "anthropic";

@@ -74,7 +74,7 @@ import { usePluginsSkillsState } from "./usePluginsSkillsState";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTriggersState } from "./useTriggersState";
 import { useVincentState } from "./useVincentState";
-import { useWalletState } from "./useWalletState";
+import { useWalletState } from "@elizaos/app-wallet/state/useWalletState";
 
 export {
   type ActionNotice,

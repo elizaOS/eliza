@@ -53,6 +53,7 @@
     "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/app-training": "workspace:*",
     "@elizaos/app-vincent": "workspace:*",
+    "@elizaos/app-wallet": "workspace:*",
     "@elizaos/capacitor-agent": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-camera": "workspace:*",

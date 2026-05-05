@@ -85,10 +85,10 @@ import "@elizaos/app-hyperscape/ui";
 import "@elizaos/app-2004scape/ui";
 import "@elizaos/app-defense-of-the-agents/ui";
 import "@clawville/app-clawville/ui";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
@@ -97,7 +97,7 @@ import {
   ApprovalQueue,
   StewardLogo,
   TransactionHistory,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/ui";
 import {
   CodingAgentControlChip,
   CodingAgentSettingsSection,
@@ -109,6 +109,10 @@ import "@elizaos/app-shopify/register";
 import "@elizaos/app-vincent/client";
 import { useVincentState } from "@elizaos/app-vincent";
 import "@elizaos/app-vincent/register";
+// Side-effect: register the wallet UI plugin (route loader, /inventory shell
+// page, and chat sidebar wallet-status widget) with @elizaos/app-core
+// registries. Must precede the first shell render.
+import "@elizaos/app-wallet/register";
 import { shouldUseCloudOnlyBranding } from "@elizaos/app-core";
 import {
   APP_BRANDING_BASE,
@@ -217,7 +221,10 @@ function shouldEnableElectrobunMacWindowDrag(): boolean {
 }
 
 if (shouldEnableElectrobunMacWindowDrag()) {
-  document.documentElement.classList.add("eliza-electrobun-frameless");
+  document.documentElement.classList.add(
+    "eliza-electrobun-frameless",
+    "eliza-electrobun-macos-titlebar",
+  );
 }
 
 // Dev escape hatch: ?reset forces a truly fresh onboarding session by clearing

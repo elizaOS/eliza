@@ -8,7 +8,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { Message, TextChannel } from "discord.js";
@@ -30,13 +30,9 @@ Extract the following:
 1. messageId: The ID of the message to delete
 2. channelRef: The channel where the message is (default: "current")
 
-Respond with a JSON object like:
-{
-  "messageId": "123456789",
-  "channelRef": "current"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+messageId: 123456789
+channelRef: current`;
 
 interface DeleteMessageParams {
 	messageId: string;
@@ -92,10 +88,9 @@ const deleteMessage: Action = {
 				prompt,
 			});
 
-			const parsedResponse = parseJSONObjectFromText(response) as Record<
-				string,
-				unknown
-			> | null;
+			const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+				response,
+			) as Record<string, unknown> | null;
 			if (parsedResponse && typeof parsedResponse.messageId === "string") {
 				deleteParams = {
 					messageId: parsedResponse.messageId,

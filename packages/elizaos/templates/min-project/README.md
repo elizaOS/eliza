@@ -1,6 +1,6 @@
 # __APP_DISPLAY_NAME__
 
-Scaffolded from `packages/elizaos/templates/min-project`. This is a minimal Eliza app: a Vite + React UI plus a runtime `Plugin` exposing one trivial action.
+Scaffolded from `packages/elizaos/templates/min-project`. This is a minimal Eliza app: a Vite + React UI plus an empty runtime `Plugin` placeholder.
 
 The scaffold copy step replaces these placeholders:
 

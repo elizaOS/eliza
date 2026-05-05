@@ -111,7 +111,6 @@ export {
 
 import {
   isElizaSettingsDebugEnabled,
-  sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
@@ -126,19 +125,18 @@ import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
-import { handleCloudRoute } from "./cloud-routes";
-import { handleCloudStatusRoutes } from "./cloud-status-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+// Local-inference routes intentionally remain in app-core (no plugin-local-inference exists).
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
-import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
-import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
-import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
+
+// Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
+// Now served via walletRoutePlugin.routes (rawPath) on the runtime plugin route system.
 
 // Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
 // Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,
@@ -700,64 +698,9 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
   return config;
 }
 
-function buildCloudLoginSyncPatch(
-  config: ElizaConfig,
-): Record<string, unknown> | null {
-  const cloud =
-    config.cloud && typeof config.cloud === "object"
-      ? (config.cloud as Record<string, unknown>)
-      : undefined;
-  const apiKey = typeof cloud?.apiKey === "string" ? cloud.apiKey.trim() : "";
-  if (!apiKey) {
-    return null;
-  }
-
-  const nextCloud: Record<string, unknown> = { apiKey };
-  const baseUrl =
-    typeof cloud?.baseUrl === "string" ? cloud.baseUrl.trim() : "";
-  if (baseUrl) {
-    nextCloud.baseUrl = baseUrl;
-  }
-
-  return {
-    cloud: nextCloud,
-    linkedAccounts: {
-      elizacloud: { status: "linked", source: "api-key" },
-    },
-  };
-}
-
-async function syncCloudLoginToUpstreamConfigState(
-  req: Pick<http.IncomingMessage, "headers">,
-  config: ElizaConfig,
-): Promise<void> {
-  const cloudLoginPatch = buildCloudLoginSyncPatch(config);
-  if (!cloudLoginPatch) {
-    return;
-  }
-
-  if (isElizaSettingsDebugEnabled()) {
-    logger.debug(
-      `[eliza][settings][compat] cloud login → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(cloudLoginPatch))}`,
-    );
-  }
-
-  try {
-    await compatLoopbackRequest(req, "/api/config", {
-      method: "PUT",
-      body: JSON.stringify(cloudLoginPatch),
-    });
-    if (isElizaSettingsDebugEnabled()) {
-      logger.debug("[eliza][settings][compat] cloud login loopback sync OK");
-    }
-  } catch (err) {
-    logger.warn(
-      `[eliza][cloud/login] Failed to sync cloud login to upstream state: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-}
+// Cloud login / disconnect loopback sync helpers were moved alongside the
+// cloud route handlers into plugin-elizacloud (see plugins/plugin-elizacloud/
+// plugin.ts → compatLoopbackConfigPut + makeCloudRouteHandler).
 
 async function handleCompatRoute(
   req: http.IncomingMessage,
@@ -813,24 +756,9 @@ async function handleCompatRoute(
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  // n8n routes — status surface (read-only), sidecar start (fire-and-forget),
-  // and workflow CRUD proxy. Auth sits in front of every n8n route. The
-  // handler reads the sidecar singleton from services/n8n-sidecar via
-  // peekN8nSidecar(), so no construction happens just from a status probe.
-  if (url.pathname.startsWith("/api/n8n/")) {
-    if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    return handleN8nRoutes({
-      req,
-      res,
-      method,
-      pathname: url.pathname,
-      config: loadElizaConfig(),
-      runtime: state.current,
-      json: (_res, body, status = 200) => {
-        sendJsonResponse(res, status, body);
-      },
-    });
-  }
+  // n8n routes — extracted to plugins/plugin-n8n-workflow/src/plugin-routes.ts.
+  // Now served via n8nWorkflowRoutePlugin.routes (rawPath) on the runtime
+  // plugin route system.
 
   // GitHub PAT routes — extracted to plugins/plugin-github/src/routes/github-routes.ts.
   // Now served via githubPlugin.routes (rawPath) on the runtime plugin route system.
@@ -850,8 +778,8 @@ async function handleCompatRoute(
   // Workbench / todos routes — extracted to workbench-compat-routes.ts
   if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
 
-  // Public cached market overview for wallet empty states and cloud feeds.
-  if (await handleWalletMarketOverviewRoute(req, res)) return true;
+  // Public cached market overview for wallet empty states and cloud feeds —
+  // now served via @elizaos/plugin-wallet:routes Plugin.routes (rawPath).
   if (url.pathname.startsWith("/api/secrets/")) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
@@ -862,125 +790,15 @@ async function handleCompatRoute(
     }
   }
 
-  // Handle all /api/cloud/* routes (except compat and billing which have
-  // their own handlers above) through handleCloudRoute. This is
-  // critical for cloud login — persistCloudLoginStatus saves the API key
-  // to disk and scrubs it from env. Without this, login/status falls
-  // through to the upstream handler whose config save can be clobbered.
-  const isCloudRoute =
-    url.pathname.startsWith("/api/cloud/") &&
-    !url.pathname.startsWith("/api/cloud/compat/") &&
-    !url.pathname.startsWith("/api/cloud/billing/");
-
-  if (isCloudRoute) {
-    // Cloud-provisioned containers exempt /api/cloud/status from auth so the
-    // SPA can discover cloud connection state without a token.
-    const isCloudStatusExempt =
-      _isCloudProvisioned() &&
-      method === "GET" &&
-      url.pathname === "/api/cloud/status";
-
-    if (
-      !isCloudStatusExempt &&
-      !(await ensureRouteAuthorized(req, res, state))
-    ) {
-      return true;
-    }
-
-    const config = resolveCloudConfig(state.current);
-
-    if (
-      url.pathname === "/api/cloud/status" ||
-      url.pathname === "/api/cloud/credits"
-    ) {
-      return handleCloudStatusRoutes({
-        req,
-        res,
-        method,
-        pathname: url.pathname,
-        config,
-        runtime: state.current,
-        json: (_res, body, status = 200) => {
-          sendJsonResponse(res, status, body);
-        },
-      });
-    }
-
-    const handled = await handleCloudRoute(req, res, url.pathname, method, {
-      config,
-      runtime: state.current,
-      cloudManager: null,
-    });
-
-    if (
-      handled &&
-      ((method === "POST" && url.pathname === "/api/cloud/login/persist") ||
-        (method === "GET" &&
-          url.pathname.startsWith("/api/cloud/login/status")))
-    ) {
-      await syncCloudLoginToUpstreamConfigState(req, config);
-    }
-
-    // After disconnect, sync the cloud disable into the upstream's in-memory
-    // state.config via a loopback PUT /api/config. Without this, the next
-    // upstream saveElizaConfig(state.config) (e.g. saving OpenRouter) reverts
-    // the disconnect because state.config still has cloud.enabled=true + apiKey.
-    if (
-      handled &&
-      method === "POST" &&
-      url.pathname === "/api/cloud/disconnect"
-    ) {
-      // Include apiKey: null so the upstream state.config does not restore the
-      // just-cleared key when it merges and re-saves during the loopback.
-      // Include serviceRouting with EVERY service that was routed at elizacloud
-      // nulled — without this, tts/media/embeddings/rpc keep pointing at
-      // `cloud-proxy → elizacloud` after disconnect, producing silent 401s for
-      // months until the user notices their voice/image/embedding features
-      // stopped working.
-      // Also include linkedAccounts.elizacloud.status="unlinked" so the
-      // upstream's in-memory state.config (which still has the old "linked"
-      // status from load time) does not overwrite the canonical unlinked
-      // state on the next saveElizaConfig — that overwrite was the source
-      // of the auto-reconnect bug after restart.
-      const disconnectPatch = {
-        cloud: { enabled: false, apiKey: null },
-        serviceRouting: {
-          llmText: null,
-          tts: null,
-          media: null,
-          embeddings: null,
-          rpc: null,
-        },
-        linkedAccounts: {
-          elizacloud: { status: "unlinked", source: "api-key" },
-        },
-      };
-      if (isElizaSettingsDebugEnabled()) {
-        logger.debug(
-          `[eliza][settings][compat] POST /api/cloud/disconnect → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(disconnectPatch))}`,
-        );
-      }
-      try {
-        await compatLoopbackRequest(req, "/api/config", {
-          method: "PUT",
-          body: JSON.stringify(disconnectPatch),
-        });
-        if (isElizaSettingsDebugEnabled()) {
-          logger.debug(
-            "[eliza][settings][compat] POST /api/cloud/disconnect loopback sync OK",
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          `[eliza][cloud/disconnect] Failed to sync cloud disable to upstream state: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-
-    return handled;
-  }
+  // ── /api/cloud/* routes — extracted to plugins/plugin-elizacloud ──────
+  // (cloud-routes, cloud-status-routes). Now served via
+  // elizaCloudRoutePlugin.routes (rawPath) on the runtime plugin route
+  // system. The plugin handlers carry the cloud-provisioned auth exemption
+  // for `/api/cloud/status` and the post-dispatch loopback sync that keeps
+  // the upstream state.config in agreement with disk on login / disconnect.
+  // Note: /api/cloud/compat/* and /api/cloud/billing/* still dispatch
+  // above this point through @elizaos/agent (intentional — those are thin
+  // proxies to Eliza Cloud, not local cloud-connection management).
 
   if (method === "GET" && url.pathname === "/api/drop/status") {
     const config = loadElizaConfig() as ElizaConfig & {

@@ -17,7 +17,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ContentType, ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("GENERATE_IMAGE");
@@ -95,8 +95,8 @@ export const generateImageAction = {
 			stopSequences: [],
 		});
 
-		const parsedXml = parseKeyValueXml(promptResponse);
-		const promptValue = parsedXml?.prompt;
+		const parsedToon = parseToonKeyValue(promptResponse);
+		const promptValue = parsedToon?.prompt;
 
 		const imagePrompt: string =
 			typeof promptValue === "string"

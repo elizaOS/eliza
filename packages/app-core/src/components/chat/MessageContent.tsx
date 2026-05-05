@@ -68,36 +68,11 @@ type Segment =
 const CONFIG_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 const FENCED_JSON_RE = /```(?:json)?\s*\n([\s\S]*?)```/g;
 
-/**
- * Strip elizaOS action XML blocks (`<actions>...</actions>` and
- * `<params>...</params>`) from displayed text. These are framework
- * metadata, not user-facing content.
- */
-const ACTION_XML_RE =
-  /\s*<actions>[\s\S]*?(?:<\/actions>|$)\s*|\s*<params>[\s\S]*?(?:<\/params>|$)\s*/g;
-const HIDDEN_XML_BLOCK_RE =
+const HIDDEN_TAG_BLOCK_RE =
   /<(think|analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 
-function extractXmlTag(
-  raw: string,
-  tag: string,
-  opts?: { allowPartial?: boolean },
-): string | null {
-  const open = `<${tag}>`;
-  const close = `</${tag}>`;
-  const start = raw.indexOf(open);
-  if (start < 0) return null;
-
-  const contentStart = start + open.length;
-  const end = raw.indexOf(close, contentStart);
-  if (end < 0) {
-    return opts?.allowPartial ? raw.slice(contentStart) : null;
-  }
-  return raw.slice(contentStart, end);
-}
-
 /**
- * Strip partial/incomplete XML tags at the end of a streaming text chunk.
+ * Strip partial/incomplete hidden tags at the end of a streaming text chunk.
  * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,
  * `"Hello</respon"`, or just `"Hello<"`).  These fragments are not
  * user-facing content and must be hidden from both the display and voice
@@ -111,30 +86,12 @@ export function normalizeDisplayText(text: string): string {
   let normalized =
     text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
 
-  // Hide framework-selected actions and tool params from chat bubbles.
-  normalized = normalized.replace(ACTION_XML_RE, "");
-  normalized = normalized.replace(HIDDEN_XML_BLOCK_RE, " ");
+  // Hide hidden reasoning/tool scratchpad blocks from chat bubbles.
+  normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
 
-  // Some prompts emit structured XML wrappers like:
-  // <response><thought>...</thought><text>...</text></response>
-  // Show only the user-facing <text>, even while it is still streaming.
-  if (normalized.includes("<response>")) {
-    const wrappedText = extractXmlTag(normalized, "text", {
-      allowPartial: true,
-    });
-    if (wrappedText !== null) {
-      normalized = wrappedText;
-    } else {
-      return "";
-    }
-  }
-
-  // Drop any leftover wrapper tags without disturbing plain text.
-  normalized = normalized.replace(/<\/?(response|text|thought)\b[^>]*>/gi, "");
-
-  // During streaming, a chunk may end mid-tag (e.g. "<thi", "</respon").
+  // During streaming, a chunk may end mid-tag (e.g. "<thi").
   // Strip any incomplete opening or closing tag at the very end so the
-  // user never sees raw XML fragments while tokens arrive.
+  // user never sees hidden-tag fragments while tokens arrive.
   normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
 
   normalized = stripAssistantStageDirections(normalized);

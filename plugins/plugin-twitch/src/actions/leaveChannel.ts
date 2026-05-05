@@ -9,12 +9,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  ModelType,
-  parseJSONObjectFromText,
-} from "@elizaos/core";
+import { composePromptFromState, ModelType } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
+import { parseToonKeyValue } from "../toon.js";
 import { normalizeChannel, TWITCH_SERVICE_NAME } from "../types.js";
 
 const LEAVE_CHANNEL_TEMPLATE = `You are helping to extract a Twitch channel name.
@@ -28,12 +25,8 @@ Currently joined channels: {{joinedChannels}}
 
 Extract the channel name to leave (without the # prefix).
 
-Respond with a JSON object like:
-{
-  "channel": "channelname"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+channel: channelname`;
 
 export const leaveChannel: Action = {
   name: "TWITCH_LEAVE_CHANNEL",
@@ -140,7 +133,9 @@ export const leaveChannel: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(
+        String(response),
+      );
       if (parsed?.channel) {
         channelName = normalizeChannel(String(parsed.channel));
         break;

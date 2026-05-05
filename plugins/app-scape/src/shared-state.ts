@@ -12,8 +12,8 @@
  *
  * We keep the global as a backward-compat fallback but prefer reading
  * directly from `message.content.text`, and every Action's `validate()`
- * now requires the current message to actually contain the action's
- * XML tag. That narrows Action dispatch to messages that were produced
+ * now requires the current message to actually contain a matching TOON
+ * action field. That narrows Action dispatch to messages that were produced
  * for this plugin, and prevents stale-state leakage on any other path.
  *
  * Autonomous loop path:
@@ -24,11 +24,11 @@
  *
  * Action path (operator / elizaOS routing):
  *   runtime.processActions(message)
- *     ↳ validate(runtime, message)            ← hasActionTag(message, "WALK_TO")
+ *     ↳ validate(runtime, message)            ← hasActionRequest(message, "WALK_TO")
  *     ↳ handler(runtime, message, …)          ← reads message.content.text
  */
 
-import type { Memory } from "@elizaos/core";
+import { parseToonKeyValue, type Memory } from "@elizaos/core";
 
 let currentLlmResponse = "";
 
@@ -55,24 +55,47 @@ export function resolveActionText(message: Memory | undefined | null): string {
 }
 
 /**
- * Return true when the given message is plausibly dispatching the named
- * action — i.e. contains `<action>NAME</action>` (case-insensitive). Used
- * by Action `validate()` functions so elizaOS doesn't dispatch arbitrary
+ * Return true when the given message is plausibly dispatching the named action.
+ * Used by Action `validate()` functions so elizaOS doesn't dispatch arbitrary
  * plugin actions on arbitrary messages.
  */
-export function hasActionTag(
+export function hasActionRequest(
   message: Memory | undefined | null,
   actionName: string,
 ): boolean {
   const text = message?.content?.text;
   if (typeof text !== "string" || text.length === 0) return false;
-  const pattern = new RegExp(
-    `<action>\\s*${escapeRegex(actionName)}\\s*</action>`,
-    "i",
+  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+  if (!parsed) return false;
+  const expected = normalizeActionName(actionName);
+  return extractActionNames(parsed).some(
+    (candidate) => normalizeActionName(candidate) === expected,
   );
-  return pattern.test(text);
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function extractActionNames(parsed: Record<string, unknown>): string[] {
+  const raw =
+    parsed.action ?? parsed.actionName ?? parsed.name ?? parsed.type ?? parsed.actions;
+  if (typeof raw === "string") {
+    return raw
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+  if (Array.isArray(raw)) {
+    return raw.flatMap((entry) => {
+      if (typeof entry === "string") return [entry];
+      if (entry && typeof entry === "object") {
+        const record = entry as Record<string, unknown>;
+        const name = record.name ?? record.action ?? record.actionName ?? record.type;
+        return typeof name === "string" ? [name] : [];
+      }
+      return [];
+    });
+  }
+  return [];
+}
+
+function normalizeActionName(value: string): string {
+  return value.trim().replace(/[\s-]+/g, "_").toUpperCase();
 }

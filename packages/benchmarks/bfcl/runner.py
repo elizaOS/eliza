@@ -39,7 +39,7 @@ class BFCLRunner:
     - Metrics calculation
     - Report generation
     
-    Default model: Groq llama-3.1-8b-instant (fast, efficient)
+    Default model: Groq openai/gpt-oss-120b.
     Override with provider/model args or BFCL_PROVIDER/BFCL_MODEL env vars.
     """
 

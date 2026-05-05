@@ -115,6 +115,12 @@ import {
   type TaskAgentFrameworkState,
   type TaskAgentTaskProfileInput,
 } from "./task-agent-frameworks.js";
+import {
+  TRAJECTORY_CHILD_STEP_ENV_KEY,
+  TRAJECTORY_CHILD_STEP_METADATA_KEY,
+  TRAJECTORY_PARENT_STEP_METADATA_KEY,
+  withLinkedSpawn,
+} from "./spawn-trajectory.js";
 
 /**
  * Grace period after `task_complete` before auto-stopping a PTY session.
@@ -759,6 +765,30 @@ export class PTYService {
    * Spawn a new PTY session for a coding agent
    */
   async spawnSession(options: SpawnSessionOptions): Promise<SessionInfo> {
+    return withLinkedSpawn(
+      this.runtime,
+      {
+        source: "plugin-agent-orchestrator:pty-spawn",
+        metadata: {
+          name: options.name,
+          requestedType: options.agentType,
+          ...(options.metadata ?? {}),
+        },
+        env: options.env,
+        childId: (session) => session.id,
+      },
+      (trajectory) =>
+        this.spawnSessionInternal({
+          ...options,
+          env: trajectory.env,
+          metadata: trajectory.metadata,
+        }),
+    );
+  }
+
+  private async spawnSessionInternal(
+    options: SpawnSessionOptions,
+  ): Promise<SessionInfo> {
     if (!this.manager) {
       throw new Error("PTYService not initialized");
     }
@@ -799,6 +829,22 @@ export class PTYService {
     }
 
     const sessionId = this.generateSessionId();
+    const hasParentTrajectoryStep =
+      typeof options.metadata?.[TRAJECTORY_PARENT_STEP_METADATA_KEY] ===
+        "string" &&
+      options.metadata[TRAJECTORY_PARENT_STEP_METADATA_KEY].trim().length > 0;
+    const linkedMetadata = hasParentTrajectoryStep
+      ? {
+          ...(options.metadata ?? {}),
+          [TRAJECTORY_CHILD_STEP_METADATA_KEY]: sessionId,
+        }
+      : options.metadata;
+    const linkedEnv = hasParentTrajectoryStep
+      ? {
+          ...(options.env ?? {}),
+          [TRAJECTORY_CHILD_STEP_ENV_KEY]: sessionId,
+        }
+      : options.env;
     const workdir = options.workdir ?? process.cwd();
     const workspaceLock = buildWorkspaceLockMemory(workdir, resolvedAgentType);
     const workspaceTaskPrefix = buildInlineWorkspaceTaskPrefix(workdir);
@@ -996,20 +1042,20 @@ export class PTYService {
     const resolvedModelPrefs = getTaskAgentModelPrefs(
       this.runtime,
       resolvedAgentType,
-      readTaskAgentModelPrefs(options.metadata?.modelPrefs),
+      readTaskAgentModelPrefs(linkedMetadata?.modelPrefs),
     );
-    const metadataWithoutModelPrefs = { ...(options.metadata ?? {}) };
+    const metadataWithoutModelPrefs = { ...(linkedMetadata ?? {}) };
     delete metadataWithoutModelPrefs.modelPrefs;
     const resolvedMetadata = {
       ...metadataWithoutModelPrefs,
-      requestedType: options.metadata?.requestedType ?? options.agentType,
+      requestedType: linkedMetadata?.requestedType ?? options.agentType,
       agentType: resolvedAgentType,
       coordinatorManaged: !!options.skipAdapterAutoResponse,
       ...(resolvedModelPrefs ? { modelPrefs: resolvedModelPrefs } : {}),
     };
 
     const mergedSpawnEnv = {
-      ...(options.env ?? {}),
+      ...(linkedEnv ?? {}),
       ...(codexApprovalEnv ?? {}),
       ...(opencodeConfigEnv ?? {}),
     };

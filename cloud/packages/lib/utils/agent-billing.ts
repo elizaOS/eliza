@@ -50,7 +50,7 @@ export interface PostBillResult {
 // These should align with pricing-constants.ts where applicable
 export const ESTIMATED_COSTS = {
   // LLM operations (per request average)
-  chat_small: 0.001, // GPT-4o-mini, Claude Haiku (~500 input + 200 output tokens)
+  chat_small: 0.001, // gpt-5-mini, Claude Haiku (~500 input + 200 output tokens)
   chat_large: 0.01, // GPT-4o, Claude Sonnet
   chat_xlarge: 0.03, // GPT-4o with long context
 

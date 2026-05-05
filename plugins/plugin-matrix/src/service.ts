@@ -4,12 +4,23 @@
  * This service provides Matrix messaging capabilities using matrix-js-sdk.
  */
 
-import { type EventPayload, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  type Content,
+  type EventPayload,
+  type IAgentRuntime,
+  logger,
+  type MessageConnectorChatContext,
+  type MessageConnectorTarget,
+  Service,
+  type TargetInfo,
+  type UUID,
+} from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
 import {
   getMatrixLocalpart,
   type IMatrixService,
   isValidMatrixRoomAlias,
+  isValidMatrixRoomId,
   MATRIX_SERVICE_NAME,
   MatrixConfigurationError,
   MatrixEventTypes,
@@ -21,6 +32,73 @@ import {
   type MatrixSettings,
   type MatrixUserInfo,
 } from "./types.js";
+
+function normalizeSearchQuery(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function matrixRoomSearchText(room: MatrixRoom): string {
+  return [room.roomId, room.name, room.topic, room.canonicalAlias]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+}
+
+function scoreMatrixRoom(room: MatrixRoom, query: string): number {
+  const normalized = normalizeSearchQuery(query);
+  if (!normalized) {
+    return 0.4;
+  }
+
+  const candidates = [room.roomId, room.canonicalAlias, room.name].filter(
+    (value): value is string => typeof value === "string" && value.length > 0
+  );
+  if (candidates.some((candidate) => candidate.toLowerCase() === normalized)) {
+    return 1;
+  }
+  if (candidates.some((candidate) => candidate.toLowerCase().includes(normalized))) {
+    return 0.85;
+  }
+  return matrixRoomSearchText(room).includes(normalized) ? 0.65 : 0;
+}
+
+function matrixRoomToConnectorTarget(room: MatrixRoom, score = 0.5): MessageConnectorTarget {
+  const label = room.name || room.canonicalAlias || room.roomId;
+  return {
+    target: {
+      source: MATRIX_SERVICE_NAME,
+      channelId: room.roomId,
+    },
+    label,
+    kind: room.isDirect ? "user" : "room",
+    description:
+      room.topic || `${room.memberCount} Matrix member${room.memberCount === 1 ? "" : "s"}`,
+    score,
+    contexts: ["social", "connectors"],
+    metadata: {
+      roomId: room.roomId,
+      canonicalAlias: room.canonicalAlias,
+      isEncrypted: room.isEncrypted,
+      isDirect: room.isDirect,
+      memberCount: room.memberCount,
+    },
+  };
+}
+
+function extractMatrixSendOptions(content: Content, target: TargetInfo): MatrixMessageSendOptions {
+  const data = content.data as Record<string, unknown> | undefined;
+  const matrixData = (data?.matrix && typeof data.matrix === "object" ? data.matrix : data) as
+    | Record<string, unknown>
+    | undefined;
+
+  return {
+    threadId:
+      target.threadId ||
+      (typeof matrixData?.threadId === "string" ? matrixData.threadId : undefined),
+    replyTo: typeof matrixData?.replyTo === "string" ? matrixData.replyTo : undefined,
+    formatted: matrixData?.formatted === true,
+  };
+}
 
 /**
  * Matrix messaging service for ElizaOS agents.
@@ -53,6 +131,91 @@ export class MatrixService extends Service implements IMatrixService {
     if (service) {
       await service.stop();
     }
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, service: MatrixService): void {
+    const sendHandler = service.handleSendMessage.bind(service);
+
+    if (typeof runtime.registerMessageConnector === "function") {
+      runtime.registerMessageConnector({
+        source: MATRIX_SERVICE_NAME,
+        label: "Matrix",
+        capabilities: [
+          "send_message",
+          "send_thread_reply",
+          "send_formatted_message",
+          "react_to_message",
+          "list_rooms",
+          "join_room",
+        ],
+        supportedTargetKinds: ["room", "channel", "thread", "user"],
+        contexts: ["social", "connectors"],
+        description:
+          "Send messages to joined Matrix rooms, aliases, encrypted rooms, and known direct-message rooms.",
+        sendHandler,
+        resolveTargets: async (query) => {
+          const rooms = await service.getJoinedRooms();
+          return rooms
+            .map((room) => ({ room, score: scoreMatrixRoom(room, query) }))
+            .filter(({ score }) => score > 0)
+            .sort((left, right) => right.score - left.score)
+            .slice(0, 10)
+            .map(({ room, score }) => matrixRoomToConnectorTarget(room, score));
+        },
+        listRecentTargets: async () =>
+          (await service.getJoinedRooms())
+            .slice(0, 10)
+            .map((room) => matrixRoomToConnectorTarget(room)),
+        listRooms: async () =>
+          (await service.getJoinedRooms()).map((room) => matrixRoomToConnectorTarget(room)),
+        getChatContext: async (target, context) => {
+          const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
+          const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
+          const joinedRoom = (await service.getJoinedRooms()).find(
+            (candidate) => candidate.roomId === channelId || candidate.canonicalAlias === channelId
+          );
+          if (!joinedRoom) {
+            return null;
+          }
+
+          return {
+            target: {
+              source: MATRIX_SERVICE_NAME,
+              channelId: joinedRoom.roomId,
+              roomId: target.roomId,
+            },
+            label: joinedRoom.name || joinedRoom.canonicalAlias || joinedRoom.roomId,
+            summary: joinedRoom.topic,
+            metadata: {
+              roomId: joinedRoom.roomId,
+              canonicalAlias: joinedRoom.canonicalAlias,
+              isEncrypted: joinedRoom.isEncrypted,
+              isDirect: joinedRoom.isDirect,
+              memberCount: joinedRoom.memberCount,
+            },
+          } satisfies MessageConnectorChatContext;
+        },
+        getUserContext: async (entityId, context) => {
+          if (typeof context.runtime.getEntityById !== "function") {
+            return null;
+          }
+          const entity = await context.runtime.getEntityById(String(entityId) as UUID);
+          if (!entity) {
+            return null;
+          }
+          return {
+            entityId,
+            label: entity.names?.[0],
+            aliases: entity.names,
+            handles: {},
+            metadata: entity.metadata,
+          };
+        },
+      });
+      return;
+    }
+
+    runtime.registerSendHandler(MATRIX_SERVICE_NAME, sendHandler);
   }
 
   /**
@@ -464,5 +627,47 @@ export class MatrixService extends Service implements IMatrixService {
     }
 
     await this.client.sendReadReceipt(new sdk.MatrixEvent({ event_id: eventId, room_id: roomId }));
+  }
+
+  async sendRoomMessage(roomIdOrAlias: string, content: Content): Promise<void> {
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      return;
+    }
+    await this.sendMessage(text, { roomId: roomIdOrAlias });
+  }
+
+  async sendDirectMessage(roomIdOrAlias: string, content: Content): Promise<void> {
+    await this.sendRoomMessage(roomIdOrAlias, content);
+  }
+
+  private async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content
+  ): Promise<void> {
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      return;
+    }
+
+    const room = target.roomId ? await runtime.getRoom(target.roomId) : null;
+    const roomIdOrAlias = String(
+      target.channelId ||
+        room?.channelId ||
+        (typeof target.roomId === "string" &&
+        (isValidMatrixRoomId(target.roomId) || isValidMatrixRoomAlias(target.roomId))
+          ? target.roomId
+          : "")
+    ).trim();
+
+    if (!roomIdOrAlias) {
+      throw new Error("Matrix target is missing a room ID or alias");
+    }
+
+    await this.sendMessage(text, {
+      roomId: roomIdOrAlias,
+      ...extractMatrixSendOptions(content, target),
+    });
   }
 }

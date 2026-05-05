@@ -307,6 +307,30 @@ const dedupePlugin = {
   },
 };
 
+const nativeCapacitorPlugin = {
+  name: "eliza-mobile-native-capacitor-workspaces",
+  setup(build) {
+    build.onResolve(
+      { filter: /^@elizaos\/capacitor-[^/]+$/ },
+      (args) => {
+        const packageName = args.path.replace("@elizaos/capacitor-", "");
+        const target = path.resolve(
+          repoRoot,
+          "packages",
+          "native-plugins",
+          packageName,
+          "src",
+          "index.ts",
+        );
+        if (!existsSync(target)) {
+          return undefined;
+        }
+        return { path: target, namespace: "file" };
+      },
+    );
+  },
+};
+
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
@@ -329,7 +353,7 @@ const buildResult = await Bun.build({
     // branch at build time.
     "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
   },
-  plugins: [dedupePlugin, stubResolverPlugin],
+  plugins: [dedupePlugin, nativeCapacitorPlugin, stubResolverPlugin],
 });
 
 if (!buildResult.success) {

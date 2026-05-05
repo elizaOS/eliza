@@ -689,6 +689,15 @@ function packageDesktopBuild() {
     packageArgs.push("--", `--env=${buildEnv}`);
   }
 
+  if (process.platform === "darwin") {
+    const macArch = process.arch === "arm64" ? "arm64" : "x64";
+    // Electrobun's macOS builder removes this folder without force.
+    fs.mkdirSync(
+      path.join(ELECTROBUN_DIR, "build", `${buildEnv || "dev"}-macos-${macArch}`),
+      { recursive: true },
+    );
+  }
+
   const packageEnv = {
     ...process.env,
     ...(stageMacosReleaseApp && process.platform === "darwin"

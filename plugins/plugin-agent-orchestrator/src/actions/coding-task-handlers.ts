@@ -130,6 +130,41 @@ function truncateForPrompt(value: string, maxChars: number): string {
   return `${value.slice(0, maxChars - 15).trimEnd()}\n...[truncated]`;
 }
 
+function indent(value: string, prefix: string): string {
+  return value
+    .split("\n")
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
+}
+
+function formatUnknownForPrompt(value: unknown, indent = 0): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  const pad = " ".repeat(indent);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const formatted = formatUnknownForPrompt(item, indent + 2);
+        return `${pad}- ${formatted.replace(/\n/g, `\n${pad}  `)}`;
+      })
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => {
+        const formatted = formatUnknownForPrompt(entry, indent + 2);
+        return formatted.includes("\n")
+          ? `${pad}${key}:\n${formatted}`
+          : `${pad}${key}: ${formatted}`;
+      })
+      .join("\n");
+  }
+  return String(value);
+}
+
 function stringifyPromptValue(value: unknown, maxChars: number): string {
   if (typeof value === "string") {
     return truncateForPrompt(value.trim(), maxChars);
@@ -137,11 +172,7 @@ function stringifyPromptValue(value: unknown, maxChars: number): string {
   if (value === undefined || value === null) {
     return "";
   }
-  try {
-    return truncateForPrompt(JSON.stringify(value, null, 2), maxChars);
-  } catch {
-    return truncateForPrompt(String(value), maxChars);
-  }
+  return truncateForPrompt(formatUnknownForPrompt(value), maxChars);
 }
 
 function formatCharacterBio(bio: unknown): string {
@@ -286,28 +317,23 @@ async function generateLaunchFailureUserMessage(
   );
 
   const prompt = [
-    `You are ${characterName}. Write the message ${characterName} should send to the user after coding-agent launch failed.`,
-    "",
-    "Character bio:",
-    characterBio || "(none provided)",
-    "",
-    "Recent conversation:",
-    recentConversation,
-    "",
-    "Action history:",
-    actionHistory,
-    "",
-    "Launch errors:",
-    errors,
-    "",
-    "Instructions:",
-    "- Use the character's voice and the conversation context.",
-    "- Explain what happened in plain language without dumping a stack trace.",
-    '- Do not repeat the internal "Failed to launch N/N agent" wording.',
-    "- Keep the concrete blocker, such as a missing CLI, intact.",
-    "- Keep it lightweight: 1-3 short sentences.",
-    "- Do not claim the coding task ran, succeeded, or was completed.",
-    "- Output only the user-facing message.",
+    "task: launch_failure_user_message",
+    `characterName: ${characterName}`,
+    "inputs:",
+    `  characterBio: ${characterBio || "none"}`,
+    "  recentConversation: |",
+    indent(recentConversation, "    "),
+    "  actionHistory: |",
+    indent(actionHistory, "    "),
+    "  launchErrors: |",
+    indent(errors, "    "),
+    "rules:",
+    "  voice: use character voice and conversation context",
+    "  explain: plain language without stack trace",
+    "  preserveBlocker: keep concrete blocker such as missing CLI intact",
+    "  length: 1-3 short sentences",
+    "  disallow: internal failed-to-launch wording; claims task ran or completed",
+    "output: user-facing message only",
   ].join("\n");
 
   try {
@@ -529,8 +555,6 @@ async function generateSwarmContext(
   userRequest: string,
   roomId?: UUID,
 ): Promise<string> {
-  const taskList = subtasks.map((t, i) => `  ${i + 1}. ${t}`).join("\n");
-
   let recentConversation = "";
   if (roomId) {
     try {
@@ -557,30 +581,26 @@ async function generateSwarmContext(
     }
   }
 
-  const prompt =
-    `You are an AI orchestrator about to launch ${subtasks.length} parallel agents. ` +
-    `Before they start, produce a brief shared context document so all agents stay aligned.` +
-    `${recentConversation}\n\n` +
-    `User's request: "${userRequest}"\n\n` +
-    `Subtasks being assigned:\n${taskList}\n\n` +
-    `Generate a concise shared context brief (3-10 bullet points) covering:\n` +
-    `- Project intent and overall goal\n` +
-    `- Key constraints or preferences from the user's request\n` +
-    `- Conventions all agents should follow (naming, style, patterns, tone)\n` +
-    `- How subtasks relate to each other (dependencies, shared interfaces, etc.)\n` +
-    `- Any decisions that should be consistent across all agents\n\n` +
-    `CRITICAL — Concrete Decisions:\n` +
-    `If any subtask involves creative choices (naming a feature, choosing an approach, ` +
-    `designing an API, picking a concept), YOU must make those decisions NOW in this brief. ` +
-    `Do NOT leave creative choices to individual agents — they run in parallel and will ` +
-    `each make different choices, causing inconsistency.\n` +
-    `For example: if one agent builds a feature and another writes tests for it, ` +
-    `decide the feature name, file paths, function signatures, and key design choices here ` +
-    `so both agents use the same names and structure.\n\n` +
-    `Only include what's relevant — skip categories that don't apply. ` +
-    `Be specific and actionable, not generic. Be as detailed as the task requires — ` +
-    `a trivial task needs a few bullets, a complex task deserves a thorough roadmap.\n\n` +
-    `Output ONLY the bullet points, no preamble.`;
+  const prompt = [
+    "task: swarm_shared_context",
+    `agentCount: ${subtasks.length}`,
+    "userRequest: |",
+    indent(userRequest, "  "),
+    recentConversation
+      ? ["recentConversation: |", indent(recentConversation.trim(), "  ")].join(
+          "\n",
+        )
+      : "recentConversation: none",
+    `subtasks[${subtasks.length}]:`,
+    ...subtasks.map((subtask, index) => `  ${index + 1}: ${subtask}`),
+    "briefRequirements:",
+    "  length: 3-10 bullet points",
+    "  include: project intent, constraints, conventions, dependencies, shared decisions",
+    "  specificity: actionable, not generic",
+    "creativeDecisionRule: make naming, API, file path, function signature, and approach decisions now when needed",
+    "parallelismRule: do not leave consistency-critical choices to individual parallel agents",
+    "output: bullet points only, no preamble",
+  ].join("\n");
 
   try {
     // Disable streaming so planning output doesn't pipe to the user's chat.

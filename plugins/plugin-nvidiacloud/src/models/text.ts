@@ -100,15 +100,18 @@ async function generateWithModel(
 
   if (wantStream) {
     const streamResult = streamText(generateParams);
+    let text = "";
     if (params.onStreamChunk) {
       for await (const chunk of streamResult.textStream) {
+        text += chunk;
         if (chunk) params.onStreamChunk(chunk);
       }
+    } else {
+      text = await streamResult.text;
     }
-    const text = await streamResult.text;
     const usage = await streamResult.usage;
     if (usage) {
-      emitModelUsageEvent(runtime, modelType, usage);
+      emitModelUsageEvent(runtime, modelType, usage, modelName, modelLabel);
     }
     return text;
   }
@@ -116,7 +119,13 @@ async function generateWithModel(
   try {
     const response = await generateText(generateParams);
     if (response.usage) {
-      emitModelUsageEvent(runtime, modelType, response.usage);
+      emitModelUsageEvent(
+        runtime,
+        modelType,
+        response.usage,
+        modelName,
+        modelLabel,
+      );
     }
     return response.text;
   } catch (error) {

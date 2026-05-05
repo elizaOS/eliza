@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 
 const WIKIPEDIA_SERVICE_NAME = "wikipedia";
@@ -88,20 +88,12 @@ class WikipediaRateLimiter {
  * Free, no authentication required
  * Rate limit: 2 requests per second (shared across all agents per instance)
  */
-export class WikipediaService extends Service {
-  static serviceType: string = WIKIPEDIA_SERVICE_NAME;
+export class WikipediaClient {
   capabilityDescription = "Provides access to Wikipedia API with rate limiting";
 
   private readonly baseUrl = "https://en.wikipedia.org/api/rest_v1";
   private readonly searchUrl = "https://en.wikipedia.org/w/api.php";
   private readonly rateLimiter = WikipediaRateLimiter.getInstance();
-
-  static async start(runtime: IAgentRuntime): Promise<WikipediaService> {
-    logger.debug(
-      `Starting WikipediaService for agent ${runtime.character.name}`,
-    );
-    return new WikipediaService(runtime);
-  }
 
   async stop(): Promise<void> {
     // No cleanup needed - rate limiter is a singleton
@@ -469,3 +461,7 @@ export class WikipediaService extends Service {
     return Array.from(relatedArtists).slice(0, 10);
   }
 }
+
+export const WIKIPEDIA_HELPER_NAME = WIKIPEDIA_SERVICE_NAME;
+
+export { WikipediaClient as WikipediaService };

@@ -9,6 +9,7 @@ import {
 import { normalizeUserMessageText } from "./message-text";
 
 export const AVAILABLE_CONTEXTS_STATE_KEY = "availableContexts";
+export const CONTEXT_CAPABILITIES_STATE_KEY = "__contextCapabilities";
 export const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
 export const CONTEXT_ROUTING_STATE_KEY = "__contextRouting";
 
@@ -65,6 +66,65 @@ export function parseContextList(value: unknown): AgentContext[] {
 	return dedupeStringValues(parseDelimitedList(value))
 		.map((context) => normalizeContext(context))
 		.filter((context): context is AgentContext => Boolean(context));
+}
+
+export function isPageScopedRoutingContext(context: unknown): boolean {
+	if (typeof context !== "string") return false;
+	const normalized = context.trim().toLowerCase();
+	return normalized === "page" || normalized.startsWith("page-");
+}
+
+export function normalizeRoutingContexts(
+	contexts: readonly unknown[] | undefined,
+): AgentContext[] {
+	return dedupeStringValues(
+		(contexts ?? []).flatMap((context) =>
+			typeof context === "string" ? context.split(LIST_SPLIT_RE) : [],
+		),
+	)
+		.map((context) => normalizeContext(context))
+		.filter((context): context is AgentContext => Boolean(context));
+}
+
+export function getExplicitRoutingContexts(
+	activeContexts: readonly AgentContext[] | undefined,
+): AgentContext[] {
+	return normalizeRoutingContexts(activeContexts).filter(
+		(context) => context !== "general" && !isPageScopedRoutingContext(context),
+	);
+}
+
+export function routingContextsOverlap(
+	left: readonly AgentContext[] | undefined,
+	right: readonly AgentContext[] | undefined,
+): boolean {
+	const normalizedRight = new Set(
+		normalizeRoutingContexts(right).map((context) =>
+			`${context}`.toLowerCase(),
+		),
+	);
+	if (normalizedRight.size === 0) {
+		return false;
+	}
+	return normalizeRoutingContexts(left).some((context) =>
+		normalizedRight.has(`${context}`.toLowerCase()),
+	);
+}
+
+export function shouldSurfaceContextCapabilities(
+	declaredContexts: readonly AgentContext[] | undefined,
+	activeContexts: readonly AgentContext[] | undefined,
+): boolean {
+	if (
+		normalizeRoutingContexts(activeContexts).some(isPageScopedRoutingContext)
+	) {
+		return false;
+	}
+	const explicitContexts = getExplicitRoutingContexts(activeContexts);
+	return (
+		explicitContexts.length > 0 &&
+		routingContextsOverlap(declaredContexts, explicitContexts)
+	);
 }
 
 export function parseContextRoutingMetadata(

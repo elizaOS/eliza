@@ -164,7 +164,7 @@ CRITICAL RULES:
       post: ["Keep it short and casual", "Share genuine moments", "No emojis or hashtags"],
     },
     settings: {
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       temperature: 0.8,
       maxTokens: 200,
       ...(photoUrl ? { photoUrl } : {}),

@@ -60,7 +60,7 @@ import { ChannelType, ContentType } from "../../types/primitives.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
-	parseKeyValueXml,
+	parseToonKeyValue,
 } from "../../utils.ts";
 import * as autonomy from "../autonomy/index.ts";
 
@@ -122,16 +122,16 @@ export {
 } from "../plugin-manager/index.ts";
 
 // ============================================================================
-// XML Response Interfaces
+// Structured TOON response interfaces.
 // ============================================================================
 
-interface ImageDescriptionXml {
+interface ImageDescriptionToon {
 	description?: string;
 	title?: string;
 	text?: string;
 }
 
-interface MessageHandlerXml {
+interface MessageHandlerToon {
 	thought?: string;
 	actions?: string | string[];
 	providers?: string | string[];
@@ -139,7 +139,7 @@ interface MessageHandlerXml {
 	simple?: boolean;
 }
 
-interface PostCreationXml {
+interface PostCreationToon {
 	post?: string;
 	thought?: string;
 }
@@ -297,14 +297,13 @@ export async function processAttachments(
 			}
 
 			if (typeof response === "string") {
-				// Parse XML response
-				const parsedXml = parseKeyValueXml<ImageDescriptionXml>(response);
+				const parsedToon = parseToonKeyValue<ImageDescriptionToon>(response);
 
-				if (parsedXml && (parsedXml.description || parsedXml.text)) {
-					processedAttachment.description = parsedXml.description ?? "";
-					processedAttachment.title = parsedXml.title ?? "Image";
+				if (parsedToon && (parsedToon.description || parsedToon.text)) {
+					processedAttachment.description = parsedToon.description ?? "";
+					processedAttachment.title = parsedToon.title ?? "Image";
 					processedAttachment.text =
-						parsedXml.text ?? parsedXml.description ?? "";
+						parsedToon.text ?? parsedToon.description ?? "";
 
 					runtime.logger.debug(
 						{
@@ -316,35 +315,10 @@ export async function processAttachments(
 						"Generated description",
 					);
 				} else {
-					// Fallback: Try simple regex parsing if parseKeyValueXml fails
-					const responseStr = response as string;
-					const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
-					const descMatch = responseStr.match(
-						/<description>([^<]+)<\/description>/,
+					runtime.logger.warn(
+						{ src: "basic-capabilities", agentId: runtime.agentId },
+						"Failed to parse TOON response for image description",
 					);
-					const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
-
-					if (titleMatch || descMatch || textMatch) {
-						processedAttachment.title = titleMatch?.[1] || "Image";
-						processedAttachment.description = descMatch?.[1] || "";
-						processedAttachment.text = textMatch?.[1] || descMatch?.[1] || "";
-
-						runtime.logger.debug(
-							{
-								src: "basic-capabilities",
-								agentId: runtime.agentId,
-								descriptionPreview:
-									processedAttachment.description?.substring(0, 100) ||
-									undefined,
-							},
-							"Used fallback XML parsing",
-						);
-					} else {
-						runtime.logger.warn(
-							{ src: "basic-capabilities", agentId: runtime.agentId },
-							"Failed to parse XML response for image description",
-						);
-					}
 				}
 			} else if (
 				response &&
@@ -666,47 +640,28 @@ const postGeneratedHandler = async ({
 			prompt,
 		});
 
-		const parsedXml = parseKeyValueXml<MessageHandlerXml>(response);
-		if (parsedXml) {
-			const actionsRaw = parsedXml.actions;
-			const providersRaw = parsedXml.providers;
-			// When actions is a raw XML string (preserved by parseKeyValueXml
-			// to avoid comma-splitting), extract action names from <name> tags.
-			// The downstream processActions code in message.ts has this same
-			// guard via normalizedActions.
+		const parsedToon = parseToonKeyValue<MessageHandlerToon>(response);
+		if (parsedToon) {
+			const actionsRaw = parsedToon.actions;
+			const providersRaw = parsedToon.providers;
 			const resolvedActions = Array.isArray(actionsRaw)
 				? actionsRaw
-				: typeof actionsRaw === "string" && /<action[\s>/]/.test(actionsRaw)
-					? [
-							...actionsRaw.matchAll(
-								/<action[^>]*>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/action>/g,
-							),
-						]
-							.map((m) => m[1].trim())
+				: actionsRaw
+					? actionsRaw
+							.split(",")
+							.map((action) => action.trim())
 							.filter(Boolean)
-					: actionsRaw
-						? [actionsRaw]
-						: ["IGNORE"];
-			if (
-				resolvedActions.length === 0 &&
-				typeof actionsRaw === "string" &&
-				/<action[\s>/]/.test(actionsRaw)
-			) {
-				logger.warn(
-					{ src: "basic-capabilities" },
-					`No <name> tags found inside <action> elements, falling back to IGNORE. actionsRaw length: ${actionsRaw.length}`,
-				);
-			}
+					: ["IGNORE"];
 			responseContent = {
-				thought: parsedXml.thought ?? "",
+				thought: parsedToon.thought ?? "",
 				actions: resolvedActions.length > 0 ? resolvedActions : ["IGNORE"],
 				providers: Array.isArray(providersRaw)
 					? providersRaw
 					: providersRaw
 						? [providersRaw]
 						: [],
-				text: parsedXml.text ?? "",
-				simple: parsedXml.simple ?? false,
+				text: parsedToon.text ?? "",
+				simple: parsedToon.simple ?? false,
 			};
 		} else {
 			responseContent = null;
@@ -721,7 +676,7 @@ const postGeneratedHandler = async ({
 					src: "basic-capabilities",
 					agentId: runtime.agentId,
 					response,
-					parsedXml,
+					parsedToon,
 					responseContent,
 				},
 				"Missing required fields, retrying",
@@ -738,18 +693,24 @@ const postGeneratedHandler = async ({
 			runtime.character.templates?.postCreationTemplate || postCreationTemplate,
 	});
 
-	const xmlResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
+	const structuredResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
 		prompt: postPrompt,
 	});
 
-	const parsedXmlResponse = parseKeyValueXml<PostCreationXml>(xmlResponseText);
+	const parsedToonResponse = parseToonKeyValue<PostCreationToon>(
+		structuredResponseText,
+	);
 
-	if (!parsedXmlResponse) {
+	if (!parsedToonResponse) {
 		runtime.logger.error(
-			{ src: "basic-capabilities", agentId: runtime.agentId, xmlResponseText },
-			"Failed to parse XML response for post creation",
+			{
+				src: "basic-capabilities",
+				agentId: runtime.agentId,
+				structuredResponseText,
+			},
+			"Failed to parse structured response for post creation",
 		);
-		throw new Error("Failed to parse XML response for post creation");
+		throw new Error("Failed to parse structured response for post creation");
 	}
 
 	function cleanupPostText(text: string): string {
@@ -759,7 +720,7 @@ const postGeneratedHandler = async ({
 		return cleanedText;
 	}
 
-	const cleanedText = cleanupPostText(parsedXmlResponse.post ?? "");
+	const cleanedText = cleanupPostText(parsedToonResponse.post ?? "");
 	const stateData = state.data;
 	const stateDataProviders = stateData?.providers;
 	const RM =
@@ -831,7 +792,7 @@ const postGeneratedHandler = async ({
 				text: cleanedText,
 				source,
 				channelType: ChannelType.FEED,
-				thought: parsedXmlResponse.thought ?? "",
+				thought: parsedToonResponse.thought ?? "",
 				type: "post",
 			},
 			roomId: message.roomId,
@@ -1386,6 +1347,8 @@ export const basicProviders = [
 	providers.currentTimeProvider,
 	providers.entitiesProvider,
 	providers.evaluatorsProvider,
+	providers.platformChatContextProvider,
+	providers.platformUserContextProvider,
 	providers.providersProvider,
 	providers.recentMessagesProvider,
 	providers.uiContextProvider,

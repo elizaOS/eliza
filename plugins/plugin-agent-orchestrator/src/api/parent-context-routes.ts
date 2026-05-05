@@ -14,8 +14,8 @@ import { ModelType } from "@elizaos/core";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
 import type { SessionInfo } from "../services/pty-types.js";
 import type { TaskContext } from "../services/swarm-coordinator.js";
-import type { RouteContext } from "./routes.js";
-import { sendJson } from "./routes.js";
+import type { RouteContext } from "./route-utils.js";
+import { sendJson } from "./route-utils.js";
 
 type JsonValue =
   | string

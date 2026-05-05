@@ -17,6 +17,8 @@ import { expandOpenRouterModelIdCandidates } from "@/lib/providers/model-id-tran
 import type { OpenAIModelsResponse } from "@/lib/providers/types";
 import { logger } from "@/lib/utils/logger";
 
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all";
+
 interface SWRCachedValue<T> {
   data: T;
   cachedAt: number;
@@ -34,13 +36,14 @@ function buildSWRValue<T>(data: T): SWRCachedValue<T> {
 }
 
 async function fetchOpenRouterModelCatalog(): Promise<CatalogModel[]> {
-  if (!hasOpenRouterProviderConfigured()) {
-    logger.info("[Model Catalog] OpenRouter is not configured; skipping catalog fetch");
-    return [];
-  }
-
   try {
-    const response = await getOpenRouterProvider().listModels();
+    const response = hasOpenRouterProviderConfigured()
+      ? await getOpenRouterProvider().listModels()
+      : await fetch(OPENROUTER_MODELS_URL, {
+          headers: {
+            Accept: "application/json",
+          },
+        });
     const data = (await response.json()) as OpenAIModelsResponse;
 
     if (!Array.isArray(data.data)) {
@@ -85,9 +88,7 @@ export async function refreshOpenRouterModelCatalog(): Promise<CatalogModel[]> {
 }
 
 export async function getCachedMergedModelCatalog(): Promise<CatalogModel[]> {
-  const openRouterModels = hasOpenRouterProviderConfigured()
-    ? await getCachedOpenRouterModelCatalog()
-    : [];
+  const openRouterModels = await getCachedOpenRouterModelCatalog();
   let models = mergeCatalogModels(openRouterModels, STATIC_TEXT_CATALOG_MODELS);
 
   if (hasGroqProviderConfigured()) {

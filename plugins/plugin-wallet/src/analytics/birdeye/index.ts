@@ -3,13 +3,12 @@
 import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
 import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
 import { parseBooleanFromText } from "@elizaos/core";
-import { tokenSearchAddressAction } from "./actions/token-search-address";
-import { tokenSearchSymbolAction } from "./actions/token-search-symbol";
 import { walletSearchAddressAction } from "./actions/wallet-search-address";
 import { BIRDEYE_SERVICE_NAME } from "./constants";
 import { agentPortfolioProvider } from "./providers/agent-portfolio-provider";
 import { marketProvider } from "./providers/market";
 import { trendingProvider } from "./providers/trending";
+import { registerBirdeyeSearchCategories } from "./search-category";
 import { BIRDEYE_ROUTE_SPEC, BirdeyeService } from "./service";
 import Birdeye from "./tasks/birdeye";
 //import { tradePortfolioProvider } from './providers/wallet'; // trade history
@@ -19,11 +18,8 @@ export const birdeyePlugin: Plugin = {
   name: "birdeye",
   description: "birdeye plugin",
   actions: [
-    // we don't want these, these are bad form
-    tokenSearchAddressAction,
-    tokenSearchSymbolAction,
+    // Token intel is exposed through the unified SEARCH category.
     walletSearchAddressAction,
-    // testAllEndpointsAction, // this action can be used to optionally test all endpoints
   ],
   // injected later if set up is fine
   providers: [],
@@ -49,6 +45,13 @@ export const birdeyePlugin: Plugin = {
       toRuntimeSettings(runtime),
       BIRDEYE_ROUTE_SPEC,
     );
+    registerBirdeyeSearchCategories(runtime, {
+      enabled: birdeyeRoute.source !== "disabled",
+      disabledReason:
+        birdeyeRoute.source === "disabled"
+          ? "BIRDEYE_API_KEY or Eliza Cloud route is not configured."
+          : undefined,
+    });
     if (birdeyeRoute.source === "disabled") {
       runtime.logger.log(
         "birdeye: no BIRDEYE_API_KEY and Eliza Cloud not connected, skipping plugin-birdeye init",

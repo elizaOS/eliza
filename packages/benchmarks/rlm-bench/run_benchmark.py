@@ -18,7 +18,7 @@ Modes:
 
 Example:
     python run_benchmark.py --mode stub --context-lengths 1000,10000
-    python run_benchmark.py --mode rlm --backend gemini
+    python run_benchmark.py --mode rlm --backend groq
     python run_benchmark.py --mode eliza --context-lengths 1000,10000
 """
 
@@ -89,7 +89,7 @@ Examples:
   python run_benchmark.py --mode stub --context-lengths 1000,10000
 
   # Full RLM benchmark (direct client, bypasses Eliza)
-  python run_benchmark.py --mode rlm --backend gemini
+  python run_benchmark.py --mode rlm --backend groq
 
   # Full Eliza agent loop (uses runtime + RLM plugin)
   python run_benchmark.py --mode eliza --context-lengths 1000,10000
@@ -108,8 +108,8 @@ Examples:
 
     parser.add_argument(
         "--backend",
-        default="gemini",
-        help="RLM backend (default: gemini)",
+        default="groq",
+        help="RLM backend (default: groq)",
     )
 
     parser.add_argument(
@@ -151,13 +151,13 @@ Examples:
 
     parser.add_argument(
         "--root-model",
-        default="gemini-2.0-flash",
+        default="openai/gpt-oss-120b",
         help="Root model for dual-model config",
     )
 
     parser.add_argument(
         "--subcall-model",
-        default="gemini-2.0-flash",
+        default="openai/gpt-oss-120b",
         help="Sub-call model for dual-model config",
     )
 
@@ -286,7 +286,7 @@ async def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Load repo-root .env if present (for real providers / API keys)
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[3]
     _load_env_file(repo_root / ".env")
 
     # Parse context lengths

@@ -71,8 +71,7 @@ import {
 	composePromptFromState,
 	getLocalServerUrl,
 	parseBooleanFromText,
-	parseJSONObjectFromText,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	truncateToCompleteSentence,
 } from "../utils";
 import {
@@ -86,16 +85,13 @@ import {
 	CONTEXT_ROUTING_STATE_KEY,
 	type ContextRoutingDecision,
 	getActiveRoutingContexts,
+	inferContextRoutingFromMessage,
 	mergeContextRouting,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
 import { getUserMessageText } from "../utils/message-text";
-import {
-	createStreamingContext,
-	MarkableExtractor,
-	ResponseStreamExtractor,
-} from "../utils/streaming";
+import { createStreamingContext, MarkableExtractor } from "../utils/streaming";
 import {
 	extractFirstSentence,
 	hasFirstSentence,
@@ -106,18 +102,6 @@ import {
 	type OptimizedPromptService,
 } from "./optimized-prompt";
 import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
-
-/**
- * Reserved XML response keys that are NOT action names.
- * Used when scanning parsedXml for standalone action param blocks.
- */
-export const RESERVED_XML_KEYS = new Set([
-	"actions",
-	"thought",
-	"text",
-	"simple",
-	"providers",
-]);
 
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
@@ -271,101 +255,53 @@ function applyDualPressureToClassifierAction(
 	return { pressure, finalActionUpper: actionUpper };
 }
 
-/**
- * Extract action params from standalone XML blocks in a parsedXml object.
- *
- * When the LLM outputs `<actions>REPLY,START_CODING_TASK</actions>` alongside
- * `<START_CODING_TASK><repo>...</repo></START_CODING_TASK>`, the XML parser
- * puts the action block as a top-level key on parsedXml. This function finds
- * those keys and assembles them into the legacy flat params format that
- * `parseActionParams` consumes.
- *
- * Returns the assembled params string, or empty string if none found.
- */
-export function extractStandaloneActionParams(
-	actionNames: string[],
-	parsedXml: Record<string, unknown>,
-): string {
-	const fragments: string[] = [];
-	for (const actionName of actionNames) {
-		const upperName = actionName.toUpperCase();
-		const matchingKey = Object.keys(parsedXml).find(
-			(k) => k.toUpperCase() === upperName,
-		);
-		if (
-			matchingKey &&
-			!RESERVED_XML_KEYS.has(matchingKey.toLowerCase()) &&
-			typeof parsedXml[matchingKey] === "string" &&
-			(parsedXml[matchingKey] as string).includes("<")
-		) {
-			fragments.push(`<${upperName}>${parsedXml[matchingKey]}</${upperName}>`);
-		}
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getPlannerActionObjectName(action: Record<string, unknown>): string {
+	const rawName = action.name ?? action.action ?? action.actionName;
+	return typeof rawName === "string" ? unwrapPlannerIdentifier(rawName) : "";
+}
+
+function attachInlineToonActionParams(
+	parsedToon: Record<string, unknown>,
+	actionName: string,
+	params: unknown,
+): void {
+	if (!actionName || !isRecord(params) || Object.keys(params).length === 0) {
+		return;
 	}
-	return fragments.join("\n");
+
+	const existingParams = parsedToon.params;
+	const nextParams =
+		isRecord(existingParams) && !Array.isArray(existingParams)
+			? { ...existingParams }
+			: {};
+	nextParams[actionName.trim().toUpperCase()] = params;
+	parsedToon.params = nextParams;
 }
 
 export function extractPlannerActionNames(
-	parsedXml: Record<string, unknown>,
+	parsedToon: Record<string, unknown>,
 ): string[] {
 	return (() => {
-		if (typeof parsedXml.actions === "string") {
-			const actionsXml = parsedXml.actions;
-			if (/<action\b[^>]*>/i.test(actionsXml)) {
-				const actionEntries: Array<{
-					name: string;
-					paramsXml?: string;
-				}> = [];
-				for (const match of actionsXml.matchAll(
-					/<action\b[^>]*>([\s\S]*?)<\/action>/gi,
-				)) {
-					const inner = match[1];
-					const nameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-					const paramsMatch = inner.match(
-						/<params\b[^>]*>([\s\S]*?)<\/params>/i,
-					);
-					const name = unwrapPlannerIdentifier(
-						nameMatch ? nameMatch[1] : match[0],
-					);
-					const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
-					if (name) actionEntries.push({ name, paramsXml });
-				}
-
-				if (actionEntries.length > 0) {
-					const inlineParamsXml = actionEntries
-						.filter((entry) => entry.paramsXml)
-						.map(
-							(entry) =>
-								`<${entry.name.toUpperCase()}>${entry.paramsXml}</${entry.name.toUpperCase()}>`,
-						)
-						.join("\n");
-					if (inlineParamsXml && parsedXml.params === "") {
-						parsedXml.params = inlineParamsXml;
-					}
-
-					return actionEntries.map((entry) => entry.name);
-				}
-			}
-
-			const commaSplitActions = actionsXml
+		if (typeof parsedToon.actions === "string") {
+			return parsedToon.actions
 				.split(",")
 				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
-
-			if (parsedXml.params === "") {
-				const assembled = extractStandaloneActionParams(
-					commaSplitActions,
-					parsedXml,
-				);
-				if (assembled) {
-					parsedXml.params = assembled;
-				}
-			}
-
-			return commaSplitActions;
 		}
-		if (Array.isArray(parsedXml.actions)) {
-			return parsedXml.actions
-				.map((action) => unwrapPlannerIdentifier(String(action)))
+		if (Array.isArray(parsedToon.actions)) {
+			return parsedToon.actions
+				.map((action) => {
+					if (isRecord(action)) {
+						const actionName = getPlannerActionObjectName(action);
+						attachInlineToonActionParams(parsedToon, actionName, action.params);
+						return actionName;
+					}
+					return unwrapPlannerIdentifier(String(action));
+				})
 				.filter((action) => action.length > 0);
 		}
 		return [];
@@ -373,10 +309,10 @@ export function extractPlannerActionNames(
 }
 
 function normalizePlannerActions(
-	parsedXml: Record<string, unknown>,
+	parsedToon: Record<string, unknown>,
 	runtime: IAgentRuntime,
 ): string[] {
-	const normalizedActions = extractPlannerActionNames(parsedXml);
+	const normalizedActions = extractPlannerActionNames(parsedToon);
 
 	const finalActions =
 		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
@@ -434,7 +370,7 @@ function normalizePlannerActions(
 	}
 
 	const replyText =
-		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
+		typeof parsedToon.text === "string" ? parsedToon.text.trim() : "";
 	if (replyText.length > 0) return ["REPLY"];
 
 	// Fallthrough: no valid action, no text. By the time the planner ran,
@@ -498,10 +434,10 @@ export function resolvePlannerActionName(
 }
 
 function normalizePlannerProviders(
-	parsedXml: Record<string, unknown>,
+	parsedToon: Record<string, unknown>,
 	runtime?: IAgentRuntime,
 ): string[] {
-	const providerNames = extractPlannerProviderNames(parsedXml);
+	const providerNames = extractPlannerProviderNames(parsedToon);
 
 	if (!runtime) {
 		return providerNames;
@@ -598,41 +534,6 @@ function isStructuredPlannerIdentifier(value: string): boolean {
 	return /^[A-Za-z][A-Za-z0-9_:-]*$/u.test(unwrapped);
 }
 
-function extractProviderNamesFromXml(rawProviders: string): string[] {
-	const providersFromProviderTags = Array.from(
-		rawProviders.matchAll(/<provider\b[^>]*>([\s\S]*?)<\/provider>/gi),
-	)
-		.map((match) => {
-			const inner = match[1]?.trim() ?? "";
-			if (!inner) {
-				return "";
-			}
-			const nameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-			return unwrapPlannerIdentifier(nameMatch ? nameMatch[1] : inner).trim();
-		})
-		.filter(
-			(providerName): providerName is string =>
-				providerName.length > 0 && isStructuredPlannerIdentifier(providerName),
-		);
-	if (providersFromProviderTags.length > 0) {
-		return providersFromProviderTags;
-	}
-
-	const providersFromNameTags = Array.from(
-		rawProviders.matchAll(/<name\b[^>]*>([\s\S]*?)<\/name>/gi),
-	)
-		.map((match) => unwrapPlannerIdentifier(match[1] ?? "").trim())
-		.filter(
-			(providerName): providerName is string =>
-				providerName.length > 0 && isStructuredPlannerIdentifier(providerName),
-		);
-	if (providersFromNameTags.length > 0) {
-		return providersFromNameTags;
-	}
-
-	return [];
-}
-
 function extractStructuredProviderList(rawProviders: string): string[] {
 	const safe =
 		rawProviders.length > 10_000 ? rawProviders.slice(0, 10_000) : rawProviders;
@@ -650,9 +551,9 @@ function extractStructuredProviderList(rawProviders: string): string[] {
 }
 
 export function extractPlannerProviderNames(
-	parsedXml: Record<string, unknown>,
+	parsedToon: Record<string, unknown>,
 ): string[] {
-	const rawProviders = parsedXml.providers;
+	const rawProviders = parsedToon.providers;
 	if (typeof rawProviders === "string") {
 		const trimmedProviders = rawProviders.trim();
 		if (!trimmedProviders) {
@@ -687,16 +588,8 @@ export function extractPlannerProviderNames(
 						);
 				}
 			} catch {
-				// Fall through to XML / delimiter parsing below.
+				// Fall through to delimiter parsing below.
 			}
-		}
-
-		if (trimmedProviders.includes("<")) {
-			const providersFromXml = extractProviderNamesFromXml(trimmedProviders);
-			if (providersFromXml.length > 0) {
-				return providersFromXml;
-			}
-			return [];
 		}
 
 		return extractStructuredProviderList(trimmedProviders);
@@ -753,17 +646,23 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 const STRUCTURED_RESPONSE_STATE_PROVIDERS = ["ACTIONS", "PROVIDERS"];
 const FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS = ["CHARACTER", "RECENT_MESSAGES"];
 
+function hasInboundBenchmarkContext(message: Memory): boolean {
+	const metadata = message.metadata as Record<string, unknown> | undefined;
+	const benchmarkContext = metadata?.benchmarkContext;
+	return (
+		typeof benchmarkContext === "string" && benchmarkContext.trim().length > 0
+	);
+}
+
 function composeResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	skipCache = false,
 ): Promise<State> {
-	return runtime.composeState(
-		message,
-		CORE_RESPONSE_STATE_PROVIDERS,
-		true,
-		skipCache,
-	);
+	const providers = hasInboundBenchmarkContext(message)
+		? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
+		: CORE_RESPONSE_STATE_PROVIDERS;
+	return runtime.composeState(message, providers, true, skipCache);
 }
 
 function composeStructuredResponseState(
@@ -1184,45 +1083,6 @@ function normalizeActionIdentifier(actionName: string): string {
 function unwrapPlannerIdentifier(value: string): string {
 	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
 	const trimmed = safe.trim().replace(/^["'`]+|["'`]+$/g, "");
-	if (!trimmed) {
-		return "";
-	}
-
-	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
-	if (nameMatch) {
-		return nameMatch[1].trim();
-	}
-
-	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
-	if (actionMatch) {
-		const inner = actionMatch[1].trim();
-		if (!inner) {
-			return "";
-		}
-
-		const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-		if (nestedNameMatch) {
-			return nestedNameMatch[1].trim();
-		}
-
-		return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
-	}
-
-	// Tolerate malformed planner output where the closing </action> is missing
-	// or extra content trails the action body. Symptom in prod logs:
-	//   "Dropping unknown planner action (actionName=<action><name>REPLY</name>)"
-	// The planner LLM occasionally emits an unclosed <action> wrapper around a
-	// well-formed <name>X</name>. Falling through to "return trimmed" treats
-	// the whole XML chunk as the action identifier, which then fails to match
-	// any registered action and the bot goes silent. If the input begins with
-	// <action> and contains a <name>X</name>, prefer that name.
-	if (/^<action\b[^>]*>/i.test(trimmed)) {
-		const looseNameMatch = trimmed.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-		if (looseNameMatch) {
-			return looseNameMatch[1].trim();
-		}
-	}
-
 	return trimmed;
 }
 
@@ -1400,6 +1260,18 @@ function buildCanonicalActionRepairPrompt(args: {
 		args.plannerReplyText.trim().length > 0
 			? args.plannerReplyText.trim()
 			: "(empty)";
+	const rawPlannerActions =
+		args.rawPlannerActions.length > 0
+			? `planner_actions_raw[${args.rawPlannerActions.length}]: ${args.rawPlannerActions.join(",")}`
+			: "planner_actions_raw[0]:";
+	const rawPlannerProviders =
+		args.rawPlannerProviders.length > 0
+			? `planner_providers_raw[${args.rawPlannerProviders.length}]: ${args.rawPlannerProviders.join(",")}`
+			: "planner_providers_raw[0]:";
+	const availableRuntimeActions =
+		args.availableActionNames.length > 0
+			? `available_runtime_actions[${args.availableActionNames.length}]: ${args.availableActionNames.join(",")}`
+			: "available_runtime_actions[0]:";
 
 	return [
 		"You are repairing an action-planner output that used a non-canonical action name.",
@@ -1407,23 +1279,29 @@ function buildCanonicalActionRepairPrompt(args: {
 		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
 		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
 		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
-		"Return ONLY XML with top-level fields from this schema: <response><actions>...</actions><providers>...</providers><params>...</params></response>.",
-		"Do not include <text> unless there is truly no matching runtime action.",
+		"Return ONLY TOON with top-level fields: actions, providers, params, and optional text.",
+		"Use actions[n]: ACTION_NAME for selected actions and a params object keyed by action name when inputs are needed.",
+		"Do not include text unless there is truly no matching runtime action.",
 		"",
 		`user_message:\n${args.userText}`,
 		"",
-		`planner_actions_raw:\n${JSON.stringify(args.rawPlannerActions, null, 2)}`,
+		rawPlannerActions,
 		"",
-		`planner_providers_raw:\n${JSON.stringify(args.rawPlannerProviders, null, 2)}`,
+		rawPlannerProviders,
 		"",
 		`planner_reply_text:\n${plannerReplyText}`,
 		"",
-		`available_runtime_actions:\n${args.availableActionNames.join(", ")}`,
+		availableRuntimeActions,
 		"",
 		"Example:",
 		'user_message: "Pull up a dossier on Satya Nadella."',
-		'planner_actions_raw: ["LOOKUP"]',
-		"output: <response><actions><action>DOSSIER</action></actions><params><DOSSIER><subject>Satya Nadella</subject></DOSSIER></params></response>",
+		"planner_actions_raw[1]: LOOKUP",
+		"output:",
+		"actions[1]: DOSSIER",
+		"providers[0]:",
+		"params:",
+		"  DOSSIER:",
+		"    subject: Satya Nadella",
 	].join("\n");
 }
 
@@ -1454,11 +1332,55 @@ async function repairCanonicalPlannerActions(args: {
 		availableActionNames,
 	});
 
-	const repairResponse = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-		prompt: repairPrompt,
+	return args.runtime.dynamicPromptExecFromState({
+		state: { values: {}, data: {}, text: "" } as State,
+		params: {
+			prompt: repairPrompt,
+		},
+		schema: [
+			{
+				field: "actions",
+				description: "Selected canonical runtime action names",
+				type: "array",
+				items: { description: "One canonical runtime action name" },
+				required: true,
+				validateField: false,
+				streamField: false,
+			},
+			{
+				field: "providers",
+				description: "Optional provider names needed before the action",
+				type: "array",
+				items: { description: "One provider name" },
+				required: false,
+				validateField: false,
+				streamField: false,
+			},
+			{
+				field: "params",
+				description:
+					"Optional TOON object keyed by action name with repaired action params",
+				type: "object",
+				required: false,
+				validateField: false,
+				streamField: false,
+			},
+			{
+				field: "text",
+				description:
+					"Optional fallback reply only when no runtime action matches",
+				required: false,
+				validateField: false,
+				streamField: false,
+			},
+		],
+		options: {
+			modelType: ModelType.TEXT_LARGE,
+			preferredEncapsulation: "toon",
+			contextCheckLevel: 0,
+			maxRetries: 1,
+		},
 	});
-
-	return parseKeyValueXml<Record<string, unknown>>(repairResponse);
 }
 
 function shouldRunProviderFollowup(
@@ -1557,15 +1479,9 @@ Examples:
 	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> PUBLISH_DEVICE_INTENT
 	- "if you get stuck in the browser or on my computer, call me" -> CALL_USER
 
-${draftSection}Return XML only:
-<response>
-  <thought>short reasoning</thought>
-  <actions>
-    <action>
-      <name>ACTION_NAME</name>
-    </action>
-  </actions>
-</response>`;
+${draftSection}Return TOON only:
+thought: short reasoning
+actions[1]: ACTION_NAME`;
 }
 
 const ROUTING_REASSESS_ACTIONS = new Set(
@@ -2208,18 +2124,21 @@ ${draftReplySection}rules[${4 + draftReplyRules.length}]:
 ${draftReplyRules.join("\n")}
 
 output:
-Return JSON or XML containing only provider names. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document containing only provider names. No prose before or after it. No <think>.
 
 Examples:
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "Which file are you referring to?"
-  output: {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+  output:
+  providers[2]: AVAILABLE_DOCUMENTS,KNOWLEDGE
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "I don't have the file in my context. Which file contains the QA codeword?"
-  output: {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+  output:
+  providers[2]: AVAILABLE_DOCUMENTS,KNOWLEDGE
 - user asks: "thanks, that's all"
   draft reply: "Glad to help."
-  output: {"providers":[]}`;
+  output:
+  providers[0]:`;
 }
 
 async function recoverProvidersForTurn(args: {
@@ -2228,22 +2147,34 @@ async function recoverProvidersForTurn(args: {
 	draftReply?: string;
 	attachments?: GenerateTextAttachment[];
 }): Promise<string[]> {
-	const prompt = composePromptFromState({
-		state: args.state,
-		template: buildProviderSelectionPrompt(args.draftReply),
-	});
-
 	try {
-		const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			...(args.attachments ? { attachments: args.attachments } : {}),
+		const parsed = await args.runtime.dynamicPromptExecFromState({
+			state: args.state,
+			params: {
+				prompt: buildProviderSelectionPrompt(args.draftReply),
+				...(args.attachments ? { attachments: args.attachments } : {}),
+			},
+			schema: [
+				{
+					field: "providers",
+					description:
+						"Provider names to call before replying, or an empty array",
+					type: "array",
+					items: { description: "One provider name" },
+					required: true,
+					validateField: false,
+					streamField: false,
+				},
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				preferredEncapsulation: "toon",
+				contextCheckLevel: 0,
+				maxRetries: 1,
+			},
 		});
-		const rawResponse = typeof result === "string" ? result : "";
-		const parsed =
-			parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-			parseJSONObjectFromText(rawResponse);
 		const normalizedProviders = normalizePlannerProviders(
-			parsed ?? { providers: rawResponse },
+			parsed ?? { providers: [] },
 			args.runtime,
 		);
 		if (normalizedProviders.length > 0) {
@@ -2302,11 +2233,11 @@ rules[5]:
 - return only the structured output, with no prose
 
 output:
-Return JSON or XML only.
+TOON only. Return exactly one TOON document.
 
 Examples:
-- user asks: "what is the qa codeword from the uploaded file?" -> {"useKnowledgeProviders":true}
-- user asks: "thanks, that's all" -> {"useKnowledgeProviders":false}`;
+- user asks: "what is the qa codeword from the uploaded file?" -> useKnowledgeProviders: true
+- user asks: "thanks, that's all" -> useKnowledgeProviders: false`;
 }
 
 async function shouldUseKnowledgeProviders(
@@ -2314,24 +2245,33 @@ async function shouldUseKnowledgeProviders(
 	state: State,
 	attachments?: GenerateTextAttachment[],
 ): Promise<boolean> {
-	const prompt = composePromptFromState({
-		state,
-		template: buildKnowledgeProviderDecisionPrompt(),
-	});
-
 	try {
-		const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			...(attachments ? { attachments } : {}),
+		const parsed = await runtime.dynamicPromptExecFromState({
+			state,
+			params: {
+				prompt: buildKnowledgeProviderDecisionPrompt(),
+				...(attachments ? { attachments } : {}),
+			},
+			schema: [
+				{
+					field: "useKnowledgeProviders",
+					description:
+						"true when uploaded-document or knowledge providers should be consulted before replying",
+					type: "boolean",
+					required: true,
+					validateField: false,
+					streamField: false,
+				},
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				preferredEncapsulation: "toon",
+				contextCheckLevel: 0,
+				maxRetries: 1,
+			},
 		});
-		const rawResponse = typeof result === "string" ? result : "";
-		const parsed =
-			parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-			parseJSONObjectFromText(rawResponse);
 		const value =
-			parsed?.useKnowledgeProviders ??
-			parsed?.use_knowledge_providers ??
-			rawResponse;
+			parsed?.useKnowledgeProviders ?? parsed?.use_knowledge_providers;
 		if (typeof value === "boolean") {
 			return value;
 		}
@@ -2733,6 +2673,20 @@ function withContextRoutingValues(
 	};
 }
 
+function withInferredContextRoutingFallback(
+	routing: ContextRoutingDecision,
+	message: Memory,
+): ContextRoutingDecision {
+	if (getActiveRoutingContexts(routing).length > 0) {
+		return routing;
+	}
+	const inferred = inferContextRoutingFromMessage(message);
+	return {
+		...inferred,
+		evidenceTurnIds: routing.evidenceTurnIds,
+	};
+}
+
 async function composeContinuationDecisionState(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -2951,6 +2905,12 @@ export class DefaultMessageService implements IMessageService {
 			"trajectoryStepId" in message.metadata
 				? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 				: undefined;
+		let trajectoryId =
+			typeof message.metadata === "object" &&
+			message.metadata !== null &&
+			"trajectoryId" in message.metadata
+				? (message.metadata as { trajectoryId?: string }).trajectoryId
+				: undefined;
 
 		if (
 			!(typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== "")
@@ -2981,11 +2941,20 @@ export class DefaultMessageService implements IMessageService {
 				"trajectoryStepId" in message.metadata
 					? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 					: undefined;
+			trajectoryId =
+				typeof message.metadata === "object" &&
+				message.metadata !== null &&
+				"trajectoryId" in message.metadata
+					? (message.metadata as { trajectoryId?: string }).trajectoryId
+					: undefined;
 		}
 
 		return await runWithTrajectoryContext<MessageProcessingResult>(
 			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
 				? {
+						...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
+							? { trajectoryId: trajectoryId.trim() }
+							: {}),
 						trajectoryStepId: trajectoryStepId.trim(),
 						runId: runtime.getCurrentRunId?.(),
 						roomId: message.roomId,
@@ -3005,15 +2974,15 @@ export class DefaultMessageService implements IMessageService {
 				const responseId = asUUID(v4());
 
 				// WHY voice detection wraps onStreamChunk here instead of using a
-				// separate ResponseStreamExtractor + AsyncLocalStorage context:
+				// separate AsyncLocalStorage streaming context:
 				//
-				// Previously handleMessage created a second XML extractor
-				// (ResponseStreamExtractor) and injected it via runWithStreamingContext.
-				// Both extractors received the same raw LLM tokens in useModel and
-				// emitted independently, causing the dual-extractor garbling bug —
-				// consumers saw overlapping deltas that produced unintelligible TTS.
+				// Previously handleMessage created a second extractor through
+				// runWithStreamingContext. Both extractors received the same raw LLM
+				// tokens in useModel and emitted independently, causing the
+				// dual-extractor garbling bug; consumers saw overlapping deltas that
+				// produced unintelligible TTS.
 				//
-				// The fix: a single extractor (ValidationStreamExtractor in
+				// The fix: a single TOON field extractor in
 				// dynamicPromptExecFromState) now provides `accumulated` — the full
 				// extracted text — via the third StreamChunkCallback argument. Voice
 				// detection wraps the caller's callback to intercept accumulated text
@@ -3058,7 +3027,7 @@ export class DefaultMessageService implements IMessageService {
 								}
 
 								// Only run first-sentence TTS detection when `accumulated` is present.
-								// Raw-token streams (no accumulated) may contain XML markup or partial
+								// Raw-token streams (no accumulated) may contain partial
 								// structured output that would garble hasFirstSentence() and TTS.
 								if (
 									!firstSentenceSent &&
@@ -3264,125 +3233,13 @@ export class DefaultMessageService implements IMessageService {
 						}, opts.timeoutDuration);
 					});
 
-					// Wrap processing with streaming context for automatic streaming in useModel calls
-					// Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
-					let streamingContext:
-						| {
-								onStreamChunk: (
-									chunk: string,
-									messageId?: string,
-								) => Promise<void>;
-								messageId?: string;
-						  }
-						| undefined;
+					// Structured TOON streaming is handled by dynamicPromptExecFromState,
+					// which receives opts.onStreamChunk directly and extracts only fields
+					// marked as streamable in the schema.
+					const streamingContext = undefined;
 					// Voice handling state
-					let firstSentenceSent = false;
-					let firstSentenceText = "";
-
-					if (opts.onStreamChunk) {
-						const extractor = new ResponseStreamExtractor();
-						const onStreamChunk = opts.onStreamChunk;
-
-						let streamText = "";
-
-						streamingContext = {
-							onStreamChunk: async (chunk: string, msgId?: string) => {
-								if (extractor.done) return;
-								const textToStream = extractor.push(chunk);
-								if (textToStream) {
-									streamText += textToStream;
-
-									// Check for first sentence to send to voice
-									if (!firstSentenceSent && hasFirstSentence(streamText)) {
-										const { first } = extractFirstSentence(streamText);
-										firstSentenceText = first;
-										if (first.length > 5) {
-											// Minimal length check
-											firstSentenceSent = true;
-
-											// Process voice in background
-											(async () => {
-												try {
-													const voiceSettings = runtime.character.settings
-														?.voice as
-														| {
-																model?: string;
-																url?: string;
-																voiceId?: string;
-														  }
-														| undefined;
-
-													const model =
-														voiceSettings?.model || "en_US-male-medium";
-													const voiceId =
-														voiceSettings?.url ||
-														voiceSettings?.voiceId ||
-														"nova";
-
-													let audioBuffer: Buffer | null = null;
-													const params: TextToSpeechParams & {
-														model?: string;
-													} = {
-														text: first,
-														voice: voiceId,
-														model: model,
-													};
-													const result = runtime.getModel(
-														ModelType.TEXT_TO_SPEECH,
-													)
-														? await runtime.useModel(
-																ModelType.TEXT_TO_SPEECH,
-																params,
-															)
-														: undefined;
-
-													if (
-														result instanceof ArrayBuffer ||
-														Object.prototype.toString.call(result) ===
-															"[object ArrayBuffer]"
-													) {
-														audioBuffer = Buffer.from(result as ArrayBuffer);
-													} else if (Buffer.isBuffer(result)) {
-														audioBuffer = result;
-													} else if (result instanceof Uint8Array) {
-														audioBuffer = Buffer.from(result);
-													}
-
-													if (audioBuffer && instrumentedCallback) {
-														const audioBase64 = audioBuffer.toString("base64");
-														await instrumentedCallback({
-															text: "",
-															attachments: [
-																{
-																	id: v4(),
-																	url: `data:audio/wav;base64,${audioBase64}`,
-																	title: "Voice Response",
-																	source: "voice-cache",
-																	description:
-																		"Voice response for first sentence",
-																	text: first,
-																	contentType: ContentType.AUDIO,
-																},
-															],
-															source: "voice",
-														});
-													}
-												} catch (error) {
-													runtime.logger.error(
-														{ error },
-														"Error generating voice for first sentence",
-													);
-												}
-											})();
-										}
-									}
-
-									await onStreamChunk(textToStream, msgId);
-								}
-							},
-							messageId: responseId,
-						};
-					}
+					const firstSentenceSent = false;
+					const firstSentenceText = "";
 
 					const processingPromise = runWithStreamingContext(
 						streamingContext,
@@ -3746,10 +3603,15 @@ export class DefaultMessageService implements IMessageService {
 				mentionContext,
 			);
 			if (!checkShouldRespondEnabled) {
+				routedDecision = withInferredContextRoutingFallback({}, message);
+				setContextRoutingMetadata(message, routedDecision);
 				shouldRespondToMessage = true;
 			} else if (responseDecision.skipEvaluation) {
-				routedDecision = parseContextRoutingMetadata(
-					responseDecision as unknown as Record<string, unknown>,
+				routedDecision = withInferredContextRoutingFallback(
+					parseContextRoutingMetadata(
+						responseDecision as unknown as Record<string, unknown>,
+					),
+					message,
 				);
 				setContextRoutingMetadata(message, routedDecision);
 				shouldRespondToMessage = responseDecision.shouldRespond;
@@ -4510,6 +4372,8 @@ export class DefaultMessageService implements IMessageService {
 				{ src: "service:message" },
 				"checkShouldRespond disabled, always responding (ChatGPT mode)",
 			);
+			routedDecision = withInferredContextRoutingFallback({}, message);
+			setContextRoutingMetadata(message, routedDecision);
 			shouldRespondToMessage = true;
 		} else if (responseDecision.skipEvaluation) {
 			runtime.logger.debug(
@@ -4520,8 +4384,11 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Skipping LLM evaluation",
 			);
-			routedDecision = parseContextRoutingMetadata(
-				responseDecision as unknown as Record<string, unknown>,
+			routedDecision = withInferredContextRoutingFallback(
+				parseContextRoutingMetadata(
+					responseDecision as unknown as Record<string, unknown>,
+				),
+				message,
 			);
 			setContextRoutingMetadata(message, routedDecision);
 			shouldRespondToMessage = responseDecision.shouldRespond;
@@ -4645,7 +4512,10 @@ export class DefaultMessageService implements IMessageService {
 			const actionUpper = rawAction.trim().toUpperCase();
 			const hasValidClassifierAction =
 				actionUpper.length > 0 && ALLOWED_CLASSIFIER_ACTIONS.has(actionUpper);
-			routedDecision = parseContextRoutingMetadata(responseObject);
+			routedDecision = withInferredContextRoutingFallback(
+				parseContextRoutingMetadata(responseObject),
+				message,
+			);
 			setContextRoutingMetadata(message, routedDecision);
 			if (!hasValidClassifierAction) {
 				runtime.logger.warn(
@@ -4905,21 +4775,21 @@ export class DefaultMessageService implements IMessageService {
 					});
 
 					if (typeof response === "string") {
-						const parsedXml = parseKeyValueXml(response);
+						const parsedToon = parseToonKeyValue(response);
 
-						if (parsedXml && (parsedXml.description || parsedXml.text)) {
+						if (parsedToon && (parsedToon.description || parsedToon.text)) {
 							processedAttachment.description =
-								(typeof parsedXml.description === "string"
-									? parsedXml.description
+								(typeof parsedToon.description === "string"
+									? parsedToon.description
 									: "") || "";
 							processedAttachment.title =
-								(typeof parsedXml.title === "string"
-									? parsedXml.title
+								(typeof parsedToon.title === "string"
+									? parsedToon.title
 									: "Image") || "Image";
 							processedAttachment.text =
-								(typeof parsedXml.text === "string" ? parsedXml.text : "") ||
-								(typeof parsedXml.description === "string"
-									? parsedXml.description
+								(typeof parsedToon.text === "string" ? parsedToon.text : "") ||
+								(typeof parsedToon.description === "string"
+									? parsedToon.description
 									: "") ||
 								"";
 
@@ -4932,34 +4802,10 @@ export class DefaultMessageService implements IMessageService {
 								"Generated image description",
 							);
 						} else {
-							// Fallback: Try simple regex parsing
-							const responseStr = response as string;
-							const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
-							const descMatch = responseStr.match(
-								/<description>([^<]+)<\/description>/,
+							runtime.logger.warn(
+								{ src: "service:message" },
+								"Failed to parse TOON response for image description",
 							);
-							const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
-
-							if (titleMatch || descMatch || textMatch) {
-								processedAttachment.title = titleMatch?.[1] || "Image";
-								processedAttachment.description = descMatch?.[1] || "";
-								processedAttachment.text =
-									textMatch?.[1] || descMatch?.[1] || "";
-
-								runtime.logger.debug(
-									{
-										src: "service:message",
-										descriptionPreview:
-											processedAttachment.description?.substring(0, 100),
-									},
-									"Used fallback XML parsing for description",
-								);
-							} else {
-								runtime.logger.warn(
-									{ src: "service:message" },
-									"Failed to parse XML response for image description",
-								);
-							}
 						}
 					} else if (
 						response &&
@@ -5633,7 +5479,7 @@ export class DefaultMessageService implements IMessageService {
 
 		// Use dynamicPromptExecFromState for structured output with validation
 		setTrajectoryPurpose("response");
-		const parsedXml = await runtime.dynamicPromptExecFromState({
+		const parsedPlanner = await runtime.dynamicPromptExecFromState({
 			state,
 			params: {
 				prompt,
@@ -5654,7 +5500,9 @@ export class DefaultMessageService implements IMessageService {
 				{
 					field: "actions",
 					description:
-						"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+						"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+					type: "array",
+					items: { description: "One action name or action entry" },
 					required: false,
 					validateField: false,
 					streamField: false,
@@ -5663,6 +5511,8 @@ export class DefaultMessageService implements IMessageService {
 					field: "providers",
 					description:
 						"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+					type: "array",
+					items: { description: "One provider name" },
 					required: false,
 					validateField: false,
 					streamField: false,
@@ -5683,7 +5533,7 @@ export class DefaultMessageService implements IMessageService {
 			],
 			options: {
 				modelType: ModelType.ACTION_PLANNER,
-				preferredEncapsulation: "xml",
+				preferredEncapsulation: "toon",
 				maxRetries: opts.maxRetries,
 				// Stream through the filtered context callback for real-time output
 				onStreamChunk: streamingCtx?.onStreamChunk,
@@ -5691,22 +5541,22 @@ export class DefaultMessageService implements IMessageService {
 		});
 
 		runtime.logger.debug(
-			{ src: "service:message", parsedXml },
+			{ src: "service:message", parsedPlanner },
 			"Parsed Response Content",
 		);
 
-		if (parsedXml) {
+		if (parsedPlanner) {
 			// Mark streaming as complete now that we have a valid response
 			streamingExtractor?.markComplete();
 			const rawPlannerActions = extractPlannerActionNames(
-				parsedXml as Record<string, unknown>,
+				parsedPlanner as Record<string, unknown>,
 			);
 			let finalActions = normalizePlannerActions(
-				parsedXml as Record<string, unknown>,
+				parsedPlanner as Record<string, unknown>,
 				runtime,
 			);
 			let normalizedProviders = normalizePlannerProviders(
-				parsedXml as Record<string, unknown>,
+				parsedPlanner as Record<string, unknown>,
 				runtime,
 			);
 
@@ -5716,7 +5566,7 @@ export class DefaultMessageService implements IMessageService {
 					message,
 					rawPlannerActions,
 					rawPlannerProviders: normalizedProviders,
-					plannerReplyText: String(parsedXml.text || ""),
+					plannerReplyText: String(parsedPlanner.text || ""),
 				});
 				if (repairedPlannerOutput) {
 					const repairedActions = normalizePlannerActions(
@@ -5736,19 +5586,20 @@ export class DefaultMessageService implements IMessageService {
 							runtime,
 						);
 						if (repairedPlannerOutput.params) {
-							parsedXml.params = repairedPlannerOutput.params;
+							parsedPlanner.params = repairedPlannerOutput.params;
 						}
 					}
 				}
 			}
 
 			responseContent = {
-				...parsedXml,
-				thought: String(parsedXml.thought || ""),
+				...parsedPlanner,
+				thought: String(parsedPlanner.thought || ""),
 				actions: finalActions,
 				providers: normalizedProviders,
-				text: String(parsedXml.text || ""),
-				simple: parsedXml.simple === true || parsedXml.simple === "true",
+				text: String(parsedPlanner.text || ""),
+				simple:
+					parsedPlanner.simple === true || parsedPlanner.simple === "true",
 			};
 		} else {
 			// dynamicPromptExecFromState returned null - use streamed text if available
@@ -5795,7 +5646,7 @@ Your previous response was cut off. The user already received this text:
 "${escapedStreamedText}"
 
 Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Output ONLY the continuation, starting immediately after the last character above.`;
+Return TOON only with the continuation in the text field, starting immediately after the last character above.`;
 
 				const continuationParsed = await runtime.dynamicPromptExecFromState({
 					state,
@@ -5813,7 +5664,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					],
 					options: {
 						modelType: ModelType.ACTION_PLANNER,
-						preferredEncapsulation: "xml",
+						preferredEncapsulation: "toon",
 						contextCheckLevel: 0, // Fast mode for continuations - we trust the model
 						onStreamChunk: streamingCtx?.onStreamChunk,
 					},
@@ -5894,7 +5745,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				prompt,
 				String(responseContent.text || ""),
 			);
-			const rescuedActionXml = await runtime.dynamicPromptExecFromState({
+			const rescuedActionToon = await runtime.dynamicPromptExecFromState({
 				state,
 				params: {
 					prompt: actionRescuePrompt,
@@ -5911,7 +5762,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{
 						field: "actions",
 						description:
-							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+						type: "array",
+						items: { description: "One action name or action entry" },
 						required: false,
 						validateField: false,
 						streamField: false,
@@ -5920,6 +5773,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 						field: "providers",
 						description:
 							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						type: "array",
+						items: { description: "One provider name" },
 						required: false,
 						validateField: false,
 						streamField: false,
@@ -5938,31 +5793,31 @@ Output ONLY the continuation, starting immediately after the last character abov
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "xml",
+					preferredEncapsulation: "toon",
 					maxRetries: 1,
 				},
 			});
 
-			if (rescuedActionXml) {
+			if (rescuedActionToon) {
 				const rescuedContent: Content = {
-					...rescuedActionXml,
-					thought: String(rescuedActionXml.thought || ""),
+					...rescuedActionToon,
+					thought: String(rescuedActionToon.thought || ""),
 					actions: normalizePlannerActions(
-						rescuedActionXml as Record<string, unknown>,
+						rescuedActionToon as Record<string, unknown>,
 						runtime,
 					),
 					providers: normalizePlannerProviders(
-						rescuedActionXml as Record<string, unknown>,
+						rescuedActionToon as Record<string, unknown>,
 						runtime,
 					),
 					text:
-						typeof rescuedActionXml.text === "string" &&
-						rescuedActionXml.text.trim().length > 0
-							? String(rescuedActionXml.text)
+						typeof rescuedActionToon.text === "string" &&
+						rescuedActionToon.text.trim().length > 0
+							? String(rescuedActionToon.text)
 							: responseContent.text,
 					simple:
-						rescuedActionXml.simple === true ||
-						rescuedActionXml.simple === "true",
+						rescuedActionToon.simple === true ||
+						rescuedActionToon.simple === "true",
 				};
 
 				if (
@@ -5997,7 +5852,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				selectedActionName,
 				String(responseContent.text || ""),
 			);
-			const repairedOwnershipXml = await runtime.dynamicPromptExecFromState({
+			const repairedOwnershipToon = await runtime.dynamicPromptExecFromState({
 				state,
 				params: {
 					prompt: ownershipRepairPrompt,
@@ -6014,7 +5869,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{
 						field: "actions",
 						description:
-							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+						type: "array",
+						items: { description: "One action name or action entry" },
 						required: true,
 						validateField: false,
 						streamField: false,
@@ -6023,6 +5880,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 						field: "providers",
 						description:
 							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						type: "array",
+						items: { description: "One provider name" },
 						required: false,
 						validateField: false,
 						streamField: false,
@@ -6041,31 +5900,31 @@ Output ONLY the continuation, starting immediately after the last character abov
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "xml",
+					preferredEncapsulation: "toon",
 					maxRetries: 1,
 				},
 			});
 
-			if (repairedOwnershipXml) {
+			if (repairedOwnershipToon) {
 				const repairedOwnershipContent: Content = {
-					...repairedOwnershipXml,
-					thought: String(repairedOwnershipXml.thought || ""),
+					...repairedOwnershipToon,
+					thought: String(repairedOwnershipToon.thought || ""),
 					actions: normalizePlannerActions(
-						repairedOwnershipXml as Record<string, unknown>,
+						repairedOwnershipToon as Record<string, unknown>,
 						runtime,
 					),
 					providers: normalizePlannerProviders(
-						repairedOwnershipXml as Record<string, unknown>,
+						repairedOwnershipToon as Record<string, unknown>,
 						runtime,
 					),
 					text:
-						typeof repairedOwnershipXml.text === "string" &&
-						repairedOwnershipXml.text.trim().length > 0
-							? String(repairedOwnershipXml.text)
+						typeof repairedOwnershipToon.text === "string" &&
+						repairedOwnershipToon.text.trim().length > 0
+							? String(repairedOwnershipToon.text)
 							: responseContent.text,
 					simple:
-						repairedOwnershipXml.simple === true ||
-						repairedOwnershipXml.simple === "true",
+						repairedOwnershipToon.simple === true ||
+						repairedOwnershipToon.simple === "true",
 				};
 
 				if (
@@ -6108,7 +5967,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					},
 					{
 						field: "actions",
-						description: "Exactly one action entry inside <actions>.",
+						description: "Exactly one action name.",
+						type: "array",
+						items: { description: "One action name" },
 						required: true,
 						validateField: false,
 						streamField: false,
@@ -6116,7 +5977,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "xml",
+					preferredEncapsulation: "toon",
 					maxRetries: 1,
 				},
 			});
@@ -6170,7 +6031,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		// Action parameter repair (Python parity):
 		// If the model selected actions with missing or invalid params, do a
-		// second pass asking for ONLY a corrected <params> block.
+		// second pass asking for ONLY corrected TOON params.
 		const actionByName = new Map<string, Action>();
 		for (const action of runtime.actions) {
 			const normalizedName = action.name.trim().toUpperCase();
@@ -6267,17 +6128,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"",
 				"# Parameter Repair",
 				"You selected actions whose params are missing or invalid.",
-				"Return ONLY XML with a top-level <params> field that fixes those actions.",
+				"Return ONLY TOON with a top-level params object that fixes those actions.",
 				"Do not change the selected actions.",
 				"Example:",
-				"<response>",
-				"  <params>",
-				"    <SEND_MESSAGE>",
-				"      <target>room-or-channel-id</target>",
-				"      <text>message body</text>",
-				"    </SEND_MESSAGE>",
-				"  </params>",
-				"</response>",
+				"params:",
+				"  SEND_MESSAGE:",
+				"    target: room-or-channel-id",
+				"    text: message body",
 				"",
 				"Current params:",
 				existingParamBlock,
@@ -6288,11 +6145,29 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"Do not include thought, actions, providers, text, or any other fields.",
 			].join("\n");
 
-			const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-				prompt: repairPrompt,
+			const repairParsed = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: repairPrompt,
+				},
+				schema: [
+					{
+						field: "params",
+						description:
+							"TOON object keyed by action name containing corrected action params",
+						type: "object",
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.TEXT_LARGE,
+					preferredEncapsulation: "toon",
+					contextCheckLevel: 0,
+					maxRetries: 1,
+				},
 			});
-			const repairParsed =
-				parseKeyValueXml<Record<string, unknown>>(repairResponse);
 			if (repairParsed?.params) {
 				responseContent.params = repairParsed.params as Content["params"];
 				existingParams = parseActionParams(responseContent.params);
@@ -6538,11 +6413,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					.replace(/<think>[\s\S]*?<\/think>/g, "")
 					.trim();
 				const looksStructuredReply =
-					cleaned.startsWith("<") ||
-					/^TOON\b/i.test(cleaned) ||
-					/^(thought|text)\s*:/i.test(cleaned);
+					/^TOON\b/i.test(cleaned) || /^(thought|text)\s*:/i.test(cleaned);
 				const parsed = looksStructuredReply
-					? parseKeyValueXml<{ text?: string }>(cleaned)
+					? parseToonKeyValue<{ text?: string }>(cleaned)
 					: null;
 				replyText =
 					typeof parsed?.text === "string" && parsed.text.trim().length > 0
@@ -7184,7 +7057,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			],
 			options: {
 				modelSize: "large",
-				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
+				preferredEncapsulation: "toon",
 				requiredFields: ["text"],
 				// Stream the final summary to the user
 				onStreamChunk: opts.onStreamChunk,

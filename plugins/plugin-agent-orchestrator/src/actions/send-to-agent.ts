@@ -292,7 +292,7 @@ export const sendToAgentAction: Action = {
     {
       name: "task",
       description:
-        "New tracked task to assign to the existing agent. This is also sent as the next input so LIST_AGENTS and provider status reflect the new assignment.",
+        "New tracked task to assign to the existing agent. This is also sent as the next input so provider status reflects the new assignment.",
       required: false,
       schema: { type: "string" as const },
     },

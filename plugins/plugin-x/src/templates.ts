@@ -28,10 +28,9 @@ export const quoteTweetTemplate = `# Task: Write a quote tweet in the voice, sty
 {{bio}}
 {{postDirections}}
 
-<response>
-  <thought>Your thought here, explaining why the quote tweet is meaningful or how it connects to what {{agentName}} cares about</thought>
-  <post>The quote tweet content here, under 280 characters, without emojis, no questions</post>
-</response>
+Respond with TOON only:
+thought: Your thought here, explaining why the quote tweet is meaningful or how it connects to what {{agentName}} cares about
+post: The quote tweet content here, under 280 characters, without emojis, no questions
 
 Your quote tweet should be:
 - A reaction, agreement, disagreement, or expansion of the original tweet
@@ -41,17 +40,16 @@ Your quote tweet should be:
 - Use "\\n\\n" (double spaces) between multiple sentences
 - Max 280 characters including line breaks
 
-Your output must ONLY contain the XML block.`;
+Your output must only contain the TOON response.`;
 
 export const replyTweetTemplate = `# Task: Write a reply tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
 
 {{bio}}
 {{postDirections}}
 
-<response>
-  <thought>Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about</thought>
-  <post>The reply tweet content here, under 280 characters, without emojis, no questions</post>
-</response>
+Respond with TOON only:
+thought: Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about
+post: The reply tweet content here, under 280 characters, without emojis, no questions
 
 Your reply should be:
 - A direct response, agreement, disagreement, or personal take on the original tweet
@@ -61,4 +59,4 @@ Your reply should be:
 - Use "\\n\\n" (double spaces) between multiple sentences if needed
 - Max 280 characters including line breaks
 
-Your output must ONLY contain the XML block.`;
+Your output must only contain the TOON response.`;

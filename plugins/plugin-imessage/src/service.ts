@@ -58,7 +58,10 @@ import {
   type IMessageSendResult,
   type IMessageServiceStatus,
   type IMessageSettings,
+  isEmail,
   isPhoneNumber,
+  isValidIMessageTarget,
+  normalizeIMessageTarget,
   splitMessageForIMessage,
 } from "./types.js";
 
@@ -66,6 +69,187 @@ const execFileAsync = promisify(execFile);
 
 function appleScriptStringLiteral(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+type RuntimeWithOptionalConnectorRegistry = IAgentRuntime & {
+  registerMessageConnector?: (registration: MessageConnectorRegistration) => void;
+};
+type RuntimeSendHandler = Parameters<IAgentRuntime["registerSendHandler"]>[1];
+type ConnectorTargetInfo = Parameters<RuntimeSendHandler>[1];
+type ConnectorContent = Parameters<RuntimeSendHandler>[2];
+type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
+type MessageConnectorTarget = Awaited<
+  ReturnType<NonNullable<MessageConnectorRegistration["resolveTargets"]>>
+>[number];
+type MessageConnectorQueryContext = Parameters<
+  NonNullable<MessageConnectorRegistration["resolveTargets"]>
+>[1];
+type MessageConnectorChatContext = NonNullable<
+  Awaited<ReturnType<NonNullable<MessageConnectorRegistration["getChatContext"]>>>
+>;
+type MessageConnectorUserContext = NonNullable<
+  Awaited<ReturnType<NonNullable<MessageConnectorRegistration["getUserContext"]>>>
+>;
+
+function registerMessageConnectorIfAvailable(
+  runtime: IAgentRuntime,
+  registration: MessageConnectorRegistration
+): void {
+  const withRegistry = runtime as RuntimeWithOptionalConnectorRegistry;
+  if (typeof withRegistry.registerMessageConnector === "function") {
+    withRegistry.registerMessageConnector(registration);
+    return;
+  }
+  runtime.registerSendHandler(registration.source, registration.sendHandler);
+}
+
+function normalizeIMessageConnectorHandle(value: string): string {
+  const stripped = value
+    .trim()
+    .replace(/^(?:messages?|sms|text):/i, "")
+    .trim();
+  const normalizedTarget = normalizeIMessageTarget(stripped) ?? stripped;
+  if (!normalizedTarget) return "";
+  if (normalizedTarget.startsWith("chat_id:")) return normalizedTarget;
+  if (/^(?:imessage|sms|rcs);/i.test(normalizedTarget)) {
+    return `chat_id:${normalizedTarget}`;
+  }
+  if (isEmail(normalizedTarget)) return normalizedTarget.toLowerCase();
+  if (isPhoneNumber(normalizedTarget)) return formatPhoneNumber(normalizedTarget);
+  return normalizeContactHandle(normalizedTarget) || normalizedTarget;
+}
+
+function firstAttachmentUrl(content: Content): string | undefined {
+  const attachment = content.attachments?.find(
+    (item) => typeof item?.url === "string" && item.url.trim().length > 0
+  );
+  return attachment?.url?.trim();
+}
+
+function statusMetadata(status: IMessageServiceStatus): Record<string, string | boolean | null> {
+  return {
+    available: status.available,
+    connected: status.connected,
+    chatDbAvailable: status.chatDbAvailable,
+    sendOnly: status.sendOnly,
+    chatDbPath: status.chatDbPath,
+    reason: status.reason,
+    permissionAction: status.permissionAction?.label ?? null,
+  };
+}
+
+function normalizedSearchText(value: string | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9@+._-]+/g, " ")
+    .trim();
+}
+
+function matchesQuery(query: string, ...values: Array<string | undefined>): boolean {
+  const normalizedQuery = normalizedSearchText(query);
+  if (!normalizedQuery) return true;
+  const normalizedHandleQuery = normalizedSearchText(normalizeIMessageConnectorHandle(query));
+  return values.some((value) => {
+    const normalizedValue = normalizedSearchText(value);
+    return (
+      normalizedValue.includes(normalizedQuery) ||
+      (normalizedHandleQuery.length > 0 && normalizedValue.includes(normalizedHandleQuery))
+    );
+  });
+}
+
+function contactKind(handle: string): "phone" | "email" | "contact" {
+  if (isEmail(handle)) return "email";
+  if (isPhoneNumber(handle)) return "phone";
+  return "contact";
+}
+
+function contactTarget(
+  handle: string,
+  label: string | undefined,
+  score: number
+): MessageConnectorTarget {
+  const normalized = normalizeIMessageConnectorHandle(handle);
+  const displayLabel = label ? `${label} (${normalized})` : normalized;
+  return {
+    target: {
+      source: "imessage",
+      channelId: normalized,
+      entityId: normalized as unknown as UUID,
+    },
+    label: displayLabel,
+    kind: contactKind(normalized),
+    score,
+    metadata: {
+      handle: normalized,
+      contactName: label,
+    },
+  };
+}
+
+function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnectorTarget {
+  const participants = chat.participants.map((participant) =>
+    normalizeIMessageConnectorHandle(participant.handle)
+  );
+  const primaryHandle = participants[0];
+  const isGroup = chat.chatType === "group";
+  const contactName = primaryHandle
+    ? contacts.get(normalizeContactHandle(primaryHandle))?.name
+    : undefined;
+  const label =
+    chat.displayName ??
+    contactName ??
+    (isGroup ? participants.filter(Boolean).join(", ") : primaryHandle) ??
+    chat.chatId;
+  const target: ConnectorTargetInfo = {
+    source: "imessage",
+    channelId: isGroup ? `chat_id:${chat.chatId}` : (primaryHandle ?? `chat_id:${chat.chatId}`),
+  };
+  if (!isGroup && primaryHandle) {
+    target.entityId = primaryHandle as unknown as UUID;
+  }
+  return {
+    target,
+    label,
+    kind: isGroup ? "group" : contactKind(primaryHandle ?? chat.chatId),
+    description: isGroup ? "iMessage group chat" : "iMessage direct chat",
+    score: isGroup ? 0.76 : 0.72,
+    metadata: {
+      chatId: chat.chatId,
+      chatType: chat.chatType,
+      participants: participants.filter(Boolean).join(", "),
+    },
+  };
+}
+
+async function resolveIMessageSendTarget(
+  runtime: IAgentRuntime,
+  target: ConnectorTargetInfo
+): Promise<string | null> {
+  if (target.channelId?.trim()) {
+    return normalizeIMessageConnectorHandle(target.channelId);
+  }
+  if (target.entityId?.trim()) {
+    return normalizeIMessageConnectorHandle(target.entityId);
+  }
+  if (target.roomId) {
+    const room = await runtime.getRoom(target.roomId);
+    if (room?.channelId) {
+      return normalizeIMessageConnectorHandle(room.channelId);
+    }
+  }
+  return null;
+}
+
+async function resolveIMessageChatId(
+  runtime: IAgentRuntime,
+  target: ConnectorTargetInfo
+): Promise<string | null> {
+  const channelId =
+    target.channelId ??
+    (target.roomId ? (await runtime.getRoom(target.roomId))?.channelId : undefined);
+  if (!channelId) return null;
+  return channelId.startsWith("chat_id:") ? channelId.slice("chat_id:".length) : channelId;
 }
 
 /**
@@ -208,6 +392,175 @@ export class IMessageService extends Service implements IIMessageService {
     } as EventPayload);
 
     return service;
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, service: IMessageService): void {
+    registerMessageConnectorIfAvailable(runtime, {
+      source: IMESSAGE_SERVICE_NAME,
+      label: "iMessage",
+      capabilities: ["send_message", "attachments", "contact_resolution", "chat_context"],
+      supportedTargetKinds: ["phone", "email", "contact", "user", "group", "room"],
+      contexts: ["phone", "social", "connectors"],
+      description:
+        "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
+      metadata: {
+        aliases: ["imessage", "sms", "text", "messages"],
+        bridge: "macos-messages",
+        status: statusMetadata(service.getStatus()),
+      },
+      sendHandler: async (
+        _runtime: IAgentRuntime,
+        target: ConnectorTargetInfo,
+        content: ConnectorContent
+      ) => {
+        const text = typeof content.text === "string" ? content.text : "";
+        const mediaUrl = firstAttachmentUrl(content);
+        if (!text.trim() && !mediaUrl) {
+          return;
+        }
+
+        const resolvedTarget = await resolveIMessageSendTarget(runtime, target);
+        if (!resolvedTarget) {
+          throw new Error("iMessage target is missing a phone, email, or chat id");
+        }
+
+        const result = await service.sendMessage(
+          resolvedTarget,
+          text,
+          mediaUrl ? { mediaUrl } : undefined
+        );
+        if (!result.success) {
+          throw new Error(result.error ?? "iMessage send failed");
+        }
+      },
+      resolveTargets: async (query: string) => {
+        const candidates: MessageConnectorTarget[] = [];
+        const contacts = service.getContacts();
+        for (const [handle, contact] of contacts) {
+          if (matchesQuery(query, contact.name, handle)) {
+            candidates.push(
+              contactTarget(
+                handle,
+                contact.name,
+                contact.name.toLowerCase() === query.toLowerCase() ? 0.9 : 0.82
+              )
+            );
+          }
+        }
+
+        const normalized = normalizeIMessageConnectorHandle(query);
+        if (normalized && (isValidIMessageTarget(normalized) || isEmail(normalized))) {
+          candidates.push(
+            contactTarget(normalized, contacts.get(normalizeContactHandle(normalized))?.name, 0.8)
+          );
+        }
+
+        const chats = await service.getChats();
+        for (const chat of chats) {
+          const candidate = chatTarget(chat, contacts);
+          if (
+            matchesQuery(
+              query,
+              candidate.label,
+              chat.chatId,
+              chat.displayName,
+              ...chat.participants.map((participant) => participant.handle)
+            )
+          ) {
+            candidates.push({ ...candidate, score: Math.max(candidate.score ?? 0, 0.78) });
+          }
+        }
+
+        return candidates;
+      },
+      listRecentTargets: async () => {
+        const contacts = service.getContacts();
+        const byKey = new Map<string, MessageConnectorTarget>();
+        for (const message of await service.getRecentMessages(50)) {
+          const handle = normalizeIMessageConnectorHandle(message.handle);
+          const target = message.chatId
+            ? {
+                target: {
+                  source: "imessage",
+                  channelId: message.chatId.startsWith("chat_id:")
+                    ? message.chatId
+                    : `chat_id:${message.chatId}`,
+                  entityId: handle ? (handle as unknown as UUID) : undefined,
+                },
+                label:
+                  contacts.get(normalizeContactHandle(handle))?.name ??
+                  message.handle ??
+                  message.chatId,
+                kind: message.chatId?.includes(";+;") ? "group" : contactKind(handle),
+                score: 0.68,
+                metadata: {
+                  handle,
+                  chatId: message.chatId,
+                  lastMessageAt: message.timestamp,
+                },
+              }
+            : contactTarget(handle, contacts.get(normalizeContactHandle(handle))?.name, 0.66);
+          byKey.set(
+            `${target.target.channelId ?? ""}|${target.target.entityId ?? ""}`,
+            target as MessageConnectorTarget
+          );
+        }
+        return Array.from(byKey.values());
+      },
+      listRooms: async () => {
+        const contacts = service.getContacts();
+        return (await service.getChats()).map((chat) => chatTarget(chat, contacts));
+      },
+      getChatContext: async (
+        target: ConnectorTargetInfo,
+        context: MessageConnectorQueryContext
+      ): Promise<MessageConnectorChatContext | null> => {
+        const chatId = await resolveIMessageChatId(context.runtime, target);
+        const messages = chatId ? await service.getMessages({ chatId, limit: 10 }) : [];
+        return {
+          target,
+          label: chatId ?? target.channelId ?? target.entityId ?? "iMessage target",
+          summary: service.getStatus().chatDbAvailable
+            ? "iMessage chat context from local Messages database."
+            : "iMessage is available in send-only mode; chat database context is unavailable.",
+          recentMessages: messages.map((message) => ({
+            name:
+              service.getContacts().get(normalizeContactHandle(message.handle))?.name ??
+              message.handle,
+            text: message.text,
+            timestamp: message.timestamp,
+            metadata: {
+              messageId: message.id,
+              handle: normalizeIMessageConnectorHandle(message.handle),
+              isFromMe: message.isFromMe,
+            },
+          })),
+          metadata: {
+            chatId,
+            status: statusMetadata(service.getStatus()),
+          },
+        };
+      },
+      getUserContext: async (
+        entityId: string | UUID
+      ): Promise<MessageConnectorUserContext | null> => {
+        const handle = normalizeIMessageConnectorHandle(String(entityId));
+        if (!handle) return null;
+        const contact = service.getContacts().get(normalizeContactHandle(handle));
+        return {
+          entityId,
+          label: contact?.name ?? handle,
+          aliases: contact?.name ? [contact.name, handle] : [handle],
+          handles: {
+            imessage: handle,
+            ...(isEmail(handle) ? { email: handle } : { phone: handle }),
+          },
+          metadata: {
+            normalizedHandle: handle,
+          },
+        };
+      },
+    });
   }
 
   /**

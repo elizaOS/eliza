@@ -1,4 +1,4 @@
-import { asRecord } from "../type-guards";
+import { asRecord } from "../type-guards.js";
 
 export type LinkedAccountStatus = "linked" | "unlinked";
 
@@ -149,6 +149,9 @@ export type ServiceRouteConfig = {
 export type ServiceRoutingConfig = Partial<
   Record<ServiceCapability, ServiceRouteConfig>
 >;
+
+export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
+export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = "openai/gpt-oss-120b:free";
 
 const ELIZA_CLOUD_ROUTE_BASE = {
   backend: "elizacloud",

@@ -1,6 +1,7 @@
 /**
- * elizaOS runtime plugin for the Phone app — exposes PLACE_CALL and
- * READ_CALL_LOG actions, both gated to the Phone app's session.
+ * elizaOS runtime plugin for the Phone app: exposes PLACE_CALL and
+ * READ_CALL_LOG actions. The agent Android adapter applies hosted-app session
+ * gating when this package's `/plugin` export is registered.
  *
  * Also declares the Phone Companion (Capacitor pairing/chat-mirror surface)
  * via `app.navTabs`, so the app shell can resolve and mount it dynamically

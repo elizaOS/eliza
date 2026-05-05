@@ -13,6 +13,12 @@ import {
   getReasoningSmallModel,
   getReasoningLargeModel,
 } from "../utils/config";
+import {
+  emitModelUsed,
+  estimateUsage,
+  normalizeTokenUsage,
+  toCoreTokenUsage,
+} from "../utils/modelUsage";
 
 function isOpus4Model(name: string): boolean {
   return name.toLowerCase().includes("opus-4");
@@ -52,19 +58,26 @@ async function generateTextWithModel(
   if (params.stream) {
     try {
       const streamResult = streamText(generateParams);
+      const text = Promise.resolve(streamResult.text);
+      const usage = Promise.resolve(streamResult.usage).then(
+        async (providerUsage) => {
+          const normalizedUsage =
+            normalizeTokenUsage(providerUsage) ??
+            estimateUsage(params.prompt, await text);
+          emitModelUsed(
+            runtime,
+            modelType,
+            modelName,
+            normalizedUsage,
+            provider,
+          );
+          return toCoreTokenUsage(normalizedUsage);
+        },
+      );
       return {
         textStream: streamResult.textStream,
-        text: Promise.resolve(streamResult.text),
-        usage: Promise.resolve(streamResult.usage).then((usage) => {
-          if (!usage) return undefined;
-          const promptTokens = usage.inputTokens ?? 0;
-          const completionTokens = usage.outputTokens ?? 0;
-          return {
-            promptTokens,
-            completionTokens,
-            totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
-          };
-        }),
+        text,
+        usage,
         finishReason: Promise.resolve(streamResult.finishReason) as Promise<
           string | undefined
         >,
@@ -74,8 +87,15 @@ async function generateTextWithModel(
     }
   }
 
-  const { text } = await executeWithRetry(`${modelType} request`, () =>
+  const { text, usage } = await executeWithRetry(`${modelType} request`, () =>
     generateText(generateParams),
+  );
+  emitModelUsed(
+    runtime,
+    modelType,
+    modelName,
+    normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, text),
+    provider,
   );
   return text;
 }

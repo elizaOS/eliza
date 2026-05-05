@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { compressPromptDescription } from "./prompt-compression.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,6 +51,28 @@ function assertRecord(value, name) {
 function assertString(value, name) {
   if (typeof value !== "string") {
     throw new Error(`${name} must be a string`);
+  }
+}
+
+/**
+ * @param {Record<string, unknown>} value
+ * @param {string} name
+ */
+function assertCompressedDescriptionAliases(value, name) {
+  if (value.descriptionCompressed !== undefined) {
+    assertString(value.descriptionCompressed, `${name}.descriptionCompressed`);
+  }
+  if (value.compressedDescription !== undefined) {
+    assertString(value.compressedDescription, `${name}.compressedDescription`);
+  }
+  if (
+    typeof value.descriptionCompressed === "string" &&
+    typeof value.compressedDescription === "string" &&
+    value.descriptionCompressed !== value.compressedDescription
+  ) {
+    throw new Error(
+      `${name}.descriptionCompressed and ${name}.compressedDescription must match when both are provided`,
+    );
   }
 }
 
@@ -142,6 +165,7 @@ function assertActionParameter(param, name) {
   assertRecord(param, name);
   assertString(param.name, `${name}.name`);
   assertString(param.description, `${name}.description`);
+  assertCompressedDescriptionAliases(param, name);
   if (param.required !== undefined) {
     assertBoolean(param.required, `${name}.required`);
   }
@@ -160,6 +184,7 @@ function assertActionDoc(action, name) {
   assertRecord(action, name);
   assertString(action.name, `${name}.name`);
   assertString(action.description, `${name}.description`);
+  assertCompressedDescriptionAliases(action, name);
   if (action.similes !== undefined) {
     assertArray(action.similes, `${name}.similes`);
     for (let i = 0; i < action.similes.length; i++) {
@@ -189,6 +214,7 @@ function assertProviderDoc(provider, name) {
   assertRecord(provider, name);
   assertString(provider.name, `${name}.name`);
   assertString(provider.description, `${name}.description`);
+  assertCompressedDescriptionAliases(provider, name);
   if (
     provider.position !== undefined &&
     typeof provider.position !== "number"
@@ -209,6 +235,7 @@ function assertEvaluatorDoc(evaluator, name) {
   assertRecord(evaluator, name);
   assertString(evaluator.name, `${name}.name`);
   assertString(evaluator.description, `${name}.description`);
+  assertCompressedDescriptionAliases(evaluator, name);
   if (evaluator.similes !== undefined) {
     assertArray(evaluator.similes, `${name}.similes`);
     for (let i = 0; i < evaluator.similes.length; i++) {
@@ -430,36 +457,37 @@ function ensureDir(dir) {
 }
 
 /**
- * Whitespace-normalize descriptions; truncate to 160 chars (matches prior
- * cross-runtime prompt compression behavior).
- * @param {string} description
- * @returns {string}
+ * @param {Record<string, unknown>} doc
+ * @returns {string | undefined}
  */
-function compressPromptDescription(description) {
-  if (typeof description !== "string" || !description.trim()) {
-    return "";
+function getCompressedAlias(doc) {
+  const canonical = doc.descriptionCompressed;
+  if (typeof canonical === "string" && canonical.trim()) {
+    return canonical;
   }
-  const compact = description.trim().split(/\s+/).filter(Boolean).join(" ");
-  if (compact.length <= 160) {
-    return compact;
+  const alias = doc.compressedDescription;
+  if (typeof alias === "string" && alias.trim()) {
+    return alias;
   }
-  return `${compact.slice(0, 157).replace(/\s+$/, "")}...`;
+  return undefined;
+}
+
+/**
+ * @param {Record<string, unknown>} doc
+ */
+function normalizeCompressedDescription(doc) {
+  if (typeof doc.description !== "string") {
+    return;
+  }
+  doc.descriptionCompressed =
+    getCompressedAlias(doc) ?? compressPromptDescription(doc.description);
 }
 
 /**
  * @param {Record<string, unknown>} action
  */
 function normalizeActionDoc(action) {
-  if (typeof action.description === "string") {
-    if (
-      action.descriptionCompressed === undefined ||
-      action.descriptionCompressed === ""
-    ) {
-      action.descriptionCompressed = compressPromptDescription(
-        action.description,
-      );
-    }
-  }
+  normalizeCompressedDescription(action);
   if (!Array.isArray(action.parameters)) {
     return;
   }
@@ -471,14 +499,7 @@ function normalizeActionDoc(action) {
     if (typeof param.description !== "string") {
       continue;
     }
-    if (
-      param.descriptionCompressed === undefined ||
-      param.descriptionCompressed === ""
-    ) {
-      param.descriptionCompressed = compressPromptDescription(
-        param.description,
-      );
-    }
+    normalizeCompressedDescription(param);
   }
 }
 
@@ -486,24 +507,22 @@ function normalizeActionDoc(action) {
  * @param {Record<string, unknown>} provider
  */
 function normalizeProviderDoc(provider) {
-  if (typeof provider.description !== "string") {
-    return;
-  }
-  if (
-    provider.descriptionCompressed === undefined ||
-    provider.descriptionCompressed === ""
-  ) {
-    provider.descriptionCompressed = compressPromptDescription(
-      provider.description,
-    );
-  }
+  normalizeCompressedDescription(provider);
+}
+
+/**
+ * @param {Record<string, unknown>} evaluator
+ */
+function normalizeEvaluatorDoc(evaluator) {
+  normalizeCompressedDescription(evaluator);
 }
 
 /**
  * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} actionsSpec
  * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} providersSpec
+ * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} evaluatorsSpec
  */
-function normalizeSpecsInPlace(actionsSpec, providersSpec) {
+function normalizeSpecsInPlace(actionsSpec, providersSpec, evaluatorsSpec) {
   for (const action of actionsSpec.core.items) {
     normalizeActionDoc(/** @type {Record<string, unknown>} */ (action));
   }
@@ -515,6 +534,12 @@ function normalizeSpecsInPlace(actionsSpec, providersSpec) {
   }
   for (const p of providersSpec.all.items) {
     normalizeProviderDoc(/** @type {Record<string, unknown>} */ (p));
+  }
+  for (const evaluator of evaluatorsSpec.core.items) {
+    normalizeEvaluatorDoc(/** @type {Record<string, unknown>} */ (evaluator));
+  }
+  for (const evaluator of evaluatorsSpec.all.items) {
+    normalizeEvaluatorDoc(/** @type {Record<string, unknown>} */ (evaluator));
   }
 }
 
@@ -585,6 +610,7 @@ export type ActionDocParameter = {
   name: string;
   description: string;
   descriptionCompressed?: string;
+  compressedDescription?: string;
   required?: boolean;
   schema: ActionDocParameterSchema;
   examples?: readonly ActionDocParameterExampleValue[];
@@ -608,6 +634,7 @@ export type ActionDoc = {
   name: string;
   description: string;
   descriptionCompressed?: string;
+  compressedDescription?: string;
   similes?: readonly string[];
   parameters?: readonly ActionDocParameter[];
   examples?: readonly (readonly ActionDocExampleMessage[])[];
@@ -618,6 +645,7 @@ export type ProviderDoc = {
   name: string;
   description: string;
   descriptionCompressed?: string;
+  compressedDescription?: string;
   position?: number;
   dynamic?: boolean;
 };
@@ -641,6 +669,8 @@ export type EvaluatorDocExample = {
 export type EvaluatorDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
+  compressedDescription?: string;
   similes?: readonly string[];
   alwaysRun?: boolean;
   examples?: readonly EvaluatorDocExample[];
@@ -704,7 +734,7 @@ function main() {
     "evaluators",
   );
 
-  normalizeSpecsInPlace(actionsSpec, providersSpec);
+  normalizeSpecsInPlace(actionsSpec, providersSpec, evaluatorsSpec);
 
   generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec);
 

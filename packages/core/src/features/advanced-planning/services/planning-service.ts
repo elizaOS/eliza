@@ -15,7 +15,13 @@ import {
 	type State,
 	type UUID,
 } from "../../../types/index.ts";
-import { parseKeyValueXml } from "../../../utils.ts";
+import {
+	encodeToonValue,
+	mergeStructuredRecords,
+	normalizeStructuredRecord,
+	tryParseLooseToonRecord,
+	tryParseToonValue,
+} from "../../../utils/toon";
 import type { JsonValue, PlanningContext, RetryPolicy } from "../types.ts";
 
 type ExtendedHandlerOptions = HandlerOptions & {
@@ -37,6 +43,22 @@ interface ActionStep {
 	retryPolicy?: RetryPolicy;
 	onError?: "abort" | "continue" | "skip";
 	_dependencyStrings?: string[];
+}
+
+function formatPromptData(value: unknown): string {
+	try {
+		return encodeToonValue(value);
+	} catch {
+		return String(value);
+	}
+}
+
+function parseToonRecord(response: string): Record<string, unknown> {
+	const parsedToon = normalizeStructuredRecord(tryParseToonValue(response));
+	const parsedLooseToon = normalizeStructuredRecord(
+		tryParseLooseToonRecord(response),
+	);
+	return mergeStructuredRecords(parsedToon, parsedLooseToon) ?? {};
 }
 
 interface PlanState {
@@ -539,7 +561,7 @@ EXECUTION MODEL: ${context.preferences?.executionModel || "sequential"}
 MAX STEPS: ${context.preferences?.maxSteps || 10}
 
 ${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
-${state ? `CURRENT STATE: ${JSON.stringify(state.values)}` : ""}
+${state ? `CURRENT STATE:\n${formatPromptData(state.values)}` : ""}
 
 Create a detailed plan with the following TOON structure:
 goal: ${context.goal}
@@ -566,8 +588,7 @@ Focus on:
 		context: PlanningContext,
 	): ActionPlan {
 		try {
-			const parsedResponse =
-				parseKeyValueXml<Record<string, unknown>>(response);
+			const parsedResponse = parseToonRecord(response);
 
 			const planId = asUUID(uuidv4());
 			const steps: ActionStep[] = [];
@@ -595,64 +616,31 @@ Focus on:
 				? parsedResponse.steps.filter(isRecord)
 				: [];
 
-			if (toonSteps.length > 0) {
-				for (const step of toonSteps) {
-					const actionName =
-						typeof step.action === "string"
-							? step.action.trim()
-							: typeof step.actionName === "string"
-								? step.actionName.trim()
-								: "";
-					if (!actionName) {
-						continue;
-					}
-
-					const originalId =
-						typeof step.id === "string" && step.id.trim().length > 0
-							? step.id.trim()
-							: `step_${steps.length + 1}`;
-					const actualId = asUUID(uuidv4());
-					stepIdMap.set(originalId, actualId);
-
-					steps.push({
-						id: actualId,
-						actionName,
-						parameters: normalizeActionParameters(step.parameters),
-						dependencies: [],
-						_dependencyStrings: normalizeDependencyStrings(step.dependencies),
-					});
+			for (const step of toonSteps) {
+				const actionName =
+					typeof step.action === "string"
+						? step.action.trim()
+						: typeof step.actionName === "string"
+							? step.actionName.trim()
+							: "";
+				if (!actionName) {
+					continue;
 				}
-			} else {
-				const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
 
-				for (const stepMatch of stepMatches) {
-					const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
-					const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
-					const parametersMatch = stepMatch.match(
-						/<parameters>(.*?)<\/parameters>/,
-					);
-					const dependenciesMatch = stepMatch.match(
-						/<dependencies>(.*?)<\/dependencies>/,
-					);
+				const originalId =
+					typeof step.id === "string" && step.id.trim().length > 0
+						? step.id.trim()
+						: `step_${steps.length + 1}`;
+				const actualId = asUUID(uuidv4());
+				stepIdMap.set(originalId, actualId);
 
-					if (!actionMatch || !idMatch) {
-						continue;
-					}
-
-					const originalId = idMatch[1].trim();
-					const actualId = asUUID(uuidv4());
-					stepIdMap.set(originalId, actualId);
-
-					steps.push({
-						id: actualId,
-						actionName: actionMatch[1].trim(),
-						parameters: normalizeActionParameters(parametersMatch?.[1]),
-						dependencies: [],
-						_dependencyStrings: normalizeDependencyStrings(
-							dependenciesMatch?.[1],
-						),
-					});
-				}
+				steps.push({
+					id: actualId,
+					actionName,
+					parameters: normalizeActionParameters(step.parameters),
+					dependencies: [],
+					_dependencyStrings: normalizeDependencyStrings(step.dependencies),
+				});
 			}
 
 			for (const step of steps) {
@@ -668,36 +656,6 @@ Focus on:
 
 				step.dependencies = dependencies;
 				delete step._dependencyStrings;
-			}
-
-			if (steps.length === 0 && response.includes("<step>")) {
-				const firstId = asUUID(uuidv4());
-				steps.push({
-					id: firstId,
-					actionName: "ANALYZE_INPUT",
-					parameters: { goal: context.goal },
-					dependencies: [],
-				});
-
-				if (
-					context.goal.toLowerCase().includes("plan") ||
-					context.goal.toLowerCase().includes("strategy")
-				) {
-					const secondId = asUUID(uuidv4());
-					steps.push({
-						id: secondId,
-						actionName: "PROCESS_ANALYSIS",
-						parameters: { type: "strategic_planning" },
-						dependencies: [firstId],
-					});
-
-					steps.push({
-						id: asUUID(uuidv4()),
-						actionName: "EXECUTE_FINAL",
-						parameters: { deliverable: "strategy_document" },
-						dependencies: [secondId],
-					});
-				}
 			}
 
 			return {
@@ -1131,9 +1089,11 @@ Focus on:
 	): string {
 		return `You are an expert AI adaptation system. A plan execution has encountered an issue and needs adaptation.
 
-ORIGINAL PLAN: ${JSON.stringify(plan, null, 2)}
+ORIGINAL PLAN:
+${formatPromptData(plan)}
 CURRENT STEP INDEX: ${currentStepIndex}
-COMPLETED RESULTS: ${JSON.stringify(results, null, 2)}
+COMPLETED RESULTS:
+${formatPromptData({ results })}
 ${error ? `ERROR: ${error.message}` : ""}
 
 Analyze the situation and provide an adapted plan that:
@@ -1152,48 +1112,26 @@ Return the adapted plan in the same TOON format as the original planning respons
 	): ActionPlan {
 		try {
 			const adaptedSteps: ActionStep[] = [];
-			const parsedResponse =
-				parseKeyValueXml<Record<string, unknown>>(response);
+			const parsedResponse = parseToonRecord(response);
 			const toonSteps = Array.isArray(parsedResponse?.steps)
 				? parsedResponse.steps.filter(isRecord)
 				: [];
 
-			if (toonSteps.length > 0) {
-				for (const step of toonSteps) {
-					const actionName =
-						typeof step.action === "string"
-							? step.action.trim()
-							: typeof step.actionName === "string"
-								? step.actionName.trim()
-								: "";
-					if (!actionName) continue;
+			for (const step of toonSteps) {
+				const actionName =
+					typeof step.action === "string"
+						? step.action.trim()
+						: typeof step.actionName === "string"
+							? step.actionName.trim()
+							: "";
+				if (!actionName) continue;
 
-					adaptedSteps.push({
-						id: asUUID(uuidv4()),
-						actionName,
-						parameters: normalizeActionParameters(step.parameters),
-						dependencies: [],
-					});
-				}
-			} else {
-				const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
-
-				for (const stepMatch of stepMatches) {
-					const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
-					const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
-					const parametersMatch = stepMatch.match(
-						/<parameters>(.*?)<\/parameters>/,
-					);
-
-					if (!actionMatch || !idMatch) continue;
-
-					adaptedSteps.push({
-						id: asUUID(uuidv4()),
-						actionName: actionMatch[1].trim(),
-						parameters: normalizeActionParameters(parametersMatch?.[1]),
-						dependencies: [],
-					});
-				}
+				adaptedSteps.push({
+					id: asUUID(uuidv4()),
+					actionName,
+					parameters: normalizeActionParameters(step.parameters),
+					dependencies: [],
+				});
 			}
 
 			if (adaptedSteps.length === 0) {

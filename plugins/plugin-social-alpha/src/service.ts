@@ -8,7 +8,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	Service,
 	type Task,
 	type UUID,
@@ -59,6 +59,41 @@ import {
 	type TrustMarketplaceComponentData,
 	type UserTrustProfile,
 } from "./types";
+
+type ExtractedSignal = {
+	messageIndex: number | string;
+	isCall: boolean | string;
+	tokenMentioned?: string;
+	nameMentioned?: string;
+	caMentioned?: string;
+	chain?: string;
+	sentiment?: string;
+	conviction?: string;
+	llmReasoning?: string;
+};
+
+function parseRecommendationExtraction(response: string): {
+	recommendations: ExtractedSignal[];
+} | null {
+	const parsed =
+		parseToonKeyValue<{ recommendations?: ExtractedSignal[] }>(response);
+
+	if (!parsed?.recommendations || !Array.isArray(parsed.recommendations)) {
+		return null;
+	}
+
+	return {
+		recommendations: parsed.recommendations.map((rec) => ({
+			...rec,
+			messageIndex:
+				typeof rec.messageIndex === "number"
+					? rec.messageIndex
+					: Number.parseInt(String(rec.messageIndex ?? "0"), 10),
+			isCall:
+				rec.isCall === true || String(rec.isCall).toLowerCase() === "true",
+		})),
+	};
+}
 
 // Event types
 /**
@@ -3748,12 +3783,9 @@ ${report.tokenReports.join("\n")}
 		try {
 			const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt: `${systemPrompt}\n${userPrompt}`,
-				response_format: { type: "json_object" },
 			});
 
-			const parsed = parseJSONObjectFromText(response) as {
-				recommendations: any[];
-			} | null;
+			const parsed = parseRecommendationExtraction(response);
 
 			if (!parsed?.recommendations || parsed.recommendations.length === 0) {
 				logger.debug(
@@ -3839,12 +3871,9 @@ ${report.tokenReports.join("\n")}
 		try {
 			const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt: `${systemPrompt}\n${userPrompt}`,
-				response_format: { type: "json_object" },
 			});
 
-			const parsed = parseJSONObjectFromText(response) as {
-				recommendations: any[];
-			} | null;
+			const parsed = parseRecommendationExtraction(response);
 
 			if (!parsed?.recommendations || parsed.recommendations.length === 0) {
 				logger.debug(
@@ -3915,26 +3944,12 @@ ${report.tokenReports.join("\n")}
 • ser = sir
 
 ⚠️ CRITICAL OUTPUT REQUIREMENTS:
-- Return JSON with "recommendations" array
-- EXACTLY ${batchSize} objects (messageIndex 0 to ${batchSize - 1})
-- Every object MUST include ALL required fields
+- Respond with TOON only.
+- EXACTLY ${batchSize} recommendations entries (messageIndex 0 to ${batchSize - 1})
+- Every entry MUST include ALL required fields
 
-REQUIRED JSON SCHEMA:
-{
-  "recommendations": [
-    {
-      "messageIndex": 0,
-      "isCall": true,
-      "tokenMentioned": "SOL",
-      "nameMentioned": "",
-      "caMentioned": "",
-      "chain": "solana",
-      "sentiment": "positive",
-      "conviction": "medium",
-      "llmReasoning": "User mentioned buying $SOL with medium confidence"
-    }
-  ]
-}
+REQUIRED TOON SHAPE:
+recommendations[0]{messageIndex,isCall,tokenMentioned,nameMentioned,caMentioned,chain,sentiment,conviction,llmReasoning}: 0,true,SOL,,,solana,positive,medium,User mentioned buying $SOL with medium confidence
 
 FIELD REQUIREMENTS:
 • messageIndex: 0 to ${batchSize - 1}
@@ -3976,7 +3991,7 @@ Examples that SHOULD be extracted:
 - "most ai stuff are getting a dump" → negative sentiment on AI tokens
 - Contract addresses without context → neutral discovery
 
-RESPOND WITH VALID JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION OBJECTS:`;
+RESPOND WITH TOON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 		return { systemPrompt, userPrompt };
 	}
 

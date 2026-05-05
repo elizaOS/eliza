@@ -27,11 +27,13 @@ Classify the request across these dimensions:
 6. DEPENDENCIES:
 - List dependencies between tasks or external factors
 
-Respond in this exact format:
-COMPLEXITY: [simple|medium|complex|enterprise]
-PLANNING: [direct_action|sequential_planning|strategic_planning]
-CAPABILITIES: [comma-separated list]
-STAKEHOLDERS: [comma-separated list]
-CONSTRAINTS: [comma-separated list]
-DEPENDENCIES: [comma-separated list]
-CONFIDENCE: [0.0-1.0]
+Respond using TOON:
+complexity: simple|medium|complex|enterprise
+planning: direct_action|sequential_planning|strategic_planning
+capabilities[n]: analysis,communication
+stakeholders[n]: person_or_group
+constraints[n]: limitation_or_requirement
+dependencies[n]: dependency
+confidence: 0.0-1.0
+
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.

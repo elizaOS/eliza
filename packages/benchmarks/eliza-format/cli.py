@@ -6,7 +6,7 @@ Two execution modes:
    a HF id / local path), shell out to ``training/scripts/benchmark/eliza_bench.py``
    verbatim. That script loads the model via transformers and writes
    ``<out>/summary.json``.
-2. **API** — when ``--provider {vllm,openai,anthropic}`` plus ``--base-url``,
+2. **API** — when ``--provider {vllm,openai,groq,openrouter}`` plus ``--base-url``,
    stream prompts through the OpenAI Python SDK and score with the same
    bucket scorers vendored from ``eliza_bench.py``.
 3. **Mock** — when ``--provider mock``, replay expected answers from a JSONL
@@ -26,7 +26,6 @@ import os
 import subprocess
 import sys
 import time
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +59,7 @@ def _import_bench_helpers():
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="eliza-format benchmark")
-    p.add_argument("--provider", default="hf", choices=("hf", "vllm", "openai", "anthropic", "mock"))
+    p.add_argument("--provider", default="hf", choices=("hf", "vllm", "openai", "groq", "openrouter", "mock"))
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None, help="OpenAI-compat base URL (vllm/openai)")
     p.add_argument("--api-key-env", default="OPENAI_API_KEY", help="Env var holding the API key")
@@ -149,13 +148,27 @@ def _run_api(args: argparse.Namespace) -> int:
     if args.provider != "mock":
         from openai import OpenAI  # noqa: WPS433
 
-        api_key = os.environ.get(args.api_key_env, "EMPTY")
+        api_key_env = args.api_key_env
         base_url = args.base_url
         if not base_url:
             if args.provider == "openai":
                 base_url = "https://api.openai.com/v1"
+            elif args.provider == "groq":
+                base_url = "https://api.groq.com/openai/v1"
+                if api_key_env == "OPENAI_API_KEY":
+                    api_key_env = "GROQ_API_KEY"
+            elif args.provider == "openrouter":
+                base_url = "https://openrouter.ai/api/v1"
+                if api_key_env == "OPENAI_API_KEY":
+                    api_key_env = "OPENROUTER_API_KEY"
             else:
                 raise SystemExit("--base-url is required for vllm provider")
+        elif api_key_env == "OPENAI_API_KEY" and args.provider in {"groq", "openrouter"}:
+            api_key_env = {
+                "groq": "GROQ_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY",
+            }[args.provider]
+        api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
         client = OpenAI(base_url=base_url, api_key=api_key)
 
     out_dir = Path(args.out)

@@ -32,6 +32,7 @@ import {
   extractTaskId,
   formatUnknownError,
   normalizeBenchmarkContext,
+  resolveHost,
   resolvePort,
   sessionKey,
   toPlugin,
@@ -45,7 +46,12 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 // Security: authentication + CORS
 // ---------------------------------------------------------------------------
 
-const MAX_BODY_BYTES = 1_048_576; // 1 MB
+const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
+const configuredMaxBodyBytes = Number(process.env.ELIZA_BENCH_MAX_BODY_BYTES);
+const MAX_BODY_BYTES =
+  Number.isFinite(configuredMaxBodyBytes) && configuredMaxBodyBytes > 0
+    ? Math.floor(configuredMaxBodyBytes)
+    : DEFAULT_MAX_BODY_BYTES;
 
 /** Allowed CORS origins — only localhost variants. */
 const LOCALHOST_ORIGINS = new Set(["http://localhost", "https://localhost"]);
@@ -239,6 +245,9 @@ async function collectSessionDiagnostics(
       ),
       has_manual_compaction_action: actionNames.includes("COMPACT_SESSION"),
     },
+    providers: providerNames,
+    evaluators: evaluatorNames,
+    actions: actionNames,
   };
 }
 
@@ -363,6 +372,22 @@ export async function startBenchmarkServer() {
     }
   }
 
+  const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openRouterApiKey) {
+    process.env.OPENROUTER_API_KEY = openRouterApiKey;
+    try {
+      const { default: openrouterPlugin } = await import(
+        "@elizaos/plugin-openrouter"
+      );
+      plugins.push(toPlugin(openrouterPlugin, "@elizaos/plugin-openrouter"));
+      elizaLogger.info("[bench] Loaded LLM plugin: @elizaos/plugin-openrouter");
+    } catch (error: unknown) {
+      elizaLogger.warn(
+        `[bench] OpenRouter plugin not available: ${formatUnknownError(error)}`,
+      );
+    }
+  }
+
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (anthropicApiKey) {
     process.env.ANTHROPIC_API_KEY = anthropicApiKey;
@@ -449,6 +474,51 @@ export async function startBenchmarkServer() {
     "AUTO_COMPACT",
     "CONVERSATION_LENGTH",
     "ADVANCED_CAPABILITIES",
+    "SMALL_MODEL",
+    "LARGE_MODEL",
+    "NANO_MODEL",
+    "MEDIUM_MODEL",
+    "MEGA_MODEL",
+    "ACTION_PLANNER_MODEL",
+    "PLANNER_MODEL",
+    "RESPONSE_HANDLER_MODEL",
+    "SHOULD_RESPOND_MODEL",
+    "GROQ_SMALL_MODEL",
+    "GROQ_LARGE_MODEL",
+    "GROQ_NANO_MODEL",
+    "GROQ_MEDIUM_MODEL",
+    "GROQ_MEGA_MODEL",
+    "GROQ_ACTION_PLANNER_MODEL",
+    "GROQ_PLANNER_MODEL",
+    "GROQ_RESPONSE_HANDLER_MODEL",
+    "GROQ_SHOULD_RESPOND_MODEL",
+    "OPENAI_SMALL_MODEL",
+    "OPENAI_LARGE_MODEL",
+    "OPENAI_NANO_MODEL",
+    "OPENAI_MEDIUM_MODEL",
+    "OPENAI_MEGA_MODEL",
+    "OPENAI_ACTION_PLANNER_MODEL",
+    "OPENAI_PLANNER_MODEL",
+    "OPENAI_RESPONSE_HANDLER_MODEL",
+    "OPENAI_SHOULD_RESPOND_MODEL",
+    "OPENROUTER_SMALL_MODEL",
+    "OPENROUTER_LARGE_MODEL",
+    "OPENROUTER_NANO_MODEL",
+    "OPENROUTER_MEDIUM_MODEL",
+    "OPENROUTER_MEGA_MODEL",
+    "OPENROUTER_ACTION_PLANNER_MODEL",
+    "OPENROUTER_PLANNER_MODEL",
+    "OPENROUTER_RESPONSE_HANDLER_MODEL",
+    "OPENROUTER_SHOULD_RESPOND_MODEL",
+    "ANTHROPIC_SMALL_MODEL",
+    "ANTHROPIC_LARGE_MODEL",
+    "ANTHROPIC_NANO_MODEL",
+    "ANTHROPIC_MEDIUM_MODEL",
+    "ANTHROPIC_MEGA_MODEL",
+    "ANTHROPIC_ACTION_PLANNER_MODEL",
+    "ANTHROPIC_PLANNER_MODEL",
+    "ANTHROPIC_RESPONSE_HANDLER_MODEL",
+    "ANTHROPIC_SHOULD_RESPOND_MODEL",
   ];
   for (const key of runtimeSettingKeys) {
     const value = process.env[key]?.trim();
@@ -1024,14 +1094,15 @@ export async function startBenchmarkServer() {
   // than any reasonable default while waiting for a model response.
   server.timeout = 0;
 
-  server.listen(port, () => {
+  const host = resolveHost();
+  server.listen(port, host, () => {
     elizaLogger.info(
-      `[bench] Eliza benchmark server listening on port ${port} ` +
+      `[bench] Eliza benchmark server listening on ${host}:${port} ` +
         `(requestTimeout=${server.requestTimeout}ms, ` +
         `headersTimeout=${server.headersTimeout}ms, ` +
         `keepAliveTimeout=${server.keepAliveTimeout}ms)`,
     );
-    console.log(`ELIZA_BENCH_READY port=${port}`);
+    console.log(`ELIZA_BENCH_READY host=${host} port=${port}`);
   });
 }
 

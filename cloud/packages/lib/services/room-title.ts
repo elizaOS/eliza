@@ -59,7 +59,7 @@ Title:`;
     logger.info(`[RoomTitle] Generating AI title for room ${roomId}`);
 
     const result = await generateText({
-      model: getLanguageModel("openai/gpt-4o-mini"),
+      model: getLanguageModel("openai/gpt-5-mini"),
       prompt,
     });
 

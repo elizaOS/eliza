@@ -19,7 +19,8 @@ export const readingFollowupAction: Action = {
   similes: ["CONTINUE_READING", "NEXT_CARD", "READING_RESPONSE", "PROCEED_READING"],
   description:
     "Continue an active reading by processing user feedback and revealing the next element.",
-  descriptionCompressed: "continue active read process user feedback reveal next element",
+  descriptionCompressed:
+    "Continue active reading; process user feedback and reveal the next element.",
 
   validate: async (
     runtime: IAgentRuntime,
@@ -197,7 +198,8 @@ export const deepenReadingAction: Action = {
   name: "DEEPEN_READING",
   similes: ["EXPLAIN_MORE", "GO_DEEPER", "ELABORATE_READING", "READING_DETAIL"],
   description: "Provide a deeper interpretation of a specific element in an active reading.",
-  descriptionCompressed: "provide deeper interpretation specific element active read",
+  descriptionCompressed:
+    "Deepen active reading with more interpretation for a specific element.",
 
   validate: async (
     runtime: IAgentRuntime,

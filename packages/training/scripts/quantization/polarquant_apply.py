@@ -40,7 +40,6 @@ if str(_HERE) not in sys.path:
 from _common import (  # noqa: E402
     load_model_and_tokenizer,
     save_model,
-    write_sidecar,
 )
 from polarquant.polar_quant import (  # noqa: E402
     PolarQuantResult,

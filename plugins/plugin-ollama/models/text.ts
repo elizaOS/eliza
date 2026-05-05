@@ -13,6 +13,7 @@ import {
   getResponseHandlerModel,
   getSmallModel,
 } from "../utils/config";
+import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { ensureModelAvailable } from "./availability";
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -23,7 +24,9 @@ const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
 
 async function generateOllamaText(
+  runtime: IAgentRuntime,
   ollama: ReturnType<typeof createOllama>,
+  modelType: TextModelType,
   model: string,
   params: {
     prompt: string;
@@ -48,7 +51,13 @@ async function generateOllamaText(
       stopSequences: params.stopSequences,
     };
 
-    const { text: ollamaResponse } = await generateText(generateParams);
+    const { text: ollamaResponse, usage } = await generateText(generateParams);
+    emitModelUsed(
+      runtime,
+      modelType,
+      model,
+      normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, ollamaResponse)
+    );
     return ollamaResponse;
   } catch (error: unknown) {
     logger.error({ error }, "Error in generateOllamaText");
@@ -110,7 +119,7 @@ async function handleTextWithModelType(
     logger.log(`[Ollama] Using ${modelType} model: ${model}`);
     await ensureModelAvailable(model, baseURL, customFetch);
 
-    return await generateOllamaText(ollama, model, {
+    return await generateOllamaText(runtime, ollama, modelType, model, {
       prompt,
       system: runtime.character?.system ?? undefined,
       temperature,

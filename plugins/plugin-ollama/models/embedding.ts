@@ -1,9 +1,10 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { type EmbeddingModel, embed } from "ai";
 import { createOllama } from "ollama-ai-provider";
 
 import { getBaseURL, getEmbeddingModel } from "../utils/config";
+import { emitModelUsed, estimateEmbeddingUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { ensureModelAvailable } from "./availability";
 
 export async function handleTextEmbedding(
@@ -47,7 +48,13 @@ export async function handleTextEmbedding(
         value: embeddingText,
       };
 
-      const { embedding } = await embed(embedParams);
+      const { embedding, usage } = await embed(embedParams);
+      emitModelUsed(
+        runtime,
+        ModelType.TEXT_EMBEDDING,
+        modelName,
+        normalizeTokenUsage(usage) ?? estimateEmbeddingUsage(embeddingText)
+      );
       return embedding;
     } catch (embeddingError) {
       logger.error({ error: embeddingError }, "Error generating embedding");

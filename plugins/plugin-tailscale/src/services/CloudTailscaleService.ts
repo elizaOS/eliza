@@ -2,7 +2,11 @@ import { Service, elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import { spawn } from "node:child_process";
 import { z } from "zod";
 import { validateTailscaleConfig } from "../environment";
-import type { ITunnelService, TunnelStatus } from "../types";
+import {
+  TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE,
+  type ITunnelService,
+  type TunnelStatus,
+} from "../types";
 
 const CLOUD_BASE_FALLBACK = "https://www.elizacloud.ai/api/v1";
 
@@ -75,7 +79,7 @@ async function defaultFetch(
 }
 
 export class CloudTailscaleService extends Service implements ITunnelService {
-  static override serviceType = "tunnel";
+  static override serviceType = TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE;
   readonly capabilityDescription =
     "Provides Tailscale tunnel functionality via Eliza Cloud — auth keys are minted server-side and the local CLI joins the tailnet.";
 

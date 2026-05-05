@@ -10,6 +10,7 @@ export const workspaceInfoProvider: Provider = {
   name: "slackWorkspaceInfo",
   description: "Provides information about the Slack workspace",
   dynamic: true,
+  contexts: ["social", "connectors"],
   relevanceKeywords: [
     "slackworkspaceinfo",
     "workspaceinfoprovider",

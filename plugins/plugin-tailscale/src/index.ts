@@ -9,12 +9,9 @@ import { TailscaleTestSuite } from "./__tests__/TailscaleTestSuite";
 
 /**
  * Plugin doesn't list any services upfront. The selector runs in `init()` and
- * registers exactly one tunnel backend (Local or Cloud) under
- * `serviceType="tunnel"`. Consumers stay backend-agnostic via
- * `runtime.getService("tunnel")`.
- *
- * Mutually exclusive with `@elizaos/plugin-ngrok` — both register under the
- * same `serviceType`. Enable only one tunnel plugin at a time.
+ * registers exactly one Tailscale backend (local or cloud) under a backend
+ * specific serviceType. Consumers should stay backend-agnostic via
+ * `getTunnelService(runtime)`.
  */
 export const tailscalePlugin: Plugin = {
   name: "tailscale",

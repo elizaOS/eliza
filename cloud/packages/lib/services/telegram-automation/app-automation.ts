@@ -240,7 +240,7 @@ Maximum 500 characters.`;
 
     try {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
+        model: openai("gpt-5-mini"),
         system: systemPrompt,
         prompt:
           "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
@@ -316,7 +316,7 @@ Maximum 300 characters.`;
 
     try {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
+        model: openai("gpt-5-mini"),
         system: systemPrompt,
         prompt: userName
           ? `User ${userName} says: "${userMessage}"`

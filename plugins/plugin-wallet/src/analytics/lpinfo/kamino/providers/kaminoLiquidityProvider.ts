@@ -18,7 +18,86 @@ interface KaminoStrategy {
   feeTier: string;
   rebalancing: string;
   lastRebalance: string;
-  positions: any[];
+  positions: unknown[];
+}
+
+function asPromptRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function formatTokenInfoForPrompt(tokenInfo: unknown): string {
+  if (!tokenInfo) {
+    return "token_status: not resolved";
+  }
+
+  const token = asPromptRecord(tokenInfo);
+  const fields = [
+    ["token_status", "resolved"],
+    ["name", token.name],
+    ["symbol", token.symbol],
+    ["address", token.address],
+    ["price_usd", token.price],
+    ["liquidity_usd", token.liquidity],
+    ["market_cap_usd", token.marketCap],
+    ["volume_24h_usd", token.volume24h],
+    ["price_change_24h_percent", token.priceChange24h],
+    ["decimals", token.decimals],
+  ];
+
+  return fields
+    .filter(
+      ([, value]) => value !== undefined && value !== null && value !== "",
+    )
+    .map(([key, value]) => `${key}: ${formatPromptValue(value)}`)
+    .join("\n");
+}
+
+function formatMarketStatsForPrompt(marketStats: unknown): string {
+  if (!marketStats) {
+    return "market_status: not available";
+  }
+
+  const stats = asPromptRecord(marketStats);
+  const stakingYields = asPromptRecord(stats.stakingYields);
+  const medianYields = asPromptRecord(stats.medianYields);
+  const limoTrades = asPromptRecord(stats.limoTrades);
+
+  return [
+    "market_status: available",
+    `timestamp: ${formatPromptValue(stats.timestamp)}`,
+    `staking_yields_total: ${formatPromptValue(stakingYields.total)}`,
+    `staking_yields_average_apy: ${formatPromptValue(stakingYields.averageApy)}`,
+    `staking_yields_max_apy: ${formatPromptValue(stakingYields.maxApy)}`,
+    `staking_yields_min_apy: ${formatPromptValue(stakingYields.minApy)}`,
+    `median_yields_total: ${formatPromptValue(medianYields.total)}`,
+    `median_yields_average_apy: ${formatPromptValue(medianYields.averageApy)}`,
+    `limo_trades_total: ${formatPromptValue(limoTrades.total)}`,
+    `limo_trades_total_volume_usd: ${formatPromptValue(limoTrades.totalVolume)}`,
+    `limo_trades_average_tip_usd: ${formatPromptValue(limoTrades.averageTip)}`,
+    `limo_trades_average_surplus_usd: ${formatPromptValue(limoTrades.averageSurplus)}`,
+  ].join("\n");
+}
+
+function formatPromptValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "N/A";
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "N/A";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return String(value);
+  }
+
+  return String(value);
 }
 
 /**
@@ -217,7 +296,7 @@ async function getKaminoLiquidityStats(
 /**
  * Get detailed information about a specific strategy
  */
-async function getStrategyDetails(strategy: any): Promise<string> {
+async function getStrategyDetails(strategy: KaminoStrategy): Promise<string> {
   let details = `   🏊‍♂️ STRATEGY: ${strategy.address}\n`;
   details += `      📈 Type: ${strategy.strategyType}\n`;
   details += `      💰 TVL: $${strategy.estimatedTvl.toLocaleString()}\n`;
@@ -279,7 +358,7 @@ async function generateEnhancedKaminoLiquidityReport(
   runtime: IAgentRuntime,
   data: {
     tokenIdentifier: string;
-    tokenInfo: any;
+    tokenInfo: unknown;
     poolStats: string;
     kaminoLiquidityService: KaminoLiquidityService;
   },
@@ -292,13 +371,13 @@ async function generateEnhancedKaminoLiquidityReport(
     const liquidityPrompt = `You are a professional DeFi analyst specializing in Kamino Finance liquidity protocols. Generate a comprehensive, well-crafted analysis report for the token ${data.tokenIdentifier}.
 
 TOKEN INFORMATION:
-${JSON.stringify(data.tokenInfo, null, 2)}
+${formatTokenInfoForPrompt(data.tokenInfo)}
 
 POOL STATISTICS:
 ${data.poolStats}
 
 MARKET CONTEXT:
-${JSON.stringify(marketStats, null, 2)}
+${formatMarketStatsForPrompt(marketStats)}
 
 Please generate a professional, engaging report that includes:
 

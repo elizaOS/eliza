@@ -34,7 +34,7 @@ export async function handleImageDescription(
     const response = await generateText(generateParams);
 
     if (response.usage) {
-      emitModelUsageEvent(runtime, ModelType.IMAGE_DESCRIPTION, prompt, response.usage);
+      emitModelUsageEvent(runtime, ModelType.IMAGE_DESCRIPTION, prompt, response.usage, modelName);
     }
 
     return response.text;
@@ -61,7 +61,7 @@ export async function handleImageGeneration(
     const response = await generateText(generateParams);
 
     if (response.usage) {
-      emitModelUsageEvent(runtime, ModelType.IMAGE, params.prompt, response.usage);
+      emitModelUsageEvent(runtime, ModelType.IMAGE, params.prompt, response.usage, modelName);
     }
 
     return {

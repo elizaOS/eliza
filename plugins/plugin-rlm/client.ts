@@ -4,6 +4,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import * as path from "node:path";
 import * as readline from "node:readline";
 
+import { assertRecordedLlmCall } from "@elizaos/core";
 import type {
   IPCReadyMessage,
   IPCRequest,
@@ -305,6 +306,12 @@ export class RLMClient {
   }
 
   async infer(messages: string | RLMMessage[], opts?: RLMInferOptions): Promise<RLMResult> {
+    assertRecordedLlmCall({
+      actionType: "rlm.client.infer",
+      model: opts?.rootModel,
+      purpose: "external_llm",
+    });
+
     const startTime = Date.now();
     const { maxRetries = 3, retryBaseDelay = 1000, retryMaxDelay = 30000 } = this.config;
     const RETRYABLE_PATTERNS = ["timeout", "rate limit", "connection", "503", "429", "econnreset"];

@@ -1,18 +1,23 @@
 /**
  * Local tunnel-service contract for the Tailscale plugin.
  *
- * Mirrors the contract defined by `@elizaos/plugin-ngrok/types`. Both plugins
- * register under `serviceType = "tunnel"` (added to the framework's
- * `ServiceTypeRegistry` via module augmentation below) so consumers stay
- * backend-agnostic via `runtime.getService("tunnel")`. They are mutually
- * exclusive — only one tunnel plugin can be enabled at a time.
+ * Mirrors the contract defined by `@elizaos/plugin-ngrok/types`. The generic
+ * `"tunnel"` serviceType remains supported for other tunnel plugins, while
+ * Tailscale's local and cloud backends register under distinct serviceTypes so
+ * static and runtime service collision checks can tell them apart.
  */
 
 import type { IAgentRuntime, Service } from "@elizaos/core";
 
+export const TUNNEL_SERVICE_TYPE = "tunnel" as const;
+export const TAILSCALE_LOCAL_TUNNEL_SERVICE_TYPE = "tunnel:local" as const;
+export const TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE = "tunnel:cloud" as const;
+
 declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
-    TUNNEL: "tunnel";
+    TUNNEL: typeof TUNNEL_SERVICE_TYPE;
+    TAILSCALE_TUNNEL_LOCAL: typeof TAILSCALE_LOCAL_TUNNEL_SERVICE_TYPE;
+    TAILSCALE_TUNNEL_CLOUD: typeof TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE;
   }
 }
 
@@ -37,18 +42,28 @@ export interface ITunnelService {
 export type TailscaleBackendMode = "local" | "cloud" | "auto";
 
 /**
- * Backend-agnostic accessor. Both bundled backends extend `Service` and
- * implement `ITunnelService`; the intersection cast is sound by construction.
- * The shape check guards against an unrelated service registering under
- * `"tunnel"`.
+ * Backend-agnostic accessor. Tailscale checks its split local/cloud types first
+ * and then falls back to the generic tunnel type for callers sharing this
+ * helper with other tunnel providers.
  */
 export function getTunnelService(
   runtime: IAgentRuntime,
 ): ITunnelService | null {
-  const service = runtime.getService("tunnel");
-  if (!service) return null;
-  if (typeof (service as Partial<ITunnelService>).startTunnel !== "function") {
-    return null;
+  const serviceTypes = [
+    TAILSCALE_LOCAL_TUNNEL_SERVICE_TYPE,
+    TAILSCALE_CLOUD_TUNNEL_SERVICE_TYPE,
+    TUNNEL_SERVICE_TYPE,
+  ];
+
+  for (const serviceType of serviceTypes) {
+    const service = runtime.getService(serviceType);
+    if (
+      service &&
+      typeof (service as Partial<ITunnelService>).startTunnel === "function"
+    ) {
+      return service as Service & ITunnelService;
+    }
   }
-  return service as Service & ITunnelService;
+
+  return null;
 }

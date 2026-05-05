@@ -11,7 +11,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import type {
   CreateLifeOpsDefinitionRequest,
@@ -652,8 +655,8 @@ async function extractDeferredLifeDraftFollowupWithLlm(args: {
     "Use the current message, the draft summary, and recent conversation.",
     "The user may speak in any language.",
     "",
-    "Return ONLY valid JSON with exactly this shape:",
-    '{"mode":"confirm"|"edit"|"cancel"|"none"}',
+    "Return ONLY a TOON record with exactly this field:",
+    "mode: confirm | edit | cancel | none",
     "",
     "Choose confirm when the user clearly approves saving the current draft now.",
     "Choose edit when the user wants to change the draft or continue specifying it before saving.",
@@ -663,8 +666,9 @@ async function extractDeferredLifeDraftFollowupWithLlm(args: {
     "Previewed draft:",
     stringifyDeferredLifeDraftForPrompt(args.draft),
     "",
-    `Current user message: ${JSON.stringify(args.currentText)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation.join("\n"))}`,
+    `Current user message: ${args.currentText.trim() || "(empty)"}`,
+    "Recent conversation:",
+    recentConversation.join("\n").trim() || "(empty)",
   ].join("\n");
 
   try {
@@ -672,7 +676,8 @@ async function extractDeferredLifeDraftFollowupWithLlm(args: {
       prompt,
     });
     const raw = typeof result === "string" ? result : "";
-    const parsed = parseJSONObjectFromText(raw);
+    const parsed =
+      parseToonKeyValue<Record<string, unknown>>(raw);
     const mode =
       parsed && typeof parsed.mode === "string"
         ? parsed.mode.trim().toLowerCase()
@@ -692,22 +697,48 @@ async function extractDeferredLifeDraftFollowupWithLlm(args: {
 
 function stringifyDeferredLifeDraftForPrompt(draft: DeferredLifeDraft): string {
   if (draft.operation === "create_definition") {
-    return JSON.stringify({
-      operation: draft.operation,
-      title: draft.request.title,
-      kind: draft.request.kind,
-      cadence: draft.request.cadence,
-      timezone: draft.request.timezone ?? null,
-      description: draft.request.description ?? null,
-    });
+    return [
+      `operation: ${draft.operation}`,
+      `title: ${draft.request.title}`,
+      `kind: ${draft.request.kind}`,
+      "cadence:",
+      formatPromptRecord(draft.request.cadence),
+      `timezone: ${draft.request.timezone ?? "null"}`,
+      `description: ${draft.request.description ?? "null"}`,
+    ].join("\n");
   }
 
-  return JSON.stringify({
-    operation: draft.operation,
-    title: draft.request.title,
-    cadence: draft.request.cadence ?? null,
-    description: draft.request.description ?? null,
-  });
+  return [
+    `operation: ${draft.operation}`,
+    `title: ${draft.request.title}`,
+    "cadence:",
+    formatPromptRecord(draft.request.cadence ?? null),
+    `description: ${draft.request.description ?? "null"}`,
+  ].join("\n");
+}
+
+function formatPromptRecord(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "  null";
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return `  ${String(value)}`;
+  }
+  const lines = Object.entries(value as Record<string, unknown>).map(
+    ([key, entry]) => {
+      if (entry === null || entry === undefined) {
+        return `  ${key}: null`;
+      }
+      if (Array.isArray(entry)) {
+        return `  ${key}: [${entry.map((item) => String(item)).join(", ")}]`;
+      }
+      if (typeof entry === "object") {
+        return `  ${key}: ${formatPromptRecord(entry).trim()}`;
+      }
+      return `  ${key}: ${String(entry)}`;
+    },
+  );
+  return lines.length > 0 ? lines.join("\n") : "  null";
 }
 
 function resolveDeferredLifeDraftReuseMode(args: {
@@ -2270,8 +2301,8 @@ function formatWeeklyGoalReview(args: {
 // scoped to that surface (page-automations → CREATE_TRIGGER_TASK,
 // page-browser → browser actions, etc.). When LIFE stays eligible on those
 // scopes its long description contaminates the ACTION_PLANNER candidate
-// list, driving the LLM to mimic the life-param-extractor JSON schema and
-// producing envelopes the planner's XML parse cannot read.
+// list, driving the LLM to mimic the life-param-extractor structured schema and
+// producing envelopes the planner cannot read.
 async function isForeignPageScope(
   runtime: IAgentRuntime,
   message: Memory,
@@ -3992,7 +4023,7 @@ export const lifeAction: Action & {
     {
       name: "details",
       description:
-        "Structured data when needed. May include: cadence (schedule object), kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), minutes (snooze minutes), phoneNumber, allowSms, allowVoice, steps (escalation steps array), goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops), or reminder preference targeting.",
+        "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), minutes (snooze minutes), phoneNumber, allowSms, allowVoice, steps escalation list, goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops), or reminder preference targeting.",
       required: false,
       schema: { type: "object" as const },
     },

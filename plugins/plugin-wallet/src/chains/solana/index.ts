@@ -1,6 +1,4 @@
 import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
-import { executeSwap } from "./actions/swap";
-import transferToken from "./actions/transfer";
 import { SOLANA_SERVICE_NAME } from "./constants";
 import { walletProvider } from "./providers/wallet";
 import { solanaRoutes } from "./routes/index";
@@ -30,11 +28,7 @@ export const solanaPlugin: Plugin = {
       return;
     }
 
-    const noActions = parseBoolSetting(runtime.getSetting("SOLANA_NO_ACTIONS"));
-    if (!noActions) {
-      runtime.registerAction(transferToken);
-      runtime.registerAction(executeSwap);
-    } else {
+    if (parseBoolSetting(runtime.getSetting("SOLANA_NO_ACTIONS"))) {
       runtime.logger.log("SOLANA_NO_ACTIONS is set, skipping solana actions");
     }
 

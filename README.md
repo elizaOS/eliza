@@ -55,7 +55,7 @@ packages/        ← framework and shared packages
 
 plugins/         ← runtime plugins and app plugins
   app-companion/ app-browser/ app-knowledge/ app-phone/
-  app-task-coordinator/ app-training/ app-form/ ...
+  app-task-coordinator/ app-training/ plugin-form/ ...
   plugin-discord/ plugin-openai/ plugin-sql/ ...
 
 packages/elizaos/templates/   ← CLI scaffolds + min-project / min-plugin for APP/PLUGIN create
@@ -134,7 +134,7 @@ For first-party app plugin references, browse [`plugins/app-*`](plugins). A few 
 - [`app-browser`](plugins/app-browser) — agent-driven browser automation.
 - [`app-knowledge`](plugins/app-knowledge) — RAG over user documents.
 - [`app-phone`](plugins/app-phone) — voice + telephony surface.
-- [`app-form`](plugins/app-form) — form-driven data collection.
+- [`plugin-form`](plugins/plugin-form) — form-driven data collection.
 - [`app-task-coordinator`](plugins/app-task-coordinator) — multi-agent orchestration.
 - [`app-training`](plugins/app-training) — trajectory capture + native prompt optimization.
 

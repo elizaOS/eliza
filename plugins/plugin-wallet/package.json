@@ -25,6 +25,26 @@
         "default": "./dist/sdk/index.mjs"
       }
     },
+    "./plugin": {
+      "types": "./src/routes/plugin.ts",
+      "import": "./src/routes/plugin.ts",
+      "default": "./src/routes/plugin.ts"
+    },
+    "./register-routes": {
+      "types": "./src/register-routes.ts",
+      "import": "./src/register-routes.ts",
+      "default": "./src/register-routes.ts"
+    },
+    "./routes/*": {
+      "types": "./src/routes/*.ts",
+      "import": "./src/routes/*.ts",
+      "default": "./src/routes/*.ts"
+    },
+    "./lib/*": {
+      "types": "./src/lib/*.ts",
+      "import": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -41,11 +61,15 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "form-data": "4.0.5",
     "whatwg-url": "^16.0.0"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
     "@elizaos/cloud-routing": "workspace:*",
     "@lifi/data-types": "^6.0.0",
     "@lifi/sdk": "^3.7.9",
@@ -57,6 +81,8 @@
     "@solana/spl-token": "0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",
     "@solana/web3.js": "1.98.4",
+    "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
+    "@steerprotocol/sdk": "^3.0.7",
     "bignumber.js": "^11.0.0",
     "bs58": "^6.0.0",
     "tweetnacl": "^1.0.3",

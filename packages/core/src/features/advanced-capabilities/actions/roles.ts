@@ -14,34 +14,34 @@ import type {
 	World,
 } from "../../../types/index.ts";
 import { ChannelType, ModelType } from "../../../types/index.ts";
-import { composePrompt, parseKeyValueXml } from "../../../utils.ts";
+import { composePrompt, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_ROLE");
 
-/** Shape of individual assignment in XML response */
-interface RoleAssignmentXml {
+/** Shape of individual assignment in structured responses. */
+interface RoleAssignmentToon {
 	entityId?: string;
 	newRole?: string;
 }
 
-/** Shape of the role extraction XML response */
+/** Shape of the role extraction structured response. */
 interface RoleExtractionResult {
 	assignments?:
 		| {
-				assignment?: RoleAssignmentXml | RoleAssignmentXml[];
+				assignment?: RoleAssignmentToon | RoleAssignmentToon[];
 		  }
-		| RoleAssignmentXml[];
+		| RoleAssignmentToon[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeRoleAssignments(value: unknown): RoleAssignmentXml[] {
+function normalizeRoleAssignments(value: unknown): RoleAssignmentToon[] {
 	if (Array.isArray(value)) {
 		return value.filter(
-			(entry): entry is RoleAssignmentXml =>
+			(entry): entry is RoleAssignmentToon =>
 				isRecord(entry) &&
 				(typeof entry.entityId === "string" ||
 					typeof entry.newRole === "string"),
@@ -56,7 +56,7 @@ function normalizeRoleAssignments(value: unknown): RoleAssignmentXml[] {
 		isRecord(value) &&
 		(typeof value.entityId === "string" || typeof value.newRole === "string")
 	) {
-		return [value as RoleAssignmentXml];
+		return [value as RoleAssignmentToon];
 	}
 
 	return [];
@@ -273,19 +273,19 @@ assignments[1]:
 IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`,
 		});
 
-		// Extract role assignments using text model with XML parsing
+		// Extract role assignments using the TOON-first compatibility parser.
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt: extractionPrompt,
 			stopSequences: [],
 		});
 
-		const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
+		const parsedToon = parseToonKeyValue<RoleExtractionResult>(response);
 
-		// Handle the parsed XML structure
-		const assignmentArray = normalizeRoleAssignments(parsedXml?.assignments);
+		// Handle the parsed structured response.
+		const assignmentArray = normalizeRoleAssignments(parsedToon?.assignments);
 		const assignments: RoleAssignment[] = assignmentArray
 			.filter(
-				(a): a is RoleAssignmentXml & { entityId: string; newRole: string } =>
+				(a): a is RoleAssignmentToon & { entityId: string; newRole: string } =>
 					typeof a.entityId === "string" && typeof a.newRole === "string",
 			)
 			.map((a) => ({

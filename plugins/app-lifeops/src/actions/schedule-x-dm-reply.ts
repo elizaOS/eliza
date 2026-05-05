@@ -8,8 +8,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { recentConversationTexts } from "./life-recent-context.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
@@ -60,7 +59,7 @@ async function resolveSchedulePlan(args: {
   const nowIso = new Date().toISOString();
   const prompt = [
     "Plan a scheduled X/Twitter DM reply.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return TOON only with exactly these fields:",
     "  recipient: X handle or user id without a leading @ when possible",
     "  text: the DM reply body",
     "  sendAtIso: the delivery time as an ISO-8601 timestamp",
@@ -71,22 +70,22 @@ async function resolveSchedulePlan(args: {
     "If the user says '9am tomorrow', convert it to the correct ISO timestamp.",
     "",
     "Examples:",
-    '  "Schedule a reply to @devfriend\'s Twitter DM for 9am tomorrow saying thanks for the intro." -> {"recipient":"devfriend","text":"thanks for the intro","sendAtIso":"<tomorrow at 09:00 local time as ISO>","shouldAct":true,"response":null}',
-    '  "Queue an X DM reply to alice at 2pm saying I\'ll send the deck tonight." -> {"recipient":"alice","text":"I\'ll send the deck tonight.","sendAtIso":"<today at 14:00 local time as ISO>","shouldAct":true,"response":null}',
-    '  "Schedule an X DM for later." -> {"recipient":null,"text":null,"sendAtIso":null,"shouldAct":false,"response":"Who should receive the X DM, what should it say, and when should I send it?"}',
+    '  "Schedule a reply to @devfriend\'s Twitter DM for 9am tomorrow saying thanks for the intro." -> recipient: devfriend; text: thanks for the intro; sendAtIso: <tomorrow at 09:00 local time as ISO>; shouldAct: true; response: null',
+    "  \"Queue an X DM reply to alice at 2pm saying I'll send the deck tonight.\" -> recipient: alice; text: I'll send the deck tonight.; sendAtIso: <today at 14:00 local time as ISO>; shouldAct: true; response: null",
+    '  "Schedule an X DM for later." -> recipient: null; text: null; sendAtIso: null; shouldAct: false; response: Who should receive the X DM, what should it say, and when should I send it?',
     "",
     `Current time: ${nowIso}`,
-    `Current request: ${JSON.stringify(currentText)}`,
-    `Recent conversation: ${JSON.stringify(recent.join("\n"))}`,
+    "Current request:",
+    currentText || "(empty)",
+    "Recent conversation:",
+    recent.join("\n") || "(none)",
   ].join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(
-        typeof raw === "string" ? raw : "",
-      ) ?? parseJSONObjectFromText(typeof raw === "string" ? raw : "");
+    const parsed = parseToonKeyValue<Record<string, unknown>>(
+      typeof raw === "string" ? raw : "",
+    );
     if (!parsed) {
       return { shouldAct: null };
     }

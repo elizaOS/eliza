@@ -28,11 +28,9 @@
     }
   },
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/agent": "workspace:*"
-  },
-  "peerDependencies": {
-    "@elizaos/app-core": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
@@ -91,6 +89,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
+    "test": "vitest run --config vitest.config.ts",
     "build": "tsup --config ../tsup.plugin-packages.shared.ts",
     "clean": "rm -rf dist"
   },
@@ -98,6 +97,7 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.17"
   }
 }

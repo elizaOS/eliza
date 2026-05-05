@@ -17,7 +17,7 @@ Evaluates ElizaOS agents on real-world web navigation and interaction tasks.
 
 ```bash
 # From repo root
-python -m benchmarks.mind2web --sample
+PYTHONPATH=packages python -m benchmarks.mind2web --sample
 ```
 
 ### Run with Groq (Fast and Cheap)
@@ -27,14 +27,14 @@ python -m benchmarks.mind2web --sample
 export GROQ_API_KEY=your_key_here
 
 # Run benchmark
-python -m benchmarks.mind2web --sample --real-llm --provider groq
+PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider groq --model openai/gpt-oss-120b
 ```
 
 ### Run with OpenAI
 
 ```bash
 export OPENAI_API_KEY=your_key_here
-python -m benchmarks.mind2web --sample --real-llm --provider openai
+PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider groq --model openai/gpt-oss-120b
 ```
 
 ### Run Full Benchmark from HuggingFace
@@ -44,7 +44,7 @@ python -m benchmarks.mind2web --sample --real-llm --provider openai
 pip install datasets
 
 # Run with HuggingFace data
-python -m benchmarks.mind2web --hf --real-llm --max-tasks 50
+PYTHONPATH=packages python -m benchmarks.mind2web --hf --real-llm --max-tasks 50
 ```
 
 ## CLI Options
@@ -64,7 +64,8 @@ Task Selection:
 
 Model Configuration:
   --real-llm            Use real LLM via ElizaOS (requires API key)
-  --provider PROVIDER   groq, openai, anthropic, or auto (default)
+  --provider PROVIDER   groq, openai, openrouter, anthropic, or auto (default)
+  --model MODEL         Model name for OpenAI-compatible providers
   --temperature T       LLM temperature (default: 0.0)
 
 Output:

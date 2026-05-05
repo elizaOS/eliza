@@ -7,17 +7,19 @@ import os from "node:os";
 import path, { basename } from "node:path";
 import { Readable } from "node:stream";
 import type {
+  EventPayload,
   GenerateTextParams,
   ModelTypeName,
   ObjectGenerationParams,
   TextEmbeddingParams,
 } from "@elizaos/core";
 import {
+  EventType,
   type IAgentRuntime,
   logger,
   ModelType,
   type Plugin,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import {
   getLlama,
@@ -87,6 +89,85 @@ const wordsToPunish = [
   " Notably",
   " Therefore",
 ];
+
+type NormalizedUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimated?: boolean;
+};
+
+function estimateTokenCount(text: string): number {
+  return text.length === 0 ? 0 : Math.ceil(text.length / 4);
+}
+
+function estimateUsage(prompt: string, response: unknown): NormalizedUsage {
+  const responseText =
+    typeof response === "string"
+      ? response
+      : (() => {
+          try {
+            return JSON.stringify(response);
+          } catch {
+            return String(response);
+          }
+        })();
+  const promptTokens = estimateTokenCount(prompt);
+  const completionTokens = estimateTokenCount(responseText);
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: promptTokens + completionTokens,
+    estimated: true,
+  };
+}
+
+function estimateEmbeddingUsage(text: string): NormalizedUsage {
+  const promptTokens = estimateTokenCount(text);
+  return {
+    promptTokens,
+    completionTokens: 0,
+    totalTokens: promptTokens,
+    estimated: true,
+  };
+}
+
+function getLocalModelLabel(runtime: IAgentRuntime, type: ModelTypeName): string {
+  const config = validateConfig();
+  if (type === ModelType.TEXT_EMBEDDING) {
+    return String(runtime.getSetting("LOCAL_EMBEDDING_MODEL") || config.LOCAL_EMBEDDING_MODEL);
+  }
+  if (type === ModelType.TEXT_LARGE || type === ModelType.OBJECT_LARGE) {
+    return String(runtime.getSetting("LOCAL_LARGE_MODEL") || config.LOCAL_LARGE_MODEL);
+  }
+  return String(runtime.getSetting("LOCAL_SMALL_MODEL") || config.LOCAL_SMALL_MODEL);
+}
+
+function emitModelUsed(
+  runtime: IAgentRuntime,
+  type: ModelTypeName,
+  model: string,
+  usage: NormalizedUsage
+): void {
+  void runtime.emitEvent(
+    EventType.MODEL_USED as string,
+    {
+      runtime,
+      source: "local-ai",
+      provider: "local-ai",
+      type,
+      model,
+      modelName: model,
+      tokens: {
+        prompt: usage.promptTokens,
+        completion: usage.completionTokens,
+        total: usage.totalTokens,
+        ...(usage.estimated ? { estimated: true } : {}),
+      },
+      ...(usage.estimated ? { usageEstimated: true } : {}),
+    } as EventPayload
+  );
+}
 
 class LocalAIManager {
   private static instance: LocalAIManager | null = null;
@@ -729,12 +810,19 @@ export const localAiPlugin: Plugin = {
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
       await localAIManager.initializeEnvironment();
-      return await localAIManager.generateText({
+      const result = await localAIManager.generateText({
         prompt,
         stopSequences,
         runtime,
         modelType: ModelType.TEXT_SMALL,
       });
+      emitModelUsed(
+        runtime,
+        ModelType.TEXT_SMALL,
+        getLocalModelLabel(runtime, ModelType.TEXT_SMALL),
+        estimateUsage(prompt, result)
+      );
+      return result;
     },
 
     [ModelType.TEXT_LARGE]: async (
@@ -742,22 +830,36 @@ export const localAiPlugin: Plugin = {
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
       await localAIManager.initializeEnvironment();
-      return await localAIManager.generateText({
+      const result = await localAIManager.generateText({
         prompt,
         stopSequences,
         runtime,
         modelType: ModelType.TEXT_LARGE,
       });
+      emitModelUsed(
+        runtime,
+        ModelType.TEXT_LARGE,
+        getLocalModelLabel(runtime, ModelType.TEXT_LARGE),
+        estimateUsage(prompt, result)
+      );
+      return result;
     },
 
-    [ModelType.TEXT_EMBEDDING]: async (_runtime: IAgentRuntime, params: TextEmbeddingParams) => {
+    [ModelType.TEXT_EMBEDDING]: async (runtime: IAgentRuntime, params: TextEmbeddingParams) => {
       const text = params?.text;
       if (!text) {
         logger.debug("Null or empty text input for embedding, returning zero vector");
         return new Array(384).fill(0);
       }
 
-      return await localAIManager.generateEmbedding(text);
+      const embedding = await localAIManager.generateEmbedding(text);
+      emitModelUsed(
+        runtime,
+        ModelType.TEXT_EMBEDDING,
+        getLocalModelLabel(runtime, ModelType.TEXT_EMBEDDING),
+        estimateEmbeddingUsage(text)
+      );
+      return embedding;
     },
 
     [ModelType.OBJECT_SMALL]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
@@ -768,124 +870,61 @@ export const localAiPlugin: Plugin = {
         temperature: params.temperature,
       });
 
-      // Build XML schema hint from the provided schema
+      // Build TOON schema hint from the provided schema
       let schemaHint = "";
       if (params.schema) {
         const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `<${key}>value</${key}>`).join("\n");
+        schemaHint = schemaKeys.map((key) => `${key}: value`).join("\n");
       }
 
-      // Enhance the prompt to request XML output
-      const xmlPrompt = `${params.prompt}
+      const structuredPrompt = `${params.prompt}
 
-Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
+Respond with TOON only. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
 
-IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
-<code><![CDATA[
-your code here
-]]></code>
+For multiline values such as code, put the key on one line and indent the value on following lines.
 
 Example response format:
-<response>
-<thought>Your reasoning here</thought>
-<text>Your response text here</text>
-</response>`;
+thought: Your reasoning here
+text: Your response text here`;
 
       const textResponse = await localAIManager.generateText({
-        prompt: xmlPrompt,
+        prompt: structuredPrompt,
         stopSequences: params.stopSequences,
         runtime,
         modelType: ModelType.TEXT_SMALL,
       });
+      emitModelUsed(
+        runtime,
+        ModelType.OBJECT_SMALL,
+        getLocalModelLabel(runtime, ModelType.OBJECT_SMALL),
+        estimateUsage(structuredPrompt, textResponse)
+      );
 
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
+        const parsedStructured = parseToonKeyValue<Record<string, unknown>>(textResponse);
 
-        if (parsedXml) {
-          logger.debug("Parsed XML result:", parsedXml);
+        if (parsedStructured) {
+          logger.debug("Parsed structured result:", parsedStructured);
 
           // Validate against schema if provided
           if (params.schema) {
             for (const key of Object.keys(params.schema)) {
-              if (!(key in parsedXml)) {
-                (parsedXml as Record<string, unknown>)[key] = null;
+              if (!(key in parsedStructured)) {
+                (parsedStructured as Record<string, unknown>)[key] = null;
               }
             }
           }
 
-          return parsedXml;
+          return parsedStructured;
         }
 
-        logger.warn("parseKeyValueXml returned null, attempting manual extraction");
-        const result: Record<string, unknown> = {};
-
-        const extractTag = (text: string, tagName: string): string | null => {
-          const cdataPattern = new RegExp(
-            `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
-            "i"
-          );
-          const cdataMatch = text.match(cdataPattern);
-          if (cdataMatch) {
-            return cdataMatch[1];
-          }
-
-          // Handle regular content with proper nesting
-          const startTag = `<${tagName}>`;
-          const endTag = `</${tagName}>`;
-          const startIdx = text.indexOf(startTag);
-          if (startIdx === -1) return null;
-
-          let depth = 1;
-          let searchStart = startIdx + startTag.length;
-          while (depth > 0 && searchStart < text.length) {
-            const nextOpen = text.indexOf(startTag, searchStart);
-            const nextClose = text.indexOf(endTag, searchStart);
-            if (nextClose === -1) break;
-
-            if (nextOpen !== -1 && nextOpen < nextClose) {
-              depth++;
-              searchStart = nextOpen + startTag.length;
-            } else {
-              depth--;
-              if (depth === 0) {
-                return text.slice(startIdx + startTag.length, nextClose).trim();
-              }
-              searchStart = nextClose + endTag.length;
-            }
-          }
-          return null;
-        };
-
-        // Extract common fields
-        const thought = extractTag(textResponse, "thought");
-        const text = extractTag(textResponse, "text");
-        const code = extractTag(textResponse, "code");
-
-        if (thought) result.thought = thought;
-        if (text) result.text = text;
-        if (code) result.code = code;
-
-        // Extract schema fields
-        if (params.schema) {
-          for (const key of Object.keys(params.schema)) {
-            if (!(key in result)) {
-              const value = extractTag(textResponse, key);
-              result[key] = value;
-            }
-          }
-        }
-
-        if (Object.keys(result).length > 0) {
-          return result;
-        }
-
-        throw new Error("Could not parse XML response");
+        throw new Error("Could not parse TOON structured response");
       } catch (parseError) {
-        logger.error("Failed to parse XML:", parseError);
+        logger.error("Failed to parse structured response:", parseError);
         logger.error("Raw response:", textResponse);
-        throw new Error("Invalid XML returned from model");
+        throw new Error("Invalid structured response returned from model");
       }
     },
 
@@ -897,124 +936,61 @@ Example response format:
         temperature: params.temperature,
       });
 
-      // Build XML schema hint from the provided schema
+      // Build TOON schema hint from the provided schema
       let schemaHint = "";
       if (params.schema) {
         const schemaKeys = Object.keys(params.schema);
-        schemaHint = schemaKeys.map((key) => `<${key}>value</${key}>`).join("\n");
+        schemaHint = schemaKeys.map((key) => `${key}: value`).join("\n");
       }
 
-      // Enhance the prompt to request XML output
-      const xmlPrompt = `${params.prompt}
+      const structuredPrompt = `${params.prompt}
 
-Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
+Respond with TOON only. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
 
-IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
-<code><![CDATA[
-your code here
-]]></code>
+For multiline values such as code, put the key on one line and indent the value on following lines.
 
 Example response format:
-<response>
-<thought>Your reasoning here</thought>
-<text>Your response text here</text>
-</response>`;
+thought: Your reasoning here
+text: Your response text here`;
 
       const textResponse = await localAIManager.generateText({
-        prompt: xmlPrompt,
+        prompt: structuredPrompt,
         stopSequences: params.stopSequences,
         runtime,
         modelType: ModelType.TEXT_LARGE,
       });
+      emitModelUsed(
+        runtime,
+        ModelType.OBJECT_LARGE,
+        getLocalModelLabel(runtime, ModelType.OBJECT_LARGE),
+        estimateUsage(structuredPrompt, textResponse)
+      );
 
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
+        const parsedStructured = parseToonKeyValue<Record<string, unknown>>(textResponse);
 
-        if (parsedXml) {
-          logger.debug("Parsed XML result:", parsedXml);
+        if (parsedStructured) {
+          logger.debug("Parsed structured result:", parsedStructured);
 
           // Validate against schema if provided
           if (params.schema) {
             for (const key of Object.keys(params.schema)) {
-              if (!(key in parsedXml)) {
-                (parsedXml as Record<string, unknown>)[key] = null;
+              if (!(key in parsedStructured)) {
+                (parsedStructured as Record<string, unknown>)[key] = null;
               }
             }
           }
 
-          return parsedXml;
+          return parsedStructured;
         }
 
-        logger.warn("parseKeyValueXml returned null, attempting manual extraction");
-        const result: Record<string, unknown> = {};
-
-        const extractTag = (text: string, tagName: string): string | null => {
-          const cdataPattern = new RegExp(
-            `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
-            "i"
-          );
-          const cdataMatch = text.match(cdataPattern);
-          if (cdataMatch) {
-            return cdataMatch[1];
-          }
-
-          // Handle regular content with proper nesting
-          const startTag = `<${tagName}>`;
-          const endTag = `</${tagName}>`;
-          const startIdx = text.indexOf(startTag);
-          if (startIdx === -1) return null;
-
-          let depth = 1;
-          let searchStart = startIdx + startTag.length;
-          while (depth > 0 && searchStart < text.length) {
-            const nextOpen = text.indexOf(startTag, searchStart);
-            const nextClose = text.indexOf(endTag, searchStart);
-            if (nextClose === -1) break;
-
-            if (nextOpen !== -1 && nextOpen < nextClose) {
-              depth++;
-              searchStart = nextOpen + startTag.length;
-            } else {
-              depth--;
-              if (depth === 0) {
-                return text.slice(startIdx + startTag.length, nextClose).trim();
-              }
-              searchStart = nextClose + endTag.length;
-            }
-          }
-          return null;
-        };
-
-        // Extract common fields
-        const thought = extractTag(textResponse, "thought");
-        const text = extractTag(textResponse, "text");
-        const code = extractTag(textResponse, "code");
-
-        if (thought) result.thought = thought;
-        if (text) result.text = text;
-        if (code) result.code = code;
-
-        // Extract schema fields
-        if (params.schema) {
-          for (const key of Object.keys(params.schema)) {
-            if (!(key in result)) {
-              const value = extractTag(textResponse, key);
-              result[key] = value;
-            }
-          }
-        }
-
-        if (Object.keys(result).length > 0) {
-          return result;
-        }
-
-        throw new Error("Could not parse XML response");
+        throw new Error("Could not parse TOON structured response");
       } catch (parseError) {
-        logger.error("Failed to parse XML:", parseError);
+        logger.error("Failed to parse structured response:", parseError);
         logger.error("Raw response:", textResponse);
-        throw new Error("Invalid XML returned from model");
+        throw new Error("Invalid structured response returned from model");
       }
     },
 

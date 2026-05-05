@@ -6,10 +6,10 @@
  *
  * Expected LLM response format:
  *
- *   <action>WALK_TO</action>
- *   <x>3222</x>
- *   <z>3218</z>
- *   <run>true</run>
+ *   action: WALK_TO
+ *   x: 3222
+ *   z: 3218
+ *   run: true
  *
  * The LLM can also omit x/z and supply a named destination (not yet
  * wired — PR 5 adds a "named destination" resolver that translates
@@ -25,7 +25,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParamBool, extractParamInt } from "./param-parser.js";
 
 export const walkTo: Action = {
@@ -40,7 +40,7 @@ export const walkTo: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "WALK_TO");
+    return hasActionRequest(message, "WALK_TO");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -65,7 +65,7 @@ export const walkTo: Action = {
 
     if (x === null || z === null) {
       const errMsg =
-        "WALK_TO requires <x>N</x> and <z>N</z> params. Example: <x>3222</x><z>3218</z>";
+        "WALK_TO requires x: N and z: N params. Example: x: 3222; z: 3218";
       callback?.({ text: errMsg, action: "WALK_TO" });
       return { success: false, text: errMsg };
     }

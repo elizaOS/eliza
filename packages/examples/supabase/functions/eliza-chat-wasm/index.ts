@@ -114,7 +114,7 @@ function getCharacter(): Character {
       `You are ${name}, a helpful AI assistant. ${bio}`,
     secrets: {
       OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") ?? "",
-      OPENAI_MODEL: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini",
+      OPENAI_MODEL: Deno.env.get("OPENAI_MODEL") ?? "gpt-5-mini",
     },
   });
 }

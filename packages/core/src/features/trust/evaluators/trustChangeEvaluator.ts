@@ -16,7 +16,7 @@ export const trustChangeEvaluator: Evaluator = {
 	name: "trustChangeEvaluator",
 	description:
 		"Evaluates interactions to detect and record trust-affecting behaviors",
-	alwaysRun: true,
+	alwaysRun: false,
 
 	validate: async (
 		runtime: IAgentRuntime,

@@ -310,7 +310,6 @@ class MiladyHybridCache(Cache):
                 TurboQuantMSE,
             )
             from quantization.fused_turboquant_vendored.hf.fused_cache import (
-                _detect_attn_output_gate,
                 _is_full_attention_layer,
                 _resolve_compress_v,
                 make_fused_attention_forward,

@@ -35,7 +35,6 @@ import argparse
 import gc
 import json
 import logging
-import os
 import sys
 import time
 import traceback
@@ -329,7 +328,7 @@ def run_one_model(
             prompts=prompts,
             max_new_tokens=max_new_tokens,
             cache_factory=lambda: TurboQuantCache(
-                model.config, nbits=bits, base_seed=42, skip_layers=set()
+                model.config, nbits=bits, base_seed=42, skip_layers=set()  # noqa: F821
             ),
         )
         log.info(
@@ -359,10 +358,10 @@ def run_one_model(
             # Per-prompt patch+unpatch so the cache starts clean each call,
             # mirroring the cache_factory pattern used for the other paths.
             def factory():
-                return patch_model(model, bits=bits, compress_v=True, verify=False)
+                return patch_model(model, bits=bits, compress_v=True, verify=False)  # noqa: F821
 
             def cleanup():
-                unpatch_model(model)
+                unpatch_model(model)  # noqa: F821
 
             # Sanity-check the patch once with verify=True before benchmarking.
             verify_cache = patch_model(model, bits=bits, compress_v=True, verify=True)

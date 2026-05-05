@@ -6,7 +6,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -33,14 +33,15 @@ User message: {{text}}
 Available clipboard entries:
 {{entries}}
 
-Respond with XML containing:
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+
+Fields:
 - id: The ID of the clipboard entry to append to (required)
 - content: The new content to append (required)
 
-<response>
-<id>entry-id</id>
-<content>Content to append</content>
-</response>`;
+Example:
+id: entry-id
+content: Content to append`;
 
 async function extractAppendInfo(
 	runtime: IAgentRuntime,
@@ -59,7 +60,7 @@ async function extractAppendInfo(
 
 	logger.debug("[ClipboardAppend] Extract result:", result);
 
-	const parsed = parseKeyValueXml(String(result)) as Record<
+	const parsed = parseToonKeyValue(String(result)) as Record<
 		string,
 		unknown
 	> | null;

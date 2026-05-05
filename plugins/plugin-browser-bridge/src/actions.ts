@@ -19,21 +19,21 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { encodeToonValue, logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
-} from "./contracts.ts";
+} from "./contracts.js";
 import {
   buildBrowserBridgeCompanionPackage,
   getBrowserBridgeCompanionPackageStatus,
   openBrowserBridgeCompanionManager,
   openBrowserBridgeCompanionPackagePath,
-} from "./packaging.ts";
+} from "./packaging.js";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
-} from "./service.ts";
+} from "./service.js";
 
 const INSTALL_NAME = "BROWSER_BRIDGE_INSTALL";
 const REVEAL_FOLDER_NAME = "BROWSER_BRIDGE_REVEAL_FOLDER";
@@ -55,8 +55,18 @@ function describeError(err: unknown): string {
 export const browserBridgeInstallAction: Action = {
   name: INSTALL_NAME,
   similes: ["INSTALL_BROWSER_BRIDGE", "SETUP_BROWSER_BRIDGE"],
-  description:
-    "Prepare the Agent Browser Bridge Chrome extension for unpacked install: build the extension if needed, reveal the build folder, and open chrome://extensions. Takes no parameters.",
+  description: encodeToonValue({
+    browser_bridge_install: {
+      purpose:
+        "Prepare the Agent Browser Bridge Chrome extension for unpacked install.",
+      steps: [
+        "build_if_needed",
+        "reveal_build_folder",
+        "open_chrome_extensions",
+      ],
+      params: "none",
+    },
+  }),
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -127,8 +137,13 @@ export const browserBridgeInstallAction: Action = {
 export const browserBridgeRevealFolderAction: Action = {
   name: REVEAL_FOLDER_NAME,
   similes: ["REVEAL_BROWSER_BRIDGE_FOLDER", "OPEN_BROWSER_BRIDGE_FOLDER"],
-  description:
-    "Reveal the Agent Browser Bridge Chrome extension folder in the host file manager. Takes no parameters.",
+  description: encodeToonValue({
+    browser_bridge_reveal_folder: {
+      purpose:
+        "Reveal the Agent Browser Bridge Chrome extension folder in the host file manager.",
+      params: "none",
+    },
+  }),
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -180,8 +195,13 @@ export const browserBridgeRevealFolderAction: Action = {
 export const browserBridgeOpenManagerAction: Action = {
   name: OPEN_MANAGER_NAME,
   similes: ["OPEN_CHROME_EXTENSIONS", "OPEN_BROWSER_BRIDGE_MANAGER"],
-  description:
-    "Open chrome://extensions so the user can Load unpacked the Agent Browser Bridge extension. Takes no parameters.",
+  description: encodeToonValue({
+    browser_bridge_open_manager: {
+      purpose:
+        "Open chrome://extensions so the user can load the unpacked Agent Browser Bridge extension.",
+      params: "none",
+    },
+  }),
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -236,8 +256,15 @@ export const browserBridgeRefreshAction: Action = {
     "REFRESH_BROWSER_BRIDGE_CONNECTION",
     "RELOAD_BROWSER_BRIDGE_STATUS",
   ],
-  description:
-    "Refresh and return the Agent Browser Bridge connection status (paired companions and packaging artifact paths). Takes no parameters.",
+  description: encodeToonValue({
+    browser_bridge_refresh: {
+      purpose:
+        "Refresh Agent Browser Bridge connection status, paired companions, and packaging artifact paths.",
+      provider_state:
+        "Prefer provider state for passive status context; use this action for an explicit live refresh.",
+      params: "none",
+    },
+  }),
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,

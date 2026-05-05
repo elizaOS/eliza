@@ -92,8 +92,14 @@ function resolveCapacitorPluginNamesPath(devCwd) {
   if (existsSync(rootAppsApp)) {
     return rootAppsApp;
   }
+  const packagedAppCorePluginNames = fileURLToPath(
+    new URL("./lib/capacitor-plugin-names.mjs", import.meta.url),
+  );
+  if (existsSync(packagedAppCorePluginNames)) {
+    return packagedAppCorePluginNames;
+  }
   throw new Error(
-    `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootPackagesApp}\n  ${rootAppsApp}\n  ${nestedElizaPackagesApp}\n  ${nestedElizaAppsApp}`,
+    `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootPackagesApp}\n  ${rootAppsApp}\n  ${nestedElizaPackagesApp}\n  ${nestedElizaAppsApp}\n  ${packagedAppCorePluginNames}`,
   );
 }
 

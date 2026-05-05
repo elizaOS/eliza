@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "tsup";
 
@@ -10,6 +10,10 @@ function resolvePackageRoot(): string {
 }
 
 function collectSrcEntries(srcRoot: string): string[] {
+  if (!existsSync(srcRoot)) {
+    return [];
+  }
+
   const out: string[] = [];
   const walk = (dir: string): void => {
     for (const ent of readdirSync(dir, { withFileTypes: true })) {

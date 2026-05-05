@@ -39,7 +39,7 @@ describe("resolveAnthropicThinkingBudgetTokens", () => {
   });
 
   test("returns null for non-Anthropic model", () => {
-    const result = resolveAnthropicThinkingBudgetTokens("openai/gpt-4", {});
+    const result = resolveAnthropicThinkingBudgetTokens("openai/gpt-5.5", {});
     expect(result).toBeNull();
   });
 
@@ -330,7 +330,7 @@ describe("supportsExtendedThinking", () => {
   });
 
   test("returns false for non-Anthropic models", () => {
-    expect(supportsExtendedThinking("gpt-4")).toBe(false);
+    expect(supportsExtendedThinking("gpt-5.5")).toBe(false);
     expect(supportsExtendedThinking("openai/gpt-4o")).toBe(false);
     expect(supportsExtendedThinking("google/gemini-pro")).toBe(false);
   });

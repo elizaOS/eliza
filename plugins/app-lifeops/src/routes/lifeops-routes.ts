@@ -82,6 +82,10 @@ import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
+import {
+  type BrowserSessionRegistration,
+  recordBrowserSessionRegistration,
+} from "../lifeops/browser-extension-store.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
 import {
@@ -3355,6 +3359,46 @@ export async function handleLifeOpsRoutes(
         occurrence: await service.snoozeOccurrence(occurrenceId, body),
       });
     });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/browser/register") {
+    if (!requireAuthorizedRouteContext(ctx)) return true;
+    if (rateLimitRequest(ctx, "connector_write")) return true;
+    const runtime = ctx.state.runtime;
+    if (!runtime) return true;
+    const body = await readJsonBody<{
+      deviceId?: unknown;
+      userAgent?: unknown;
+      extensionVersion?: unknown;
+      browserVendor?: unknown;
+    }>(req, res);
+    if (!body) return true;
+    const deviceId =
+      typeof body.deviceId === "string" ? body.deviceId.trim() : "";
+    if (!deviceId) {
+      ctx.error(res, "deviceId is required", 400);
+      return true;
+    }
+    const userAgent =
+      typeof body.userAgent === "string" ? body.userAgent.trim() : "";
+    const extensionVersion =
+      typeof body.extensionVersion === "string"
+        ? body.extensionVersion.trim()
+        : "0.0.0";
+    const browserVendor: BrowserSessionRegistration["browserVendor"] =
+      body.browserVendor === "chrome" || body.browserVendor === "safari"
+        ? body.browserVendor
+        : "unknown";
+    const registration: BrowserSessionRegistration = {
+      deviceId,
+      userAgent,
+      extensionVersion,
+      browserVendor,
+      registeredAt: new Date().toISOString(),
+    };
+    await recordBrowserSessionRegistration(runtime, registration);
+    json(res, { registration });
+    return true;
   }
 
   return false;

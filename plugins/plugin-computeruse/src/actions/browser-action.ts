@@ -37,32 +37,9 @@ export const browserAction: Action = {
     "BROWSER_TYPE",
   ],
   description:
-    "Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n" +
-    "Available actions:\n" +
-    "- open: Launch browser, optionally navigate to url.\n" +
-    "- connect: Alias for open.\n" +
-    "- close: Close the browser.\n" +
-    "- navigate: Go to a URL. Requires url.\n" +
-    "- click: Click an element by CSS selector, coordinates, or text content.\n" +
-    "- type: Type text, optionally into a specific element by selector.\n" +
-    "- scroll: Scroll the page up or down. Optional direction and amount (pixels).\n" +
-    "- screenshot: Capture the browser viewport as a PNG.\n" +
-    "- dom: Get the first 5000 characters of page HTML.\n" +
-    "- get_dom: Alias for dom.\n" +
-    "- clickables: List up to 50 interactive elements (links, buttons, inputs) with selectors.\n" +
-    "- get_clickables: Alias for clickables.\n" +
-    "- execute: Run JavaScript code in the page context.\n" +
-    "- state: Get the current page URL and title.\n" +
-    "- info: Report whether the browser is open and its current page metadata.\n" +
-    "- context/get_context: Alias for the current page URL and title.\n" +
-    "- wait: Wait for a selector or text to appear.\n" +
-    "- list_tabs: List all open tabs.\n" +
-    "- open_tab: Open a new tab, optionally navigate to url.\n" +
-    "- close_tab: Close a tab by tabId.\n" +
-    "- switch_tab: Switch to a tab by tabId.\n\n" +
-    "Start by opening the browser, then navigate and interact. Use 'clickables' to discover interactive elements.",
+    "browser_action:\n  purpose: Control a Chromium-based browser through the local runtime: launch, navigate, interact, inspect, execute JavaScript, wait, and manage tabs.\n  provider_state: Read-only browser availability and recent action state are available from the computerState provider. Use state/info/list_tabs only for explicit live refreshes.\n  flow: Open or connect first, then navigate and interact. Use clickables to discover interactive elements.\n  actions: open/connect/close/navigate/click/type/scroll/screenshot/dom/get_dom/clickables/get_clickables/execute/state/info/context/get_context/wait/list_tabs/open_tab/close_tab/switch_tab.",
   descriptionCompressed:
-    "control Chromium-based browser through local runtime action open connect browser session, navigate page, click element, type form, read DOM state, execute JavaScript, wait condition, manage tab available action: - open: Launch browser, optionally navigate url - connect: Alias open - close: close browser - navigate: Go URL require url - click: Click element CSS selector, coordinate, text content - type: Type text, optionally specific element selector - scroll: Scroll page up down optional direction amount (pixel) - screenshot: Capture browser viewport PNG - dom: get first 5000 character page HTML - get_dom: Alias dom - clickable: list up 50 interactive element (link, button, input) w/ selector - get_clickable: Alias clickable - execute: run JavaScript code page context - state: get current page URL title - info: Report whether browser open current page metadata - context/get_context: Alias current page URL title - wait: Wait selector text appear - list_tab: list open tab - open_tab: open new tab, optionally navigate url - close_tab: close tab tabid - switch_tab: Switch tab tabid start open browser, navigate interact use clickable discover interactive element",
+    "Chromium browser control router: open/connect/close/navigate/click/type/scroll/screenshot/dom/clickables/execute/wait/tabs; provider has passive state.",
 
   parameters: [
     {

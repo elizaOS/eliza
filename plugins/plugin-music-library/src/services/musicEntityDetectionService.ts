@@ -1,4 +1,9 @@
-import { type IAgentRuntime, logger, ModelType, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 
 const MUSIC_ENTITY_DETECTION_SERVICE_NAME = "musicEntityDetection";
 
@@ -20,8 +25,7 @@ interface RawDetectedMusicEntity {
  * Service for detecting music entity names (artists, albums, songs) from text
  * Uses LLM for intelligent extraction with caching
  */
-export class MusicEntityDetectionService extends Service {
-  static serviceType: string = MUSIC_ENTITY_DETECTION_SERVICE_NAME;
+export class MusicEntityDetectionHelper {
   capabilityDescription =
     "Detects music entity names (artists, albums, songs) from text using LLM";
 
@@ -30,14 +34,10 @@ export class MusicEntityDetectionService extends Service {
     { entities: DetectedMusicEntity[]; timestamp: number }
   > = new Map();
   private readonly CACHE_TTL = 3600000; // 1 hour in milliseconds
+  private readonly runtime?: IAgentRuntime;
 
-  static async start(
-    runtime: IAgentRuntime,
-  ): Promise<MusicEntityDetectionService> {
-    logger.debug(
-      `Starting MusicEntityDetectionService for agent ${runtime.character.name}`,
-    );
-    return new MusicEntityDetectionService(runtime);
+  constructor(runtime?: IAgentRuntime) {
+    this.runtime = runtime;
   }
 
   async stop(): Promise<void> {
@@ -60,7 +60,7 @@ export class MusicEntityDetectionService extends Service {
     }
 
     if (!this.runtime) {
-      throw new Error("MusicEntityDetectionService requires a runtime");
+      throw new Error("Music entity detection requires a runtime");
     }
 
     try {
@@ -68,7 +68,7 @@ export class MusicEntityDetectionService extends Service {
 
 Text: "${text}"
 
-Return a JSON array of detected entities. Each entity should have:
+Return detected entities as TOON. Each entity should have:
 - type: "artist", "album", or "song"
 - name: the entity name (exact as mentioned)
 - confidence: a number between 0 and 1 indicating confidence
@@ -80,32 +80,29 @@ IMPORTANT RULES:
 - URLs should be completely ignored
 
 Example format:
-[
-  {"type": "artist", "name": "The Beatles", "confidence": 0.9, "context": "mentioned in conversation"},
-  {"type": "song", "name": "Bohemian Rhapsody", "confidence": 0.8}
-]
+entities[0]{type,name,confidence,context}: artist,The Beatles,0.9,mentioned in conversation
+entities[1]{type,name,confidence}: song,Bohemian Rhapsody,0.8
 
-If no music entities are found, return an empty array: [].
+If no music entities are found, return:
+entities:
 
-IMPORTANT: Only return valid JSON. Do not include any explanation or text outside the JSON array.`;
+IMPORTANT: Only return TOON. Do not include explanation or extra text.`;
 
       const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
         maxTokens: 500,
       });
 
-      // Parse JSON response
+      // Parse TOON response
       let entities: DetectedMusicEntity[] = [];
       try {
         const cleaned = String(response).trim();
         let parsedEntities: RawDetectedMusicEntity[] = [];
-        // Try to extract JSON array from response
-        const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          parsedEntities = JSON.parse(jsonMatch[0]) as RawDetectedMusicEntity[];
-        } else {
-          // Try parsing the whole response
-          parsedEntities = JSON.parse(cleaned) as RawDetectedMusicEntity[];
+        const parsedToon = parseToonKeyValue<{
+          entities?: RawDetectedMusicEntity[];
+        }>(cleaned);
+        if (Array.isArray(parsedToon?.entities)) {
+          parsedEntities = parsedToon.entities;
         }
 
         // Validate and filter entities
@@ -190,3 +187,8 @@ IMPORTANT: Only return valid JSON. Do not include any explanation or text outsid
     }
   }
 }
+
+export const MUSIC_ENTITY_DETECTION_HELPER_NAME =
+  MUSIC_ENTITY_DETECTION_SERVICE_NAME;
+
+export { MusicEntityDetectionHelper as MusicEntityDetectionService };

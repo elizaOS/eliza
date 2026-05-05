@@ -51,6 +51,7 @@ export function SystemWarningBanner() {
           key={message}
           role="alert"
           aria-live="assertive"
+          data-window-titlebar-banner="true"
           className={`shrink-0 z-[${Z_SYSTEM_BANNER}] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-lg`}
         >
           <span className="truncate">{message}</span>

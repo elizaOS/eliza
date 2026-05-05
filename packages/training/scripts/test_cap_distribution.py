@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 from scripts.transform_cap_distribution import (

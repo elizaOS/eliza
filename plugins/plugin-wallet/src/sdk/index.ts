@@ -7,22 +7,19 @@ import {
   type Hex,
   http,
   type WalletClient,
-  zeroAddress,
 } from "viem";
 import { arbitrum, base, baseSepolia, mainnet, polygon } from "viem/chains";
 import { AgentAccountFactoryV2Abi, AgentAccountV2Abi } from "./abi.js";
 import type {
   ActivityEntry,
-  AgentWalletConfig,
   BatchTransfer,
   BudgetForecast,
-  BudgetStatus,
   ExecuteResult,
   PendingTx,
   QueuedEvent,
-  SpendPolicy,
   WalletHealth,
 } from "./types.js";
+import { NATIVE_TOKEN, type AgentWallet as Wallet } from "./wallet-core.js";
 
 export { AgentAccountFactoryV2Abi, AgentAccountV2Abi } from "./abi.js";
 export type {
@@ -59,6 +56,13 @@ export {
   X402Client,
   X402PaymentError,
 } from "./x402/index.js";
+export {
+  agentTransferToken,
+  checkBudget,
+  createWallet,
+  NATIVE_TOKEN,
+  setSpendPolicy,
+} from "./wallet-core.js";
 
 const CHAINS: Record<string, Chain> = {
   base,
@@ -67,60 +71,6 @@ const CHAINS: Record<string, Chain> = {
   arbitrum,
   polygon,
 };
-
-/** Native ETH token address (zero address) */
-export const NATIVE_TOKEN: Address = zeroAddress;
-
-// ─── Core SDK Functions ───
-
-/**
- * Create a wallet client connected to an existing AgentAccountV2.
- */
-export function createWallet(
-  config: AgentWalletConfig & { walletClient: WalletClient },
-) {
-  const chain = CHAINS[config.chain];
-  if (!chain) throw new Error(`Unsupported chain: ${config.chain}`);
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(config.rpcUrl),
-  });
-
-  const contract = getContract({
-    address: config.accountAddress,
-    abi: AgentAccountV2Abi,
-    client: { public: publicClient, wallet: config.walletClient },
-  });
-
-  return {
-    address: config.accountAddress,
-    contract,
-    publicClient,
-    walletClient: config.walletClient,
-    chain,
-  };
-}
-
-type Wallet = ReturnType<typeof createWallet>;
-
-/**
- * Set a spend policy for a token. Only callable by the NFT owner.
- * Use NATIVE_TOKEN (address(0)) for native ETH.
- */
-export async function setSpendPolicy(
-  wallet: Wallet,
-  policy: SpendPolicy,
-): Promise<Hash> {
-  const periodLength = policy.periodLength || 86400;
-
-  const hash = await wallet.contract.write.setSpendPolicy(
-    [policy.token, policy.perTxLimit, policy.periodLimit, BigInt(periodLength)],
-    { account: wallet.walletClient.account!, chain: wallet.chain },
-  );
-
-  return hash;
-}
 
 /**
  * Execute a transaction as the agent. If within limits, executes immediately.
@@ -157,23 +107,6 @@ export async function agentExecute(
   return {
     executed: wasExecuted,
     txHash: hash,
-  };
-}
-
-/**
- * Check remaining autonomous budget for a token.
- */
-export async function checkBudget(
-  wallet: Wallet,
-  token: Address = NATIVE_TOKEN,
-): Promise<BudgetStatus> {
-  const [perTxLimit, remainingInPeriod] =
-    await wallet.contract.read.remainingBudget([token]);
-
-  return {
-    token,
-    perTxLimit,
-    remainingInPeriod,
   };
 }
 
@@ -248,19 +181,6 @@ export async function setOperator(
     account: wallet.walletClient.account!,
     chain: wallet.chain,
   });
-}
-
-/**
- * Transfer ERC20 tokens as the agent, respecting spend limits.
- */
-export async function agentTransferToken(
-  wallet: Wallet,
-  params: { token: Address; to: Address; amount: bigint },
-): Promise<Hash> {
-  return wallet.contract.write.agentTransferToken(
-    [params.token, params.to, params.amount],
-    { account: wallet.walletClient.account!, chain: wallet.chain },
-  );
 }
 
 // ─── Factory: Deploy New Wallets ───

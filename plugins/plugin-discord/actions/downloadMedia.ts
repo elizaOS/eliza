@@ -12,7 +12,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type Service,
 	ServiceType,
 	type State,
@@ -42,7 +42,9 @@ const getMediaUrl = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			mediaUrl: string;
 		} | null;
 

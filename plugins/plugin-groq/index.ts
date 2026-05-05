@@ -1,6 +1,12 @@
 import { createGroq } from "@ai-sdk/groq";
-import type { IAgentRuntime, ObjectGenerationParams, Plugin } from "@elizaos/core";
-import { type GenerateTextParams, logger, ModelType } from "@elizaos/core";
+import type {
+  EventPayload,
+  IAgentRuntime,
+  ModelTypeName,
+  ObjectGenerationParams,
+  Plugin,
+} from "@elizaos/core";
+import { EventType, type GenerateTextParams, logger, ModelType } from "@elizaos/core";
 import { APICallError, generateObject, generateText } from "ai";
 
 const _globalThis = globalThis as typeof globalThis & {
@@ -14,6 +20,110 @@ const DEFAULT_TTS_VOICE = "autumn";
 const DEFAULT_TTS_RESPONSE_FORMAT = "wav";
 const DEFAULT_TRANSCRIPTION_MODEL = "whisper-large-v3-turbo";
 const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+
+type ProviderUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+};
+
+type NormalizedUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimated?: boolean;
+};
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.max(0, Math.round(value));
+}
+
+function normalizeTokenUsage(usage: unknown): NormalizedUsage | null {
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+
+  const record = usage as ProviderUsage;
+  const promptTokens = toFiniteNumber(record.inputTokens ?? record.promptTokens);
+  const completionTokens = toFiniteNumber(record.outputTokens ?? record.completionTokens);
+  const totalTokens = toFiniteNumber(record.totalTokens);
+
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
+    return null;
+  }
+
+  const normalizedPromptTokens =
+    promptTokens ??
+    (completionTokens === undefined && totalTokens !== undefined
+      ? totalTokens
+      : Math.max(0, (totalTokens ?? 0) - (completionTokens ?? 0)));
+  const normalizedCompletionTokens =
+    completionTokens ??
+    Math.max(0, (totalTokens ?? normalizedPromptTokens) - normalizedPromptTokens);
+
+  return {
+    promptTokens: normalizedPromptTokens,
+    completionTokens: normalizedCompletionTokens,
+    totalTokens: totalTokens ?? normalizedPromptTokens + normalizedCompletionTokens,
+  };
+}
+
+function estimateTokenCount(text: string): number {
+  return text.length === 0 ? 0 : Math.ceil(text.length / 4);
+}
+
+function stringifyForUsage(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function estimateUsage(prompt: string, response: unknown): NormalizedUsage {
+  const promptTokens = estimateTokenCount(prompt);
+  const completionTokens = estimateTokenCount(stringifyForUsage(response));
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: promptTokens + completionTokens,
+    estimated: true,
+  };
+}
+
+function emitModelUsed(
+  runtime: IAgentRuntime,
+  type: ModelTypeName,
+  model: string,
+  usage: NormalizedUsage
+): void {
+  void runtime.emitEvent(
+    EventType.MODEL_USED as string,
+    {
+      runtime,
+      source: "groq",
+      provider: "groq",
+      type,
+      model,
+      modelName: model,
+      tokens: {
+        prompt: usage.promptTokens,
+        completion: usage.completionTokens,
+        total: usage.totalTokens,
+        ...(usage.estimated ? { estimated: true } : {}),
+      },
+      ...(usage.estimated ? { usageEstimated: true } : {}),
+    } as EventPayload
+  );
+}
 
 function isBrowser(): boolean {
   return (
@@ -144,7 +254,9 @@ export function classifyRetryError(error: unknown): "rate-limit" | "transient" |
 }
 
 async function generateWithRetry(
+  runtime: IAgentRuntime,
   groq: ReturnType<typeof createGroq>,
+  modelType: ModelTypeName,
   model: string,
   params: {
     prompt: string;
@@ -175,7 +287,10 @@ async function generateWithRetry(
 
   while (true) {
     try {
-      const { text } = await generate();
+      const result = await generate();
+      const usage = normalizeTokenUsage(result.usage) ?? estimateUsage(params.prompt, result.text);
+      emitModelUsed(runtime, modelType, model, usage);
+      const { text } = result;
       return text;
     } catch (error) {
       const kind = classifyRetryError(error);
@@ -283,7 +398,7 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_NANO);
 
-      return generateWithRetry(groq, model, {
+      return generateWithRetry(runtime, groq, ModelType.TEXT_NANO, model, {
         prompt: params.prompt,
         system: runtime.character.system,
         temperature: params.temperature ?? 0.7,
@@ -298,7 +413,7 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_SMALL);
 
-      return generateWithRetry(groq, model, {
+      return generateWithRetry(runtime, groq, ModelType.TEXT_SMALL, model, {
         prompt: params.prompt,
         system: runtime.character.system,
         temperature: params.temperature ?? 0.7,
@@ -313,7 +428,7 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_MEDIUM);
 
-      return generateWithRetry(groq, model, {
+      return generateWithRetry(runtime, groq, ModelType.TEXT_MEDIUM, model, {
         prompt: params.prompt,
         system: runtime.character.system,
         temperature: params.temperature ?? 0.7,
@@ -328,7 +443,7 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_LARGE);
 
-      return generateWithRetry(groq, model, {
+      return generateWithRetry(runtime, groq, ModelType.TEXT_LARGE, model, {
         prompt: params.prompt,
         system: runtime.character.system,
         temperature: params.temperature ?? 0.7,
@@ -343,7 +458,7 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_MEGA);
 
-      return generateWithRetry(groq, model, {
+      return generateWithRetry(runtime, groq, ModelType.TEXT_MEGA, model, {
         prompt: params.prompt,
         system: runtime.character.system,
         temperature: params.temperature ?? 0.7,
@@ -358,7 +473,7 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.RESPONSE_HANDLER);
 
-      return generateWithRetry(groq, model, {
+      return generateWithRetry(runtime, groq, ModelType.RESPONSE_HANDLER, model, {
         prompt: params.prompt,
         system: runtime.character.system,
         temperature: params.temperature ?? 0.7,
@@ -373,7 +488,7 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.ACTION_PLANNER);
 
-      return generateWithRetry(groq, model, {
+      return generateWithRetry(runtime, groq, ModelType.ACTION_PLANNER, model, {
         prompt: params.prompt,
         system: runtime.character.system,
         temperature: params.temperature ?? 0.7,
@@ -388,12 +503,18 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getSmallModel(runtime);
 
-      const { object } = await generateObject({
+      const { object, usage } = await generateObject({
         model: groq.languageModel(model),
         output: "no-schema",
         prompt: params.prompt,
         temperature: params.temperature,
       });
+      emitModelUsed(
+        runtime,
+        ModelType.OBJECT_SMALL,
+        model,
+        normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, object)
+      );
       return object as Record<
         string,
         string | number | boolean | null | Record<string, string | number | boolean | null>
@@ -404,12 +525,18 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getLargeModel(runtime);
 
-      const { object } = await generateObject({
+      const { object, usage } = await generateObject({
         model: groq.languageModel(model),
         output: "no-schema",
         prompt: params.prompt,
         temperature: params.temperature,
       });
+      emitModelUsed(
+        runtime,
+        ModelType.OBJECT_LARGE,
+        model,
+        normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, object)
+      );
       return object as Record<
         string,
         string | number | boolean | null | Record<string, string | number | boolean | null>

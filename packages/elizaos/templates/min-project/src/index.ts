@@ -1,1 +1,1 @@
-export { default as plugin, helloAction } from "./plugin.js";
+export { default as plugin } from "./plugin.js";

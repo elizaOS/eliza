@@ -8,7 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
 
 export const WHATSAPP_SEND_MESSAGE_ACTION = "WHATSAPP_SEND_MESSAGE";
 
@@ -23,11 +23,9 @@ The user wants to send a WhatsApp message. Extract the following:
 
 Based on the conversation, extract the message parameters.
 
-Respond with a JSON object:
-{
-  "to": "+14155552671",
-  "text": "Hello from WhatsApp!"
-}
+Respond with TOON only:
+to: +14155552671
+text: Hello from WhatsApp!
 `;
 
 interface SendMessageParams {
@@ -90,7 +88,9 @@ export const sendMessageAction: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response) as unknown as SendMessageParams | null;
+      const parsed = parseToonKeyValue<Record<string, unknown>>(
+        response
+      ) as unknown as SendMessageParams | null;
       if (!parsed?.to || !parsed.text) {
         // Try to use context from message
         const to = message.content?.from as string;

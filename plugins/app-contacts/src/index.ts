@@ -4,4 +4,4 @@ export {
   contactsApp,
   registerContactsApp,
 } from "./components/contacts-app";
-export { appContactsPlugin } from "./plugin";
+export { appContactsPlugin, contactsProvider } from "./plugin";

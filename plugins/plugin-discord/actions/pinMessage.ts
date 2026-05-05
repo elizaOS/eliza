@@ -9,7 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import {
@@ -40,7 +40,7 @@ const getMessageRef = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response);
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
 		if (parsedResponse?.messageRef) {
 			return {
 				messageRef: String(parsedResponse.messageRef),

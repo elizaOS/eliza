@@ -82,7 +82,7 @@ def main() -> None:
 
         r = first_record(lang)
         if r is None:
-            print(f"  (empty)")
+            print("  (empty)")
             continue
         cm = (r.get("currentMessage") or {}).get("content", "")
         er = r.get("expectedResponse", "")

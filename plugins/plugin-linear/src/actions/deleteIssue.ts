@@ -12,6 +12,7 @@ import {
 import { deleteIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { DeleteIssueParameters } from "../types/index.js";
+import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const deleteIssueAction: Action = {
@@ -122,13 +123,12 @@ export const deleteIssueAction: Action = {
         }
 
         try {
-          const cleanedResponse = response
-            .replace(/^```(?:json)?\n?/, "")
-            .replace(/\n?```$/, "")
-            .trim();
-          const parsed = JSON.parse(cleanedResponse);
+          const parsed = parseLinearPromptResponse(response);
+          if (Object.keys(parsed).length === 0) {
+            throw new Error("No fields found in model response");
+          }
 
-          issueId = parsed.issueId;
+          issueId = getStringValue(parsed.issueId) ?? "";
           if (!issueId) {
             throw new Error("Issue ID not found in parsed response");
           }

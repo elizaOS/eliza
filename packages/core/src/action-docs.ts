@@ -1,12 +1,37 @@
-import { allActionDocs, allEvaluatorDocs } from "./generated/action-docs.ts";
+import {
+	allActionDocs,
+	allEvaluatorDocs,
+	allProviderDocs,
+} from "./generated/action-docs.ts";
 import type {
 	Action,
 	ActionExample,
 	ActionParameter,
 	EvaluationExample,
 	Evaluator,
+	Provider,
 } from "./types/index.ts";
 import { compressPromptDescription } from "./utils/prompt-compression.ts";
+
+type CompressedDescriptionFields = {
+	description?: string;
+	descriptionCompressed?: string;
+	compressedDescription?: string;
+};
+
+function resolveCompressedDescription(
+	source: CompressedDescriptionFields,
+	fallbackDescription: string,
+	canonical?: CompressedDescriptionFields,
+): string {
+	return (
+		source.descriptionCompressed ??
+		source.compressedDescription ??
+		canonical?.descriptionCompressed ??
+		canonical?.compressedDescription ??
+		compressPromptDescription(fallbackDescription)
+	);
+}
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -22,9 +47,10 @@ function toActionParameter(
 	return {
 		name: param.name,
 		description: param.description,
-		descriptionCompressed:
-			param.descriptionCompressed ??
-			compressPromptDescription(param.description),
+		descriptionCompressed: resolveCompressedDescription(
+			param,
+			param.description,
+		),
 		required: param.required,
 		schema: {
 			...param.schema,
@@ -39,8 +65,7 @@ function ensureParameterCompressed(
 ): ActionParameter[] {
 	return parameters.map((p) => ({
 		...p,
-		descriptionCompressed:
-			p.descriptionCompressed ?? compressPromptDescription(p.description),
+		descriptionCompressed: resolveCompressedDescription(p, p.description),
 	}));
 }
 
@@ -62,10 +87,11 @@ export function withCanonicalActionDocs(action: Action): Action {
 	const mergedDescription =
 		(doc ? action.description || doc.description : action.description) ?? "";
 
-	const descriptionCompressed =
-		action.descriptionCompressed ??
-		doc?.descriptionCompressed ??
-		compressPromptDescription(mergedDescription);
+	const descriptionCompressed = resolveCompressedDescription(
+		action,
+		mergedDescription,
+		doc,
+	);
 
 	if (!doc) {
 		const parameters =
@@ -104,6 +130,38 @@ export function withCanonicalActionDocsAll(
 	return actions.map(withCanonicalActionDocs);
 }
 
+type ProviderDocByName = Record<string, (typeof allProviderDocs)[number]>;
+
+const providerDocByName = allProviderDocs.reduce<ProviderDocByName>(
+	(acc, doc) => {
+		acc[doc.name] = doc;
+		return acc;
+	},
+	{},
+);
+
+export function withCanonicalProviderDocs(provider: Provider): Provider {
+	const doc = providerDocByName[provider.name];
+	const description = provider.description || doc?.description || "";
+	const descriptionCompressed = resolveCompressedDescription(
+		provider,
+		description,
+		doc,
+	);
+
+	return {
+		...provider,
+		description: provider.description || doc?.description,
+		descriptionCompressed,
+	};
+}
+
+export function withCanonicalProviderDocsAll(
+	providers: readonly Provider[],
+): Provider[] {
+	return providers.map(withCanonicalProviderDocs);
+}
+
 type EvaluatorDocByName = Record<string, (typeof allEvaluatorDocs)[number]>;
 
 const coreEvaluatorDocByName: EvaluatorDocByName =
@@ -140,7 +198,19 @@ function toEvaluationExample(
  */
 export function withCanonicalEvaluatorDocs(evaluator: Evaluator): Evaluator {
 	const doc = coreEvaluatorDocByName[evaluator.name];
-	if (!doc) return evaluator;
+	const description = evaluator.description || doc?.description || "";
+	const descriptionCompressed = resolveCompressedDescription(
+		evaluator,
+		description,
+		doc,
+	);
+
+	if (!doc) {
+		return {
+			...evaluator,
+			descriptionCompressed,
+		};
+	}
 
 	const examples =
 		evaluator.examples && evaluator.examples.length > 0
@@ -150,6 +220,7 @@ export function withCanonicalEvaluatorDocs(evaluator: Evaluator): Evaluator {
 	return {
 		...evaluator,
 		description: evaluator.description || doc.description,
+		descriptionCompressed,
 		similes:
 			evaluator.similes && evaluator.similes.length > 0
 				? evaluator.similes

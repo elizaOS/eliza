@@ -111,7 +111,7 @@ const NUDGE_INTERVAL = 3;
 const CONNECTION_STATUS_TTL_SECONDS = 30;
 const CONVERSATION_TTL_SECONDS = 3600;
 const MAX_HISTORY_MESSAGES = 10;
-const NUDGE_MODEL = "openai/gpt-4o-mini";
+const NUDGE_MODEL = "openai/gpt-5-mini";
 const NUDGE_MAX_OUTPUT_TOKENS = 160;
 
 function escapeRegex(value: string): string {

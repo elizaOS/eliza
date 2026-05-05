@@ -15,7 +15,7 @@
  *   can fall back to the v1 heuristic.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
 
 export type PriorityCategory = "important" | "planning" | "casual";
@@ -94,6 +94,19 @@ const VALID_CATEGORIES = new Set<PriorityCategory>([
   "casual",
 ]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function promptValue(
+  value: string | null | undefined,
+  maxLength: number,
+): string {
+  const normalized = (value ?? "").slice(0, maxLength).replace(/\s+/g, " ");
+  const trimmed = normalized.trim();
+  return trimmed.length > 0 ? trimmed : "null";
+}
+
 function buildPrompt(
   batch: LifeOpsInboxMessage[],
   opts: ScoreInboxMessagesOptions,
@@ -114,51 +127,60 @@ function buildPrompt(
     "- Pure social pleasantries with no ask and no time element belong in 'casual' with score < 35.",
   );
   if (opts.ownerName && opts.ownerName.trim().length > 0) {
-    lines.push("", `## Owner`, `Name: ${opts.ownerName.trim()}`);
+    lines.push(
+      "",
+      "Owner TOON:",
+      `ownerName: ${promptValue(opts.ownerName, 160)}`,
+    );
   }
   if (opts.topRelationships && opts.topRelationships.length > 0) {
     lines.push(
       "",
-      `## Important contacts (treat their messages as higher priority):`,
+      "Important contacts TOON (treat their messages as higher priority):",
       opts.topRelationships
         .slice(0, 12)
-        .map((name) => `- ${name}`)
+        .map(
+          (name, index) =>
+            `importantContacts[${index}]: ${promptValue(name, 160)}`,
+        )
         .join("\n"),
     );
   }
-  lines.push("", "## Messages to score");
+  lines.push("", "Messages TOON:");
   for (const [index, message] of batch.entries()) {
-    const subject = (message.subject ?? "").slice(0, 200);
-    const snippet = (message.snippet ?? "").slice(0, 600);
-    const sender = message.sender?.displayName ?? "unknown";
-    const chat = message.chatType ?? "dm";
-    const channel = message.channel;
-    const participants =
-      typeof message.participantCount === "number"
-        ? ` participants=${message.participantCount}`
-        : "";
     lines.push(
-      `### Message ${index + 1}`,
-      `From: ${sender} | channel=${channel} | chatType=${chat}${participants}`,
-      subject ? `Subject: ${subject}` : "Subject: (none)",
-      `Snippet: ${snippet}`,
-      "",
+      `messages[${index}]:`,
+      `  from: ${promptValue(message.sender?.displayName ?? "unknown", 160)}`,
+      `  channel: ${promptValue(message.channel, 80)}`,
+      `  chatType: ${promptValue(message.chatType ?? "dm", 40)}`,
+      `  participantCount: ${
+        typeof message.participantCount === "number"
+          ? message.participantCount
+          : "null"
+      }`,
+      `  subject: ${promptValue(message.subject, 200)}`,
+      `  snippet: ${promptValue(message.snippet, 600)}`,
     );
   }
   lines.push(
-    "Respond with ONLY a JSON array of length " +
-      batch.length +
-      " — no prose, no markdown, no code fences. Each element:",
-    '{ "score": <int 0-100>, "category": "important" | "planning" | "casual", "flags": [string, ...] }',
-    "The response MUST start with [ and end with ].",
+    "",
+    "Return TOON only. No prose, markdown, code fences, or hidden reasoning.",
+    `Return exactly ${batch.length} zero-based scores records aligned to messages[0] through messages[${
+      batch.length - 1
+    }].`,
+    "Use this row format:",
+    "scores[0]{score,category,flags}: 82, important, question|deadline",
+    "score: integer 0-100",
+    "category: important | planning | casual",
+    "flags: pipe-separated tags from mention|question|deadline|meeting|money|urgent|group_call|ask, or empty",
   );
   return lines.join("\n");
 }
 
-const CODE_FENCE_PATTERN =
-  /^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+const STRUCTURED_CODE_FENCE_PATTERN =
+  /^\s*```(?:toon|json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
-function parseScores(raw: string, expectedLength: number): PriorityScore[] {
+function stripModelWrapper(raw: string): string {
   let candidate = raw.trim();
   if (candidate.length === 0) {
     throw new Error("priority scoring returned an empty response");
@@ -167,12 +189,110 @@ function parseScores(raw: string, expectedLength: number): PriorityScore[] {
   if (candidate.startsWith("<think>") && thinkEnd !== -1) {
     candidate = candidate.slice(thinkEnd + "</think>".length).trim();
   }
-  const fenced = candidate.match(CODE_FENCE_PATTERN);
+  const fenced = candidate.match(STRUCTURED_CODE_FENCE_PATTERN);
   if (fenced) {
     candidate = (fenced[1] ?? "").trim();
   }
+  return candidate;
+}
+
+function parseScoreNumber(value: unknown): number {
+  const score =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isFinite(score)) {
+    throw new Error("priority scoring score is not a finite number");
+  }
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function parseCategory(value: unknown): PriorityCategory {
+  const category = typeof value === "string" ? value.trim() : "";
+  if (!VALID_CATEGORIES.has(category as PriorityCategory)) {
+    throw new Error("priority scoring category is not a valid enum");
+  }
+  return category as PriorityCategory;
+}
+
+function parseFlags(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => parseFlags(entry));
+  }
+  if (typeof value !== "string") {
+    return [];
+  }
+  const trimmed = value.trim();
+  if (
+    trimmed.length === 0 ||
+    trimmed === "[]" ||
+    trimmed.toLowerCase() === "null" ||
+    trimmed.toLowerCase() === "none"
+  ) {
+    return [];
+  }
+  return trimmed
+    .split(/[|,]/)
+    .map((flag) => flag.replace(/^["'`]+|["'`]+$/g, "").trim())
+    .filter(Boolean);
+}
+
+function scoreFromRecord(item: Record<string, unknown>): PriorityScore {
+  return {
+    score: parseScoreNumber(item.score),
+    category: parseCategory(item.category),
+    flags: parseFlags(item.flags),
+  };
+}
+
+function scoreFromDelimitedRow(row: string): PriorityScore {
+  const [score, category, flags = ""] = row.split(/,(.*)/s);
+  const categoryAndFlags = category.split(/,(.*)/s);
+  return {
+    score: parseScoreNumber(score),
+    category: parseCategory(categoryAndFlags[0]),
+    flags: parseFlags(categoryAndFlags[1] ?? flags),
+  };
+}
+
+function parseScoresFromToon(
+  parsed: Record<string, unknown>,
+  expectedLength: number,
+): PriorityScore[] | null {
+  if (parsed.scores === undefined) {
+    return null;
+  }
+  if (!Array.isArray(parsed.scores)) {
+    throw new Error(
+      "priority scoring TOON response did not include scores records",
+    );
+  }
+  const out: PriorityScore[] = [];
+  for (let i = 0; i < expectedLength; i += 1) {
+    const item = parsed.scores[i];
+    if (isRecord(item)) {
+      out.push(scoreFromRecord(item));
+      continue;
+    }
+    if (typeof item === "string") {
+      out.push(scoreFromDelimitedRow(item));
+      continue;
+    }
+    throw new Error("priority scoring omitted one or more messages");
+  }
+  return out;
+}
+
+function parseLegacyJsonScores(
+  candidate: string,
+  expectedLength: number,
+): PriorityScore[] {
   if (!candidate.startsWith("[")) {
-    throw new Error("priority scoring did not return a JSON array");
+    throw new Error(
+      "priority scoring did not return TOON scores or a legacy JSON array",
+    );
   }
   const parsed = JSON.parse(candidate) as unknown;
   if (!Array.isArray(parsed)) {
@@ -180,34 +300,23 @@ function parseScores(raw: string, expectedLength: number): PriorityScore[] {
   }
   const out: PriorityScore[] = [];
   for (let i = 0; i < expectedLength; i += 1) {
-    const item = parsed[i] as Record<string, unknown> | undefined;
-    if (!item || typeof item !== "object") {
+    const item = parsed[i];
+    if (!isRecord(item)) {
       throw new Error("priority scoring omitted one or more messages");
     }
-    const rawScore = item.score;
-    const rawCategory = item.category;
-    const rawFlags = item.flags;
-    if (typeof rawScore !== "number" || !Number.isFinite(rawScore)) {
-      throw new Error("priority scoring score is not a finite number");
-    }
-    if (
-      typeof rawCategory !== "string" ||
-      !VALID_CATEGORIES.has(rawCategory as PriorityCategory)
-    ) {
-      throw new Error("priority scoring category is not a valid enum");
-    }
-    const flags = Array.isArray(rawFlags)
-      ? rawFlags.filter(
-          (f): f is string => typeof f === "string" && f.length > 0,
-        )
-      : [];
-    out.push({
-      score: Math.max(0, Math.min(100, Math.round(rawScore))),
-      category: rawCategory as PriorityCategory,
-      flags,
-    });
+    out.push(scoreFromRecord(item));
   }
   return out;
+}
+
+function parseScores(raw: string, expectedLength: number): PriorityScore[] {
+  const candidate = stripModelWrapper(raw);
+  const parsedToon = parseToonKeyValue<Record<string, unknown>>(candidate);
+  if (parsedToon) {
+    const scores = parseScoresFromToon(parsedToon, expectedLength);
+    if (scores) return scores;
+  }
+  return parseLegacyJsonScores(candidate, expectedLength);
 }
 
 async function scoreBatch(

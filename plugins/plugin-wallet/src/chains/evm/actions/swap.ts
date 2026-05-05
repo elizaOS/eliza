@@ -9,7 +9,7 @@ import {
 
 const spec = requireActionSpec("SWAP");
 
-import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import {
   createConfig,
   type ExtendedChain,
@@ -584,7 +584,7 @@ export class SwapAction {
   }
 }
 
-async function buildSwapDetails(
+export async function buildSwapDetails(
   state: State,
   message: Memory,
   runtime: IAgentRuntime,
@@ -612,7 +612,7 @@ async function buildSwapDetails(
     prompt: context,
   });
 
-  const parsedResponse = parseKeyValueXml(llmResponse);
+  const parsedResponse = parseToonKeyValue(llmResponse);
 
   if (!parsedResponse) {
     throw new EVMError(

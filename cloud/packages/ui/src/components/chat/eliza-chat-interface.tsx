@@ -1760,10 +1760,15 @@ export function ElizaChatInterface({
                               <div className="flex items-start gap-3">
                                 <span className="mt-0.5 text-white/50">{tierIcons[tier.id]}</span>
                                 <div className="flex flex-col gap-0.5">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[14px] font-medium text-white">
                                       {tier.name}
                                     </span>
+                                    {tier.recommended && (
+                                      <span className="rounded-full border border-[#FF5800]/30 bg-[#FF5800]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
+                                        Recommended
+                                      </span>
+                                    )}
                                     <span className="text-[11px] text-white/30 font-mono">
                                       {tier.modelId.split("/")[1]}
                                     </span>
@@ -1813,13 +1818,23 @@ export function ElizaChatInterface({
                                       }}
                                     >
                                       <div className="flex flex-col">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                           <span className="text-[13px] font-medium text-white">
                                             {model.name}
                                           </span>
                                           <span className="rounded-full border border-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-white/40">
                                             {formatSelectorProvider(model.provider)}
                                           </span>
+                                          {model.recommended && (
+                                            <span className="rounded-full border border-[#FF5800]/30 bg-[#FF5800]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
+                                              Recommended
+                                            </span>
+                                          )}
+                                          {model.free && (
+                                            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] uppercase text-emerald-200">
+                                              Free
+                                            </span>
+                                          )}
                                           <span className="text-[10px] text-white/30 font-mono">
                                             {model.modelId.split("/")[1]}
                                           </span>

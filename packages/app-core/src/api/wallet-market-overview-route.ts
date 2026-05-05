@@ -8,8 +8,8 @@ import type {
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
 } from "@elizaos/shared";
-import { resolveCloudApiBaseUrl } from "./cloud-connection";
-import { sendJson, sendJsonError } from "./response";
+import { resolveCloudApiBaseUrl } from "@elizaos/app-core/api/cloud-connection";
+import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 
 const MARKET_OVERVIEW_PATH = "/api/wallet/market-overview";
 const CLOUD_MARKET_OVERVIEW_PREVIEW_PATH = "/market/preview/wallet-overview";

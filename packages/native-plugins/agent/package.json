@@ -21,14 +21,18 @@
   },
   "unpkg": "dist/plugin.js",
   "files": [
-    "dist/"
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "*.podspec"
   ],
   "author": "elizaOS",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaOS/eliza.git",
-    "directory": "apps/app/plugins/agent"
+    "directory": "packages/native-plugins/agent"
   },
   "scripts": {
     "build": "npm run clean && tsc && rollup -c rollup.config.mjs",

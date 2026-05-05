@@ -430,8 +430,8 @@ class TestConfigEdgeCases:
 
     def test_default_model(self) -> None:
         c = ADHDBenchConfig()
-        assert c.model_name == "gpt-4o-mini"
-        assert c.model_provider == "openai"
+        assert c.model_name == "openai/gpt-oss-120b"
+        assert c.model_provider == "groq"
 
 
 # ===================================================================

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "../../../../types/index.ts";
-import type { MessageSource } from "../types.ts";
+import type { MessageAdapterCapabilities, MessageSource } from "../types.ts";
 import { BaseMessageAdapter } from "./base.ts";
 
 export class IMessageMessageAdapter extends BaseMessageAdapter {
@@ -10,5 +10,16 @@ export class IMessageMessageAdapter extends BaseMessageAdapter {
 			runtime.getService("imessage") != null ||
 			runtime.getService("bluebubbles") != null
 		);
+	}
+
+	capabilities(): MessageAdapterCapabilities {
+		return {
+			list: false,
+			search: false,
+			manage: {},
+			send: {},
+			worlds: "single",
+			channels: "implicit",
+		};
 	}
 }

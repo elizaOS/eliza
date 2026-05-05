@@ -9,6 +9,7 @@ import type { Memory } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
+import { tryParseToonValue } from "../../../../utils/toon";
 import { composePrompt } from "../../../../utils.ts";
 import { EXTRACT_EXPERIENCES_TEMPLATE } from "../generated/prompts/typescript/prompts.ts";
 import type { ExperienceService } from "../service";
@@ -184,7 +185,7 @@ export const experienceEvaluator: Evaluator = {
 			template: EXTRACT_EXPERIENCES_TEMPLATE,
 		});
 
-		// Use TEXT_SMALL — extraction is a structured JSON task, not complex reasoning.
+		// Use TEXT_SMALL: extraction is structured but not complex reasoning.
 		// Saves 5-10x in token cost vs TEXT_LARGE.
 		const runModel = runtime.useModel.bind(runtime);
 		const response = await runModel(ModelType.TEXT_SMALL, {
@@ -356,6 +357,22 @@ function formatExistingExperiences(experiences: Experience[]): string {
 }
 
 function parseExtractedExperiences(response: string): ExtractedExperience[] {
+	const parsedToon = tryParseToonValue(response);
+	if (
+		parsedToon &&
+		typeof parsedToon === "object" &&
+		!Array.isArray(parsedToon)
+	) {
+		const experiences = (parsedToon as { experiences?: unknown }).experiences;
+		if (Array.isArray(experiences)) {
+			return experiences.filter(
+				(item): item is ExtractedExperience =>
+					item !== null && typeof item === "object",
+			);
+		}
+	}
+
+	// Legacy JSON-array fallback for older generated prompts and model outputs.
 	const jsonMatch = response.match(/\[[\s\S]*\]/);
 	if (!jsonMatch) return [];
 

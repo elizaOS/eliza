@@ -320,29 +320,40 @@ async function generateTextWithModel(
   if (params.stream) {
     try {
       const streamResult = streamText(generateParams);
-      return {
-        textStream: streamResult.textStream,
-        text: Promise.resolve(streamResult.text),
-        usage: Promise.resolve(streamResult.usage).then((usage) => {
-          if (!usage) {
-            return undefined;
+      const usagePromise = Promise.resolve(streamResult.usage).then((usage) => {
+        if (!usage) {
+          return undefined;
+        }
+
+        return emitModelUsageEvent(
+          runtime,
+          modelType,
+          resolved.prompt,
+          usage as AnthropicUsageWithCache,
+          modelName
+        );
+      });
+      const ignoreUsageError = (): undefined => undefined;
+      async function* textStreamWithUsage(): AsyncIterable<string> {
+        let completed = false;
+        try {
+          for await (const chunk of streamResult.textStream) {
+            yield chunk;
           }
-
-          emitModelUsageEvent(
-            runtime,
-            modelType,
-            resolved.prompt,
-            usage as AnthropicUsageWithCache
-          );
-          const promptTokens = usage.inputTokens ?? 0;
-          const completionTokens = usage.outputTokens ?? 0;
-
-          return {
-            promptTokens,
-            completionTokens,
-            totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
-          };
+          completed = true;
+        } finally {
+          if (completed) {
+            await usagePromise.catch(ignoreUsageError);
+          }
+        }
+      }
+      return {
+        textStream: textStreamWithUsage(),
+        text: Promise.resolve(streamResult.text).then(async (text) => {
+          await usagePromise.catch(ignoreUsageError);
+          return text;
         }),
+        usage: usagePromise,
         finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
       };
     } catch (error) {
@@ -356,7 +367,13 @@ async function generateTextWithModel(
     );
 
     if (usage) {
-      emitModelUsageEvent(runtime, modelType, resolved.prompt, usage as AnthropicUsageWithCache);
+      emitModelUsageEvent(
+        runtime,
+        modelType,
+        resolved.prompt,
+        usage as AnthropicUsageWithCache,
+        modelName
+      );
     }
 
     return text;

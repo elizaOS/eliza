@@ -11,8 +11,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
@@ -147,8 +146,11 @@ async function resolveOwnerInboxPlanWithLlm(args: {
 
   const prompt = [
     "Plan the OWNER_INBOX subaction for this request.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"triage"|"digest"|"respond"|"needs_response"|"search"|"read_message"|"draft_reply"|"send_reply"|"cross_channel_search"|null,"channel":"all"|"gmail"|"slack"|"discord"|"sms"|"telegram"|"whatsapp"|"imessage"|null,"shouldAct":true|false,"response":"string|null"}',
+    "Return TOON only with exactly these fields:",
+    "subaction: triage, digest, respond, needs_response, search, read_message, draft_reply, send_reply, cross_channel_search, or null",
+    "channel: all, gmail, slack, discord, sms, telegram, whatsapp, imessage, or null",
+    "shouldAct: true or false",
+    "response: short clarifying sentence, or null",
     "",
     "OWNER_INBOX is the OWNER's single umbrella for inbox/email work.",
     "Choose channel=gmail whenever the request explicitly names Gmail or email, or when the request is about a specific email by sender, subject, unread status, drafting an email reply, or sending an email reply.",
@@ -168,18 +170,43 @@ async function resolveOwnerInboxPlanWithLlm(args: {
     "Set shouldAct=false only when the request is not an inbox/email operation and a different action should handle it.",
     "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
     "",
-    'Example: "which emails need a response" -> {"subaction":"needs_response","channel":"gmail","shouldAct":true,"response":null}',
-    'Example: "find everything Alice said across my channels" -> {"subaction":"cross_channel_search","channel":"all","shouldAct":true,"response":null}',
-    'Example: "show urgent blockers first and separate them from low-priority inbound" -> {"subaction":"digest","channel":"all","shouldAct":true,"response":null}',
-    'Example: "if direct relaying gets messy here, suggest making a group chat handoff instead" -> {"subaction":"respond","channel":"all","shouldAct":true,"response":null}',
-    'Example: "also tell me what drafts still need my sign-off in the morning brief" -> {"subaction":"digest","channel":"all","shouldAct":true,"response":null}',
-    'Example: "tell me what slides, bio, title, or portal assets I still owe before the event" -> {"subaction":"digest","channel":"all","shouldAct":true,"response":null}',
-    'Example: "if I still haven\'t answered about those three events, bump me again with context instead of starting over" -> {"subaction":"respond","channel":"all","shouldAct":true,"response":null}',
+    "Examples:",
+    "request: which emails need a response",
+    "subaction: needs_response",
+    "channel: gmail",
+    "shouldAct: true",
+    "response: null",
     "",
-    `Current request: ${JSON.stringify(messageText(args.message))}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Structured parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    "request: find everything Alice said across my channels",
+    "subaction: cross_channel_search",
+    "channel: all",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: show urgent blockers first and separate them from low-priority inbound",
+    "subaction: digest",
+    "channel: all",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: if direct relaying gets messy here, suggest making a group chat handoff instead",
+    "subaction: respond",
+    "channel: all",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: if I still haven't answered about those three events, bump me again with context instead of starting over",
+    "subaction: respond",
+    "channel: all",
+    "shouldAct: true",
+    "response: null",
+    "",
+    `Current request:\n${messageText(args.message)}`,
+    `Resolved intent:\n${args.intent}`,
+    `Structured parameters:\n${Object.entries(args.params)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join("\n")}`,
+    `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
   try {
@@ -188,8 +215,7 @@ async function resolveOwnerInboxPlanWithLlm(args: {
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return { subaction: null, channel: null, shouldAct: null };
     }
@@ -255,16 +281,16 @@ function inferImplicitChannel(
 
 function buildGmailSearchQuery(params: OwnerInboxParams): string | undefined {
   const parts: string[] = [];
-  if (params.senderQuery && params.senderQuery.trim()) {
+  if (params.senderQuery?.trim()) {
     parts.push(`from:${params.senderQuery.trim()}`);
   }
-  if (params.subjectQuery && params.subjectQuery.trim()) {
+  if (params.subjectQuery?.trim()) {
     parts.push(`subject:${params.subjectQuery.trim()}`);
   }
-  if (params.labelQuery && params.labelQuery.trim()) {
+  if (params.labelQuery?.trim()) {
     parts.push(`label:${params.labelQuery.trim()}`);
   }
-  if (params.query && params.query.trim()) {
+  if (params.query?.trim()) {
     parts.push(params.query.trim());
   }
   return parts.length > 0 ? parts.join(" ") : undefined;

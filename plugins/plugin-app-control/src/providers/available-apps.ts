@@ -20,7 +20,7 @@ const MAX_LISTED = 30;
 export const availableAppsProvider: Provider = {
 	name: "available_apps",
 	description:
-		"Installed Eliza apps with running-run counts; use this to pick targets for APP launch / relaunch / list / create.",
+		"Installed Eliza apps with running-run counts; use this to pick targets for APP launch / relaunch / create. Read-only list/status is exposed here.",
 	descriptionCompressed: "Installed apps + running counts for APP action.",
 	position: -8,
 	dynamic: true,
@@ -49,30 +49,37 @@ export const availableAppsProvider: Provider = {
 		const overflow = installed.length - listedInstalled.length;
 
 		const lines: string[] = [];
-		lines.push("## Available apps");
-		lines.push("Use APP with mode=launch / relaunch / list / create.");
+		lines.push("available_apps:");
+		lines.push(`  installedCount: ${installed.length}`);
+		lines.push(`  runningCount: ${runs.length}`);
+		lines.push("  actions: APP mode=launch | relaunch | create");
 		if (listedInstalled.length > 0) {
+			lines.push(
+				`apps[${listedInstalled.length}]{name,displayName,pluginName,running}:`,
+			);
 			for (const app of listedInstalled) {
 				const running = runsByApp.get(app.name) ?? 0;
-				const tail = running > 0 ? ` — running x${running}` : "";
-				lines.push(`- **${app.displayName}** (\`${app.name}\`)${tail}`);
+				lines.push(
+					`  ${app.name},${app.displayName},${app.pluginName},${running}`,
+				);
 			}
 			if (overflow > 0) {
-				lines.push(`…and ${overflow} more.`);
+				lines.push(`truncated: ${overflow}`);
 			}
 		} else {
-			lines.push("- (none installed)");
+			lines.push("apps[0]:");
 		}
 
 		const orphanRuns = runs.filter(
 			(r) => !installed.some((app) => app.name === r.appName),
 		);
 		if (orphanRuns.length > 0) {
-			lines.push("");
-			lines.push("### Other running runs");
+			lines.push(
+				`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
+			);
 			for (const run of orphanRuns) {
 				lines.push(
-					`- ${run.displayName} (\`${run.appName}\`) [runId: ${run.runId}]`,
+					`  ${run.runId},${run.appName},${run.displayName},${run.status}`,
 				);
 			}
 		}

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import type {
   InboundMessage,
   InboxTriageConfig,
@@ -17,6 +17,17 @@ export class InboxTriageClassificationError extends Error {
     super(message);
     this.name = "InboxTriageClassificationError";
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatPromptScalar(value: unknown, maxLength = 600): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 /**
@@ -106,78 +117,95 @@ function buildTriagePrompt(
 
   // Owner context
   if (opts.ownerContext) {
-    sections.push("", "## Owner Context", opts.ownerContext);
+    sections.push("", "Owner context:", opts.ownerContext);
   }
 
   // Priority senders/channels
   const config = opts.config;
   if (config?.prioritySenders?.length) {
-    sections.push(
-      "",
-      `## Priority Senders (treat as higher urgency): ${config.prioritySenders.join(", ")}`,
-    );
+    sections.push("", "Priority senders (treat as higher urgency):");
+    for (const [index, sender] of config.prioritySenders.entries()) {
+      sections.push(`prioritySenders[${index}]: ${formatPromptScalar(sender)}`);
+    }
   }
   if (config?.priorityChannels?.length) {
-    sections.push(
-      "",
-      `## Priority Channels: ${config.priorityChannels.join(", ")}`,
-    );
+    sections.push("", "Priority channels:");
+    for (const [index, channel] of config.priorityChannels.entries()) {
+      sections.push(
+        `priorityChannels[${index}]: ${formatPromptScalar(channel)}`,
+      );
+    }
   }
 
   // Few-shot examples
   if (opts.examples && opts.examples.length > 0) {
-    sections.push("", "## Examples from past triage decisions:");
-    for (const ex of opts.examples.slice(0, 5)) {
+    sections.push("", "Examples from past triage decisions:");
+    for (const [index, ex] of opts.examples.slice(0, 5).entries()) {
       sections.push(
-        `- Source: ${ex.source} | Snippet: "${ex.snippet.slice(0, 80)}" | Classified: ${ex.classification}` +
-          (ex.ownerClassification
-            ? ` (owner corrected to: ${ex.ownerClassification})`
-            : ""),
+        `examples[${index}]:`,
+        `  source: ${formatPromptScalar(ex.source, 120)}`,
+        `  snippet: ${formatPromptScalar(ex.snippet, 160)}`,
+        `  classification: ${ex.classification}`,
+        `  ownerClassification: ${ex.ownerClassification ?? ""}`,
       );
     }
   }
 
   // Messages to classify
-  sections.push("", "## Messages to classify:", "");
+  sections.push("", "Messages to classify:", "");
   for (const [index, msg] of messages.entries()) {
     const gmailHints: string[] = [];
     if (msg.gmailIsImportant) gmailHints.push("Gmail-marked-important");
     if (msg.gmailLikelyReplyNeeded)
       gmailHints.push("Gmail-likely-reply-needed");
-    const hintsStr = gmailHints.length > 0 ? ` [${gmailHints.join(", ")}]` : "";
 
     sections.push(
-      `### Message ${index + 1}`,
-      `Source: ${msg.source} | Channel: ${msg.channelName} (${msg.channelType}) | From: ${msg.senderName}${hintsStr}`,
-      `Text: ${msg.text.slice(0, 500)}`,
+      `messages[${index}]:`,
+      `  source: ${formatPromptScalar(msg.source, 120)}`,
+      `  channelName: ${formatPromptScalar(msg.channelName, 160)}`,
+      `  channelType: ${msg.channelType}`,
+      `  senderName: ${formatPromptScalar(msg.senderName, 160)}`,
     );
+    for (const [hintIndex, hint] of gmailHints.entries()) {
+      sections.push(`  hints[${hintIndex}]: ${hint}`);
+    }
+    sections.push(`  text: ${formatPromptScalar(msg.text, 500)}`);
     if (msg.threadMessages && msg.threadMessages.length > 0) {
-      sections.push(`Recent context: ${msg.threadMessages.join(" | ")}`);
+      for (const [threadIndex, threadMessage] of msg.threadMessages
+        .slice(-5)
+        .entries()) {
+        sections.push(
+          `  threadMessages[${threadIndex}]: ${formatPromptScalar(threadMessage, 240)}`,
+        );
+      }
     }
     sections.push("");
   }
 
   sections.push(
-    "Respond with a JSON array of objects, one per message, in order. Each object must have:",
-    '{ "classification": "...", "urgency": "...", "confidence": 0.0-1.0, "reasoning": "...", "suggestedResponse": "..." }',
+    "Return TOON only, one result per message in the same order.",
+    "Use this exact indexed shape:",
+    "results[0]:",
+    "  classification: ignore, info, notify, needs_reply, or urgent",
+    "  urgency: low, medium, or high",
+    "  confidence: number from 0 to 1",
+    "  reasoning: brief explanation",
+    "  suggestedResponse: brief draft response when useful, otherwise leave blank",
     "",
-    "Return ONLY a bare JSON array — no prose, no markdown, no code fences, no <think>.",
-    "The response must start with [ and end with ].",
+    "No prose, markdown, code fences, or <think>.",
   );
 
   return sections.join("\n");
 }
 
-// Strip a surrounding markdown code fence from the model output, e.g.
-// ```json\n[...]\n``` or ```\n[...]\n```. This is purely about tolerating
-// common model formatting — it is NOT a semantic regex over user input.
+// Legacy JSON fallback: strip a surrounding markdown code fence from older
+// model output, e.g. ```json\n[...]\n``` or ```\n[...]\n```.
 const TRIAGE_CODE_FENCE_PATTERN =
   /^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
-// Parse a JSON array returned by the classifier. We ask the model for a bare
-// array ("starts with [, ends with ]"). We tolerate code fences and leading
-// <think> blocks, but we do NOT regex-slice an array out of arbitrary prose —
-// that approach silently accepts malformed output and hides real failures.
+// Parse a legacy JSON array returned by older classifier prompts. We tolerate
+// code fences and leading <think> blocks, but we do NOT regex-slice an array
+// out of arbitrary prose because that silently accepts malformed output.
 function parseTriageJsonArray(raw: string): unknown[] {
   let candidate = raw.trim();
   if (candidate.length === 0) {
@@ -219,16 +247,76 @@ function parseTriageJsonArray(raw: string): unknown[] {
   return parsed;
 }
 
+function asStructuredArray(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
+function parseTriageToonArray(raw: string): unknown[] | null {
+  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+  if (!parsed) {
+    return null;
+  }
+
+  const directArray =
+    asStructuredArray(parsed.results) ??
+    asStructuredArray(parsed.messages) ??
+    asStructuredArray(parsed.items) ??
+    asStructuredArray(parsed.classifications);
+  if (directArray) {
+    return directArray;
+  }
+
+  const classifications = asStructuredArray(parsed.classification);
+  if (!classifications) {
+    return null;
+  }
+
+  const urgencies = asStructuredArray(parsed.urgency) ?? [];
+  const confidences = asStructuredArray(parsed.confidence) ?? [];
+  const reasonings = asStructuredArray(parsed.reasoning) ?? [];
+  const suggestedResponses =
+    asStructuredArray(parsed.suggestedResponse) ??
+    asStructuredArray(parsed.suggested_response) ??
+    [];
+
+  return classifications.map((classification, index) => ({
+    classification,
+    urgency: urgencies[index],
+    confidence: confidences[index],
+    reasoning: reasonings[index],
+    suggestedResponse: suggestedResponses[index],
+  }));
+}
+
+function parseTriageStructuredArray(raw: string): unknown[] {
+  const toonParsed = parseTriageToonArray(raw);
+  if (toonParsed) {
+    return toonParsed;
+  }
+  return parseTriageJsonArray(raw);
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") {
+    return undefined;
+  }
+  return trimmed;
+}
+
 function parseTriageResults(
   raw: string,
   expectedCount: number,
 ): TriageResult[] {
-  const parsed = parseTriageJsonArray(raw);
+  const parsed = parseTriageStructuredArray(raw);
 
   const results: TriageResult[] = [];
   for (let i = 0; i < expectedCount; i++) {
-    const item = parsed[i] as Record<string, unknown> | undefined;
-    if (!item || typeof item !== "object") {
+    const item = parsed[i];
+    if (!isRecord(item)) {
       throw new InboxTriageClassificationError(
         "Inbox classification omitted one or more messages.",
       );
@@ -245,11 +333,10 @@ function parseTriageResults(
       classification,
       urgency,
       confidence,
-      reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
-      suggestedResponse:
-        typeof item.suggestedResponse === "string"
-          ? item.suggestedResponse
-          : undefined,
+      reasoning: normalizeOptionalString(item.reasoning) ?? "",
+      suggestedResponse: normalizeOptionalString(
+        item.suggestedResponse ?? item.suggested_response,
+      ),
     });
   }
   return results;
@@ -270,23 +357,35 @@ const VALID_CLASSIFICATIONS = new Set<TriageClassification>([
 const VALID_URGENCIES = new Set(["low", "medium", "high"]);
 
 function validClassification(v: unknown): TriageClassification | null {
-  if (
-    typeof v === "string" &&
-    VALID_CLASSIFICATIONS.has(v as TriageClassification)
-  ) {
-    return v as TriageClassification;
+  if (typeof v === "string") {
+    const normalized = v.trim().toLowerCase();
+    if (VALID_CLASSIFICATIONS.has(normalized as TriageClassification)) {
+      return normalized as TriageClassification;
+    }
   }
   return null;
 }
 
 function validUrgency(v: unknown): "low" | "medium" | "high" | null {
-  if (typeof v === "string" && VALID_URGENCIES.has(v)) {
-    return v as "low" | "medium" | "high";
+  if (typeof v === "string") {
+    const normalized = v.trim().toLowerCase();
+    if (VALID_URGENCIES.has(normalized)) {
+      return normalized as "low" | "medium" | "high";
+    }
   }
   return null;
 }
 
 function validConfidence(v: unknown): number | null {
-  if (typeof v === "number" && v >= 0 && v <= 1) return v;
+  const numeric =
+    typeof v === "string" && v.trim().length > 0 ? Number(v.trim()) : v;
+  if (
+    typeof numeric === "number" &&
+    Number.isFinite(numeric) &&
+    numeric >= 0 &&
+    numeric <= 1
+  ) {
+    return numeric;
+  }
   return null;
 }

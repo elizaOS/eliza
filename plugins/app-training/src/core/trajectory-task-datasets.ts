@@ -156,7 +156,6 @@ function looksLikePlannerCall(call: TrajectoryCallLike): boolean {
   const prompt = `${call.systemPrompt ?? ""}\n${call.userPrompt ?? ""}`;
 
   return (
-    /<actions>/i.test(response) ||
     /(^|\n)actions:/m.test(response) ||
     (/thought/i.test(response) && /text/i.test(response)) ||
     /available actions/i.test(prompt) ||

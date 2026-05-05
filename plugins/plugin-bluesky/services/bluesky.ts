@@ -67,6 +67,59 @@ export class BlueSkyService extends Service {
 		logger.info({ agentId: runtime.agentId }, "BlueSky client stopped");
 	}
 
+	static registerSendHandlers(
+		runtime: IAgentRuntime,
+		serviceInstance: BlueSkyService,
+	): void {
+		const messageService = serviceInstance?.getMessageService(runtime.agentId);
+		if (!messageService) {
+			runtime.logger.warn(
+				{ src: "plugin:bluesky", agentId: runtime.agentId },
+				"Cannot register BlueSky DM connector; message service is not initialized",
+			);
+			return;
+		}
+
+		const sendHandler = messageService.handleSendMessage.bind(messageService);
+		if (typeof runtime.registerMessageConnector === "function") {
+			runtime.registerMessageConnector({
+				source: "bluesky",
+				label: "BlueSky",
+				description:
+					"BlueSky DM connector for sending private messages to conversations.",
+				capabilities: [
+					"send_message",
+					"resolve_targets",
+					"list_rooms",
+					"chat_context",
+					"user_context",
+				],
+				supportedTargetKinds: ["thread", "user"],
+				contexts: ["social", "connectors"],
+				metadata: {
+					service: BLUESKY_SERVICE_NAME,
+				},
+				resolveTargets:
+					messageService.resolveConnectorTargets.bind(messageService),
+				listRecentTargets:
+					messageService.listRecentConnectorTargets.bind(messageService),
+				listRooms: messageService.listConnectorRooms.bind(messageService),
+				getChatContext:
+					messageService.getConnectorChatContext.bind(messageService),
+				getUserContext:
+					messageService.getConnectorUserContext.bind(messageService),
+				sendHandler,
+			});
+			runtime.logger.info(
+				{ src: "plugin:bluesky", agentId: runtime.agentId },
+				"Registered BlueSky DM connector",
+			);
+			return;
+		}
+
+		runtime.registerSendHandler("bluesky", sendHandler);
+	}
+
 	async stop(): Promise<void> {
 		for (const manager of this.managers.values()) {
 			await BlueSkyService.stop(manager.runtime);

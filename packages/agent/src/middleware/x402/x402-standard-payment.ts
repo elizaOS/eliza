@@ -25,8 +25,8 @@ import {
   type PaymentConfigDefinition,
   toResourceUrl,
   toX402Network,
-} from "./payment-config.ts";
-import type { X402Runtime } from "./types.ts";
+} from "./payment-config.js";
+import type { X402Runtime } from "./types.js";
 
 /** Decoded X-Payment body (x402-fetch / CDP-style clients). */
 export type X402StandardPaymentPayload = {

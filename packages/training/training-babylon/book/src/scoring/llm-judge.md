@@ -20,7 +20,7 @@ The LLM judge provides richer feedback but is slower and costs money.
 graph LR
     TRAJ[Trajectory] --> PROMPT[Build Prompt]
     RUBRIC[Rubric] --> PROMPT
-    PROMPT --> LLM[GPT-4o-mini]
+    PROMPT --> LLM[gpt-5-mini]
     LLM --> RESPONSE[JSON Score]
     RESPONSE --> PARSE[Parse Score]
     PARSE --> SCORE[0.0 - 1.0]
@@ -42,7 +42,7 @@ class ArchetypeScoringService {
     const prompt = this.buildJudgePrompt(trajectory, rubric, metrics);
     
     const response = await this.llmClient.complete({
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       messages: [
         { role: "system", content: JUDGE_SYSTEM_PROMPT },
         { role: "user", content: prompt }
@@ -155,7 +155,7 @@ Respond with JSON:
 
 ```python
 # BabylonEnvConfig
-judge_model: str = "gpt-4o-mini"
+judge_model: str = "gpt-5-mini"
 judge_temperature: float = 0.3
 judge_max_tokens: int = 1024
 use_llm_judge: bool = False  # Default to Python judge
@@ -168,7 +168,7 @@ use_llm_judge: bool = False  # Default to Python judge
 OPENAI_API_KEY=sk-...
 
 # Optional: use different model
-LLM_JUDGE_MODEL=gpt-4-turbo
+LLM_JUDGE_MODEL=gpt-5.5
 ```
 
 ## Scoring Rubrics
@@ -221,9 +221,9 @@ for (const trajectory of unscored) {
 
 | Model | Per Trajectory | Per 1000 |
 |-------|----------------|----------|
-| gpt-4o-mini | ~$0.002 | ~$2 |
+| gpt-5-mini | ~$0.002 | ~$2 |
 | gpt-4o | ~$0.02 | ~$20 |
-| gpt-4-turbo | ~$0.03 | ~$30 |
+| gpt-5.5 | ~$0.03 | ~$30 |
 
 For training, use Python judge (free).
 For evaluation, LLM judge adds ~$2 per 1000 trajectories.
@@ -278,5 +278,5 @@ console.log("Parsed:", parsed);
 | Empty response | Token limit | Increase max_tokens |
 | Invalid JSON | Model confusion | Add JSON schema hint |
 | All same score | Rubric unclear | Improve rubric specificity |
-| Slow scoring | API latency | Use gpt-4o-mini |
+| Slow scoring | API latency | Use gpt-5-mini |
 

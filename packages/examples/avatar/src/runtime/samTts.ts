@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
-import type { SamTTSService } from "@elizaos/plugin-simple-voice";
+import { SamTTSService } from "@elizaos/plugin-simple-voice";
 
 export type SamOptions = {
   speed: number;
@@ -38,10 +38,12 @@ export function synthesizeSamWav(
   text: string,
   options: SamOptions,
 ): ArrayBuffer {
-  const service = runtime.getService("SAM_TTS") as SamTTSService | null;
+  const service = runtime.getService(
+    SamTTSService.serviceType,
+  ) as SamTTSService | null;
   if (!service) {
     throw new Error(
-      "SAM_TTS service is not available (plugin-simple-voice not loaded?)",
+      `${SamTTSService.serviceType} service is not available (plugin-simple-voice not loaded?)`,
     );
   }
   const sanitized = sanitizeForSam(text);

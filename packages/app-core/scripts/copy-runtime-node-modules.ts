@@ -327,6 +327,22 @@ function pruneCopiedPackageDir(packageDir: string): void {
       const entryPath = path.join(currentDir, entry.name);
       const relativePath = path.relative(packageDir, entryPath);
 
+      if (
+        entry.name === "node_modules" ||
+        RUNTIME_COPY_PRUNED_DIR_NAMES.has(entry.name)
+      ) {
+        fs.rmSync(entryPath, { recursive: true, force: true });
+        continue;
+      }
+
+      if (
+        entry.isFile() &&
+        RUNTIME_COPY_PRUNED_FILE_EXTENSIONS.has(path.extname(entry.name))
+      ) {
+        fs.rmSync(entryPath, { force: true });
+        continue;
+      }
+
       if (!shouldKeepPackageRelativePath(relativePath)) {
         fs.rmSync(entryPath, { recursive: true, force: true });
         continue;

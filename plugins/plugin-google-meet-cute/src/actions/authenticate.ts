@@ -1,5 +1,6 @@
 import {
   Action,
+  ActionResult,
   IAgentRuntime,
   Memory,
   HandlerCallback,
@@ -53,7 +54,7 @@ export const authenticateAction: Action = {
     state?: State,
     params?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       const authService = runtime.getService(
         "google-auth",
@@ -66,12 +67,12 @@ export const authenticateAction: Action = {
       const authParams = params as AuthenticateParams | undefined;
 
       if (authService.isAuthenticated()) {
+        const text =
+          "Already authenticated with Google Meet API. You can now create meetings, get participant info, and access meeting artifacts.";
         if (callback) {
-          callback({
-            text: "✅ Already authenticated with Google Meet API. You can now create meetings, get participant info, and access meeting artifacts.",
-          });
+          await callback({ text });
         }
-        return;
+        return { success: true, text, data: { actionName: "AUTHENTICATE_GOOGLE" } };
       }
 
       // Check if we should do interactive auth
@@ -81,7 +82,7 @@ export const authenticateAction: Action = {
         const authUrl = authService.getAuthUrl();
 
         if (callback) {
-          callback({
+          await callback({
             text: `🔐 To authenticate with Google Meet API:
 
 1. Visit this URL: ${authUrl}
@@ -100,9 +101,7 @@ Starting authentication server...`,
         // Start interactive authentication
         await authService.authenticateInteractive();
 
-        if (callback) {
-          callback({
-            text: `✅ Successfully authenticated with Google Meet API!
+        const text = `Successfully authenticated with Google Meet API!
 
 You can now:
 - Create new meetings
@@ -110,19 +109,29 @@ You can now:
 - List participants
 - Generate reports from meeting artifacts
 
-💡 Tip: Save the refresh token shown in the logs to your .env file to avoid re-authentication.`,
-          });
-        }
-      } else {
+Tip: Save the refresh token shown in the logs to your .env file to avoid re-authentication.`;
         if (callback) {
-          callback({
-            text: `❌ Authentication required. Please set up Google OAuth credentials:
+          await callback({ text });
+        }
+        return {
+          success: true,
+          text,
+          data: { actionName: "AUTHENTICATE_GOOGLE", interactive: true },
+        };
+      } else {
+        const text = `Authentication required. Please set up Google OAuth credentials:
 
 1. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env file
 2. Optionally set GOOGLE_REFRESH_TOKEN if you have one
-3. Run this command again to authenticate interactively`,
-          });
+3. Run this command again to authenticate interactively`;
+        if (callback) {
+          await callback({ text });
         }
+        return {
+          success: false,
+          text,
+          data: { actionName: "AUTHENTICATE_GOOGLE", interactive: false },
+        };
       }
     } catch (error) {
       logger.error(
@@ -130,12 +139,20 @@ You can now:
         error instanceof Error ? error.message : String(error),
       );
 
+      const text = `Failed to authenticate: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
       if (callback) {
-        callback({
-          text: `❌ Failed to authenticate: ${error instanceof Error ? error.message : "Unknown error"}`,
+        await callback({
+          text,
           error: true,
         });
       }
+      return {
+        success: false,
+        text,
+        data: { actionName: "AUTHENTICATE_GOOGLE" },
+      };
     }
   },
 };

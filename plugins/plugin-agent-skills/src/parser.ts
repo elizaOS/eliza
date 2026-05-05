@@ -421,24 +421,13 @@ export function estimateTokens(text: string): number {
 }
 
 // ============================================================
-// PROMPT XML GENERATION
+// PROMPT GENERATION
 // ============================================================
 
 /**
- * Generate XML for skill metadata to include in agent prompts.
- *
- * Format follows Claude's recommended skill prompt structure:
- * ```xml
- * <available_skills>
- *   <skill>
- *     <name>skill-name</name>
- *     <description>What it does and when to use</description>
- *     <location>/path/to/skill/SKILL.md</location>
- *   </skill>
- * </available_skills>
- * ```
+ * Generate TOON for skill metadata to include in agent prompts.
  */
-export function generateSkillsXml(
+export function generateSkillsToon(
 	skills: Array<{ name: string; description: string; location?: string }>,
 	options: { includeLocation?: boolean } = {},
 ): string {
@@ -446,34 +435,19 @@ export function generateSkillsXml(
 		return "";
 	}
 
-	const skillElements = skills
-		.map((skill) => {
-			const locationTag =
-				options.includeLocation && skill.location
-					? `\n    <location>${escapeXml(skill.location)}</location>`
-					: "";
+	const lines: string[] = ["availableSkills:"];
+	for (const skill of skills) {
+		lines.push(`  - name: ${formatToonScalar(skill.name)}`);
+		lines.push(`    description: ${formatToonScalar(skill.description)}`);
+		if (options.includeLocation && skill.location) {
+			lines.push(`    location: ${formatToonScalar(skill.location)}`);
+		}
+	}
 
-			return `  <skill>
-    <name>${escapeXml(skill.name)}</name>
-    <description>${escapeXml(skill.description)}</description>${locationTag}
-  </skill>`;
-		})
-		.join("\n");
-
-	return `<available_skills>
-${skillElements}
-</available_skills>`;
+	return lines.join("\n");
 }
 
-/**
- * Escape special XML characters.
- */
-function escapeXml(str: string): string {
-	const s = typeof str === "string" ? str : String(str || "");
-	return s
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&apos;");
+function formatToonScalar(value: string): string {
+	const s = typeof value === "string" ? value : String(value || "");
+	return s.replace(/\s+/g, " ").trim();
 }

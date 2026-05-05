@@ -2,62 +2,79 @@
 
 Date: 2026-05-05
 
+Current native identity: `Eliza` / `app.eliza`
+
 ## Automated Work Completed
 
-- Revalidated the launchdocs gate against the moved docs-site tree at `packages/docs/docs/launchdocs`.
-- Updated the docs gate so `--scope=launchdocs` includes the docs-site `docs/launchdocs` directory and fails if the scope resolves to zero markdown files.
-- Revalidated the real built app through the deterministic stub-stack Playwright UI smoke runner.
-- Revalidated the macOS titlebar navigation/drag-area smoke after the traffic-light inset change.
-- Fixed a titlebar regression where the current CSS inset was 80px while the smoke requires at least 100px of traffic-light clearance; the final value is 112px.
-- Revalidated benchmark adapter discovery and score extraction for the new benchmark adapter coverage.
-- Revalidated the benchmark smoke paths for ADHDBench, BFCL, and HyperliquidBench.
+- Revalidated the production renderer with the deterministic Playwright route/click-safety matrix against `packages/app/dist`.
+- Fixed final route-load regressions found by the built-app smoke pass:
+  - LifeOps UI now registers its client extension before the LifeOps page renders.
+  - Wallet inventory references now resolve through `@elizaos/app-wallet` instead of deleted app-core inventory modules.
+  - Wallet package registration now has a real `./register` source/dist export.
+  - Steward and LifeOps renderer imports use their UI subpaths, avoiding server route imports in the browser bundle.
+- Fixed final package/typecheck regressions found after the route fixes:
+  - App-core training routes now delegate to `@elizaos/app-training/routes/training`.
+  - App-core exports the app-shell and widget registry subpaths used by registered app packages.
+  - Companion typecheck resolves the wallet app package through explicit workspace paths.
+- Rebuilt the production web renderer and both native app shells after the final fixes.
+- Revalidated mobile artifact consistency after native sync/build.
+- Revalidated the launchdocs gate against the docs-site launchdocs tree.
 
 ## Validation Commands
 
 ```sh
-bunx @biomejs/biome check --write scripts/launch-qa/check-docs.mjs scripts/launch-qa/check-docs.test.ts
-bunx vitest run scripts/launch-qa/check-docs.test.ts
-node scripts/launch-qa/check-docs.mjs --scope=launchdocs --json
-node scripts/launch-qa/run.mjs --only docs --json
-node scripts/launch-qa/run.mjs --only docs,ui-smoke --continue-on-failure --json
+bun install --lockfile-only
+bun install --frozen-lockfile
+bun run --cwd packages/app typecheck
+bun run --cwd packages/app-core typecheck
+bun run --cwd plugins/app-companion typecheck
+bun run --cwd plugins/app-lifeops build
+bun run --cwd plugins/app-wallet build
+bun run --cwd packages/agent build:mobile
+bun run --cwd packages/app-core build
+bun run --cwd packages/app build:web
+node scripts/launch-qa/run-ui-smoke-stub.mjs
 node scripts/launch-qa/run.mjs --suite release --continue-on-failure --json
-node scripts/launch-qa/run.mjs --only training-focused --json
-node scripts/launch-qa/run-ui-smoke-stub.mjs test/ui-smoke/titlebar-navigation.spec.ts
-PYTHONPATH=packages python -m pytest packages/benchmarks/orchestrator/tests/test_adapter_discovery.py -q
-python -m py_compile packages/benchmarks/HyperliquidBench/eliza_agent.py packages/benchmarks/HyperliquidBench/types.py packages/benchmarks/adhdbench/elizaos_adhdbench/distractor_plugin.py packages/benchmarks/adhdbench/elizaos_adhdbench/runner.py packages/benchmarks/adhdbench/scripts/run_benchmark.py packages/benchmarks/bfcl/agent.py packages/benchmarks/bfcl/plugin.py
-PYTHONPATH=packages/benchmarks/adhdbench python -m pytest packages/benchmarks/adhdbench/tests -q
-PYTHONPATH=packages python -m pytest packages/benchmarks/bfcl/tests -q
-cargo check --manifest-path packages/benchmarks/HyperliquidBench/Cargo.toml --quiet
-PYTHONPATH=packages/benchmarks python -m HyperliquidBench --coverage --max-steps 1 --output /tmp/eliza-hyperliquid-smoke
-PYTHONPATH=packages python -m benchmarks.bfcl run --mock --sample 1 --no-report --no-exec --output /tmp/eliza-bfcl-smoke
-PYTHONPATH=packages/benchmarks/adhdbench python packages/benchmarks/adhdbench/scripts/run_benchmark.py run --quick --ids L0-001 --output /tmp/eliza-adhdbench-smoke
+node packages/app-core/scripts/run-mobile-build.mjs android
+node packages/app-core/scripts/run-mobile-build.mjs android-system
+node packages/app-core/scripts/run-mobile-build.mjs ios
+node scripts/launch-qa/check-mobile-artifacts.mjs --json
+node scripts/launch-qa/check-docs.mjs --scope=launchdocs --json
 ```
 
 ## Results
 
-- Docs gate: passed, 22 launchdocs markdown files checked, 0 errors.
-- Docs gate tests: passed, 6 tests.
-- Built-app UI smoke: passed, 35 route entries plus the visible safe app tiles/button click-safety test. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-vxSi7X`.
-- Built-app UI smoke after titlebar inset fix: passed, 35 route entries plus the visible safe app tiles/button click-safety test.
-- Launch runner docs task after docs-site move: passed. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-ej5kda`.
-- Current-tree release suite rerun: passed, 12 of 12 tasks. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-ApnnaO`.
-- Training-focused rerun after the Vast test-helper fix: passed, 9 files and 73 tests. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-V39Tq9`.
-- Titlebar navigation smoke: passed, 1 Playwright test.
-- Benchmark adapter discovery: passed, 6 pytest tests.
-- Orchestrator lifecycle dataset/evaluator/runner tests: passed, 4 pytest tests.
-- Python benchmark compile smoke: passed.
-- ADHDBench test suite: passed, 142 tests.
-- ADHDBench quick filtered smoke: passed, 2 scenario results.
-- BFCL test suite: passed, 45 tests.
-- BFCL mock sample smoke: passed, 1 test.
-- HyperliquidBench Cargo check: passed.
-- HyperliquidBench Python coverage smoke: passed, 1 scenario.
+- Lockfile integrity: passed.
+- App typecheck: passed.
+- App-core typecheck: passed.
+- Companion typecheck: passed.
+- LifeOps package build: passed.
+- Wallet package build: passed.
+- Mobile agent bundle build: passed, produced the Phase D `agent-bundle.js` payload.
+- App-core package build: passed.
+- Production renderer build: passed.
+- Built-app Playwright route/click-safety matrix: passed, 35 of 35 route entries against the rebuilt `packages/app/dist`.
+- Release suite: passed, 12 of 12 tasks. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-QT1Zpu`.
+- Android native build: passed, including Capacitor sync and `:app:assembleDebug`.
+- Android system build: passed, staged the ElizaOS APK with the Phase D agent bundle.
+- iOS native simulator build: passed with `CODE_SIGNING_ALLOWED=NO`.
+- Mobile artifact gate after native rebuilds: passed, 14 checks, 0 errors.
+
+## Known Non-Blocking Warnings
+
+- Standard Android/Play Store builds intentionally strip `assets/agent/` for size; the full local-agent payload is preserved for the AOSP privileged-system APK.
+- Vite reports existing deprecated alias `customResolver` and ineffective dynamic import warnings.
+- Android Gradle reports existing deprecation warnings for Gradle 10 compatibility.
+- iOS Capacitor sync reports existing Package.swift/SPM compatibility warnings; the Pod/Xcode simulator build succeeds.
+- Cloud API-key invalid-payload e2e logs an expected `ZodError` while asserting the invalid request is rejected.
 
 ## Remaining Human Work
 
-- Physical iOS and Android release QA on real devices, including install, permissions, backgrounding, local model performance, and thermal/performance behavior.
-- Live cloud production QA with real login, billing/credits, agent creation, and migration to desktop or phone.
-- Live wallet QA only with dedicated test wallets and controlled testnet or tiny-mainnet funds.
-- OAuth and messaging connector QA with real provider accounts because provider UX, anti-abuse gates, and permission screens change outside the codebase.
-- macOS packaged app permission prompts for Computer Use, accessibility, and screen recording.
-- Product judgment on final onboarding clarity, colors, button feel, and model output quality.
+- Physical iOS and Android QA on real devices: install, first launch, permissions, backgrounding, notifications, thermal/performance, local model behavior, camera/mic/screen/mobile-signal hardware paths.
+- Production cloud QA with real accounts: login, billing/credits, agent creation, cloud-to-desktop/phone migration, real hosted deployment behavior.
+- Real OAuth/provider QA: Google/Gmail/Calendar, Discord, Telegram, Signal, WhatsApp, iMessage, X, Shopify, Vincent, and any provider anti-abuse or consent screens.
+- Wallet QA only with dedicated test wallets and controlled testnet or tiny-mainnet funds; live token purchase flows must stay manually approved.
+- Remote second-device QA on real networks: LAN, mobile network, firewall/NAT behavior, and multi-interface ergonomics.
+- Packaged desktop Computer Use QA for macOS TCC prompts, accessibility, screen recording, permission revoke/re-grant, and packaged app signing/notarization behavior.
+- App Store / Play Store / notarization / signing-account release management.
+- Final product judgment on onboarding clarity, colors/button feel, copy, and model output quality.

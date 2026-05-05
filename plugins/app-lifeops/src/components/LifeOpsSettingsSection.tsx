@@ -1348,7 +1348,7 @@ function SmartFeaturesCard() {
             type="text"
             className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
             placeholder={t("lifeopssettings.priorityScoringModelPlaceholder", {
-              defaultValue: "e.g. claude-haiku-4-5, gpt-4o-mini",
+              defaultValue: "e.g. claude-haiku-4-5, gpt-5-mini",
             })}
             value={model}
             disabled={loading || saving || !enabled}
@@ -1546,7 +1546,7 @@ function EmailIntelligenceCard() {
             id="lifeops-email-classifier-model"
             type="text"
             className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
-            placeholder="e.g. claude-haiku-4-5, gpt-4o-mini"
+            placeholder="e.g. claude-haiku-4-5, gpt-5-mini"
             value={model}
             disabled={loading || saving || !enabled}
             onChange={(event) => setModel(event.target.value)}

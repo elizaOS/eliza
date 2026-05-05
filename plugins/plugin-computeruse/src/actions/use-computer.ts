@@ -178,25 +178,9 @@ export const useComputerAction: Action = {
     "SEE_SCREEN",
   ],
   description:
-    "Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n" +
-    "Available actions:\n" +
-    "- screenshot: Capture the current screen state. No parameters needed.\n" +
-    "- click: Left-click at pixel coordinates. Requires coordinate: [x, y].\n" +
-    "- click_with_modifiers: Hold modifiers such as ctrl, shift, alt, or cmd while clicking. Requires coordinate and modifiers.\n" +
-    "- double_click: Double-click at coordinates. Requires coordinate: [x, y].\n" +
-    "- right_click: Right-click at coordinates. Requires coordinate: [x, y].\n" +
-    "- mouse_move: Move cursor without clicking. Requires coordinate: [x, y].\n" +
-    "- type: Type text at the current cursor position. Requires text.\n" +
-    "- key: Press a single key (e.g. Return, Tab, Escape, F5). Requires key.\n" +
-    "- key_combo: Press a key combination (e.g. ctrl+c, cmd+shift+s, alt+F4). Requires key.\n" +
-    "- scroll: Scroll at a position. Requires coordinate, scrollDirection (up/down/left/right), optional scrollAmount.\n" +
-    "- drag: Drag from one point to another. Requires startCoordinate and coordinate.\n" +
-    "- detect_elements: Stub for upstream parity on local machines.\n" +
-    "- ocr: Stub for upstream parity on local machines.\n\n" +
-    "Always take a screenshot first to see the current screen state before performing actions. " +
-    "After each action, a screenshot is automatically returned showing the result.",
+    "use_computer_action:\n  purpose: Control the local desktop for real application interaction when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
   descriptionCompressed:
-    "control local desktop action inspect current screen, move mouse, click, drag, type, press key, scroll, perform modify click intend real application interaction agent need operate user computer directly available action: - screenshot: Capture current screen state parameter need - click: Left-click pixel coordinate require coordinate: x, y - click_with_modifier: Hold modifier ctrl, shift, alt, cmd click require coordinate modifier - double_click: Double-click coordinate require coordinate: x, y - right_click: Right-click coordinate require coordinate: x, y - mouse_move: move cursor wo/ click require coordinate: x, y - type: Type text current cursor position require text - key: Press single key (e g return, Tab, Escape, F5) require key - key_combo: Press key combination (e g ctrl + c, cmd + shift + s, alt + F4) require key - scroll: Scroll position require coordinate, scrolldirection (up/down/left/right), optional scrollamount - drag: Drag one point another require startcoordinate coordinate - detect_element: Stub upstream parity local machine - ocr: Stub upstream parity local machine alway take screenshot first see current screen state before perform action after each action, screenshot automatically return show result",
+    "Desktop control router: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr; screenshot before acting.",
 
   parameters: [
     {

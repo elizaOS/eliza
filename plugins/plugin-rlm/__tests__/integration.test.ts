@@ -6,7 +6,9 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { beforeAll, describe, expect, it } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const execAsync = promisify(exec);
 
@@ -118,6 +120,74 @@ describe("RLM Integration", () => {
       const status = await client.getStatus();
       expect(status).toBeDefined();
       await client.shutdown();
+    });
+  });
+});
+
+describe("RLM trajectory wrapping", () => {
+  afterEach(() => {
+    vi.doUnmock("../client");
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("records plugin model inference through recordLlmCall", async () => {
+    vi.resetModules();
+    const infer = vi.fn(async () => ({
+      text: "recursive answer",
+      metadata: { stub: false },
+    }));
+    vi.doMock("../client", () => ({
+      RLMClient: vi.fn(function RLMClient() {
+        return {
+          infer,
+          getStatus: vi.fn(async () => ({ available: true, backend: "gemini" })),
+          shutdown: vi.fn(),
+        };
+      }),
+      configFromEnv: vi.fn(() => ({})),
+      stubResult: vi.fn(() => ({ text: "[RLM STUB]", metadata: { stub: true } })),
+    }));
+
+    const { rlmPlugin } = await import("../index");
+    const llmCalls: Record<string, unknown>[] = [];
+    const trajectoryLogger = {
+      isEnabled: () => true,
+      logLlmCall: vi.fn((call: Record<string, unknown>) => {
+        llmCalls.push(call);
+      }),
+    };
+    const runtime = {
+      agentId: "agent-rlm",
+      character: { system: "system prompt" },
+      getService: vi.fn((name: string) => (name === "trajectories" ? trajectoryLogger : null)),
+      getServicesByType: vi.fn((type: string) =>
+        type === "trajectories" ? [trajectoryLogger] : [],
+      ),
+      getSetting: vi.fn(),
+      rlmConfig: { backend: "gemini" },
+    } as unknown as IAgentRuntime;
+    const handler = rlmPlugin.models?.[ModelType.TEXT_LARGE];
+    expect(handler).toBeDefined();
+
+    await runWithTrajectoryContext({ trajectoryStepId: "step-rlm" }, () =>
+      handler?.(runtime, {
+        prompt: "Solve this",
+        maxTokens: 128,
+        temperature: 0.2,
+      }),
+    );
+
+    expect(infer).toHaveBeenCalledWith(
+      "Solve this",
+      expect.objectContaining({ maxTokens: 128, temperature: 0.2 }),
+    );
+    expect(llmCalls[0]).toMatchObject({
+      stepId: "step-rlm",
+      model: "gemini:rlm",
+      actionType: "rlm.client.infer",
+      response: "recursive answer",
+      userPrompt: "Solve this",
     });
   });
 });

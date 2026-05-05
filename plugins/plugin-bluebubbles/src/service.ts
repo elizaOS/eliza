@@ -125,6 +125,202 @@ function getMessageService(runtime: IAgentRuntime): MessageService | null {
 	return null;
 }
 
+type RuntimeWithOptionalConnectorRegistry = IAgentRuntime & {
+	registerMessageConnector?: (
+		registration: MessageConnectorRegistration,
+	) => void;
+	getMessageConnectors?: () => Array<{ source?: string }>;
+};
+type RuntimeSendHandler = Parameters<IAgentRuntime["registerSendHandler"]>[1];
+type ConnectorTargetInfo = Parameters<RuntimeSendHandler>[1];
+type ConnectorContent = Parameters<RuntimeSendHandler>[2];
+type MessageConnectorRegistration = Parameters<
+	IAgentRuntime["registerMessageConnector"]
+>[0];
+type MessageConnectorTarget = Awaited<
+	ReturnType<NonNullable<MessageConnectorRegistration["resolveTargets"]>>
+>[number];
+type MessageConnectorQueryContext = Parameters<
+	NonNullable<MessageConnectorRegistration["resolveTargets"]>
+>[1];
+type MessageConnectorChatContext = NonNullable<
+	Awaited<
+		ReturnType<NonNullable<MessageConnectorRegistration["getChatContext"]>>
+	>
+>;
+type MessageConnectorUserContext = NonNullable<
+	Awaited<
+		ReturnType<NonNullable<MessageConnectorRegistration["getUserContext"]>>
+	>
+>;
+
+function registerMessageConnectorIfAvailable(
+	runtime: IAgentRuntime,
+	registration: MessageConnectorRegistration,
+): void {
+	const withRegistry = runtime as RuntimeWithOptionalConnectorRegistry;
+	if (typeof withRegistry.registerMessageConnector === "function") {
+		withRegistry.registerMessageConnector(registration);
+		return;
+	}
+	runtime.registerSendHandler(registration.source, registration.sendHandler);
+}
+
+function hasRegisteredConnector(
+	runtime: IAgentRuntime,
+	source: string,
+): boolean {
+	const withRegistry = runtime as RuntimeWithOptionalConnectorRegistry & {
+		sendHandlers?: unknown;
+	};
+	if (typeof withRegistry.getMessageConnectors === "function") {
+		return withRegistry
+			.getMessageConnectors()
+			.some((connector) => connector.source === source);
+	}
+	return (
+		withRegistry.sendHandlers instanceof Map &&
+		withRegistry.sendHandlers.has(source)
+	);
+}
+
+function normalizedSearchText(value: string | undefined): string {
+	return (value ?? "")
+		.toLowerCase()
+		.replace(/[^a-z0-9@+._;-]+/g, " ")
+		.trim();
+}
+
+function matchesQuery(
+	query: string,
+	...values: Array<string | undefined>
+): boolean {
+	const normalizedQuery = normalizedSearchText(query);
+	if (!normalizedQuery) return true;
+	const normalizedHandleQuery = normalizedSearchText(normalizeHandle(query));
+	return values.some((value) => {
+		const normalizedValue = normalizedSearchText(value);
+		return (
+			normalizedValue.includes(normalizedQuery) ||
+			(normalizedHandleQuery.length > 0 &&
+				normalizedValue.includes(normalizedHandleQuery))
+		);
+	});
+}
+
+function isBlueBubblesChatGuid(value: string): boolean {
+	return /^(?:iMessage|SMS|RCS);/i.test(value);
+}
+
+function normalizeBlueBubblesTarget(value: string): string {
+	const trimmed = value
+		.trim()
+		.replace(/^bluebubbles:/i, "")
+		.trim();
+	if (!trimmed) return "";
+	if (isBlueBubblesChatGuid(trimmed)) return trimmed;
+	return normalizeHandle(trimmed);
+}
+
+function targetKindForBlueBubbles(
+	value: string,
+): "phone" | "email" | "group" | "contact" {
+	if (isBlueBubblesChatGuid(value) && value.includes(";+;")) return "group";
+	if (value.includes("@") && !value.endsWith("@g.us")) return "email";
+	if (/^\+?\d{7,}$/.test(value)) return "phone";
+	return "contact";
+}
+
+function chatLabel(chat: BlueBubblesChat): string {
+	if (chat.displayName?.trim()) return chat.displayName.trim();
+	if (chat.participants.length === 1) {
+		return normalizeBlueBubblesTarget(
+			chat.participants[0]?.address ?? chat.chatIdentifier,
+		);
+	}
+	return chat.participants
+		.map((participant) => normalizeBlueBubblesTarget(participant.address))
+		.filter(Boolean)
+		.join(", ");
+}
+
+function chatToTarget(
+	chat: BlueBubblesChat,
+	score = 0.74,
+): MessageConnectorTarget {
+	const label = chatLabel(chat) || chat.chatIdentifier || chat.guid;
+	const isGroup = chat.participants.length > 1 || chat.guid.includes(";+;");
+	const directHandle = !isGroup
+		? normalizeBlueBubblesTarget(
+				chat.participants[0]?.address ?? chat.chatIdentifier,
+			)
+		: "";
+	const target: ConnectorTargetInfo = {
+		source: "bluebubbles",
+		channelId: isGroup ? chat.guid : directHandle || chat.guid,
+	};
+	if (!isGroup && directHandle) {
+		target.entityId = directHandle as unknown as UUID;
+	}
+	return {
+		target,
+		label,
+		kind: isGroup ? "group" : targetKindForBlueBubbles(directHandle),
+		description: isGroup
+			? "BlueBubbles iMessage group chat"
+			: "BlueBubbles iMessage contact",
+		score,
+		metadata: {
+			chatGuid: chat.guid,
+			chatIdentifier: chat.chatIdentifier,
+			participants: chat.participants
+				.map((participant) => normalizeBlueBubblesTarget(participant.address))
+				.filter(Boolean)
+				.join(", "),
+		},
+	};
+}
+
+function directTarget(
+	value: string,
+	score = 0.7,
+): MessageConnectorTarget | null {
+	const normalized = normalizeBlueBubblesTarget(value);
+	if (!normalized) return null;
+	return {
+		target: {
+			source: "bluebubbles",
+			channelId: normalized,
+			entityId: normalized as unknown as UUID,
+		},
+		label: normalized,
+		kind: targetKindForBlueBubbles(normalized),
+		score,
+		metadata: {
+			handle: normalized,
+		},
+	};
+}
+
+async function resolveBlueBubblesSendTarget(
+	runtime: IAgentRuntime,
+	target: ConnectorTargetInfo,
+): Promise<string | null> {
+	if (target.channelId?.trim()) {
+		return normalizeBlueBubblesTarget(target.channelId);
+	}
+	if (target.entityId?.trim()) {
+		return normalizeBlueBubblesTarget(target.entityId);
+	}
+	if (target.roomId) {
+		const room = await runtime.getRoom(target.roomId);
+		if (room?.channelId) {
+			return normalizeBlueBubblesTarget(room.channelId);
+		}
+	}
+	return null;
+}
+
 export class BlueBubblesService extends Service {
 	static serviceType = BLUEBUBBLES_SERVICE_NAME;
 	capabilityDescription =
@@ -316,77 +512,173 @@ export class BlueBubblesService extends Service {
 		runtime: IAgentRuntime,
 		service: BlueBubblesService,
 	): void {
-		const register = (source: string) => {
-			runtime.registerSendHandler(source, async (_runtime, target, content) => {
-				const text =
-					typeof content.text === "string" ? content.text.trim() : "";
-				if (!text) {
-					return;
-				}
-
-				const room =
-					target.roomId && typeof runtime.getRoom === "function"
-						? await runtime.getRoom(target.roomId)
-						: null;
-				const chatGuid = String(
-					target.channelId ?? room?.channelId ?? "",
-				).trim();
-				if (!chatGuid) {
-					throw new Error("BlueBubbles target is missing a chat GUID");
-				}
-
-				let selectedMessageGuid: string | undefined;
-				if (
-					typeof content.inReplyTo === "string" &&
-					content.inReplyTo.trim().length > 0
-				) {
-					const repliedToMemory = await runtime.getMemoryById(
-						content.inReplyTo as UUID,
-					);
-					const metadata = repliedToMemory?.metadata as
-						| Record<string, unknown>
-						| undefined;
-					const replyGuid = metadata?.bluebubblesMessageGuid;
-					if (typeof replyGuid === "string" && replyGuid.trim().length > 0) {
-						selectedMessageGuid = replyGuid.trim();
+		const register = (source: "bluebubbles" | "imessage") => {
+			registerMessageConnectorIfAvailable(runtime, {
+				source,
+				label: source === "imessage" ? "iMessage (BlueBubbles)" : "BlueBubbles",
+				capabilities: [
+					"send_message",
+					"reply",
+					"reactions",
+					"effects",
+					"chat_context",
+				],
+				supportedTargetKinds: [
+					"phone",
+					"email",
+					"contact",
+					"user",
+					"group",
+					"room",
+				],
+				contexts: ["phone", "social", "connectors"],
+				description:
+					"Send iMessage/SMS through the BlueBubbles bridge using contact handles or chat GUIDs.",
+				metadata: {
+					aliases:
+						source === "imessage"
+							? ["imessage", "sms", "text", "messages", "bluebubbles"]
+							: ["bluebubbles", "imessage", "sms", "text"],
+					bridge: "bluebubbles",
+					status: service.getIsRunning() ? "connected" : "not_connected",
+				},
+				sendHandler: async (
+					_runtime: IAgentRuntime,
+					target: ConnectorTargetInfo,
+					content: ConnectorContent,
+				) => {
+					const text =
+						typeof content.text === "string" ? content.text.trim() : "";
+					if (!text) {
+						return;
 					}
-				}
 
-				const result = await service.sendMessage(
-					chatGuid,
-					text,
-					selectedMessageGuid,
-				);
+					const chatGuid = await resolveBlueBubblesSendTarget(runtime, target);
+					if (!chatGuid) {
+						throw new Error("BlueBubbles target is missing a chat GUID");
+					}
 
-				if (!target.roomId) {
-					return;
-				}
+					let selectedMessageGuid: string | undefined;
+					if (
+						typeof content.inReplyTo === "string" &&
+						content.inReplyTo.trim().length > 0
+					) {
+						const repliedToMemory = await runtime.getMemoryById(
+							content.inReplyTo as UUID,
+						);
+						const metadata = repliedToMemory?.metadata as
+							| Record<string, unknown>
+							| undefined;
+						const replyGuid = metadata?.bluebubblesMessageGuid;
+						if (typeof replyGuid === "string" && replyGuid.trim().length > 0) {
+							selectedMessageGuid = replyGuid.trim();
+						}
+					}
 
-				const memory = createMessageMemory({
-					id: createUniqueUuid(runtime, `bluebubbles:${result.guid}`) as UUID,
-					entityId: runtime.agentId,
-					roomId: target.roomId,
-					content: {
-						...content,
+					const result = await service.sendMessage(
+						chatGuid,
 						text,
-						source: "bluebubbles",
-					},
-				}) as Memory;
-				memory.createdAt = result.dateCreated;
-				memory.metadata = {
-					...(memory.metadata ?? {}),
-					bluebubblesChatGuid: chatGuid,
-					bluebubblesMessageGuid: result.guid,
-				};
+						selectedMessageGuid,
+					);
 
-				await runtime.createMemory(memory, "messages");
+					if (!target.roomId) {
+						return;
+					}
+
+					const memory = createMessageMemory({
+						id: createUniqueUuid(runtime, `bluebubbles:${result.guid}`) as UUID,
+						entityId: runtime.agentId,
+						roomId: target.roomId,
+						content: {
+							...content,
+							text,
+							source: "bluebubbles",
+						},
+					}) as Memory;
+					memory.createdAt = result.dateCreated;
+					memory.metadata = {
+						...(memory.metadata ?? {}),
+						bluebubblesChatGuid: chatGuid,
+						bluebubblesMessageGuid: result.guid,
+					};
+
+					await runtime.createMemory(memory, "messages");
+				},
+				resolveTargets: async (query: string) => {
+					const candidates: MessageConnectorTarget[] = [];
+					for (const chat of await service.listChats()) {
+						const candidate = chatToTarget(chat, 0.78);
+						if (
+							matchesQuery(
+								query,
+								candidate.label,
+								chat.guid,
+								chat.chatIdentifier,
+								...chat.participants.map((participant) => participant.address),
+							)
+						) {
+							candidates.push(candidate);
+						}
+					}
+					const direct = directTarget(query, 0.72);
+					if (direct) candidates.push(direct);
+					return candidates;
+				},
+				listRecentTargets: async () =>
+					(await service.listChats()).map((chat) => chatToTarget(chat, 0.66)),
+				listRooms: async () =>
+					(await service.listChats()).map((chat) => chatToTarget(chat, 0.7)),
+				getChatContext: async (
+					target: ConnectorTargetInfo,
+					context: MessageConnectorQueryContext,
+				): Promise<MessageConnectorChatContext | null> => {
+					const chatGuid = await resolveBlueBubblesSendTarget(
+						context.runtime,
+						target,
+					);
+					if (!chatGuid) return null;
+					const chatState = await service.getChatState(chatGuid);
+					if (!chatState) {
+						return {
+							target,
+							label: chatGuid,
+							summary: "BlueBubbles chat context unavailable for this target.",
+							metadata: { chatGuid },
+						};
+					}
+					return {
+						target,
+						label: chatState.displayName ?? chatState.chatIdentifier,
+						summary: chatState.isGroup
+							? "BlueBubbles iMessage group chat."
+							: "BlueBubbles iMessage direct chat.",
+						metadata: {
+							...chatState,
+							participants: chatState.participants.join(", "),
+						},
+					};
+				},
+				getUserContext: async (
+					entityId: string | UUID,
+				): Promise<MessageConnectorUserContext | null> => {
+					const handle = normalizeBlueBubblesTarget(String(entityId));
+					if (!handle) return null;
+					return {
+						entityId,
+						label: handle,
+						aliases: [handle],
+						handles: {
+							bluebubbles: handle,
+							...(handle.includes("@") ? { email: handle } : { phone: handle }),
+						},
+						metadata: { normalizedHandle: handle },
+					};
+				},
 			});
 		};
 
 		register("bluebubbles");
-		const sendHandlers = (runtime as unknown as { sendHandlers?: unknown })
-			.sendHandlers;
-		if (!(sendHandlers instanceof Map) || !sendHandlers.has("imessage")) {
+		if (!hasRegisteredConnector(runtime, "imessage")) {
 			register("imessage");
 		}
 	}
@@ -431,6 +723,22 @@ export class BlueBubblesService extends Service {
 	 */
 	getWebhookPath(): string {
 		return this.webhookPath;
+	}
+
+	async listChats(limit = 100): Promise<BlueBubblesChat[]> {
+		if (this.client) {
+			try {
+				const chats = await this.client.listChats(limit);
+				for (const chat of chats) {
+					this.knownChats.set(chat.guid, chat);
+				}
+			} catch (error) {
+				logger.debug(
+					`Failed to list BlueBubbles chats: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+		return Array.from(this.knownChats.values());
 	}
 
 	/**

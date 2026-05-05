@@ -31,7 +31,8 @@ def main() -> int:
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError:
-                fout.write(line); continue
+                fout.write(line)
+                continue
             er = rec.get("expectedResponse")
             if isinstance(er, str) and THINK_TAG.search(er):
                 rec["expectedResponse"] = THINK_TAG.sub("", er)

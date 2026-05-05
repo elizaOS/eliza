@@ -173,7 +173,7 @@ function registerBenchmarkModels(runtime: AgentRuntime): void {
 	runtime.registerModel(
 		ModelType.TEXT_SMALL,
 		async () =>
-			"<response><name>Memory Profile Agent</name><reasoning>benchmark</reasoning><action>RESPOND</action></response>",
+			"name: Memory Profile Agent\nreasoning: benchmark\naction: RESPOND",
 		"memory-profile",
 		100,
 	);
@@ -181,7 +181,7 @@ function registerBenchmarkModels(runtime: AgentRuntime): void {
 	runtime.registerModel(
 		ModelType.TEXT_LARGE,
 		async () =>
-			"<response><thought>benchmark-thought</thought><actions>REPLY</actions><text>benchmark-response</text><simple>true</simple></response>",
+			"thought: benchmark-thought\nactions: REPLY\ntext: benchmark-response\nsimple: true",
 		"memory-profile",
 		100,
 	);

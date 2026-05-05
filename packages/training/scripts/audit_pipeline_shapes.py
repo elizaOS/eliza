@@ -24,6 +24,7 @@ import argparse
 import collections
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any, Iterator
@@ -31,8 +32,8 @@ from typing import Any, Iterator
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.toon import ToonDecoder
-from lib.runtime_phases import classify_phase, PHASE_OOB
+from lib.toon import ToonDecoder  # noqa: E402
+from lib.runtime_phases import classify_phase, PHASE_OOB  # noqa: E402
 
 log = logging.getLogger("audit")
 
@@ -308,14 +309,36 @@ def validate_should_respond(decoded: Any) -> list[str]:
 
 
 def validate_reflection(decoded: Any) -> list[str]:
+    """Validate `reflectionTemplate` output (eliza/packages/core/src/prompts.ts:867).
+
+    Emits: thought, quality_score, strengths, improvements, learnings.
+    NOT to be confused with `reflection_evaluator` (separate template,
+    has task_completed / task_completion_reason / relationships)."""
     if not isinstance(decoded, dict):
         return [f"top_level_not_object({type(decoded).__name__})"]
     reasons: list[str] = []
-    for required in ("thought", "task_completed", "task_completion_reason"):
+    for required in ("thought", "quality_score", "strengths",
+                     "improvements", "learnings"):
         if required not in decoded:
             reasons.append(f"missing_{required}")
-    if "task_completed" in decoded and not isinstance(decoded["task_completed"], bool):
-        reasons.append("task_completed_wrong_type")
+    qs = decoded.get("quality_score")
+    if qs is not None:
+        # Accept int, float, or stringified forms — including the common
+        # "78/100" denominator form that gpt-oss emits.
+        n: float | None = None
+        if isinstance(qs, (int, float)):
+            n = float(qs)
+        elif isinstance(qs, str):
+            m = re.match(r"^\s*(\d+(?:\.\d+)?)\s*(?:/\s*100)?\s*$", qs)
+            if m:
+                try:
+                    n = float(m.group(1))
+                except ValueError:
+                    n = None
+        if n is None:
+            reasons.append(f"quality_score_wrong_type({type(qs).__name__})")
+        elif not (0 <= n <= 100):
+            reasons.append(f"quality_score_out_of_range({qs})")
     return reasons
 
 

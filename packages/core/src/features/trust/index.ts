@@ -1,5 +1,6 @@
 import { logger } from "../../logger.ts";
 import {
+	type Evaluator,
 	type IAgentRuntime,
 	type Plugin,
 	Role,
@@ -73,6 +74,15 @@ export {
 	TrustEngineServiceWrapper,
 } from "./services/wrappers.ts";
 
+export const trustEvaluators: Evaluator[] = [
+	securityEvaluator,
+	trustChangeEvaluator,
+];
+
+export interface TrustPluginOptions {
+	enableEvaluators?: boolean;
+}
+
 async function ensureAdminRoleOnInit(runtime: IAgentRuntime): Promise<void> {
 	const ownerSetting = runtime.getSetting("OWNER_ENTITY_ID");
 	const worldSetting = runtime.getSetting("WORLD_ID");
@@ -121,44 +131,48 @@ async function ensureAdminRoleOnInit(runtime: IAgentRuntime): Promise<void> {
 	}
 }
 
-const trustPlugin: Plugin = {
-	name: "trust",
-	description: "Advanced trust and security system for AI agents",
+export function createTrustPlugin(options: TrustPluginOptions = {}): Plugin {
+	return {
+		name: "trust",
+		description: "Advanced trust and security system for AI agents",
 
-	actions: [
-		updateRoleAction,
-		updateSettingsAction,
-		recordTrustInteractionAction,
-		evaluateTrustAction,
-		requestElevationAction,
-	],
+		actions: [
+			updateRoleAction,
+			updateSettingsAction,
+			recordTrustInteractionAction,
+			evaluateTrustAction,
+			requestElevationAction,
+		],
 
-	providers: [
-		roleProvider,
-		settingsProvider,
-		trustProfileProvider,
-		securityStatusProvider,
-		adminTrustProvider,
-	],
+		providers: [
+			roleProvider,
+			settingsProvider,
+			trustProfileProvider,
+			securityStatusProvider,
+			adminTrustProvider,
+		],
 
-	evaluators: [securityEvaluator, trustChangeEvaluator],
+		evaluators: options.enableEvaluators ? trustEvaluators : [],
 
-	services: [
-		TrustEngineServiceWrapper,
-		SecurityModuleServiceWrapper,
-		CredentialProtectorServiceWrapper,
-		ContextualPermissionSystemServiceWrapper,
-	],
+		services: [
+			TrustEngineServiceWrapper,
+			SecurityModuleServiceWrapper,
+			CredentialProtectorServiceWrapper,
+			ContextualPermissionSystemServiceWrapper,
+		],
 
-	schema,
+		schema,
 
-	async init(_config: Record<string, string>, runtime: IAgentRuntime) {
-		await ensureAdminRoleOnInit(runtime);
-		logger.info(
-			"[Trust] Initializing trust capability. Services will be started by the runtime.",
-		);
-	},
-};
+		async init(_config: Record<string, string>, runtime: IAgentRuntime) {
+			await ensureAdminRoleOnInit(runtime);
+			logger.info(
+				"[Trust] Initializing trust capability. Services will be started by the runtime.",
+			);
+		},
+	};
+}
+
+const trustPlugin: Plugin = createTrustPlugin();
 
 export { ensureAdminRoleOnInit, schema };
 export default trustPlugin;

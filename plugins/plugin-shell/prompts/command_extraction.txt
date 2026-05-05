@@ -40,13 +40,8 @@ Key rules:
 4. Include all flags and arguments
 5. When user says "run it", "execute it", or similar, they want you to run the command
 
-Your response must be formatted as a JSON block:
-```json
-{
-  "command": "<complete shell command to execute>"
-}
-```
-
+Respond with TOON only:
+command: <complete shell command to execute>
 
 
 

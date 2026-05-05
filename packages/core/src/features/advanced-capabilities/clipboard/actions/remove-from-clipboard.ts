@@ -6,7 +6,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createTaskClipboardService } from "../services/taskClipboardService.ts";
@@ -45,12 +45,12 @@ async function resolveItemId(
 			"Clipboard items:",
 			...items.map((item) => `- ${item.id}: ${item.title}`),
 			"",
-			"Respond with XML:",
-			"<response><itemId>sp-1234abcd</itemId></response>",
+			"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
+			"itemId: sp-1234abcd",
 		].join("\n"),
 		stopSequences: [],
 	});
-	const parsed = parseKeyValueXml(String(response)) as Record<
+	const parsed = parseToonKeyValue(String(response)) as Record<
 		string,
 		unknown
 	> | null;

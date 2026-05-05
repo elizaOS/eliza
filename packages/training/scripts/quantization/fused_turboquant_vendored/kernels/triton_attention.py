@@ -21,7 +21,6 @@ ours uses the Triton fused RHT kernel for query rotation (O(d log d)).
 
 from __future__ import annotations
 
-import math
 import torch
 
 try:

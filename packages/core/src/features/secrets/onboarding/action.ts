@@ -31,6 +31,64 @@ interface SettingUpdate {
 	value: string | boolean;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeSettingValue(value: unknown): string | boolean | null {
+	if (typeof value === "string" || typeof value === "boolean") {
+		return value;
+	}
+	if (typeof value === "number" || typeof value === "bigint") {
+		return String(value);
+	}
+	return null;
+}
+
+function extractValidSettingUpdates(
+	result: unknown,
+	settings: Record<string, OnboardingSetting>,
+): SettingUpdate[] {
+	const validUpdates: SettingUpdate[] = [];
+
+	const addUpdate = (rawKey: unknown, rawValue: unknown): boolean => {
+		const key = typeof rawKey === "string" ? rawKey.trim() : "";
+		const value = normalizeSettingValue(rawValue);
+		if (!key || value === null || !settings[key]) {
+			return false;
+		}
+		validUpdates.push({ key, value });
+		return true;
+	};
+
+	const traverse = (node: unknown): void => {
+		if (Array.isArray(node)) {
+			for (const item of node) {
+				traverse(item);
+			}
+			return;
+		}
+
+		if (!isRecord(node)) {
+			return;
+		}
+
+		if ("key" in node && "value" in node) {
+			addUpdate(node.key, node.value);
+		}
+
+		for (const [key, value] of Object.entries(node)) {
+			const added = settings[key] ? addUpdate(key, value) : false;
+			if (!added) {
+				traverse(value);
+			}
+		}
+	};
+
+	traverse(result);
+	return validUpdates;
+}
+
 /**
  * Extract setting values from user message using LLM.
  */
@@ -67,25 +125,45 @@ User message: ${state.text || message.content?.text || ""}
 For each setting mentioned in the user's message, extract the value.
 
 Only return settings that are clearly mentioned in the user's message.
-If a setting is mentioned but no clear value is provided, do not include it.`;
+If a setting is mentioned but no clear value is provided, do not include it.
+Preserve the extracted value exactly, including punctuation.`;
 
-	// Use LLM to extract settings
-	const result = await runtime.useModel<
-		typeof ModelType.OBJECT_LARGE,
-		SettingUpdate[]
-	>(ModelType.OBJECT_LARGE, {
-		prompt,
-		output: "array",
-		schema: {
-			type: "array",
-			items: {
-				type: "object",
-				properties: {
-					key: { type: "string" },
-					value: { type: "string" },
+	const result = await runtime.dynamicPromptExecFromState({
+		state,
+		params: { prompt },
+		schema: [
+			{
+				field: "updates",
+				description:
+					"Setting updates clearly present in the user message, or an empty list when none are clear",
+				type: "array",
+				items: {
+					description: "One setting update",
+					type: "object",
+					properties: [
+						{
+							field: "key",
+							description: "Exact setting key from Available settings",
+							required: true,
+						},
+						{
+							field: "value",
+							description:
+								"Exact value for the setting, preserving punctuation",
+							required: true,
+						},
+					],
 				},
-				required: ["key", "value"],
+				required: false,
+				validateField: false,
+				streamField: false,
 			},
+		],
+		options: {
+			modelType: ModelType.TEXT_LARGE,
+			preferredEncapsulation: "toon",
+			contextCheckLevel: 0,
+			maxRetries: 1,
 		},
 	});
 
@@ -93,27 +171,7 @@ If a setting is mentioned but no clear value is provided, do not include it.`;
 		return [];
 	}
 
-	// Validate extracted settings exist in our config
-	const validUpdates: SettingUpdate[] = [];
-
-	const extractFromResult = (obj: unknown): void => {
-		if (Array.isArray(obj)) {
-			for (const item of obj) {
-				extractFromResult(item);
-			}
-		} else if (typeof obj === "object" && obj !== null) {
-			for (const [key, value] of Object.entries(obj)) {
-				if (settings[key] && typeof value !== "object") {
-					validUpdates.push({ key, value: value as string });
-				} else {
-					extractFromResult(value);
-				}
-			}
-		}
-	};
-
-	extractFromResult(result);
-	return validUpdates;
+	return extractValidSettingUpdates(result, settings);
 }
 
 /**

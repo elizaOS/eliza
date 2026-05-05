@@ -25,7 +25,6 @@ output stream).
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 # Sub-task prompt markers, ordered most specific → least specific.

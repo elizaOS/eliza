@@ -2,15 +2,13 @@ import Handlebars from "handlebars";
 import z from "zod";
 
 import logger from "./logger";
-import type {
-	Content,
-	Entity,
-	IAgentRuntime,
-	Memory,
-	State,
-	TemplateType,
-} from "./types";
-import { ContentType, ModelType, type UUID } from "./types";
+import type { TemplateType } from "./types/agent";
+import type { Entity } from "./types/environment";
+import type { Memory } from "./types/memory";
+import { ModelType } from "./types/model";
+import { type Content, ContentType, type UUID } from "./types/primitives";
+import type { IAgentRuntime } from "./types/runtime";
+import type { State } from "./types/state";
 import {
 	buildDeterministicSeed,
 	getDeterministicNames,
@@ -23,6 +21,8 @@ import {
 	tryParseLooseToonRecord,
 	tryParseToonValue,
 } from "./utils/toon";
+
+export { encodeToonValue } from "./utils/toon";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -610,23 +610,13 @@ export const formatTimestamp = (messageDate: number) => {
 };
 
 /**
- * Parses structured LLM output from TOON first, then falls back to the legacy
- * XML response format.
+ * Parses structured LLM output from TOON only.
  *
- * TOON is the preferred format in elizaOS because it is materially more token
- * efficient than XML while preserving JSON-compatible structure. XML fallback
- * remains here for backwards compatibility with older prompts and models.
- *
- * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
- * @param text - The input text containing the TOON or XML structure.
- * @returns The parsed object cast to type T, or null if parsing fails.
- *
- * @example
- * interface MyResponse { thought: string; message: string; }
- * const result = parseKeyValueXml<MyResponse>(xmlText);
- * // result is MyResponse | null
+ * Use this for action/evaluator/provider LLM responses so model-visible output
+ * stays in TOON and action code never accepts XML as a structured response
+ * contract.
  */
-export function parseKeyValueXml<T = Record<string, unknown>>(
+export function parseToonKeyValue<T = Record<string, unknown>>(
 	text: string,
 ): T | null {
 	if (!text) return null;
@@ -643,257 +633,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		return mergedStructuredToon as T;
 	}
 
-	// First, try to find a specific <response> block using linear search (avoids regex ReDoS)
-	let xmlContent: string | null = null;
-	const responseStart = text.indexOf("<response>");
-	if (responseStart !== -1) {
-		const contentStart = responseStart + "<response>".length;
-		const responseEnd = text.indexOf("</response>", contentStart);
-		if (responseEnd !== -1) {
-			xmlContent = text.slice(contentStart, responseEnd);
-		}
-	}
-
-	if (!xmlContent) {
-		const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
-		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(safeText);
-		if (!looksLikeXml) {
-			return null;
-		}
-
-		// Fall back: perform a linear scan to find the first simple XML element and its matching close tag
-		// This avoids potentially expensive backtracking on crafted inputs
-		const findFirstXmlBlock = (
-			input: string,
-		): { tag: string; content: string } | null => {
-			let i = 0;
-			const length = input.length;
-			while (i < length) {
-				const openIdx = input.indexOf("<", i);
-				if (openIdx === -1) break;
-				// Skip closing tags and comments/decls
-				if (
-					input.startsWith("</", openIdx) ||
-					input.startsWith("<!--", openIdx) ||
-					input.startsWith("<?", openIdx)
-				) {
-					i = openIdx + 1;
-					continue;
-				}
-				// Extract tag name [letters, digits, dash, underscore]
-				let j = openIdx + 1;
-				let tag = "";
-				while (j < length) {
-					const ch = input[j];
-					if (/^[A-Za-z0-9_-]$/.test(ch)) {
-						tag += ch;
-						j++;
-						continue;
-					}
-					break;
-				}
-				if (!tag) {
-					i = openIdx + 1;
-					continue;
-				}
-				// Find end of start tag '>' (skip attributes if present)
-				const startTagEnd = input.indexOf(">", j);
-				if (startTagEnd === -1) break;
-				// Self-closing tag? tolerate whitespace before '/>'
-				const startTagText = input.slice(openIdx, startTagEnd + 1);
-				if (/\/\s*>$/.test(startTagText)) {
-					i = startTagEnd + 1;
-					continue;
-				}
-				const closeSeq = `</${tag}>`;
-				// Implement nested tag counting for same-named tags
-				let depth = 1;
-				let searchStart = startTagEnd + 1;
-				while (depth > 0 && searchStart < length) {
-					const nextOpen = input.indexOf(`<${tag}`, searchStart);
-					const nextClose = input.indexOf(closeSeq, searchStart);
-					if (nextClose === -1) {
-						break;
-					}
-					if (nextOpen !== -1 && nextOpen < nextClose) {
-						// Determine if the next open is self-closing; if so, do not increase depth
-						const nestedStartEnd = input.indexOf(">", nextOpen + 1);
-						if (nestedStartEnd === -1) {
-							break;
-						}
-						const nestedStartText = input.slice(nextOpen, nestedStartEnd + 1);
-						if (/\/\s*>$/.test(nestedStartText)) {
-							// self-closing; skip without changing depth
-							searchStart = nestedStartEnd + 1;
-						} else {
-							depth++;
-							searchStart = nestedStartEnd + 1;
-						}
-					} else {
-						depth--;
-						searchStart = nextClose + closeSeq.length;
-					}
-				}
-				if (depth === 0) {
-					const closeIdx = searchStart - closeSeq.length;
-					const inner = input.slice(startTagEnd + 1, closeIdx);
-					return { tag, content: inner };
-				}
-				i = startTagEnd + 1;
-			}
-			return null;
-		};
-
-		const fb = findFirstXmlBlock(text);
-		if (!fb) {
-			logger.warn({ src: "core:utils" }, "Could not find XML block in text");
-			return null;
-		}
-		xmlContent = fb.content;
-	}
-
-	const result: Record<string, unknown> = {};
-
-	// Safer linear scan to extract direct child <key>value</key> elements
-	// Avoids potentially expensive backtracking from broad regexes
-	const extractDirectChildren = (
-		input: string,
-	): Array<{ key: string; value: string }> => {
-		const pairs: Array<{ key: string; value: string }> = [];
-		const length = input.length;
-		let i = 0;
-
-		while (i < length) {
-			const openIdx = input.indexOf("<", i);
-			if (openIdx === -1) break;
-
-			// Skip closing tags and comments/decls
-			if (
-				input.startsWith("</", openIdx) ||
-				input.startsWith("<!--", openIdx) ||
-				input.startsWith("<?", openIdx)
-			) {
-				i = openIdx + 1;
-				continue;
-			}
-
-			// Extract tag name [letters, digits, dash, underscore]
-			let j = openIdx + 1;
-			let tag = "";
-			while (j < length) {
-				const ch = input[j];
-				if (/^[A-Za-z0-9_-]$/.test(ch)) {
-					tag += ch;
-					j++;
-					continue;
-				}
-				break;
-			}
-			if (!tag) {
-				i = openIdx + 1;
-				continue;
-			}
-
-			// Find end of start tag '>' (skip attributes if present)
-			const startTagEnd = input.indexOf(">", j);
-			if (startTagEnd === -1) break;
-
-			// Self-closing tag? tolerate whitespace before '/>'
-			const startTagText = input.slice(openIdx, startTagEnd + 1);
-			if (/\/\s*>$/.test(startTagText)) {
-				i = startTagEnd + 1;
-				continue;
-			}
-
-			// Find the matching close tag, handling nested tags with the same name
-			const closeSeq = `</${tag}>`;
-			let depth = 1;
-			let searchStart = startTagEnd + 1;
-			while (depth > 0 && searchStart < length) {
-				const nextOpen = input.indexOf(`<${tag}`, searchStart);
-				const nextClose = input.indexOf(closeSeq, searchStart);
-				if (nextClose === -1) {
-					break;
-				}
-				if (nextOpen !== -1 && nextOpen < nextClose) {
-					const nestedStartEnd = input.indexOf(">", nextOpen + 1);
-					if (nestedStartEnd === -1) {
-						break;
-					}
-					const nestedStartText = input.slice(nextOpen, nestedStartEnd + 1);
-					if (!/\/\s*>$/.test(nestedStartText)) {
-						depth++;
-					}
-					searchStart = nestedStartEnd + 1;
-				} else {
-					depth--;
-					searchStart = nextClose + closeSeq.length;
-				}
-			}
-			if (depth !== 0) {
-				// Unbalanced tag, advance to avoid infinite loops
-				i = startTagEnd + 1;
-				continue;
-			}
-
-			const closeIdx = searchStart - closeSeq.length;
-			const innerRaw = input.slice(startTagEnd + 1, closeIdx);
-
-			// Basic unescaping for common XML entities (add more as needed).
-			// &amp; must be last so &amp;lt; decodes to &lt; (literal), not <.
-			const unescaped = innerRaw
-				.replace(/&lt;/g, "<")
-				.replace(/&gt;/g, ">")
-				.replace(/&quot;/g, '"')
-				.replace(/&apos;/g, "'")
-				.replace(/&amp;/g, "&")
-				.trim();
-
-			pairs.push({ key: tag, value: unescaped });
-			// Move cursor past this element to avoid processing nested children as direct siblings
-			i = searchStart;
-		}
-
-		return pairs;
-	};
-
-	const children = extractDirectChildren(xmlContent);
-	for (const { key, value } of children) {
-		if (key === "actions" || key === "providers" || key === "evaluators") {
-			// Detect XML-structured content: <action>, <provider>, <evaluator>
-			// tags (including attribute variants like <action name="x"> or
-			// whitespace variants like <action\n>).
-			const singularTag = key.replace(/s$/, ""); // actions→action, providers→provider
-			const hasXmlTags =
-				value && new RegExp(`<${singularTag}[\\s>/]`).test(value);
-			if (hasXmlTags) {
-				// Preserve the raw XML string instead of comma-splitting.
-				// The downstream normalizedActions code (which checks
-				// typeof === "string") already handles XML action parsing,
-				// extracting both action names AND inline <params> blocks.
-				// Comma-splitting would break on commas inside param content
-				// (e.g. task descriptions with commas).
-				result[key] = value;
-			} else {
-				result[key] = value ? value.split(",").map((s) => s.trim()) : [];
-			}
-		} else if (key === "simple") {
-			result[key] = value.toLowerCase() === "true";
-		} else {
-			result[key] = value;
-		}
-	}
-
-	// Return null if no key-value pairs were found
-	if (Object.keys(result).length === 0) {
-		logger.warn(
-			{ src: "core:utils" },
-			"No key-value pairs extracted from XML content",
-		);
-		return null;
-	}
-
-	return result as T;
+	return null;
 }
 
 /**

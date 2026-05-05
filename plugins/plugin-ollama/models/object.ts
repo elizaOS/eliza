@@ -1,13 +1,16 @@
-import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { generateObject, type LanguageModel } from "ai";
 import { createOllama } from "ollama-ai-provider";
 
 import { getBaseURL, getLargeModel, getSmallModel } from "../utils/config";
+import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { ensureModelAvailable } from "./availability";
 
 async function generateOllamaObject(
+  runtime: IAgentRuntime,
   ollama: ReturnType<typeof createOllama>,
+  modelType: ModelTypeName,
   model: string,
   params: ObjectGenerationParams
 ): Promise<Record<string, string | number | boolean | null>> {
@@ -20,7 +23,13 @@ async function generateOllamaObject(
       temperature: params.temperature,
     };
 
-    const { object } = await generateObject(generateParams);
+    const { object, usage } = await generateObject(generateParams);
+    emitModelUsed(
+      runtime,
+      modelType,
+      model,
+      normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, object)
+    );
     return object as Record<string, string | number | boolean | null>;
   } catch (error: unknown) {
     logger.error({ error }, "Error generating object");
@@ -44,7 +53,7 @@ export async function handleObjectSmall(
     logger.log(`[Ollama] Using OBJECT_SMALL model: ${model}`);
     await ensureModelAvailable(model, baseURL, customFetch);
 
-    return await generateOllamaObject(ollama, model, params);
+    return await generateOllamaObject(runtime, ollama, ModelType.OBJECT_SMALL, model, params);
   } catch (error) {
     logger.error({ error }, "Error in OBJECT_SMALL model");
     return {};
@@ -67,7 +76,7 @@ export async function handleObjectLarge(
     logger.log(`[Ollama] Using OBJECT_LARGE model: ${model}`);
     await ensureModelAvailable(model, baseURL, customFetch);
 
-    return await generateOllamaObject(ollama, model, params);
+    return await generateOllamaObject(runtime, ollama, ModelType.OBJECT_LARGE, model, params);
   } catch (error) {
     logger.error({ error }, "Error in OBJECT_LARGE model");
     return {};

@@ -1,12 +1,3 @@
-/**
- * OWNER_WEBSITE_BLOCK — Tier 2-D umbrella.
- *
- * Collapses local hosts-file website blocking (block / unblock / status /
- * request_permission) into a single owner-only action dispatched by a required
- * `subaction` parameter. Routes to the existing handlers in website-blocker.ts.
- */
-
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -18,304 +9,395 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
 } from "../website-blocker/access.ts";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.ts";
 import {
-  blockWebsitesAction,
-  getWebsiteBlockStatusAction,
-  requestWebsiteBlockingPermissionAction,
-  unblockWebsitesAction,
-} from "./website-blocker.js";
+  formatWebsiteList,
+  type getSelfControlPermissionState,
+  getSelfControlStatus,
+  normalizeWebsiteTargets,
+  parseSelfControlBlockRequest,
+  requestSelfControlPermission,
+  startSelfControlBlock,
+  stopSelfControlBlock,
+} from "../website-blocker/engine.ts";
+import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
+import {
+  resolveActionArgs,
+  type SubactionsMap,
+} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "OWNER_WEBSITE_BLOCK";
 
-type Subaction = "block" | "unblock" | "status" | "request_permission";
+type WebsiteBlockSubaction =
+  | "block"
+  | "unblock"
+  | "status"
+  | "request_permission";
 
-interface OwnerWebsiteBlockParameters {
-  subaction?: Subaction | string;
-  websites?: string[] | string;
+interface WebsiteBlockParams {
+  intent?: string;
+  hostnames?: string[] | string;
   durationMinutes?: number | string | null;
   confirmed?: boolean | string | null;
-  intent?: string;
 }
 
-const SINGLE_HOSTNAME_RE =
-  /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,8}(?:\/[^\s]{0,1024})?$/i;
+const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
+  block: {
+    description:
+      "Start a hosts-file block on a set of public hostnames for a fixed duration or indefinitely. Always drafts first; requires confirmed:true to actually edit the hosts file. Heuristic and LLM extract hosts from intent.",
+    descriptionCompressed:
+      "start hosts-file block on hostnames duration-minutes confirmed-true required heuristic+LLM extracts hosts from intent",
+    required: ["intent"],
+    optional: ["hostnames", "durationMinutes", "confirmed"],
+  },
+  unblock: {
+    description:
+      "Clear the active hosts-file block and restore the entries Eliza added. Blocked when a harsh-no-bypass rule is set.",
+    descriptionCompressed:
+      "clear hosts-file block restore entries; blocked if harsh-no-bypass set",
+    required: [],
+  },
+  status: {
+    description:
+      "Check whether a hosts-file website block is currently active and when it ends.",
+    descriptionCompressed: "hosts-block active? endsAt",
+    required: [],
+  },
+  request_permission: {
+    description:
+      "Request administrator/root approval for hosts-file edits, or explain the manual change needed when the OS does not support an elevation prompt.",
+    descriptionCompressed:
+      "request admin approval hosts-file edits or explain manual change",
+    required: [],
+  },
+};
 
-const DIRECT_CONFIRMATION_RE =
-  /^(?:yes|yep|yeah|sure|ok|okay|please do|do it|do it now|actually do it now|go ahead|confirm|confirmed)\b/i;
+// ── Block-subaction helpers (moved from website-blocker.ts) ──
 
-function normalizeText(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
-}
+type WebsiteBlockPlan = {
+  shouldAct?: boolean | null;
+  confirmed?: boolean | null;
+  response?: string;
+  websites: string[];
+  durationMinutes?: number | null;
+};
 
-function messageLooksLikeHostnameOnly(text: string): boolean {
-  const trimmed = text.trim();
-  if (trimmed.length === 0 || trimmed.length > 1024) return false;
-  const candidates = trimmed
-    .split(/\s{0,16}(?:,|\band\b)\s{0,16}/i)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  if (candidates.length === 0 || candidates.length > 16) return false;
-  for (const candidate of candidates) {
-    if (candidate.length > 256) return false;
-    if (!SINGLE_HOSTNAME_RE.test(candidate)) return false;
-  }
-  return true;
-}
+type WebsiteBlockConversationTurn = {
+  speaker: "user" | "assistant";
+  text: string;
+};
 
-function parseDirectJsonObject(
-  rawResponse: string,
-): Record<string, unknown> | null {
-  try {
-    const directJson = JSON.parse(rawResponse);
-    return directJson &&
-      typeof directJson === "object" &&
-      !Array.isArray(directJson)
-      ? (directJson as Record<string, unknown>)
-      : null;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return null;
-    }
-    throw error;
-  }
-}
-
-function isPermissionRequest(text: string): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) return false;
-  return (
-    /(pre[- ]?approve|preapprove|permission|approval|administrator|admin|root|startup)/.test(
-      normalized,
-    ) && /(website|site|block|blocking|hosts file)/.test(normalized)
-  );
-}
-
-function isStatusRequest(text: string): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) return false;
-  return (
-    /(what sites|which sites|what websites|which websites|status|running|active|currently blocked|blocked right now|when .* end|when .* expire)/.test(
-      normalized,
-    ) && /(website|site|block|blocking)/.test(normalized)
-  );
-}
-
-function isUnblockRequest(text: string): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) return false;
-  return (
-    /(unblock|remove|lift|stop|end|turn off|disable)/.test(normalized) &&
-    /(website|site|block|blocking|x\.com|twitter\.com|instagram\.com|youtube\.com|reddit\.com|facebook\.com|tiktok\.com|\b[a-z0-9-]+\.[a-z0-9.-]+\b)/.test(
-      normalized,
-    )
-  );
-}
-
-function isBlockRequest(text: string): boolean {
-  const normalized = normalizeText(text);
-  if (!normalized) return false;
-  return (
-    /\bblock(?:ing|ed)?\b/.test(normalized) &&
-    !/\bunblock\b/.test(normalized) &&
-    /(website|site|x\.com|twitter\.com|instagram\.com|youtube\.com|reddit\.com|facebook\.com|tiktok\.com|\b[a-z0-9-]+\.[a-z0-9.-]+\b)/.test(
-      normalized,
-    )
-  );
-}
-
-function inferRecentSubaction(
-  currentText: string,
-  recentConversationLines: readonly string[],
-): Subaction | null {
-  if (isPermissionRequest(currentText)) {
-    return "request_permission";
-  }
-  if (isStatusRequest(currentText)) {
-    return "status";
-  }
-  if (isUnblockRequest(currentText)) {
-    return "unblock";
-  }
-  if (isBlockRequest(currentText)) {
-    return "block";
-  }
-
-  const recentSubaction = [...recentConversationLines]
-    .reverse()
-    .map((line) => {
-      if (isPermissionRequest(line)) return "request_permission";
-      if (isStatusRequest(line)) return "status";
-      if (isUnblockRequest(line)) return "unblock";
-      if (isBlockRequest(line)) return "block";
-      return null;
-    })
-    .find((value): value is Subaction => value !== null);
-
-  if (!recentSubaction) {
-    return null;
-  }
-
-  if (messageLooksLikeHostnameOnly(currentText)) {
-    return recentSubaction;
-  }
-
-  if (
-    recentSubaction === "block" &&
-    DIRECT_CONFIRMATION_RE.test(currentText.trim())
-  ) {
-    return "block";
-  }
-
-  return null;
-}
-
-function coerceSubaction(value: unknown): Subaction | undefined {
-  if (typeof value !== "string") return undefined;
-  const n = value.trim().toLowerCase();
-  if (
-    n === "block" ||
-    n === "unblock" ||
-    n === "status" ||
-    n === "request_permission"
-  ) {
-    return n;
-  }
-  return undefined;
-}
-
-function normalizeShouldAct(value: unknown): boolean | null {
-  if (typeof value === "boolean") {
-    return value;
-  }
+function coerceConfirmedFlag(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (["true", "yes", "1"].includes(normalized)) {
-      return true;
-    }
-    if (["false", "no", "0"].includes(normalized)) {
-      return false;
-    }
+    return normalized === "true" || normalized === "yes" || normalized === "1";
   }
-  return null;
-}
-
-function normalizePlannerResponse(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  return false;
 }
 
 function getMessageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
-type OwnerWebsiteBlockPlan = {
-  subaction: Subaction | null;
-  shouldAct: boolean | null;
-  response?: string;
-};
-
-function requireDelegatedHandler(
-  action: Pick<Action, "handler" | "name">,
-): NonNullable<Action["handler"]> {
-  if (typeof action.handler !== "function") {
-    throw new Error(`${action.name} handler is unavailable.`);
-  }
-  return action.handler;
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
-async function resolveOwnerWebsiteBlockPlanWithLlm(args: {
+function memoryLikeToConversationTurn(
+  value: unknown,
+  agentId: string,
+): WebsiteBlockConversationTurn | null {
+  const memory = asRecord(value);
+  const content = asRecord(memory?.content);
+  const text = typeof content?.text === "string" ? content.text.trim() : "";
+  if (!text) return null;
+  return {
+    speaker: memory?.entityId === agentId ? "assistant" : "user",
+    text,
+  };
+}
+
+function collectProviderBackedConversationTurns(args: {
+  state: State | undefined;
+  agentId: string;
+  limit: number;
+}): WebsiteBlockConversationTurn[] {
+  const providers = asRecord(asRecord(args.state?.data)?.providers);
+  const recentMessagesProvider = asRecord(providers?.RECENT_MESSAGES);
+  const recentMessages = asRecord(recentMessagesProvider?.data)?.recentMessages;
+  if (!Array.isArray(recentMessages)) return [];
+  return recentMessages
+    .map((memory) => memoryLikeToConversationTurn(memory, args.agentId))
+    .filter(
+      (turn): turn is WebsiteBlockConversationTurn =>
+        turn !== null && turn.text.length > 0,
+    )
+    .slice(-args.limit);
+}
+
+function normalizeWebsiteCandidates(value: unknown): string[] {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}|,|\n/)
+      : [];
+  return [
+    ...new Set(
+      values
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim().slice(0, 1024))
+        .map((item) => item.replace(/^[[\]'"]{1,32}|[[\]'"]{1,32}$/g, ""))
+        .filter((item) => item.length > 0),
+    ),
+  ];
+}
+
+function normalizeDurationMinutes(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return undefined;
+    if (
+      trimmed === "indefinite" ||
+      trimmed === "manual" ||
+      trimmed === "until-unblocked" ||
+      trimmed === "forever"
+    ) {
+      return null;
+    }
+    const parsed = Number.parseFloat(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.round(parsed);
+    }
+  }
+  return undefined;
+}
+
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+const WEBSITE_ALIAS_MAP: Readonly<Record<string, readonly string[]>> = {
+  twitter: ["x.com", "twitter.com"],
+  x: ["x.com", "twitter.com"],
+  reddit: ["reddit.com"],
+  youtube: ["youtube.com"],
+  facebook: ["facebook.com"],
+  instagram: ["instagram.com"],
+  tiktok: ["tiktok.com"],
+} as const;
+
+const SOCIAL_MEDIA_SITES = [
+  "facebook.com",
+  "instagram.com",
+  "reddit.com",
+  "tiktok.com",
+  "twitter.com",
+  "x.com",
+  "youtube.com",
+] as const;
+
+function extractHostsFromIntent(text: string): string[] {
+  const normalized = text.toLowerCase();
+  const fromAliases = Object.entries(WEBSITE_ALIAS_MAP).flatMap(
+    ([alias, websites]) => {
+      if (
+        !new RegExp(`(^|[^a-z0-9])${alias}([^a-z0-9]|$)`, "i").test(normalized)
+      ) {
+        return [];
+      }
+      return [...websites];
+    },
+  );
+
+  const explicitHosts = Array.from(
+    normalized.matchAll(
+      /\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/g,
+    ),
+    (match) => match[1] ?? "",
+  );
+
+  if (/\bsocial media\b/i.test(normalized)) {
+    return normalizeWebsiteCandidates([
+      ...explicitHosts,
+      ...fromAliases,
+      ...SOCIAL_MEDIA_SITES,
+    ]);
+  }
+
+  return normalizeWebsiteCandidates([...explicitHosts, ...fromAliases]);
+}
+
+function extractHeuristicDurationMinutes(
+  text: string,
+): number | null | undefined {
+  const normalized = text.toLowerCase();
+  if (
+    /\buntil (?:i|we) unblock\b/.test(normalized) ||
+    /\buntil manual(?:ly)? removed?\b/.test(normalized) ||
+    /\bforever\b/.test(normalized)
+  ) {
+    return null;
+  }
+
+  const hourMatch = normalized.match(/\b(\d+(?:\.\d+)?)\s*hours?\b/);
+  if (hourMatch?.[1]) {
+    return Math.round(Number.parseFloat(hourMatch[1]) * 60);
+  }
+
+  const minuteMatch = normalized.match(/\b(\d+(?:\.\d+)?)\s*minutes?\b/);
+  if (minuteMatch?.[1]) {
+    return Math.round(Number.parseFloat(minuteMatch[1]));
+  }
+
+  return undefined;
+}
+
+function shouldTrustExplicitWebsites(
+  explicitWebsites: readonly string[],
+  heuristicWebsites: readonly string[],
+): boolean {
+  if (explicitWebsites.length === 0) return false;
+  if (heuristicWebsites.length === 0) return true;
+  return explicitWebsites.every((website) =>
+    heuristicWebsites.includes(website),
+  );
+}
+
+async function collectWebsiteBlockConversationTurns(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
-  params: OwnerWebsiteBlockParameters;
-}): Promise<OwnerWebsiteBlockPlan> {
-  const runModel = args.runtime.useModel;
-  if (typeof runModel !== "function") {
-    return { subaction: null, shouldAct: null };
+  limit: number;
+}): Promise<WebsiteBlockConversationTurn[]> {
+  const roomId =
+    typeof args.message.roomId === "string" ? args.message.roomId : "";
+  if (!roomId || typeof args.runtime.getMemories !== "function") {
+    return collectProviderBackedConversationTurns({
+      state: args.state,
+      agentId: String(args.runtime.agentId),
+      limit: args.limit,
+    });
   }
 
-  const recentConversationLines = await collectRecentConversationTexts({
+  try {
+    const memories = await args.runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: Math.max(args.limit * 2, args.limit),
+    });
+    if (!Array.isArray(memories)) return [];
+
+    return memories
+      .slice()
+      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .map((memory) => {
+        const text =
+          typeof memory?.content?.text === "string"
+            ? memory.content.text.trim()
+            : "";
+        if (!text) return null;
+        return {
+          speaker:
+            memory.entityId === args.runtime.agentId ? "assistant" : "user",
+          text,
+        } satisfies WebsiteBlockConversationTurn;
+      })
+      .filter(
+        (turn): turn is WebsiteBlockConversationTurn =>
+          turn !== null && turn.text.length > 0,
+      )
+      .slice(-args.limit);
+  } catch {
+    return collectProviderBackedConversationTurns({
+      state: args.state,
+      agentId: String(args.runtime.agentId),
+      limit: args.limit,
+    });
+  }
+}
+
+async function resolveWebsiteBlockPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+}): Promise<WebsiteBlockPlan> {
+  const recentTurns = await collectWebsiteBlockConversationTurns({
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 8,
+    limit: 10,
   });
-  const currentText = getMessageText(args.message);
-
-  const heuristicSubaction = inferRecentSubaction(
-    currentText,
-    recentConversationLines,
-  );
-  if (heuristicSubaction) {
-    return {
-      subaction: heuristicSubaction,
-      shouldAct: true,
-    };
-  }
-
-  const recentConversation = recentConversationLines.join("\n");
-
+  const currentMessage = getMessageText(args.message).trim();
   const prompt = [
-    "Plan the OWNER_WEBSITE_BLOCK subaction for this request.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"block"|"unblock"|"status"|"request_permission"|null,"shouldAct":true|false,"response":"string|null"}',
+    "Plan the website blocking action for this request.",
+    "Use the current request plus recent conversation context.",
+    "Return TOON only with these fields:",
+    "  shouldAct: boolean",
+    "  confirmed: boolean",
+    "  response: short natural-language reply when clarification or deferral is needed",
+    "  websites: array of public website hostnames or URLs to block",
+    "  durationMinutes: positive integer for a timed block, or null/omit for an indefinite/manual block",
     "",
-    "OWNER_WEBSITE_BLOCK is the owner-only umbrella for local website blocking on this Mac.",
-    "Choose subaction=block for clear requests to block websites now, including direct requests like 'please block x.com for me' and follow-up confirmations like 'please do' or 'actually do it now' when recent conversation already named the websites.",
-    "Choose subaction=unblock for requests to remove, stop, end, lift, or turn off the current website block.",
-    "For subaction=unblock, hostname detail is optional because the action removes the current website block. Do not ask the user to identify what 'x' means when the intent is clearly to unblock the current website block.",
-    "If the current request is only a hostname or URL and the recent conversation clearly established a website-block intent, preserve that prior intent. Example: user first says 'can you unblock x?' and then replies 'x.com' -> subaction=unblock.",
-    "Choose subaction=status for questions about whether a website block is active, what sites are blocked, or when it ends.",
-    "Choose subaction=request_permission for requests to pre-approve, allow, enable, or grant administrator/root approval for website blocking on this machine.",
-    "Do NOT choose this action for app/device blocking on a phone or for general browsing advice.",
-    "Set shouldAct=false only when the request is not actually about website blocking or when there is not enough information to know whether the user wants block, unblock, status, or permission flow.",
-    "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
+    "Rules:",
+    "- Only start a block when the user is clearly asking to block websites now.",
+    "- Set confirmed=true only when the current request explicitly authorizes the block to happen now, including a direct follow-up instruction to act now on previously discussed websites.",
+    "- Set confirmed=false when the user is only naming candidate websites, asking for advice, or asking you to wait.",
+    "- Generic focus-block requests like 'turn on a focus block for all social media sites' belong here; do not invent a task gate for them.",
+    "- If the user says not yet, later, hold off, wait, or is only discussing candidate sites, set shouldAct=false and explain that you will wait for confirmation.",
+    "- If the current request refers to previously mentioned websites, recover them from recent conversation context.",
+    "- If the websites are unclear or missing, set shouldAct=false and ask the user to name the public hostnames explicitly.",
+    "- Prefer bare public hostnames like x.com in the websites array.",
+    "- If the user does not give a duration, omit durationMinutes so the block stays active until manually removed.",
+    "- Use durationMinutes=null when the user explicitly wants the block to last until manual removal.",
+    "- If the user gives an exact timed duration like 45, 90, or 135 minutes, preserve that exact duration.",
     "",
-    'Example: "please block x.com for me" -> {"subaction":"block","shouldAct":true,"response":null}',
-    'Example: "remove the website block" -> {"subaction":"unblock","shouldAct":true,"response":null}',
-    'Example: "can you unblock x?" -> {"subaction":"unblock","shouldAct":true,"response":null}',
-    'Example: "what sites are blocked right now?" -> {"subaction":"status","shouldAct":true,"response":null}',
-    'Example: "can we pre-approve website blocking on startup?" -> {"subaction":"request_permission","shouldAct":true,"response":null}',
-    'Example: current request "x.com" with recent conversation about unblocking -> {"subaction":"unblock","shouldAct":true,"response":null}',
-    "",
+    "Return TOON only.",
     "Current request:",
-    currentText || "(empty)",
-    "",
-    "Structured parameters:",
-    JSON.stringify(args.params),
-    "",
-    "Recent conversation:",
-    recentConversation || "(none)",
+    currentMessage || "(empty)",
+    "Recent conversation turns:",
+    recentTurns.map((t) => `${t.speaker}: ${t.text}`).join("\n") || "(none)",
   ].join("\n");
 
   try {
-    const result = await runModel(ModelType.TEXT_SMALL, {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseDirectJsonObject(rawResponse) ??
-      parseJSONObjectFromText(rawResponse) ??
-      parseKeyValueXml<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
-      return { subaction: null, shouldAct: null };
+      return { websites: [], shouldAct: null };
     }
-    const subaction = coerceSubaction(parsed.subaction) ?? null;
     return {
-      subaction,
-      shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
+      shouldAct: normalizeShouldAct(parsed.shouldAct),
+      confirmed: normalizeShouldAct(parsed.confirmed),
       response: normalizePlannerResponse(parsed.response),
+      websites: normalizeWebsiteCandidates(parsed.websites),
+      durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
     };
   } catch (error) {
     args.runtime.logger?.warn?.(
@@ -323,39 +405,383 @@ async function resolveOwnerWebsiteBlockPlanWithLlm(args: {
         src: "action:owner-website-block",
         error: error instanceof Error ? error.message : String(error),
       },
-      "Owner website block planning model call failed",
+      "Website blocker planning model call failed",
     );
-    return { subaction: null, shouldAct: null };
+    return { websites: [], shouldAct: null };
   }
 }
+
+async function recoverWebsiteContextWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+}): Promise<string[]> {
+  const recentTurns = await collectWebsiteBlockConversationTurns({
+    runtime: args.runtime,
+    message: args.message,
+    state: args.state,
+    limit: 12,
+  });
+
+  if (recentTurns.length === 0) return [];
+
+  const currentMessage = getMessageText(args.message).trim();
+  const prompt = [
+    "Recover previously mentioned public website hostnames for a website-block request.",
+    "Use the current request plus recent conversation context.",
+    "Return TOON only with one field:",
+    "  websites: array of public website hostnames or URLs relevant to the current blocking request",
+    "",
+    "Rules:",
+    "- Extract only websites that were actually mentioned in recent conversation.",
+    "- Prefer bare public hostnames like x.com.",
+    "- Do not invent websites.",
+    "- Return an empty array when no websites were previously mentioned.",
+    "",
+    "Return TOON only.",
+    "Current request:",
+    currentMessage || "(empty)",
+    "Recent conversation turns:",
+    recentTurns.map((t) => `${t.speaker}: ${t.text}`).join("\n") || "(none)",
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    return normalizeWebsiteCandidates(parsed?.websites);
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:owner-website-block",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Website blocker context recovery model call failed",
+    );
+    return [];
+  }
+}
+
+// ── Status / Permission formatting ──
+
+function formatStatusText(
+  status: Awaited<ReturnType<typeof getSelfControlStatus>>,
+): string {
+  if (!status.available) {
+    return (
+      status.reason ?? "Local website blocking is unavailable on this machine."
+    );
+  }
+
+  const permissionNote = status.reason ? ` ${status.reason}` : "";
+
+  if (!status.active) {
+    return `No website block is active right now.${permissionNote}`;
+  }
+
+  const websites =
+    status.websites.length > 0
+      ? formatWebsiteList(status.websites)
+      : "an unknown website set";
+  return status.endsAt
+    ? `A website block is active for ${websites} until ${status.endsAt}.${permissionNote}`
+    : `A website block is active for ${websites} until you remove it.${permissionNote}`;
+}
+
+function formatPermissionText(
+  permission: Awaited<ReturnType<typeof getSelfControlPermissionState>>,
+): string {
+  if (permission.status === "granted") {
+    return (
+      permission.reason ??
+      "Website blocking permission is ready. Eliza can edit the system hosts file directly on this machine."
+    );
+  }
+
+  if (permission.canRequest) {
+    return (
+      permission.reason ??
+      "Eliza can ask the OS for administrator/root approval whenever it needs to edit the system hosts file."
+    );
+  }
+
+  return (
+    permission.reason ??
+    "Eliza cannot raise an administrator/root prompt for website blocking on this machine."
+  );
+}
+
+// ── Subaction handlers ──
+
+async function handleBlock(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  params: WebsiteBlockParams,
+): Promise<ActionResult> {
+  const messageText = getMessageText(message);
+  const explicitWebsites = normalizeWebsiteTargets(
+    normalizeWebsiteCandidates(params.hostnames),
+  );
+  const explicitDurationMinutes = normalizeDurationMinutes(
+    params.durationMinutes,
+  );
+  const heuristicWebsites = normalizeWebsiteTargets(
+    extractHostsFromIntent(messageText),
+  );
+  const trustedExplicitWebsites = shouldTrustExplicitWebsites(
+    explicitWebsites,
+    heuristicWebsites,
+  )
+    ? explicitWebsites
+    : [];
+  const heuristicDurationMinutes =
+    explicitDurationMinutes === undefined
+      ? extractHeuristicDurationMinutes(messageText)
+      : explicitDurationMinutes;
+  const llmPlan =
+    trustedExplicitWebsites.length === 0 && heuristicWebsites.length === 0
+      ? await resolveWebsiteBlockPlanWithLlm({ runtime, message, state })
+      : null;
+  const recoveredWebsites =
+    trustedExplicitWebsites.length === 0 &&
+    (llmPlan?.websites.length ?? 0) === 0
+      ? await recoverWebsiteContextWithLlm({ runtime, message, state })
+      : [];
+  const plannedWebsites =
+    trustedExplicitWebsites.length > 0
+      ? trustedExplicitWebsites
+      : heuristicWebsites.length > 0
+        ? heuristicWebsites
+        : (((llmPlan?.websites.length ?? 0) > 0
+            ? llmPlan?.websites
+            : recoveredWebsites) ?? []);
+
+  const plannedWebsitesSafe: readonly string[] = plannedWebsites ?? [];
+  if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
+    return {
+      success: false,
+      text:
+        llmPlan.response ??
+        (plannedWebsitesSafe.length > 0
+          ? `I noted ${formatWebsiteList(plannedWebsitesSafe)} and will wait for your confirmation before blocking them.`
+          : "I noted those websites and will wait for your confirmation before blocking them."),
+      data: {
+        deferred: true,
+        noop: true,
+        websites: [...plannedWebsitesSafe],
+      },
+    };
+  }
+
+  const parsed = parseSelfControlBlockRequest({
+    parameters: {
+      websites:
+        plannedWebsitesSafe.length > 0 ? [...plannedWebsitesSafe] : null,
+      durationMinutes:
+        explicitDurationMinutes !== undefined
+          ? explicitDurationMinutes
+          : heuristicDurationMinutes !== undefined
+            ? heuristicDurationMinutes
+            : (llmPlan?.durationMinutes ?? null),
+    },
+  });
+  if (!parsed.request) {
+    return {
+      success: false,
+      text:
+        llmPlan?.response ??
+        parsed.error ??
+        "Could not determine which public website hostnames to block.",
+    };
+  }
+
+  const confirmed =
+    coerceConfirmedFlag(params.confirmed) || llmPlan?.confirmed === true;
+  if (!confirmed) {
+    const websitesLabel = formatWebsiteList(parsed.request.websites);
+    const durationLabel =
+      parsed.request.durationMinutes === null
+        ? "until you manually unblock"
+        : `for ${parsed.request.durationMinutes} minute${parsed.request.durationMinutes === 1 ? "" : "s"}`;
+    return {
+      success: true,
+      text: `Ready to block ${websitesLabel} ${durationLabel}. Reply "confirm" or re-issue with confirmed: true to start the block.`,
+      data: {
+        draft: true,
+        requiresConfirmation: true,
+        websites: parsed.request.websites,
+        durationMinutes: parsed.request.durationMinutes,
+      },
+    };
+  }
+
+  const result = await startSelfControlBlock({
+    ...parsed.request,
+    scheduledByAgentId: String(runtime.agentId),
+  });
+  if (result.success === false) {
+    return {
+      success: false,
+      text: result.error,
+      data: result.status
+        ? {
+            active: result.status.active,
+            endsAt: result.status.endsAt,
+            websites: result.status.websites,
+            requiresElevation: result.status.requiresElevation,
+          }
+        : undefined,
+    };
+  }
+
+  if (parsed.request.durationMinutes !== null) {
+    try {
+      const taskId = await syncWebsiteBlockerExpiryTask(runtime);
+      if (!taskId) {
+        await stopSelfControlBlock();
+        return {
+          success: false,
+          text: "Eliza started the website block but could not schedule its automatic unblock task, so it rolled the block back.",
+        };
+      }
+    } catch (error) {
+      await stopSelfControlBlock();
+      return {
+        success: false,
+        text: `Eliza could not schedule the automatic unblock task, so it rolled the website block back. ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  return {
+    success: true,
+    text:
+      result.endsAt === null
+        ? `Started a website block for ${formatWebsiteList(parsed.request.websites)} until you unblock it.`
+        : `Started a website block for ${formatWebsiteList(parsed.request.websites)} until ${result.endsAt}.`,
+    data: {
+      websites: parsed.request.websites,
+      durationMinutes: parsed.request.durationMinutes,
+      endsAt: result.endsAt,
+    },
+  };
+}
+
+async function handleUnblock(runtime: IAgentRuntime): Promise<ActionResult> {
+  if (await hasActiveHarshNoBypassRule(runtime)) {
+    return {
+      success: false,
+      text: "You set a harsh-no-bypass rule for this — clear the rule first via the rule manager. The reconciler would re-create the block on its next tick anyway.",
+      data: { refusedByHarshNoBypassRule: true },
+    };
+  }
+
+  const status = await getSelfControlStatus();
+  if (!status.available) {
+    return {
+      success: false,
+      text:
+        status.reason ??
+        "Local website blocking is unavailable on this machine, so there is nothing to unblock.",
+    };
+  }
+
+  if (!status.active) {
+    return {
+      success: true,
+      text: "No website block is active right now.",
+      data: {
+        active: false,
+        canUnblockEarly: false,
+        requiresElevation: status.requiresElevation,
+      },
+    };
+  }
+
+  const result = await stopSelfControlBlock();
+  if (result.success === false) {
+    return {
+      success: false,
+      text: result.error,
+      data: result.status
+        ? {
+            active: result.status.active,
+            canUnblockEarly: result.status.canUnblockEarly,
+            endsAt: result.status.endsAt,
+            websites: result.status.websites,
+            requiresElevation: result.status.requiresElevation,
+          }
+        : undefined,
+    };
+  }
+
+  return {
+    success: true,
+    text:
+      status.endsAt === null
+        ? `Removed the website block for ${formatWebsiteList(status.websites)}.`
+        : `Removed the website block for ${formatWebsiteList(status.websites)} before its scheduled end time.`,
+    data: {
+      active: false,
+      canUnblockEarly: true,
+      endsAt: null,
+      websites: status.websites,
+    },
+  };
+}
+
+async function handleStatus(): Promise<ActionResult> {
+  const status = await getSelfControlStatus();
+  return {
+    success: status.available,
+    text: formatStatusText(status),
+    data: {
+      available: status.available,
+      active: status.active,
+      endsAt: status.endsAt,
+      websites: status.websites,
+      requiresElevation: status.requiresElevation,
+      engine: status.engine,
+      platform: status.platform,
+    },
+  };
+}
+
+async function handleRequestPermission(): Promise<ActionResult> {
+  const permission = await requestSelfControlPermission();
+  const success =
+    permission.status === "granted" || permission.promptSucceeded === true;
+
+  return {
+    success,
+    text: formatPermissionText(permission),
+    data: {
+      status: permission.status,
+      canRequest: permission.canRequest,
+      reason: permission.reason,
+      hostsFilePath: permission.hostsFilePath,
+      supportsElevationPrompt: permission.supportsElevationPrompt,
+      elevationPromptMethod: permission.elevationPromptMethod,
+      promptAttempted: permission.promptAttempted,
+      promptSucceeded: permission.promptSucceeded,
+    },
+  };
+}
+
+// ── Action ──
 
 export const ownerWebsiteBlockAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
-  similes: [
-    "BLOCK_WEBSITES",
-    "UNBLOCK_WEBSITES",
-    "GET_WEBSITE_BLOCK_STATUS",
-    "REQUEST_WEBSITE_BLOCKING_PERMISSION",
-    "WEBSITE_BLOCKER",
-    "SELFCONTROL_BLOCK_WEBSITES",
-  ],
+  similes: ["SELFCONTROL", "SITE_BLOCKER", "HOSTS_BLOCK", "FOCUS_BLOCK"],
   description:
-    "Owner-only. Manage local hosts-file website blocking on this Mac. " +
-    "Subactions: block (start a block on a set of public hostnames for a fixed duration or indefinitely — always drafts first; requires confirmed: true to actually edit the hosts file), " +
-    "unblock (remove the current website block), " +
-    "status (check whether a block is active and when it ends), " +
-    "request_permission (request administrator/root approval for hosts-file edits). " +
-    "Use this for fixed-duration or generic focus blocks like 'block twitter and reddit for 2 hours' or 'turn on a focus block for all social media sites'. " +
-    "Do NOT use this when the unblock condition is finishing a task, workout, or todo — that is BLOCK_UNTIL_TASK_COMPLETE. " +
-    "Do NOT use this when the user references apps, games, or things 'on my phone' — those belong to OWNER_APP_BLOCK. " +
-    "Do NOT use it for remote desktop sessions (OWNER_REMOTE_DESKTOP) or screen-time analytics (OWNER_SCREEN_TIME). " +
-    "If the user asks to block or unblock websites and then replies with only a hostname in a follow-up message, keep the prior website-blocking intent from recent conversation and continue here. " +
-    "Unblock requests do not require the user to restate every hostname; remove the current website block when the user clearly wants it gone. " +
-    "Do not pair this action with a speculative REPLY; it provides its own final reply.",
+    "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits).",
   descriptionCompressed:
-    "Owner: block/unblock websites via hosts file + status + permission request.",
+    "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission; macOS owner draft-then-confirm",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
@@ -367,12 +793,19 @@ export const ownerWebsiteBlockAction: Action & {
     {
       name: "subaction",
       description:
-        "One of: block, unblock, status, request_permission. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+        "One of: block, unblock, status, request_permission. When omitted the resolver extracts it from intent + recent conversation.",
       required: false,
       schema: { type: "string" as const },
     },
     {
-      name: "websites",
+      name: "intent",
+      description:
+        "Free-form description of what the owner wants. Required by the block subaction so heuristic + LLM extractors can pull hostnames and duration out.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "hostnames",
       description:
         "Public hostnames or URLs to block for the block subaction, e.g. ['x.com','twitter.com'].",
       required: false,
@@ -424,6 +857,19 @@ export const ownerWebsiteBlockAction: Action & {
     [
       {
         name: "{{name1}}",
+        content: { text: "Unblock x.com right now." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Removed the website block for x.com before its scheduled end time.",
+          action: "OWNER_WEBSITE_BLOCK",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
         content: {
           text: "Give yourself permission to block websites on this machine.",
         },
@@ -436,32 +882,6 @@ export const ownerWebsiteBlockAction: Action & {
         },
       },
     ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Please block x.com for me." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Started a website block for x.com until you unblock it.",
-          action: "OWNER_WEBSITE_BLOCK",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Can you unblock x?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Removed the website block for x.com before its scheduled end time.",
-          action: "OWNER_WEBSITE_BLOCK",
-        },
-      },
-    ],
   ] as ActionExample[][],
 
   handler: async (
@@ -469,109 +889,110 @@ export const ownerWebsiteBlockAction: Action & {
     message: Memory,
     state,
     options,
-    callback,
+    _callback,
   ): Promise<ActionResult> => {
     const access = await getSelfControlAccess(runtime, message);
     if (!access.allowed) {
       return {
         success: false,
         text: access.reason ?? SELFCONTROL_ACCESS_ERROR,
-      } as ActionResult;
+      };
     }
 
-    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
-      {}) as OwnerWebsiteBlockParameters;
-    let params = rawParams;
-    let subaction = coerceSubaction(rawParams.subaction);
-    if (!subaction) {
-      const heuristicSubaction = inferRecentSubaction(
-        getMessageText(message),
-        await collectRecentConversationTexts({
-          runtime,
-          message,
-          state,
-          limit: 8,
-        }),
-      );
-      if (heuristicSubaction) {
-        params = { ...rawParams, subaction: heuristicSubaction };
-        subaction = heuristicSubaction;
-      }
-    }
-    if (!subaction) {
-      params = (await extractActionParamsViaLlm<
-        OwnerWebsiteBlockParameters & Record<string, unknown>
-      >({
-        runtime,
-        message,
-        state,
-        actionName: ACTION_NAME,
-        actionDescription: ownerWebsiteBlockAction.description ?? "",
-        paramSchema: ownerWebsiteBlockAction.parameters ?? [],
-        existingParams: rawParams as Record<string, unknown>,
-        requiredFields: ["subaction"],
-      })) as OwnerWebsiteBlockParameters;
-      subaction = coerceSubaction(params.subaction);
-    }
-    if (!subaction) {
-      const plan = await resolveOwnerWebsiteBlockPlanWithLlm({
-        runtime,
-        message,
-        state,
-        params,
-      });
-      subaction = plan.subaction ?? undefined;
-      if (plan.shouldAct === false || !subaction) {
-        return {
-          success: true,
-          text:
-            plan.response ??
-            "Tell me whether you want to block websites, unblock the current website block, check its status, or request permission for website blocking.",
-          data: {
-            actionName: ACTION_NAME,
-            deferred: true,
-            suggestedSubaction: plan.subaction ?? null,
-          },
-        } as ActionResult;
-      }
-    }
-
-    if (!subaction) {
+    const resolved = await resolveActionArgs<
+      WebsiteBlockSubaction,
+      WebsiteBlockParams
+    >({
+      runtime,
+      message,
+      state,
+      options: options as HandlerOptions | undefined,
+      actionName: ACTION_NAME,
+      subactions: SUBACTIONS,
+    });
+    if (!resolved.ok) {
       return {
         success: false,
-        text: "Missing or invalid subaction. Use one of: block, unblock, status, request_permission.",
-      } as ActionResult;
+        text: resolved.clarification,
+        data: { actionName: ACTION_NAME, missing: resolved.missing },
+      };
     }
 
-    if (subaction === "block") {
-      return (await requireDelegatedHandler(blockWebsitesAction)(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      )) as ActionResult;
+    const { subaction, params } = resolved;
+    switch (subaction) {
+      case "block":
+        return handleBlock(runtime, message, state, params);
+      case "unblock":
+        return handleUnblock(runtime);
+      case "status":
+        return handleStatus();
+      case "request_permission":
+        return handleRequestPermission();
     }
-    if (subaction === "unblock") {
-      return (await requireDelegatedHandler(unblockWebsitesAction)(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      )) as ActionResult;
-    }
-    if (subaction === "status") {
-      return (await requireDelegatedHandler(getWebsiteBlockStatusAction)(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      )) as ActionResult;
-    }
-    return (await requireDelegatedHandler(
-      requestWebsiteBlockingPermissionAction,
-    )(runtime, message, state, options, callback)) as ActionResult;
   },
 };
+
+// ── Back-compat shims ──
+//
+// External callers (block-rule-service, website-blocker/public, public.ts,
+// index.ts) import the four legacy action constants directly and call
+// `.handler(runtime, message, state, { parameters: ... })` programmatically
+// with the legacy parameter shape (websites, durationMinutes, confirmed for
+// block; nothing for the rest). These shims pin the subaction and translate
+// `websites` → `hostnames` so behavior is preserved while there is exactly
+// one canonical implementation.
+
+function makeSubactionShim(
+  fixedSubaction: WebsiteBlockSubaction,
+  translate?: (
+    legacy: Record<string, unknown>,
+  ) => Record<string, unknown>,
+): Action {
+  return {
+    name: ACTION_NAME,
+    similes: ownerWebsiteBlockAction.similes,
+    description: ownerWebsiteBlockAction.description,
+    descriptionCompressed: ownerWebsiteBlockAction.descriptionCompressed,
+    parameters: ownerWebsiteBlockAction.parameters,
+    examples: ownerWebsiteBlockAction.examples,
+    validate: ownerWebsiteBlockAction.validate,
+    handler: async (runtime, message, state, options, callback) => {
+      const legacyParams =
+        options && typeof options === "object" && "parameters" in options &&
+        options.parameters && typeof options.parameters === "object"
+          ? (options.parameters as Record<string, unknown>)
+          : {};
+      const translated = translate
+        ? translate(legacyParams)
+        : legacyParams;
+      const pinned: HandlerOptions = {
+        ...(options as HandlerOptions | undefined),
+        parameters: { ...translated, subaction: fixedSubaction },
+      };
+      const handler = ownerWebsiteBlockAction.handler;
+      if (typeof handler !== "function") {
+        return {
+          success: false,
+          text: "OWNER_WEBSITE_BLOCK handler is unavailable.",
+        };
+      }
+      return handler(runtime, message, state, pinned, callback);
+    },
+  };
+}
+
+export const blockWebsitesAction: Action = makeSubactionShim(
+  "block",
+  (legacy) => {
+    const out: Record<string, unknown> = { ...legacy };
+    if (legacy.websites !== undefined && out.hostnames === undefined) {
+      out.hostnames = legacy.websites;
+    }
+    return out;
+  },
+);
+export const unblockWebsitesAction: Action = makeSubactionShim("unblock");
+export const getWebsiteBlockStatusAction: Action = makeSubactionShim("status");
+export const requestWebsiteBlockingPermissionAction: Action = makeSubactionShim(
+  "request_permission",
+);

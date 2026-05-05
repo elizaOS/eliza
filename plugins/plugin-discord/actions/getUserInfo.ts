@@ -9,7 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { GuildMember } from "discord.js";
@@ -37,11 +37,13 @@ const getUserIdentifier = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response);
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
 		if (parsedResponse?.userIdentifier) {
 			return {
 				userIdentifier: String(parsedResponse.userIdentifier),
-				detailed: parsedResponse.detailed === true,
+				detailed:
+					parsedResponse.detailed === true ||
+					String(parsedResponse.detailed).toLowerCase() === "true",
 			};
 		}
 	}

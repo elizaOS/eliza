@@ -7,9 +7,10 @@ import {
   logger,
   type Memory,
   ModelType,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
-import type { YouTubeSearchService } from "../services/youtubeSearch";
+import type { MusicLibraryService } from "../services/musicLibraryService";
 import { confirmationRequired, isConfirmed } from "./confirmation";
 
 interface MusicQueryIntent {
@@ -66,19 +67,6 @@ interface SearchResultSnippet {
   snippet?: string;
 }
 
-interface WikipediaLookupService {
-  getArtistInfo(artistName: string): Promise<{
-    discography?: unknown;
-    similarArtists?: string[];
-  } | null>;
-}
-
-interface MusicInfoLookupService {
-  getArtistInfo(artistName: string): Promise<{
-    similarArtists?: string[];
-  } | null>;
-}
-
 interface WebSearchService {
   search(query: string): Promise<SearchResultSnippet[]>;
 }
@@ -104,6 +92,41 @@ function summarizeSearchResults(results: SearchResultSnippet[]): string {
     .slice(0, 3)
     .map((result) => result.description || result.snippet || "")
     .join("\n");
+}
+
+function formatPromptValue(value: unknown, depth = 0): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item != null)
+      .slice(0, 20)
+      .map((item) => {
+        const rendered = formatPromptValue(item, depth + 1);
+        return rendered ? `${"  ".repeat(depth)}- ${rendered}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry != null && entry !== "")
+      .slice(0, 20)
+      .map(([key, entry]) => {
+        const rendered = formatPromptValue(entry, depth + 1);
+        if (!rendered) return "";
+        if (rendered.includes("\n")) {
+          return `${"  ".repeat(depth)}${key}:\n${rendered}`;
+        }
+        return `${"  ".repeat(depth)}${key}: ${rendered}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(value);
 }
 
 /**
@@ -187,21 +210,19 @@ Determine:
    - keywords: Other important keywords
    - modifier: If asking for specific version (cover, remix, acoustic, live, instrumental)
 
-Respond with ONLY a JSON object:
-{
-    "needsResearch": true/false,
-    "queryType": "[one of the types above]",
-    "artist": "artist name if mentioned",
-    "album": "album name if mentioned",
-    "song": "song name if mentioned",
-    "genre": "genre if mentioned",
-    "mood": "mood if mentioned",
-    "decade": "decade if mentioned",
-    "year": "year if mentioned",
-    "keywords": "other important keywords",
-    "modifier": "cover|remix|acoustic|live|instrumental if requested",
-    "searchQuery": "if direct_search, the query to use"
-}`;
+Respond with TOON only:
+needsResearch: true/false
+queryType: [one of the types above]
+artist: artist name if mentioned
+album: album name if mentioned
+song: song name if mentioned
+genre: genre if mentioned
+mood: mood if mentioned
+decade: decade if mentioned
+year: year if mentioned
+keywords: other important keywords
+modifier: cover|remix|acoustic|live|instrumental if requested
+searchQuery: if direct_search, the query to use`;
 
     const rawResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
@@ -211,14 +232,17 @@ Respond with ONLY a JSON object:
       return null;
     }
 
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return null;
+    const parsedToon = parseToonKeyValue<Record<string, unknown>>(response);
+    if (parsedToon?.queryType) {
+      return {
+        ...parsedToon,
+        needsResearch:
+          parsedToon.needsResearch === true ||
+          String(parsedToon.needsResearch).toLowerCase() === "true",
+      } as unknown as MusicQueryIntent;
     }
 
-    const intent = JSON.parse(jsonMatch[0]) as MusicQueryIntent;
-    return intent;
+    return null;
   } catch (error) {
     logger.error(
       "Error analyzing music query:",
@@ -236,12 +260,9 @@ const researchMusicInfo = async (
   intent: MusicQueryIntent,
 ): Promise<string | null> => {
   try {
-    const wikipediaService = runtime.getService(
-      "wikipedia",
-    ) as WikipediaLookupService | null;
-    const musicInfoService = runtime.getService(
-      "musicInfo",
-    ) as MusicInfoLookupService | null;
+    const musicLibrary = runtime.getService(
+      "musicLibrary",
+    ) as MusicLibraryService | null;
     const webSearchService = runtime.getService(
       "webSearch",
     ) as WebSearchService | null;
@@ -258,15 +279,16 @@ const researchMusicInfo = async (
         if (!intent.artist) break;
 
         // Try to get artist info from Wikipedia
-        if (wikipediaService?.getArtistInfo) {
-          const artistInfo = await wikipediaService.getArtistInfo(
+        if (musicLibrary?.getWikipediaArtistInfo) {
+          const artistInfo = (await musicLibrary.getWikipediaArtistInfo(
             intent.artist,
-          );
+          )) as { discography?: unknown; similarArtists?: string[] } | null;
           if (artistInfo?.discography) {
             // Use LLM to extract first single/album from discography
             const prompt = `From this artist discography, what was their first ${intent.queryType === "first_single" ? "single" : "album"}?
 
-Discography: ${JSON.stringify(artistInfo.discography).substring(0, 2000)}
+Discography (TOON/plain text):
+${formatPromptValue(artistInfo.discography).substring(0, 2000)}
 
 Respond with ONLY the song/album name, nothing else.`;
 
@@ -337,8 +359,8 @@ Respond with ONLY the album name, nothing else.`;
         if (!intent.artist) break;
 
         // Try to get similar artists from Wikipedia
-        if (wikipediaService?.getArtistInfo) {
-          const artistInfo = await wikipediaService.getArtistInfo(
+        if (musicLibrary?.getWikipediaArtistInfo) {
+          const artistInfo = await musicLibrary.getWikipediaArtistInfo(
             intent.artist,
           );
           if (
@@ -354,11 +376,9 @@ Respond with ONLY the album name, nothing else.`;
           }
         }
 
-        // Fallback: use musicInfo service
-        if (!searchQuery && musicInfoService?.getArtistInfo) {
-          const artistInfo = await musicInfoService.getArtistInfo(
-            intent.artist,
-          );
+        // Fallback: use canonical music metadata
+        if (!searchQuery && musicLibrary?.getArtistInfo) {
+          const artistInfo = await musicLibrary.getArtistInfo(intent.artist);
           if (
             artistInfo?.similarArtists &&
             artistInfo.similarArtists.length > 0
@@ -704,10 +724,10 @@ export const playMusicQuery: Action = {
       logger.info(`Final search query: ${finalSearchQuery}`);
 
       // Step 3: Search YouTube for the track
-      const youtubeSearch = runtime.getService(
-        "youtubeSearch",
-      ) as YouTubeSearchService;
-      if (!youtubeSearch) {
+      const musicLibrary = runtime.getService(
+        "musicLibrary",
+      ) as MusicLibraryService | null;
+      if (!musicLibrary) {
         await callback({
           text: "YouTube search service is not available.",
           source: message.content.source,
@@ -715,7 +735,7 @@ export const playMusicQuery: Action = {
         return;
       }
 
-      const results = await youtubeSearch.search(finalSearchQuery, {
+      const results = await musicLibrary.searchYouTube(finalSearchQuery, {
         limit: 1,
       });
       if (!results || results.length === 0) {

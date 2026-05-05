@@ -22,8 +22,8 @@ class ADHDBenchConfig:
     """advancedMemory=True, advancedPlanning=True."""
 
     # ---- model settings ----
-    model_provider: str = "openai"
-    model_name: str = "gpt-4o-mini"
+    model_provider: str = "groq"
+    model_name: str = "openai/gpt-oss-120b"
     embedding_provider: str = "openai"
 
     # ---- scenario filtering ----

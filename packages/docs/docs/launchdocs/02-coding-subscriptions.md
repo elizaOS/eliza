@@ -79,7 +79,7 @@
 - Z.AI alias support is inconsistent. Runtime settings and credential resolver accept both `ZAI_API_KEY` and `Z_AI_API_KEY` (`eliza.ts:2260-2272`, `credential-resolver.ts:176-182`), but plugin auto-loading only maps `ZAI_API_KEY` (`plugin-collector.ts:108-128`), and native env scanning only detects `ZAI_API_KEY` (`credentials.ts:507-548`). CLI startup normalizes the alias elsewhere, but non-CLI/native paths still need coverage.
 - Claude subscription direct-runtime guard should be tested. Core startup avoids applying Anthropic subscription tokens to `ANTHROPIC_API_KEY` (`credentials.ts:520-582`) and provider-switch avoids using Anthropic subscription as `llmText` (`provider-switch-config.ts:881-892`). However, `plugin-anthropic` still contains an OAuth pool path that can fetch Anthropic subscription tokens when its shim is installed (`credential-store.ts:111-147`). That path may be unreachable in intended launch config, but it needs a guard test so Claude remains code-agent only.
 - Subscription refresh fallback marks every inline subscription probe failure as `rate-limited` (`accounts-routes.ts:1005-1019`). 401/403/invalid credential failures should become `needs-reauth` or `invalid`, not rate-limited.
-- Codex account test uses `model: "gpt-5.5-mini"` (`accounts-routes.ts:334-342`). I could not verify that this is a valid/current model for the target Codex subscription flow; if not, account testing will false-fail.
+- Codex account test uses `model: "gpt-5-mini"` (`accounts-routes.ts:334-342`). I could not verify that this is a valid/current model for the target Codex subscription flow; if not, account testing will false-fail.
 
 ### P3
 

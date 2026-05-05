@@ -128,7 +128,8 @@ def main() -> int:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 stats["decode_errors"] += 1
-                fout.write(line); continue
+                fout.write(line)
+                continue
             rec = transform_record(rec, stats)
             fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
             if stats["total"] % 200000 == 0:

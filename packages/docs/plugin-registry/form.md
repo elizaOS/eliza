@@ -1,20 +1,20 @@
 ---
-title: "Form (advanced capability)"
+title: "Form"
 sidebarTitle: "Form"
-description: "Structured conversational forms — FORM service and related providers/actions built into elizaOS core."
+description: "Structured conversational forms — FORM service, provider, evaluator, and restore action from @elizaos/plugin-form."
 ---
 
-Forms are **not** a separate installable plugin package. They ship inside **`@elizaos/core`** as part of **advanced capabilities**: `FormService` (service type `FORM`), form context provider, form evaluator, and related actions (see `packages/core/src/features/advanced-capabilities/form/`).
+Forms ship as the standalone **`@elizaos/plugin-form`** package. The plugin owns `FormService` (service type `FORM`), the `FORM_CONTEXT` provider, the `form_evaluator`, and the `FORM_RESTORE` action.
 
 ## Overview
 
-Structured form flows support guided user journeys (collecting fields, restoring incomplete sessions, evaluating form-related dialogue). Capabilities register when advanced capabilities are enabled for the agent.
+Structured form flows support guided user journeys (collecting fields, restoring incomplete sessions, evaluating form-related dialogue). Capabilities register when `@elizaos/plugin-form` is enabled for the agent.
 
 ## Enabling
 
-Toggle advanced capabilities in character / dashboard settings (`advancedCapabilities: true`), or control individual capability entries under `plugins.entries` for `form`, `experience`, `clipboard`, and `personality` (see `packages/agent/src/runtime/advanced-capabilities-config.ts`).
+Enable the `form` plugin entry in character / dashboard settings, or include `@elizaos/plugin-form` in the plugin allow list. Advanced capabilities no longer register the FORM runtime.
 
 ## Related
 
 - [Services](/runtime/services) — service types and registry usage
-- [Plugin architecture](/plugins/architecture) — advanced capabilities note for `personality`, `experience`, and `form`
+- [Plugin architecture](/plugins/architecture) — plugin registration and lifecycle

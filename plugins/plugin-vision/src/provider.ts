@@ -1,5 +1,5 @@
 import {
-  addHeader,
+  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -30,10 +30,13 @@ export const visionProvider: Provider = {
           sceneDescription: "Vision service is not available.",
           cameraStatus: "No camera connected",
         },
-        text: addHeader(
-          "# Visual Perception",
-          "Vision service is not available.",
-        ),
+        text: encodeToonValue({
+          visual_perception: {
+            visionAvailable: false,
+            sceneDescription: "Vision service is not available.",
+            cameraStatus: "No camera connected",
+          },
+        }),
         data: { hasVision: false },
       };
     }
@@ -287,7 +290,12 @@ export const visionProvider: Provider = {
 
     return {
       values,
-      text: addHeader("# Visual Perception", perceptionText),
+      text: encodeToonValue({
+        visual_perception: {
+          summary: perceptionText,
+          ...values,
+        },
+      }),
       data,
     };
   },

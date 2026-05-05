@@ -11,7 +11,7 @@ from pathlib import Path
 from elizaos_webshop.dataset import WebShopDataset
 from elizaos_webshop.environment import WebShopEnvironment
 from elizaos_webshop.evaluator import WebShopEvaluator
-from elizaos_webshop.eliza_agent import create_webshop_agent, ELIZAOS_AVAILABLE
+from elizaos_webshop.eliza_agent import create_webshop_agent
 from elizaos_webshop.trajectory_integration import (
     WebShopTrajectoryConfig,
     WebShopTrajectoryIntegration,
@@ -69,10 +69,14 @@ class WebShopRunner:
         self.evaluator = WebShopEvaluator()
         self._start_time = 0.0
 
-        self._elizaos_mode = (not config.use_mock) and (not config.use_bridge) and ELIZAOS_AVAILABLE
         self._bridge_factory, self._bridge_manager = _maybe_make_bridge_factory(config)
         self._trajectory: WebShopTrajectoryIntegration | None = None
-        if self._elizaos_mode and config.enable_trajectory_logging:
+        if config.enable_trajectory_logging and config.use_bridge:
+            logger.warning(
+                "[WebShopRunner] Local Python trajectory logging is not available in bridge mode; "
+                "continuing without trajectory export"
+            )
+        elif (not config.use_mock) and config.enable_trajectory_logging:
             if not TRAJECTORY_LOGGER_AVAILABLE:
                 raise RuntimeError(
                     "Trajectory logging enabled but elizaos-plugin-trajectory-logger is not installed. "
@@ -138,7 +142,7 @@ class WebShopRunner:
         env = WebShopEnvironment(products=self.dataset.products)
         if self._bridge_factory is not None:
             agent = self._bridge_factory(env)
-        else:
+        elif self.config.use_mock:
             agent = create_webshop_agent(
                 env,
                 max_turns=self.config.max_turns_per_task,
@@ -146,6 +150,11 @@ class WebShopRunner:
                 model_provider=self.config.model_provider,
                 temperature=self.config.temperature,
                 trajectory=self._trajectory,
+            )
+        else:
+            raise RuntimeError(
+                "Non-mock WebShop execution now requires bridge mode. "
+                "Use --bridge or configure WebShopConfig(use_bridge=True)."
             )
 
         await agent.initialize()
@@ -227,10 +236,10 @@ class WebShopRunner:
 
         if self._bridge_factory is not None:
             mode = "eliza-bridge"
-        elif self._elizaos_mode:
-            mode = "real-llm"
-        else:
+        elif self.config.use_mock:
             mode = "mock"
+        else:
+            mode = "unsupported"
         summary: dict[str, str | int | float | bool] = {
             "status": status,
             "timestamp": datetime.now().isoformat(),

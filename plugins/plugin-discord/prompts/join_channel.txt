@@ -9,14 +9,9 @@ Extract the channel identifier from their request:
 - If they provide a channel ID (long number), extract that
 - If they mention "voice", "vc", "voice channel", include that as a hint
 
-Your response must be formatted as a JSON block with this structure:
-```json
-{
-  "channelIdentifier": "<channel-name|channel-id|#mention>",
-  "isVoiceChannel": true/false
-}
-```
-
+Respond with TOON only:
+channelIdentifier: <channel-name|channel-id|#mention>
+isVoiceChannel: true/false
 
 
 

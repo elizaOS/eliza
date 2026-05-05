@@ -1,11 +1,11 @@
 import { describe, expect, test, beforeEach, vi } from "vitest";
 import twitchPlugin, {
   TwitchService,
-  channelStateProvider,
   joinChannel,
   leaveChannel,
   listChannels,
   sendMessage,
+  twitchChannelAction,
   userContextProvider,
   normalizeChannel,
   formatChannelForDisplay,
@@ -91,19 +91,15 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.description).toContain("Twitch");
   });
 
-  test("registers exactly 4 actions", () => {
-    expect(twitchPlugin.actions).toHaveLength(4);
+  test("registers the channel router action", () => {
+    expect(twitchPlugin.actions).toHaveLength(1);
     const names = twitchPlugin.actions!.map((a) => a.name);
-    expect(names).toContain("TWITCH_SEND_MESSAGE");
-    expect(names).toContain("TWITCH_JOIN_CHANNEL");
-    expect(names).toContain("TWITCH_LEAVE_CHANNEL");
-    expect(names).toContain("TWITCH_LIST_CHANNELS");
+    expect(names).toContain("TWITCH_CHANNEL");
   });
 
-  test("registers exactly 2 providers", () => {
-    expect(twitchPlugin.providers).toHaveLength(2);
+  test("registers the user context provider", () => {
+    expect(twitchPlugin.providers).toHaveLength(1);
     const names = twitchPlugin.providers!.map((p) => p.name);
-    expect(names).toContain("twitchChannelState");
     expect(names).toContain("twitchUserContext");
   });
 
@@ -326,7 +322,20 @@ describe("Custom Errors", () => {
 });
 
 // ===========================================================================
-// 6. sendMessage Action
+// 6. twitchChannelAction Router
+// ===========================================================================
+
+describe("twitchChannelAction", () => {
+  test("has router metadata", () => {
+    expect(twitchChannelAction.name).toBe("TWITCH_CHANNEL");
+    expect(twitchChannelAction.similes).toContain("TWITCH_JOIN_CHANNEL");
+    expect(twitchChannelAction.similes).toContain("TWITCH_LEAVE_CHANNEL");
+    expect(twitchChannelAction.similes).toContain("TWITCH_LIST_CHANNELS");
+  });
+});
+
+// ===========================================================================
+// 7. sendMessage Action
 // ===========================================================================
 
 describe("sendMessage action", () => {
@@ -639,85 +648,7 @@ describe("listChannels action", () => {
 });
 
 // ===========================================================================
-// 10. channelStateProvider
-// ===========================================================================
-
-describe("channelStateProvider", () => {
-  test("has correct metadata", () => {
-    expect(channelStateProvider.name).toBe("twitchChannelState");
-    expect(channelStateProvider.description).toContain("Twitch channel");
-  });
-
-  test("returns empty for non-twitch source", async () => {
-    const runtime = makeMockRuntime();
-    const memory = makeMemory("discord");
-    const result = await channelStateProvider.get(runtime, memory, makeState());
-    expect(result.text).toBe("");
-    expect(result.data).toEqual({});
-  });
-
-  test("returns disconnected state when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const memory = makeMemory("twitch");
-    const result = await channelStateProvider.get(runtime, memory, makeState());
-    expect(result.data.connected).toBe(false);
-    expect(result.text).toBe("");
-  });
-
-  test("returns full channel state when connected", async () => {
-    const service = makeMockTwitchService({
-      connected: true,
-      botUsername: "testbot",
-      primaryChannel: "mainchannel",
-      joinedChannels: ["mainchannel", "extra"],
-    });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = makeMemory("twitch");
-    const state = makeState({ agentName: "CoolBot" });
-
-    const result = await channelStateProvider.get(runtime, memory, state);
-
-    expect(result.data.connected).toBe(true);
-    expect(result.data.channel).toBe("mainchannel");
-    expect(result.data.displayChannel).toBe("#mainchannel");
-    expect(result.data.isPrimaryChannel).toBe(true);
-    expect(result.data.botUsername).toBe("testbot");
-    expect(result.data.channelCount).toBe(2);
-    expect(result.data.joinedChannels).toEqual(["mainchannel", "extra"]);
-    expect(result.text).toContain("CoolBot");
-    expect(result.text).toContain("#mainchannel");
-    expect(result.text).toContain("primary channel");
-    expect(result.text).toContain("@testbot");
-    expect(result.text).toContain("2 channel(s)");
-  });
-
-  test("uses room channelId from state when available", async () => {
-    const service = makeMockTwitchService({
-      connected: true,
-      primaryChannel: "mainchannel",
-      joinedChannels: ["mainchannel", "otherchan"],
-    });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = makeMemory("twitch");
-    const state = makeState({
-      data: { room: { channelId: "#otherchan" } },
-    });
-
-    const result = await channelStateProvider.get(runtime, memory, state);
-
-    expect(result.data.channel).toBe("otherchan");
-    expect(result.data.isPrimaryChannel).toBe(false);
-  });
-});
-
-// ===========================================================================
-// 11. userContextProvider
+// 10. userContextProvider
 // ===========================================================================
 
 describe("userContextProvider", () => {

@@ -34,7 +34,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.adapters import REGISTRY  # noqa: E402
-from lib.eliza_record import ElizaRecord  # noqa: E402
 from lib.toon import ToonEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw"

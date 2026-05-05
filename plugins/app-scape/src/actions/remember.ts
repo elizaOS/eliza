@@ -6,10 +6,10 @@
  *
  * LLM response shape:
  *
- *   <action>REMEMBER</action>
- *   <kind>lesson</kind>
- *   <text>Skeletons near Varrock don't drop coins — skip them next time.</text>
- *   <weight>3</weight>
+ *   action: REMEMBER
+ *   kind: lesson
+ *   text: Skeletons near Varrock don't drop coins — skip them next time.
+ *   weight: 3
  *
  * `kind` defaults to "note" if omitted.
  */
@@ -23,7 +23,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParam, extractParamInt } from "./param-parser.js";
 
 export const remember: Action = {
@@ -38,7 +38,7 @@ export const remember: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "REMEMBER");
+    return hasActionRequest(message, "REMEMBER");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -60,7 +60,7 @@ export const remember: Action = {
     const llmText = resolveActionText(message);
     const text = extractParam(llmText, "text");
     if (!text) {
-      const err = "REMEMBER requires <text>what to remember</text>.";
+      const err = "REMEMBER requires text: what to remember.";
       callback?.({ text: err, action: "REMEMBER" });
       return { success: false, text: err };
     }

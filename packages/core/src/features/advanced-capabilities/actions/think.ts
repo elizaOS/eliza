@@ -12,7 +12,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("THINK");
@@ -73,9 +73,9 @@ export const thinkAction = {
 			prompt,
 		});
 
-		const parsedXml = parseKeyValueXml(response);
-		const thoughtValue = parsedXml?.thought;
-		const textValue = parsedXml?.text;
+		const parsedToon = parseToonKeyValue(response);
+		const thoughtValue = parsedToon?.thought;
+		const textValue = parsedToon?.text;
 		const thought: string =
 			typeof thoughtValue === "string" ? thoughtValue : "";
 		const text: string = typeof textValue === "string" ? textValue : "";

@@ -1,0 +1,85 @@
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+import * as pluginManagerExports from "./index.ts";
+import { pluginAction, pluginManagerPlugin } from "./index.ts";
+
+const OLD_ACTION_NAMES = [
+	"LIST_EJECTED_PLUGINS",
+	"LIST_INSTALLED_PLUGINS",
+	"SEARCH_PLUGINS",
+	"SEARCH_PLUGIN",
+	"GET_PLUGIN_DETAILS",
+	"CORE_STATUS",
+] as const;
+
+describe("plugin manager umbrella action", () => {
+	it("registers only the umbrella action in the plugin-manager plugin", () => {
+		expect(pluginManagerPlugin.actions?.map((action) => action.name)).toEqual([
+			"MANAGE_PLUGINS",
+		]);
+	});
+
+	it("keeps legacy duplicate names out of the planner-facing action surface", () => {
+		const visibleNames = [pluginAction.name, ...(pluginAction.similes ?? [])];
+		for (const oldName of OLD_ACTION_NAMES) {
+			expect(visibleNames).not.toContain(oldName);
+		}
+	});
+
+	it("folds plugin management operations into subactions", () => {
+		const subaction = pluginAction.parameters?.find(
+			(parameter) => parameter.name === "subaction",
+		);
+		expect(subaction?.schema.enum).toEqual([
+			"install",
+			"eject",
+			"sync",
+			"reinject",
+			"list",
+			"list_ejected",
+			"search",
+			"details",
+			"status",
+			"enable",
+			"disable",
+			"core_status",
+			"create",
+		]);
+	});
+
+	it("does not re-export standalone core plugin management actions", () => {
+		for (const oldExport of [
+			"coreStatusAction",
+			"listEjectedPluginsAction",
+			"searchPluginAction",
+			"getPluginDetailsAction",
+		]) {
+			expect(pluginManagerExports).not.toHaveProperty(oldExport);
+		}
+	});
+
+	it("removes the agent-local read-only plugin list action names", async () => {
+		const files = await Promise.all([
+			readFile(
+				new URL(
+					"../../../../agent/src/actions/list-ejected.ts",
+					import.meta.url,
+				),
+				"utf8",
+			),
+			readFile(
+				new URL(
+					"../../../../agent/src/actions/list-installed-plugins.ts",
+					import.meta.url,
+				),
+				"utf8",
+			),
+		]);
+
+		for (const source of files) {
+			for (const oldName of OLD_ACTION_NAMES) {
+				expect(source).not.toContain(oldName);
+			}
+		}
+	});
+});

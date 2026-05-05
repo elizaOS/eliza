@@ -337,7 +337,7 @@ export const manageMessageExamplesAction: Action = {
 
 			await callback?.({
 				text: summary,
-				thought: `Applied message example change: ${JSON.stringify({ action: exampleAction, conversationIndex, turnIndex })}`,
+				thought: `Applied message example change: action=${exampleAction}; conversationIndex=${conversationIndex}; turnIndex=${turnIndex ?? "none"}`,
 				actions: ["MANAGE_MESSAGE_EXAMPLES"],
 			});
 

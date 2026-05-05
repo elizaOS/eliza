@@ -1,6 +1,6 @@
 # __PLUGIN_DISPLAY_NAME__
 
-Scaffolded from `packages/elizaos/templates/min-plugin`. This is a minimal Eliza runtime plugin: one action, one provider, no UI.
+Scaffolded from `packages/elizaos/templates/min-plugin`. This is a minimal Eliza runtime plugin: one provider, no UI.
 
 The scaffold copy step replaces these placeholders:
 

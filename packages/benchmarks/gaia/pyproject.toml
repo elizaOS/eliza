@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     # Core dependencies
+    "eliza-adapter",
     "aiohttp>=3.9.0",
     "beautifulsoup4>=4.12.0",
     "huggingface_hub>=0.20.0",
@@ -38,6 +39,9 @@ dependencies = [
     # Optional but recommended
     "pydantic>=2.0.0",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 # Full feature set
@@ -59,9 +63,9 @@ dev = [
     "black>=24.1.0",
 ]
 
-# ElizaOS integration
+# TypeScript bridge integration
 elizaos = [
-    "elizaos>=1.0.0",
+    "eliza-adapter",
 ]
 
 [project.scripts]

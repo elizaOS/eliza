@@ -3,7 +3,7 @@
  * Determines API URL based on environment
  */
 
-import { FALLBACK_TEXT_SELECTOR_MODELS } from "@/lib/models";
+import { FALLBACK_TEXT_SELECTOR_MODELS, OPENROUTER_DEFAULT_TEXT_MODEL } from "@/lib/models";
 import { expandOpenRouterModelIdCandidates } from "@/lib/providers/model-id-translation";
 
 /**
@@ -46,8 +46,8 @@ export function getElizaCloudApiUrl(): string {
  */
 export function getDefaultModels() {
   return {
-    small: process.env.ELIZAOS_CLOUD_SMALL_MODEL || "minimax/minimax-m2.7",
-    large: process.env.ELIZAOS_CLOUD_LARGE_MODEL || "anthropic/claude-sonnet-4.6",
+    small: process.env.ELIZAOS_CLOUD_SMALL_MODEL || OPENROUTER_DEFAULT_TEXT_MODEL,
+    large: process.env.ELIZAOS_CLOUD_LARGE_MODEL || OPENROUTER_DEFAULT_TEXT_MODEL,
     embedding: process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL || "text-embedding-3-small",
   };
 }

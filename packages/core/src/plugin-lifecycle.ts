@@ -159,6 +159,50 @@ const pluginRegistrationContext =
 const pluginServiceStartContext =
 	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
+const INTENTIONAL_MULTI_SERVICE_TYPES = new Set<string>([
+	"wallet",
+	"lp_pool",
+	"token_data",
+	"trajectories",
+]);
+
+function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
+	return (
+		(serviceClass as { name?: string }).name ||
+		serviceClass.constructor?.name ||
+		"anonymous service class"
+	);
+}
+
+function warnOnDuplicateServiceTypeRegistration(
+	runtime: RuntimeWithPluginLifecycle,
+	serviceType: ServiceTypeName | string,
+	serviceClass: RuntimeServiceClass,
+	existingServiceClasses: RuntimeServiceClass[],
+	pluginName?: string,
+): void {
+	if (
+		existingServiceClasses.length === 0 ||
+		INTENTIONAL_MULTI_SERVICE_TYPES.has(String(serviceType))
+	) {
+		return;
+	}
+
+	runtime.logger.warn(
+		{
+			src: "agent",
+			agentId: runtime.agentId,
+			plugin: pluginName,
+			serviceType,
+			serviceClass: getServiceClassLabel(serviceClass),
+			existingServiceClasses: existingServiceClasses.map((existing) => ({
+				serviceClass: getServiceClassLabel(existing),
+				plugin: serviceClassOwners.get(existing),
+			})),
+		},
+		"Duplicate serviceType registration can make getService() ambiguous; use a distinct serviceType or getServicesByType()",
+	);
+}
 
 function getRuntimePrivateState(runtime: IAgentRuntime): RuntimePrivateState {
 	return runtime as unknown as RuntimePrivateState;
@@ -747,8 +791,16 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	) => {
 		const capture = pluginRegistrationContext.getStore();
 		const serviceType = serviceClass.serviceType as ServiceTypeName;
-		const serviceTypesBefore =
-			privateState.serviceTypes.get(serviceType)?.length ?? 0;
+		const existingServiceClasses =
+			privateState.serviceTypes.get(serviceType) ?? [];
+		warnOnDuplicateServiceTypeRegistration(
+			runtimeWithLifecycle,
+			serviceType,
+			serviceClass,
+			existingServiceClasses,
+			capture?.ownership.pluginName,
+		);
+		const serviceTypesBefore = existingServiceClasses.length;
 		await originalRegisterService(serviceClass);
 		if (!capture) return;
 		const nextClasses = privateState.serviceTypes.get(serviceType) ?? [];

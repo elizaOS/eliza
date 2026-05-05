@@ -6,7 +6,7 @@
  * canonical default — its values match base.css exactly.
  */
 
-import type { ThemeDefinition } from "../contracts/theme";
+import type { ThemeDefinition } from "../contracts/theme.js";
 
 // ── BSC Gold (default) ─────────────────────────────────────────────
 

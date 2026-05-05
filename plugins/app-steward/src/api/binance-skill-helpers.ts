@@ -106,24 +106,9 @@ export function isBalanceIntent(input: string): boolean {
   );
 }
 
-/**
- * Extract key-value params from the inside of an XML block.
- * Matches `<key>value</key>` pairs, skipping nested XML.
- */
-export function extractXmlParams(block: string): Record<string, string> {
-  const params: Record<string, string> = {};
-  const pairs = block.matchAll(
-    /<([A-Za-z_][A-Za-z0-9_-]*)>\s*([^<]+?)\s*<\/\1>/g,
-  );
-  for (const [, key, val] of pairs) {
-    params[key] = val.trim();
-  }
-  return params;
-}
-
 export function parseFallbackActionBlocks(
   value: unknown,
-  responseText?: string,
+  _responseText?: string,
 ): FallbackParsedAction[] {
   const rawValues: string[] = [];
   if (typeof value === "string") {
@@ -138,42 +123,9 @@ export function parseFallbackActionBlocks(
 
   const parsed: FallbackParsedAction[] = [];
   for (const raw of rawValues) {
-    const xmlActionMatches = Array.from(
-      raw.matchAll(/<action\b[^>]*>([\s\S]*?)<\/action>/gi),
-    );
-    if (xmlActionMatches.length === 0) {
-      const normalized = raw.trim().toUpperCase();
-      if (/^[A-Z0-9_]+$/.test(normalized)) {
-        // Plain action name — try to extract params from the response
-        // text where the LLM writes `<ACTION_NAME>..params..</ACTION_NAME>`
-        let params: Record<string, string> = {};
-        if (responseText) {
-          const actionBlockRe = new RegExp(
-            `<${normalized}>([\\s\\S]*?)<\\/${normalized}>`,
-            "i",
-          );
-          const actionBlock = responseText.match(actionBlockRe);
-          if (actionBlock?.[1]) {
-            params = extractXmlParams(actionBlock[1]);
-          }
-        }
-        parsed.push({ name: normalized, parameters: params });
-      }
-      continue;
-    }
-
-    for (const [, block = ""] of xmlActionMatches) {
-      const nameMatch = block.match(/<name>\s*([A-Za-z0-9_]+)\s*<\/name>/i);
-      if (!nameMatch) continue;
-      const params: Record<string, string> = {};
-      const paramsMatch = block.match(/<params>([\s\S]*?)<\/params>/i);
-      if (paramsMatch?.[1]) {
-        Object.assign(params, extractXmlParams(paramsMatch[1]));
-      }
-      parsed.push({
-        name: nameMatch[1].trim().toUpperCase(),
-        parameters: params,
-      });
+    const normalized = raw.trim().toUpperCase();
+    if (/^[A-Z0-9_]+$/.test(normalized)) {
+      parsed.push({ name: normalized, parameters: {} });
     }
   }
 

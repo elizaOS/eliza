@@ -7,7 +7,7 @@ import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   stringToUuid,
 } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
@@ -120,6 +120,48 @@ type CalendarEventProactiveDecision = {
   reason?: string | null;
 };
 
+function normalizePlannerBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "1"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "0"].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+}
+
+function formatPromptScalar(value: unknown, maxLength = 600): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function formatCalendarEventsForPrompt(events: CalendarEventSlim[]): string {
+  return events
+    .map((event, index) =>
+      [
+        `events[${index}]:`,
+        `  id: ${formatPromptScalar(event.id, 200)}`,
+        `  summary: ${formatPromptScalar(event.summary, 300)}`,
+        `  description: ${formatPromptScalar(event.description ?? "", 500)}`,
+        `  location: ${formatPromptScalar(event.location ?? "", 300)}`,
+        `  startAt: ${formatPromptScalar(event.startAt, 80)}`,
+        `  endAt: ${formatPromptScalar(event.endAt, 80)}`,
+        `  isAllDay: ${event.isAllDay}`,
+        `  attendeeCount: ${event.attendeeCount ?? 0}`,
+        `  hasConferenceLink: ${Boolean(event.conferenceLink)}`,
+      ].join("\n"),
+    )
+    .join("\n");
+}
+
 function normalizeCalendarEventProactiveDecisions(
   parsed: Record<string, unknown> | null,
   allowedIds: Set<string>,
@@ -144,9 +186,12 @@ function normalizeCalendarEventProactiveDecisions(
     if (!id || !allowedIds.has(id)) {
       continue;
     }
+    const shouldCheckIn = normalizePlannerBoolean(
+      record.shouldCheckIn ?? record.should_check_in,
+    );
     decisions.set(id, {
       id,
-      shouldCheckIn: record.shouldCheckIn === true,
+      shouldCheckIn: shouldCheckIn === true,
       reason:
         typeof record.reason === "string" && record.reason.trim().length > 0
           ? record.reason.trim()
@@ -154,6 +199,12 @@ function normalizeCalendarEventProactiveDecisions(
     });
   }
   return decisions;
+}
+
+function parseCalendarEventProactiveOutput(
+  raw: string,
+): Record<string, unknown> | null {
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 export async function classifyCalendarEventsForProactivePlanning(
@@ -191,30 +242,23 @@ export async function classifyCalendarEventsForProactivePlanning(
     "Meetings, calls, interviews, appointments, therapy, coffee or dinner with people, and other short scheduled social/professional events usually deserve a check-in.",
     "Hotel stays, flights, travel blocks, reservations, check-in/check-out, passive itinerary items, and long all-day or near-all-day logistics usually do not deserve a check-in.",
     "If an event would be extremely hard to forget or has no clear actionability, mark shouldCheckIn=false.",
-    'Return only valid JSON with this shape: {"events":[{"id":"...","shouldCheckIn":true|false,"reason":"short reason"}]}',
+    "Return TOON only with one events[n] record per input event:",
+    "events[0]:",
+    "  id: matching event id",
+    "  shouldCheckIn: true or false",
+    "  reason: short reason",
+    "No prose, markdown, code fences, or <think>.",
     "",
     `Current timezone: ${timezone}`,
     `Current ISO datetime: ${now.toISOString()}`,
     "Events:",
-    JSON.stringify(
-      candidateEvents.map((event) => ({
-        id: event.id,
-        summary: event.summary,
-        description: event.description ?? "",
-        location: event.location ?? "",
-        startAt: event.startAt,
-        endAt: event.endAt,
-        isAllDay: event.isAllDay,
-        attendeeCount: event.attendeeCount ?? 0,
-        hasConferenceLink: Boolean(event.conferenceLink),
-      })),
-    ),
+    formatCalendarEventsForPrompt(candidateEvents),
   ].join("\n");
 
   try {
     const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
     const raw = typeof result === "string" ? result : "";
-    const parsed = parseJSONObjectFromText(raw);
+    const parsed = parseCalendarEventProactiveOutput(raw);
     if (!parsed) {
       return null;
     }

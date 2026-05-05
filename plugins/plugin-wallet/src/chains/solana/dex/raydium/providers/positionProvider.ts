@@ -21,6 +21,8 @@ export interface FetchedPositionStatistics {
 
 export const raydiumPositionProvider: Provider = {
   name: "raydium-lp-position-provider",
+  description: "Provides Raydium LP position status.",
+  descriptionCompressed: "Raydium LP positions status.",
   dynamic: true,
   relevanceKeywords: [
     "raydium",
@@ -86,13 +88,29 @@ export const raydiumPositionProvider: Provider = {
       const rpcUrl = runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
       const connection = new Connection(rpcUrl as string);
       const positions = await fetchPositions(connection, ownerAddress);
-      return JSON.stringify(positions);
+      return {
+        text: formatPositionsForPrompt(positions),
+        data: { positions },
+      };
     } catch (error) {
       logger.error("Error in Raydium position provider:", error);
       return null;
     }
   },
 };
+
+function formatPositionsForPrompt(positions: FetchedPositionStatistics[]): string {
+  if (positions.length === 0) {
+    return "Raydium LP positions:\npositions:";
+  }
+  const lines = ["Raydium LP positions:"];
+  positions.forEach((position, index) => {
+    lines.push(
+      `positions[${index}]{poolAddress,positionNftMint,inRange,distanceCenterPositionFromPoolPriceBps,positionWidthBps}: ${position.poolAddress.toString()},${position.positionNftMint.toString()},${position.inRange},${position.distanceCenterPositionFromPoolPriceBps},${position.positionWidthBps}`
+    );
+  });
+  return lines.join("\n");
+}
 
 const fetchPositions = async (
   connection: Connection,

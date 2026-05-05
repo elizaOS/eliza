@@ -105,7 +105,7 @@ export const twilioCallAction: Action = {
     {
       name: "message",
       description:
-        "Plaintext message to speak via TwiML. Will be XML-escaped before dispatch.",
+        "Plaintext message to speak via TwiML; content is escaped before dispatch.",
       required: true,
       schema: { type: "string" as const },
     },

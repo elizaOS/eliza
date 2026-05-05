@@ -19,6 +19,7 @@ export {
   NewsDataService,
 } from "./analytics/news/index.js";
 export * from "./audit/audit-log.js";
+export { walletRouterAction } from "./chains/wallet-action.js";
 // Consolidated LP management surface (formerly @elizaos/plugin-lp-manager).
 // Includes Solana DEX adapters (Raydium / Orca / Meteora) under
 // chains/solana/dex/* and EVM DEX adapters (Uniswap / PancakeSwap / Aerodrome)
@@ -46,7 +47,11 @@ export { agentWalletPlugin, default, walletPlugin } from "./plugin.js";
 export * from "./policy/policy.js";
 export * from "./providers/canonical-provider.js";
 export { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
-export { WalletBackendService } from "./services/wallet-backend-service.js";
+export {
+  WALLET_BACKEND_SERVICE_TYPE,
+  WalletBackendService,
+} from "./services/wallet-backend-service.js";
+export * from "./types/wallet-router.js";
 export * from "./wallet/index.js";
 
 /** ERC-6551 / x402 / CCTP / swaps live under `import "@elizaos/plugin-wallet/sdk"`. */

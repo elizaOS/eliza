@@ -25,6 +25,7 @@ const spec = requireProviderSpec("voiceState");
 export const voiceStateProvider: Provider = {
 	name: spec.name,
 	dynamic: true,
+	contexts: ["social", "connectors"],
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
 		// Voice doesn't get a discord message, so we need to use the channel for guild data
 		const room = await runtime.getRoom(message.roomId);

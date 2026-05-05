@@ -35,7 +35,6 @@ from lib.groq_thoughts import (  # noqa: E402
     WorkItem,
     extract_response_text,
     has_thought,
-    make_is_clean,
     run_round,
 )
 

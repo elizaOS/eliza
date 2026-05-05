@@ -292,6 +292,8 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/features/toggle" },
+  // Browser extension self-registration (formerly REGISTER_BROWSER_SESSION action).
+  { type: "POST", path: "/api/lifeops/browser/register" },
 ];
 
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [

@@ -469,7 +469,7 @@ export class MemoryService {
     const summaryPrompt = this.buildSummaryPrompt(context, input.style || "brief");
 
     const result = await streamText({
-      model: getLanguageModel("gpt-4o-mini"),
+      model: getLanguageModel("gpt-5-mini"),
       prompt: summaryPrompt,
     });
 

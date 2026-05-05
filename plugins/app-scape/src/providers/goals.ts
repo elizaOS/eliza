@@ -46,34 +46,25 @@ export const goalsProvider: Provider = {
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, RECENT_ARCHIVED);
 
-    const parts: string[] = ["# GOALS"];
-
-    if (active) {
-      parts.push(
-        `## ACTIVE\n${encode({
-          id: active.id,
-          title: active.title,
-          source: active.source,
-          progress: active.progress ?? 0,
-          notes: active.notes ?? "",
-        })}`,
-      );
-    } else {
-      parts.push("## ACTIVE\n(no active goal — pick one!)");
-    }
-
-    if (archived.length > 0) {
-      parts.push(
-        `## RECENT\n${encode({
+    return {
+      text: encode({
+        scape_goals: {
+          active: active
+            ? {
+                id: active.id,
+                title: active.title,
+                source: active.source,
+                progress: active.progress ?? 0,
+                notes: active.notes ?? "",
+              }
+            : null,
           recent: archived.map((g) => ({
             title: g.title,
             status: g.status,
             source: g.source,
           })),
-        })}`,
-      );
-    }
-
-    return { text: parts.join("\n\n") };
+        },
+      }),
+    };
   },
 };

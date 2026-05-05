@@ -96,7 +96,9 @@ export interface GetMeetingInfoParams {
 }
 
 export interface GenerateReportParams {
-  meetingId: string;
+  meetingId?: string;
+  conferenceRecordName?: string;
+  transcriptName?: string;
   includeSummary?: boolean;
   includeActionItems?: boolean;
   includeTranscript?: boolean;

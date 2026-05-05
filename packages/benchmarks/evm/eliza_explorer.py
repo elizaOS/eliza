@@ -149,7 +149,7 @@ class ElizaExplorer:
 
     def __init__(
         self,
-        model_name: str = "qwen/qwen3-32b",
+        model_name: str = "openai/gpt-oss-120b",
         max_messages: int = 50,
         run_index: int = 0,
         chain: str = "general",
@@ -469,7 +469,7 @@ async def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    model_name = os.getenv("MODEL_NAME", "qwen/qwen3-32b")
+    model_name = os.getenv("MODEL_NAME", "openai/gpt-oss-120b")
     max_messages = int(os.getenv("MAX_MESSAGES", "50"))
     run_index = int(os.getenv("RUN_INDEX", "0"))
     chain = os.getenv("CHAIN", "general")

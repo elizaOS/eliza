@@ -1,5 +1,6 @@
+import { farcasterCastAction } from "./castRouter";
 import { replyCastAction } from "./replyCast";
 import { sendCastAction } from "./sendCast";
 
-export { replyCastAction, sendCastAction };
-export const farcasterActions = [sendCastAction, replyCastAction];
+export { farcasterCastAction, replyCastAction, sendCastAction };
+export const farcasterActions = [farcasterCastAction];

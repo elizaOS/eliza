@@ -20,6 +20,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { handleN8nRoutes } from "@elizaos/plugin-n8n-workflow/routes/n8n-routes";
 import { ensureRouteAuthorized } from "./auth";
 import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
@@ -32,7 +33,6 @@ import type {
   WorkbenchTask,
 } from "./client-types-config";
 import type { CompatRuntimeState } from "./compat-route-shared";
-import { handleN8nRoutes } from "./n8n-routes";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,

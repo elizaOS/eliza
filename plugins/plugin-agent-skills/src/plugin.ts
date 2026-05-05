@@ -27,6 +27,10 @@ import {
 	skillInstructionsProvider,
 	skillsSummaryProvider,
 } from "./providers/skills";
+import {
+	installAgentSkillsSearchDispatcher,
+	registerAgentSkillsSearchCategory,
+} from "./search-category";
 // Services
 import { AgentSkillsService } from "./services/skills";
 
@@ -51,7 +55,7 @@ const ALL_ACTIONS: Action[] = [
 
 const ALL_PROVIDERS: Provider[] = [
 	enabledSkillsProvider, // Canonical enabled-skills list for USE_SKILL planning
-	skillsSummaryProvider, // Medium-res (default) - installed skills (xml form)
+	skillsSummaryProvider, // Medium-res (default) - installed skills summary
 	skillInstructionsProvider, // High-res - active skill instructions
 	catalogAwarenessProvider, // Dynamic - catalog awareness
 ];
@@ -110,6 +114,9 @@ export const agentSkillsPlugin: Plugin = {
 	// AgentSkillsService.initialize(). This background task only
 	// handles periodic hourly refreshes.
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+		registerAgentSkillsSearchCategory(runtime);
+		installAgentSkillsSearchDispatcher(runtime);
+
 		// If a previous runtime left a timer behind (e.g. reload in dev), clear
 		// it before installing a fresh one so we never stack intervals.
 		if (cleanupSyncTask) {

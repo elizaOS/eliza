@@ -1,5 +1,5 @@
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import type { TwitterService } from "../services/x.service.js";
+import type { XService } from "../services/x.service.js";
 
 /**
  * Structured tweet shape returned by the X feed actions. Kept intentionally
@@ -119,11 +119,9 @@ export function extractRetryAfterSeconds(err: unknown): number | null {
   return null;
 }
 
-export function getTwitterService(
-  runtime: IAgentRuntime,
-): TwitterService | null {
+export function getTwitterService(runtime: IAgentRuntime): XService | null {
   const service = runtime.getService("x") ?? runtime.getService("twitter");
-  return (service as TwitterService | null | undefined) ?? null;
+  return (service as XService | null | undefined) ?? null;
 }
 
 /**

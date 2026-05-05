@@ -6,7 +6,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -27,12 +27,13 @@ User message: {{text}}
 Available clipboard entries:
 {{entries}}
 
-Respond with XML containing:
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+
+Fields:
 - id: The ID of the clipboard entry to delete (required)
 
-<response>
-<id>entry-id</id>
-</response>`;
+Example:
+id: entry-id`;
 
 async function extractDeleteInfo(
 	runtime: IAgentRuntime,
@@ -51,7 +52,7 @@ async function extractDeleteInfo(
 
 	logger.debug("[ClipboardDelete] Extract result:", result);
 
-	const parsed = parseKeyValueXml(String(result)) as Record<
+	const parsed = parseToonKeyValue(String(result)) as Record<
 		string,
 		unknown
 	> | null;

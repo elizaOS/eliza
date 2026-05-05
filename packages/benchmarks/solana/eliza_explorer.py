@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import json
 import os
 import re
@@ -106,6 +107,7 @@ class ElizaExplorer:
         verbose: bool = True,
         code_file: str | None = None,
         environment_config: str | None = None,
+        output_dir: str | None = None,
     ):
         self.model_name = model_name
         self.run_index = run_index
@@ -115,6 +117,7 @@ class ElizaExplorer:
         self.verbose = verbose
         self.code_file = code_file or "voyager/skill_runner/code_loop_code.ts"
         self.environment_config_path = environment_config
+        self.output_dir = Path(output_dir or os.getenv("OUTPUT_DIR", "")).expanduser() if (output_dir or os.getenv("OUTPUT_DIR")) else None
         self.env_config = self._load_environment_config(environment_config)
         self._timeout_ms = int((self.env_config or {}).get("timeout", 30000))
         self._llm = None
@@ -147,22 +150,41 @@ class ElizaExplorer:
     def _ensure_llm(self):
         if self._llm is not None:
             return self._llm
-        if not any(os.getenv(k) for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY")):
-            raise RuntimeError("API key required: set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY")
+        provider = os.getenv("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+        if not provider:
+            if os.getenv("GROQ_API_KEY"):
+                provider = "groq"
+            elif os.getenv("OPENROUTER_API_KEY"):
+                provider = "openrouter"
+            elif os.getenv("OPENAI_API_KEY"):
+                provider = "openai"
+            else:
+                provider = "openrouter"
+        provider_config = {
+            "groq": ("GROQ_API_KEY", "https://api.groq.com/openai/v1"),
+            "openrouter": ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1"),
+            "openai": ("OPENAI_API_KEY", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+        }
+        if provider not in provider_config:
+            raise RuntimeError("Solana explorer supports provider=openai, groq, or openrouter")
+        key_var, base_url = provider_config[provider]
+        api_key = os.getenv(key_var)
+        if not api_key:
+            raise RuntimeError(f"API key required: set {key_var} for provider={provider}")
         try:
             from langchain_openai import ChatOpenAI
         except ImportError as exc:
             raise RuntimeError("langchain_openai is required to run the Solana explorer") from exc
         self._llm = ChatOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=base_url,
             model=self.model_name,
-            api_key=os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY"),
+            api_key=api_key,
             temperature=0.7,
         )
         return self._llm
 
     def save_checkpoint(self) -> Path:
-        metrics_dir = GYM_ENV_DIR / "metrics"
+        metrics_dir = self.output_dir or (GYM_ENV_DIR / "metrics")
         metrics_dir.mkdir(parents=True, exist_ok=True)
         cumulative = self.metrics.get("cumulative_rewards")
         if isinstance(cumulative, list) and cumulative:
@@ -228,18 +250,26 @@ class ElizaExplorer:
             programs = data.get("programs_discovered")
             data["final_programs"] = len(programs) if isinstance(programs, dict) else 0
             metrics_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            if self.output_dir and metrics_path.parent != self.output_dir:
+                target = self.output_dir / metrics_path.name
+                target.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                metrics_path = target
             return metrics_path
         finally:
             os.chdir(old_cwd)
 
 
 async def async_main() -> None:
+    parser = argparse.ArgumentParser(description="Run the Solana instruction discovery benchmark")
+    parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR"), help="Directory for metrics JSON")
+    args = parser.parse_args()
     explorer = ElizaExplorer(
-        model_name=os.getenv("MODEL_NAME", "anthropic/claude-sonnet-4.6"),
+        model_name=os.getenv("MODEL_NAME", os.getenv("BENCHMARK_MODEL_NAME", "openai/gpt-oss-120b")),
         max_messages=int(os.getenv("MAX_MESSAGES", "50")),
         run_index=int(os.getenv("RUN_INDEX", "0")),
         code_file=os.getenv("CODE_FILE"),
         environment_config=os.getenv("ENVIRONMENT_CONFIG"),
+        output_dir=args.output_dir,
     )
     await explorer.run()
 

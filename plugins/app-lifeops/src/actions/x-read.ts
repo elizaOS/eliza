@@ -11,8 +11,7 @@ import type {
 import {
   logger,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import type {
   LifeOpsXDm,
@@ -126,7 +125,7 @@ async function resolveXReadPlanWithLlm(args: {
     "Plan the X read action for this request.",
     "The user may speak in any language.",
     "Use the current request plus recent conversation context.",
-    "Return a JSON object with exactly these fields:",
+    "Return TOON only with exactly these fields:",
     "  subaction: one of read_dms, read_feed, search, or null",
     "  feedType: one of home_timeline or mentions when subaction is read_feed, otherwise null",
     "  query: short search query when subaction is search, otherwise empty or null",
@@ -141,26 +140,27 @@ async function resolveXReadPlanWithLlm(args: {
     "Set shouldAct=false when the user is vague or only asks for general X help.",
     "",
     "Examples:",
-    '  "check my X DMs" -> {"subaction":"read_dms","feedType":null,"query":null,"limit":null,"shouldAct":true,"response":null}',
-    '  "show me my mentions" -> {"subaction":"read_feed","feedType":"mentions","query":null,"limit":null,"shouldAct":true,"response":null}',
-    '  "search X for Eliza" -> {"subaction":"search","feedType":null,"query":"Eliza","limit":null,"shouldAct":true,"response":null}',
-    '  "help me with X" -> {"subaction":null,"feedType":null,"query":null,"limit":null,"shouldAct":false,"response":"Do you want me to read your X DMs, timeline, mentions, or run a search?"}',
+    '  "check my X DMs" -> subaction: read_dms; feedType: null; query: null; limit: null; shouldAct: true; response: null',
+    '  "show me my mentions" -> subaction: read_feed; feedType: mentions; query: null; limit: null; shouldAct: true; response: null',
+    '  "search X for Eliza" -> subaction: search; feedType: null; query: Eliza; limit: null; shouldAct: true; response: null',
+    '  "help me with X" -> subaction: null; feedType: null; query: null; limit: null; shouldAct: false; response: Do you want me to read your X DMs, timeline, mentions, or run a search?',
     "",
-    "Return ONLY valid JSON.",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    "Return TOON only.",
+    "Current request:",
+    currentMessage || "(empty)",
+    "Resolved intent:",
+    args.intent || "(none)",
+    "Recent conversation:",
+    recentConversation || "(none)",
   ].join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {
         subaction: null,

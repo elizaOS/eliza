@@ -1,22 +1,45 @@
+import { parseToonKeyValue } from "@elizaos/core";
+
 /**
- * Tiny XML-tag parser used by every Action handler to pull parameters
- * out of the free-form LLM response string.
- *
- * The LLM is prompted to emit responses like:
- *
- *   <action>WALK_TO</action>
- *   <destination>varrock west bank</destination>
- *
- * The handler calls `extractParam(text, "destination")` to get
- * `"varrock west bank"`. Works regardless of whitespace inside the
- * tags. Case-insensitive on the tag name so the model doesn't have
- * to be disciplined about casing.
+ * Tiny TOON field parser used by Action handlers to pull parameters out of the
+ * LLM response string.
  */
 
+function parsedParams(text: string): Record<string, unknown> {
+  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+  const nested =
+    parsed && typeof parsed.params === "object" && !Array.isArray(parsed.params)
+      ? (parsed.params as Record<string, unknown>)
+      : null;
+  return nested ?? parsed ?? {};
+}
+
+function getParamValue(text: string, name: string): unknown {
+  const params = parsedParams(text);
+  if (name in params) return params[name];
+
+  const normalizedName = name.toLowerCase();
+  for (const [key, value] of Object.entries(params)) {
+    if (key.toLowerCase() === normalizedName) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 export function extractParam(text: string, name: string): string | null {
-  const regex = new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "i");
-  const match = text.match(regex);
-  return match?.[1]?.trim() ?? null;
+  const value = getParamValue(text, name);
+  if (value === null || value === undefined) return null;
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    const textValue = String(value).trim();
+    return textValue.length > 0 ? textValue : null;
+  }
+  return null;
 }
 
 export function extractParamInt(text: string, name: string): number | null {

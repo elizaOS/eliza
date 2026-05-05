@@ -33,12 +33,19 @@ export const botStateProvider: Provider = {
     const snapshot = service.getPerception();
     if (!snapshot) {
       return {
-        text: "# SELF\n(no perception yet — agent has not received a snapshot)",
+        text: encode({
+          scape_self: {
+            status: "no_perception",
+            message: "agent has not received a snapshot",
+          },
+        }),
       };
     }
     const self = snapshot.self;
     const toon = encode({
-      self: {
+      scape_self: {
+        status: "ready",
+        tick: snapshot.tick,
         name: self.name,
         combatLevel: self.combatLevel,
         hp: self.hp,
@@ -50,6 +57,6 @@ export const botStateProvider: Provider = {
         inCombat: self.inCombat,
       },
     });
-    return { text: `# SELF (tick ${snapshot.tick})\n${toon}` };
+    return { text: toon };
   },
 };

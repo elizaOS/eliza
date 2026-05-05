@@ -61,7 +61,7 @@ __all__ = [
     "TauBenchRunner",
     "TauBenchEvaluator",
     "TauAgent",
-    # ElizaOS-integrated agents
+# Eliza bridge/mock agents
     "ElizaOSTauAgent",
     "MockTauAgent",
     "create_tau_agent",

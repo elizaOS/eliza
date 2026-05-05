@@ -8,7 +8,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -54,18 +58,19 @@ async function classifyIntent(
   text: string,
 ): Promise<SearchIntent | null> {
   const prompt = `Analyze the user message and determine what they want to search for in a Shopify store.
-Return a JSON object:
-{ "query": "the search term", "scope": "all" | "products" | "orders" | "customers" }
+Respond with TOON only:
+query: the search term
+scope: all | products | orders | customers
 
 Use "all" when the user does not specify a specific category, or mentions multiple.
 
 User message: "${text}"
-
-Return ONLY the JSON object.`;
+`;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseJSONObjectFromText(response);
+    const parsed =
+      parseToonKeyValue<Record<string, unknown>>(response);
     if (parsed?.query) {
       return parsed as unknown as SearchIntent;
     }

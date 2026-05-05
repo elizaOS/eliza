@@ -1,8 +1,9 @@
 /**
  * @module features/plugin-manager/actions/plugin
  *
- * Unified PLUGIN action with sub-modes (`install`, `eject`, `sync`,
- * `reinject`, `list`, `list_ejected`, `search`, `core_status`, `create`).
+ * Unified MANAGE_PLUGINS action with subactions (`install`, `eject`,
+ * `sync`, `reinject`, `list`, `list_ejected`, `search`, `details`,
+ * `status`, `enable`, `disable`, `core_status`, `create`).
  *
  * Validate gates on owner role + a keyword heuristic + a lookup against
  * any pending PLUGIN_CREATE intent task in the same room (so the
@@ -33,10 +34,16 @@ import { runInstall } from "./plugin-handlers/install.ts";
 import { runList } from "./plugin-handlers/list.ts";
 import { runListEjected } from "./plugin-handlers/list-ejected.ts";
 import { runReinject } from "./plugin-handlers/reinject.ts";
+import {
+	runDisablePlugin,
+	runEnablePlugin,
+	runPluginDetails,
+	runPluginStatus,
+} from "./plugin-handlers/runtime-state.ts";
 import { runSearch } from "./plugin-handlers/search.ts";
 import { runSync } from "./plugin-handlers/sync.ts";
 
-export type PluginMode =
+export type PluginSubaction =
 	| "install"
 	| "eject"
 	| "sync"
@@ -44,10 +51,16 @@ export type PluginMode =
 	| "list"
 	| "list_ejected"
 	| "search"
+	| "details"
+	| "status"
+	| "enable"
+	| "disable"
 	| "core_status"
 	| "create";
 
-const MODES: readonly PluginMode[] = [
+export type PluginMode = PluginSubaction;
+
+const SUBACTIONS: readonly PluginSubaction[] = [
 	"install",
 	"eject",
 	"sync",
@@ -55,6 +68,10 @@ const MODES: readonly PluginMode[] = [
 	"list",
 	"list_ejected",
 	"search",
+	"details",
+	"status",
+	"enable",
+	"disable",
 	"core_status",
 	"create",
 ] as const;
@@ -65,6 +82,10 @@ const SYNC_VERBS = /\bsync\b/i;
 const REINJECT_VERBS = /\b(reinject|re-inject|unject)\b/i;
 const SEARCH_VERBS = /\b(search|find|look\s+for|discover)\b/i;
 const LIST_VERBS = /\b(list|show)\b/i;
+const DETAILS_VERBS =
+	/\b(details?|info|information|tell\s+me\s+more|more\s+about|describe)\b/i;
+const ENABLE_VERBS = /\b(enable|activate|turn\s+on|load)\b/i;
+const DISABLE_VERBS = /\b(disable|deactivate|turn\s+off|unload)\b/i;
 const CREATE_VERBS = /\b(create|build|make|new|scaffold|generate)\b/i;
 const PLUGIN_NOUN = /\bplugins?\b/i;
 const EJECTED_NOUN = /\bejected\b/i;
@@ -73,7 +94,7 @@ const STATUS_NOUN = /\bstatus\b/i;
 const MANAGE_VERBS = /\b(manage|build|create|build|fix|update|edit)\b/i;
 
 const KEYWORD_HEURISTIC =
-	/\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show|manage|fix|update|edit)\b.*\bplugins?\b|\bcore\s+status\b|\bplugin\b.*\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show)\b/i;
+	/\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show|details?|info|status|enable|disable|activate|deactivate|load|unload|manage|fix|update|edit)\b.*\bplugins?\b|\bcore\s+status\b|\bplugin\b.*\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show|details?|info|status|enable|disable|activate|deactivate|load|unload)\b|(?:tell\s+me\s+more|more\s+about|describe)\s+@?[\w-]+\/?plugin-[\w.-]+/i;
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -129,6 +150,38 @@ function readStringOption(
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeSubaction(value: string): PluginSubaction | null {
+	const normalized = value.trim().toLowerCase().replace(/-/g, "_");
+	switch (normalized) {
+		case "installed":
+		case "loaded":
+			return "list";
+		case "list_ejected_plugins":
+		case "ejected":
+			return "list_ejected";
+		case "search_plugins":
+		case "search_plugin":
+			return "search";
+		case "get_plugin_details":
+		case "plugin_details":
+		case "detail":
+			return "details";
+		case "plugin_status":
+			return "status";
+		case "core_status":
+		case "core":
+			return "core_status";
+		case "on":
+			return "enable";
+		case "off":
+			return "disable";
+		default:
+			return (SUBACTIONS as readonly string[]).includes(normalized)
+				? (normalized as PluginSubaction)
+				: null;
+	}
+}
+
 function readSourceOption(
 	options: ActionOptions | undefined,
 ): "npm" | "git" | undefined {
@@ -140,11 +193,10 @@ function readSourceOption(
 function inferMode(
 	text: string,
 	options?: Record<string, unknown>,
-): PluginMode | null {
-	const explicit = readStringOption(options, "mode");
-	if (explicit && (MODES as readonly string[]).includes(explicit)) {
-		return explicit as PluginMode;
-	}
+): PluginSubaction | null {
+	const explicit =
+		readStringOption(options, "subaction") ?? readStringOption(options, "mode");
+	if (explicit) return normalizeSubaction(explicit);
 
 	const trimmed = text.trim();
 	if (!trimmed) return null;
@@ -156,6 +208,15 @@ function inferMode(
 		return "list_ejected";
 	if (LIST_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "list";
 
+	if (
+		DETAILS_VERBS.test(trimmed) &&
+		(PLUGIN_NOUN.test(trimmed) || extractNameFromText(trimmed))
+	)
+		return "details";
+	if (STATUS_NOUN.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "status";
+	if (ENABLE_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "enable";
+	if (DISABLE_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed))
+		return "disable";
 	if (REINJECT_VERBS.test(trimmed)) return "reinject";
 	if (EJECT_VERBS.test(trimmed)) return "eject";
 	if (SYNC_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "sync";
@@ -174,7 +235,44 @@ function extractNameFromText(text: string): string | undefined {
 	if (scoped) return scoped[0];
 	const bare = text.match(/\b(plugin-[\w.-]+)\b/);
 	if (bare) return bare[1];
-	return undefined;
+	const short = text.match(
+		/\b(?:install|eject|sync|reinject|enable|disable|activate|deactivate|turn\s+on|turn\s+off|load|unload|status|details?|info|describe)\s+(?:the\s+)?(?:plugin\s+)?([@\w][\w./-]*)\b/i,
+	);
+	const candidate = short?.[1]?.trim().replace(/[?.!,]+$/, "");
+	if (!candidate) return undefined;
+	const lower = candidate.toLowerCase();
+	if (
+		[
+			"plugin",
+			"plugins",
+			"core",
+			"status",
+			"ejected",
+			"installed",
+			"enabled",
+			"disabled",
+			"details",
+			"info",
+		].includes(lower)
+	) {
+		return undefined;
+	}
+	if (candidate.startsWith("@") || candidate.includes("/")) return candidate;
+	return candidate.startsWith("plugin-") ? candidate : `plugin-${candidate}`;
+}
+
+function normalizePluginNameInput(
+	name: string | undefined,
+): string | undefined {
+	if (!name) return undefined;
+	if (
+		name.startsWith("@") ||
+		name.includes("/") ||
+		name.startsWith("plugin-")
+	) {
+		return name;
+	}
+	return `plugin-${name}`;
 }
 
 function extractQueryFromText(text: string): string | undefined {
@@ -217,41 +315,38 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 	};
 
 	return {
-		name: "PLUGIN",
+		name: "MANAGE_PLUGINS",
 		suppressPostActionContinuation: true,
 		similes: [
-			"PLUGIN_CONTROL",
-			"MANAGE_PLUGINS",
-			// Legacy single-purpose action names — preserved as similes so
-			// callers that still dispatch by these names resolve to PLUGIN
-			// without breaking. Covers both the prior workspace plugin's
-			// names and the prior built-in capability's names.
-			"INSTALL_PLUGIN",
-			"EJECT_PLUGIN",
-			"SYNC_PLUGIN",
-			"REINJECT_PLUGIN",
-			"LIST_EJECTED_PLUGINS",
-			"SEARCH_PLUGIN",
-			"SEARCH_PLUGINS",
-			"CORE_STATUS",
-			"GET_PLUGIN_DETAILS",
+			"PLUGIN",
+			"plugin control",
+			"plugin manager",
+			"manage installed plugins",
+			"manage ejected plugins",
 		],
 
 		description:
-			"Unified plugin control. mode=install installs from registry; mode=eject clones a registry plugin locally; mode=sync pulls upstream into an ejected plugin; mode=reinject removes the local copy; mode=list shows loaded/installed; mode=list_ejected shows ejected; mode=search queries the registry; mode=core_status reports @elizaos/core ejection state; mode=create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
+			"Unified plugin control. subaction=install installs from registry; eject clones a registry plugin locally; sync pulls upstream into an ejected plugin; reinject removes the local copy; list shows loaded/installed; list_ejected shows ejected; search queries the registry; details shows registry/runtime details; status reports plugin state; enable/disable load or unload runtime-registered plugins; core_status reports @elizaos/core ejection state; create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
 
 		parameters: [
 			{
+				name: "subaction",
+				description:
+					"Subaction: install | eject | sync | reinject | list | list_ejected | search | details | status | enable | disable | core_status | create.",
+				required: true,
+				schema: { type: "string", enum: [...SUBACTIONS] },
+			},
+			{
 				name: "mode",
 				description:
-					"Sub-mode: install | eject | sync | reinject | list | list_ejected | search | core_status | create.",
-				required: true,
-				schema: { type: "string", enum: [...MODES] },
+					"Legacy alias for subaction. Prefer subaction in new calls.",
+				required: false,
+				schema: { type: "string", enum: [...SUBACTIONS] },
 			},
 			{
 				name: "name",
 				description:
-					"Plugin name (e.g. @elizaos/plugin-discord or plugin-discord). Required for install / eject / sync / reinject.",
+					"Plugin name (e.g. @elizaos/plugin-discord, plugin-discord, or discord). Required for install / eject / sync / reinject / details / enable / disable. Optional for status.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -356,10 +451,13 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				return { success: false, text: reply };
 			}
 
-			logger.info(`[plugin-manager] PLUGIN mode=${mode}`);
+			logger.info(`[plugin-manager] MANAGE_PLUGINS mode=${mode}`);
 
-			const name =
-				readStringOption(options, "name") ?? extractNameFromText(text);
+			const name = normalizePluginNameInput(
+				readStringOption(options, "name") ??
+					readStringOption(options, "pluginId") ??
+					extractNameFromText(text),
+			);
 			const source = readSourceOption(options);
 			const query =
 				readStringOption(options, "query") ??
@@ -381,6 +479,14 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					return runListEjected({ runtime, callback });
 				case "search":
 					return runSearch({ runtime, query, callback });
+				case "details":
+					return runPluginDetails({ runtime, name: name ?? "", callback });
+				case "status":
+					return runPluginStatus({ runtime, name, callback });
+				case "enable":
+					return runEnablePlugin({ runtime, name: name ?? "", callback });
+				case "disable":
+					return runDisablePlugin({ runtime, name: name ?? "", callback });
 				case "core_status":
 					return runCoreStatus({ runtime, callback });
 				case "create":
@@ -407,7 +513,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Installed @elizaos/plugin-discord@2.0.0 at /…/plugins/installed/@elizaos_plugin-discord\nRestart required to activate.",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -420,7 +526,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Ejected @elizaos/plugin-shopify to /…/plugins/ejected/@elizaos_plugin-shopify (commit 1234abcd)\nRestart required to load the local copy.",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -433,7 +539,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Synced @elizaos/plugin-shopify: 3 new upstream commit(s) at deadbeef\nRestart required.",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -446,7 +552,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Reinjected plugin-shopify (removed /…/plugins/ejected/plugin-shopify)\nRestart required.",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -459,7 +565,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Loaded plugins (2):\n  - plugin-manager [LOADED]\n  - @elizaos/plugin-sql [LOADED]",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -472,7 +578,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Ejected plugins (1):\n  - @elizaos/plugin-shopify (v2.0.0) at /…/plugins/ejected/@elizaos_plugin-shopify",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -485,7 +591,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: 'Found 3 plugin(s) matching "handle blockchain":\n\n1. @elizaos/plugin-wallet (match: 90%)\n   …',
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -498,7 +604,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Core is using NPM package (v2.0.0-alpha.372). Not ejected.",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -511,7 +617,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "[CHOICE:plugin-create id=plugin-create-…]\nnew = Create new plugin\nedit-1 = Edit plugin-notifications\ncancel = Cancel\n[/CHOICE]",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
@@ -524,7 +630,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "Spawned coding agent. I'll verify when it's done. (Push Notifications Plugin at /…/eliza/plugins/plugin-push-notifications)",
-						action: "PLUGIN",
+						action: "MANAGE_PLUGINS",
 					},
 				},
 			],
