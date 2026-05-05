@@ -116,19 +116,37 @@ parts:
       export ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1
       export SKIP_NATIVE_PLUGINS=1
 
-      # Remove plugin source directories so tsc/build does not attempt
-      # to compile them (their deps like coding-agent-adapters are
-      # absent from the snap sandbox). The workspace rewrite above
-      # already remapped `@elizaos/plugin-*: workspace:*` → registry
-      # pins for the ones that need them at build time, so removing
-      # the on-disk plugin sources is safe.
+      # Remove plugin source directories outside the snap runtime closure so
+      # tsc/build does not attempt to compile unrelated app/plugin workspaces.
+      # Keep the local beta runtime workspaces so the snap ships the same code
+      # as the npm tarballs instead of resolving stale registry prereleases.
       node -e '
         const fs = require("fs");
         const path = require("path");
         if (!fs.existsSync("plugins")) process.exit(0);
+        const keep = new Set([
+          "app-elizamaker",
+          "app-lifeops",
+          "app-task-coordinator",
+          "app-training",
+          "plugin-agent-skills",
+          "plugin-browser-bridge",
+          "plugin-imessage",
+          "plugin-local-embedding",
+          "plugin-ollama",
+          "plugin-pdf",
+          "plugin-signal",
+          "plugin-sql",
+          "plugin-streaming",
+          "plugin-telegram",
+          "plugin-video",
+          "plugin-wechat",
+          "plugin-whatsapp",
+        ]);
         for (const dir of fs.readdirSync("plugins").filter(d =>
           fs.statSync(path.join("plugins", d)).isDirectory()
         )) {
+          if (keep.has(dir)) continue;
           fs.rmSync(path.join("plugins", dir), { recursive: true, force: true });
         }
       '
@@ -376,7 +394,7 @@ parts:
         cp -aL "$type_target" "node_modules/@types/$type_pkg"
       done
 
-      # The snap rewrite removes plugin/native workspaces from disk. Turbo
+      # The snap rewrite removes non-runtime plugin/native workspaces from disk. Turbo
       # validates explicit package-task dependencies before filtering, so drop
       # dependency edges that point at packages no longer present in the
       # rewritten workspace graph.
@@ -433,8 +451,43 @@ parts:
         }
       '
 
-      # Full monorepo build via Turborepo (`eliza/package.json` → `turbo run build`).
-      bun run build
+      # Build only the runtime workspace closure needed by the snap. The root
+      # `bun run build` also builds examples and release helpers, which are not
+      # part of the snap payload and depend on workspaces intentionally removed
+      # above.
+      bunx turbo run build \
+        --filter=@elizaos/core \
+        --filter=@elizaos/shared \
+        --filter=@elizaos/ui \
+        --filter=@elizaos/vault \
+        --filter=@elizaos/cloud-routing \
+        --filter=@elizaos/skills \
+        --filter=@elizaos/app-core \
+        --filter=@elizaos/agent \
+        --filter=@elizaos/app-elizamaker \
+        --filter=@elizaos/app-lifeops \
+        --filter=@elizaos/app-task-coordinator \
+        --filter=@elizaos/app-training \
+        --filter=@elizaos/plugin-agent-skills \
+        --filter=@elizaos/plugin-browser-bridge \
+        --filter=@elizaos/plugin-imessage \
+        --filter=@elizaos/plugin-local-embedding \
+        --filter=@elizaos/plugin-ollama \
+        --filter=@elizaos/plugin-pdf \
+        --filter=@elizaos/plugin-signal \
+        --filter=@elizaos/plugin-sql \
+        --filter=@elizaos/plugin-streaming \
+        --filter=@elizaos/plugin-telegram \
+        --filter=@elizaos/plugin-video \
+        --filter=@elizaos/plugin-wechat \
+        --filter=@elizaos/plugin-whatsapp \
+        --filter=@elizaos/capacitor-contacts \
+        --filter=@elizaos/capacitor-phone \
+        --filter=@elizaos/capacitor-wifi \
+        --filter=@elizaos/capacitor-appblocker \
+        --filter=@elizaos/capacitor-mobile-signals \
+        --filter=@elizaos/native-activity-tracker \
+        --filter=@elizaos/scenario-schema
       rm -rf node_modules/@types
       rm -rf "$SNAP_BUILD_TYPES_DIR"
 
