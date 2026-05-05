@@ -50,7 +50,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -617,7 +617,6 @@ def stub_fact_extractor(
 def stub_summarization(
     encoder: ToonEncoder, rng: random.Random, ctx: dict[str, Any], bucket: str,
 ) -> str:
-    spec = next(b for b in SUMMARIZATION_LENGTH_BUCKETS if b[0] == bucket)
     n_topics = rng.randint(2, 3) if bucket == "short" else (
         rng.randint(3, 5) if bucket == "medium" else rng.randint(5, 7)
     )

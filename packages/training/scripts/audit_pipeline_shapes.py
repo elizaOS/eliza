@@ -31,8 +31,8 @@ from typing import Any, Iterator
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.toon import ToonDecoder
-from lib.runtime_phases import classify_phase, PHASE_OOB
+from lib.toon import ToonDecoder  # noqa: E402
+from lib.runtime_phases import classify_phase, PHASE_OOB  # noqa: E402
 
 log = logging.getLogger("audit")
 

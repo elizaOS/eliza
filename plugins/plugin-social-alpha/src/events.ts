@@ -6,6 +6,7 @@ import {
 	type Memory,
 	type MessageReceivedHandlerParams,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
@@ -33,26 +34,21 @@ Recent Messages (if any):
 {{recentMessagesContext}}
 
 # Instructions
-Respond with a JSON object with two keys: "isRelevant" (boolean) and "reason" (string, a brief explanation for your decision).
+Respond with TOON only.
+Fields:
+isRelevant: true/false
+reason: brief explanation
 Focus SOLELY on relevance to crypto. Do not analyze for recommendations yet.
 
 Example Output for relevant message:
-\`\`\`json
-{
-  "isRelevant": true,
-  "reason": "The message discusses price predictions for $ETH."
-}
-\`\`\`
+isRelevant: true
+reason: The message discusses price predictions for $ETH.
 
 Example Output for irrelevant message:
-\`\`\`json
-{
-  "isRelevant": false,
-  "reason": "The message is about weekend plans."
-}
-\`\`\`
+isRelevant: false
+reason: The message is about weekend plans.
 
-# Your Analysis (Respond with JSON only):
+# Your Analysis:
 `;
 
 const RECOMMENDATION_EXTRACTION_TEMPLATE = `
@@ -71,11 +67,15 @@ If the message contains a recommendation or strong criticism:
 4. Estimate the sender's conviction: 'NONE', 'LOW', 'MEDIUM', 'HIGH'.
 5. Extract the direct quote from the message that forms the basis of the recommendation/criticism.
 
-Output a JSON object: \`{"recommendations": [{"tokenMentioned": "string", "isTicker": boolean, "sentiment": "string", "conviction": "string", "quote": "string"}]}\`. 
-If no new, clear recommendation or strong criticism is found, output \`{"recommendations": []}\`
+Respond with TOON only.
+Use this shape:
+recommendations[0]{tokenMentioned,isTicker,sentiment,conviction,quote}: SOL,true,positive,HIGH,$SOL is going to moon
+
+If no new, clear recommendation or strong criticism is found:
+recommendations:
 Focus only on actionable recommendations or strong criticisms, not general token mentions without sentiment or conviction.
 
-# Your Analysis (Respond with JSON only):
+# Your Analysis:
 `;
 
 const MAX_RECENT_MESSAGES_FOR_CONTEXT = 5;
@@ -223,13 +223,12 @@ const messageReceivedHandler = async ({
 				})
 				.join("\n");
 
-			let relevancePrompt = RELEVANCE_CHECK_TEMPLATE.replace(
+			const relevancePrompt = RELEVANCE_CHECK_TEMPLATE.replace(
 				"{{senderName}}",
 				String(content.name || currentMessageSenderId.toString()),
 			)
 				.replace("{{currentMessageText}}", String(content.text || ""))
 				.replace("{{recentMessagesContext}}", history);
-			relevancePrompt += "\n```json\n";
 
 			// logger.debug(`[CommunityInvestor Handler] Relevance prompt being sent to useModel:\n${relevancePrompt}`);
 
@@ -243,7 +242,9 @@ const messageReceivedHandler = async ({
 				`[HANDLER DEBUG] relevanceResponseRaw: '${relevanceResponseRaw}' (type: ${typeof relevanceResponseRaw})`,
 			); // Changed to error for visibility
 
-			const relevanceResult = parseJSONObjectFromText(relevanceResponseRaw);
+			const relevanceResult =
+				parseKeyValueXml<Record<string, unknown>>(relevanceResponseRaw) ??
+				parseJSONObjectFromText(relevanceResponseRaw);
 
 			logger.debug(
 				`[HANDLER DEBUG] Parsed relevanceResult: ${JSON.stringify(relevanceResult)} (type: ${typeof relevanceResult})`,
@@ -274,11 +275,10 @@ const messageReceivedHandler = async ({
 				`[CommunityInvestor] Message IS RELEVANT. Proceeding to extraction.`,
 			); // Changed to error
 
-			let extractionPrompt = RECOMMENDATION_EXTRACTION_TEMPLATE.replace(
+			const extractionPrompt = RECOMMENDATION_EXTRACTION_TEMPLATE.replace(
 				"{{senderName}}",
 				String(content.name || currentMessageSenderId.toString()),
 			).replace("{{messageText}}", String(content.text || ""));
-			extractionPrompt += "\n```json\n";
 
 			const extractionResponseRaw = await runtime.useModel(
 				ModelType.TEXT_LARGE,
@@ -293,9 +293,10 @@ const messageReceivedHandler = async ({
 				conviction: "NONE" | "LOW" | "MEDIUM" | "HIGH";
 				quote: string;
 			};
-			const extractionResult = parseJSONObjectFromText(
-				extractionResponseRaw,
-			) as {
+			const extractionResult = (parseKeyValueXml<{
+				recommendations?: ExtractedRec[];
+			}>(extractionResponseRaw) ??
+				parseJSONObjectFromText(extractionResponseRaw)) as {
 				recommendations: ExtractedRec[];
 			} | null;
 
@@ -368,7 +369,10 @@ const messageReceivedHandler = async ({
 					chain: SupportedChain;
 					ticker?: string;
 				} | null = null;
-				if (extractedRec.isTicker) {
+				const isTicker =
+					extractedRec.isTicker === true ||
+					String(extractedRec.isTicker).toLowerCase() === "true";
+				if (isTicker) {
 					resolvedToken = await communityInvestorService.resolveTicker(
 						extractedRec.tokenMentioned,
 						DEFAULT_CHAIN,

@@ -1,4 +1,4 @@
-import { type IAgentRuntime, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import type { CreateTaskThreadInput } from "./task-registry.js";
 
 export interface TaskAcceptanceCriteriaResult {
@@ -30,13 +30,6 @@ function uniqueCriteria(values: string[]): string[] {
 }
 
 function parseJsonCriteria(raw: string): string[] {
-  const parsedToon = parseKeyValueXml<Record<string, unknown>>(raw);
-  if (Array.isArray(parsedToon?.criteria)) {
-    return uniqueCriteria(
-      parsedToon.criteria.filter((entry): entry is string => typeof entry === "string"),
-    );
-  }
-
   const trimmed = raw.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   const candidate = (fenced?.[1] ?? trimmed).trim();
@@ -93,7 +86,7 @@ function buildAcceptancePrompt(input: CreateTaskThreadInput): string {
       : "- none";
   return [
     "Generate task completion criteria for an orchestrated agent task.",
-    "Respond with TOON only: criteria[0], criteria[1], etc. Include 3 to 7 measurable strings.",
+    "Return strict JSON only: an array of 3 to 7 measurable strings.",
     "Each criterion must be observable and suitable for completion validation.",
     "Avoid generic wording like 'do a good job'.",
     "",

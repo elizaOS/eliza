@@ -8,7 +8,7 @@
  * @module services/stall-classifier
  */
 
-import { type IAgentRuntime, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   buildTaskCompletionTimeline,
   extractTaskCompletionTraceRecords,
@@ -177,10 +177,8 @@ export function buildStallClassificationPrompt(
     `- "prompt": the text of what it's asking\n` +
     `- "suggestedResponse": what to type/send. Use "keys:enter" for TUI menu confirmation, ` +
     `"keys:down,enter" to select a non-default option, or plain text like "y" for text prompts.\n\n` +
-    `Respond with TOON only:\n` +
-    `state: task_complete|waiting_for_input|still_working|error|tool_running\n` +
-    `prompt: prompt text if waiting_for_input\n` +
-    `suggestedResponse: response text or keys:enter`
+    `Respond with ONLY a JSON object:\n` +
+    `{"state": "...", "prompt": "...", "suggestedResponse": "..."}`
   );
 }
 
@@ -329,14 +327,12 @@ export async function classifyStallOutput(
     );
 
     const jsonMatch = result.match(/\{[\s\S]*\}/);
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(result) ??
-      (jsonMatch ? JSON.parse(jsonMatch[0]) : null);
-    if (!parsed) {
-      log(`Stall classification: no structured data in LLM response`);
+    if (!jsonMatch) {
+      log(`Stall classification: no JSON in LLM response`);
       return null;
     }
 
+    const parsed = JSON.parse(jsonMatch[0]);
     const validStates: string[] = [
       "waiting_for_input",
       "still_working",
@@ -344,9 +340,8 @@ export async function classifyStallOutput(
       "error",
       "tool_running",
     ];
-    const state = typeof parsed.state === "string" ? parsed.state : "";
-    if (!validStates.includes(state)) {
-      log(`Stall classification: invalid state "${state}"`);
+    if (!validStates.includes(parsed.state)) {
+      log(`Stall classification: invalid state "${parsed.state}"`);
       return null;
     }
     // Map tool_running → still_working (StallClassification doesn't have tool_running).
@@ -366,23 +361,20 @@ export async function classifyStallOutput(
     // classifier is still useful for detecting waiting_for_input and error
     // states, which is why we don't short-circuit those paths.
     let mappedState: StallClassification["state"];
-    if (state === "tool_running" || state === "task_complete") {
+    if (parsed.state === "tool_running" || parsed.state === "task_complete") {
       mappedState = "still_working";
-      if (state === "task_complete") {
+      if (parsed.state === "task_complete") {
         log(
           `Stall classification for ${sessionId}: LLM said task_complete — downgrading to still_working (authoritative completion comes from hooks, not buffer guessing)`,
         );
       }
     } else {
-      mappedState = state as StallClassification["state"];
+      mappedState = parsed.state;
     }
     const classification: StallClassification = {
       state: mappedState,
-      prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined,
-      suggestedResponse:
-        typeof parsed.suggestedResponse === "string"
-          ? parsed.suggestedResponse
-          : undefined,
+      prompt: parsed.prompt,
+      suggestedResponse: parsed.suggestedResponse,
     };
     if (
       classification.state === "waiting_for_input" &&
@@ -469,10 +461,8 @@ export function buildCombinedClassifyDecidePrompt(
     `- If the prompt asks for information NOT in the original task, set suggestedResponse to null ` +
     `(this will escalate to the human).\n` +
     `- If a PR was just created, the task is likely done — classify as "task_complete".\n\n` +
-    `Respond with TOON only:\n` +
-    `state: task_complete|waiting_for_input|still_working|error|tool_running\n` +
-    `prompt: prompt text if waiting_for_input\n` +
-    `suggestedResponse: response text or keys:enter`
+    `Respond with ONLY a JSON object:\n` +
+    `{"state": "...", "prompt": "...", "suggestedResponse": "..."}`
   );
 }
 
@@ -575,14 +565,12 @@ export async function classifyAndDecideForCoordinator(
     );
 
     const jsonMatch = result.match(/\{[\s\S]*\}/);
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(result) ??
-      (jsonMatch ? JSON.parse(jsonMatch[0]) : null);
-    if (!parsed) {
-      log(`Combined classify+decide: no structured data in LLM response`);
+    if (!jsonMatch) {
+      log(`Combined classify+decide: no JSON in LLM response`);
       return null;
     }
 
+    const parsed = JSON.parse(jsonMatch[0]);
     const validStates: string[] = [
       "waiting_for_input",
       "still_working",
@@ -590,9 +578,8 @@ export async function classifyAndDecideForCoordinator(
       "error",
       "tool_running",
     ];
-    const state = typeof parsed.state === "string" ? parsed.state : "";
-    if (!validStates.includes(state)) {
-      log(`Combined classify+decide: invalid state "${state}"`);
+    if (!validStates.includes(parsed.state)) {
+      log(`Combined classify+decide: invalid state "${parsed.state}"`);
       return null;
     }
 
@@ -601,27 +588,23 @@ export async function classifyAndDecideForCoordinator(
     // completion comes from the agent's hook system (pty-service.handleHookEvent)
     // and the jsonl-based completion watcher in the eliza package.
     let mappedState: StallClassification["state"];
-    if (state === "tool_running" || state === "task_complete") {
+    if (parsed.state === "tool_running" || parsed.state === "task_complete") {
       mappedState = "still_working";
-      if (state === "task_complete") {
+      if (parsed.state === "task_complete") {
         log(
           `Combined classify+decide for ${sessionId}: LLM said task_complete — downgrading to still_working (authoritative completion comes from hooks)`,
         );
       }
     } else {
-      mappedState = state as StallClassification["state"];
+      mappedState = parsed.state;
     }
 
     // Deterministic safety guard: if the LLM approved access to a path
     // outside the workspace, override with a decline. This runs before
     // pty-manager auto-responds, so the unsafe approval never reaches the agent.
-    let suggestedResponse =
-      typeof parsed.suggestedResponse === "string"
-        ? parsed.suggestedResponse
-        : undefined;
-    if (mappedState === "waiting_for_input" && suggestedResponse) {
+    if (mappedState === "waiting_for_input" && parsed.suggestedResponse) {
       const promptText = typeof parsed.prompt === "string" ? parsed.prompt : "";
-      const responseText = suggestedResponse.trim().toLowerCase();
+      const responseText = parsed.suggestedResponse.trim().toLowerCase();
       const approving = ["y", "yes", "keys:enter", "keys:down,enter"].includes(
         responseText,
       );
@@ -634,14 +617,14 @@ export async function classifyAndDecideForCoordinator(
         log(
           `Combined classify+decide: overriding out-of-scope approval for ${sessionId}`,
         );
-        suggestedResponse = `n - That path is outside your workspace. Use ${taskContext.workdir} instead.`;
+        parsed.suggestedResponse = `n — That path is outside your workspace. Use ${taskContext.workdir} instead.`;
       }
     }
 
     const classification: StallClassification = {
       state: mappedState,
-      prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined,
-      suggestedResponse,
+      prompt: parsed.prompt,
+      suggestedResponse: parsed.suggestedResponse,
     };
     if (
       classification.state === "waiting_for_input" &&

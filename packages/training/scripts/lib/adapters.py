@@ -33,6 +33,7 @@ from .eliza_record import (
     ACTION_RESPOND,
     ACTION_SHELL_COMMAND,
     ACTION_TASK_CALL,
+    DEFAULT_THOUGHT_LEAKS,
     ElizaRecord,
     REPLY_ACTIONS,
     ROUTING_ACTIONS,
@@ -2256,7 +2257,6 @@ def _terminal_assistant_extract(content: str) -> tuple[str, str]:
             obj = None
         if isinstance(obj, dict) and ("commands" in obj or "analysis" in obj or "plan" in obj):
             is_json_envelope = True
-            json_obj = obj
             analysis = obj.get("analysis")
             plan = obj.get("plan")
             if isinstance(analysis, str) and analysis.strip():
