@@ -24,9 +24,9 @@ export const botStateProvider: Provider = {
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as
+    const service = runtime.getService("rs_2004scape") as unknown as
       | { getBotState(): BotState | null }
-      | undefined;
+      | null;
     const state = service?.getBotState?.();
     if (!state || !state.connected) {
       return { text: providerText({ status: "not_connected" }) };
