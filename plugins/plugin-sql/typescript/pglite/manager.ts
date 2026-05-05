@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
 import { vector } from "@electric-sql/pglite/vector";
@@ -134,6 +134,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       return;
     }
 
+    mkdirSync(dataDir, { recursive: true });
     const lockPath = this.getDataDirLockPath(dataDir);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {

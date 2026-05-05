@@ -61,11 +61,14 @@ const dumpExists = existsSync(DUMP_SCRIPT);
 const describeOrSkip = uvPath && dumpExists ? describe : describe.skip;
 
 describeOrSkip("eliza-1 registry invariant (Python ↔ TypeScript)", () => {
-  const stdout = execFileSync(
-    uvPath!,
-    ["run", "--quiet", "python", DUMP_SCRIPT],
-    { cwd: TRAINING_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  );
+  const stdout =
+    uvPath && dumpExists
+      ? execFileSync(uvPath, ["run", "--quiet", "python", DUMP_SCRIPT], {
+          cwd: TRAINING_DIR,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        })
+      : "{}";
   const pythonRegistry = JSON.parse(stdout) as Record<string, PythonEntry>;
 
   it("Python registry exposes the same three sizes as TypeScript", () => {
