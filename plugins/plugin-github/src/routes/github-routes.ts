@@ -12,20 +12,22 @@
  *   DELETE /api/github/token   — clears the saved credential and returns
  *                                 `{ connected: false }`.
  *
- * Auth gating sits in front of every handler at the server.ts call site
- * (mirrors `/api/n8n/*`). The handler returns `true` when it owned the
- * request so the dispatcher can short-circuit.
+ * Migrated from packages/app-core/src/api/github-routes.ts. Auth gating
+ * runs in front of every handler — see `routeHandler` below for how the
+ * runtime plugin route bridge calls the dispatcher.
  */
 
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
+import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
 import {
   buildCredentialsFromUserResponse,
   clearCredentials,
   type GitHubCredentialMetadata,
   loadMetadata,
   saveCredentials,
-} from "../services/github-credentials";
+} from "@elizaos/app-core/services/github-credentials";
+import { logger } from "@elizaos/core";
 
 const GITHUB_USER_URL = "https://api.github.com/user";
 const VALIDATION_TIMEOUT_MS = 10_000;
@@ -53,11 +55,6 @@ async function readJsonBody(
   }
 }
 
-/**
- * Successful response from `GET https://api.github.com/user`. Only the
- * `login` is required for our record; everything else GitHub returns is
- * ignored to keep the disk record minimal and the validator strict.
- */
 interface GitHubUserResponse {
   login: string;
 }
@@ -105,12 +102,6 @@ function metadataToStatus(
   };
 }
 
-/**
- * Validate a token by calling GitHub's `/user` endpoint. Returns the
- * authenticated user + the granted OAuth scopes (parsed from the
- * `X-OAuth-Scopes` response header). Throws when the token is invalid,
- * lacks `read:user`, or the network call fails.
- */
 async function validateToken(
   token: string,
   fetchImpl: typeof fetch,
@@ -223,4 +214,35 @@ export async function handleGitHubRoutes(
       sendJson(ctx, 405, { error: "Method not allowed" });
       return true;
   }
+}
+
+/**
+ * Runtime plugin route adapter. The runtime plugin route bridge passes
+ * `(req, res, runtime)`. We thread `runtime` into a CompatRuntimeState
+ * shape so the canonical `ensureRouteAuthorized` gate (cookie/CSRF or
+ * compat token) runs in front of every method.
+ */
+export function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const url = new URL(
+      httpReq.url ?? "/api/github/token",
+      "http://localhost",
+    );
+
+    const state = { current: runtime } as CompatRuntimeState;
+    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
+
+    await handleGitHubRoutes({
+      req: httpReq,
+      res: httpRes,
+      method,
+      pathname: url.pathname,
+    });
+  };
 }
