@@ -8,6 +8,7 @@ import {
 import { request as requestHttps } from "node:https";
 import net from "node:net";
 import { Readable } from "node:stream";
+import { createPinnedLookup } from "../../network/ssrf.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -151,8 +152,6 @@ async function requestWithPinnedAddress(
 	const method = (init.method ?? "GET").toUpperCase();
 	const headers = toRequestHeaders(new Headers(init.headers));
 	const requestFn = url.protocol === "https:" ? requestHttps : requestHttp;
-	const family = net.isIP(target.pinnedAddress) === 6 ? 6 : 4;
-
 	return await new Promise<Response>((resolve, reject) => {
 		let settled = false;
 		const signal = init.signal;
@@ -177,9 +176,10 @@ async function requestWithPinnedAddress(
 			method,
 			path: `${url.pathname}${url.search}`,
 			headers,
-			lookup: (_hostname, _options, callback) => {
-				callback(null, target.pinnedAddress, family);
-			},
+			lookup: createPinnedLookup({
+				hostname: target.hostname,
+				addresses: [target.pinnedAddress],
+			}) as HttpRequestOptions["lookup"],
 			...(url.protocol === "https:"
 				? { servername: target.hostname }
 				: undefined),

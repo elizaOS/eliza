@@ -80,6 +80,10 @@ async function run(
 }
 
 describe("TRANSCRIBE_MEDIA", () => {
+	it("owns the media turn after emitting a transcript or fallback", () => {
+		expect(transcribeMedia.suppressPostActionContinuation).toBe(true);
+	});
+
 	it("validates current media attachments without requiring transcription keywords", async () => {
 		await expect(
 			transcribeMedia.validate?.(

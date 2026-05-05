@@ -1,9 +1,12 @@
 import {
 	ChannelType,
 	type Content,
+	ContentType,
 	checkPairingAllowed,
 	createUniqueUuid,
 	EventType,
+	type FetchedKnowledgeUrl,
+	fetchKnowledgeFromUrl,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
@@ -84,6 +87,21 @@ function normalizeReplyToMode(
 	}
 
 	return "first";
+}
+
+function fetchedUrlToAttachment(
+	url: string,
+	fetched: FetchedKnowledgeUrl,
+): Media {
+	const hasReadableText = fetched.contentType !== "binary";
+	return {
+		id: `webpage-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+		url,
+		title: fetched.filename || "Web Page",
+		source: fetched.contentType === "transcript" ? "YouTube" : "Web",
+		text: hasReadableText ? fetched.content : "",
+		contentType: ContentType.LINK,
+	};
 }
 
 /**
@@ -1091,8 +1109,8 @@ export class MessageManager {
 		}
 
 		if (message.attachments.size > 0) {
-			attachments = await this.attachmentManager.processAttachments(
-				message.attachments,
+			attachments.push(
+				...(await this.attachmentManager.processAttachments(message.attachments)),
 			);
 		}
 
@@ -1135,7 +1153,24 @@ export class MessageManager {
 					);
 				}
 			} else {
-				// Use string literal type for getService, assume methods exist at runtime
+				try {
+					const fetched = await fetchKnowledgeFromUrl(url);
+					attachments.push(fetchedUrlToAttachment(url, fetched));
+					continue;
+				} catch (error) {
+					const errorMsg =
+						error instanceof Error ? error.message : String(error);
+					this.runtime.logger.debug(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							url,
+							error: errorMsg,
+						},
+						"Direct URL enrichment failed; trying browser service fallback",
+					);
+				}
+
 				const browserService = this.runtime.getService(ServiceType.BROWSER) as
 					| ({
 							getPageContent?: (
@@ -1166,6 +1201,7 @@ export class MessageManager {
 						source: "Web",
 						description: summary,
 						text: summary,
+						contentType: ContentType.LINK,
 					});
 				} catch (error) {
 					// Silently handle browser errors (certificate issues, timeouts, dead sites, etc.)

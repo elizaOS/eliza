@@ -143,6 +143,21 @@ describe("READ_ATTACHMENT", () => {
 				"You can make lentil soup with lentils, onion, carrot, and broth.",
 			promptIncludes: ["which recipe can I make", "Pancakes: flour"],
 		},
+		{
+			name: "answers exact-value URL requests from link content",
+			request: "open this url and reply only with the secret phrase",
+			content:
+				"<html><body>Secret phrase: velvet-lantern-7419</body></html>",
+			answer: "velvet-lantern-7419",
+			promptIncludes: [
+				"open this url and reply only with the secret phrase",
+				"velvet-lantern-7419",
+			],
+			contentType: ContentType.LINK,
+			source: "Web",
+			title: "proof",
+			url: "https://example.org/proof",
+		},
 	]) {
 		it(scenario.name, async () => {
 			const { callback, result, runtime } = await runReadAttachment({
@@ -151,8 +166,10 @@ describe("READ_ATTACHMENT", () => {
 				attachments: [
 					attachment({
 						text: scenario.content,
-						source: "Plaintext",
-						title: "message.txt",
+						contentType: scenario.contentType,
+						source: scenario.source ?? "Plaintext",
+						title: scenario.title ?? "message.txt",
+						url: scenario.url,
 					}),
 				],
 			});
