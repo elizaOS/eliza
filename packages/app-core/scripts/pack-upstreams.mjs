@@ -6,7 +6,13 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
@@ -18,9 +24,10 @@ const ELIZA_ROOT = existsSync(
   ? ROOT
   : path.join(ROOT, "eliza");
 
-// Target packages to pack. These are the package boundary that Milady consumes
-// when it runs without a repo-local eliza checkout.
-const TARGETS = [
+// Seed packages to pack. Their local workspace dependencies are added
+// automatically so PR tarball install tests do not depend on already-published
+// beta packages.
+const SEED_TARGETS = [
   { label: "@elizaos/core", dir: path.join(ELIZA_ROOT, "packages", "core") },
   {
     label: "@elizaos/shared",
@@ -78,6 +85,195 @@ function readPackageJson(dir) {
   }
 }
 
+function collectWorkspacePackages(root) {
+  const packageRoots = [
+    path.join(root, "packages"),
+    path.join(root, "plugins"),
+    path.join(root, "cloud", "packages"),
+  ];
+  const packages = new Map();
+
+  for (const packageRoot of packageRoots) {
+    walk(packageRoot, (entryPath) => {
+      if (path.basename(entryPath) !== "package.json") {
+        return;
+      }
+      const pkgJson = readPackageJson(path.dirname(entryPath));
+      if (
+        !pkgJson ||
+        pkgJson.private === true ||
+        typeof pkgJson.name !== "string" ||
+        typeof pkgJson.version !== "string"
+      ) {
+        return;
+      }
+      if (!packages.has(pkgJson.name)) {
+        packages.set(pkgJson.name, {
+          label: pkgJson.name,
+          dir: path.dirname(entryPath),
+        });
+      }
+    });
+  }
+
+  for (const target of SEED_TARGETS) {
+    packages.set(target.label, target);
+  }
+
+  return packages;
+}
+
+function walk(dirPath, visit) {
+  let entries;
+  try {
+    entries = readdirSync(dirPath, { withFileTypes: true });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return;
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      if (
+        [
+          "node_modules",
+          "dist",
+          ".git",
+          ".turbo",
+          "android",
+          "ios",
+          "build",
+        ].includes(entry.name)
+      ) {
+        continue;
+      }
+      walk(entryPath, visit);
+      continue;
+    }
+    visit(entryPath);
+  }
+}
+
+function collectLocalDependencyNames(pkgJson, workspacePackages) {
+  const names = new Set();
+  for (const sectionName of ["dependencies", "optionalDependencies"]) {
+    const section = pkgJson[sectionName];
+    if (!section || typeof section !== "object") {
+      continue;
+    }
+    for (const [name, spec] of Object.entries(section)) {
+      if (
+        typeof spec === "string" &&
+        spec.startsWith("workspace:") &&
+        workspacePackages.has(name)
+      ) {
+        names.add(name);
+      }
+    }
+  }
+  return names;
+}
+
+function resolveTargets() {
+  const workspacePackages = collectWorkspacePackages(ELIZA_ROOT);
+  const targets = new Map();
+  const queue = [...SEED_TARGETS.map((target) => target.label)];
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const label = queue[index];
+    if (targets.has(label)) {
+      continue;
+    }
+
+    const target = workspacePackages.get(label);
+    if (!target) {
+      throw new Error(`[pack-upstreams] Missing local workspace package ${label}`);
+    }
+
+    const pkgJson = readPackageJson(target.dir);
+    if (!pkgJson) {
+      throw new Error(`[pack-upstreams] No package.json found in ${target.dir}`);
+    }
+
+    targets.set(label, target);
+    for (const dependencyName of collectLocalDependencyNames(
+      pkgJson,
+      workspacePackages,
+    )) {
+      if (!targets.has(dependencyName)) {
+        queue.push(dependencyName);
+      }
+    }
+  }
+
+  return {
+    targets: [...targets.values()],
+    workspacePackages,
+  };
+}
+
+function workspaceSpecToVersion(spec, version) {
+  if (spec === "workspace:^") {
+    return `^${version}`;
+  }
+  if (spec === "workspace:~") {
+    return `~${version}`;
+  }
+  return version;
+}
+
+function rewriteWorkspaceDependencies(packDir, pkgJson, workspacePackages) {
+  let changed = false;
+  const nextPkgJson = structuredClone(pkgJson);
+  for (const sectionName of [
+    "dependencies",
+    "optionalDependencies",
+    "peerDependencies",
+    "devDependencies",
+  ]) {
+    const section = nextPkgJson[sectionName];
+    if (!section || typeof section !== "object") {
+      continue;
+    }
+    for (const [name, spec] of Object.entries(section)) {
+      if (typeof spec !== "string" || !spec.startsWith("workspace:")) {
+        continue;
+      }
+      const workspacePackage = workspacePackages.get(name);
+      if (!workspacePackage) {
+        throw new Error(
+          `[pack-upstreams] ${pkgJson.name} depends on unknown workspace package ${name}`,
+        );
+      }
+      const dependencyPkgJson = readPackageJson(workspacePackage.dir);
+      if (!dependencyPkgJson?.version) {
+        throw new Error(
+          `[pack-upstreams] Could not resolve version for workspace package ${name}`,
+        );
+      }
+      section[name] = workspaceSpecToVersion(spec, dependencyPkgJson.version);
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    return null;
+  }
+
+  const packageJsonPath = path.join(packDir, "package.json");
+  const originalPackageJson = readFileSync(packageJsonPath, "utf8");
+  writeFileSync(packageJsonPath, `${JSON.stringify(nextPkgJson, null, 2)}\n`);
+  return () => writeFileSync(packageJsonPath, originalPackageJson);
+}
+
 function packageTarballName(pkgJson) {
   return `${pkgJson.name.replace(/^@/, "").replace("/", "-")}-${pkgJson.version}.tgz`;
 }
@@ -100,7 +296,14 @@ async function packUpstreams() {
     mkdirSync(ARTIFACTS_DIR, { recursive: true });
   }
 
-  for (const target of TARGETS) {
+  const { targets, workspacePackages } = resolveTargets();
+  console.log(
+    `[pack-upstreams] Packing ${targets.length} package(s): ${targets
+      .map((target) => target.label)
+      .join(", ")}`,
+  );
+
+  for (const target of targets) {
     const pkgDir = target.dir;
     if (!existsSync(pkgDir)) {
       throw new Error(
@@ -153,11 +356,20 @@ async function packUpstreams() {
     console.log(
       `[pack-upstreams] Packing ${packPkgJson.name} from ${packDir}...`,
     );
-    await runCommand(
-      "npm",
-      ["pack", "--pack-destination", ARTIFACTS_DIR],
+    const restorePackageJson = rewriteWorkspaceDependencies(
       packDir,
+      packPkgJson,
+      workspacePackages,
     );
+    try {
+      await runCommand(
+        "npm",
+        ["pack", "--pack-destination", ARTIFACTS_DIR],
+        packDir,
+      );
+    } finally {
+      restorePackageJson?.();
+    }
 
     if (!existsSync(destTarballPath)) {
       throw new Error(

@@ -1,24 +1,32 @@
 {
   "name": "@elizaos/native-activity-tracker",
   "version": "2.0.0-beta.0",
-  "private": true,
   "description": "macOS activity-tracker native helper (Swift) plus a small TypeScript driver that spawns and line-parses the collector process.",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "src/",
+    "dist/",
+    "native/macos/activity-collector",
     "native/macos/activity-collector.swift"
   ],
   "scripts": {
-    "build": "echo '[activity-tracker] TypeScript-only package, nothing to build'",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
     "build:swift": "swiftc -O native/macos/activity-collector.swift -o native/macos/activity-collector"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "elizaos": {
     "platforms": [

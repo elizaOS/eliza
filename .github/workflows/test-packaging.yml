@@ -206,21 +206,33 @@ jobs:
         run: |
           set -euo pipefail
           ARTIFACTS_DIR="artifacts"
-          for tarball in "$ARTIFACTS_DIR"/*.tgz; do
-            [ -f "$tarball" ] || continue
-            echo "::group::Testing $(basename "$tarball")"
-            TEST_DIR=$(mktemp -d)
-            cd "$TEST_DIR"
-            echo '{"name":"tarball-test","private":true,"type":"module"}' > package.json
-            npm install "$OLDPWD/$tarball" --ignore-scripts 2>&1
-            # Verify the package has a valid entry point
-            PKG_MANIFEST=$(find node_modules/@elizaos -mindepth 2 -maxdepth 2 -name package.json | head -n 1)
-            PKG_NAME=$(node -p "require('$PKG_MANIFEST').name" 2>/dev/null || echo "unknown")
+          tarballs=("$ARTIFACTS_DIR"/*.tgz)
+          if [ ! -f "${tarballs[0]}" ]; then
+            echo "::error::No tarballs found in $ARTIFACTS_DIR"
+            exit 1
+          fi
+
+          TEST_DIR=$(mktemp -d)
+          ROOT_DIR="$PWD"
+          install_paths=()
+          for tarball in "${tarballs[@]}"; do
+            install_paths+=("$ROOT_DIR/$tarball")
+          done
+          cd "$TEST_DIR"
+          echo '{"name":"tarball-test","private":true,"type":"module"}' > package.json
+          npm install "${install_paths[@]}" --ignore-scripts 2>&1
+
+          for tarball in "${tarballs[@]}"; do
+            echo "::group::Checking $(basename "$tarball")"
+            PKG_NAME=$(tar -xOf "$ROOT_DIR/$tarball" package/package.json | node -e "process.stdin.setEncoding('utf8'); let data = ''; process.stdin.on('data', chunk => data += chunk); process.stdin.on('end', () => console.log(JSON.parse(data).name));")
+            PKG_MANIFEST="node_modules/${PKG_NAME}/package.json"
+            test -f "$PKG_MANIFEST"
             echo "Installed: $PKG_NAME"
-            cd "$OLDPWD"
-            rm -rf "$TEST_DIR"
             echo "::endgroup::"
           done
+
+          cd "$ROOT_DIR"
+          rm -rf "$TEST_DIR"
           echo "All JS tarballs passed installation test"
 
       - name: Upload tarball artifacts
