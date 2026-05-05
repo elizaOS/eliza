@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
-  fetchWithSsrfGuard,
+  fetchRemoteMedia,
   type GenerateTextParams,
   type IAgentRuntime,
   type ImageDescriptionParams,
@@ -463,16 +463,18 @@ async function downloadImageUrl(
     );
   }
 
-  let response: Response | undefined;
-  let release: (() => Promise<void>) | undefined;
+  let buffer: Buffer;
+  let contentType: string | undefined;
   try {
-    const result = await fetchWithSsrfGuard({
+    const result = await fetchRemoteMedia({
       url: parsed.toString(),
+      maxBytes: MAX_IMAGE_BYTES,
+      maxRedirects: 3,
       timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
       lookupFn: nodeLookup,
     });
-    response = result.response;
-    release = result.release;
+    buffer = result.buffer;
+    contentType = result.contentType?.split(";")[0]?.trim().toLowerCase();
   } catch (error) {
     throw new Error(
       `IMAGE_DESCRIPTION image fetch failed: ${
@@ -481,42 +483,15 @@ async function downloadImageUrl(
     );
   }
 
-  try {
-    if (!response.ok) {
-      throw new Error(
-        `IMAGE_DESCRIPTION image fetch failed: ${response.status} ${response.statusText}`,
-      );
-    }
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
-      throw new Error(
-        `IMAGE_DESCRIPTION image exceeds ${MAX_IMAGE_BYTES} bytes`,
-      );
-    }
-    const contentType = response.headers
-      .get("content-type")
-      ?.split(";")[0]
-      ?.trim()
-      .toLowerCase();
-    if (contentType && !contentType.startsWith("image/")) {
-      throw new Error(`IMAGE_DESCRIPTION URL is not an image: ${contentType}`);
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength > MAX_IMAGE_BYTES) {
-      throw new Error(
-        `IMAGE_DESCRIPTION image exceeds ${MAX_IMAGE_BYTES} bytes`,
-      );
-    }
-    const imagePath = path.join(
-      tempDir,
-      `${randomUUID()}${imageExtensionForMime(contentType) || imageExtensionForUrl(parsed)}`,
-    );
-    await writeFile(imagePath, buffer);
-    return imagePath;
-  } finally {
-    await release?.();
+  if (contentType && !contentType.startsWith("image/")) {
+    throw new Error(`IMAGE_DESCRIPTION URL is not an image: ${contentType}`);
   }
+  const imagePath = path.join(
+    tempDir,
+    `${randomUUID()}${imageExtensionForMime(contentType) || imageExtensionForUrl(parsed)}`,
+  );
+  await writeFile(imagePath, buffer);
+  return imagePath;
 }
 
 export async function codexCliImageDescriptionModel(
