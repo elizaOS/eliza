@@ -11,7 +11,9 @@ describe("Signal message connector", () => {
       getRoom: vi.fn(),
     } as unknown as IAgentRuntime;
     const service = Object.create(SignalService.prototype) as SignalService;
-    const sendMessageSpy = vi.spyOn(service, "sendMessage").mockResolvedValue({ timestamp: 123 });
+    const sendMessageSpy = vi
+      .spyOn(service, "sendMessage")
+      .mockResolvedValue({ timestamp: 123 });
 
     SignalService.registerSendHandlers(runtime, service);
 

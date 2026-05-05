@@ -99,7 +99,8 @@ export const sendReaction: Action = {
         prompt,
       });
 
-      const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
+      const parsedResponse =
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (
         parsedResponse?.emoji &&
         parsedResponse?.targetTimestamp &&

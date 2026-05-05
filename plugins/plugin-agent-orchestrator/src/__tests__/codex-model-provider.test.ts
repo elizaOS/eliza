@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { ModelType, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { taskAgentPlugin } from "../index.js";
@@ -11,6 +14,7 @@ import {
   parseCodexImageDescriptionResult,
   promptFromGenerateTextParams,
   readCodexModelProviderPriority,
+  runCodexExec,
 } from "../services/codex-model-provider.js";
 
 function runtimeWithSettings(settings: Record<string, string>): IAgentRuntime {
@@ -159,5 +163,77 @@ describe("codex model provider", () => {
         prompt: "describe this",
       }),
     ).rejects.toThrow(/private|internal|Blocked/i);
+  });
+
+  it("passes percent-encoded data URL image bytes to codex without utf8 corruption", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "codex-provider-test-"));
+    try {
+      const fakeCodex = path.join(tempDir, "fake-codex");
+      await writeFile(
+        fakeCodex,
+        `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "exec" && args.includes("--help")) {
+  console.log("--output-last-message");
+  process.exit(0);
+}
+const outputFile = args[args.indexOf("--output-last-message") + 1];
+const imagePath = args[args.indexOf("--image") + 1];
+const description = fs.readFileSync(imagePath).subarray(0, 8).toString("hex");
+fs.writeFileSync(outputFile, JSON.stringify({ title: "image", description }));
+`,
+        { mode: 0o755 },
+      );
+
+      await expect(
+        codexCliImageDescriptionModel(
+          runtimeWithSettings({
+            PARALLAX_CODEX_BIN: fakeCodex,
+            PARALLAX_CODEX_MODEL_WORKDIR: tempDir,
+            PARALLAX_CODEX_MODEL_TIMEOUT_MS: "5000",
+          }),
+          {
+            imageUrl: "data:image/png,%89PNG%0D%0A%1A%0A",
+            prompt: "describe this",
+          },
+        ),
+      ).resolves.toEqual({
+        title: "image",
+        description: "89504e470d0a1a0a",
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects cleanly when codex exits before reading stdin", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "codex-provider-test-"));
+    try {
+      const fakeCodex = path.join(tempDir, "fake-codex");
+      await writeFile(
+        fakeCodex,
+        `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === "exec" && args.includes("--help")) {
+  console.log("--output-last-message");
+  process.exit(0);
+}
+process.exit(23);
+`,
+        { mode: 0o755 },
+      );
+
+      await expect(
+        runCodexExec("x".repeat(2_000_000), {
+          binary: fakeCodex,
+          workdir: tempDir,
+          reasoningEffort: "low",
+          timeoutMs: 5000,
+        }),
+      ).rejects.toThrow(/code 23|empty model response/i);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });
