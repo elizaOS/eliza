@@ -81,7 +81,6 @@ export * from "./pages/TrajectoriesView";
 export * from "./pages/TrajectoryDetailView";
 export * from "./pages/TriggersView";
 export * from "./pages/VectorBrowserView";
-export * from "./phone-companion/index";
 export * from "./settings/ApiKeyConfig";
 export * from "./settings/DesktopWorkspaceSection";
 export * from "./settings/PermissionsSection";

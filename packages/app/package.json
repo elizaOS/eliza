@@ -46,6 +46,7 @@
     "@elizaos/app-defense-of-the-agents": "workspace:*",
     "@elizaos/app-hyperscape": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
+    "@elizaos/app-phone": "workspace:*",
     "@elizaos/app-scape": "workspace:*",
     "@elizaos/app-shopify": "workspace:*",
     "@elizaos/app-steward": "workspace:*",

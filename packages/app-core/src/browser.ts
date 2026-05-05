@@ -55,7 +55,6 @@ export {
 export * from "./components/inventory/index.ts";
 export * from "./components/pages/ChatModalView.tsx";
 export * from "./components/pages/PageScopedChatPane.tsx";
-export { PhoneCompanionApp } from "./components/phone-companion/PhoneCompanionApp.tsx";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";

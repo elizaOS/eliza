@@ -2,14 +2,17 @@
   "name": "@elizaos/app-phone",
   "version": "0.0.0",
   "type": "module",
-  "description": "Phone overlay app for the Eliza Android build — dialer, call log, and contact-driven calls backed by @elizaos/capacitor-phone.",
+  "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
     "./ui": "./src/ui.ts",
     "./plugin": "./src/plugin.ts",
-    "./register": "./src/register.ts"
+    "./register": "./src/register.ts",
+    "./register-companion-page": "./src/register-companion-page.ts",
+    "./companion": "./src/companion/index.ts",
+    "./companion/services": "./src/companion/services/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -17,6 +20,11 @@
     "test": "bunx vitest run --config ./vitest.config.ts"
   },
   "dependencies": {
+    "@capacitor/barcode-scanner": "^3.0.0",
+    "@capacitor/core": "8.3.1",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.0.0",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/core": "workspace:*",
