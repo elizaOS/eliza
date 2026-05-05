@@ -223,10 +223,6 @@ function buildRuntimeWithCryptoAutomationCapabilities() {
         name: "HYPERLIQUID_ACTION",
         description: "Manage Hyperliquid automation intents.",
       },
-      {
-        name: "POLYMARKET_ACTION",
-        description: "Manage Polymarket automation intents.",
-      },
     ],
     plugins: [{ name: "evm" }, { name: "chain_solana" }],
   };
@@ -589,16 +585,6 @@ describe("automations compat routes", () => {
     );
     expect(body.nodes).toContainEqual(
       expect.objectContaining({
-        id: "crypto:polymarket.action",
-        class: "action",
-        source: "static_catalog",
-        ownerScoped: true,
-        availability: "disabled",
-        disabledReason: "Load the Polymarket runtime plugin.",
-      }),
-    );
-    expect(body.nodes).toContainEqual(
-      expect.objectContaining({
         id: "trigger:order.schedule",
         class: "trigger",
         source: "static_catalog",
@@ -636,7 +622,6 @@ describe("automations compat routes", () => {
       "crypto:evm.bridge",
       "crypto:solana.swap",
       "crypto:hyperliquid.action",
-      "crypto:polymarket.action",
       "trigger:order.event",
     ]) {
       expect(body.nodes).toContainEqual(

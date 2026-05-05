@@ -107,13 +107,13 @@ export const installPluginAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Add the polymarket integration for me.",
+          text: "Add the OpenAI integration for me.",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Plugin @elizaos/plugin-polymarket@0.9.2 installed successfully.",
+          text: "Plugin @elizaos/plugin-openai@2.0.0-alpha.4 installed successfully. The agent will restart to load it.",
         },
       },
     ],

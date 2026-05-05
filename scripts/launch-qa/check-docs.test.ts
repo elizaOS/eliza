@@ -88,4 +88,20 @@ describe("docs gate", () => {
       }),
     );
   });
+
+  it("checks launchdocs under the package docs tree", async () => {
+    const repoRoot = await makeRepo();
+    await fs.mkdir(path.join(repoRoot, "packages", "docs", "launchdocs"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(repoRoot, "packages", "docs", "launchdocs", "review.md"),
+      "# Review\n\nRun `bun run dev`.\n",
+    );
+
+    const result = checkDocs({ repoRoot, scope: "launchdocs" });
+
+    expect(result.ok).toBe(true);
+    expect(result.checkedFiles).toEqual(["packages/docs/launchdocs/review.md"]);
+  });
 });

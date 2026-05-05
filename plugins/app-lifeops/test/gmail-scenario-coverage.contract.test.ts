@@ -51,6 +51,7 @@ const ELIZA_SCENARIO_ROOT = path.join(ELIZA_ROOT, "test", "scenarios");
 const GMAIL_SCENARIO_DIR = path.join(ELIZA_SCENARIO_ROOT, "messaging.gmail");
 const GMAIL_PRD_PATH = path.join(
   ELIZA_ROOT,
+  "packages",
   "docs",
   "plans",
   "2026-04-22-gmail-lifeops-integration-review.md",

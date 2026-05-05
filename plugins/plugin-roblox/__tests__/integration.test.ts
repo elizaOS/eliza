@@ -5,6 +5,7 @@
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { robloxPlugin } from "../index";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,14 +41,12 @@ function createMockMemory(text: string): Memory {
 // ---------------------------------------------------------------------------
 
 describe("Roblox Plugin – Metadata", () => {
-  it("should have name = 'roblox' and description mentioning Roblox", async () => {
-    const { robloxPlugin } = await import("../index");
+  it("should have name = 'roblox' and description mentioning Roblox", () => {
     expect(robloxPlugin.name).toBe("roblox");
     expect(robloxPlugin.description).toMatch(/roblox/i);
-  }, 30_000);
+  });
 
-  it("should register exactly 3 actions", async () => {
-    const { robloxPlugin } = await import("../index");
+  it("should register exactly 3 actions", () => {
     expect(robloxPlugin.actions).toHaveLength(3);
     const names = robloxPlugin.actions?.map((a) => a.name);
     expect(names).toContain("SEND_ROBLOX_MESSAGE");
@@ -55,25 +54,21 @@ describe("Roblox Plugin – Metadata", () => {
     expect(names).toContain("GET_ROBLOX_PLAYER");
   });
 
-  it("should register exactly 1 provider (roblox-game-state)", async () => {
-    const { robloxPlugin } = await import("../index");
+  it("should register exactly 1 provider (roblox-game-state)", () => {
     expect(robloxPlugin.providers).toHaveLength(1);
     expect(robloxPlugin.providers?.[0].name).toBe("roblox-game-state");
   });
 
-  it("should register exactly 1 service (RobloxService)", async () => {
-    const { robloxPlugin } = await import("../index");
+  it("should register exactly 1 service (RobloxService)", () => {
     expect(robloxPlugin.services).toHaveLength(1);
   });
 
-  it("should include a test suite", async () => {
-    const { robloxPlugin } = await import("../index");
+  it("should include a test suite", () => {
     expect(robloxPlugin.tests).toBeDefined();
     expect(robloxPlugin.tests?.length).toBeGreaterThan(0);
   });
 
-  it("should expose an init function", async () => {
-    const { robloxPlugin } = await import("../index");
+  it("should expose an init function", () => {
     expect(typeof robloxPlugin.init).toBe("function");
   });
 });

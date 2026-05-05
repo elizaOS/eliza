@@ -8,6 +8,43 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
 const defaultSpec = "test/ui-smoke/all-pages-clicksafe.spec.ts";
 const readyTimeoutMs = 180_000;
+const defaultTestGreps = [
+  "desktop connectors",
+  "mobile connectors",
+  "desktop chat",
+  "desktop apps catalog",
+  "desktop automations",
+  "desktop browser",
+  "desktop character",
+  "desktop character knowledge",
+  "desktop wallet",
+  "desktop settings",
+  "desktop app tool lifeops",
+  "desktop app tool tasks",
+  "desktop app tool plugins",
+  "desktop app tool skills",
+  "desktop app tool fine tuning",
+  "desktop app tool trajectories",
+  "desktop app tool relationships",
+  "desktop app tool memories",
+  "desktop app tool runtime",
+  "desktop app tool database",
+  "desktop app tool logs",
+  "desktop app tool companion",
+  "desktop app tool shopify",
+  "desktop app tool vincent",
+  "mobile chat",
+  "mobile apps catalog",
+  "mobile automations",
+  "mobile wallet",
+  "mobile settings",
+  "mobile app tool lifeops",
+  "mobile app tool plugins",
+  "mobile app tool skills",
+  "mobile app tool runtime",
+  "mobile app tool logs",
+  "visible safe app tiles and allowlisted buttons are click-safe",
+];
 
 function prefixChunk(prefix, chunk) {
   const text = String(chunk);
@@ -69,6 +106,31 @@ async function stopChild(child) {
   }
 }
 
+async function runPlaywright(args, env, label) {
+  process.stdout.write(`[ui-smoke] running ${label}\n`);
+  const test = spawn(
+    "node",
+    [
+      "packages/app/scripts/run-ui-playwright.mjs",
+      "--config",
+      "playwright.ui-smoke.config.ts",
+      ...args,
+    ],
+    {
+      cwd: repoRoot,
+      env,
+      stdio: "inherit",
+    },
+  );
+
+  const heartbeat = setInterval(() => {
+    process.stdout.write(`[ui-smoke] ${label} still running\n`);
+  }, 10_000);
+  const result = await waitForExit(test);
+  clearInterval(heartbeat);
+  return result;
+}
+
 async function main() {
   const apiPort =
     process.env.ELIZA_UI_SMOKE_API_PORT || String(await getFreePort());
@@ -128,38 +190,42 @@ async function main() {
     const hasExplicitSpec = providedArgs.some(
       (arg) => !arg.startsWith("-") && /\.(spec|test)\.[cm]?[tj]sx?$/.test(arg),
     );
-    const specArgs = hasExplicitSpec
-      ? providedArgs
-      : [defaultSpec, ...providedArgs];
     const testEnv = {
       ...env,
       ELIZA_UI_SMOKE_REUSE_SERVER: "1",
     };
-    const test = spawn(
-      "node",
-      [
-        "packages/app/scripts/run-ui-playwright.mjs",
-        "--config",
-        "playwright.ui-smoke.config.ts",
-        ...specArgs,
-      ],
-      {
-        cwd: repoRoot,
-        env: testEnv,
-        stdio: "inherit",
-      },
-    );
 
-    const heartbeat = setInterval(() => {
-      process.stdout.write("[ui-smoke] Playwright still running\n");
-    }, 30_000);
-    const { code, signal } = await waitForExit(test);
-    clearInterval(heartbeat);
-    if (signal) {
-      process.kill(process.pid, signal);
-      return;
+    const runs =
+      providedArgs.length > 0
+        ? [
+            {
+              args: hasExplicitSpec
+                ? providedArgs
+                : [defaultSpec, ...providedArgs],
+              label: "requested UI smoke",
+            },
+          ]
+        : defaultTestGreps.map((grep) => ({
+            args: [defaultSpec, "--grep", grep],
+            label: grep,
+          }));
+
+    for (const run of runs) {
+      const { code, signal } = await runPlaywright(
+        run.args,
+        testEnv,
+        run.label,
+      );
+      if (signal) {
+        process.kill(process.pid, signal);
+        return;
+      }
+      if (code !== 0) {
+        process.exitCode = code ?? 1;
+        return;
+      }
     }
-    process.exitCode = code ?? 1;
+    process.exitCode = 0;
   } finally {
     if (!stackExited) {
       await stopChild(stack);

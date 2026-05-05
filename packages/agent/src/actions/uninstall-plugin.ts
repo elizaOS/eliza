@@ -124,12 +124,12 @@ export const uninstallPluginAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Drop the polymarket integration." },
+        content: { text: "Drop the OpenAI integration." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Plugin @elizaos/plugin-polymarket uninstalled successfully.",
+          text: "Plugin @elizaos/plugin-openai uninstalled successfully. The agent will restart to drop it.",
         },
       },
     ],

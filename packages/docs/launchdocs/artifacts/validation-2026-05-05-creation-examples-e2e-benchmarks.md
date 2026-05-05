@@ -95,8 +95,8 @@ Result:
 
 - `packages/examples/polymarket/streaming.test.ts`: 7 passed.
 - `packages/examples/polymarket/lib.test.ts`: 7 passed.
-- `packages/examples/polymarket/runner.test.ts`: failed because `@elizaos/plugin-polymarket` cannot be resolved.
-- `packages/examples/polymarket/live.test.ts`: unhandled import error for `@elizaos/plugin-polymarket`.
+- `packages/examples/polymarket/runner.test.ts`: failed (Polymarket example integration not resolvable in this workspace).
+- `packages/examples/polymarket/live.test.ts`: unhandled import error for the Polymarket example dependency.
 - `packages/examples/lp-manager`: many tests passed, but `Character Consistency > name appears in message examples` failed with `TypeError: convo.some is not a function`.
 - The combined run was stopped after it stopped making forward progress.
 
@@ -194,7 +194,7 @@ Conclusion: all UI buttons/interactions are not green.
 1. Fix or isolate generated project upstream init and postinstall hangs, then rerun a clean `create -> install -> typecheck -> test`.
 2. Fix generated app typecheck pathing fully enough to pass in a fresh generated workspace without prebuilding upstream packages.
 3. Repair example failures:
-   - provide/fix `@elizaos/plugin-polymarket` resolution for `packages/examples/polymarket`;
+   - restore or stub Polymarket example wiring for `packages/examples/polymarket` tests;
    - fix `lp-manager` `messageExamples` shape or test expectation.
 4. Repair benchmark package collection failures in `realm`, `bfcl`, and `adhdbench`.
 5. Add a documented Groq/gpt-oss-120b benchmark invocation path with required env vars and expected score thresholds.

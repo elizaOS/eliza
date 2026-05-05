@@ -746,7 +746,6 @@
               "plugin-registry/defi/evm",
               "plugin-registry/defi/auto-trader",
               "plugin-registry/defi/lp-manager",
-              "plugin-registry/defi/polymarket",
               "plugin-registry/defi/hedera"
             ]
           },

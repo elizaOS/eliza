@@ -159,23 +159,6 @@ const STATIC_AUTOMATION_NODE_SPECS: StaticAutomationNodeSpec[] = [
     disabledReason: "Load the Hyperliquid runtime plugin.",
   },
   {
-    id: "crypto:polymarket.action",
-    label: "Polymarket action",
-    description:
-      "Polymarket automation entry point backed by a loaded Polymarket runtime plugin.",
-    class: "action",
-    backingCapability: "POLYMARKET_ACTION",
-    actionNames: ["POLYMARKET_ACTION", "POLYMARKET_ORDER", "POLYMARKET_TRADE"],
-    pluginNames: [
-      "polymarket",
-      "plugin-polymarket",
-      "@elizaos/plugin-polymarket",
-    ],
-    ownerScoped: true,
-    enabledWithoutRuntimeCapability: false,
-    disabledReason: "Load the Polymarket runtime plugin.",
-  },
-  {
     id: "trigger:order.schedule",
     label: "Order schedule",
     description:
@@ -200,15 +183,11 @@ const STATIC_AUTOMATION_NODE_SPECS: StaticAutomationNodeSpec[] = [
       "ORDER_FILLED",
       "ORDER_UPDATED",
       "HYPERLIQUID_ACTION",
-      "POLYMARKET_ACTION",
     ],
     pluginNames: [
       "hyperliquid",
       "plugin-hyperliquid",
       "@elizaos/plugin-hyperliquid",
-      "polymarket",
-      "plugin-polymarket",
-      "@elizaos/plugin-polymarket",
     ],
     ownerScoped: false,
     enabledWithoutRuntimeCapability: false,

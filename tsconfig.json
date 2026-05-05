@@ -51,7 +51,6 @@
     "plugins/plugin-vision/**",
     "plugins/plugin-github/**",
     "plugins/plugin-wallet/src/chains/evm/**",
-    "plugins/plugin-polymarket/**",
     "plugins/plugin-sql/**",
     "plugins/plugin-minecraft/**",
     "plugins/plugin-linear/**",
