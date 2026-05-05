@@ -24,6 +24,16 @@
       "import": "./dist/register.js",
       "default": "./dist/register.js"
     },
+    "./inventory/ChainIcon": {
+      "types": "./src/inventory/ChainIcon.tsx",
+      "import": "./dist/inventory/ChainIcon.js",
+      "default": "./dist/inventory/ChainIcon.js"
+    },
+    "./inventory/TokenLogo": {
+      "types": "./src/inventory/TokenLogo.tsx",
+      "import": "./dist/inventory/TokenLogo.js",
+      "default": "./dist/inventory/TokenLogo.js"
+    },
     "./state/*": {
       "types": "./src/state/*.ts",
       "import": "./dist/state/*.js",

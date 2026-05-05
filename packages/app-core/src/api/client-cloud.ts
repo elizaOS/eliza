@@ -935,6 +935,18 @@ ElizaClient.prototype.cloudDisconnect = async function (this: ElizaClient) {
 ElizaClient.prototype.getCloudCompatAgents = async function (
   this: ElizaClient,
 ) {
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: DirectCloudAgent[];
+    error?: string;
+  }>(this, "/api/v1/eliza/agents");
+  if (direct) {
+    return {
+      success: direct.success,
+      data: (direct.data ?? []).map(toCloudCompatAgent),
+    };
+  }
+
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
@@ -954,6 +966,37 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   this: ElizaClient,
   opts,
 ) {
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: {
+      id?: string;
+      agentName?: string;
+      status?: string;
+    };
+    error?: string;
+  }>(this, "/api/v1/eliza/agents", {
+    method: "POST",
+    body: JSON.stringify({
+      agentName: opts.agentName,
+      ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
+      ...(opts.environmentVars ? { environmentVars: opts.environmentVars } : {}),
+    }),
+  });
+  if (direct) {
+    const agentId = direct.data?.id ?? "";
+    return {
+      success: direct.success,
+      data: {
+        agentId,
+        agentName: direct.data?.agentName ?? opts.agentName,
+        jobId: "",
+        status: direct.data?.status ?? "pending",
+        nodeId: null,
+        message: direct.success ? "Agent created" : (direct.error ?? ""),
+      },
+    };
+  }
+
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
@@ -1005,6 +1048,15 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
+  const direct = await directCloudRequest<CloudCompatAgentProvisionResponse>(
+    this,
+    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
+    { method: "POST" },
+  );
+  if (direct) {
+    return direct;
+  }
+
   if (isDirectCloudBase(this)) {
     return this.fetch(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
@@ -1024,6 +1076,18 @@ ElizaClient.prototype.getCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: DirectCloudAgent;
+    error?: string;
+  }>(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`);
+  if (direct) {
+    return {
+      success: direct.success,
+      data: toCloudCompatAgent(direct.data ?? { id: agentId }),
+    };
+  }
+
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
@@ -1332,6 +1396,18 @@ ElizaClient.prototype.getCloudCompatJobStatus = async function (
   this: ElizaClient,
   jobId,
 ) {
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: DirectCloudJob;
+    error?: string;
+  }>(this, `/api/v1/jobs/${encodeURIComponent(jobId)}`);
+  if (direct) {
+    return {
+      success: direct.success,
+      data: toCloudCompatJob(direct.data ?? { id: jobId }),
+    };
+  }
+
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;

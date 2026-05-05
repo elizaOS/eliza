@@ -533,7 +533,7 @@ export const LpManagementAgentAction: Action = {
   description:
     "Single LP management action. Params: subaction=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences, chain=solana|evm, dex, pool, position, amount, range, tokenA, tokenB, chainId, slippageBps.",
   descriptionCompressed:
-    "manage LP positions with subaction chain dex pool position amount range token filters",
+    "Manage LP positions by subaction, chain, dex, pool, position, amount, range, token filters.",
 
   similes: [
     "LP_MANAGEMENT",

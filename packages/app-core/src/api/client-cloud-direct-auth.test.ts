@@ -133,4 +133,132 @@ describe("ElizaClient direct Cloud auth on native", () => {
       }),
     );
   });
+
+  it("lists Cloud agents directly on native without a runtime base URL", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 200,
+      data: {
+        success: true,
+        data: [
+          {
+            id: "agent-1",
+            agentName: "My Agent",
+            status: "running",
+            bridgeUrl: "https://agent-1.example.test",
+          },
+        ],
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.getCloudCompatAgents();
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-api-key",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      success: true,
+      data: [
+        expect.objectContaining({
+          agent_id: "agent-1",
+          agent_name: "My Agent",
+          status: "running",
+          bridge_url: "https://agent-1.example.test",
+        }),
+      ],
+    });
+  });
+
+  it("creates and provisions Cloud agents directly on native", async () => {
+    capacitorMocks.request
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          success: true,
+          data: { id: "agent-1", agentName: "My Agent", status: "pending" },
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          success: true,
+          data: { jobId: "job-1", status: "queued", agentId: "agent-1" },
+        },
+      });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const create = await client.createCloudCompatAgent({
+      agentName: "My Agent",
+    });
+    const provision = await client.provisionCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        method: "POST",
+        data: expect.objectContaining({ agentName: "My Agent" }),
+      }),
+    );
+    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        method: "POST",
+      }),
+    );
+    expect(create).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({ agentId: "agent-1" }),
+      }),
+    );
+    expect(provision).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({ jobId: "job-1" }),
+      }),
+    );
+  });
+
+  it("polls direct Cloud provision jobs on native", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 200,
+      data: {
+        success: true,
+        data: {
+          id: "job-1",
+          type: "agent_provision",
+          status: "completed",
+          createdAt: "2026-05-05T00:00:00.000Z",
+          completedAt: "2026-05-05T00:01:00.000Z",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.getCloudCompatJobStatus("job-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/jobs/job-1",
+        method: "GET",
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          jobId: "job-1",
+          status: "completed",
+        }),
+      }),
+    );
+  });
 });
