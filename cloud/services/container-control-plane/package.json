@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "4.10.8"
+    "hono": "4.12.14"
   },
   "devDependencies": {
     "@types/bun": "latest",
