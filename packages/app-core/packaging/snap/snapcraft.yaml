@@ -300,7 +300,7 @@ parts:
       fi
 
       # Snapcraft's isolated Bun install can keep @types packages only in
-      # node_modules/.bun without the root @types symlinks that tsc checks for
+      # node_modules/.bun without root @types package directories that tsc checks
       # while compiling package declarations.
       mkdir -p node_modules/@types
       for type_pkg in node bun; do
@@ -310,9 +310,12 @@ parts:
         elif [ -d node_modules/.bun ]; then
           type_target="$(find node_modules/.bun -maxdepth 5 -path "*/@types+$type_pkg@*/node_modules/@types/$type_pkg" -type d -print -quit 2>/dev/null)"
         fi
-        if [ -n "$type_target" ] && [ -d "$type_target" ] && [ ! -e "node_modules/@types/$type_pkg" ]; then
-          ln -s "../${type_target#node_modules/}" "node_modules/@types/$type_pkg"
+        if [ -z "$type_target" ] || [ ! -d "$type_target" ]; then
+          echo "Failed to locate @types/$type_pkg after bun install" >&2
+          exit 1
         fi
+        rm -rf "node_modules/@types/$type_pkg"
+        cp -aL "$type_target" "node_modules/@types/$type_pkg"
       done
 
       # Rehydrate published-only workspace deps that Vite and app-core imports
