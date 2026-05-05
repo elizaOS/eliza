@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-app-electron",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-eliza-classic": "workspace:*",
     "@elizaos/plugin-google-genai": "workspace:*",

@@ -3,7 +3,7 @@
   "name": "Twitch",
   "description": "Twitch connector for live chat, channel events, and audience interactions.",
   "npmName": "@elizaos/plugin-twitch",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "connector",
@@ -95,7 +95,11 @@
     "icon": "Gamepad2",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#twitch"
@@ -105,6 +109,8 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": ["TWITCH_ACCESS_TOKEN"]
+    "credentialKeys": [
+      "TWITCH_ACCESS_TOKEN"
+    ]
   }
 }

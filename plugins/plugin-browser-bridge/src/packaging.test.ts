@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/agent/runtime", () => ({
-  VERSION: "2.0.0-alpha.0",
+  VERSION: "2.0.0-beta.0",
 }));
 
 import { resolveBrowserBridgeReleaseManifest } from "./packaging";

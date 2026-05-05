@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -39,7 +39,7 @@
     "package.json"
   ],
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@tanstack/react-query": "^5.90.16",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.3.1",

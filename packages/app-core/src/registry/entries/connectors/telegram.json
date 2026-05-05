@@ -3,7 +3,7 @@
   "name": "Telegram",
   "description": "Telegram connector for bot chats, groups, channels, and topic-based conversations through BotFather tokens or an Eliza Cloud webhook gateway.",
   "npmName": "@elizaos/plugin-telegram",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "connector",
@@ -54,7 +54,11 @@
     "icon": "Send",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-telegram#readme",
@@ -66,6 +70,8 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": ["TELEGRAM_BOT_TOKEN"]
+    "credentialKeys": [
+      "TELEGRAM_BOT_TOKEN"
+    ]
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-workflow-builder",
-  "version": "0.0.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",

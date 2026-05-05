@@ -9,7 +9,7 @@ on:
         type: string
         default: internal
       version_name:
-        description: "Version name (e.g. 2.0.0-alpha.82)"
+        description: "Version name (e.g. 2.0.0-beta.0)"
         required: true
         type: string
     secrets:
@@ -34,7 +34,7 @@ on:
           - production
         default: internal
       version_name:
-        description: "Version name (e.g. 2.0.0-alpha.82)"
+        description: "Version name (e.g. 2.0.0-beta.0)"
         required: false
         type: string
 
@@ -87,7 +87,7 @@ jobs:
           fi
 
           # Generate version code from version string
-          # 2.0.0-alpha.82 -> 2000082, 2.1.3 -> 2001003
+          # 2.0.0-beta.0 -> 2000000, 2.1.3 -> 2001003
           MAJOR=$(echo "$VERSION_NAME" | cut -d. -f1)
           MINOR=$(echo "$VERSION_NAME" | cut -d. -f2 | cut -d- -f1)
           PATCH=$(echo "$VERSION_NAME" | cut -d. -f3 | cut -d- -f1)
@@ -204,7 +204,7 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "track=${{ inputs.track }}" >> "$GITHUB_OUTPUT"
-          elif echo "${{ needs.build-aab.outputs.version_name }}" | grep -qE '(alpha|beta|rc)'; then
+          elif echo "${{ needs.build-aab.outputs.version_name }}" | grep -qE '(beta|rc)'; then
             echo "track=internal" >> "$GITHUB_OUTPUT"
           else
             echo "track=production" >> "$GITHUB_OUTPUT"

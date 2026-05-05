@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-autonomous",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Sandboxed autonomous loop using local-ai + shell + inmemorydb",
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "dev": "bun --watch run autonomous.ts"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-inmemorydb": "workspace:*",
     "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",

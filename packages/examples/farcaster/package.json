@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-farcaster",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Farcaster agent using OpenAI + Neynar API via elizaOS",
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-farcaster": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",

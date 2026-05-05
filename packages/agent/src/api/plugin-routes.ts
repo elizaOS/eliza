@@ -90,10 +90,10 @@ interface PluginEntry {
   validationWarnings: Array<{ field: string; message: string }>;
   npmName?: string;
   version?: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   requestedVersion?: string;
   latestVersion?: string | null;
-  alphaVersion?: string | null;
+  betaVersion?: string | null;
   pluginDeps?: string[];
   isActive?: boolean;
   loadError?: string;
@@ -352,10 +352,10 @@ export async function handlePluginRoutes(
       string,
       {
         version?: string;
-        releaseStream?: "latest" | "alpha";
+        releaseStream?: "latest" | "beta";
         requestedVersion?: string;
         latestVersion?: string | null;
-        alphaVersion?: string | null;
+        betaVersion?: string | null;
       }
     >();
     try {
@@ -369,7 +369,7 @@ export async function handlePluginRoutes(
             releaseStream: plugin.releaseStream,
             requestedVersion: plugin.requestedVersion,
             latestVersion: plugin.latestVersion,
-            alphaVersion: plugin.alphaVersion,
+            betaVersion: plugin.betaVersion,
           },
         ]),
       );
@@ -421,8 +421,8 @@ export async function handlePluginRoutes(
           installedMetadata.requestedVersion ?? plugin.requestedVersion;
         plugin.latestVersion =
           installedMetadata.latestVersion ?? plugin.latestVersion ?? null;
-        plugin.alphaVersion =
-          installedMetadata.alphaVersion ?? plugin.alphaVersion ?? null;
+        plugin.betaVersion =
+          installedMetadata.betaVersion ?? plugin.betaVersion ?? null;
       }
 
       if (isAdvancedCapabilityPluginId(plugin.id)) {
@@ -1076,7 +1076,7 @@ export async function handlePluginRoutes(
     const body = await readJsonBody<{
       name: string;
       autoRestart?: boolean;
-      stream?: "latest" | "alpha";
+      stream?: "latest" | "beta";
       version?: string;
     }>(req, res);
     if (!body) return true;
@@ -1201,7 +1201,7 @@ export async function handlePluginRoutes(
         releaseStream: result.releaseStream,
         requestedVersion: result.requestedVersion,
         latestVersion: result.latestVersion,
-        alphaVersion: result.alphaVersion,
+        betaVersion: result.betaVersion,
         message: runtimeApply.requiresRestart
           ? `${result.pluginName} installed. Restart required to activate.`
           : `${result.pluginName} installed.`,
@@ -1221,7 +1221,7 @@ export async function handlePluginRoutes(
     const body = await readJsonBody<{
       name: string;
       autoRestart?: boolean;
-      stream?: "latest" | "alpha";
+      stream?: "latest" | "beta";
       version?: string;
     }>(req, res);
     if (!body) return true;
@@ -1330,7 +1330,7 @@ export async function handlePluginRoutes(
         releaseStream: result.releaseStream,
         requestedVersion: result.requestedVersion,
         latestVersion: result.latestVersion,
-        alphaVersion: result.alphaVersion,
+        betaVersion: result.betaVersion,
         message: runtimeApply.requiresRestart
           ? `${result.pluginName} updated. Restart required to activate.`
           : `${result.pluginName} updated.`,

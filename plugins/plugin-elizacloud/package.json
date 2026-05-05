@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-elizacloud",
-  "version": "2.0.0-alpha.537",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -266,7 +266,7 @@
         "type": "string",
         "description": "Application version sent during device authentication.",
         "required": false,
-        "default": "2.0.0-alpha",
+        "default": "2.0.0-beta.0",
         "sensitive": false
       }
     }

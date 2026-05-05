@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-convex",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "elizaOS agent running on Convex — messages processed via messageService.handleMessage with real-time persistence",
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "deploy": "npx convex deploy"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-xai": "workspace:*",

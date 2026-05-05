@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-action-bench",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "description": "Action calling benchmark plugins for ElizaOS with typewriter, multiverse math, and relational data operations",
   "type": "module",
   "main": "dist/index.js",

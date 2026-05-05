@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/vercel-edge-examples",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "description": "elizaOS Vercel Edge Function examples (TypeScript)",
   "scripts": {
@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "uuid": "^14.0.0"

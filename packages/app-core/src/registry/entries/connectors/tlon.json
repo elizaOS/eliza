@@ -3,7 +3,7 @@
   "name": "Tlon",
   "description": "Tlon connector for Urbit chat and social interactions.",
   "npmName": "@elizaos/plugin-tlon",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "connector",
@@ -79,7 +79,11 @@
     "icon": "Tornado",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#tlon-urbit"

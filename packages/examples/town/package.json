@@ -10,7 +10,7 @@
     "le": "vite src/editor/"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-google-genai": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",

@@ -3,9 +3,11 @@
   "name": "Elizacloud",
   "description": "elizaOS plugin to connect with elizaOS Cloud services",
   "npmName": "@elizaos/plugin-elizacloud",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["elizacloud"],
+  "tags": [
+    "elizacloud"
+  ],
   "config": {
     "ELIZAOS_CLOUD_API_KEY": {
       "type": "secret",
@@ -181,7 +183,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "2.0.0-alpha",
+      "default": "2.0.0-beta.0",
       "label": "Cloud App Version",
       "help": "Application version sent during device authentication.",
       "advanced": false
@@ -194,7 +196,10 @@
     "icon": "Cloud",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/eliza-ai/eliza/tree/develop/packages/plugin-elizacloud#readme",

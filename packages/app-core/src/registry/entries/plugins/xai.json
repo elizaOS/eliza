@@ -3,9 +3,14 @@
   "name": "xAI (Grok)",
   "description": "xAI Grok models for text generation and embeddings.",
   "npmName": "@elizaos/plugin-xai",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["ai-provider", "llm", "xai", "grok"],
+  "tags": [
+    "ai-provider",
+    "llm",
+    "xai",
+    "grok"
+  ],
   "config": {
     "XAI_API_KEY": {
       "type": "secret",
@@ -62,7 +67,10 @@
     "icon": "Hash",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-xai#readme",

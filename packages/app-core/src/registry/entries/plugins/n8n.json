@@ -3,7 +3,7 @@
   "name": "N8n",
   "description": "DEPRECATED: replaced by @elizaos/plugin-n8n-workflow. N8n workflow integration plugin with AI-powered plugin creation for ElizaOS.",
   "npmName": "@elizaos/plugin-n8n",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "n8n",
@@ -65,7 +65,10 @@
     "icon": "Settings",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

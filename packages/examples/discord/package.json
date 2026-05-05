@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-discord",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Full-featured Discord AI agent using elizaOS",
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",

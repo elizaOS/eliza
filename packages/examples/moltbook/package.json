@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit || true"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-inmemorydb": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-moltbook": "workspace:*",
