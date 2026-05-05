@@ -2067,6 +2067,14 @@ async function buildAndroid() {
   ) {
     gradleArgs.unshift("-PelizaAospBuild=true");
   }
+  await run(
+    "./gradlew",
+    [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
+    {
+      cwd: androidDir,
+      env,
+    },
+  );
   await run("./gradlew", gradleArgs, {
     cwd: androidDir,
     env,
@@ -2157,6 +2165,14 @@ async function buildAndroidSystem() {
   ) {
     gradleArgs.unshift("-PelizaAospBuild=true");
   }
+  await run(
+    "./gradlew",
+    [":capacitor-cordova-android-plugins:writeReleaseAarMetadata"],
+    {
+      cwd: androidDir,
+      env,
+    },
+  );
   await run("./gradlew", gradleArgs, {
     cwd: androidDir,
     env,

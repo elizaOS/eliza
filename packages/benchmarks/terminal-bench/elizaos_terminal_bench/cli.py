@@ -138,7 +138,7 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "eliza"],
+        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "eliza", "mock"],
         default=None,
         help=(
             "Optional provider hint. 'eliza' routes through the elizaOS "
@@ -257,7 +257,7 @@ async def run_cli(args: argparse.Namespace) -> int:
     # Spin up the elizaOS TS benchmark bridge server unless one is already
     # reachable via ELIZA_BENCH_URL.
     server_mgr = None
-    if not os.environ.get("ELIZA_BENCH_URL"):
+    if not args.dry_run and not os.environ.get("ELIZA_BENCH_URL"):
         from eliza_adapter.server_manager import ElizaServerManager
 
         server_mgr = ElizaServerManager()
@@ -328,6 +328,8 @@ async def run_cli(args: argparse.Namespace) -> int:
 
             print(f"\nResults saved to: {config.output_dir}")
 
+            if args.dry_run:
+                return 0
             return 0 if report.accuracy > 0 else 1
     finally:
         if server_mgr is not None:

@@ -20,6 +20,10 @@ import {
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import {
+  EXPERIENCE_ROUTE_PATHS,
+  handleExperienceRoutes,
+} from "./routes/experience-routes.js";
 import { handleTrainingRoutes } from "./routes/training-routes.js";
 import { handleVastTrainingRoutes } from "./routes/training-vast-routes.js";
 import { handleTrajectoryRoute } from "./routes/trajectory-routes.js";
@@ -158,6 +162,31 @@ function trajectoryRouteHandler(): PluginRouteHandler {
   };
 }
 
+function experienceRouteHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const agentRuntime = (runtime as AgentRuntime) ?? null;
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
+    await handleExperienceRoutes({
+      req: httpReq,
+      res: httpRes,
+      method,
+      pathname: url.pathname,
+      runtime: agentRuntime,
+      url,
+      readJsonBody: httpReadJsonBody,
+      json,
+      error,
+    });
+  };
+}
+
 const TRAINING_ROUTES: Array<{ type: string; path: string }> = [
   // Static training endpoints
   { type: "GET", path: "/api/training/status" },
@@ -244,6 +273,15 @@ export const trainingRoutes: Route[] = [
         path: r.path,
         rawPath: true as const,
         handler: trajectoryRouteHandler(),
+      }) as Route,
+  ),
+  ...EXPERIENCE_ROUTE_PATHS.map(
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: experienceRouteHandler(),
       }) as Route,
   ),
 ];

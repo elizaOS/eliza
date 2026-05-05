@@ -401,7 +401,7 @@ async function ensureUiDistReady(): Promise<void> {
   }
 
   const logs: string[] = [];
-  const child = spawn("bun", ["scripts/build.mjs"], {
+  const child = spawn("bun", ["run", "build:web"], {
     cwd: APP_DIR,
     env: {
       ...process.env,
@@ -416,7 +416,7 @@ async function ensureUiDistReady(): Promise<void> {
   const exited = await waitForChildExit(child, 300_000);
   if (!exited || child.exitCode !== 0) {
     throw new Error(
-      `packages/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+      `app renderer build failed.\n${logs.join("").slice(-8_000)}`,
     );
   }
 }

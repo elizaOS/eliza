@@ -9,26 +9,22 @@
     "node": ">=24.0.0"
   },
   "workspaces": [
-    "apps/*",
-    "apps/app/electrobun",
-    "eliza/packages/native-plugins/*",
-    "eliza/packages/app-core/platforms/electrobun",
-    "eliza/plugins/*",
-    "eliza/plugins/*",
-    "eliza/packages/*",
-    "eliza/cloud/packages/sdk"
+    "apps/*"
   ],
   "scripts": {
     "build": "bun run --cwd apps/app build",
-    "build:desktop": "node eliza/packages/app-core/scripts/desktop-build.mjs build --variant=base",
-    "build:ios": "bun run --cwd apps/app build:ios",
-    "build:android": "bun run --cwd apps/app build:android",
-    "dev": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=__PROJECT_SLUG__",
-    "dev:ui": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=__PROJECT_SLUG__ --ui-only",
-    "dev:desktop": "bun eliza/packages/app-core/scripts/dev-platform.mjs",
+    "build:desktop": "ELIZA_APP_NAME=\"__APP_NAME__\" ELIZA_APP_ID=__BUNDLE_ID__ ELIZA_NAMESPACE=__PROJECT_SLUG__ node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
+    "build:ios": "node scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs ios",
+    "build:android": "node scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs android",
+    "dev": "node scripts/run-eliza-app-core-script.mjs dev-ui.mjs --name=__PROJECT_SLUG__",
+    "dev:ui": "node scripts/run-eliza-app-core-script.mjs dev-ui.mjs --name=__PROJECT_SLUG__ --ui-only",
+    "dev:desktop": "ELIZA_NAMESPACE=__PROJECT_SLUG__ node scripts/run-eliza-app-core-script.mjs dev-platform.mjs",
     "test": "bun run --cwd apps/app test",
     "typecheck": "bun run --cwd apps/app typecheck",
     "lint": "bun run --cwd apps/app lint",
-    "verify": "bun run typecheck && bun run lint"
+    "verify": "bun run typecheck && bun run lint",
+    "setup:upstreams": "node scripts/eliza-source-mode.mjs local --install",
+    "eliza:local": "node scripts/eliza-source-mode.mjs local --install",
+    "eliza:packages": "node scripts/eliza-source-mode.mjs packages --install"
   }
 }
