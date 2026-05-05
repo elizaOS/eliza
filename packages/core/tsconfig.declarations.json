@@ -5,14 +5,18 @@
 		"rootDir": "./src",
 		"moduleResolution": "bundler",
 		"typeRoots": [
-			"../../../node_modules/@types",
-			"../../../node_modules/.bun/node_modules/@types",
 			"../../node_modules/@types",
 			"../../node_modules/.bun/node_modules/@types",
-			"../../../node_modules",
-			"../../../node_modules/.bun/node_modules",
+			"../../cloud/node_modules/@types",
+			"../../cloud/node_modules/.bun/node_modules/@types",
 			"../../node_modules",
-			"../../node_modules/.bun/node_modules"
+			"../../node_modules/.bun/node_modules",
+			"../../cloud/node_modules",
+			"../../cloud/node_modules/.bun/node_modules",
+			"../../../node_modules/@types",
+			"../../../node_modules/.bun/node_modules/@types",
+			"../../../node_modules",
+			"../../../node_modules/.bun/node_modules"
 		],
 		"types": ["node", "bun"],
 		"noEmit": false,
