@@ -120,8 +120,11 @@ export function CloudDashboard() {
 
         if (!mountedRef.current) return;
 
-        // Detect rate-limit on either response before either side throws so
-        // we can render a single countdown banner and skip the error toast.
+        // Detect rate-limit independently on each half. We have to handle
+        // them separately so that a settings-only rate-limit doesn't discard
+        // a successfully-fetched summary (and vice-versa) — for a first-time
+        // visitor with no cached state that would mean a blank balance for
+        // the full countdown window even though the data was just fetched.
         const summaryRateLimited =
           isRecord(summaryResponse) && "__error" in summaryResponse
             ? isRateLimitedError(summaryResponse.__error)
@@ -129,22 +132,25 @@ export function CloudDashboard() {
               : null
             : null;
         const settingsRateLimited =
-          !summaryRateLimited &&
-          isRecord(settingsResponse) &&
-          "__error" in settingsResponse &&
-          isRateLimitedError(settingsResponse.__error)
-            ? settingsResponse.__error
+          isRecord(settingsResponse) && "__error" in settingsResponse
+            ? isRateLimitedError(settingsResponse.__error)
+              ? settingsResponse.__error
+              : null
             : null;
         const rateLimitedErr = summaryRateLimited ?? settingsRateLimited;
-        if (rateLimitedErr) {
-          const retryAfterSec =
-            typeof rateLimitedErr.retryAfter === "number" &&
+        const rateLimitDeadlineMs = rateLimitedErr
+          ? Date.now() +
+            (typeof rateLimitedErr.retryAfter === "number" &&
             rateLimitedErr.retryAfter > 0
               ? Math.ceil(rateLimitedErr.retryAfter)
-              : 60;
-          setRateLimitedUntilMs(Date.now() + retryAfterSec * 1000);
-          // Preserve last-known balance/settings on rate-limit so the user
-          // doesn't see a flicker of "—" — just a banner explaining the wait.
+              : 60) *
+              1000
+          : null;
+
+        if (summaryRateLimited) {
+          // Summary itself was throttled — preserve last-known summary AND
+          // last-known settings. Showing a countdown is the most we can do.
+          setRateLimitedUntilMs(rateLimitDeadlineMs);
           return;
         }
 
@@ -160,8 +166,18 @@ export function CloudDashboard() {
               );
         }
 
-        setRateLimitedUntilMs(null);
+        // Summary succeeded — apply the fresh balance immediately, even if
+        // settings is rate-limited or otherwise failed.
         setBillingSummary(normalizeBillingSummary(summaryResponse));
+
+        if (settingsRateLimited) {
+          // Settings was throttled but summary was fine. Keep last-known
+          // settings (don't null them out) and show the countdown banner.
+          setRateLimitedUntilMs(rateLimitDeadlineMs);
+          return;
+        }
+
+        setRateLimitedUntilMs(null);
 
         if (isRecord(settingsResponse) && !("__error" in settingsResponse)) {
           setBillingSettings(normalizeBillingSettings(settingsResponse));
