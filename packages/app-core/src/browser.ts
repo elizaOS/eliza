@@ -74,6 +74,7 @@ export * from "./components/pages/PageScopedChatPane.tsx";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
+export { LoadingScreen } from "./components/shell/LoadingScreen.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 export * from "./config/app-config.ts";
 export * from "./config/boot-config.ts";
