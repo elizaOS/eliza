@@ -77,7 +77,7 @@ const ACCESS_BADGE_CLASSNAME =
   "inline-flex h-[2.375rem] max-w-[15rem] shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-bg/45 px-2 text-[11px] font-medium leading-none text-muted shadow-none";
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
   paddingInlineStart:
-    "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 78px))",
+    "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 160px))",
   paddingInlineEnd: "0.75rem",
   paddingTop:
     "max(env(safe-area-inset-top, 0px), var(--eliza-macos-frame-top-inset, 0px))",

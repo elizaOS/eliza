@@ -36,14 +36,15 @@ const __dirname = dirname(__filename);
  * walks up from this file looking for a package.json with a
  * "benchmark" script.
  */
-function resolveRepoRoot(): string {
+function resolveRepoRoot(rootArg?: string): string {
+  if (rootArg) return resolve(rootArg);
   const fromEnv = process.env.ELIZA_APP_ROOT;
   if (fromEnv) return resolve(fromEnv);
   // Default: assume we're inside eliza/packages/benchmarks/app-eval/
-  return resolve(__dirname, "../../../..");
+  return resolve(__dirname, "../../..");
 }
 
-const REPO_ROOT = resolveRepoRoot();
+let REPO_ROOT = resolveRepoRoot();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -676,6 +677,7 @@ function printReport(summary: RunSummary): void {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
+  REPO_ROOT = resolveRepoRoot(args.root);
   const tasks = loadTasks(args);
 
   if (tasks.length === 0) {

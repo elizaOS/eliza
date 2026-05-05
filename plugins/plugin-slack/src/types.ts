@@ -6,7 +6,7 @@ import type {
   WorldPayload,
 } from "@elizaos/core";
 import type { App as BoltApp } from "@slack/bolt";
-import type { WebClient } from "@slack/web-api";
+type WebClient = BoltApp["client"];
 
 /**
  * Slack-specific event types

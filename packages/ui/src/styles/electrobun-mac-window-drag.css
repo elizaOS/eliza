@@ -15,10 +15,10 @@
 html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) {
   /**
    * Leading inset so the header nav (Chat, Apps, ...) clears the traffic-light
-   * cluster while staying on the same vertical row. hiddenInset draws controls
-   * over the web view; ~68-80px is typical on Apple Silicon macOS.
+   * cluster while staying on the same vertical row. Electrobun repositions
+   * the buttons wider than AppKit's default inset, so reserve the full group.
    */
-  --eliza-macos-frame-left-inset: 78px;
+  --eliza-macos-frame-left-inset: 160px;
   --eliza-macos-frame-top-inset: 0px;
   --eliza-mobile-nav-offset: 0px;
 }
