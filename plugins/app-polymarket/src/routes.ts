@@ -11,11 +11,16 @@ import {
   type PolymarketMarketOutcome,
   type PolymarketMarketResponse,
   type PolymarketMarketsResponse,
+  type PolymarketOrderbookResponse,
   type PolymarketPosition,
   type PolymarketPositionsResponse,
   type PolymarketStatusResponse,
   type PolymarketTradingEnvVar,
 } from "./polymarket-contracts";
+import {
+  derivePolymarketTopOfBook,
+  type PolymarketOrderbookLevel,
+} from "./orderbook";
 
 export interface PolymarketRouteState {
   fetchImpl?: typeof fetch;
@@ -63,6 +68,15 @@ interface DataPositionRecord {
   slug?: unknown;
 }
 
+interface ClobOrderbookRecord {
+  market?: unknown;
+  asset_id?: unknown;
+  bids?: unknown;
+  asks?: unknown;
+  tick_size?: unknown;
+  last_trade_price?: unknown;
+}
+
 const DISABLED_TRADING_REASON =
   "Trading and order management are disabled in this first native scaffold. Configure CLOB credentials first, then implement signed CLOB order calls before enabling these routes.";
 
@@ -97,6 +111,11 @@ export async function handlePolymarketRoute(
 
   if (method === "GET" && pathname === "/api/polymarket/market") {
     await handleMarket(req, res, state.fetchImpl ?? fetch);
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/polymarket/orderbook") {
+    await handleOrderbook(req, res, state.fetchImpl ?? fetch);
     return true;
   }
 
@@ -245,6 +264,66 @@ async function handleMarket(
       "[PolymarketRoutes] Gamma market request failed",
     );
     sendJsonError(res, 502, "Polymarket market request failed");
+  }
+}
+
+async function handleOrderbook(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  const requestUrl = new URL(
+    req.url ?? "/api/polymarket/orderbook",
+    "http://x",
+  );
+  const tokenId =
+    requestUrl.searchParams.get("token_id")?.trim() ||
+    requestUrl.searchParams.get("tokenId")?.trim();
+  if (!tokenId) {
+    sendJsonError(res, 400, "Missing token_id");
+    return;
+  }
+
+  const clobUrl = new URL("/book", POLYMARKET_CLOB_API_BASE);
+  clobUrl.searchParams.set("token_id", tokenId);
+
+  try {
+    const payload = await fetchJson(fetchImpl, clobUrl);
+    if (!isRecord(payload)) {
+      sendJsonError(res, 502, "Polymarket CLOB returned an invalid orderbook");
+      return;
+    }
+    const record = payload as ClobOrderbookRecord;
+    const bids = readOrderbookLevels(record.bids);
+    const asks = readOrderbookLevels(record.asks);
+    const top = derivePolymarketTopOfBook({ bids, asks });
+    const response: PolymarketOrderbookResponse = {
+      tokenId,
+      market: readString(record.market),
+      assetId: readString(record.asset_id),
+      bids,
+      asks,
+      bestBid: top.bestBid?.price ?? null,
+      bestBidSize: top.bestBid?.size ?? null,
+      bestAsk: top.bestAsk?.price ?? null,
+      bestAskSize: top.bestAsk?.size ?? null,
+      midpoint: top.midpoint,
+      spread: top.spread,
+      bidLevels: bids.length,
+      askLevels: asks.length,
+      lastTradePrice: readNumericString(record.last_trade_price),
+      tickSize: readNumericString(record.tick_size),
+      source: { api: "clob", endpoint: clobUrl.toString() },
+    };
+    sendJson(res, 200, response);
+  } catch (error) {
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[PolymarketRoutes] CLOB orderbook request failed",
+    );
+    sendJsonError(res, 502, "Polymarket orderbook request failed");
   }
 }
 
@@ -418,6 +497,18 @@ function readNumericString(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return null;
+}
+
+function readOrderbookLevels(
+  value: unknown,
+): readonly PolymarketOrderbookLevel[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const price = readNumericString(item.price);
+    const size = readNumericString(item.size);
+    return price && size ? [{ price, size }] : [];
+  });
 }
 
 function readStringArray(value: unknown): readonly string[] {

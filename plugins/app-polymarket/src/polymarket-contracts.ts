@@ -32,6 +32,20 @@ export interface PolymarketStatusResponse {
   };
 }
 
+export type PolymarketSource =
+  | {
+      api: "gamma";
+      endpoint: string;
+    }
+  | {
+      api: "data";
+      endpoint: string;
+    }
+  | {
+      api: "clob";
+      endpoint: string;
+    };
+
 export interface PolymarketMarketOutcome {
   name: string;
   price: string | null;
@@ -66,18 +80,36 @@ export interface PolymarketMarket {
 
 export interface PolymarketMarketsResponse {
   markets: readonly PolymarketMarket[];
-  source: {
-    api: "gamma";
-    endpoint: string;
-  };
+  source: PolymarketSource;
 }
 
 export interface PolymarketMarketResponse {
   market: PolymarketMarket | null;
-  source: {
-    api: "gamma";
-    endpoint: string;
-  };
+  source: PolymarketSource;
+}
+
+export interface PolymarketOrderbookLevel {
+  price: string;
+  size: string;
+}
+
+export interface PolymarketOrderbookResponse {
+  tokenId: string;
+  market: string | null;
+  assetId: string | null;
+  bids: readonly PolymarketOrderbookLevel[];
+  asks: readonly PolymarketOrderbookLevel[];
+  bestBid: string | null;
+  bestBidSize: string | null;
+  bestAsk: string | null;
+  bestAskSize: string | null;
+  midpoint: string | null;
+  spread: string | null;
+  bidLevels: number;
+  askLevels: number;
+  lastTradePrice: string | null;
+  tickSize: string | null;
+  source: PolymarketSource;
 }
 
 export interface PolymarketDisabledResponse {
@@ -88,10 +120,7 @@ export interface PolymarketDisabledResponse {
 
 export interface PolymarketPositionsResponse {
   positions: readonly PolymarketPosition[];
-  source: {
-    api: "data";
-    endpoint: string;
-  };
+  source: PolymarketSource;
 }
 
 export interface PolymarketPosition {

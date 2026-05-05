@@ -131,7 +131,42 @@ async function runPlaywright(args, env, label) {
   return result;
 }
 
+async function runDefaultRouteMatrix() {
+  for (const [index, grep] of defaultTestGreps.entries()) {
+    process.stdout.write(
+      `[ui-smoke] route ${index + 1}/${defaultTestGreps.length}: ${grep}\n`,
+    );
+    const child = spawn(
+      "node",
+      ["scripts/launch-qa/run-ui-smoke-stub.mjs", "--grep", grep],
+      {
+        cwd: repoRoot,
+        env: process.env,
+        stdio: "inherit",
+      },
+    );
+    const { code, signal } = await waitForExit(child);
+    if (signal) {
+      process.kill(process.pid, signal);
+      return false;
+    }
+    if (code !== 0) {
+      process.exitCode = code ?? 1;
+      return false;
+    }
+  }
+  return true;
+}
+
 async function main() {
+  const providedArgs = process.argv.slice(2);
+  if (providedArgs.length === 0) {
+    process.exitCode = (await runDefaultRouteMatrix())
+      ? 0
+      : (process.exitCode ?? 1);
+    return;
+  }
+
   const apiPort =
     process.env.ELIZA_UI_SMOKE_API_PORT || String(await getFreePort());
   const uiPort = process.env.ELIZA_UI_SMOKE_PORT || String(await getFreePort());
@@ -186,7 +221,6 @@ async function main() {
       }),
     ]);
 
-    const providedArgs = process.argv.slice(2);
     const hasExplicitSpec = providedArgs.some(
       (arg) => !arg.startsWith("-") && /\.(spec|test)\.[cm]?[tj]sx?$/.test(arg),
     );
@@ -195,20 +229,12 @@ async function main() {
       ELIZA_UI_SMOKE_REUSE_SERVER: "1",
     };
 
-    const runs =
-      providedArgs.length > 0
-        ? [
-            {
-              args: hasExplicitSpec
-                ? providedArgs
-                : [defaultSpec, ...providedArgs],
-              label: "requested UI smoke",
-            },
-          ]
-        : defaultTestGreps.map((grep) => ({
-            args: [defaultSpec, "--grep", grep],
-            label: grep,
-          }));
+    const runs = [
+      {
+        args: hasExplicitSpec ? providedArgs : [defaultSpec, ...providedArgs],
+        label: "requested UI smoke",
+      },
+    ];
 
     for (const run of runs) {
       const { code, signal } = await runPlaywright(
