@@ -549,7 +549,7 @@ export class ToonFieldStreamExtractor implements IStreamExtractor {
 	}
 
 	private baseToonFieldName(rawKey: string): string {
-		return rawKey.split(/[\[{]/, 1)[0] ?? rawKey;
+		return rawKey.split(/[[{]/, 1)[0] ?? rawKey;
 	}
 
 	private emitFieldContent(field: string, content: string): void {

@@ -1,6 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  withStandaloneTrajectory,
+} from "@elizaos/core";
 
 export interface StreamingAudioConfig {
   enabled: boolean;
@@ -336,9 +341,16 @@ export class StreamingAudioCaptureService extends EventEmitter {
       const wavBuffer = this.rawToWav(audioData);
 
       // Use runtime transcription model
-      const result = await this.runtime.useModel(
-        ModelType.TRANSCRIPTION,
-        wavBuffer,
+      const result = await withStandaloneTrajectory(
+        this.runtime,
+        {
+          source: "plugin-vision:streaming-audio-transcription",
+          metadata: {
+            modelType: ModelType.TRANSCRIPTION,
+            audioBytes: wavBuffer.byteLength,
+          },
+        },
+        () => this.runtime.useModel(ModelType.TRANSCRIPTION, wavBuffer),
       );
 
       return result as string;

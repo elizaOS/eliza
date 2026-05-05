@@ -10,7 +10,7 @@ export const economicContextProvider: Provider = {
   description:
     "Provides economic facts: payment history, revenue, and current session payment status",
   descriptionCompressed:
-    "provide economic fact: payment history, revenue, current session payment status",
+    "Provide mysticism payment history, revenue, and current session payment status.",
 
   dynamic: true,
   relevanceKeywords: [

@@ -122,6 +122,12 @@ describe("expandPricingCatalogModelCandidates", () => {
     const candidates = expandPricingCatalogModelCandidates("openai/gpt-5.4-mini");
     expect(candidates).toEqual(["openai/gpt-5.4-mini"]);
   });
+
+  test("OpenRouter model variants fall back to the base model for pricing", () => {
+    const candidates = expandPricingCatalogModelCandidates("openai/gpt-oss-120b:nitro");
+    expect(candidates[0]).toBe("openai/gpt-oss-120b:nitro");
+    expect(candidates).toContain("openai/gpt-oss-120b");
+  });
 });
 
 describe("findOpenRouterCatalogModelById", () => {

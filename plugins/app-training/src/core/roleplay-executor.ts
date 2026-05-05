@@ -9,6 +9,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import { parseToonKeyValue } from "@elizaos/core";
 import type {
   RoleplayEpisode,
   RoleplayManifestLine,
@@ -194,17 +195,23 @@ function parseDelimitedList(value: string): string[] {
     );
 }
 
-function readTag(response: string, tagName: string): string | undefined {
-  const xmlMatch = new RegExp(
-    `<${tagName}>([\\s\\S]*?)<\\/${tagName}>`,
-    "i",
-  ).exec(response);
-  if (xmlMatch?.[1]) {
-    const value = xmlMatch[1].trim();
+function readToonField(response: string, fieldName: string): string | undefined {
+  const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+  const parsedValue = parsed?.[fieldName];
+  if (typeof parsedValue === "string") {
+    const value = parsedValue.trim();
+    return value.length > 0 ? value : undefined;
+  }
+  if (Array.isArray(parsedValue)) {
+    const value = parsedValue
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .join(",");
     return value.length > 0 ? value : undefined;
   }
 
-  const lineMatch = new RegExp(`(^|\\n)${tagName}:\\s*([^\\n]+)`, "i").exec(
+  const lineMatch = new RegExp(`(^|\\n)${fieldName}:\\s*([^\\n]+)`, "i").exec(
     response,
   );
   if (lineMatch?.[2]) {
@@ -220,10 +227,10 @@ function parseRoutingDecision(response: string): {
   primaryContext?: string;
   secondaryContexts: string[];
 } {
-  const decision = readTag(response, "action")?.toUpperCase();
-  const primaryContext = readTag(response, "primaryContext");
+  const decision = readToonField(response, "action")?.toUpperCase();
+  const primaryContext = readToonField(response, "primaryContext");
   const secondaryContexts = parseDelimitedList(
-    readTag(response, "secondaryContexts") ?? "",
+    readToonField(response, "secondaryContexts") ?? "",
   );
 
   return {

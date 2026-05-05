@@ -1,7 +1,4 @@
-import type {
-	IAgentRuntime,
-	SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const DISCORD_MESSAGES_SEARCH_CATEGORY: SearchCategoryRegistration = {
 	category: "discord_messages",

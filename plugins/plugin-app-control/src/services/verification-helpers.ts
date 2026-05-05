@@ -282,7 +282,12 @@ export async function describeScreenshotWithVision(
 			imageUrl: dataUri,
 			prompt:
 				prompt ??
-				"Briefly describe what is rendered in this app screenshot. Focus on visible UI, error banners, and obvious failure states.",
+				[
+					"task: describe_app_screenshot",
+					"focus: visible UI, error banners, obvious failure states",
+					"length: brief",
+					"output: plain description",
+				].join("\n"),
 		})) as ImageDescriptionResultLike;
 		return extractImageDescription(raw);
 	} catch {

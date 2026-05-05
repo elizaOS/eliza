@@ -1,8 +1,8 @@
 /**
  * @module plugin-app-control/actions/app-list
  *
- * list sub-mode: combine installed apps + running runs into a single
- * markdown-table report for the LLM, plus structured `data` for clients.
+ * list sub-mode: combine installed apps + running runs into TOON text,
+ * plus structured `data` for clients.
  */
 
 import type { ActionResult, HandlerCallback } from "@elizaos/core";
@@ -14,7 +14,9 @@ function formatTable(
 	runs: readonly AppRunSummary[],
 ): string {
 	if (installed.length === 0 && runs.length === 0) {
-		return "No apps are installed and nothing is running.";
+		return ["available_apps:", "  installedCount: 0", "  runningCount: 0"].join(
+			"\n",
+		);
 	}
 
 	const runsByApp = new Map<string, AppRunSummary[]>();
@@ -25,17 +27,18 @@ function formatTable(
 	}
 
 	const lines: string[] = [];
-	lines.push(`Installed apps (${installed.length}):`);
+	lines.push("available_apps:");
+	lines.push(`  installedCount: ${installed.length}`);
+	lines.push(`  runningCount: ${runs.length}`);
 	if (installed.length === 0) {
-		lines.push("  (none)");
+		lines.push("apps[0]:");
 	} else {
+		lines.push(`apps[${installed.length}]{name,displayName,runningRunIds}:`);
 		for (const app of installed) {
 			const live = runsByApp.get(app.name) ?? [];
-			const running =
-				live.length === 0
-					? ""
-					: ` — running x${live.length} [${live.map((r) => r.runId).join(", ")}]`;
-			lines.push(`  - ${app.displayName} (${app.name})${running}`);
+			lines.push(
+				`  ${app.name},${app.displayName},${live.map((r) => r.runId).join("|") || "none"}`,
+			);
 		}
 	}
 
@@ -43,11 +46,12 @@ function formatTable(
 		(r) => !installed.some((app) => app.name === r.appName),
 	);
 	if (orphanRuns.length > 0) {
-		lines.push("");
-		lines.push(`Other running runs (${orphanRuns.length}):`);
+		lines.push(
+			`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
+		);
 		for (const run of orphanRuns) {
 			lines.push(
-				`  - ${run.displayName} (${run.appName}) [runId: ${run.runId}, status: ${run.status}]`,
+				`  ${run.runId},${run.appName},${run.displayName},${run.status}`,
 			);
 		}
 	}

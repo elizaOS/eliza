@@ -12,8 +12,11 @@ Rules:
 - Return "none" if no workflow matches the request
 - If multiple workflows match equally well, include all in matches array and set lower confidence
 
-Return structured data with:
-- matchedWorkflowId: string | null - The best matching workflow ID, or null if no good match
-- confidence: "high" | "medium" | "low" | "none" - How confident you are in the match
-- matches: Array of {id, name, score} - All potential matches with scores (0-100)
-- reason: string - Brief explanation of your decision`;
+Respond with structured TOON-style fields:
+matchedWorkflowId: best matching workflow ID, or null if no good match
+confidence: high | medium | low | none
+matches:
+  - id: workflow ID
+    name: workflow name
+    score: 0-100
+reason: brief explanation`;

@@ -1,6 +1,7 @@
 import {
   asRecord,
   buildElizaCloudServiceRoute,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   normalizeServiceRoutingConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
@@ -409,11 +410,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         const elizaCloudEnabledCfg =
           llmText?.transport === "cloud-proxy" && providerId === "elizacloud";
         const defaults = {
-          nano: "openai/gpt-5.5-nano",
-          small: "minimax/minimax-m2.7",
-          medium: "anthropic/claude-sonnet-4.6",
-          large: "moonshotai/kimi-k2.5",
-          mega: "anthropic/claude-opus-4-7",
+          nano: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+          small: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+          medium: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+          large: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+          mega: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
         };
 
         const vars = asRecord(asRecord(cfg.env)?.vars);

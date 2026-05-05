@@ -17,18 +17,28 @@ function createRuntime() {
   };
 }
 
+function createTelegramService(
+  overrides: Record<string, unknown>,
+): TelegramService {
+  return Object.assign(
+    Object.create(TelegramService.prototype) as TelegramService,
+    overrides,
+  );
+}
+
 describe("Telegram message connector adapter", () => {
   it("registers connector metadata with chat and thread support", () => {
     const runtime = createRuntime();
-    const service = Object.create(TelegramService.prototype) as any;
-    service.bot = {};
-    service.messageManager = {};
-    service.handleSendMessage = vi.fn();
-    service.resolveConnectorTargets = vi.fn();
-    service.listRecentConnectorTargets = vi.fn();
-    service.listConnectorRooms = vi.fn();
-    service.getConnectorChatContext = vi.fn();
-    service.getConnectorUserContext = vi.fn();
+    const service = createTelegramService({
+      bot: {},
+      messageManager: {},
+      handleSendMessage: vi.fn(),
+      resolveConnectorTargets: vi.fn(),
+      listRecentConnectorTargets: vi.fn(),
+      listConnectorRooms: vi.fn(),
+      getConnectorChatContext: vi.fn(),
+      getConnectorUserContext: vi.fn(),
+    });
 
     TelegramService.registerSendHandlers(runtime, service);
 
@@ -49,9 +59,10 @@ describe("Telegram message connector adapter", () => {
   it("parses forum-topic channel IDs for unified sends", async () => {
     const runtime = createRuntime();
     const sendMessage = vi.fn().mockResolvedValue([]);
-    const service = Object.create(TelegramService.prototype) as any;
-    service.bot = {};
-    service.messageManager = { sendMessage };
+    const service = createTelegramService({
+      bot: {},
+      messageManager: { sendMessage },
+    });
 
     await service.handleSendMessage(
       runtime,
@@ -69,20 +80,21 @@ describe("Telegram message connector adapter", () => {
 
   it("resolves known chats into connector targets", async () => {
     const runtime = createRuntime();
-    const service = Object.create(TelegramService.prototype) as any;
-    service.runtime = runtime;
-    service.bot = null;
-    service.knownChats = new Map([
-      [
-        "-100123",
-        {
-          id: -100123,
-          type: "supergroup",
-          title: "Ops Room",
-          is_forum: true,
-        },
-      ],
-    ]);
+    const service = createTelegramService({
+      runtime,
+      bot: null,
+      knownChats: new Map([
+        [
+          "-100123",
+          {
+            id: -100123,
+            type: "supergroup",
+            title: "Ops Room",
+            is_forum: true,
+          },
+        ],
+      ]),
+    });
 
     const targets = await service.resolveConnectorTargets("ops", { runtime });
 

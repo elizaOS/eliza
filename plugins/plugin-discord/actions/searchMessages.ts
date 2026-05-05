@@ -39,8 +39,7 @@ const getSearchParams = async (
 			prompt,
 		});
 
-		const parsedResponse =
-			parseToonKeyValue<Record<string, unknown>>(response);
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
 		if (parsedResponse?.query) {
 			// Remove quotes from query if present
 			const cleanQuery = String(parsedResponse.query).replace(

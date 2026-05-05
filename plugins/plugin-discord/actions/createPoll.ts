@@ -42,8 +42,7 @@ const getPollInfo = async (
 			prompt,
 		});
 
-		const parsedResponse =
-			parseToonKeyValue<Record<string, unknown>>(response);
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
 		if (
 			parsedResponse?.question &&
 			Array.isArray(parsedResponse.options) &&

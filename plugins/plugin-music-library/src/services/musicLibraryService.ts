@@ -43,6 +43,19 @@ import {
   type SongMemory,
 } from "../components/songMemory";
 import { SpotifyClient } from "./spotifyClient";
+import {
+  type DetectedMusicEntity,
+  MusicEntityDetectionHelper,
+} from "./musicEntityDetectionService";
+import { MusicInfoHelper } from "./musicInfoService";
+import type { MusicInfoServiceStatus } from "./serviceStatus";
+import {
+  type ExtractedMusicInfo,
+  type WikipediaExtractionContext,
+  WikipediaExtractionHelper,
+} from "./wikipediaExtractionService";
+import { WikipediaClient } from "./wikipediaClient";
+import { type YouTubeSearchResult, YouTubeSearchHelper } from "./youtubeSearch";
 
 const MUSIC_LIBRARY_SERVICE_NAME = "musicLibrary";
 
@@ -62,9 +75,22 @@ export class MusicLibraryService extends Service {
 
   public readonly spotifyClient: SpotifyClient;
   public readonly repetitionControl = repetitionControl;
+  private readonly youtubeSearch: YouTubeSearchHelper;
+  private readonly wikipedia: WikipediaClient;
+  private readonly musicInfo: MusicInfoHelper;
+  private readonly entityDetection: MusicEntityDetectionHelper;
+  private readonly wikipediaExtraction: WikipediaExtractionHelper;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
+    this.youtubeSearch = new YouTubeSearchHelper();
+    this.wikipedia = new WikipediaClient();
+    this.musicInfo = new MusicInfoHelper(runtime, this.wikipedia);
+    this.entityDetection = new MusicEntityDetectionHelper(runtime);
+    this.wikipediaExtraction = new WikipediaExtractionHelper(
+      runtime,
+      this.wikipedia,
+    );
     const clientId = runtime?.getSetting("SPOTIFY_CLIENT_ID") as
       | string
       | undefined;
@@ -82,7 +108,10 @@ export class MusicLibraryService extends Service {
   }
 
   async stop(): Promise<void> {
-    // Nothing to clean up yet
+    this.musicInfo.clearCache();
+    this.entityDetection.clearCache();
+    this.wikipediaExtraction.clearCache();
+    this.youtubeSearch.clearCache();
   }
 
   private ensureRuntime(): IAgentRuntime {
@@ -328,5 +357,89 @@ export class MusicLibraryService extends Service {
 
   async getDJTipStats(): Promise<DJTipStats> {
     return getDJTipStats(this.ensureRuntime());
+  }
+
+  // === YouTube search ===
+
+  async search(
+    query: string,
+    options: { limit?: number; includeShorts?: boolean } = {},
+  ): Promise<YouTubeSearchResult[]> {
+    return this.searchYouTube(query, options);
+  }
+
+  async searchYouTube(
+    query: string,
+    options: { limit?: number; includeShorts?: boolean } = {},
+  ): Promise<YouTubeSearchResult[]> {
+    return this.youtubeSearch.search(query, options);
+  }
+
+  async searchOneYouTube(query: string): Promise<YouTubeSearchResult | null> {
+    return this.youtubeSearch.searchOne(query);
+  }
+
+  async validateYouTubeUrl(url: string): Promise<boolean> {
+    return this.youtubeSearch.validateUrl(url);
+  }
+
+  async getYouTubeVideoInfo(url: string): Promise<YouTubeSearchResult | null> {
+    return this.youtubeSearch.getVideoInfo(url);
+  }
+
+  // === Music metadata ===
+
+  getServiceStatus(): MusicInfoServiceStatus {
+    return this.musicInfo.getServiceStatus();
+  }
+
+  async getTrackInfo(urlOrTitle: string) {
+    return this.musicInfo.getTrackInfo(urlOrTitle);
+  }
+
+  async getArtistInfo(artistName: string) {
+    return this.musicInfo.getArtistInfo(artistName);
+  }
+
+  async getAlbumInfo(albumTitle: string, artistName?: string) {
+    return this.musicInfo.getAlbumInfo(albumTitle, artistName);
+  }
+
+  async prewarmTrackInfo(urlOrTitle: string): Promise<void> {
+    return this.musicInfo.prewarmTrackInfo(urlOrTitle);
+  }
+
+  async prewarmTracks(tracks: string[]): Promise<void> {
+    return this.musicInfo.prewarmTracks(tracks);
+  }
+
+  // === Entity and Wikipedia helpers ===
+
+  async detectEntities(text: string): Promise<DetectedMusicEntity[]> {
+    return this.entityDetection.detectEntities(text);
+  }
+
+  async getWikipediaTrackInfo(trackName: string, artistName?: string) {
+    return this.wikipedia.getTrackInfo(trackName, artistName);
+  }
+
+  async getWikipediaArtistInfo(artistName: string) {
+    return this.wikipedia.getArtistInfo(artistName);
+  }
+
+  async getWikipediaAlbumInfo(albumTitle: string, artistName?: string) {
+    return this.wikipedia.getAlbumInfo(albumTitle, artistName);
+  }
+
+  async extractFromWikipedia(
+    entityName: string,
+    entityType: "artist" | "album" | "song",
+    context: WikipediaExtractionContext,
+  ): Promise<ExtractedMusicInfo | null> {
+    return this.wikipediaExtraction.extractFromWikipedia(
+      entityName,
+      entityType,
+      context,
+    );
   }
 }

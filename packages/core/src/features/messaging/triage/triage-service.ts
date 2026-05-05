@@ -347,7 +347,12 @@ export class TriageService {
 			return updated ?? record;
 		}
 
-		const scheduledId = enqueueLocalDeferredSend(this, runtime, draftId, sendAtMs);
+		const scheduledId = enqueueLocalDeferredSend(
+			this,
+			runtime,
+			draftId,
+			sendAtMs,
+		);
 		const updated = this.store.markDraftScheduled(
 			draftId,
 			sendAtMs,
@@ -373,11 +378,11 @@ function enqueueLocalDeferredSend(
 	const delayMs = Math.max(0, sendAtMs - Date.now());
 	const timer = setTimeout(() => {
 		localTimers.delete(scheduledId);
-			service.sendDraft(runtime, draftId).catch((err) => {
-				logger.error(
-					`[TriageService] deferred sendDraft failed draftId=${draftId}: ${err instanceof Error ? err.message : String(err)}`,
-				);
-			});
+		service.sendDraft(runtime, draftId).catch((err) => {
+			logger.error(
+				`[TriageService] deferred sendDraft failed draftId=${draftId}: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		});
 	}, delayMs);
 	// Don't keep the event loop alive solely for a deferred send.
 	if (typeof timer.unref === "function") timer.unref();

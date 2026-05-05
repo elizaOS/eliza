@@ -31,10 +31,16 @@ function pickCompressedDescription(item: {
 	descriptionCompressed?: string;
 	compressedDescription?: string;
 }): string {
-	if (typeof item.descriptionCompressed === "string" && item.descriptionCompressed.trim()) {
+	if (
+		typeof item.descriptionCompressed === "string" &&
+		item.descriptionCompressed.trim()
+	) {
 		return item.descriptionCompressed.trim();
 	}
-	if (typeof item.compressedDescription === "string" && item.compressedDescription.trim()) {
+	if (
+		typeof item.compressedDescription === "string" &&
+		item.compressedDescription.trim()
+	) {
 		return item.compressedDescription.trim();
 	}
 	if (typeof item.description === "string" && item.description.trim()) {
@@ -43,7 +49,9 @@ function pickCompressedDescription(item: {
 	return "";
 }
 
-function uniqueNonEmpty(values: readonly (string | undefined | null)[]): string[] {
+function uniqueNonEmpty(
+	values: readonly (string | undefined | null)[],
+): string[] {
 	const seen = new Set<string>();
 	const out: string[] = [];
 	for (const value of values) {
@@ -77,7 +85,9 @@ function formatParameterTypeLabel(parameter: ActionParameter): string {
 	}
 }
 
-function renderParameter(parameter: ActionParameter): { [key: string]: ToonValue | undefined } {
+function renderParameter(parameter: ActionParameter): {
+	[key: string]: ToonValue | undefined;
+} {
 	const description = pickCompressedDescription(parameter);
 	const out: { [key: string]: ToonValue | undefined } = {
 		name: parameter.name,
@@ -188,7 +198,9 @@ export function toonRenderAction(action: Action): string {
 	return encodeToon(cleaned);
 }
 
-function isPrimitive(value: unknown): value is string | number | boolean | null {
+function isPrimitive(
+	value: unknown,
+): value is string | number | boolean | null {
 	return (
 		value === null ||
 		typeof value === "string" ||

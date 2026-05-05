@@ -85,7 +85,7 @@ describe("ollama MODEL_USED events", () => {
         type: "TEXT_SMALL",
         model: "small-ollama",
         tokens: { prompt: 7, completion: 2, total: 9 },
-      }),
+      })
     );
     expect(runtime.emitEvent).toHaveBeenNthCalledWith(
       2,
@@ -96,7 +96,7 @@ describe("ollama MODEL_USED events", () => {
         model: "large-ollama",
         usageEstimated: true,
         tokens: expect.objectContaining({ estimated: true }),
-      }),
+      })
     );
     expect(runtime.emitEvent).toHaveBeenNthCalledWith(
       3,
@@ -106,7 +106,7 @@ describe("ollama MODEL_USED events", () => {
         type: "OBJECT_SMALL",
         model: "small-ollama",
         tokens: { prompt: 5, completion: 4, total: 9 },
-      }),
+      })
     );
     expect(runtime.emitEvent).toHaveBeenNthCalledWith(
       4,
@@ -116,7 +116,7 @@ describe("ollama MODEL_USED events", () => {
         type: "TEXT_EMBEDDING",
         model: "embed-ollama",
         tokens: { prompt: 6, completion: 0, total: 6 },
-      }),
+      })
     );
   });
 });

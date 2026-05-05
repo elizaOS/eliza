@@ -36,15 +36,6 @@ const elizaKeywords = [
   { pattern: /.*/, response: "Please go on." },
 ];
 
-function escapeXml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
 function extractUserMessage(prompt: string): string {
   const match = prompt.match(/(?:User|Human|You):\s*(.+?)(?:\n|$)/i);
   return match ? match[1].trim() : prompt.trim();
@@ -66,21 +57,17 @@ async function handle(
   const input = extractUserMessage(params.prompt);
   const reply = generateElizaResponse(input);
 
-  // The elizaOS runtime expects an XML <response> block.
-  // Keep it minimal: no actions, just text.
   return [
-    "<response>",
-    "<thought>Responding.</thought>",
-    "<actions>REPLY</actions>",
-    "<providers></providers>",
-    `<text>${escapeXml(reply)}</text>`,
-    "</response>",
-  ].join("");
+    "thought: Responding.",
+    "actions: REPLY",
+    "providers:",
+    `text: ${reply}`,
+  ].join("\n");
 }
 
-export const elizaClassicXmlPlugin: Plugin = {
-  name: "eliza-classic-xml",
-  description: "Wrap ELIZA classic responses in elizaOS XML format",
+export const elizaClassicToonPlugin: Plugin = {
+  name: "eliza-classic-toon",
+  description: "Wrap ELIZA classic responses in elizaOS TOON format",
   priority: 200,
   models: {
     [ModelType.TEXT_LARGE]: handle,

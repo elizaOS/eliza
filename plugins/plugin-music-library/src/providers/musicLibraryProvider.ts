@@ -1,4 +1,5 @@
 import {
+  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -52,59 +53,33 @@ export const musicLibraryProvider: Provider = {
         const mostPlayed = await getMostPlayedSongs(runtime, 20);
         const recentSongs = await getRecentSongs(runtime, 10);
 
-        let context = "# Music Library - Available Tracks\n\n";
-
-        context += "## Library Statistics\n";
-        context += `- Total tracks in library: ${stats.totalSongs}\n`;
-        context += `- Total plays: ${stats.totalPlays}\n`;
-        if (stats.mostPlayed) {
-          const artist =
-            stats.mostPlayed.artist ||
-            stats.mostPlayed.channel ||
-            "Unknown Artist";
-          context += `- Most played: "${stats.mostPlayed.title}" by ${artist} (${stats.mostPlayed.playCount} plays)\n`;
-        }
-        context += "\n";
-
-        if (mostPlayed.length > 0) {
-          context += `## Most Played Tracks (Top ${mostPlayed.length})\n\n`;
-          mostPlayed.forEach((song, index) => {
-            const artist = song.artist || song.channel || "Unknown Artist";
-            context += `${index + 1}. "${song.title}" by ${artist}`;
-            context += ` (${song.playCount} play${song.playCount !== 1 ? "s" : ""})`;
-            if (song.duration) {
-              const minutes = Math.floor(song.duration / 60);
-              const seconds = song.duration % 60;
-              context += ` - ${minutes}:${seconds.toString().padStart(2, "0")}`;
-            }
-            context += "\n";
-          });
-          context += "\n";
-        }
-
-        if (recentSongs.length > 0) {
-          context += "## Recently Played Tracks\n\n";
-          recentSongs.forEach((song, index) => {
-            const timeAgo = formatTimeAgo(Date.now() - song.lastPlayed);
-            const artist = song.artist || song.channel || "Unknown Artist";
-            context += `${index + 1}. "${song.title}" by ${artist}`;
-            if (song.playCount > 1) {
-              context += ` (played ${song.playCount} times)`;
-            }
-            context += ` - ${timeAgo}\n`;
-          });
-          context += "\n";
-        }
-
-        if (stats.totalSongs === 0) {
-          context +=
-            "Note: The library is currently empty. Tracks will be added as they are played.\n";
-        } else {
-          context +=
-            'Note: You can ask me to play any of these tracks by name, or say "play it" to refer to the most recent track.\n';
-        }
-
-        return { text: context };
+        return {
+          text: encodeToonValue({
+            music_library: {
+              total_tracks: stats.totalSongs,
+              total_plays: stats.totalPlays,
+              most_played: stats.mostPlayed ?? null,
+              top_tracks: mostPlayed.map((song, index) => ({
+                rank: index + 1,
+                title: song.title,
+                artist: song.artist || song.channel || "Unknown Artist",
+                play_count: song.playCount,
+                duration: song.duration,
+              })),
+              recent_tracks: recentSongs.map((song, index) => ({
+                rank: index + 1,
+                title: song.title,
+                artist: song.artist || song.channel || "Unknown Artist",
+                play_count: song.playCount,
+                last_played: formatTimeAgo(Date.now() - song.lastPlayed),
+              })),
+              note:
+                stats.totalSongs === 0
+                  ? "Library is empty. Tracks are added as they are played."
+                  : 'References like "it", "that", or "this song" usually mean the most recent track.',
+            },
+          }),
+        };
       }
 
       const recentSongs = await getRecentSongs(runtime, 5);
@@ -112,22 +87,19 @@ export const musicLibraryProvider: Provider = {
         return { text: "" };
       }
 
-      let context = "# Recently Played Songs\n\n";
-
-      recentSongs.forEach((song, index) => {
-        const timeAgo = formatTimeAgo(Date.now() - song.lastPlayed);
-        const artist = song.artist || song.channel || "Unknown Artist";
-        context += `${index + 1}. "${song.title}" by ${artist}`;
-        if (song.playCount > 1) {
-          context += ` (played ${song.playCount} times)`;
-        }
-        context += ` - ${timeAgo}\n`;
-      });
-
-      context +=
-        '\nNote: When the user says "it", "that", "this song", or similar references without specifying a song name, they are likely referring to the most recent song listed above.\n';
-
-      return { text: context };
+      return {
+        text: encodeToonValue({
+          recent_music: recentSongs.map((song, index) => ({
+            rank: index + 1,
+            title: song.title,
+            artist: song.artist || song.channel || "Unknown Artist",
+            play_count: song.playCount,
+            last_played: formatTimeAgo(Date.now() - song.lastPlayed),
+          })),
+          reference_note:
+            'References like "it", "that", or "this song" usually mean the most recent track.',
+        }),
+      };
     } catch (error) {
       logger.error(
         "Error in music library provider:",

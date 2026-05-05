@@ -199,29 +199,21 @@ const WORLD_ID = "00000000-0000-0000-0000-000000000104" as UUID;
 const MOCK_TRANSCRIPT =
   "Hello there. This is a short voice benchmark sample.";
 const MOCK_TEXT_RESPONSE = "Mock voicebench response is ready.";
-const MOCK_MESSAGE_HANDLER_XML = `<response>
-  <thought>Running deterministic voicebench mock response.</thought>
-  <actions>REPLY</actions>
-  <providers></providers>
-  <text>${MOCK_TEXT_RESPONSE}</text>
-  <simple>true</simple>
-</response>`;
-const MOCK_NON_SIMPLE_HANDLER_XML = `<response>
-  <thought>Running deterministic voicebench mock response with provider context.</thought>
-  <actions>REPLY</actions>
-  <providers>VOICEBENCH_CONTEXT</providers>
-  <text>${MOCK_TEXT_RESPONSE}</text>
-  <simple>false</simple>
-</response>`;
-const MOCK_REPLY_XML = `<response>
-  <thought>Generating deterministic benchmark dialog.</thought>
-  <text>${MOCK_TEXT_RESPONSE}</text>
-</response>`;
-const MOCK_SHOULD_RESPOND_XML = `<response>
-  <name>VoicebenchAgent</name>
-  <reasoning>Voicebench messages should receive a benchmark response.</reasoning>
-  <action>RESPOND</action>
-</response>`;
+const MOCK_MESSAGE_HANDLER_TOON = `thought: Running deterministic voicebench mock response.
+actions: REPLY
+providers:
+text: ${MOCK_TEXT_RESPONSE}
+simple: true`;
+const MOCK_NON_SIMPLE_HANDLER_TOON = `thought: Running deterministic voicebench mock response with provider context.
+actions: REPLY
+providers: VOICEBENCH_CONTEXT
+text: ${MOCK_TEXT_RESPONSE}
+simple: false`;
+const MOCK_REPLY_TOON = `thought: Generating deterministic benchmark dialog.
+text: ${MOCK_TEXT_RESPONSE}`;
+const MOCK_SHOULD_RESPOND_TOON = `name: VoicebenchAgent
+reasoning: Voicebench messages should receive a benchmark response.
+action: RESPOND`;
 const ZERO_EMBEDDING = Object.freeze(new Array(384).fill(0)) as readonly number[];
 
 function mockTextHandler(params: Record<string, unknown>): string {
@@ -230,15 +222,15 @@ function mockTextHandler(params: Record<string, unknown>): string {
     prompt.includes("should respond") ||
     prompt.includes("RESPOND | IGNORE | STOP")
   ) {
-    return MOCK_SHOULD_RESPOND_XML;
+    return MOCK_SHOULD_RESPOND_TOON;
   }
   if (prompt.includes("Generate dialog for the character")) {
-    return MOCK_REPLY_XML;
+    return MOCK_REPLY_TOON;
   }
   if (prompt.includes("Voicebench non-simple path")) {
-    return MOCK_NON_SIMPLE_HANDLER_XML;
+    return MOCK_NON_SIMPLE_HANDLER_TOON;
   }
-  return MOCK_MESSAGE_HANDLER_XML;
+  return MOCK_MESSAGE_HANDLER_TOON;
 }
 
 const mockVoicebenchPlugin: Plugin = {

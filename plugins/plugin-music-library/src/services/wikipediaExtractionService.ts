@@ -3,10 +3,9 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
-  Service,
 } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
-import type { WikipediaService } from "./wikipediaClient";
+import type { WikipediaClient } from "./wikipediaClient";
 
 const WIKIPEDIA_EXTRACTION_SERVICE_NAME = "wikipediaExtraction";
 
@@ -119,26 +118,26 @@ function toStringList(value: unknown): string[] | undefined {
  * Service that uses LLMs to dynamically extract relevant information from Wikipedia
  * Based on context (e.g., DJ intro, music selection), extracts different information
  */
-export class WikipediaExtractionService extends Service {
-  static serviceType: string = WIKIPEDIA_EXTRACTION_SERVICE_NAME;
+export class WikipediaExtractionHelper {
   capabilityDescription =
     "Uses LLM to dynamically extract music information from Wikipedia based on context";
 
   private cache: Map<string, { data: ExtractedMusicInfo; timestamp: number }> =
     new Map();
   private readonly CACHE_TTL = 3600000; // 1 hour in milliseconds
+  private readonly runtime?: IAgentRuntime;
+  private readonly wikipediaClient: WikipediaClient | null;
 
-  static async start(
-    runtime: IAgentRuntime,
-  ): Promise<WikipediaExtractionService> {
-    logger.debug(
-      `Starting WikipediaExtractionService for agent ${runtime.character.name}`,
-    );
-    return new WikipediaExtractionService(runtime);
+  constructor(
+    runtime?: IAgentRuntime,
+    wikipediaClient?: WikipediaClient | null,
+  ) {
+    this.runtime = runtime;
+    this.wikipediaClient = wikipediaClient ?? null;
   }
 
-  private getWikipediaService(): WikipediaService | null {
-    return this.runtime?.getService("wikipedia") as WikipediaService | null;
+  private getWikipediaService(): WikipediaClient | null {
+    return this.wikipediaClient;
   }
 
   async stop(): Promise<void> {
@@ -437,3 +436,8 @@ interestingFacts[3]:
     }
   }
 }
+
+export const WIKIPEDIA_EXTRACTION_HELPER_NAME =
+  WIKIPEDIA_EXTRACTION_SERVICE_NAME;
+
+export { WikipediaExtractionHelper as WikipediaExtractionService };

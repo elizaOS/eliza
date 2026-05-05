@@ -8,7 +8,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { YouTubeSearchService } from "../services/youtubeSearch";
+import type { MusicLibraryService } from "../services/musicLibraryService";
 
 /**
  * Extract search query from message text
@@ -77,16 +77,16 @@ export const searchYouTube: Action = {
     }
 
     try {
-      const youtubeSearchService = runtime.getService(
-        "youtubeSearch",
-      ) as YouTubeSearchService | null;
-      if (!youtubeSearchService) {
+      const musicLibrary = runtime.getService(
+        "musicLibrary",
+      ) as MusicLibraryService | null;
+      if (!musicLibrary) {
         throw new Error("YouTube search service is not available");
       }
 
       logger.debug(`Searching YouTube for: ${searchQuery}`);
 
-      const searchResults = await youtubeSearchService.search(searchQuery, {
+      const searchResults = await musicLibrary.searchYouTube(searchQuery, {
         limit: 5,
       });
 

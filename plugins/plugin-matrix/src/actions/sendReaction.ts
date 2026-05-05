@@ -11,11 +11,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
 import type { MatrixService } from "../service.js";
 import { MATRIX_SERVICE_NAME } from "../types.js";
 
@@ -81,8 +77,7 @@ export const sendReaction: Action = {
         prompt,
       });
 
-      const parsed =
-        parseToonKeyValue<Record<string, unknown>>(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
       if (parsed?.emoji && parsed?.eventId) {
         reactionInfo = {
           emoji: String(parsed.emoji),

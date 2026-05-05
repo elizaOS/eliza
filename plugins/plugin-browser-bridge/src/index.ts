@@ -16,10 +16,10 @@ export {
   browserBridgeOpenManagerAction,
   browserBridgeRefreshAction,
   browserBridgeRevealFolderAction,
-} from "./actions.ts";
-export * from "./contracts.ts";
-export * from "./packaging.ts";
-export { browserBridgePlugin } from "./plugin.ts";
-export * from "./routes.ts";
-export * from "./schema.ts";
-export * from "./service.ts";
+} from "./actions.js";
+export * from "./contracts.js";
+export * from "./packaging.js";
+export { browserBridgePlugin } from "./plugin.js";
+export * from "./routes.js";
+export * from "./schema.js";
+export * from "./service.js";

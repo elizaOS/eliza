@@ -88,6 +88,7 @@ import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import {
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
@@ -1497,12 +1498,13 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       }
     | undefined;
   if (effectivelyEnabled) {
-    const nano = llmText?.nanoModel || models?.nano || "openai/gpt-5.5-nano";
+    const nano =
+      llmText?.nanoModel || models?.nano || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const small =
-      llmText?.smallModel || models?.small || "minimax/minimax-m2.7";
+      llmText?.smallModel || models?.small || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const medium = llmText?.mediumModel || models?.medium || small;
     const large =
-      llmText?.largeModel || models?.large || "anthropic/claude-opus-4-7";
+      llmText?.largeModel || models?.large || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const mega = llmText?.megaModel || models?.mega || large;
     const responseHandlerModel =
       llmText?.responseHandlerModel || llmText?.shouldRespondModel;

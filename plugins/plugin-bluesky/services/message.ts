@@ -1,6 +1,6 @@
 import {
-	composePrompt,
 	type Content,
+	composePrompt,
 	type IAgentRuntime,
 	type MessageConnectorChatContext,
 	type MessageConnectorQueryContext,

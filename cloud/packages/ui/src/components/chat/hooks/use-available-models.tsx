@@ -24,6 +24,8 @@ const FALLBACK_MODELS: SelectorModel[] = sortSelectorModels([
     description: model.description,
     modelId: model.modelId,
     provider: model.provider,
+    ...(model.recommended ? { recommended: true } : {}),
+    ...(model.free ? { free: true } : {}),
   })),
 ]).filter(
   (model, index, models) =>

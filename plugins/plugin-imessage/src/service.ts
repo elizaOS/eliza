@@ -491,8 +491,7 @@ export class IMessageService extends Service implements IIMessageService {
                   contacts.get(normalizeContactHandle(handle))?.name ??
                   message.handle ??
                   message.chatId,
-                kind:
-                  message.chatId && message.chatId.includes(";+;") ? "group" : contactKind(handle),
+                kind: message.chatId?.includes(";+;") ? "group" : contactKind(handle),
                 score: 0.68,
                 metadata: {
                   handle,

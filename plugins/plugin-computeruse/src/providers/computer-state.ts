@@ -5,7 +5,13 @@
  * and a summary of recent actions so the agent has continuity.
  */
 
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import {
+  encodeToonValue,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
+} from "@elizaos/core";
 import { currentPlatform } from "../platform/helpers.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 
@@ -29,39 +35,45 @@ export const computerStateProvider: Provider = {
     const recent = service.getRecentActions();
     const approvals = service.getApprovalSnapshot();
 
-    const lines: string[] = [
-      "# Computer Use",
-      `Platform: ${currentPlatform()}`,
-      `Screen: ${screen.width}x${screen.height}`,
-      `Approval Mode: ${approvals.mode}`,
-      `Pending Approvals: ${approvals.pendingCount}`,
-      `Screenshot: ${caps.screenshot.available ? caps.screenshot.tool : "unavailable"}`,
-      `Mouse/Keyboard: ${caps.computerUse.available ? caps.computerUse.tool : "unavailable"}`,
-      `Browser: ${caps.browser.available ? caps.browser.tool : "unavailable"}`,
-      `Window List: ${caps.windowList.available ? caps.windowList.tool : "unavailable"}`,
-      `Terminal: ${caps.terminal.available ? caps.terminal.tool : "unavailable"}`,
-      `File System: ${caps.fileSystem.available ? caps.fileSystem.tool : "unavailable"}`,
-    ];
-
-    if (approvals.pendingApprovals.length > 0) {
-      lines.push("");
-      lines.push("Approval queue:");
-      for (const approval of approvals.pendingApprovals.slice(0, 5)) {
-        lines.push(`  - ${approval.command}`);
-      }
-    }
-
-    if (recent.length > 0) {
-      lines.push("");
-      lines.push("Recent actions:");
-      for (const entry of recent.slice(-5)) {
-        const status = entry.success ? "ok" : "FAILED";
-        lines.push(`  - ${entry.action} [${status}]`);
-      }
-    }
+    const text = encodeToonValue({
+      computer_use: {
+        platform: currentPlatform(),
+        screen: { width: screen.width, height: screen.height },
+        approvals: {
+          mode: approvals.mode,
+          pendingCount: approvals.pendingCount,
+          pending: approvals.pendingApprovals.slice(0, 5).map((approval) => ({
+            id: approval.id,
+            command: approval.command,
+          })),
+        },
+        capabilities: {
+          screenshot: caps.screenshot.available
+            ? caps.screenshot.tool
+            : "unavailable",
+          mouseKeyboard: caps.computerUse.available
+            ? caps.computerUse.tool
+            : "unavailable",
+          browser: caps.browser.available ? caps.browser.tool : "unavailable",
+          windowList: caps.windowList.available
+            ? caps.windowList.tool
+            : "unavailable",
+          terminal: caps.terminal.available
+            ? caps.terminal.tool
+            : "unavailable",
+          fileSystem: caps.fileSystem.available
+            ? caps.fileSystem.tool
+            : "unavailable",
+        },
+        recentActions: recent.slice(-5).map((entry) => ({
+          action: entry.action,
+          success: entry.success,
+        })),
+      },
+    });
 
     return {
-      text: lines.join("\n"),
+      text,
       values: {
         platform: currentPlatform(),
         screenWidth: screen.width,

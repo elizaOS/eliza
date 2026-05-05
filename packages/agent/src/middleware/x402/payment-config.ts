@@ -38,7 +38,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { X402ScanNetwork } from "./x402-types.ts";
+import type { X402ScanNetwork } from "./x402-types.js";
 
 /** Networks supported by built-in x402 presets and verification */
 export type Network = "BASE" | "SOLANA" | "POLYGON";

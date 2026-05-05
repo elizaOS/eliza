@@ -8,7 +8,7 @@ import type {
   BrowserBridgeCompanionReleaseManifest,
   BrowserBridgeKind,
   BrowserBridgePackagePathTarget,
-} from "./contracts.ts";
+} from "./contracts.js";
 
 const pluginSrcDir = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(pluginSrcDir, "../../../");

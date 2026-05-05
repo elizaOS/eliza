@@ -470,6 +470,554 @@ function extractTopLevelStringArrayProp(objText, propName) {
   return vals;
 }
 
+function extractTopLevelValueSource(objText, propName) {
+  const tail = scanTopLevelPropertyValue(objText, propName);
+  if (!tail) return null;
+
+  let i = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let escaped = false;
+
+  while (i < tail.length) {
+    const ch = tail[i];
+    const next = i + 1 < tail.length ? tail[i + 1] : "";
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    if (!inSingle && !inDouble && !inTemplate) {
+      if (ch === "/" && next === "/") {
+        inLineComment = true;
+        i += 2;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        inBlockComment = true;
+        i += 2;
+        continue;
+      }
+    }
+
+    if (inSingle) {
+      if (!escaped && ch === "'") inSingle = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+    if (inDouble) {
+      if (!escaped && ch === '"') inDouble = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+    if (inTemplate) {
+      if (!escaped && ch === "`") inTemplate = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+
+    if (ch === "'") {
+      inSingle = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      inTemplate = true;
+      i++;
+      continue;
+    }
+
+    if (braceDepth === 0 && bracketDepth === 0 && parenDepth === 0) {
+      if (ch === ",") return tail.slice(0, i).trim();
+    }
+
+    if (ch === "{") braceDepth++;
+    if (ch === "}") {
+      if (braceDepth === 0) return tail.slice(0, i).trim();
+      braceDepth--;
+    }
+    if (ch === "[") bracketDepth++;
+    if (ch === "]") bracketDepth--;
+    if (ch === "(") parenDepth++;
+    if (ch === ")") parenDepth--;
+
+    i++;
+  }
+
+  return tail.trim();
+}
+
+function skipTrivia(src, cursor) {
+  let i = cursor;
+  while (i < src.length) {
+    const ch = src[i];
+    const next = i + 1 < src.length ? src[i + 1] : "";
+    if (isWs(ch)) {
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      i += 2;
+      while (i < src.length && src[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i + 1 < src.length && !(src[i] === "*" && src[i + 1] === "/")) {
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+    break;
+  }
+  return i;
+}
+
+function readIdentifier(src, cursor) {
+  let i = cursor;
+  if (!/[A-Za-z_$]/.test(src[i] ?? "")) return null;
+  i++;
+  while (i < src.length && /[A-Za-z0-9_$]/.test(src[i])) i++;
+  return { value: src.slice(cursor, i), end: i };
+}
+
+function readStringToken(src, cursor) {
+  const quote = src[cursor];
+  let i = cursor + 1;
+  let escaped = false;
+  while (i < src.length) {
+    const ch = src[i];
+    if (!escaped && ch === quote) break;
+    escaped = !escaped && ch === "\\";
+    i++;
+  }
+  if (i >= src.length) return null;
+  const literal = src.slice(cursor, i + 1);
+  return { value: unquoteStringLiteral(literal), end: i + 1 };
+}
+
+function readNumberToken(src, cursor) {
+  const m = src.slice(cursor).match(/^-?\d+(?:\.\d+)?/);
+  if (!m) return null;
+  return { value: Number(m[0]), end: cursor + m[0].length };
+}
+
+function skipUnknownExpression(src, cursor) {
+  let i = cursor;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let escaped = false;
+
+  while (i < src.length) {
+    const ch = src[i];
+    if (inSingle) {
+      if (!escaped && ch === "'") inSingle = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+    if (inDouble) {
+      if (!escaped && ch === '"') inDouble = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+    if (inTemplate) {
+      if (!escaped && ch === "`") inTemplate = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      inTemplate = true;
+      i++;
+      continue;
+    }
+
+    if (braceDepth === 0 && bracketDepth === 0 && parenDepth === 0) {
+      if (ch === "," || ch === "}" || ch === "]") break;
+    }
+
+    if (ch === "{") braceDepth++;
+    if (ch === "}") braceDepth--;
+    if (ch === "[") bracketDepth++;
+    if (ch === "]") bracketDepth--;
+    if (ch === "(") parenDepth++;
+    if (ch === ")") parenDepth--;
+    i++;
+  }
+
+  return i;
+}
+
+function skipTypeAssertionSuffix(src, cursor) {
+  let i = skipTrivia(src, cursor);
+  while (src.startsWith("as", i)) {
+    const before = i > 0 ? src[i - 1] : "";
+    const after = i + 2 < src.length ? src[i + 2] : "";
+    if (/[A-Za-z0-9_$]/.test(before) || /[A-Za-z0-9_$]/.test(after)) break;
+    i = skipTrivia(src, i + 2);
+    while (i < src.length && ![",", "]", "}"].includes(src[i])) i++;
+    i = skipTrivia(src, i);
+  }
+  return i;
+}
+
+function parseTsLiteralValue(src, cursor = 0) {
+  let i = skipTrivia(src, cursor);
+  const ch = src[i];
+  if (ch === undefined) return { value: undefined, end: i };
+
+  if (ch === "'" || ch === '"' || ch === "`") {
+    const token = readStringToken(src, i);
+    if (!token) return { value: undefined, end: skipUnknownExpression(src, i) };
+    return { value: token.value, end: skipTypeAssertionSuffix(src, token.end) };
+  }
+
+  if (ch === "[") {
+    /** @type {unknown[]} */
+    const arr = [];
+    i++;
+    for (;;) {
+      i = skipTrivia(src, i);
+      if (src[i] === "]" || i >= src.length) {
+        i++;
+        break;
+      }
+      if (src.startsWith("...", i)) {
+        i = skipUnknownExpression(src, i + 3);
+      } else {
+        const parsed = parseTsLiteralValue(src, i);
+        if (parsed.value !== undefined) arr.push(parsed.value);
+        i = parsed.end;
+      }
+      i = skipTrivia(src, i);
+      if (src[i] === ",") i++;
+    }
+    return { value: arr, end: skipTypeAssertionSuffix(src, i) };
+  }
+
+  if (ch === "{") {
+    /** @type {Record<string, unknown>} */
+    const obj = {};
+    i++;
+    for (;;) {
+      i = skipTrivia(src, i);
+      if (src[i] === "}" || i >= src.length) {
+        i++;
+        break;
+      }
+      if (src.startsWith("...", i)) {
+        i = skipUnknownExpression(src, i + 3);
+        i = skipTrivia(src, i);
+        if (src[i] === ",") i++;
+        continue;
+      }
+
+      let key;
+      if (src[i] === "'" || src[i] === '"' || src[i] === "`") {
+        const token = readStringToken(src, i);
+        if (!token || typeof token.value !== "string") break;
+        key = token.value;
+        i = token.end;
+      } else {
+        const ident = readIdentifier(src, i);
+        if (!ident) {
+          i = skipUnknownExpression(src, i);
+          if (src[i] === ",") i++;
+          continue;
+        }
+        key = ident.value;
+        i = ident.end;
+      }
+
+      i = skipTrivia(src, i);
+      if (src[i] !== ":") {
+        obj[key] = true;
+        if (src[i] === ",") i++;
+        continue;
+      }
+      const parsed = parseTsLiteralValue(src, i + 1);
+      if (parsed.value !== undefined) obj[key] = parsed.value;
+      i = skipTrivia(src, parsed.end);
+      if (src[i] === ",") i++;
+    }
+    return { value: obj, end: skipTypeAssertionSuffix(src, i) };
+  }
+
+  if (ch === "-" || /\d/.test(ch)) {
+    const token = readNumberToken(src, i);
+    if (!token) return { value: undefined, end: skipUnknownExpression(src, i) };
+    return { value: token.value, end: skipTypeAssertionSuffix(src, token.end) };
+  }
+
+  const ident = readIdentifier(src, i);
+  if (ident) {
+    if (ident.value === "true") {
+      return { value: true, end: skipTypeAssertionSuffix(src, ident.end) };
+    }
+    if (ident.value === "false") {
+      return { value: false, end: skipTypeAssertionSuffix(src, ident.end) };
+    }
+    if (ident.value === "null") {
+      return { value: null, end: skipTypeAssertionSuffix(src, ident.end) };
+    }
+  }
+
+  return { value: undefined, end: skipUnknownExpression(src, i) };
+}
+
+function extractTopLevelLiteralProp(objText, propName) {
+  const source = extractTopLevelValueSource(objText, propName);
+  if (!source) return undefined;
+  return parseTsLiteralValue(source).value;
+}
+
+function isRecordValue(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function humanizeParamKey(key) {
+  return key
+    .replaceAll(/[_-]+/g, " ")
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase();
+}
+
+function sanitizeSchema(schema) {
+  if (!isRecordValue(schema) || typeof schema.type !== "string") {
+    return { type: "string" };
+  }
+  /** @type {Record<string, unknown>} */
+  const out = { type: schema.type };
+  if (Array.isArray(schema.enum)) {
+    const vals = schema.enum.filter((v) => typeof v === "string");
+    if (vals.length > 0) out.enum = vals;
+  }
+  if (
+    schema.default === null ||
+    ["string", "number", "boolean"].includes(typeof schema.default)
+  ) {
+    out.default = schema.default;
+  }
+  if (typeof schema.minimum === "number") out.minimum = schema.minimum;
+  if (typeof schema.maximum === "number") out.maximum = schema.maximum;
+  if (typeof schema.pattern === "string") out.pattern = schema.pattern;
+  if (isRecordValue(schema.properties)) {
+    /** @type {Record<string, unknown>} */
+    const props = {};
+    for (const [key, value] of Object.entries(schema.properties)) {
+      props[key] = sanitizeSchema(value);
+    }
+    out.properties = props;
+  }
+  if (isRecordValue(schema.items)) {
+    out.items = sanitizeSchema(schema.items);
+  }
+  return out;
+}
+
+function sanitizeExamples(examples) {
+  if (!Array.isArray(examples)) return undefined;
+  const vals = examples.filter(
+    (v) =>
+      v === null || ["string", "number", "boolean"].includes(typeof v),
+  );
+  return vals.length > 0 ? vals : undefined;
+}
+
+function sanitizeParameters(value) {
+  if (!Array.isArray(value)) return [];
+  /** @type {unknown[]} */
+  const params = [];
+  for (const raw of value) {
+    if (!isRecordValue(raw) || typeof raw.name !== "string") continue;
+    const description =
+      typeof raw.description === "string" && raw.description.trim()
+        ? raw.description
+        : `The ${humanizeParamKey(raw.name)} to use.`;
+    /** @type {Record<string, unknown>} */
+    const param = {
+      name: raw.name,
+      description,
+      required: raw.required === true,
+      schema: sanitizeSchema(raw.schema),
+    };
+    const examples = sanitizeExamples(raw.examples);
+    if (examples) param.examples = examples;
+    if (typeof raw.descriptionCompressed === "string") {
+      param.descriptionCompressed = raw.descriptionCompressed;
+    }
+    if (typeof raw.compressedDescription === "string") {
+      param.compressedDescription = raw.compressedDescription;
+    }
+    params.push(param);
+  }
+  return params;
+}
+
+function inferParameterTypeFromName(name) {
+  if (
+    [
+      "auto_backup",
+      "confirmed",
+      "detailed",
+      "draft",
+      "dryRun",
+      "remove",
+    ].includes(name)
+  ) {
+    return "boolean";
+  }
+  if (
+    [
+      "amount",
+      "bpm",
+      "count",
+      "duration",
+      "durationMs",
+      "maxResults",
+      "parentFid",
+      "radius",
+      "slippage",
+      "slippageBps",
+      "timeout",
+      "x",
+      "y",
+      "z",
+    ].includes(name)
+  ) {
+    return "number";
+  }
+  return "string";
+}
+
+function buildParamDoc(name, description, schema) {
+  return {
+    name,
+    description,
+    required: false,
+    schema,
+  };
+}
+
+function inferParametersFromDescription(description) {
+  const match = description.match(/\bParams:\s*([^.]*)/i);
+  if (!match) return [];
+  return match[1]
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [rawName, rawValues] = part.split("=").map((s) => s.trim());
+      const name = rawName.replace(/[^A-Za-z0-9_]/g, "");
+      if (!name) return null;
+      const type = inferParameterTypeFromName(name);
+      const schema = { type };
+      if (rawValues && type === "string") {
+        const enumValues = rawValues
+          .split("|")
+          .map((v) => v.trim())
+          .filter(Boolean);
+        if (enumValues.length > 1 && enumValues.every((v) => /^[\w-]+$/.test(v))) {
+          schema.enum = enumValues;
+        }
+      }
+      return buildParamDoc(name, `Router parameter ${name}.`, schema);
+    })
+    .filter(Boolean);
+}
+
+function inferParametersFromToonTemplate(src) {
+  const marker = "Respond with TOON only:";
+  const markerIndex = src.indexOf(marker);
+  if (markerIndex < 0) return [];
+  const templateEnd = src.indexOf("`", markerIndex);
+  if (templateEnd < 0) return [];
+  const template = src.slice(0, templateEnd);
+  const descByName = new Map();
+  const descRe = /^\s*\d+\.\s+([A-Za-z_][A-Za-z0-9_]*):\s+(.+)$/gm;
+  for (;;) {
+    const match = descRe.exec(template);
+    if (match === null) break;
+    descByName.set(match[1], match[2].trim());
+  }
+
+  const toonBlock = src.slice(markerIndex + marker.length, templateEnd);
+  const params = [];
+  const seen = new Set();
+  for (const line of toonBlock.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
+    if (!match) continue;
+    const name = match[1];
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const rawDefault = match[2];
+    const type =
+      rawDefault === "true" || rawDefault === "false"
+        ? "boolean"
+        : /^-?\d+(?:\.\d+)?$/.test(rawDefault)
+          ? "number"
+          : inferParameterTypeFromName(name);
+    const schema = { type };
+    if (rawDefault === "true" || rawDefault === "false") {
+      schema.default = rawDefault === "true";
+    } else if (/^-?\d+(?:\.\d+)?$/.test(rawDefault)) {
+      schema.default = Number(rawDefault);
+    } else if (rawDefault) {
+      schema.default = rawDefault;
+    }
+    params.push(
+      buildParamDoc(
+        name,
+        descByName.get(name) ?? `TOON parameter ${name}.`,
+        schema,
+      ),
+    );
+  }
+  return params;
+}
+
 function main() {
   const core = readJson(CORE_ACTIONS_SPEC_PATH);
   const version = typeof core.version === "string" ? core.version : "1.0.0";
@@ -604,6 +1152,30 @@ function main() {
     return params;
   }
 
+  function sampleValueForParam(param) {
+    const examples = Array.isArray(param.examples) ? param.examples : [];
+    const example = examples.find(
+      (v) =>
+        v === null || ["string", "number", "boolean"].includes(typeof v),
+    );
+    if (example !== undefined) return example;
+
+    const schema =
+      param.schema && typeof param.schema === "object" ? param.schema : {};
+    if (
+      schema.default === null ||
+      ["string", "number", "boolean"].includes(typeof schema.default)
+    ) {
+      return schema.default;
+    }
+    if (Array.isArray(schema.enum) && typeof schema.enum[0] === "string") {
+      return schema.enum[0];
+    }
+    if (schema.type === "boolean") return false;
+    if (schema.type === "number") return 1;
+    return "example";
+  }
+
   function buildExampleCallForAction(actionName, params) {
     if (!params || params.length === 0) {
       return [];
@@ -611,17 +1183,7 @@ function main() {
     /** @type {Record<string, string | number | boolean | null>} */
     const sampleParams = {};
     for (const p of params) {
-      const ex =
-        Array.isArray(p.examples) && p.examples.length > 0
-          ? p.examples[0]
-          : null;
-      sampleParams[p.name] =
-        typeof ex === "string" ||
-        typeof ex === "number" ||
-        typeof ex === "boolean" ||
-        ex === null
-          ? ex
-          : "example";
+      sampleParams[p.name] = sampleValueForParam(p);
     }
     return [
       {
@@ -657,8 +1219,29 @@ function main() {
         extractTopLevelStringProp(obj.objectText, "description") ?? "",
         filePath,
       );
+      const descriptionCompressed = extractTopLevelStringProp(
+        obj.objectText,
+        "descriptionCompressed",
+      );
       const similes = extractTopLevelStringArrayProp(obj.objectText, "similes");
-      const parameters = inferParameters(obj.objectText);
+      const explicitParameters = sanitizeParameters(
+        extractTopLevelLiteralProp(obj.objectText, "parameters"),
+      );
+      const descriptionParameters = inferParametersFromDescription(description);
+      const toonTemplateParameters =
+        explicitParameters.length === 0 &&
+        descriptionParameters.length === 0 &&
+        (name.endsWith("_OP") || description.toLowerCase().includes("router"))
+          ? inferParametersFromToonTemplate(src)
+          : [];
+      const parameters =
+        explicitParameters.length > 0
+          ? explicitParameters
+          : descriptionParameters.length > 0
+            ? descriptionParameters
+            : toonTemplateParameters.length > 0
+              ? toonTemplateParameters
+          : inferParameters(obj.objectText);
       const exampleCalls = buildExampleCallForAction(name, parameters);
 
       // Do not overwrite existing entries; prefer the first seen (stable ordering).
@@ -666,6 +1249,10 @@ function main() {
         actionDocsByName.set(name, {
           name,
           description,
+          descriptionCompressed:
+            typeof descriptionCompressed === "string"
+              ? descriptionCompressed
+              : undefined,
           similes: similes.length > 0 ? similes : undefined,
           parameters,
           exampleCalls,
@@ -682,6 +1269,9 @@ function main() {
         description: a.description,
         parameters: a.parameters,
       };
+      if (a.descriptionCompressed) {
+        out.descriptionCompressed = a.descriptionCompressed;
+      }
       if (a.similes) out.similes = a.similes;
       if (a.exampleCalls && a.exampleCalls.length > 0) {
         out.exampleCalls = a.exampleCalls;

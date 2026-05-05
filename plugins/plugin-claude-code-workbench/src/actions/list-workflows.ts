@@ -11,15 +11,15 @@ import type { ClaudeCodeWorkbenchService } from "../services/workbench-service.t
 function toText(service: ClaudeCodeWorkbenchService): string {
   const workflows = service.listWorkflows();
   if (workflows.length === 0) {
-    return "No workbench workflows are available.";
+    return "workbench_workflows[0]:";
   }
 
-  const lines = ["Available workbench workflows:"];
+  const lines = [
+    `workbench_workflows[${workflows.length}]{id,enabled,mutatesRepo,description}:`,
+  ];
   for (const workflow of workflows) {
-    const mutating = workflow.mutatesRepo ? " [mutates repo]" : "";
-    const disabled = workflow.enabled ? "" : " [disabled]";
     lines.push(
-      `- ${workflow.id}${mutating}${disabled}: ${workflow.description}`,
+      `  ${workflow.id},${workflow.enabled},${workflow.mutatesRepo},${workflow.description.replace(/\s+/g, " ").trim()}`,
     );
   }
 

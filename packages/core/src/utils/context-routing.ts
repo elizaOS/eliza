@@ -99,7 +99,9 @@ export function routingContextsOverlap(
 	right: readonly AgentContext[] | undefined,
 ): boolean {
 	const normalizedRight = new Set(
-		normalizeRoutingContexts(right).map((context) => `${context}`.toLowerCase()),
+		normalizeRoutingContexts(right).map((context) =>
+			`${context}`.toLowerCase(),
+		),
 	);
 	if (normalizedRight.size === 0) {
 		return false;
@@ -113,7 +115,9 @@ export function shouldSurfaceContextCapabilities(
 	declaredContexts: readonly AgentContext[] | undefined,
 	activeContexts: readonly AgentContext[] | undefined,
 ): boolean {
-	if (normalizeRoutingContexts(activeContexts).some(isPageScopedRoutingContext)) {
+	if (
+		normalizeRoutingContexts(activeContexts).some(isPageScopedRoutingContext)
+	) {
 		return false;
 	}
 	const explicitContexts = getExplicitRoutingContexts(activeContexts);

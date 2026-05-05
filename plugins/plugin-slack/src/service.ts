@@ -25,6 +25,50 @@ import type { WebAPICallResult } from "@slack/web-api";
 
 type WebClient = App["client"];
 
+type SlackApiUserProfile = {
+  title?: string;
+  phone?: string;
+  skype?: string;
+  real_name?: string;
+  real_name_normalized?: string;
+  display_name?: string;
+  display_name_normalized?: string;
+  status_text?: string;
+  status_emoji?: string;
+  status_expiration?: number;
+  avatar_hash?: string;
+  email?: string;
+  image_24?: string;
+  image_32?: string;
+  image_48?: string;
+  image_72?: string;
+  image_192?: string;
+  image_512?: string;
+  image_1024?: string;
+  image_original?: string;
+  team?: string;
+};
+
+type SlackApiUserMember = {
+  id?: string;
+  team_id?: string;
+  name?: string;
+  deleted?: boolean;
+  real_name?: string;
+  tz?: string;
+  tz_label?: string;
+  tz_offset?: number;
+  profile?: SlackApiUserProfile;
+  is_admin?: boolean;
+  is_owner?: boolean;
+  is_primary_owner?: boolean;
+  is_restricted?: boolean;
+  is_ultra_restricted?: boolean;
+  is_bot?: boolean;
+  is_app_user?: boolean;
+  updated?: number;
+};
+
 const SLACK_CONNECTOR_CONTEXTS = ["social", "connectors"];
 const SLACK_CONNECTOR_CAPABILITIES = [
   "send_message",
@@ -92,7 +136,10 @@ function extractSlackUserIdFromMetadata(metadata: unknown): string | null {
   ];
 
   for (const candidate of candidates) {
-    if (typeof candidate === "string" && SLACK_USER_ID_PATTERN.test(candidate)) {
+    if (
+      typeof candidate === "string" &&
+      SLACK_USER_ID_PATTERN.test(candidate)
+    ) {
       return candidate;
     }
   }
@@ -1057,7 +1104,9 @@ export class SlackService extends Service implements ISlackService {
         typeof runtime.getEntityById === "function"
           ? await runtime.getEntityById(linkedEntityId as UUID)
           : null;
-      const linkedUserId = extractSlackUserIdFromMetadata(linkedEntity?.metadata);
+      const linkedUserId = extractSlackUserIdFromMetadata(
+        linkedEntity?.metadata,
+      );
       if (linkedUserId) {
         return linkedUserId;
       }
@@ -1122,7 +1171,9 @@ export class SlackService extends Service implements ISlackService {
     }
 
     if (!channelId) {
-      throw new Error("Slack SendHandler requires channelId, roomId, or entityId.");
+      throw new Error(
+        "Slack SendHandler requires channelId, roomId, or entityId.",
+      );
     }
 
     await this.sendMessage(channelId, text, {
@@ -1179,7 +1230,7 @@ export class SlackService extends Service implements ISlackService {
 
     try {
       const usersResult = await this.client.users.list({ limit: 200 });
-      const members = (usersResult.members ?? []) as Array<Record<string, any>>;
+      const members = (usersResult.members ?? []) as SlackApiUserMember[];
       for (const member of members) {
         const user: SlackUser = {
           id: member.id ?? "",

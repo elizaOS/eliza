@@ -16,7 +16,8 @@ export const requestPaymentAction: Action = {
   name: "REQUEST_PAYMENT",
   similes: ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"],
   description: "Request payment from the user for a reading service. Specify the amount to charge.",
-  descriptionCompressed: "request payment user read service specify amount charge",
+  descriptionCompressed:
+    "Request payment amount for the active mysticism reading service.",
 
   validate: async (
     runtime: IAgentRuntime,

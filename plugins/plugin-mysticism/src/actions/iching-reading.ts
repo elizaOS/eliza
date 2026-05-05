@@ -52,7 +52,8 @@ export const ichingReadingAction: Action = {
   similes: ["CAST_HEXAGRAM", "CONSULT_ICHING", "THROW_COINS", "ORACLE_READING"],
   description:
     "Perform an I Ching divination reading by casting a hexagram and interpreting changing lines.",
-  descriptionCompressed: "perform Ching divination read cast hexagram interpret change line",
+  descriptionCompressed:
+    "Start I Ching reading; cast a hexagram and interpret changing lines.",
 
   validate: async (
     runtime: IAgentRuntime,

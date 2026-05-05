@@ -1,10 +1,8 @@
-import type {
-  IAgentRuntime,
-  SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   registerMusicLibrarySearchCategories,
+  WIKIPEDIA_MUSIC_SEARCH_CATEGORY,
   YOUTUBE_SEARCH_CATEGORY,
 } from "./search-category";
 
@@ -24,26 +22,36 @@ function createRuntime() {
   return {
     categories,
     registerSearchCategory,
-    runtime: { getSearchCategory, registerSearchCategory } as unknown as
-      IAgentRuntime,
+    runtime: {
+      getSearchCategory,
+      registerSearchCategory,
+    } as unknown as IAgentRuntime,
   };
 }
 
 describe("music library search categories", () => {
-  it("registers YouTube search metadata", () => {
+  it("registers YouTube and Wikipedia music search metadata", () => {
     const { categories, registerSearchCategory, runtime } = createRuntime();
 
     registerMusicLibrarySearchCategories(runtime);
     registerMusicLibrarySearchCategories(runtime);
 
-    expect(registerSearchCategory).toHaveBeenCalledTimes(1);
+    expect(registerSearchCategory).toHaveBeenCalledTimes(2);
     expect(categories.get("youtube")).toMatchObject({
       category: "youtube",
-      serviceType: "youtubeSearch",
+      serviceType: "musicLibrary",
+      source: "plugin:music-library",
+    });
+    expect(categories.get("wikipedia_music")).toMatchObject({
+      category: "wikipedia_music",
+      serviceType: "musicLibrary",
       source: "plugin:music-library",
     });
     expect(YOUTUBE_SEARCH_CATEGORY.filters?.map((f) => f.name)).toEqual(
       expect.arrayContaining(["query", "limit", "includeShorts"]),
+    );
+    expect(WIKIPEDIA_MUSIC_SEARCH_CATEGORY.filters?.map((f) => f.name)).toEqual(
+      expect.arrayContaining(["query", "entityType", "artist"]),
     );
   });
 });

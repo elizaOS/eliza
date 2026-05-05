@@ -6,7 +6,7 @@ import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
 import { ModelType } from "./types/model";
-import { ContentType, type Content, type UUID } from "./types/primitives";
+import { type Content, ContentType, type UUID } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import type { State } from "./types/state";
 import {
@@ -21,6 +21,7 @@ import {
 	tryParseLooseToonRecord,
 	tryParseToonValue,
 } from "./utils/toon";
+
 export { encodeToonValue } from "./utils/toon";
 
 // Token / embedding budget constants

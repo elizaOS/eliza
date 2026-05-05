@@ -10,12 +10,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import type { IMessageService } from "../service.js";
 import { IMESSAGE_SERVICE_NAME, isValidIMessageTarget, normalizeIMessageTarget } from "../types.js";
 
@@ -137,8 +132,7 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed =
-        parseToonKeyValue<Record<string, unknown>>(response);
+      const parsed = parseToonKeyValue<Record<string, unknown>>(response);
       if (parsed?.text) {
         msgInfo = {
           text: String(parsed.text),

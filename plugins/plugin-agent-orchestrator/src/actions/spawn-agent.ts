@@ -134,7 +134,7 @@ export const spawnAgentAction: Action = {
     "These agents are intentionally open-ended and can handle investigation, writing, planning, testing, synthesis, repo work, and general async task execution. " +
     "Returns a session ID that can be used to interact with the agent.",
   descriptionCompressed:
-    "spawn specific task agent inside exist workspace need direct control agent intentionally open-end handle investigation, write, plan, test, synthesis, repo work, general async task execution return session ID use interact w/ agent",
+    "Spawn task agent in existing workspace for async coding/research; returns session id for follow-up.",
 
   // Spawning kicks off an async subagent whose final answer lands via the
   // synthesis callback, not via this action's ActionResult. Without this

@@ -1,5 +1,6 @@
 import {
   Action,
+  ActionResult,
   IAgentRuntime,
   Memory,
   HandlerCallback,
@@ -75,7 +76,7 @@ export const getMeetingInfoAction: Action = {
     state?: State,
     params?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       const googleMeetService = runtime.getService(
         "google-meet-api",
@@ -133,7 +134,7 @@ ${
 }`;
 
       if (callback) {
-        callback({
+        await callback({
           text: response,
           metadata: {
             meetingId: meeting.id,
@@ -143,18 +144,37 @@ ${
           },
         });
       }
+      return {
+        success: true,
+        text: response,
+        data: {
+          actionName: "GET_MEETING_INFO",
+          meetingId: meeting.id,
+          meetingUri: meeting.meetingUri,
+          meetingCode: meeting.meetingCode,
+          participantCount: meeting.participants.length,
+        },
+      };
     } catch (error) {
       logger.error(
         "Failed to get meeting info:",
         error instanceof Error ? error.message : String(error),
       );
 
+      const text = `Failed to get meeting info: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
       if (callback) {
-        callback({
-          text: `❌ Failed to get meeting info: ${error instanceof Error ? error.message : "Unknown error"}`,
+        await callback({
+          text,
           error: true,
         });
       }
+      return {
+        success: false,
+        text,
+        data: { actionName: "GET_MEETING_INFO" },
+      };
     }
   },
 };

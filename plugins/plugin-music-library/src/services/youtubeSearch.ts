@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 const YOUTUBE_SEARCH_SERVICE_NAME = "youtubeSearch";
 
@@ -24,8 +24,7 @@ export interface YouTubeSearchResult {
  * Service for searching YouTube videos
  * Centralizes YouTube search logic for reuse across multiple actions
  */
-export class YouTubeSearchService extends Service {
-  static serviceType: string = YOUTUBE_SEARCH_SERVICE_NAME;
+export class YouTubeSearchHelper {
   capabilityDescription = "Searches YouTube for videos and returns metadata";
 
   private cache: Map<
@@ -33,13 +32,6 @@ export class YouTubeSearchService extends Service {
     { results: YouTubeSearchResult[]; timestamp: number }
   > = new Map();
   private readonly CACHE_TTL = 3600000; // 1 hour
-
-  static async start(runtime: IAgentRuntime): Promise<YouTubeSearchService> {
-    logger.debug(
-      `Starting YouTubeSearchService for agent ${runtime.character.name}`,
-    );
-    return new YouTubeSearchService(runtime);
-  }
 
   async stop(): Promise<void> {
     this.clearCache();
@@ -214,4 +206,8 @@ export class YouTubeSearchService extends Service {
   }
 }
 
-export default YouTubeSearchService;
+export const YOUTUBE_SEARCH_HELPER_NAME = YOUTUBE_SEARCH_SERVICE_NAME;
+
+export { YouTubeSearchHelper as YouTubeSearchService };
+
+export default YouTubeSearchHelper;

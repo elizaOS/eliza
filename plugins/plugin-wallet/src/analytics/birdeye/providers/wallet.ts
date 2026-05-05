@@ -8,6 +8,6 @@ import { createBirdeyePortfolioProvider } from "./portfolio-factory";
 export const tradePortfolioProvider = createBirdeyePortfolioProvider({
   name: "BIRDEYE_TRADE_PORTFOLIO",
   description: "Birdeye wallet portfolio and recent trade history",
-  descriptionCompressed: "birdeye wallet portfolio trade history",
+  descriptionCompressed: "Read Birdeye wallet portfolio and recent trade history.",
   includeTrades: true,
 });

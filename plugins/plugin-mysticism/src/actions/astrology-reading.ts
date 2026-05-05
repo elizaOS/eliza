@@ -143,7 +143,7 @@ export const astrologyReadingAction: Action = {
   description:
     "Perform an astrological natal chart reading, progressively revealing planetary placements.",
   descriptionCompressed:
-    "perform astrological natal chart read, progressively reveal planetary placement",
+    "Start astrology natal chart reading; reveal planetary placements iteratively.",
 
   validate: async (
     runtime: IAgentRuntime,

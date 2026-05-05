@@ -40,8 +40,7 @@ const getMessageRef = async (
 			prompt,
 		});
 
-		const parsedResponse =
-			parseToonKeyValue<Record<string, unknown>>(response);
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
 		if (parsedResponse?.messageRef) {
 			return {
 				messageRef: String(parsedResponse.messageRef),

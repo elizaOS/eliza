@@ -60,7 +60,7 @@ describe("groq MODEL_USED events", () => {
         type: "TEXT_SMALL",
         model: "small-model",
         tokens: { prompt: 8, completion: 3, total: 11 },
-      }),
+      })
     );
     expect(runtime.emitEvent).toHaveBeenNthCalledWith(
       2,
@@ -71,7 +71,7 @@ describe("groq MODEL_USED events", () => {
         type: "TEXT_LARGE",
         model: "large-model",
         tokens: { prompt: 13, completion: 5, total: 18 },
-      }),
+      })
     );
   });
 
@@ -101,7 +101,7 @@ describe("groq MODEL_USED events", () => {
         tokens: expect.objectContaining({
           estimated: true,
         }),
-      }),
+      })
     );
   });
 });

@@ -275,7 +275,7 @@ export const reactToMessage: Action = {
 				});
 
 				const parsedResponse =
-			parseToonKeyValue<Record<string, unknown>>(response);
+					parseToonKeyValue<Record<string, unknown>>(response);
 				if (parsedResponse?.emoji) {
 					reactionInfo = {
 						messageRef: String(parsedResponse.messageRef || "last"),

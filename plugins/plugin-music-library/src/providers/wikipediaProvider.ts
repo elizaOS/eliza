@@ -1,13 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type {
-  DetectedMusicEntity,
-  MusicEntityDetectionService,
-} from "../services/musicEntityDetectionService";
-import type {
-  ExtractedMusicInfo,
-  WikipediaExtractionService,
-} from "../services/wikipediaExtractionService";
+import { encodeToonValue, logger } from "@elizaos/core";
+import type { DetectedMusicEntity } from "../services/musicEntityDetectionService";
+import type { ExtractedMusicInfo } from "../services/wikipediaExtractionService";
+import type { MusicLibraryService } from "../services/musicLibraryService";
 
 /**
  * Provider that uses LLMs to dynamically extract music information from Wikipedia
@@ -35,12 +30,12 @@ export const wikipediaProvider: Provider = {
 
     // Use entity detection service to find music entities
     // This is more generic - it will detect music entities even without explicit keywords
-    const entityDetectionService = runtime.getService(
-      "musicEntityDetection",
-    ) as MusicEntityDetectionService;
-    if (!entityDetectionService) {
+    const musicLibrary = runtime.getService(
+      "musicLibrary",
+    ) as MusicLibraryService | null;
+    if (!musicLibrary) {
       logger.debug(
-        "[WIKIPEDIA_MUSIC Provider] MusicEntityDetectionService not available",
+        "[WIKIPEDIA_MUSIC Provider] Music library service not available",
       );
       return { text: "", data: {}, values: {} };
     }
@@ -49,8 +44,7 @@ export const wikipediaProvider: Provider = {
     let detectedEntities: DetectedMusicEntity[] = [];
     try {
       logger.debug("[WIKIPEDIA_MUSIC Provider] Attempting entity detection");
-      detectedEntities =
-        await entityDetectionService.detectEntities(messageText);
+      detectedEntities = await musicLibrary.detectEntities(messageText);
       logger.debug(
         `[WIKIPEDIA_MUSIC Provider] Detected ${detectedEntities.length} entities: ${detectedEntities.map((e) => `${e.type}:${e.name}`).join(", ")}`,
       );
@@ -96,17 +90,6 @@ export const wikipediaProvider: Provider = {
     const purpose = determineContext(state, message);
     logger.debug(`[WIKIPEDIA_MUSIC Provider] Determined context: ${purpose}`);
 
-    // Use Wikipedia extraction service for each entity
-    const wikipediaExtractionService = runtime.getService(
-      "wikipediaExtraction",
-    ) as WikipediaExtractionService;
-    if (!wikipediaExtractionService) {
-      logger.debug(
-        "[WIKIPEDIA_MUSIC Provider] WikipediaExtractionService not available",
-      );
-      return { text: "", data: {}, values: {} };
-    }
-
     const extractedInfo: Array<{
       entity: DetectedMusicEntity;
       info: ExtractedMusicInfo;
@@ -125,7 +108,7 @@ export const wikipediaProvider: Provider = {
           currentAlbum: entity.type === "album" ? entity.name : undefined,
         };
 
-        const info = await wikipediaExtractionService.extractFromWikipedia(
+        const info = await musicLibrary.extractFromWikipedia(
           entity.name,
           entity.type,
           context,
@@ -159,41 +142,14 @@ export const wikipediaProvider: Provider = {
       `[WIKIPEDIA_MUSIC Provider] Extracted info for ${extractedInfo.length} entity/entities`,
     );
 
-    // Format extracted information for the prompt
-    const contextTexts: string[] = [];
-    for (const item of extractedInfo) {
-      const parts: string[] = [];
-      parts.push(`${item.entity.type}: ${item.entity.name}`);
-
-      if (item.info.relatedArtists && item.info.relatedArtists.length > 0) {
-        parts.push(`Related artists: ${item.info.relatedArtists.join(", ")}`);
-      }
-      if (item.info.influences && item.info.influences.length > 0) {
-        parts.push(`Influences: ${item.info.influences.join(", ")}`);
-      }
-      if (item.info.genres && item.info.genres.length > 0) {
-        parts.push(`Genres: ${item.info.genres.join(", ")}`);
-      }
-      if (item.info.interestingFacts && item.info.interestingFacts.length > 0) {
-        parts.push(`Facts: ${item.info.interestingFacts.join("; ")}`);
-      }
-      if (
-        item.info.selectionSuggestions &&
-        item.info.selectionSuggestions.length > 0
-      ) {
-        parts.push(`Suggestions: ${item.info.selectionSuggestions.join(", ")}`);
-      }
-
-      if (parts.length > 1) {
-        contextTexts.push(parts.join("\n"));
-      }
-    }
-
-    if (contextTexts.length === 0) {
-      return { text: "", data: {}, values: {} };
-    }
-
-    const text = `[WIKIPEDIA MUSIC CONTEXT]\n${contextTexts.join("\n\n")}\n[/WIKIPEDIA MUSIC CONTEXT]`;
+    const text = encodeToonValue({
+      wikipedia_music: extractedInfo.map((item) => ({
+        entity_type: item.entity.type,
+        entity_name: item.entity.name,
+        confidence: item.entity.confidence,
+        ...item.info,
+      })),
+    });
 
     logger.debug(
       `[WIKIPEDIA_MUSIC Provider] Returning ${text.length} characters of Wikipedia context text`,

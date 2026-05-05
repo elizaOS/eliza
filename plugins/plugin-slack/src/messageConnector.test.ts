@@ -1,7 +1,19 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SlackService } from "./service";
 import type { SlackChannel } from "./types";
+
+type MockSlackService = SlackService & {
+  handleSendMessage: ReturnType<typeof vi.fn>;
+  resolveConnectorTargets: (
+    query: string,
+    context: { runtime: IAgentRuntime },
+  ) => Promise<MessageConnectorTarget[]>;
+  listRecentConnectorTargets: ReturnType<typeof vi.fn>;
+  listConnectorRooms: ReturnType<typeof vi.fn>;
+  getConnectorChatContext: ReturnType<typeof vi.fn>;
+  getConnectorUserContext: ReturnType<typeof vi.fn>;
+};
 
 function createRuntime() {
   return {
@@ -21,16 +33,9 @@ function createRuntime() {
 describe("Slack message connector adapter", () => {
   it("registers connector metadata with the runtime registry", () => {
     const runtime = createRuntime();
-    const service = Object.create(SlackService.prototype) as SlackService & {
-      handleSendMessage: ReturnType<typeof vi.fn>;
-      resolveConnectorTargets: ReturnType<typeof vi.fn>;
-      listRecentConnectorTargets: ReturnType<typeof vi.fn>;
-      listConnectorRooms: ReturnType<typeof vi.fn>;
-      getConnectorChatContext: ReturnType<typeof vi.fn>;
-      getConnectorUserContext: ReturnType<typeof vi.fn>;
-    };
+    const service = Object.create(SlackService.prototype) as MockSlackService;
     service.handleSendMessage = vi.fn();
-    service.resolveConnectorTargets = vi.fn();
+    service.resolveConnectorTargets = vi.fn().mockResolvedValue([]);
     service.listRecentConnectorTargets = vi.fn();
     service.listConnectorRooms = vi.fn();
     service.getConnectorChatContext = vi.fn();
@@ -55,13 +60,17 @@ describe("Slack message connector adapter", () => {
   it("opens a DM channel when the unified target is a Slack user ID", async () => {
     const runtime = createRuntime();
     const sendMessage = vi.fn().mockResolvedValue({ ts: "1700000000.000001" });
-    const service = Object.create(SlackService.prototype) as any;
-    service.client = {
-      conversations: {
-        open: vi.fn().mockResolvedValue({ channel: { id: "D123" } }),
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        client: {
+          conversations: {
+            open: vi.fn().mockResolvedValue({ channel: { id: "D123" } }),
+          },
+        },
+        sendMessage,
       },
-    };
-    service.sendMessage = sendMessage;
+    );
 
     await service.handleSendMessage(
       runtime,
@@ -100,26 +109,30 @@ describe("Slack message connector adapter", () => {
       created: 1,
       creator: "U1",
     };
-    const service = Object.create(SlackService.prototype) as any;
-    service.runtime = runtime;
-    service.teamId = "T123";
-    service.allowedChannelIds = new Set();
-    service.dynamicChannelIds = new Set();
-    service.listChannels = vi.fn().mockResolvedValue([channel]);
-    service.client = {
-      users: {
-        list: vi.fn().mockResolvedValue({
-          members: [
-            {
-              id: "U234",
-              name: "ada",
-              real_name: "Ada Lovelace",
-              profile: { display_name: "Ada", real_name: "Ada Lovelace" },
-            },
-          ],
-        }),
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        teamId: "T123",
+        allowedChannelIds: new Set<string>(),
+        dynamicChannelIds: new Set<string>(),
+        listChannels: vi.fn().mockResolvedValue([channel]),
+        client: {
+          users: {
+            list: vi.fn().mockResolvedValue({
+              members: [
+                {
+                  id: "U234",
+                  name: "ada",
+                  real_name: "Ada Lovelace",
+                  profile: { display_name: "Ada", real_name: "Ada Lovelace" },
+                },
+              ],
+            }),
+          },
+        },
       },
-    };
+    );
 
     const channelTargets = await service.resolveConnectorTargets("general", {
       runtime,
@@ -133,9 +146,9 @@ describe("Slack message connector adapter", () => {
     const userTargets = await service.resolveConnectorTargets("ada", {
       runtime,
     });
-    expect(userTargets.some((target: any) => target.kind === "user")).toBe(true);
+    expect(userTargets.some((target) => target.kind === "user")).toBe(true);
     expect(
-      userTargets.find((target: any) => target.kind === "user")?.target,
+      userTargets.find((target) => target.kind === "user")?.target,
     ).toMatchObject({ source: "slack", entityId: "U234" });
   });
 });

@@ -3,6 +3,7 @@ import {
   ModelType,
   parseToonKeyValue,
   Service,
+  setTrajectoryPurpose,
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
@@ -227,6 +228,7 @@ export class RsSdkGameService extends Service {
           const prompt = this.buildPrompt(botState, providerContext);
 
           // 3. Call the LLM with the configured model size
+          setTrajectoryPurpose("background");
           this.log(`Step ${this.stepNumber} - calling ${this.modelSize}`);
           const response = await this.runtime.useModel(this.modelSize as any, {
             prompt,

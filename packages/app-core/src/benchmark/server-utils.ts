@@ -2,6 +2,7 @@ import {
   type AgentRuntime,
   ChannelType,
   elizaLogger,
+  parseToonKeyValue,
   type Plugin,
   stringToUuid,
   type UUID,
@@ -290,30 +291,12 @@ export function coerceParams(value: unknown): Record<string, unknown> {
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // fall through to XML parsing
+      // fall through to TOON parsing
     }
 
-    if (trimmed.startsWith("<")) {
-      const paramsByAction: Record<string, unknown> = {};
-      const actionMatches = [
-        ...trimmed.matchAll(/<([A-Za-z0-9_-]+)>([\s\S]*?)<\/\1>/g),
-      ];
-      for (const [, actionName, actionBody] of actionMatches) {
-        const actionParams: Record<string, unknown> = {};
-        const fieldMatches = [
-          ...actionBody.matchAll(/<([A-Za-z0-9_-]+)>([\s\S]*?)<\/\1>/g),
-        ];
-        for (const [, fieldName, fieldValue] of fieldMatches) {
-          actionParams[fieldName] = fieldValue.trim();
-        }
-        paramsByAction[actionName] =
-          Object.keys(actionParams).length > 0
-            ? actionParams
-            : actionBody.trim();
-      }
-      if (Object.keys(paramsByAction).length > 0) {
-        return paramsByAction;
-      }
+    const parsedToon = parseToonKeyValue<Record<string, unknown>>(trimmed);
+    if (parsedToon && Object.keys(parsedToon).length > 0) {
+      return parsedToon;
     }
   }
 

@@ -232,6 +232,12 @@ const TOON_FIELD_PATTERN =
 const JSON_OBJECT_KEY_PATTERN =
 	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
 const WEB_SEARCH_SERVICE_TYPE = "web_search";
+const INTENTIONAL_MULTI_SERVICE_TYPES = new Set<string>([
+	"wallet",
+	"lp_pool",
+	"token_data",
+	"trajectories",
+]);
 
 /**
  * Thrown by `AgentRuntime.useModel` when a text-generation model is requested
@@ -577,6 +583,14 @@ function normalizeMessageConnector(
 	return connector;
 }
 
+function getServiceClassLabel(serviceClass: ServiceClass): string {
+	return (
+		(serviceClass as { name?: string }).name ||
+		serviceClass.constructor?.name ||
+		"anonymous service class"
+	);
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -852,6 +866,34 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		installRuntimePluginLifecycle(this);
+	}
+
+	private warnOnDuplicateServiceTypeRegistration(
+		serviceType: ServiceTypeName | string,
+		serviceClass: ServiceClass,
+		existingServiceClasses: ServiceClass[],
+		pluginName?: string,
+	): void {
+		if (
+			existingServiceClasses.length === 0 ||
+			INTENTIONAL_MULTI_SERVICE_TYPES.has(String(serviceType))
+		) {
+			return;
+		}
+
+		this.logger.warn(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				plugin: pluginName,
+				serviceType,
+				serviceClass: getServiceClassLabel(serviceClass),
+				existingServiceClasses: existingServiceClasses.map(
+					getServiceClassLabel,
+				),
+			},
+			"Duplicate serviceType registration can make getService() ambiguous; use a distinct serviceType or getServicesByType()",
+		);
 	}
 
 	/**
@@ -1551,6 +1593,12 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				const services = this.serviceTypes.get(serviceType);
 				if (services) {
+					this.warnOnDuplicateServiceTypeRegistration(
+						serviceType,
+						service,
+						services,
+						pluginToRegister.name,
+					);
 					services.push(service);
 				}
 
@@ -5878,9 +5926,7 @@ export class AgentRuntime implements IAgentRuntime {
 Use this shape:
 ${EXAMPLE}
 
-Return exactly one ${
-				isJSON ? "JSON object" : "TOON document"
-			}.
+Return exactly one ${isJSON ? "JSON object" : "TOON document"}.
 ${section_end}`;
 			const endBlock = checkpointCodesEnabled
 				? `\nend code: ${finalCode}\n`

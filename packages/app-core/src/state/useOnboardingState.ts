@@ -6,7 +6,10 @@
  * Remote connection state (connecting/connected/error) collapses into one object.
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared";
+import {
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  getDefaultStylePreset,
+} from "@elizaos/shared";
 import { useCallback, useReducer, useRef } from "react";
 import type { OnboardingOptions } from "../api";
 import { isElectrobunRuntime } from "../bridge";
@@ -233,11 +236,11 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
     apiKey: "",
     voiceProvider: "",
     voiceApiKey: "",
-    nanoModel: "openai/gpt-5.5-nano",
-    smallModel: "minimax/minimax-m2.7",
-    mediumModel: "anthropic/claude-sonnet-4.6",
-    largeModel: "anthropic/claude-opus-4-7",
-    megaModel: "anthropic/claude-opus-4-7",
+    nanoModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+    smallModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+    mediumModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+    largeModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+    megaModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
     openRouterModel: "",
     primaryModel: "",
     existingInstallDetected: false,
