@@ -55,7 +55,7 @@ export default scenario({
       text: "Run my morning check-in.",
       responseIncludesAny: ["morning", "overview", "day"],
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["RUN_MORNING_CHECKIN"],
+        acceptedActions: ["OWNER_CHECKIN"],
         description: "morning check-in with multiple overdue todos",
       }),
     },
@@ -63,14 +63,14 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "RUN_MORNING_CHECKIN",
+      actionName: "OWNER_CHECKIN",
     },
     {
       type: "custom",
       name: "morning-checkin-includes-all-overdue-routine-todos",
       predicate: expectScenarioActionResultData({
         description: "morning check-in payload with multiple overdue todos",
-        actionName: "RUN_MORNING_CHECKIN",
+        actionName: "OWNER_CHECKIN",
         includesAll: ["Brush teeth", "Stretch", "Take vitamins"],
       }),
     },

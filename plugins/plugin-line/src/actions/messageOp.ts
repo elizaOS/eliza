@@ -152,7 +152,7 @@ async function handleText(
   callback: HandlerCallback | undefined,
   source: string
 ): Promise<ActionResult> {
-  if (!info.text || !info.text.trim()) {
+  if (!info.text?.trim()) {
     callback?.({
       text: "I couldn't understand what message you want me to send. Please try again.",
       source: "line",
@@ -221,12 +221,7 @@ async function handleLocation(
   callback: HandlerCallback | undefined,
   source: string
 ): Promise<ActionResult> {
-  if (
-    !info.title ||
-    !info.address ||
-    info.latitude === undefined ||
-    info.longitude === undefined
-  ) {
+  if (!info.title || !info.address || info.latitude === undefined || info.longitude === undefined) {
     callback?.({
       text: "I couldn't understand the location information. Please provide title, address, latitude, and longitude.",
       source: "line",

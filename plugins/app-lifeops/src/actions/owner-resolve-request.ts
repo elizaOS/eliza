@@ -21,7 +21,6 @@ import {
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { executeApprovedBookTravel } from "./owner-book-travel.js";
 import {
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,
@@ -31,6 +30,7 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { executeApprovedBookTravel } from "./owner-book-travel.js";
 import { formatPromptValue } from "./prompt-format.js";
 
 const ACTION_NAME = "OWNER_RESOLVE_REQUEST";
@@ -41,15 +41,13 @@ const SUBACTIONS: SubactionsMap<ResolveSubaction> = {
   approve: {
     description:
       "Approve a queued action; reason optional in the user's language.",
-    descriptionCompressed:
-      "approve queued action; reason optional in user language",
+    descriptionCompressed: "approve queued action reason-optional",
     required: [],
   },
   reject: {
     description:
       "Reject a queued action; reason optional in the user's language.",
-    descriptionCompressed:
-      "reject queued action; reason optional in user language",
+    descriptionCompressed: "reject queued action reason-optional",
     required: [],
   },
 };
@@ -240,7 +238,9 @@ export async function executeApprovedRequest(args: {
     };
   }
 
-  logger.info(`[OwnerResolveRequest] approved ${args.request.id} without executor`);
+  logger.info(
+    `[OwnerResolveRequest] approved ${args.request.id} without executor`,
+  );
   const text = "Approved.";
   await args.callback?.({ text });
   return {
@@ -312,7 +312,9 @@ async function resolveApprovalRequest(
         callback,
       });
     }
-    logger.info(`[OwnerResolveRequest] ${intent} ${updated.id} by ${subjectUserId}`);
+    logger.info(
+      `[OwnerResolveRequest] ${intent} ${updated.id} by ${subjectUserId}`,
+    );
     const text = `Rejected request ${updated.id}.`;
     if (callback) await callback({ text });
     return {
@@ -386,7 +388,12 @@ export const ownerResolveRequestAction: Action & {
         data: { actionName: ACTION_NAME, missing: resolved.missing },
       };
     }
-    return resolveApprovalRequest(runtime, message, resolved.subaction, callback);
+    return resolveApprovalRequest(
+      runtime,
+      message,
+      resolved.subaction,
+      callback,
+    );
   },
   examples: [
     [

@@ -35,7 +35,7 @@ export default scenario({
       room: "main",
       text: "If a signup flow hits a CAPTCHA, call me or hand it back so I can solve it manually instead of trying to bypass it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALL_USER", "LIFEOPS_COMPUTER_USE"],
+        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
         description: "captcha escalation policy",
         includesAny: ["captcha", "call", "manual", "solve", "bypass"],
       }),
@@ -55,7 +55,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALL_USER", "LIFEOPS_COMPUTER_USE"],
+      actionName: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
     },
     {
       type: "interventionRequestExists",
@@ -68,13 +68,13 @@ export default scenario({
     {
       type: "connectorDispatchOccurred",
       channel: "phone_call",
-      actionName: ["CALL_USER"],
+      actionName: ["OWNER_VOICE_CALL"],
     },
     {
       type: "custom",
       name: "captcha-escalation-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALL_USER", "LIFEOPS_COMPUTER_USE"],
+        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
         description: "captcha escalation policy",
         includesAny: ["captcha", "call", "manual", "solve", "bypass"],
       }),
@@ -84,7 +84,7 @@ export default scenario({
       name: "captcha-escalation-dispatch",
       predicate: expectConnectorDispatch({
         channel: "phone_call",
-        actionName: ["CALL_USER"],
+        actionName: ["OWNER_VOICE_CALL"],
         description:
           "captcha escalation reaches the phone dispatcher instead of staying as a silent note",
       }),

@@ -29,7 +29,7 @@ export default scenario({
       room: "main",
       text: "Reply on WhatsApp to Eve saying see you at 7.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "whatsapp draft reply",
         includesAny: ["whatsapp", "Eve", "draft", "reply"],
       }),
@@ -46,7 +46,7 @@ export default scenario({
       room: "main",
       text: "Send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "whatsapp send after confirmation",
         includesAny: ["send", "whatsapp", "reply"],
       }),
@@ -61,7 +61,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["INBOX", "CROSS_CHANNEL_SEND"],
+      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
     },
     {
       type: "custom",
@@ -87,7 +87,7 @@ export default scenario({
       type: "custom",
       name: "whatsapp-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "whatsapp draft then send",
         includesAny: ["whatsapp", "draft", "send", "reply"],
         minCount: 2,
@@ -98,7 +98,7 @@ export default scenario({
       name: "whatsapp-reply-send-payload-is-addressed",
       predicate: async (ctx) => {
         const sendActions = ctx.actionsCalled.filter((action) =>
-          ["CROSS_CHANNEL_SEND", "OWNER_SEND_MESSAGE"].includes(
+          ["SEND_DRAFT", "SEND_DRAFT"].includes(
             action.actionName,
           ),
         );

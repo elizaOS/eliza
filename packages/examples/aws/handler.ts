@@ -7,6 +7,7 @@
  * This is identical to the chat demo pattern but exposed as an HTTP API.
  */
 
+import { randomUUID } from "node:crypto";
 import {
   AgentRuntime,
   ChannelType,
@@ -23,7 +24,6 @@ import type {
   APIGatewayProxyResultV2,
   Context,
 } from "aws-lambda";
-import { v4 as uuidv4 } from "uuid";
 
 // Types for request/response
 interface ChatRequest {
@@ -153,7 +153,7 @@ async function handleChat(
   const rt = await initializeRuntime();
 
   // Generate IDs (using same pattern as chat demo)
-  const userId = uuidv4() as UUID;
+  const userId = randomUUID() as UUID;
   const conversationId =
     request.conversationId ??
     `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -174,7 +174,7 @@ async function handleChat(
 
   // Create message memory (same as chat demo)
   const message = createMessageMemory({
-    id: uuidv4() as UUID,
+    id: randomUUID() as UUID,
     entityId: userId,
     roomId,
     content: {

@@ -10,9 +10,7 @@
 export const CALENDLY_SERVICE_TYPE = "calendly";
 
 export const CalendlyActions = {
-  LIST_CALENDLY_EVENT_TYPES: "LIST_CALENDLY_EVENT_TYPES",
-  BOOK_CALENDLY_SLOT: "BOOK_CALENDLY_SLOT",
-  CANCEL_CALENDLY_BOOKING: "CANCEL_CALENDLY_BOOKING",
+  CALENDLY_OP: "CALENDLY_OP",
 } as const;
 
 export interface CalendlyUser {

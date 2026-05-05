@@ -12,8 +12,8 @@
 
 import {
   type IAgentRuntime,
-  ModelType,
   logActiveTrajectoryLlmCall,
+  ModelType,
   recordLlmCall,
 } from "@elizaos/core";
 
@@ -77,9 +77,7 @@ export async function runIntentModel(
       },
       async () => {
         const response = await runtime.useModel(modelType, modelParams);
-        return typeof response === "string"
-          ? response
-          : String(response ?? "");
+        return typeof response === "string" ? response : String(response ?? "");
       },
     );
   }

@@ -59,10 +59,8 @@ export const coreActionsSpec = {
     },
     {
       name: "WALLET_GOV_OP",
-      description:
-        "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
-      descriptionCompressed:
-        "OZ-Governor op: propose, vote, queue, or execute (op switch).",
+      description: "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
+      descriptionCompressed: "OZ-Governor op: propose, vote, queue, or execute (op switch).",
       similes: [
         "GOV_PROPOSE",
         "GOV_VOTE",
@@ -106,10 +104,8 @@ export const allActionsSpec = {
     },
     {
       name: "WALLET_GOV_OP",
-      description:
-        "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
-      descriptionCompressed:
-        "OZ-Governor op: propose, vote, queue, or execute (op switch).",
+      description: "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
+      descriptionCompressed: "OZ-Governor op: propose, vote, queue, or execute (op switch).",
       similes: [
         "GOV_PROPOSE",
         "GOV_VOTE",

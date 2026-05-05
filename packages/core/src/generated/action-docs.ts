@@ -2603,56 +2603,12 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "ADD_TO_PLAYLIST",
+			name: "ATTACK_NPC",
 			description:
-				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
-			parameters: [
-				{
-					name: "confirmed",
-					description:
-						"Must be true to add music to the playlist after preview.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Must be true to add music to the playlist after preview.",
-				},
-			],
-			descriptionCompressed:
-				"Add track to playlist. Creates playlist if missing. Fetches track if not in library.",
-			similes: [
-				"ADD_SONG_TO_PLAYLIST",
-				"PUT_IN_PLAYLIST",
-				"SAVE_TO_PLAYLIST",
-				"ADD_TRACK_TO_PLAYLIST",
-			],
-			exampleCalls: [
-				{
-					user: "Use ADD_TO_PLAYLIST with the provided parameters.",
-					actions: ["ADD_TO_PLAYLIST"],
-					params: {
-						ADD_TO_PLAYLIST: {
-							confirmed: false,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "ASTROLOGY_READING",
-			description:
-				"Perform an astrological natal chart reading, progressively revealing planetary placements.",
+				"Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
 			parameters: [],
-			descriptionCompressed:
-				"Start astrology natal chart reading; reveal planetary placements iteratively.",
-			similes: [
-				"BIRTH_CHART",
-				"NATAL_CHART",
-				"HOROSCOPE_READING",
-				"ZODIAC_READING",
-			],
+			descriptionCompressed: "Attack NPC by id.",
+			similes: ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
 		},
 		{
 			name: "AUTHENTICATE_GOOGLE",
@@ -3046,50 +3002,6 @@ export const allActionsSpec = {
 						CHECK_AVAILABILITY: {
 							startAt: "example",
 							endAt: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "CHECK_PAYMENT",
-			description:
-				"Check if payment has been received for the current reading session.",
-			parameters: [
-				{
-					name: "entityId",
-					description:
-						"Optional entity id whose active reading payment should be checked. Defaults to the current sender.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional entity id whose active reading payment should be checked. Defaults to the current sender.",
-				},
-				{
-					name: "roomId",
-					description:
-						"Optional room id whose active reading payment should be checked. Defaults to the current room.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional room id whose active reading payment should be checked. Defaults to the current room.",
-				},
-			],
-			descriptionCompressed:
-				"Check payment status for the active mysticism reading session.",
-			similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
-			exampleCalls: [
-				{
-					user: "Use CHECK_PAYMENT with the provided parameters.",
-					actions: ["CHECK_PAYMENT"],
-					params: {
-						CHECK_PAYMENT: {
-							entityId: "example",
-							roomId: "example",
 						},
 					},
 				},
@@ -3491,92 +3403,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "CROSS_PLATFORM_GATEWAY",
-			description:
-				"Create a real cross-platform group handoff room or escalate a request back to the owner when direct user action is required. ",
-			parameters: [
-				{
-					name: "subaction",
-					description:
-						"create_group_chat vs escalate_to_user when caller supplies it.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["create_group_chat", "escalate_to_user"],
-					},
-					descriptionCompressed:
-						"create_group_chat vs escalate_to_user when caller supplies it.",
-				},
-				{
-					name: "platform",
-					description:
-						"Target connector (discord, telegram, whatsapp, signal).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Target connector (discord, telegram, whatsapp, signal).",
-				},
-				{
-					name: "participants",
-					description: "Human names to invite to the shared handoff room.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed:
-						"Human names to invite to the shared handoff room.",
-				},
-				{
-					name: "title",
-					description: "Optional room or escalation title.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional room or escalation title.",
-				},
-				{
-					name: "reason",
-					description:
-						"Why escalate_to_user (e.g., needs owner negotiation or signing).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Why escalate_to_user (e. g. , needs owner negotiation or signing).",
-				},
-			],
-			descriptionCompressed:
-				"Cross-platform group handoff room OR escalate need-owner-signature negotiation",
-			similes: [
-				"GROUP_CHAT_HANDOFF",
-				"CREATE_GROUP_CHAT",
-				"ESCALATE_TO_USER",
-				"CROSS_PLATFORM_HANDOFF",
-			],
-			exampleCalls: [
-				{
-					user: "Use CROSS_PLATFORM_GATEWAY with the provided parameters.",
-					actions: ["CROSS_PLATFORM_GATEWAY"],
-					params: {
-						CROSS_PLATFORM_GATEWAY: {
-							subaction: "create_group_chat",
-							platform: "example",
-							participants: "example",
-							title: "example",
-							reason: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "DEACTIVATE_N8N_WORKFLOW",
 			description:
 				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
@@ -3589,20 +3415,6 @@ export const allActionsSpec = {
 				"STOP_WORKFLOW",
 				"PAUSE_WORKFLOW",
 				"TURN_OFF_WORKFLOW",
-			],
-		},
-		{
-			name: "DEEPEN_READING",
-			description:
-				"Provide a deeper interpretation of a specific element in an active reading.",
-			parameters: [],
-			descriptionCompressed:
-				"Deepen active reading with more interpretation for a specific element.",
-			similes: [
-				"EXPLAIN_MORE",
-				"GO_DEEPER",
-				"ELABORATE_READING",
-				"READING_DETAIL",
 			],
 		},
 		{
@@ -3647,13 +3459,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "DELETE_MESSAGE",
-			description: "Delete a message from a Discord channel",
-			parameters: [],
-			descriptionCompressed: "delete message Discord channel",
-			similes: ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"],
-		},
-		{
 			name: "DELETE_N8N_WORKFLOW",
 			description:
 				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
@@ -3661,42 +3466,6 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"delete n8n workflow permanently action cannot undone identify workflow ID, name, semantic description language",
 			similes: ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
-		},
-		{
-			name: "DELETE_PLAYLIST",
-			description:
-				"Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
-			parameters: [
-				{
-					name: "confirmed",
-					description:
-						"Must be true to delete the saved playlist after preview.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Must be true to delete the saved playlist after preview.",
-				},
-			],
-			descriptionCompressed: "Delete saved playlist.",
-			similes: [
-				"REMOVE_PLAYLIST",
-				"DELETE_SAVED_PLAYLIST",
-				"REMOVE_SAVED_PLAYLIST",
-			],
-			exampleCalls: [
-				{
-					user: "Use DELETE_PLAYLIST with the provided parameters.",
-					actions: ["DELETE_PLAYLIST"],
-					params: {
-						DELETE_PLAYLIST: {
-							confirmed: false,
-						},
-					},
-				},
-			],
 		},
 		{
 			name: "DEXSCREENER_BOOSTED_TOKENS",
@@ -3789,6 +3558,45 @@ export const allActionsSpec = {
 				"Get trending tokens from DexScreener based on volume, price changes, and trading activity",
 		},
 		{
+			name: "DISCORD_SETUP_CREDENTIALS",
+			description:
+				"Start Discord credential setup or account pairing. Guides the user through setting up API credentials for supported third-party services, validates them when possible, and stores them securely.",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			descriptionCompressed: "Set up Discord credentials.",
+			similes: [
+				"DISCORD_SETUP",
+				"DISCORD_PAIR",
+				"DISCORD_CONNECT",
+				"DISCORD_ADD_CREDENTIALS",
+				"DISCORD_CONFIGURE_SERVICE",
+				"DISCORD_CONNECT_SERVICE",
+				"DISCORD_ADD_API_KEY",
+				"DISCORD_SETUP_SERVICE",
+			],
+			exampleCalls: [
+				{
+					user: "Use DISCORD_SETUP_CREDENTIALS with the provided parameters.",
+					actions: ["DISCORD_SETUP_CREDENTIALS"],
+					params: {
+						DISCORD_SETUP_CREDENTIALS: {
+							data: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "DOWNLOAD_MUSIC",
 			description:
 				"Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
@@ -3823,18 +3631,6 @@ export const allActionsSpec = {
 						},
 					},
 				},
-			],
-		},
-		{
-			name: "EDIT_MESSAGE",
-			description: "Edit an existing message in a Discord channel",
-			parameters: [],
-			descriptionCompressed: "Edit existing Discord message.",
-			similes: [
-				"UPDATE_MESSAGE",
-				"MODIFY_MESSAGE",
-				"CHANGE_MESSAGE",
-				"EDIT_DISCORD_MESSAGE",
 			],
 		},
 		{
@@ -3917,18 +3713,8 @@ export const allActionsSpec = {
 		{
 			name: "FARCASTER_CAST",
 			description:
-				"Create or reply to a public Farcaster cast with subaction post or reply.",
+				"Post a public Farcaster cast, or reply to an existing cast when replyToHash is provided.",
 			parameters: [
-				{
-					name: "subaction",
-					description: "post or reply.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: ["post", "reply"],
-					},
-					descriptionCompressed: "post or reply.",
-				},
 				{
 					name: "text",
 					description: "Cast text.",
@@ -3939,26 +3725,19 @@ export const allActionsSpec = {
 					descriptionCompressed: "Cast text.",
 				},
 				{
-					name: "parentCastHash",
-					description: "Parent cast hash for replies.",
+					name: "replyToHash",
+					description:
+						"Hash of the parent cast. When set, posts as a reply; otherwise posts a new cast.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Parent cast hash for replies.",
-				},
-				{
-					name: "parentFid",
-					description: "Parent cast author FID for replies.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Parent cast author FID for replies.",
+					descriptionCompressed:
+						"Hash of the parent cast. When set, posts as a reply. otherwise posts a new cast.",
 				},
 			],
 			descriptionCompressed:
-				"public Farcaster cast router; subaction post reply",
+				"Farcaster cast: post or reply (with replyToHash).",
 			similes: [
 				"SEND_CAST",
 				"REPLY_TO_CAST",
@@ -3972,56 +3751,8 @@ export const allActionsSpec = {
 					actions: ["FARCASTER_CAST"],
 					params: {
 						FARCASTER_CAST: {
-							subaction: "post",
 							text: "example",
-							parentCastHash: "example",
-							parentFid: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "FETCH_FEED_TOP",
-			description:
-				"Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
-			parameters: [
-				{
-					name: "limit",
-					description: "Maximum ranked tweets to return.",
-					required: false,
-					schema: {
-						type: "number",
-						minimum: 1,
-						maximum: 50,
-					},
-					descriptionCompressed: "max ranked tweets to return.",
-				},
-				{
-					name: "fetchCount",
-					description:
-						"Number of home timeline tweets to fetch before ranking.",
-					required: false,
-					schema: {
-						type: "number",
-						minimum: 1,
-						maximum: 100,
-					},
-					descriptionCompressed:
-						"Number of home timeline tweets to fetch before ranking.",
-				},
-			],
-			descriptionCompressed:
-				"fetch home timeline x return top-n tweet rank engagement (like + retweet 2)",
-			similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
-			exampleCalls: [
-				{
-					user: "Use FETCH_FEED_TOP with the provided parameters.",
-					actions: ["FETCH_FEED_TOP"],
-					params: {
-						FETCH_FEED_TOP: {
-							limit: 1,
-							fetchCount: 1,
+							replyToHash: "example",
 						},
 					},
 				},
@@ -4631,60 +4362,76 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "GOOGLE_CHAT_LIST_SPACES",
-			description: "List all Google Chat spaces the bot is a member of",
-			parameters: [],
-			descriptionCompressed: "list Google Chat space bot member",
-			similes: [
-				"LIST_GOOGLE_CHAT_SPACES",
-				"GCHAT_SPACES",
-				"SHOW_GOOGLE_CHAT_SPACES",
-			],
-		},
-		{
-			name: "GOOGLE_CHAT_SEND_MESSAGE",
-			description: "Send a message to a Google Chat space",
-			parameters: [],
-			descriptionCompressed: "send message Google Chat space",
-			similes: [
-				"SEND_GOOGLE_CHAT_MESSAGE",
-				"MESSAGE_GOOGLE_CHAT",
-				"GCHAT_SEND",
-				"GOOGLE_CHAT_TEXT",
-			],
-		},
-		{
-			name: "GOOGLE_CHAT_SEND_REACTION",
-			description: "Add or remove an emoji reaction to a Google Chat message",
-			parameters: [],
-			descriptionCompressed: "add remove emoji reaction Google Chat message",
-			similes: [
-				"REACT_GOOGLE_CHAT",
-				"GCHAT_REACT",
-				"GOOGLE_CHAT_EMOJI",
-				"ADD_GOOGLE_CHAT_REACTION",
-			],
-		},
-		{
-			name: "ICHING_READING",
-			description:
-				"Perform an I Ching divination reading by casting a hexagram and interpreting changing lines.",
-			parameters: [],
-			descriptionCompressed:
-				"Start I Ching reading; cast a hexagram and interpret changing lines.",
-			similes: [
-				"CAST_HEXAGRAM",
-				"CONSULT_ICHING",
-				"THROW_COINS",
-				"ORACLE_READING",
-			],
-		},
-		{
 			name: "IMESSAGE_SEND_MESSAGE",
 			description: "Send a text message via iMessage (macOS only)",
 			parameters: [],
 			descriptionCompressed: "Send iMessage (macOS).",
 			similes: ["SEND_IMESSAGE", "IMESSAGE_TEXT", "TEXT_IMESSAGE", "SEND_IMSG"],
+		},
+		{
+			name: "INSTAGRAM_REPLY",
+			description:
+				"Reply on Instagram. mode=comment posts a comment on a media post (target=mediaId, text=comment). mode=dm sends a direct message to a thread (target=threadId, text=message).",
+			parameters: [
+				{
+					name: "mode",
+					description:
+						"Reply mode: comment (post comment) or dm (direct message).",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reply mode: comment (post comment) or dm (direct msg).",
+				},
+				{
+					name: "target",
+					description:
+						"Target identifier: mediaId for comment, threadId for dm. Falls back to message.content.mediaId/threadId.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target id: mediaId for comment, threadId for dm. Falls back to msg. content. mediaId/threadId.",
+				},
+				{
+					name: "text",
+					description:
+						"Reply text. Falls back to state.response.text or message.content.text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reply text. Falls back to state. reply. text or msg. content. text.",
+				},
+			],
+			descriptionCompressed: "Reply on Instagram: comment on post or DM user.",
+			similes: [
+				"POST_INSTAGRAM_COMMENT",
+				"INSTAGRAM_COMMENT",
+				"COMMENT_INSTAGRAM",
+				"REPLY_INSTAGRAM",
+				"SEND_INSTAGRAM_DM",
+				"INSTAGRAM_DM",
+				"INSTAGRAM_MESSAGE",
+				"DM_INSTAGRAM",
+				"DIRECT_MESSAGE_INSTAGRAM",
+			],
+			exampleCalls: [
+				{
+					user: "Use INSTAGRAM_REPLY with the provided parameters.",
+					actions: ["INSTAGRAM_REPLY"],
+					params: {
+						INSTAGRAM_REPLY: {
+							mode: "example",
+							target: "example",
+							text: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "INSTALL_SKILL",
@@ -4694,37 +4441,6 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"Install skill from ClawHub registry. Security-scanned before activation.",
 			similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
-		},
-		{
-			name: "LINE_SEND_FLEX_MESSAGE",
-			description: "Send a rich flex message/card via LINE",
-			parameters: [],
-			descriptionCompressed: "send rich flex message/card via LINE",
-			similes: ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"],
-		},
-		{
-			name: "LINE_SEND_LOCATION",
-			description: "Send a location message via LINE",
-			parameters: [],
-			descriptionCompressed: "send location message via LINE",
-			similes: [
-				"SEND_LINE_LOCATION",
-				"LINE_LOCATION",
-				"LINE_MAP",
-				"SHARE_LOCATION_LINE",
-			],
-		},
-		{
-			name: "LINE_SEND_MESSAGE",
-			description: "Send a text message via LINE",
-			parameters: [],
-			descriptionCompressed: "send text message via LINE",
-			similes: [
-				"SEND_LINE_MESSAGE",
-				"LINE_MESSAGE",
-				"LINE_TEXT",
-				"MESSAGE_LINE",
-			],
 		},
 		{
 			name: "LIST_ACTIVE_BLOCKS",
@@ -4862,78 +4578,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"List contacts whose last-contacted-at timestamp exceeds their follow-up threshold.",
-		},
-		{
-			name: "LIST_PLAYLISTS",
-			description:
-				"List all saved playlists for the user. Works best in DMs to avoid flooding group chats.",
-			parameters: [
-				{
-					name: "limit",
-					description: "Maximum playlists to show.",
-					required: false,
-					schema: {
-						type: "number",
-						minimum: 1,
-						maximum: 50,
-					},
-					descriptionCompressed: "max playlists to show.",
-				},
-			],
-			descriptionCompressed: "List all saved playlists.",
-			similes: [
-				"SHOW_PLAYLISTS",
-				"MY_PLAYLISTS",
-				"PLAYLIST_LIST",
-				"VIEW_PLAYLISTS",
-			],
-			exampleCalls: [
-				{
-					user: "Use LIST_PLAYLISTS with the provided parameters.",
-					actions: ["LIST_PLAYLISTS"],
-					params: {
-						LIST_PLAYLISTS: {
-							limit: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "LOAD_PLAYLIST",
-			description:
-				"Load a saved playlist and add all tracks to the queue after confirmed:true. Works best in DMs to avoid flooding group chats.",
-			parameters: [
-				{
-					name: "confirmed",
-					description: "Must be true to add the playlist tracks to the queue.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Must be true to add the playlist tracks to the queue.",
-				},
-			],
-			descriptionCompressed: "Load saved playlist, add tracks to queue.",
-			similes: [
-				"PLAY_PLAYLIST",
-				"LOAD_QUEUE",
-				"RESTORE_PLAYLIST",
-				"PLAY_SAVED_PLAYLIST",
-			],
-			exampleCalls: [
-				{
-					user: "Use LOAD_PLAYLIST with the provided parameters.",
-					actions: ["LOAD_PLAYLIST"],
-					params: {
-						LOAD_PLAYLIST: {
-							confirmed: false,
-						},
-					},
-				},
-			],
 		},
 		{
 			name: "lp_management",
@@ -5549,73 +5193,8 @@ export const allActionsSpec = {
 			name: "MATRIX_JOIN_ROOM",
 			description: "Join a Matrix room by ID or alias",
 			parameters: [],
-			descriptionCompressed: "join Matrix room ID alia",
+			descriptionCompressed: "Join Matrix room by id or alias.",
 			similes: ["JOIN_MATRIX_ROOM", "ENTER_ROOM"],
-		},
-		{
-			name: "MATRIX_LIST_ROOMS",
-			description: "List all Matrix rooms the bot has joined",
-			parameters: [],
-			descriptionCompressed: "list Matrix room bot join",
-			similes: ["LIST_MATRIX_ROOMS", "SHOW_ROOMS", "GET_ROOMS", "MY_ROOMS"],
-		},
-		{
-			name: "MATRIX_SEND_MESSAGE",
-			description: "Send a message to a Matrix room",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "send message Matrix room",
-			similes: ["SEND_MATRIX_MESSAGE", "MESSAGE_MATRIX", "MATRIX_TEXT"],
-			exampleCalls: [
-				{
-					user: "Use MATRIX_SEND_MESSAGE with the provided parameters.",
-					actions: ["MATRIX_SEND_MESSAGE"],
-					params: {
-						MATRIX_SEND_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MATRIX_SEND_REACTION",
-			description: "React to a Matrix message with an emoji",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "react Matrix message w/ emoji",
-			similes: ["REACT_MATRIX", "MATRIX_REACT", "ADD_MATRIX_REACTION"],
-			exampleCalls: [
-				{
-					user: "Use MATRIX_SEND_REACTION with the provided parameters.",
-					actions: ["MATRIX_SEND_REACTION"],
-					params: {
-						MATRIX_SEND_REACTION: {
-							data: "example",
-						},
-					},
-				},
-			],
 		},
 		{
 			name: "MODIFY_EXISTING_N8N_WORKFLOW",
@@ -5917,165 +5496,34 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "MUSIC_LIBRARY",
+			name: "NOSTR_PUBLISH_NOTE",
 			description:
-				"Music library router. Use subaction download to fetch music into the local library without playing it. Requires confirmed:true before downloading.",
+				"Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; use NOSTR_SEND_DM for private messages.",
 			parameters: [
 				{
-					name: "subaction",
-					description: "Library operation. Currently: download.",
-					required: false,
+					name: "text",
+					description: "Note content to publish.",
+					required: true,
 					schema: {
 						type: "string",
-						enum: ["download"],
 					},
-					descriptionCompressed: "Library operation. : download.",
-				},
-				{
-					name: "confirmed",
-					description: "Must be true to download music.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed: "Must be true to download music.",
+					descriptionCompressed: "Note content to publish.",
 				},
 			],
-			descriptionCompressed:
-				"Library router subaction: download music into local library.",
-			similes: ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
-			exampleCalls: [
-				{
-					user: "Use MUSIC_LIBRARY with the provided parameters.",
-					actions: ["MUSIC_LIBRARY"],
-					params: {
-						MUSIC_LIBRARY: {
-							subaction: "download",
-							confirmed: false,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MUSIC_METADATA_SEARCH",
-			description:
-				"Music metadata/search router. Use subaction youtube to return YouTube links, wikipedia to look up artist/album/song metadata, or resolve_and_queue for complex music requests that need research before queueing. ",
-			parameters: [
-				{
-					name: "subaction",
-					description:
-						"Search operation: youtube, wikipedia, or resolve_and_queue.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["youtube", "wikipedia", "resolve_and_queue"],
-					},
-					descriptionCompressed:
-						"Search operation: youtube, wikipedia, or resolve_and_queue.",
-				},
-				{
-					name: "query",
-					description: "Search or metadata lookup query.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Search or metadata lookup query.",
-				},
-				{
-					name: "entityType",
-					description: "For wikipedia subaction: artist, album, or song.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["artist", "album", "song"],
-					},
-					descriptionCompressed:
-						"For wikipedia subaction: artist, album, or song.",
-				},
-				{
-					name: "confirmed",
-					description: "Must be true for resolve_and_queue.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed: "Must be true for resolve_and_queue.",
-				},
-			],
-			descriptionCompressed:
-				"Music metadata/search subaction: YouTube links, Wikipedia metadata, resolve query and queue.",
+			descriptionCompressed: "Publish Nostr note (kind:1) to relays.",
 			similes: [
-				"SEARCH_YOUTUBE",
-				"FIND_YOUTUBE",
-				"PLAY_MUSIC_QUERY",
-				"RESEARCH_AND_PLAY",
-				"WIKIPEDIA_MUSIC",
-				"MUSIC_INFO_SEARCH",
+				"NOSTR_NOTE",
+				"POST_NOSTR_NOTE",
+				"NOSTR_KIND_1",
+				"PUBLISH_NOSTR",
 			],
 			exampleCalls: [
 				{
-					user: "Use MUSIC_METADATA_SEARCH with the provided parameters.",
-					actions: ["MUSIC_METADATA_SEARCH"],
+					user: "Use NOSTR_PUBLISH_NOTE with the provided parameters.",
+					actions: ["NOSTR_PUBLISH_NOTE"],
 					params: {
-						MUSIC_METADATA_SEARCH: {
-							subaction: "youtube",
-							query: "example",
-							entityType: "artist",
-							confirmed: false,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MUSIC_PLAYLIST",
-			description:
-				"Playlist router. Use subaction save, load, list, delete, or add. Save/load/delete/add require confirmed:true when changing queue or saved playlists.",
-			parameters: [
-				{
-					name: "subaction",
-					description: "Playlist operation: save, load, list, delete, or add.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["save", "load", "list", "delete", "add"],
-					},
-					descriptionCompressed:
-						"Playlist operation: save, load, list, delete, or add.",
-				},
-				{
-					name: "confirmed",
-					description: "Must be true for state-changing playlist operations.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Must be true for state-changing playlist operations.",
-				},
-			],
-			descriptionCompressed:
-				"Playlist router subaction: save, load, list, delete, add.",
-			similes: [
-				"SAVE_PLAYLIST",
-				"LOAD_PLAYLIST",
-				"LIST_PLAYLISTS",
-				"DELETE_PLAYLIST",
-				"ADD_TO_PLAYLIST",
-			],
-			exampleCalls: [
-				{
-					user: "Use MUSIC_PLAYLIST with the provided parameters.",
-					actions: ["MUSIC_PLAYLIST"],
-					params: {
-						MUSIC_PLAYLIST: {
-							subaction: "save",
-							confirmed: false,
+						NOSTR_PUBLISH_NOTE: {
+							text: "example",
 						},
 					},
 				},
@@ -6121,8 +5569,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Free-form user intent for inferring subaction.",
+					descriptionCompressed: "free-form intent infer subaction",
 				},
 				{
 					name: "metric",
@@ -6155,7 +5602,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Owner health via HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today, trend(days), by_metric(steps,heart-rate,sleep,calories,distance), status.",
+				"health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status owner",
 			similes: [
 				"FITNESS",
 				"WELLNESS",
@@ -6207,6 +5654,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "Optional IANA timezone override.",
 				},
 			],
+			descriptionCompressed:
+				"passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows) owner",
 			similes: [
 				"OWNER_SLEEP",
 				"OWNER_SLEEP_SCHEDULE",
@@ -6227,16 +5676,80 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals.",
 		},
 		{
-			name: "PAUSE_MUSIC",
+			name: "PAYMENT_OP",
 			description:
-				"Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio. ",
-			parameters: [],
-			descriptionCompressed: "Pause current track. Not via PLAY_AUDIO.",
-			similes: ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"],
+				"Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
+			parameters: [
+				{
+					name: "op",
+					description: "Operation: check or request.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["check", "request"],
+					},
+					descriptionCompressed: "Operation: check or request.",
+				},
+				{
+					name: "amount",
+					description:
+						"For request — payment amount as a string (e.g. '3.00').",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For request - payment amount as a string (e. g. '3. 00').",
+				},
+				{
+					name: "entityId",
+					description:
+						"For check — optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For check - optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+				},
+				{
+					name: "roomId",
+					description:
+						"For check — optional room id whose active reading payment should be checked. Defaults to the current room.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For check - optional room id whose active reading payment should be checked. Defaults to the current room.",
+				},
+			],
+			descriptionCompressed: "Mysticism payment ops: check, request.",
+			similes: [
+				"REQUEST_PAYMENT",
+				"CHARGE_USER",
+				"ASK_FOR_PAYMENT",
+				"SET_PRICE",
+				"CHECK_PAYMENT",
+				"VERIFY_PAYMENT",
+				"PAYMENT_STATUS",
+			],
+			exampleCalls: [
+				{
+					user: "Use PAYMENT_OP with the provided parameters.",
+					actions: ["PAYMENT_OP"],
+					params: {
+						PAYMENT_OP: {
+							op: "check",
+							amount: "example",
+							entityId: "example",
+							roomId: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "PLACE_CALL",
@@ -6395,6 +5908,143 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "PLAYBACK_OP",
+			description:
+				"Music playback control. Use op=pause, resume, skip, stop, or queue. ",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Playback operation: pause, resume, skip, stop, or queue.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["pause", "resume", "skip", "stop", "queue"],
+					},
+					descriptionCompressed:
+						"Playback operation: pause, resume, skip, stop, or queue.",
+				},
+				{
+					name: "query",
+					description: "Track query for op=queue.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Track query for op=queue.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for skip, stop, or queue.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true for skip, stop, or queue.",
+				},
+			],
+			descriptionCompressed:
+				"Music playback ops: pause, resume, skip, stop, queue.",
+			similes: [
+				"PAUSE_MUSIC",
+				"RESUME_MUSIC",
+				"STOP_MUSIC",
+				"SKIP_TRACK",
+				"QUEUE_MUSIC",
+				"PAUSE",
+				"RESUME",
+				"UNPAUSE",
+				"SKIP",
+				"NEXT_TRACK",
+				"ADD_TO_QUEUE",
+			],
+			exampleCalls: [
+				{
+					user: "Use PLAYBACK_OP with the provided parameters.",
+					actions: ["PLAYBACK_OP"],
+					params: {
+						PLAYBACK_OP: {
+							op: "pause",
+							query: "example",
+							confirmed: false,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PLAYLIST_OP",
+			description:
+				"Playlist operations. Use op=save, load, delete, or add. State-changing ops require confirmed:true.",
+			parameters: [
+				{
+					name: "op",
+					description: "Playlist operation: save, load, delete, or add.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["save", "load", "delete", "add"],
+					},
+					descriptionCompressed:
+						"Playlist operation: save, load, delete, or add.",
+				},
+				{
+					name: "playlistName",
+					description: "Playlist name for save/load/delete/add.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Playlist name for save/load/delete/add.",
+				},
+				{
+					name: "song",
+					description: "Song query for op=add.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Song query for op=add.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true to perform a state-changing playlist op.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to perform a state-changing playlist op.",
+				},
+			],
+			descriptionCompressed: "Playlist ops: save, load, delete, add.",
+			similes: [
+				"MUSIC_PLAYLIST",
+				"SAVE_PLAYLIST",
+				"LOAD_PLAYLIST",
+				"DELETE_PLAYLIST",
+				"ADD_TO_PLAYLIST",
+				"REMOVE_PLAYLIST",
+				"PLAY_PLAYLIST",
+			],
+			exampleCalls: [
+				{
+					user: "Use PLAYLIST_OP with the provided parameters.",
+					actions: ["PLAYLIST_OP"],
+					params: {
+						PLAYLIST_OP: {
+							op: "save",
+							playlistName: "example",
+							song: "example",
+							confirmed: false,
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "POLYMARKET_PLACE_ORDER",
 			description:
 				"Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
@@ -6514,50 +6164,61 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "POST_INSTAGRAM_COMMENT",
-			description: "Post a comment on an Instagram post or media",
+			name: "POST_BLUESKY",
+			description:
+				"Post a top-level Bluesky post or a reply. kind=post supports replyTo={uri,cid}. text optional; if empty the runtime model generates content.",
 			parameters: [
 				{
-					name: "response",
-					description: "The response to use.",
+					name: "kind",
+					description: "Always 'post' for now.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Always 'post' for now.",
+				},
+				{
+					name: "text",
+					description:
+						"Post text. If empty, the agent's model generates content.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The reply to use.",
+					descriptionCompressed:
+						"Post text. If empty, agent's model generates content.",
+				},
+				{
+					name: "replyTo",
+					description:
+						"Reply target as { uri, cid }. Omit for a top-level post.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Reply target as { uri, cid }. Omit for a top-level post.",
 				},
 			],
-			descriptionCompressed: "post comment Instagram post media",
+			descriptionCompressed: "Post or reply on Bluesky.",
 			similes: [
-				"instagram_comment",
-				"comment_instagram",
-				"reply_instagram",
-				"post_comment_instagram",
+				"BLUESKY_POST",
+				"BLUESKY_REPLY",
+				"REPLY_BLUESKY",
+				"POST_TO_BLUESKY",
 			],
 			exampleCalls: [
 				{
-					user: "Use POST_INSTAGRAM_COMMENT with the provided parameters.",
-					actions: ["POST_INSTAGRAM_COMMENT"],
+					user: "Use POST_BLUESKY with the provided parameters.",
+					actions: ["POST_BLUESKY"],
 					params: {
-						POST_INSTAGRAM_COMMENT: {
-							response: "example",
+						POST_BLUESKY: {
+							kind: "example",
+							text: "example",
+							replyTo: "example",
 						},
 					},
 				},
-			],
-		},
-		{
-			name: "POST_TWEET",
-			description: "Post a tweet on Twitter",
-			parameters: [],
-			descriptionCompressed: "Post tweet.",
-			similes: [
-				"TWEET",
-				"SEND_TWEET",
-				"TWITTER_POST",
-				"POST_ON_TWITTER",
-				"SHARE_ON_TWITTER",
 			],
 		},
 		{
@@ -6687,68 +6348,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "QUEUE_MUSIC",
-			description: "Add a song to the queue for later after confirmed:true.",
-			parameters: [
-				{
-					name: "confirmed",
-					description: "Must be true to fetch and add the song to the queue.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Must be true to fetch and add the song to the queue.",
-				},
-			],
-			descriptionCompressed: "Queue song for later.",
-			similes: ["ADD_TO_QUEUE", "QUEUE_SONG", "QUEUE_TRACK", "ADD_SONG"],
-			exampleCalls: [
-				{
-					user: "Use QUEUE_MUSIC with the provided parameters.",
-					actions: ["QUEUE_MUSIC"],
-					params: {
-						QUEUE_MUSIC: {
-							confirmed: false,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "READ_CALL_LOG",
-			description:
-				"List the most recent phone calls from the Android call log. Returns up ",
-			parameters: [
-				{
-					name: "limit",
-					description:
-						"Maximum number of call log entries to return (1-50). Defaults to 50.",
-					required: false,
-					schema: {
-						type: "number",
-						minimum: 1,
-					},
-					descriptionCompressed:
-						"max number of call log entries to return (1-50). Defaults to 50.",
-				},
-			],
-			descriptionCompressed: "List recent Android phone calls (max 50).",
-			similes: ["RECENT_CALLS", "CALL_HISTORY", "LIST_CALLS"],
-			exampleCalls: [
-				{
-					user: "Use READ_CALL_LOG with the provided parameters.",
-					actions: ["READ_CALL_LOG"],
-					params: {
-						READ_CALL_LOG: {
-							limit: 1,
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "READ_MCP_RESOURCE",
 			description: "Reads a resource from an MCP server",
 			parameters: [
@@ -6796,47 +6395,90 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "READ_UNREAD_X_DMS",
-			description: "List unread Twitter/X direct messages.",
+			name: "READING_OP",
+			description:
+				"Mystical reading router. Set type to tarot, astrology, or iching, and subaction to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
 			parameters: [
 				{
-					name: "limit",
-					description: "Maximum direct messages to scan for unread items.",
+					name: "type",
+					description: "Reading type: tarot, astrology, or iching.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["tarot", "astrology", "iching"],
+					},
+					descriptionCompressed: "Reading type: tarot, astrology, or iching.",
+				},
+				{
+					name: "subaction",
+					description: "Subaction: start, followup, or deepen.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["start", "followup", "deepen"],
+					},
+					descriptionCompressed: "Subaction: start, followup, or deepen.",
+				},
+				{
+					name: "question",
+					description: "Optional question or focus for the reading.",
 					required: false,
 					schema: {
-						type: "number",
-						minimum: 1,
-						maximum: 100,
+						type: "string",
 					},
-					descriptionCompressed: "max direct msgs to scan for unread items.",
+					descriptionCompressed: "Optional question or focus for the reading.",
+				},
+				{
+					name: "context",
+					description:
+						"Optional additional context (e.g., birth data hint for astrology).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional additional context (e. g. , birth data hint for astrology).",
 				},
 			],
-			descriptionCompressed: "list unread Twitter/X direct message",
-			similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
+			descriptionCompressed:
+				"Mystical readings: tarot, astrology, iching; subactions: start, followup, deepen.",
+			similes: [
+				"TAROT_READING",
+				"READ_TAROT",
+				"DRAW_CARDS",
+				"TAROT_SPREAD",
+				"CARD_READING",
+				"ICHING_READING",
+				"CAST_HEXAGRAM",
+				"CONSULT_ICHING",
+				"THROW_COINS",
+				"ORACLE_READING",
+				"ASTROLOGY_READING",
+				"BIRTH_CHART",
+				"NATAL_CHART",
+				"HOROSCOPE_READING",
+				"ZODIAC_READING",
+				"READING_FOLLOWUP",
+				"CONTINUE_READING",
+				"NEXT_CARD",
+				"PROCEED_READING",
+				"DEEPEN_READING",
+				"EXPLORE_DEEPER",
+				"ELABORATE_READING",
+			],
 			exampleCalls: [
 				{
-					user: "Use READ_UNREAD_X_DMS with the provided parameters.",
-					actions: ["READ_UNREAD_X_DMS"],
+					user: "Use READING_OP with the provided parameters.",
+					actions: ["READING_OP"],
 					params: {
-						READ_UNREAD_X_DMS: {
-							limit: 1,
+						READING_OP: {
+							type: "tarot",
+							subaction: "start",
+							question: "example",
+							context: "example",
 						},
 					},
 				},
-			],
-		},
-		{
-			name: "READING_FOLLOWUP",
-			description:
-				"Continue an active reading by processing user feedback and revealing the next element.",
-			parameters: [],
-			descriptionCompressed:
-				"Continue active reading; process user feedback and reveal the next element.",
-			similes: [
-				"CONTINUE_READING",
-				"NEXT_CARD",
-				"READING_RESPONSE",
-				"PROCEED_READING",
 			],
 		},
 		{
@@ -6957,167 +6599,6 @@ export const allActionsSpec = {
 							recipient: "example",
 							text: "example",
 							confirmed: false,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "REQUEST_PAYMENT",
-			description:
-				"Request payment from the user for a reading service. Specify the amount to charge.",
-			parameters: [],
-			descriptionCompressed:
-				"Request payment amount for the active mysticism reading service.",
-			similes: ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"],
-		},
-		{
-			name: "RESUME_MUSIC",
-			description:
-				"Resume music after a pause. Use when the user says resume, unpause, or continue. ",
-			parameters: [],
-			descriptionCompressed: "Resume paused music. Not via PLAY_AUDIO.",
-			similes: [
-				"RESUME",
-				"RESUME_AUDIO",
-				"RESUME_SONG",
-				"UNPAUSE",
-				"UNPAUSE_MUSIC",
-				"CONTINUE_MUSIC",
-			],
-		},
-		{
-			name: "SAVE_PLAYLIST",
-			description:
-				"Save the current music queue as a playlist for the user after confirmed:true. Works best in DMs to avoid flooding group chats.",
-			parameters: [
-				{
-					name: "confirmed",
-					description: "Must be true to save the current queue as a playlist.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Must be true to save the current queue as a playlist.",
-				},
-			],
-			descriptionCompressed: "Save current queue as playlist.",
-			similes: [
-				"SAVE_QUEUE",
-				"CREATE_PLAYLIST",
-				"STORE_PLAYLIST",
-				"SAVE_MUSIC_LIST",
-			],
-			exampleCalls: [
-				{
-					user: "Use SAVE_PLAYLIST with the provided parameters.",
-					actions: ["SAVE_PLAYLIST"],
-					params: {
-						SAVE_PLAYLIST: {
-							confirmed: false,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SCAN_WIFI",
-			description:
-				"List nearby Wi-Fi networks visible to the device. Returns SSID, BSSID, ",
-			parameters: [
-				{
-					name: "limit",
-					description:
-						"Maximum number of networks to return (1-100). Defaults to 25.",
-					required: false,
-					schema: {
-						type: "number",
-						minimum: 1,
-					},
-					descriptionCompressed:
-						"max number of networks to return (1-100). Defaults to 25.",
-				},
-				{
-					name: "maxAge",
-					description:
-						"Reuse cached scan results if completed within this many milliseconds. ",
-					required: false,
-					schema: {
-						type: "number",
-						minimum: 0,
-					},
-					descriptionCompressed:
-						"Reuse cached scan results if completed within this many milliseconds.",
-				},
-			],
-			descriptionCompressed:
-				"List nearby Wi-Fi networks (Android scanResults).",
-			similes: ["LIST_WIFI", "WIFI_SCAN", "NEARBY_WIFI", "WIFI_NETWORKS"],
-			exampleCalls: [
-				{
-					user: "Use SCAN_WIFI with the provided parameters.",
-					actions: ["SCAN_WIFI"],
-					params: {
-						SCAN_WIFI: {
-							limit: 1,
-							maxAge: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SCHEDULE_X_DM_REPLY",
-			description:
-				"Schedule a Twitter/X DM reply to send later by creating a real trigger task. ",
-			parameters: [
-				{
-					name: "recipient",
-					description: "Target X handle or id (without @ preferred).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Target X handle or id (without @ preferred).",
-				},
-				{
-					name: "text",
-					description: "DM body to send at sendAtIso.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "DM body to send at sendAtIso.",
-				},
-				{
-					name: "sendAtIso",
-					description: "ISO-8601 delivery time (may be filled by planner LLM).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"ISO-8601 delivery time (may be filled by planner LLM).",
-				},
-			],
-			descriptionCompressed:
-				"Queue X DM send-later trigger task OWNER_SEND_MESSAGE x_dm if now",
-			similes: [
-				"QUEUE_X_DM_REPLY",
-				"SCHEDULE_TWITTER_DM_REPLY",
-				"SCHEDULE_X_REPLY",
-			],
-			exampleCalls: [
-				{
-					user: "Use SCHEDULE_X_DM_REPLY with the provided parameters.",
-					actions: ["SCHEDULE_X_DM_REPLY"],
-					params: {
-						SCHEDULE_X_DM_REPLY: {
-							recipient: "example",
-							text: "example",
-							sendAtIso: "example",
 						},
 					},
 				},
@@ -7416,41 +6897,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "SEND_INSTAGRAM_DM",
-			description: "Send a direct message to an Instagram user",
-			parameters: [
-				{
-					name: "response",
-					description: "The response to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The reply to use.",
-				},
-			],
-			descriptionCompressed: "send direct message Instagram user",
-			similes: [
-				"instagram_dm",
-				"instagram_message",
-				"send_instagram_message",
-				"dm_instagram",
-				"direct_message_instagram",
-			],
-			exampleCalls: [
-				{
-					user: "Use SEND_INSTAGRAM_DM with the provided parameters.",
-					actions: ["SEND_INSTAGRAM_DM"],
-					params: {
-						SEND_INSTAGRAM_DM: {
-							response: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "SEND_TO_AGENT",
 			description:
 				"Send text input or key presses to a running task-agent session. ",
@@ -7539,7 +6985,7 @@ export const allActionsSpec = {
 		{
 			name: "SEND_X_POST",
 			description:
-				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+				"Publish a tweet on Twitter/X with a confirmation gate. Supports replies via replyToTweetId. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
 			parameters: [
 				{
 					name: "text",
@@ -7549,6 +6995,16 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed: "The tweet body.",
+				},
+				{
+					name: "replyToTweetId",
+					description: "Tweet id to reply to. When set, posts as a reply.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Tweet id to reply to. When set, posts as a reply.",
 				},
 				{
 					name: "confirmed",
@@ -7562,8 +7018,18 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"publish tweet Twitter/X w/ confirmation gate two-stage: wo/ confirm: true return preview; w/ confirm: true tweet post",
-			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
+				"Post tweet on X (Twitter); supports replies via replyToTweetId.",
+			similes: [
+				"POST_X",
+				"POST_TWEET",
+				"TWEET",
+				"SEND_TWEET",
+				"TWITTER_POST",
+				"POST_ON_TWITTER",
+				"SHARE_ON_TWITTER",
+				"TWEET_WITH_CONFIRMATION",
+				"PUBLISH_TWEET",
+			],
 			exampleCalls: [
 				{
 					user: "Use SEND_X_POST with the provided parameters.",
@@ -7571,6 +7037,7 @@ export const allActionsSpec = {
 					params: {
 						SEND_X_POST: {
 							text: "example",
+							replyToTweetId: "example",
 							confirmed: false,
 						},
 					},
@@ -7667,98 +7134,6 @@ export const allActionsSpec = {
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact.",
 		},
 		{
-			name: "SETUP_CREDENTIALS",
-			description:
-				"Guide the user through setting up API credentials for supported third-party services, validate them when possible, and store them securely.",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed:
-				"Guide credential setup for third-party services, validate and store securely.",
-			similes: [
-				"ADD_CREDENTIALS",
-				"CONFIGURE_SERVICE",
-				"CONNECT_SERVICE",
-				"ADD_API_KEY",
-				"SETUP_SERVICE",
-			],
-			exampleCalls: [
-				{
-					user: "Use SETUP_CREDENTIALS with the provided parameters.",
-					actions: ["SETUP_CREDENTIALS"],
-					params: {
-						SETUP_CREDENTIALS: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SHOW_QUEUE",
-			description: "Show the current music queue",
-			parameters: [
-				{
-					name: "limit",
-					description: "Maximum queued tracks to display, from 1 to 25.",
-					required: false,
-					schema: {
-						type: "number",
-						default: 10,
-						minimum: 1,
-						maximum: 25,
-					},
-					descriptionCompressed: "max queued tracks to display, from 1 to 25.",
-				},
-			],
-			descriptionCompressed: "show current music queue",
-			similes: ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"],
-			exampleCalls: [
-				{
-					user: "Use SHOW_QUEUE with the provided parameters.",
-					actions: ["SHOW_QUEUE"],
-					params: {
-						SHOW_QUEUE: {
-							limit: 10,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SIGNAL_LIST_CONTACTS",
-			description: "List Signal contacts",
-			parameters: [],
-			descriptionCompressed: "list Signal contact",
-			similes: [
-				"LIST_SIGNAL_CONTACTS",
-				"SHOW_CONTACTS",
-				"GET_CONTACTS",
-				"SIGNAL_CONTACTS",
-			],
-		},
-		{
-			name: "SIGNAL_LIST_GROUPS",
-			description: "List Signal groups",
-			parameters: [],
-			descriptionCompressed: "list Signal group",
-			similes: [
-				"LIST_SIGNAL_GROUPS",
-				"SHOW_GROUPS",
-				"GET_GROUPS",
-				"SIGNAL_GROUPS",
-			],
-		},
-		{
 			name: "SIGNAL_READ_RECENT_MESSAGES",
 			description:
 				"Read the most recent Signal messages across active conversations",
@@ -7769,104 +7144,6 @@ export const allActionsSpec = {
 				"CHECK_SIGNAL_MESSAGES",
 				"SHOW_SIGNAL_MESSAGES",
 				"SIGNAL_INBOX",
-			],
-		},
-		{
-			name: "SIGNAL_SEND_MESSAGE",
-			description: "Send a message to a Signal contact or group",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "Send Signal message.",
-			similes: [
-				"SEND_SIGNAL_MESSAGE",
-				"TEXT_SIGNAL",
-				"MESSAGE_SIGNAL",
-				"SIGNAL_TEXT",
-			],
-			exampleCalls: [
-				{
-					user: "Use SIGNAL_SEND_MESSAGE with the provided parameters.",
-					actions: ["SIGNAL_SEND_MESSAGE"],
-					params: {
-						SIGNAL_SEND_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SIGNAL_SEND_REACTION",
-			description: "React to a Signal message with an emoji",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "React to Signal message.",
-			similes: [
-				"REACT_SIGNAL",
-				"SIGNAL_REACT",
-				"ADD_SIGNAL_REACTION",
-				"SIGNAL_EMOJI",
-			],
-			exampleCalls: [
-				{
-					user: "Use SIGNAL_SEND_REACTION with the provided parameters.",
-					actions: ["SIGNAL_SEND_REACTION"],
-					params: {
-						SIGNAL_SEND_REACTION: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SKIP_TRACK",
-			description:
-				"Skip the current track and play the next queued song. Use for skip, next track, or next song. ",
-			parameters: [
-				{
-					name: "confirmed",
-					description: "Must be true to skip the current track.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed: "Must be true to skip the current track.",
-				},
-			],
-			descriptionCompressed: "Skip to next queued song. Not via PLAY_AUDIO.",
-			similes: ["SKIP", "NEXT_TRACK", "SKIP_SONG", "NEXT_SONG"],
-			exampleCalls: [
-				{
-					user: "Use SKIP_TRACK with the provided parameters.",
-					actions: ["SKIP_TRACK"],
-					params: {
-						SKIP_TRACK: {
-							confirmed: false,
-						},
-					},
-				},
 			],
 		},
 		{
@@ -8250,44 +7527,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "STOP_MUSIC",
-			description:
-				"Stop playback and clear the queue. Use when the user wants music off or the queue cleared. ",
-			parameters: [
-				{
-					name: "confirmed",
-					description: "Must be true to stop playback and clear the queue.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Must be true to stop playback and clear the queue.",
-				},
-			],
-			descriptionCompressed: "Stop playback, clear queue. Not via PLAY_AUDIO.",
-			similes: [
-				"STOP_AUDIO",
-				"STOP_PLAYING",
-				"STOP_SONG",
-				"TURN_OFF_MUSIC",
-				"MUSIC_OFF",
-				"SILENCE",
-			],
-			exampleCalls: [
-				{
-					user: "Use STOP_MUSIC with the provided parameters.",
-					actions: ["STOP_MUSIC"],
-					params: {
-						STOP_MUSIC: {
-							confirmed: false,
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "STOP_TAILSCALE",
 			description: "Stop the running Tailscale tunnel",
 			parameters: [],
@@ -8312,13 +7551,44 @@ export const allActionsSpec = {
 			similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
 		},
 		{
-			name: "TAROT_READING",
+			name: "TAILSCALE",
 			description:
-				"Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
-			parameters: [],
-			descriptionCompressed:
-				"Start tarot reading; draw a card spread and reveal cards iteratively.",
-			similes: ["READ_TAROT", "DRAW_CARDS", "TAROT_SPREAD", "CARD_READING"],
+				"Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
+			parameters: [
+				{
+					name: "op",
+					description: "Tunnel operation. One of: start, stop.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Tunnel operation. One of: start, stop.",
+				},
+			],
+			descriptionCompressed: "Tailscale: start tunnel, stop tunnel.",
+			similes: [
+				"TAILSCALE_OP",
+				"START_TAILSCALE",
+				"STOP_TAILSCALE",
+				"START_TUNNEL",
+				"STOP_TUNNEL",
+				"OPEN_TUNNEL",
+				"CLOSE_TUNNEL",
+				"CREATE_TUNNEL",
+				"TAILSCALE_UP",
+				"TAILSCALE_DOWN",
+			],
+			exampleCalls: [
+				{
+					user: "Use TAILSCALE with the provided parameters.",
+					actions: ["TAILSCALE"],
+					params: {
+						TAILSCALE: {
+							op: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "TASK_CONTROL",
@@ -8746,81 +8016,47 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "TWITCH_CHANNEL",
-			description:
-				"Manage Twitch channel membership with subaction join, leave, or list.",
+			name: "TWITCH_CHANNEL_OP",
+			description: "Join or leave a Twitch channel.",
 			parameters: [
 				{
-					name: "subaction",
-					description: "One of join, leave, or list.",
+					name: "op",
+					description: "Either join or leave.",
 					required: true,
 					schema: {
 						type: "string",
-						enum: ["join", "leave", "list"],
+						enum: ["join", "leave"],
 					},
-					descriptionCompressed: "One of join, leave, or list.",
+					descriptionCompressed: "Either join or leave.",
 				},
 				{
 					name: "channel",
-					description: "Twitch channel name without # for join/leave.",
-					required: false,
+					description: "Twitch channel name without #.",
+					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Twitch channel name without # for join/leave.",
+					descriptionCompressed: "Twitch channel name without #.",
 				},
 			],
-			descriptionCompressed:
-				"manage Twitch channel membership; subaction join leave list",
+			descriptionCompressed: "Twitch channel ops: join, leave.",
 			similes: [
+				"TWITCH_CHANNEL",
 				"TWITCH_JOIN_CHANNEL",
 				"TWITCH_LEAVE_CHANNEL",
-				"TWITCH_LIST_CHANNELS",
 				"MANAGE_TWITCH_CHANNEL",
 			],
 			exampleCalls: [
 				{
-					user: "Use TWITCH_CHANNEL with the provided parameters.",
-					actions: ["TWITCH_CHANNEL"],
+					user: "Use TWITCH_CHANNEL_OP with the provided parameters.",
+					actions: ["TWITCH_CHANNEL_OP"],
 					params: {
-						TWITCH_CHANNEL: {
-							subaction: "join",
+						TWITCH_CHANNEL_OP: {
+							op: "join",
 							channel: "example",
 						},
 					},
 				},
-			],
-		},
-		{
-			name: "TWITCH_JOIN_CHANNEL",
-			description: "Join a Twitch channel to listen and send messages",
-			parameters: [],
-			descriptionCompressed: "join Twitch channel listen send message",
-			similes: ["JOIN_TWITCH_CHANNEL", "ENTER_CHANNEL", "CONNECT_CHANNEL"],
-		},
-		{
-			name: "TWITCH_LEAVE_CHANNEL",
-			description: "Leave a Twitch channel",
-			parameters: [],
-			descriptionCompressed: "leave Twitch channel",
-			similes: [
-				"LEAVE_TWITCH_CHANNEL",
-				"EXIT_CHANNEL",
-				"PART_CHANNEL",
-				"DISCONNECT_CHANNEL",
-			],
-		},
-		{
-			name: "TWITCH_LIST_CHANNELS",
-			description: "List all Twitch channels the bot is currently in",
-			parameters: [],
-			descriptionCompressed: "list Twitch channel bot",
-			similes: [
-				"LIST_TWITCH_CHANNELS",
-				"SHOW_CHANNELS",
-				"GET_CHANNELS",
-				"CURRENT_CHANNELS",
 			],
 		},
 		{
@@ -9210,73 +8446,60 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "X_POST",
+			name: "WORKFLOW_LIFECYCLE_OP",
 			description:
-				"Create a public X/Twitter post or public reply. Direct messages are handled by the X DM connector.",
+				'n8n workflow lifecycle operation. Pass `op` ("activate", "deactivate", or "delete") and optionally `workflowId`. Identifies workflows by ID, name, or semantic description.',
 			parameters: [
 				{
-					name: "subaction",
-					description: "Public posting operation.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["post", "reply"],
-						default: "post",
-					},
-					descriptionCompressed: "Public posting operation.",
-				},
-				{
-					name: "text",
-					description: "The public post body.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "The public post body.",
-				},
-				{
-					name: "confirmed",
-					description: "Must be true for the public post to actually publish.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed: "Must be true for the public post to publish.",
-				},
-				{
-					name: "inReplyTo",
-					description: "Tweet id to reply to when subaction is reply.",
+					name: "op",
+					description:
+						"Lifecycle operation to perform. One of: activate, deactivate, delete.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Tweet id to reply to when subaction is reply.",
+						"Lifecycle operation to perform. One of: activate, deactivate, delete.",
+				},
+				{
+					name: "workflowId",
+					description:
+						"Exact n8n workflow id. When omitted, the workflow is matched semantically.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Exact n8n workflow id. When omitted, the workflow is matched semantically.",
 				},
 			],
 			descriptionCompressed:
-				"public X/Twitter connector post router; subaction post|reply, no DMs",
+				"n8n workflow lifecycle: activate, deactivate, delete.",
 			similes: [
-				"POST_TWEET",
-				"SEND_X_POST",
-				"POST_X",
-				"TWEET",
-				"SEND_TWEET",
-				"TWITTER_POST",
-				"POST_ON_TWITTER",
-				"SHARE_ON_TWITTER",
+				"ACTIVATE_WORKFLOW",
+				"DEACTIVATE_WORKFLOW",
+				"DELETE_WORKFLOW",
+				"ENABLE_WORKFLOW",
+				"DISABLE_WORKFLOW",
+				"STOP_WORKFLOW",
+				"PAUSE_WORKFLOW",
+				"TURN_ON_WORKFLOW",
+				"TURN_OFF_WORKFLOW",
+				"START_WORKFLOW",
+				"REMOVE_WORKFLOW",
+				"DESTROY_WORKFLOW",
+				"ACTIVATE_N8N_WORKFLOW",
+				"DEACTIVATE_N8N_WORKFLOW",
+				"DELETE_N8N_WORKFLOW",
 			],
 			exampleCalls: [
 				{
-					user: "Use X_POST with the provided parameters.",
-					actions: ["X_POST"],
+					user: "Use WORKFLOW_LIFECYCLE_OP with the provided parameters.",
+					actions: ["WORKFLOW_LIFECYCLE_OP"],
 					params: {
-						X_POST: {
-							subaction: "post",
-							text: "example",
-							confirmed: false,
-							inReplyTo: "example",
+						WORKFLOW_LIFECYCLE_OP: {
+							op: "example",
+							workflowId: "example",
 						},
 					},
 				},

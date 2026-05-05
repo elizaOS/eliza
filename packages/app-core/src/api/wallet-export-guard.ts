@@ -11,9 +11,9 @@
  * delete this shim.
  */
 export {
-  type WalletExportRejection,
-  type WalletExportAuditEntry,
   _resetForTesting,
   createHardenedExportGuard,
   getWalletExportAuditLog,
+  type WalletExportAuditEntry,
+  type WalletExportRejection,
 } from "@elizaos/plugin-wallet/lib/wallet-export-guard";

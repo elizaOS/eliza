@@ -13,7 +13,7 @@ export default buildConnectorCertificationScenario({
       name: "discord-core",
       text: "Read the Discord thread, draft a reply, and send it back in the right context.",
       responseIncludesAny: ["discord", "reply", "thread", "draft"],
-      acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       includesAny: ["discord", "reply", "thread", "draft"],
     },
   ],

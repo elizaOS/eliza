@@ -91,7 +91,7 @@ async function handleSend(
   info: MatrixOpInfo,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
-  if (!info.text || !info.text.trim()) {
+  if (!info.text?.trim()) {
     await callback?.({
       text: "I couldn't understand what message you want me to send. Please try again.",
       source: "matrix",

@@ -11,10 +11,10 @@
  * `@elizaos/plugin-wallet/lib/server-wallet-trade` and delete this shim.
  */
 export {
-  type TradePermissionMode,
   canUseLocalTradeExecution,
   normalizeCompatRejection,
   resolveTradePermissionMode,
   resolveWalletExportRejection,
   runWithCompatAuthContext,
+  type TradePermissionMode,
 } from "@elizaos/plugin-wallet/lib/server-wallet-trade";

@@ -62,6 +62,28 @@ export function readPersistedMobileRuntimeMode(): MobileRuntimeMode | null {
   }
 }
 
+async function persistNativeMobileRuntimeMode(
+  mode: MobileRuntimeMode | null,
+): Promise<void> {
+  try {
+    const [{ Capacitor }, { Preferences }] = await Promise.all([
+      import("@capacitor/core"),
+      import("@capacitor/preferences"),
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+    if (mode) {
+      await Preferences.set({
+        key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
+        value: mode,
+      });
+    } else {
+      await Preferences.remove({ key: MOBILE_RUNTIME_MODE_STORAGE_KEY });
+    }
+  } catch {
+    // Capacitor Preferences is unavailable in web/unit-test shells.
+  }
+}
+
 export function persistMobileRuntimeModeForServerTarget(
   target: OnboardingServerTarget,
 ): void {
@@ -78,6 +100,8 @@ export function persistMobileRuntimeModeForServerTarget(
       // localStorage can be unavailable in embedded shells.
     }
   }
+
+  void persistNativeMobileRuntimeMode(mode);
 
   if (typeof document !== "undefined") {
     dispatchAppEvent(MOBILE_RUNTIME_MODE_CHANGED_EVENT, { mode });

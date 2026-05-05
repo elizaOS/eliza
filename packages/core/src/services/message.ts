@@ -1132,49 +1132,49 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_EVENT", "OWNER_CALENDAR"],
 		["SCHEDULE_RECURRING_MEETING", "OWNER_CALENDAR"],
 		["SCHEDULE_RECURRING", "OWNER_CALENDAR"],
-		["BOOK_TRAVEL_ACTION", "CALL_EXTERNAL"],
-		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["CREATE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["SET_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["SET_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["BOOK_TRAVEL_ACTION", "OWNER_VOICE_CALL"],
+		["CAPTURE_TRAVEL_PREFERENCES", "OWNER_PROFILE"],
+		["CAPTURE_BOOKING_PREFERENCES", "OWNER_PROFILE"],
+		["CREATE_TRAVEL_PREFERENCES", "OWNER_PROFILE"],
+		["SET_PREFERENCES", "OWNER_PROFILE"],
+		["SET_TRAVEL_PREFERENCES", "OWNER_PROFILE"],
 		["CREATE_FOLLOWUP", "OWNER_RELATIONSHIP"],
-		["GET_PENDING_ASSETS", "OWNER_INBOX"],
-		["GET_PENDING_ITEMS", "OWNER_INBOX"],
-		["EVENT_ASSET_CHECKLIST", "OWNER_INBOX"],
-		["OUTSTANDING_EVENT_ASSETS", "OWNER_INBOX"],
-		["PORTAL_ASSET_CHECKLIST", "OWNER_INBOX"],
-		["PROPOSE_GROUP_CHAT_HANDOFF", "OWNER_INBOX"],
-		["GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
-		["SET_GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
-		["CREATE_GROUP_CHAT", "OWNER_INBOX"],
-		["BUMP_WITH_CONTEXT", "OWNER_INBOX"],
-		["CONTEXTUAL_BUMP", "OWNER_INBOX"],
-		["BUMP_UNANSWERED_DECISION", "OWNER_INBOX"],
-		["UPDATE_MORNING_BRIEF", "RUN_MORNING_CHECKIN"],
-		["GET_PENDING_DRAFTS", "OWNER_INBOX"],
-		["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
-		["CREATE_REMINDER", "LIFE"],
-		["SET_REMINDER_RULE", "LIFE"],
-		["CREATE_REMINDER_RULE", "PUBLISH_DEVICE_INTENT"],
-		["CREATE_DEVICE_WARNING", "PUBLISH_DEVICE_INTENT"],
-		["REQUEST_UPDATED_ID", "PUBLISH_DEVICE_INTENT"],
-		["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
+		["GET_PENDING_ASSETS", "LIST_INBOX"],
+		["GET_PENDING_ITEMS", "LIST_INBOX"],
+		["EVENT_ASSET_CHECKLIST", "LIST_INBOX"],
+		["OUTSTANDING_EVENT_ASSETS", "LIST_INBOX"],
+		["PORTAL_ASSET_CHECKLIST", "LIST_INBOX"],
+		["PROPOSE_GROUP_CHAT_HANDOFF", "TRIAGE_MESSAGES"],
+		["GROUP_CHAT_HANDOFF_POLICY", "TRIAGE_MESSAGES"],
+		["SET_GROUP_CHAT_HANDOFF_POLICY", "TRIAGE_MESSAGES"],
+		["CREATE_GROUP_CHAT", "SEND_DRAFT"],
+		["BUMP_WITH_CONTEXT", "DRAFT_FOLLOWUP"],
+		["CONTEXTUAL_BUMP", "DRAFT_FOLLOWUP"],
+		["BUMP_UNANSWERED_DECISION", "DRAFT_FOLLOWUP"],
+		["UPDATE_MORNING_BRIEF", "OWNER_CHECKIN"],
+		["GET_PENDING_DRAFTS", "LIST_INBOX"],
+		["ADD_MORNING_BRIEF_SECTION", "OWNER_CHECKIN"],
+		["CREATE_REMINDER", "OWNER_LIFE"],
+		["SET_REMINDER_RULE", "OWNER_LIFE"],
+		["CREATE_REMINDER_RULE", "OWNER_DEVICE_INTENT"],
+		["CREATE_DEVICE_WARNING", "OWNER_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID", "OWNER_DEVICE_INTENT"],
+		["CREATE_PREFERENCE_PROFILE", "OWNER_PROFILE"],
 		["FLAG_CONFLICT", "OWNER_CALENDAR"],
 		["CHECK_FLIGHT_CONFLICT", "OWNER_CALENDAR"],
 		["FLIGHT_CONFLICT_REBOOKING", "OWNER_CALENDAR"],
 		["REBOOK_CONFLICTING_EVENT", "OWNER_CALENDAR"],
-		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
-		["SET_MULTI_DEVICE_REMINDER", "PUBLISH_DEVICE_INTENT"],
-		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
-		["CANCELLATION_FEE_WARNING", "PUBLISH_DEVICE_INTENT"],
-		["WARN_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
-		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
-		["REQUEST_UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
-		["UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
-		["UPDATED_ID_INTERVENTION", "PUBLISH_DEVICE_INTENT"],
-		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
-		["UPLOAD_PORTAL", "LIFEOPS_COMPUTER_USE"],
+		["SET_MULTI_DEVICE_MEETING_REMINDER", "OWNER_DEVICE_INTENT"],
+		["SET_MULTI_DEVICE_REMINDER", "OWNER_DEVICE_INTENT"],
+		["HANDLE_CANCELLATION_FEE", "OWNER_DEVICE_INTENT"],
+		["CANCELLATION_FEE_WARNING", "OWNER_DEVICE_INTENT"],
+		["WARN_CANCELLATION_FEE", "OWNER_DEVICE_INTENT"],
+		["GET_ID_STATUS", "OWNER_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID_COPY", "OWNER_DEVICE_INTENT"],
+		["UPDATED_ID_COPY", "OWNER_DEVICE_INTENT"],
+		["UPDATED_ID_INTERVENTION", "OWNER_DEVICE_INTENT"],
+		["REQUEST_UPLOAD", "OWNER_COMPUTER_USE"],
+		["UPLOAD_PORTAL", "OWNER_COMPUTER_USE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),
@@ -1208,10 +1208,10 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // CREATE_TRIGGER_TASK + its schedule similes are included because the phrase
 // structure the planner matches on ("every N minutes", "at 7am daily",
 // "schedule a cron task") does not keyword-overlap with the action's
-// description the way LIFE's multi-paragraph reminder/alarm prose does.
+// description the way OWNER_LIFE's multi-paragraph reminder/alarm prose does.
 // Without these entries, the correction layer (findOwnedActionCorrectionFromMetadata)
 // routinely overrides a correct CREATE_CRON/CREATE_TRIGGER_TASK pick on
-// page-automations with LIFE based on fuzzy description overlap — breaking
+// page-automations with OWNER_LIFE based on fuzzy description overlap — breaking
 // the scope-gated routing on the page-automations surface.
 // OWNER_RELATIONSHIP is the explicit umbrella action for the contacts /
 // rolodex / follow-up surface. The metadata-based corrector would otherwise
@@ -1227,7 +1227,7 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // says "build me X" or "implement Y", the planner correctly picks START_CODING_TASK,
 // but the user's prose contains zero START_CODING_TASK keywords. Without this entry
 // the corrector overrides START_CODING_TASK with whatever role-gated action
-// (OWNER_CALENDAR, OWNER_INBOX, MANAGE_ISSUES) happens to overlap with
+// (OWNER_CALENDAR, TRIAGE_MESSAGES, MANAGE_ISSUES) happens to overlap with
 // incidental words in the prompt — e.g. a build request that mentions a date
 // keyword-rescores OWNER_CALENDAR over START_CODING_TASK and the user gets
 // "Google Calendar is not connected" in response to a code request. Same
@@ -1258,12 +1258,12 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"CREATE_CRON",
 		"CREATE_RECURRING",
 		"OWNER_RELATIONSHIP",
-		// LIFE picks routine / reminder / todo / habit / goal intents that
+		// OWNER_LIFE picks routine / reminder / todo / habit / goal intents that
 		// frequently mention a verb-noun pair the corrector will mis-rewrite.
-		// "remember to call mom on Sunday" → planner correctly picks LIFE
+		// "remember to call mom on Sunday" → planner correctly picks OWNER_LIFE
 		// (a reminder), but the corrector keyword-rescores it to
-		// CALL_EXTERNAL because of "call". Trust the planner's pick.
-		"LIFE",
+		// OWNER_VOICE_CALL because of "call". Trust the planner's pick.
+		"OWNER_LIFE",
 	].map(normalizeActionIdentifier),
 );
 
@@ -1507,20 +1507,20 @@ function buildActionOnlyRescuePrompt(draftReply: string): string {
 Examples:
 - "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> OWNER_CALENDAR
 - "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> OWNER_CALENDAR
-- "repair that missed call and hold the note for approval" -> OWNER_INBOX
-- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> OWNER_INBOX
-	- "if direct relaying gets messy, suggest a group chat handoff" -> OWNER_INBOX
-	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> OWNER_INBOX
-	- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> OWNER_INBOX
+- "repair that missed call and hold the note for approval" -> TRIAGE_MESSAGES
+- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> DRAFT_FOLLOWUP
+	- "if direct relaying gets messy, suggest a group chat handoff" -> TRIAGE_MESSAGES
+	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> LIST_INBOX
+	- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> OWNER_CHECKIN
 	- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> OWNER_CALENDAR
-	- "capture my reusable flight and hotel preferences" -> UPDATE_OWNER_PROFILE
+	- "capture my reusable flight and hotel preferences" -> OWNER_PROFILE
 	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> OWNER_CALENDAR
-	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> BOOK_TRAVEL
-	- "when I'm done with the PPT, upload it to the speaker portal for me" -> LIFEOPS_COMPUTER_USE
-	- "if the only ID on file is expired, ask me for an updated copy" -> PUBLISH_DEVICE_INTENT
-	- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> PUBLISH_DEVICE_INTENT
-	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> PUBLISH_DEVICE_INTENT
-	- "if you get stuck in the browser or on my computer, call me" -> CALL_USER
+	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> OWNER_BOOK_TRAVEL
+	- "when I'm done with the PPT, upload it to the speaker portal for me" -> OWNER_COMPUTER_USE
+	- "if the only ID on file is expired, ask me for an updated copy" -> OWNER_DEVICE_INTENT
+	- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> OWNER_DEVICE_INTENT
+	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> OWNER_DEVICE_INTENT
+	- "if you get stuck in the browser or on my computer, call me" -> OWNER_VOICE_CALL
 
 ${draftSection}Return TOON only:
 thought: short reasoning
@@ -1529,10 +1529,10 @@ actions[1]: ACTION_NAME`;
 
 const ROUTING_REASSESS_ACTIONS = new Set(
 	[
-		"LIFE",
-		"PUBLISH_DEVICE_INTENT",
-		"LIFEOPS_COMPUTER_USE",
-		"SUBSCRIPTIONS",
+		"OWNER_LIFE",
+		"OWNER_DEVICE_INTENT",
+		"OWNER_COMPUTER_USE",
+		"OWNER_SUBSCRIPTIONS",
 	].map(normalizeActionIdentifier),
 );
 
@@ -1937,7 +1937,7 @@ function hasNonPassiveAction(
  * REPLY is a deliberate signal that the LLM judged the message as
  * conversation, not a delegated task. The metadata-overlap rescue path
  * must respect this and not promote REPLY to a privileged action like
- * OWNER_INBOX or MANAGE_ISSUES based on incidental keyword overlap with
+ * TRIAGE_MESSAGES or MANAGE_ISSUES based on incidental keyword overlap with
  * those actions' example text. Without this gate, a chitchat message
  * containing common scheduling/workflow words ("workflow", "policy",
  * "follow up", "friday", "2026") gets force-routed into a role-gated
@@ -2104,10 +2104,10 @@ function buildOwnershipRepairPrompt(
 The previous plan selected ${selectedActionName}, but that action may be too broad or the wrong surface.
 Re-evaluate the request and choose the single best owning action from the listed actions above.
 Prefer the most specific owning action for inbox coordination, calendar conflict/rebooking, approval-gated travel booking, browser/portal workflows, device-warning policies, or owner-escalation workflows.
-Generic contextual bump rules about unanswered events belong to OWNER_INBOX or LIFE, not PUBLISH_DEVICE_INTENT, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
-Missing-ID or blocked-workflow prompts belong to PUBLISH_DEVICE_INTENT, CALL_USER, CROSS_CHANNEL_SEND, or OWNER_INBOX, not LIFEOPS_COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
-Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to LIFE unless the request is explicitly about personal todo/habit state.
-Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to device-intent, calendar, or call escalation actions, not to SUBSCRIPTIONS unless the user explicitly asks to audit, cancel, or status-check a named subscription.
+Generic contextual bump rules about unanswered events belong to TRIAGE_MESSAGES or OWNER_LIFE, not OWNER_DEVICE_INTENT, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
+Missing-ID or blocked-workflow prompts belong to OWNER_DEVICE_INTENT, OWNER_VOICE_CALL, SEND_DRAFT, or TRIAGE_MESSAGES, not OWNER_COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
+Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to OWNER_LIFE unless the request is explicitly about personal todo/habit state.
+Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to device-intent, calendar, or call escalation actions, not to OWNER_SUBSCRIPTIONS unless the user explicitly asks to audit, cancel, or status-check a named subscription.
 Flight-conflict rebooking belongs to OWNER_CALENDAR even when the exact flight time or event ID still needs a follow-up.
 If the current action is already the most specific owner, keep it.${draftSection}`;
 }
@@ -4203,7 +4203,7 @@ export class DefaultMessageService implements IMessageService {
 				// contract per Action.suppressPostActionContinuation is "stop after
 				// this action — don't run any continuation LLM turn." Without this
 				// guard, an action that already emitted a complete user-facing
-				// reply (e.g. CALENDAR_ACTION) will get a second visible callback
+				// reply (e.g. OWNER_CALENDAR) will get a second visible callback
 				// when the reflection evaluator marks the task as incomplete and
 				// triggers another LLM/processActions pass.
 				!suppressesPostActionContinuation(runtime, responseContent)
@@ -5214,8 +5214,8 @@ export class DefaultMessageService implements IMessageService {
 			// actions returned a "needs human confirmation" signal. The
 			// confirmation has to come from the next user message — there is
 			// nothing the agent can do to supply it on its own. Without this,
-			// REMOTE_DESKTOP / OWNER_SEND_MESSAGE confirm-then-dispatch /
-			// BLOCK_WEBSITES re-fire their plan every iteration until
+			// OWNER_REMOTE_DESKTOP / SEND_DRAFT confirm-then-dispatch /
+			// OWNER_WEBSITE_BLOCK re-fire their plan every iteration until
 			// maxMultiStepIterations is hit.
 			const requiresConfirmation = latestActionResults.some((r) => {
 				const v =

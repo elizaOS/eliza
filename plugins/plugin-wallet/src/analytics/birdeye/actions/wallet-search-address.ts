@@ -14,14 +14,21 @@ import type { WalletPortfolioResponse } from "../types/api/wallet";
 import type { BaseAddress } from "../types/shared";
 import { extractAddresses } from "../utils";
 
-export type BirdeyeLookupKind = "wallet-address" | "token-address" | "token-symbol";
+export type BirdeyeLookupKind =
+  | "wallet-address"
+  | "token-address"
+  | "token-symbol";
 
 function readKind(
   options: Record<string, unknown> | undefined,
   text: string,
 ): BirdeyeLookupKind {
   const raw = String(options?.kind ?? "").toLowerCase();
-  if (raw === "wallet-address" || raw === "token-address" || raw === "token-symbol") {
+  if (
+    raw === "wallet-address" ||
+    raw === "token-address" ||
+    raw === "token-symbol"
+  ) {
     return raw;
   }
   // Auto-infer: explicit address → wallet-address (preserves legacy behavior),
@@ -58,7 +65,8 @@ export const walletSearchAddressAction = {
   ) => {
     try {
       const text = String(message.content?.text ?? "");
-      const queryParam = typeof options?.query === "string" ? options.query : "";
+      const queryParam =
+        typeof options?.query === "string" ? options.query : "";
       const query = queryParam.trim() || text;
       const kind = readKind(options, query);
 
@@ -123,7 +131,9 @@ export const walletSearchAddressAction = {
     if (extractAddresses(text).length > 0) return true;
     // Allow token-symbol lookups when text contains $TICKER or "lookup/search/birdeye"
     if (/\$[A-Z]{2,10}\b/.test(text)) return true;
-    return /\b(birdeye|lookup|search\s+(?:token|wallet|symbol|address))\b/i.test(text);
+    return /\b(birdeye|lookup|search\s+(?:token|wallet|symbol|address))\b/i.test(
+      text,
+    );
   },
   examples: [
     [

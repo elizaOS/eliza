@@ -34,9 +34,9 @@ export default scenario({
       text: "We're gonna cancel some stuff and push everything back until next month. All partnership meetings.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "CALENDAR_ACTION",
-          "CROSS_CHANNEL_SEND",
-          "GMAIL_ACTION",
+          "OWNER_CALENDAR",
+          "SEND_DRAFT",
+          "TRIAGE_MESSAGES",
         ],
         description: "bulk partnership reschedule",
         includesAny: ["cancel", "push", "next month", "partnership"],
@@ -58,25 +58,25 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR_ACTION", "CROSS_CHANNEL_SEND", "GMAIL_ACTION"],
+      actionName: ["OWNER_CALENDAR", "SEND_DRAFT", "TRIAGE_MESSAGES"],
     },
     {
       type: "approvalRequestExists",
       expected: true,
-      actionName: ["CROSS_CHANNEL_SEND", "GMAIL_ACTION", "CALENDAR_ACTION"],
+      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "OWNER_CALENDAR"],
     },
     {
       type: "noSideEffectOnReject",
-      actionName: ["CROSS_CHANNEL_SEND", "GMAIL_ACTION"],
+      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES"],
     },
     {
       type: "custom",
       name: "ea-travel-blackout-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "CALENDAR_ACTION",
-          "CROSS_CHANNEL_SEND",
-          "GMAIL_ACTION",
+          "OWNER_CALENDAR",
+          "SEND_DRAFT",
+          "TRIAGE_MESSAGES",
         ],
         description: "bulk partnership reschedule",
         includesAny: ["cancel", "push", "next month", "partnership"],
@@ -88,7 +88,7 @@ export default scenario({
       predicate: expectApprovalRequest({
         description:
           "bulk reschedule is queued behind a single approval covering the partnership cohort",
-        actionName: ["CROSS_CHANNEL_SEND", "GMAIL_ACTION", "CALENDAR_ACTION"],
+        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "OWNER_CALENDAR"],
       }),
     },
     {

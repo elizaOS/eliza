@@ -1393,6 +1393,7 @@ export async function generateChatResponse(
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
                     return (
+                      canonicalName === "OWNER_WEBSITE_BLOCK" ||
                       canonicalName === "BLOCK_WEBSITES" ||
                       canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
                     );
@@ -1420,6 +1421,7 @@ export async function generateChatResponse(
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
                     if (
+                      canonicalName === "OWNER_WEBSITE_BLOCK" ||
                       canonicalName === "BLOCK_WEBSITES" ||
                       canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
                     ) {

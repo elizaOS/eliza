@@ -16,7 +16,9 @@ export type MessageSource =
 	| "twitter"
 	| "imessage"
 	| "signal"
-	| "whatsapp";
+	| "whatsapp"
+	| "calendly"
+	| "browser_bridge";
 
 export const ALL_MESSAGE_SOURCES: readonly MessageSource[] = [
 	"gmail",
@@ -26,6 +28,8 @@ export const ALL_MESSAGE_SOURCES: readonly MessageSource[] = [
 	"imessage",
 	"signal",
 	"whatsapp",
+	"calendly",
+	"browser_bridge",
 ] as const;
 
 export type TriagePriority = "critical" | "high" | "medium" | "low" | "spam";

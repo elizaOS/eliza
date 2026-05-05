@@ -14,13 +14,13 @@ import {
   appContactsPlugin as rawContactsPlugin,
 } from "@elizaos/app-contacts/plugin";
 import {
+  phoneCallLogProvider,
   placeCallAction,
   appPhonePlugin as rawPhonePlugin,
-  readCallLogAction,
 } from "@elizaos/app-phone/plugin";
 import {
   appWifiPlugin as rawWifiPlugin,
-  scanWifiAction,
+  wifiNetworksProvider,
 } from "@elizaos/app-wifi/plugin";
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.js";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.js";
@@ -45,7 +45,7 @@ export const appPhonePlugin = gatePluginSessionForHostedApp(
 const appWifiPluginModule = {
   default: appWifiPlugin,
   appWifiPlugin,
-  scanWifiAction,
+  wifiNetworksProvider,
 };
 const appContactsPluginModule = {
   default: appContactsPlugin,
@@ -56,7 +56,7 @@ const appPhonePluginModule = {
   default: appPhonePlugin,
   appPhonePlugin,
   placeCallAction,
-  readCallLogAction,
+  phoneCallLogProvider,
 };
 
 Object.assign(STATIC_ELIZA_PLUGINS, {

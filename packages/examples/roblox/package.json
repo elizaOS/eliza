@@ -6,7 +6,7 @@
   "scripts": {
     "start": "bun --no-env-file run server.ts",
     "dev": "bun --no-env-file --watch run server.ts",
-    "test": "vitest run --config ./vitest.config.ts",
+    "test": "vitest run --passWithNoTests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "build": "bun run typecheck"

@@ -29,7 +29,7 @@ export default scenario({
       room: "main",
       text: "Rank the most important incoming messages across every platform right now.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "GMAIL_ACTION"],
+        acceptedActions: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
         description: "cross-platform inbox priority ranking",
         includesAny: ["rank", "priority", "important", "incoming"],
       }),
@@ -44,18 +44,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["INBOX", "GMAIL_ACTION"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["INBOX", "GMAIL_ACTION"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
       includesAny: ["rank", "priority", "important", "incoming"],
     },
     {
       type: "custom",
       name: "cross-platform-triage-priority-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX", "GMAIL_ACTION"],
+        acceptedActions: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
         description: "cross-platform inbox priority ranking",
         includesAny: ["rank", "priority", "important", "incoming"],
       }),

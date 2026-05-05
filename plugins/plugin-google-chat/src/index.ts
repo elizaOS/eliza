@@ -14,12 +14,7 @@ import { GoogleChatService } from "./service.js";
 // Export types
 export * from "./types.js";
 // Export service, action, and provider
-export {
-  GOOGLE_CHAT_MESSAGE_OP_ACTION,
-  GoogleChatService,
-  googleChatSpacesProvider,
-  messageOp,
-};
+export { GOOGLE_CHAT_MESSAGE_OP_ACTION, GoogleChatService, googleChatSpacesProvider, messageOp };
 
 /**
  * Google Chat plugin definition

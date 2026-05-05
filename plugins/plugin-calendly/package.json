@@ -22,7 +22,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@toon-format/toon": "2.1.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

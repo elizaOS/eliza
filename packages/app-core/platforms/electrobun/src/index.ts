@@ -854,7 +854,9 @@ async function startRendererServer(): Promise<string> {
 			return html;
 		}
 		const baseLiteral = safeJsonForHtml(initialApiBase);
-		const tokenLiteral = initialApiToken ? safeJsonForHtml(initialApiToken) : "";
+		const tokenLiteral = initialApiToken
+			? safeJsonForHtml(initialApiToken)
+			: "";
 		const tokenInject = tokenLiteral
 			? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
 			: "";

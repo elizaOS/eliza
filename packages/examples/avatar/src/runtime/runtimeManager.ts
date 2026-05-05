@@ -19,9 +19,11 @@ import googleGenAIPlugin from "@elizaos/plugin-google-genai";
 import groqPlugin from "@elizaos/plugin-groq";
 import localdbPlugin from "@elizaos/plugin-localdb";
 import openaiPlugin from "@elizaos/plugin-openai";
-import { simpleVoicePlugin } from "@elizaos/plugin-simple-voice";
-import { v4 as uuidv4 } from "uuid";
 import type { DemoConfig, DemoMode } from "./types";
+
+function uuidv4(): string {
+  return globalThis.crypto.randomUUID();
+}
 
 export type SendMessageResult = { responseText: string };
 export type SendMessageCallbacks = {
@@ -214,7 +216,7 @@ function applySettings(
 }
 
 function buildPlugins(effectiveMode: DemoMode) {
-  const base = [localdbPlugin, simpleVoicePlugin, elevenLabsPlugin];
+  const base = [localdbPlugin, elevenLabsPlugin];
   if (effectiveMode === "elizaClassic") return [...base, elizaClassicPlugin];
   if (effectiveMode === "openai") return [...base, openaiPlugin];
   if (effectiveMode === "anthropic") return [...base, anthropicPlugin];

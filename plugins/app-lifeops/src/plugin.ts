@@ -1,9 +1,10 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  getDefaultTriageService,
+  registerSendPolicy,
+} from "@elizaos/core";
 import { manageBrowserBridgeAction } from "./action.ts";
-import { crossChannelSendAction } from "./actions/cross-channel-send.js";
-import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
-import { lifeOpsMutateAction } from "./actions/lifeops-mutate.js";
 import { ownerAppBlockAction } from "./actions/owner-app-block.js";
 import { ownerAutofillAction } from "./actions/owner-autofill.js";
 import { bookTravelAction } from "./actions/owner-book-travel.js";
@@ -12,9 +13,9 @@ import { chatThreadControlAction } from "./actions/owner-chat-thread.js";
 import { ownerCheckinAction } from "./actions/owner-checkin.js";
 import { lifeOpsComputerUseAction } from "./actions/owner-computer-use.js";
 import { lifeOpsConnectorAction } from "./actions/owner-connector.js";
+import { ownerDigestAction } from "./actions/owner-digest.js";
 import { dossierAction } from "./actions/owner-dossier.js";
 import { healthAction } from "./actions/owner-health.js";
-import { ownerInboxAction } from "./actions/owner-inbox.js";
 import { lifeAction } from "./actions/owner-life.js";
 import { passwordManagerAction } from "./actions/owner-password-manager.js";
 import { paymentsAction } from "./actions/owner-payments.js";
@@ -25,11 +26,10 @@ import { ownerResolveRequestAction } from "./actions/owner-resolve-request.js";
 import { ownerScheduleAction } from "./actions/owner-schedule.js";
 import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
 import { subscriptionsAction } from "./actions/owner-subscriptions.js";
+import { toggleLifeOpsFeatureAction } from "./actions/owner-toggle-feature.js";
 import { ownerVoiceCallAction } from "./actions/owner-voice-call.js";
 import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
 import { xReadAction } from "./actions/owner-x.js";
-import { scheduleXDmReplyAction } from "./actions/schedule-x-dm-reply.js";
-import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -42,6 +42,10 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
+import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
+import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
+import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
@@ -204,9 +208,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     releaseBlockAction,
     ownerAppBlockAction,
     ownerCalendarAction,
-    ownerInboxAction,
     xReadAction,
-    scheduleXDmReplyAction,
     ownerResolveRequestAction,
     lifeAction,
     bookTravelAction,
@@ -218,19 +220,17 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerRemoteDesktopAction,
     lifeOpsComputerUseAction,
     ownerScheduleAction,
-    crossChannelSendAction,
-    searchAcrossChannelsAction,
     intentSyncAction,
     passwordManagerAction,
     ownerAutofillAction,
     dossierAction,
     healthAction,
     subscriptionsAction,
-    emailUnsubscribeAction,
     paymentsAction,
     chatThreadControlAction,
     lifeOpsConnectorAction,
-    lifeOpsMutateAction,
+    ownerDigestAction,
+    toggleLifeOpsFeatureAction,
   ],
   providers: [
     browserBridgeProvider,
@@ -264,6 +264,18 @@ const rawAppLifeOpsPlugin: Plugin = {
         `[selfcontrol] Plugin loaded, but local website blocking is unavailable: ${status.reason ?? "unknown reason"}`,
       );
     }
+
+    // Owner outbound-message approval policy: gmail drafts require explicit
+    // owner approval; everything else passes straight through.
+    registerSendPolicy(runtime, createOwnerSendPolicy());
+
+    // First-party adapters that aren't part of core's built-in set: X DMs
+    // (overrides the built-in Twitter adapter), Calendly, and the
+    // browser-bridge.
+    const triage = getDefaultTriageService();
+    triage.register(new XDmAdapter());
+    triage.register(new CalendlyAdapter());
+    triage.register(new BrowserBridgeAdapter());
 
     // Register the proactive activity-profile task worker.
     const proactiveAgentDisabled = isDisabledByEnv(
@@ -387,18 +399,6 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
-export { gmailAction } from "./actions/gmail.js";
-export { inboxAction } from "./actions/inbox.js";
-// App blocker exports
-export { ownerAppBlockAction } from "./actions/owner-app-block.js";
-// LifeOps core exports
-export { ownerCalendarAction } from "./actions/owner-calendar.js";
-export { ownerCheckinAction } from "./actions/owner-checkin.js";
-export { ownerInboxAction } from "./actions/owner-inbox.js";
-export { lifeAction } from "./actions/owner-life.js";
-export { updateOwnerProfileAction } from "./actions/owner-profile.js";
-export { ownerResolveRequestAction } from "./actions/owner-resolve-request.js";
-export { ownerScheduleAction } from "./actions/owner-schedule.js";
 export {
   getAppBlockerPermissionState,
   getAppBlockerStatus,
@@ -457,11 +457,9 @@ export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
-// Routes (consumed by agent server.ts via import)
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export * from "./website-blocker/public.ts";
 export {
   BrowserBridgePluginService,
   browserBridgeProvider,
