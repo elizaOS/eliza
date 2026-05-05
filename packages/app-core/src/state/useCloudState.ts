@@ -521,6 +521,7 @@ export function useCloudState({
                   );
                   return;
                 }
+                client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
                 client.setToken(poll.token);
               }
 
