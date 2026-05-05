@@ -60,11 +60,6 @@
     "useUnknownInCatchVariables": true,
     "types": ["vite/client"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "../../eliza/packages/app-core/src/ambient-modules.d.ts",
-    "../../eliza/packages/agent/src/external-modules.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "ios", "android", "electrobun"]
 }
