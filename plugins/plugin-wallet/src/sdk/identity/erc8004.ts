@@ -10,22 +10,22 @@
  * Key Principle: Non-custodial. All signing happens locally via WalletClient.
  */
 import {
+  type Address,
+  type Chain,
   createPublicClient,
   getContract,
-  http,
-  type Address,
   type Hash,
   type Hex,
+  http,
   type PublicClient,
   type WalletClient,
-  type Chain,
 } from "viem";
 import {
+  arbitrum,
+  arbitrumSepolia,
   base,
   baseSepolia,
   mainnet,
-  arbitrum,
-  arbitrumSepolia,
   polygon,
 } from "viem/chains";
 
@@ -670,13 +670,13 @@ function stringToHex(str: string): Hex {
   const hexStr = Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return ("0x" + hexStr) as Hex;
+  return `0x${hexStr}` as Hex;
 }
 
 function hexToString(hex: Hex): string {
   const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
   const bytes = new Uint8Array(
-    stripped.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
+    stripped.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)),
   );
   return new TextDecoder("utf-8").decode(bytes);
 }

@@ -1,8 +1,8 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { extractChain } from "../utils";
-import type { WalletPortfolioResponse } from "../types/api/wallet";
 import { BIRDEYE_SERVICE_NAME } from "../constants";
+import type { WalletPortfolioResponse } from "../types/api/wallet";
+import { extractChain } from "../utils";
 
 /**
  * Agent portfolio data provider that queries Birdeye API for the agent's wallet address.

@@ -327,19 +327,19 @@ export {
   AerodromeLpService,
   aerodromePlugin,
 } from "../chains/evm/dex/aerodrome/index.ts";
-export { orcaPlugin } from "../chains/solana/dex/orca/index.ts";
 export {
   PancakeSwapV3LpService,
   pancakeswapPlugin,
 } from "../chains/evm/dex/pancakeswp/index.ts";
-export { raydiumPlugin } from "../chains/solana/dex/raydium/index.ts";
-// Export types
-export * from "./types.ts";
 // Export sub-plugins for direct use
 export {
   UniswapV3LpService,
   uniswapPlugin,
 } from "../chains/evm/dex/uniswap/index.ts";
+export { orcaPlugin } from "../chains/solana/dex/orca/index.ts";
+export { raydiumPlugin } from "../chains/solana/dex/raydium/index.ts";
+// Export types
+export * from "./types.ts";
 // Export all services and utilities
 export {
   ConcentratedLiquidityService,

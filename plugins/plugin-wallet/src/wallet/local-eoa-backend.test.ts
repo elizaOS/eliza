@@ -1,7 +1,7 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "@elizaos/core";
 import { LocalEoaBackend } from "./local-eoa-backend.js";
 
 const HARDHAT_0_PRIVATE_KEY =

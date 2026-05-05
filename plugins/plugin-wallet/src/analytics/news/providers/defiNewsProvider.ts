@@ -1,6 +1,6 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { NewsDataService } from "../services/newsDataService";
+import type { NewsDataService } from "../services/newsDataService";
 
 /**
  * DeFi News Provider
@@ -29,7 +29,7 @@ export const defiNewsProvider: Provider = {
   description:
     "Provides DeFi market data, global crypto statistics, token information, and real-world crypto news",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("DEFI_NEWS provider called");
 
     let defiNewsInfo = "";
@@ -177,7 +177,7 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = defiNewsInfo + "\n";
+    const text = `${defiNewsInfo}\n`;
 
     return {
       data,
@@ -477,7 +477,7 @@ async function getTokenInfoByAddress(
       if (onChainSymbol) {
         tokenSymbol = onChainSymbol;
       }
-    } catch (error) {
+    } catch (_error) {
       console.log("Could not fetch on-chain symbol, using provided:", symbol);
     }
 

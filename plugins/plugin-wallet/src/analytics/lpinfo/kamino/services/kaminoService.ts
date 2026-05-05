@@ -1,6 +1,6 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime } from "@elizaos/core";
-import { Service, logger } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 
 // Kamino API constants
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
@@ -263,7 +263,7 @@ export class KaminoService extends Service {
     try {
       logger.log("Fetching available reserves...");
 
-      const markets = await this.discoverMarkets();
+      const _markets = await this.discoverMarkets();
       const reserves: any[] = [];
 
       // Get staking yields to understand available lending opportunities
@@ -365,7 +365,7 @@ export class KaminoService extends Service {
       const baseBorrowRate = supplyApy * 0.75; // 75% of supply rate
       const marketVariation = (Math.random() - 0.5) * 2; // ±1% variation
       return Math.max(0.5, baseBorrowRate + marketVariation);
-    } catch (error) {
+    } catch (_error) {
       return 5; // Default fallback
     }
   }
@@ -383,7 +383,7 @@ export class KaminoService extends Service {
       if (apy > 10) return 500000;
       if (apy > 5) return 1000000;
       return 2000000; // Low APY = high supply
-    } catch (error) {
+    } catch (_error) {
       return 1000000; // Default fallback
     }
   }
@@ -397,7 +397,7 @@ export class KaminoService extends Service {
       // Borrow is typically 60-80% of supply in healthy markets
       const borrowRatio = 0.6 + Math.random() * 0.2; // 60-80%
       return totalSupply * borrowRatio;
-    } catch (error) {
+    } catch (_error) {
       return 600000; // Default fallback
     }
   }
@@ -410,7 +410,7 @@ export class KaminoService extends Service {
       const totalSupply = this.estimateTotalSupply(stakingYield);
       const totalBorrow = this.estimateTotalBorrow(stakingYield);
       return totalSupply > 0 ? totalBorrow / totalSupply : 0.7;
-    } catch (error) {
+    } catch (_error) {
       return 0.7; // Default fallback
     }
   }
@@ -456,7 +456,7 @@ export class KaminoService extends Service {
 
       const variation = (Math.random() - 0.5) * 3;
       return Math.max(3, Math.min(20, baseApy + variation));
-    } catch (error) {
+    } catch (_error) {
       return 8; // Default fallback
     }
   }
@@ -470,7 +470,7 @@ export class KaminoService extends Service {
       // Borrow APY is typically 70-90% of supply APY
       const borrowRatio = 0.7 + Math.random() * 0.2;
       return supplyApy * borrowRatio;
-    } catch (error) {
+    } catch (_error) {
       return 6; // Default fallback
     }
   }
@@ -484,7 +484,7 @@ export class KaminoService extends Service {
       // Borrow is typically 30-50% of trade size for Limo strategies
       const borrowRatio = 0.3 + Math.random() * 0.2;
       return sizeUsd * borrowRatio;
-    } catch (error) {
+    } catch (_error) {
       return 0; // Default fallback
     }
   }
@@ -503,7 +503,7 @@ export class KaminoService extends Service {
       // For Limo, we estimate total supply as trade size + some buffer
       const estimatedSupply = sizeUsd * 1.5; // 50% buffer
       return estimatedSupply > 0 ? borrowAmount / estimatedSupply : 0.4;
-    } catch (error) {
+    } catch (_error) {
       return 0.4; // Default fallback
     }
   }
@@ -524,7 +524,7 @@ export class KaminoService extends Service {
       if (apy > 0.1) return 1000000; // Medium-low APY
       if (apy > 0.05) return 2000000; // Low APY = high supply
       return 5000000; // Very low APY = very high supply
-    } catch (error) {
+    } catch (_error) {
       return 1000000; // Default fallback
     }
   }

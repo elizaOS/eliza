@@ -11,41 +11,41 @@
  */
 
 import {
-  createPublicClient,
-  http,
-  keccak256,
-  pad,
-  getContract,
   type Address,
+  createPublicClient,
+  getContract,
   type Hash,
   type Hex,
+  http,
+  keccak256,
   type PublicClient,
+  pad,
   type WalletClient,
 } from "viem";
 import {
+  arbitrum,
+  avalanche,
   base,
+  linea,
   mainnet,
   optimism,
-  arbitrum,
   polygon,
-  avalanche,
-  linea,
 } from "viem/chains";
 import {
-  TokenMessengerV2Abi,
-  MessageTransmitterV2Abi,
   ERC20BridgeAbi,
+  MessageTransmitterV2Abi,
+  TokenMessengerV2Abi,
 } from "./abis.js";
 import {
-  CCTP_DOMAIN_IDS,
-  USDC_CONTRACT,
-  TOKEN_MESSENGER_V2,
-  MESSAGE_TRANSMITTER_V2 as MESSAGE_TRANSMITTER_V2_MAP,
-  CIRCLE_ATTESTATION_API,
-  MAX_ATTESTATION_POLLS,
   ATTESTATION_POLL_INTERVAL_MS,
-  FINALITY_THRESHOLD,
+  CCTP_DOMAIN_IDS,
+  CIRCLE_ATTESTATION_API,
   type EVMBridgeChain,
+  FINALITY_THRESHOLD,
+  MAX_ATTESTATION_POLLS,
+  MESSAGE_TRANSMITTER_V2 as MESSAGE_TRANSMITTER_V2_MAP,
+  TOKEN_MESSENGER_V2,
+  USDC_CONTRACT,
 } from "./types.js";
 
 // ─── Solana Constants ───
@@ -157,7 +157,7 @@ export function bytes32ToSolanaPubkey(bytes32: Hex): string {
     throw new Error(
       `SolanaBridge: Expected 32-byte hex (64 chars), got ${hex.length}.`,
     );
-  let intVal = BigInt("0x" + hex);
+  let intVal = BigInt(`0x${hex}`);
   let result = "";
   while (intVal > 0n) {
     const rem = Number(intVal % 58n);
@@ -497,7 +497,7 @@ function extractMessageSent(
       const messageLength = parseInt(lengthHex, 16);
       if (messageLength === 0) continue;
       const messageBytesHex = dataHex.slice(128, 128 + messageLength * 2);
-      const messageBytes = ("0x" + messageBytesHex) as Hex;
+      const messageBytes = `0x${messageBytesHex}` as Hex;
       const messageHash = keccak256(messageBytes);
       return { messageBytes, messageHash };
     }
@@ -521,7 +521,7 @@ function parseMintAmount(
     ) {
       // amount is the second indexed param OR first data word
       if (log.data.length >= 66) {
-        return BigInt("0x" + log.data.slice(2, 66));
+        return BigInt(`0x${log.data.slice(2, 66)}`);
       }
     }
   }

@@ -21,7 +21,7 @@ export function parseNetworkChainId(network: string): number | null {
   const parts = network.split(":");
   if (parts.length < 2) return null;
   const id = parseInt(parts[parts.length - 1], 10);
-  return isNaN(id) ? null : id;
+  return Number.isNaN(id) ? null : id;
 }
 
 /**

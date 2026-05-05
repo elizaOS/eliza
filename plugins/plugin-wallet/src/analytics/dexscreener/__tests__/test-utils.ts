@@ -1,30 +1,31 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
+
 import {
+  ChannelType,
+  type Character,
+  type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type Room,
+  type State,
+  type UUID,
+} from "@elizaos/core";
+import {
+  afterEach,
+  beforeEach,
   describe,
   expect,
   it,
-  vi,
-  beforeEach,
-  afterEach,
   type Mock,
+  vi,
 } from "vitest";
-import {
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  type HandlerCallback,
-  type Character,
-  type UUID,
-  type Content,
-  type Room,
-  ChannelType,
-} from "@elizaos/core";
 
 const mock = vi.fn;
 const spyOn = vi.spyOn;
 
 // Re-export vitest utilities for convenience
-export { describe, it, expect, mock, beforeEach, afterEach, spyOn };
+export { afterEach, beforeEach, describe, expect, it, mock, spyOn };
 
 // Create a valid UUID for testing
 export const testUUID = "550e8400-e29b-41d4-a716-446655440000" as UUID;

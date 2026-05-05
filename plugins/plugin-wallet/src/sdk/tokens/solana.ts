@@ -105,7 +105,7 @@ function base58Decode(str: string): Uint8Array {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadSolanaWeb3(): Promise<any> {
   try {
-    // @ts-ignore — @solana/web3.js is an optional peer dependency
+    // @ts-expect-error — @solana/web3.js is an optional peer dependency
     const mod = await import("@solana/web3.js");
     return mod;
   } catch {

@@ -1,64 +1,63 @@
 import {
-  createPublicClient,
-  http,
-  getContract,
   type Address,
+  type Chain,
+  createPublicClient,
+  getContract,
   type Hash,
   type Hex,
+  http,
   type WalletClient,
-  type Chain,
   zeroAddress,
 } from "viem";
-import { base, baseSepolia, mainnet, arbitrum, polygon } from "viem/chains";
-import { AgentAccountV2Abi, AgentAccountFactoryV2Abi } from "./abi.js";
+import { arbitrum, base, baseSepolia, mainnet, polygon } from "viem/chains";
+import { AgentAccountFactoryV2Abi, AgentAccountV2Abi } from "./abi.js";
 import type {
-  AgentWalletConfig,
-  SpendPolicy,
-  BudgetStatus,
-  PendingTx,
-  ExecuteResult,
-  QueuedEvent,
-  BudgetForecast,
-  WalletHealth,
   ActivityEntry,
+  AgentWalletConfig,
   BatchTransfer,
+  BudgetForecast,
+  BudgetStatus,
+  ExecuteResult,
+  PendingTx,
+  QueuedEvent,
+  SpendPolicy,
+  WalletHealth,
 } from "./types.js";
 
+export { AgentAccountFactoryV2Abi, AgentAccountV2Abi } from "./abi.js";
 export type {
-  SpendPolicy,
-  BudgetStatus,
-  PendingTx,
-  ExecuteResult,
-  AgentWalletConfig,
-  QueuedEvent,
-  BudgetForecast,
-  WalletHealth,
   ActivityEntry,
+  AgentWalletConfig,
   BatchTransfer,
+  BudgetForecast,
+  BudgetStatus,
+  ExecuteResult,
+  PendingTx,
+  QueuedEvent,
+  SpendPolicy,
+  WalletHealth,
 } from "./types.js";
-export { AgentAccountV2Abi, AgentAccountFactoryV2Abi } from "./abi.js";
-
-// [MAX-ADDED] x402 protocol support
-export {
-  X402Client,
-  X402BudgetTracker,
-  X402PaymentError,
-  X402BudgetExceededError,
-  createX402Client,
-  createX402Fetch,
-  wrapWithX402,
-  USDC_ADDRESSES,
-  DEFAULT_SUPPORTED_NETWORKS,
-} from "./x402/index.js";
 export type {
+  X402ClientConfig,
+  X402PaymentPayload,
   X402PaymentRequired,
   X402PaymentRequirements,
-  X402PaymentPayload,
-  X402SettlementResponse,
   X402ResourceInfo,
   X402ServiceBudget,
+  X402SettlementResponse,
   X402TransactionLog,
-  X402ClientConfig,
+} from "./x402/index.js";
+// [MAX-ADDED] x402 protocol support
+export {
+  createX402Client,
+  createX402Fetch,
+  DEFAULT_SUPPORTED_NETWORKS,
+  USDC_ADDRESSES,
+  wrapWithX402,
+  X402BudgetExceededError,
+  X402BudgetTracker,
+  X402Client,
+  X402PaymentError,
 } from "./x402/index.js";
 
 const CHAINS: Record<string, Chain> = {
@@ -564,147 +563,119 @@ export function onTransactionExecuted(
   });
 }
 
-// ─── ERC-8004: Trustless Agents — Identity Registry ─────────────────────────
-export {
-  ERC8004Client,
-  ERC8004IdentityRegistryAbi,
-  METADATA_KEYS,
-  REGISTRATION_FILE_TYPE,
-  KNOWN_REGISTRY_ADDRESSES,
-  buildDataURI,
-  parseDataURI,
-  resolveAgentURI,
-  validateRegistrationFile,
-  formatAgentRegistry,
-} from "./identity/erc8004.js";
 export type {
-  AgentServiceEndpoint,
-  SupportedTrustMechanism,
-  AgentRegistrationRef,
-  AgentRegistrationFile,
-  AgentModelMetadata,
+  BridgeChain,
+  BridgeOptions,
+  BridgeResult,
+  BurnResult,
+} from "./bridge/index.js";
+// ─── CCTP V2 Cross-Chain Bridge ─────────────────────────────────────────────
+export {
+  BRIDGE_CHAIN_IDS,
+  BridgeError,
+  BridgeModule,
+  CCTP_DOMAIN_IDS,
+  createBridge,
+  ERC20BridgeAbi,
+  FINALITY_THRESHOLD,
+  MESSAGE_TRANSMITTER_V2,
+  MessageTransmitterV2Abi,
+  TOKEN_MESSENGER_V2,
+  TokenMessengerV2Abi,
+  USDC_CONTRACT,
+} from "./bridge/index.js";
+export type {
   AgentIdentity,
-  MetadataEntry,
+  AgentModelMetadata,
+  AgentRegistrationFile,
+  AgentRegistrationRef,
+  AgentServiceEndpoint,
   ERC8004ClientConfig,
+  MetadataEntry,
   RegistrationResult,
   SupportedChain,
+  SupportedTrustMechanism,
 } from "./identity/erc8004.js";
-
+// ─── ERC-8004: Trustless Agents — Identity Registry ─────────────────────────
+export {
+  buildDataURI,
+  ERC8004Client,
+  ERC8004IdentityRegistryAbi,
+  formatAgentRegistry,
+  KNOWN_REGISTRY_ADDRESSES,
+  METADATA_KEYS,
+  parseDataURI,
+  REGISTRATION_FILE_TYPE,
+  resolveAgentURI,
+  validateRegistrationFile,
+} from "./identity/erc8004.js";
+export type {
+  AgentReputationSummary,
+  FeedbackEntry,
+  FeedbackFilters,
+  GiveFeedbackParams,
+  ReputationClientConfig,
+  RespondToFeedbackParams,
+} from "./identity/reputation.js";
 // ─── ERC-8004: Reputation Registry ─────────────────────────────────────────
 export {
   ReputationClient,
   ReputationRegistryAbi,
 } from "./identity/reputation.js";
 export type {
-  ReputationClientConfig,
-  GiveFeedbackParams,
-  FeedbackEntry,
-  AgentReputationSummary,
-  FeedbackFilters,
-  RespondToFeedbackParams,
-} from "./identity/reputation.js";
-
+  ParsedUAID,
+  RegisterUAIDParams,
+  UAIDProtocol,
+  UAIDResolution,
+  UAIDResolverConfig,
+  UniversalAgentIdentity,
+} from "./identity/uaid.js";
+// ─── UAID: Cross-Chain Identity Resolution (HOL Registry Broker) ────────────
+export { UAIDResolver } from "./identity/uaid.js";
+export type {
+  RequestValidationParams,
+  RespondToValidationParams,
+  ValidationClientConfig,
+  ValidationStatus,
+  ValidationSummary,
+} from "./identity/validation.js";
 // ─── ERC-8004: Validation Registry ─────────────────────────────────────────
 export {
   ValidationClient,
   ValidationRegistryAbi,
 } from "./identity/validation.js";
 export type {
-  ValidationClientConfig,
-  RequestValidationParams,
-  RespondToValidationParams,
-  ValidationStatus,
-  ValidationSummary,
-} from "./identity/validation.js";
-
-// ─── UAID: Cross-Chain Identity Resolution (HOL Registry Broker) ────────────
-export { UAIDResolver } from "./identity/uaid.js";
-export type {
-  UAIDProtocol,
-  ParsedUAID,
-  UAIDResolution,
-  UniversalAgentIdentity,
-  UAIDResolverConfig,
-  RegisterUAIDParams,
-} from "./identity/uaid.js";
-
+  SwapModuleConfig,
+  SwapOptions,
+  SwapQuote,
+  SwapResult,
+  UniswapFeeTier,
+} from "./swap/index.js";
 // ─── SwapModule — Uniswap V3 token swap aggregator ──────────────────────────
 export {
-  SwapModule,
-  attachSwap,
-  calcProtocolFee,
   applySlippage,
-  calcDeadline,
-} from "./swap/index.js";
-export {
-  UniswapV3RouterAbi,
-  UniswapV3QuoterV2Abi,
-  ERC20Abi,
-} from "./swap/index.js";
-export {
+  attachSwap,
   BASE_TOKENS,
-  UNISWAP_V3_BASE,
+  calcDeadline,
+  calcProtocolFee,
+  DEFAULT_SLIPPAGE_BPS,
+  ERC20Abi,
   PROTOCOL_FEE_BPS,
   PROTOCOL_FEE_COLLECTOR,
-  DEFAULT_SLIPPAGE_BPS,
+  SwapModule,
+  UNISWAP_V3_BASE,
+  UniswapV3QuoterV2Abi,
+  UniswapV3RouterAbi,
 } from "./swap/index.js";
-export type {
-  UniswapFeeTier,
-  SwapQuote,
-  SwapOptions,
-  SwapResult,
-  SwapModuleConfig,
-} from "./swap/index.js";
-
-// ─── CCTP V2 Cross-Chain Bridge ─────────────────────────────────────────────
-export {
-  BridgeModule,
-  BridgeError,
-  createBridge,
-  CCTP_DOMAIN_IDS,
-  BRIDGE_CHAIN_IDS,
-  USDC_CONTRACT,
-  TOKEN_MESSENGER_V2,
-  MESSAGE_TRANSMITTER_V2,
-  FINALITY_THRESHOLD,
-} from "./bridge/index.js";
-export {
-  TokenMessengerV2Abi,
-  MessageTransmitterV2Abi,
-  ERC20BridgeAbi,
-} from "./bridge/index.js";
-export type {
-  BridgeChain,
-  BridgeOptions,
-  BurnResult,
-  BridgeResult,
-} from "./bridge/index.js";
 
 // x402 already exported above from original index.ts
 
-// ─── SpendingPolicy — Programmable spending guardrails ───────────────────────
-export { SpendingPolicy } from "./policy/SpendingPolicy.js";
-export type {
-  SpendingPolicyConfig,
-  PaymentIntent,
-  PolicyResult,
-  PolicyStatus,
-  AuditEntry,
-  DraftEntry,
-} from "./policy/SpendingPolicy.js";
-
-// ─── UptoBillingPolicy — x402 usage-based settlement accounting ─────────────
-export { UptoBillingPolicy } from "./policy/UptoBillingPolicy.js";
-export type {
-  UptoAuthorizationStatus,
-  UptoAuthorizationRequest,
-  UptoSettlementOptions,
-  UptoSettlementRecord,
-  UptoAuthorizationRecord,
-  WalletLedgerDelta,
-  UptoBillingSnapshot,
-} from "./policy/UptoBillingPolicy.js";
-
+// ─── Convenience: env-variable-driven wallet bootstrap ──────────────────────
+export {
+  setPolicyFromEnv,
+  walletFromEnv,
+  x402FromEnv,
+} from "./convenience.js";
 // ─── Mutual Stake Escrow ─────────────────────────────────────────────────────
 export { MutualStakeEscrow } from "./escrow/MutualStakeEscrow.js";
 export type {
@@ -715,95 +686,105 @@ export type {
 } from "./escrow/types.js";
 export { TaskStatus } from "./escrow/types.js";
 export {
-  resolveVerifierAddress,
   encodeHashVerifierData,
   encodeOptimisticVerifierData,
+  resolveVerifierAddress,
   VERIFIER_ADDRESSES,
 } from "./escrow/verifiers.js";
+export type {
+  AuditEntry,
+  DraftEntry,
+  PaymentIntent,
+  PolicyResult,
+  PolicyStatus,
+  SpendingPolicyConfig,
+} from "./policy/SpendingPolicy.js";
+// ─── SpendingPolicy — Programmable spending guardrails ───────────────────────
+export { SpendingPolicy } from "./policy/SpendingPolicy.js";
+export type {
+  UptoAuthorizationRecord,
+  UptoAuthorizationRequest,
+  UptoAuthorizationStatus,
+  UptoBillingSnapshot,
+  UptoSettlementOptions,
+  UptoSettlementRecord,
+  WalletLedgerDelta,
+} from "./policy/UptoBillingPolicy.js";
+// ─── UptoBillingPolicy — x402 usage-based settlement accounting ─────────────
+export { UptoBillingPolicy } from "./policy/UptoBillingPolicy.js";
 
-// ─── Convenience: env-variable-driven wallet bootstrap ──────────────────────
-export {
-  walletFromEnv,
-  setPolicyFromEnv,
-  x402FromEnv,
-} from "./convenience.js";
 // ─── v6: Multi-Token Support ─────────────────────────────────────────────────
 
-// TokenRegistry — pre-populated multi-chain token address registry
-export {
-  TokenRegistry,
-  getGlobalRegistry,
-  getNativeToken,
-  ETHEREUM_REGISTRY,
-  BASE_REGISTRY,
-  ARBITRUM_REGISTRY,
-  OPTIMISM_REGISTRY,
-  POLYGON_REGISTRY,
-  AVALANCHE_REGISTRY,
-  UNICHAIN_REGISTRY,
-  LINEA_REGISTRY,
-  SONIC_REGISTRY,
-  WORLDCHAIN_REGISTRY,
-  BASE_SEPOLIA_REGISTRY,
-} from "./tokens/registry.js";
-export type { TokenEntry, AddTokenParams } from "./tokens/registry.js";
-
+export type {
+  PaymentContext,
+  PaymentRail,
+  RailConfig,
+  RailStatus,
+  RoutingDecision,
+} from "./router/index.js";
+// ─── Payment Router ───────────────────────────────────────────────────────────
+export { PaymentRouter } from "./router/index.js";
+export type { TokenInfo } from "./tokens/decimals.js";
 // Token decimal normalization
 export {
-  toRaw,
-  toHuman,
   formatBalance,
   parseAmount,
+  toHuman,
+  toRaw,
 } from "./tokens/decimals.js";
-export type { TokenInfo } from "./tokens/decimals.js";
-
-// Multi-token EVM transfers (direct EOA/hot-wallet operations)
+export type { AddTokenParams, TokenEntry } from "./tokens/registry.js";
+// TokenRegistry — pre-populated multi-chain token address registry
 export {
-  sendToken,
-  sendNative,
-  getTokenBalance,
-  getNativeBalance,
-  getBalances,
-  encodeERC20Transfer,
-} from "./tokens/transfers.js";
+  ARBITRUM_REGISTRY,
+  AVALANCHE_REGISTRY,
+  BASE_REGISTRY,
+  BASE_SEPOLIA_REGISTRY,
+  ETHEREUM_REGISTRY,
+  getGlobalRegistry,
+  getNativeToken,
+  LINEA_REGISTRY,
+  OPTIMISM_REGISTRY,
+  POLYGON_REGISTRY,
+  SONIC_REGISTRY,
+  TokenRegistry,
+  UNICHAIN_REGISTRY,
+  WORLDCHAIN_REGISTRY,
+} from "./tokens/registry.js";
 export type {
-  TransferContext,
-  TransferOptions,
-  TokenBalanceResult,
-  NativeBalanceResult,
-} from "./tokens/transfers.js";
-
-// Solana SPL token support (optional peer dependency: @solana/web3.js)
-export {
-  SolanaWallet,
-  createSolanaWallet,
-  SOLANA_TOKENS,
-  SOLANA_TOKEN_DECIMALS,
-} from "./tokens/solana.js";
-export type {
-  SolanaWalletConfig,
   SolanaTokenInfo,
   SolanaTokenSymbol,
+  SolanaTxResult,
+  SolanaWalletConfig,
   SolBalanceResult,
   SplBalanceResult,
-  SolanaTxResult,
 } from "./tokens/solana.js";
-
+// Solana SPL token support (optional peer dependency: @solana/web3.js)
+export {
+  createSolanaWallet,
+  SOLANA_TOKEN_DECIMALS,
+  SOLANA_TOKENS,
+  SolanaWallet,
+} from "./tokens/solana.js";
+export type {
+  NativeBalanceResult,
+  TokenBalanceResult,
+  TransferContext,
+  TransferOptions,
+} from "./tokens/transfers.js";
+// Multi-token EVM transfers (direct EOA/hot-wallet operations)
+export {
+  encodeERC20Transfer,
+  getBalances,
+  getNativeBalance,
+  getTokenBalance,
+  sendNative,
+  sendToken,
+} from "./tokens/transfers.js";
 // x402 multi-asset resolution (v6 additions)
 export {
-  resolveAssetAddress,
-  resolveAssetDecimals,
   buildSupportedAssets,
   isStablecoin,
   parseNetworkChainId,
+  resolveAssetAddress,
+  resolveAssetDecimals,
 } from "./x402/multi-asset.js";
-
-// ─── Payment Router ───────────────────────────────────────────────────────────
-export { PaymentRouter } from "./router/index.js";
-export type {
-  PaymentRail,
-  RailStatus,
-  RailConfig,
-  PaymentContext,
-  RoutingDecision,
-} from "./router/index.js";

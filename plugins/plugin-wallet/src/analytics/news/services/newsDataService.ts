@@ -50,9 +50,9 @@ export class NewsDataService extends Service {
    * Stop the NewsData service (static method for framework)
    */
   static async stop(runtime: IAgentRuntime) {
-    const service = runtime.getService(this.serviceType);
+    const service = runtime.getService(NewsDataService.serviceType);
     if (!service) {
-      throw new Error(this.serviceType + " service not found");
+      throw new Error(`${NewsDataService.serviceType} service not found`);
     }
   }
 
@@ -177,7 +177,7 @@ export class NewsDataService extends Service {
     }
 
     // Handle numeric entities
-    decoded = decoded.replace(/&#(\d+);/g, (match, dec) => {
+    decoded = decoded.replace(/&#(\d+);/g, (_match, dec) => {
       return String.fromCharCode(dec);
     });
 

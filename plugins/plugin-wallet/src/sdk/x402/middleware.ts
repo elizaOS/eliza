@@ -1,6 +1,7 @@
 // [MAX-ADDED] x402 Middleware — wraps fetch/axios to be x402-aware
-import type { X402ClientConfig } from "./types.js";
+
 import { X402Client } from "./client.js";
+import type { X402ClientConfig } from "./types.js";
 
 /**
  * [MAX-ADDED] Create an x402-aware HTTP client.

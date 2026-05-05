@@ -1,20 +1,21 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import { Service, IAgentRuntime } from "@elizaos/core";
+
 import {
   cloudServiceApisBaseUrl,
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
-import {
+import { type IAgentRuntime, Service } from "@elizaos/core";
+import type {
+  DexScreenerChainParams,
+  DexScreenerConfig,
+  DexScreenerNewPairsParams,
   DexScreenerPair,
+  DexScreenerPairParams,
   DexScreenerProfile,
   DexScreenerSearchParams,
-  DexScreenerTokenParams,
-  DexScreenerPairParams,
-  DexScreenerTrendingParams,
-  DexScreenerChainParams,
-  DexScreenerNewPairsParams,
   DexScreenerServiceResponse,
-  DexScreenerConfig,
+  DexScreenerTokenParams,
+  DexScreenerTrendingParams,
 } from "./types";
 
 export class DexScreenerService extends Service {
@@ -79,17 +80,23 @@ export class DexScreenerService extends Service {
     console.log("DexScreener service stopped");
   }
 
-  private async get(path: string, params?: Record<string, string>): Promise<any> {
+  private async get(
+    path: string,
+    params?: Record<string, string>,
+  ): Promise<any> {
     let url = `${this.baseUrl}${path}`;
     if (params && Object.keys(params).length > 0) {
-      url += "?" + new URLSearchParams(params).toString();
+      url += `?${new URLSearchParams(params).toString()}`;
     }
     const response = await fetch(url, { headers: this.defaultHeaders });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      throw Object.assign(new Error(errData?.message || `HTTP ${response.status}`), {
-        response: { data: errData },
-      });
+      throw Object.assign(
+        new Error(errData?.message || `HTTP ${response.status}`),
+        {
+          response: { data: errData },
+        },
+      );
     }
     return response.json();
   }

@@ -1,4 +1,4 @@
-import { Service, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import type { WalletBackend } from "../wallet/backend.js";
 import { resolveWalletBackend } from "../wallet/select-backend.js";
 import "../core-augmentation.js";
@@ -14,10 +14,6 @@ export class WalletBackendService extends Service {
     "Unified wallet backend (EVM + Solana, local or Steward)";
 
   private backend!: WalletBackend;
-
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
 
   static override async start(
     runtime: IAgentRuntime,

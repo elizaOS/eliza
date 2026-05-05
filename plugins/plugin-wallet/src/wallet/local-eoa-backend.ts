@@ -1,3 +1,4 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   Keypair,
   type PublicKey,
@@ -5,14 +6,13 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
-import { hexToBytes } from "viem";
 import type { Hex, TypedDataDefinition } from "viem";
+import { hexToBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
-  WalletBackend,
-  WalletAddresses,
   SolanaSigner,
+  WalletAddresses,
+  WalletBackend,
 } from "./backend.js";
 import {
   SolanaPrivateKeyInvalidError,

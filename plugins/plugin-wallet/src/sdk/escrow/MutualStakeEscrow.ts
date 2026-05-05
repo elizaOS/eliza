@@ -1,9 +1,4 @@
-import {
-  type Address,
-  type Hex,
-  type PublicClient,
-  type WalletClient,
-} from "viem";
+import type { Address, Hex, PublicClient, WalletClient } from "viem";
 import type {
   CreateEscrowParams,
   EscrowCreated,
@@ -12,8 +7,8 @@ import type {
   TxResult,
 } from "./types.js";
 import {
-  resolveVerifierAddress,
   encodeOptimisticVerifierData,
+  resolveVerifierAddress,
 } from "./verifiers.js";
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────

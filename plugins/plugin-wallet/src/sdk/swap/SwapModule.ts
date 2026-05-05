@@ -10,24 +10,24 @@
  */
 // SwapModule — Uniswap V3 token swap aggregator with 0.875% protocol fee
 import {
-  encodeFunctionData,
   type Address,
+  encodeFunctionData,
   type Hash,
   type PublicClient,
   type WalletClient,
 } from "viem";
-import { UniswapV3RouterAbi, UniswapV3QuoterV2Abi, ERC20Abi } from "./abi.js";
+import { ERC20Abi, UniswapV3QuoterV2Abi, UniswapV3RouterAbi } from "./abi.js";
 import {
-  type SwapQuote,
-  type SwapOptions,
-  type SwapResult,
-  type SwapModuleConfig,
-  type SwapChain,
-  type UniswapFeeTier,
+  DEFAULT_SLIPPAGE_BPS,
   PROTOCOL_FEE_BPS,
   PROTOCOL_FEE_COLLECTOR,
-  DEFAULT_SLIPPAGE_BPS,
+  type SwapChain,
+  type SwapModuleConfig,
+  type SwapOptions,
+  type SwapQuote,
+  type SwapResult,
   UNISWAP_V3_ADDRESSES,
+  type UniswapFeeTier,
 } from "./types.js";
 
 const FEE_TIERS: UniswapFeeTier[] = [100, 500, 3000, 10000];

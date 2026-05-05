@@ -3,8 +3,7 @@ import type {
   Transaction,
   VersionedTransaction,
 } from "@solana/web3.js";
-import type { Account } from "viem";
-import type { Hex, TypedDataDefinition } from "viem";
+import type { Account, Hex, TypedDataDefinition } from "viem";
 import type { SignResult, SignScope } from "./pending.js";
 
 /**

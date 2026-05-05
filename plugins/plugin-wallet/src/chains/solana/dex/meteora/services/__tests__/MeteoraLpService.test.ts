@@ -9,7 +9,9 @@ import { MeteoraLpService } from "../MeteoraLpService.ts";
 vi.mock("@coral-xyz/anchor", () => ({
   BN: class BN {
     constructor(public value: number | string) {}
-    toString() { return String(this.value); }
+    toString() {
+      return String(this.value);
+    }
   },
 }));
 

@@ -1,8 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { WalletBackendService } from "../services/wallet-backend-service.js";
+import type { WalletBackendService } from "../services/wallet-backend-service.js";
 import {
-  WalletBackendNotConfiguredError,
   StewardUnavailableError,
+  WalletBackendNotConfiguredError,
 } from "../wallet/errors.js";
 
 /**

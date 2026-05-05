@@ -16,47 +16,47 @@
 // Non-custodial: all signing is done locally via the agent's WalletClient.
 import {
   createPublicClient,
-  http,
-  keccak256,
-  pad,
   getContract,
   type Hash,
   type Hex,
+  http,
+  keccak256,
   type PublicClient,
-  type WalletClient,
+  pad,
   type TransactionReceipt,
+  type WalletClient,
 } from "viem";
 import {
+  arbitrum,
+  avalanche,
   base,
+  linea,
   mainnet,
   optimism,
-  arbitrum,
   polygon,
-  avalanche,
-  linea,
 } from "viem/chains";
 import {
-  TokenMessengerV2Abi,
-  MessageTransmitterV2Abi,
   ERC20BridgeAbi,
+  MessageTransmitterV2Abi,
+  TokenMessengerV2Abi,
 } from "./abis.js";
 import type {
   BridgeChain,
-  EVMBridgeChain,
   BridgeOptions,
-  BurnResult,
   BridgeResult,
+  BurnResult,
+  EVMBridgeChain,
 } from "./types.js";
 import {
-  CCTP_DOMAIN_IDS,
-  BRIDGE_CHAIN_IDS,
-  USDC_CONTRACT,
-  TOKEN_MESSENGER_V2,
-  MESSAGE_TRANSMITTER_V2,
-  FINALITY_THRESHOLD,
-  CIRCLE_ATTESTATION_API,
-  MAX_ATTESTATION_POLLS,
   ATTESTATION_POLL_INTERVAL_MS,
+  BRIDGE_CHAIN_IDS,
+  CCTP_DOMAIN_IDS,
+  CIRCLE_ATTESTATION_API,
+  FINALITY_THRESHOLD,
+  MAX_ATTESTATION_POLLS,
+  MESSAGE_TRANSMITTER_V2,
+  TOKEN_MESSENGER_V2,
+  USDC_CONTRACT,
 } from "./types.js";
 
 /**
@@ -98,7 +98,6 @@ export class BridgeModule {
   private readonly walletClient: WalletClient;
   private readonly publicClient: PublicClient;
   private readonly fromChain: EVMBridgeChain;
-  private readonly fromRpcUrl: string | undefined;
 
   constructor(
     walletClient: WalletClient,
@@ -347,10 +346,10 @@ export class BridgeModule {
         const messageLength = parseInt(lengthHex, 16);
         if (messageLength === 0) continue;
         const messageBytesHex = dataHex.slice(128, 128 + messageLength * 2);
-        const messageBytes = ("0x" + messageBytesHex) as Hex;
+        const messageBytes = `0x${messageBytesHex}` as Hex;
         const messageHash = keccak256(messageBytes);
         const nonceBytesHex = messageBytesHex.slice(24, 40);
-        const nonce = BigInt("0x" + nonceBytesHex);
+        const nonce = BigInt(`0x${nonceBytesHex}`);
         return { messageBytes, messageHash, nonce };
       }
     }
@@ -506,16 +505,16 @@ export function createBridge(
 
 export type {
   BridgeChain,
-  EVMBridgeChain,
   BridgeOptions,
-  BurnResult,
   BridgeResult,
+  BurnResult,
+  EVMBridgeChain,
 };
 export {
-  CCTP_DOMAIN_IDS,
   BRIDGE_CHAIN_IDS,
-  USDC_CONTRACT,
-  TOKEN_MESSENGER_V2,
-  MESSAGE_TRANSMITTER_V2,
+  CCTP_DOMAIN_IDS,
   FINALITY_THRESHOLD,
+  MESSAGE_TRANSMITTER_V2,
+  TOKEN_MESSENGER_V2,
+  USDC_CONTRACT,
 };

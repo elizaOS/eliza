@@ -1,21 +1,17 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
-import { parseBooleanFromText } from "@elizaos/core";
 
 import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
-import { BIRDEYE_SERVICE_NAME } from "./constants";
-
+import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
+import { parseBooleanFromText } from "@elizaos/core";
 import { tokenSearchAddressAction } from "./actions/token-search-address";
 import { tokenSearchSymbolAction } from "./actions/token-search-symbol";
 import { walletSearchAddressAction } from "./actions/wallet-search-address";
-
-import Birdeye from "./tasks/birdeye";
-
-import { BIRDEYE_ROUTE_SPEC, BirdeyeService } from "./service";
-
+import { BIRDEYE_SERVICE_NAME } from "./constants";
 import { agentPortfolioProvider } from "./providers/agent-portfolio-provider";
-import { trendingProvider } from "./providers/trending";
 import { marketProvider } from "./providers/market";
+import { trendingProvider } from "./providers/trending";
+import { BIRDEYE_ROUTE_SPEC, BirdeyeService } from "./service";
+import Birdeye from "./tasks/birdeye";
 //import { tradePortfolioProvider } from './providers/wallet'; // trade history
 
 // create a new plugin

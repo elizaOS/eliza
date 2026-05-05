@@ -1,14 +1,12 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { Plugin } from "@elizaos/core";
-
-// Providers
-import { kaminoProvider } from "./providers/kaminoProvider";
 import { kaminoLiquidityProvider } from "./providers/kaminoLiquidityProvider";
 import { kaminoPoolProvider } from "./providers/kaminoPoolProvider";
-
+// Providers
+import { kaminoProvider } from "./providers/kaminoProvider";
+import { KaminoLiquidityService } from "./services/kaminoLiquidityService";
 // Services
 import { KaminoService } from "./services/kaminoService";
-import { KaminoLiquidityService } from "./services/kaminoLiquidityService";
 
 /**
  * Kamino Protocol Plugin
