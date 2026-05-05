@@ -17,7 +17,8 @@ export const minecraftGotoAction: Action = {
   similes: ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"],
   description:
     'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
-  descriptionCompressed: "pathfind target (x y z) provide coordinate like 10 64 - 20 JSON x: 10, y: 64, z: - 20",
+  descriptionCompressed:
+    "pathfind target (x y z) provide coordinate like 10 64 - 20 JSON x: 10, y: 64, z: - 20",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["goto"],
