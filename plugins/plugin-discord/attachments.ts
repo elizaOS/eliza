@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	ContentType,
 	type IAgentRuntime,
 	type Media,
 	ModelType,
@@ -11,6 +12,67 @@ import {
 import { type Attachment, Collection } from "discord.js";
 import ffmpeg from "fluent-ffmpeg";
 import { generateSummary } from "./utils";
+
+const TEXT_ATTACHMENT_EXTENSIONS = new Set([
+	".cjs",
+	".conf",
+	".csv",
+	".env",
+	".ini",
+	".js",
+	".json",
+	".jsonl",
+	".jsx",
+	".log",
+	".md",
+	".mdx",
+	".mjs",
+	".sql",
+	".toml",
+	".ts",
+	".tsx",
+	".txt",
+	".xml",
+	".yaml",
+	".yml",
+]);
+
+const TEXT_ATTACHMENT_MIME_TYPES = new Set([
+	"application/javascript",
+	"application/json",
+	"application/ld+json",
+	"application/typescript",
+	"application/x-javascript",
+	"application/x-ndjson",
+	"application/x-yaml",
+	"application/xml",
+	"application/yaml",
+]);
+
+function normalizedMimeType(contentType: string | null | undefined): string {
+	return (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function attachmentExtension(attachment: Attachment): string {
+	return path.extname(attachment.name ?? "").toLowerCase();
+}
+
+function isReadableTextAttachment(attachment: Attachment): boolean {
+	const mimeType = normalizedMimeType(attachment.contentType);
+	if (mimeType.startsWith("text/") || TEXT_ATTACHMENT_MIME_TYPES.has(mimeType)) {
+		return true;
+	}
+
+	if (
+		!mimeType ||
+		mimeType === "application/octet-stream" ||
+		mimeType === "binary/octet-stream"
+	) {
+		return TEXT_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
+	}
+
+	return false;
+}
 
 /**
  * Class representing an Attachment Manager.
@@ -83,18 +145,19 @@ export class AttachmentManager {
 		}
 
 		let media: Media | null = null;
-		if (attachment.contentType?.startsWith("application/pdf")) {
+		const mimeType = normalizedMimeType(attachment.contentType);
+		if (mimeType === "application/pdf") {
 			media = await this.processPdfAttachment(attachment);
-		} else if (attachment.contentType?.startsWith("text/plain")) {
+		} else if (isReadableTextAttachment(attachment)) {
 			media = await this.processPlaintextAttachment(attachment);
 		} else if (
-			attachment.contentType?.startsWith("audio/") ||
-			attachment.contentType?.startsWith("video/mp4")
+			mimeType.startsWith("audio/") ||
+			mimeType === "video/mp4"
 		) {
 			media = await this.processAudioVideoAttachment(attachment);
-		} else if (attachment.contentType?.startsWith("image/")) {
+		} else if (mimeType.startsWith("image/")) {
 			media = await this.processImageAttachment(attachment);
-		} else if (attachment.contentType?.startsWith("video/")) {
+		} else if (mimeType.startsWith("video/")) {
 			media = await this.processVideoAttachment(attachment);
 		} else {
 			const videoService = this.runtime.getService(ServiceType.VIDEO) as
@@ -221,10 +284,13 @@ export class AttachmentManager {
 				source: attachment.contentType?.startsWith("audio/")
 					? "Audio"
 					: "Video",
+				contentType: attachment.contentType?.startsWith("audio/")
+					? ContentType.AUDIO
+					: ContentType.VIDEO,
 				description:
 					description ||
 					"User-uploaded audio/video attachment which has been transcribed",
-				text: transcription || "Audio/video content not available",
+				text: transcription || "",
 			};
 		} catch (error) {
 			this.runtime.logger.error(
@@ -245,8 +311,11 @@ export class AttachmentManager {
 				source: attachment.contentType?.startsWith("audio/")
 					? "Audio"
 					: "Video",
+				contentType: attachment.contentType?.startsWith("audio/")
+					? ContentType.AUDIO
+					: ContentType.VIDEO,
 				description: "An audio/video attachment (transcription failed)",
-				text: `This is an audio/video attachment. File name: ${attachment.name}, Size: ${attachment.size} bytes, Content type: ${attachment.contentType}`,
+				text: "",
 			};
 		}
 	}
@@ -399,6 +468,7 @@ export class AttachmentManager {
 				url: attachment.url,
 				title: title || "PDF Attachment",
 				source: "PDF",
+				contentType: ContentType.DOCUMENT,
 				description: description || "A PDF document",
 				text,
 			};
@@ -419,8 +489,9 @@ export class AttachmentManager {
 				url: attachment.url,
 				title: "PDF Attachment (conversion failed)",
 				source: "PDF",
+				contentType: ContentType.DOCUMENT,
 				description: "A PDF document that could not be converted to text",
-				text: `This is a PDF attachment. File name: ${attachment.name}, Size: ${attachment.size} bytes`,
+				text: "",
 			};
 		}
 	}
@@ -452,6 +523,7 @@ export class AttachmentManager {
 				url: attachment.url,
 				title: title || "Plaintext Attachment",
 				source: "Plaintext",
+				contentType: ContentType.DOCUMENT,
 				description: description || "A plaintext document",
 				text,
 			};
@@ -472,8 +544,9 @@ export class AttachmentManager {
 				url: attachment.url,
 				title: "Plaintext Attachment (retrieval failed)",
 				source: "Plaintext",
+				contentType: ContentType.DOCUMENT,
 				description: "A plaintext document that could not be retrieved",
-				text: `This is a plaintext attachment. File name: ${attachment.name}, Size: ${attachment.size} bytes`,
+				text: "",
 			};
 		}
 	}
@@ -510,8 +583,9 @@ export class AttachmentManager {
 				url: attachment.url,
 				title: title || "Image Attachment",
 				source: "Image",
+				contentType: ContentType.IMAGE,
 				description: description || "An image attachment",
-				text: description || "Image content not available",
+				text: description || "",
 			};
 		} catch (error) {
 			this.runtime.logger.error(
@@ -542,8 +616,9 @@ export class AttachmentManager {
 			url: attachment.url,
 			title: "Image Attachment",
 			source: "Image",
+			contentType: ContentType.IMAGE,
 			description: "An image attachment (recognition failed)",
-			text: `This is an image attachment. File name: ${attachment.name}, Size: ${attachment.size} bytes, Content type: ${attachment.contentType}`,
+			text: "",
 		};
 	}
 
@@ -574,9 +649,10 @@ export class AttachmentManager {
 				url: attachment.url,
 				title: "Video Attachment (Service Unavailable)",
 				source: "Video",
+				contentType: ContentType.VIDEO,
 				description:
 					"Could not process video attachment because the required service is not available.",
-				text: "Video content not available",
+				text: "",
 			};
 		}
 
@@ -593,6 +669,7 @@ export class AttachmentManager {
 				url: attachment.url,
 				title: videoInfo.title,
 				source: "YouTube",
+				contentType: ContentType.VIDEO,
 				description: videoInfo.description,
 				text: videoInfo.text,
 			};
@@ -602,8 +679,9 @@ export class AttachmentManager {
 			url: attachment.url,
 			title: "Video Attachment",
 			source: "Video",
+			contentType: ContentType.VIDEO,
 			description: "A video attachment",
-			text: "Video content not available",
+			text: "",
 		};
 	}
 
@@ -621,7 +699,7 @@ export class AttachmentManager {
 			title: "Generic Attachment",
 			source: "Generic",
 			description: "A generic attachment",
-			text: "Attachment content not available",
+			text: "",
 		};
 	}
 }

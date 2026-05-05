@@ -1378,11 +1378,15 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // precedent as SPAWN_AGENT, the sibling delegation action that's already
 // protected here.
 const EXPLICIT_INTENT_ACTIONS = new Set(
-	[
-		"SPAWN_AGENT",
-		"CREATE_TASK",
-		"CREATE_TRIGGER_TASK",
-		"CREATE_TRIGGER",
+		[
+			"SPAWN_AGENT",
+			"CREATE_TASK",
+			"READ_ATTACHMENT",
+			"TRANSCRIBE_MEDIA",
+			"DOWNLOAD_MEDIA",
+			"ANALYZE_ATTACHMENTS",
+			"CREATE_TRIGGER_TASK",
+			"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
 		"SCHEDULE_TASK",
 		"CREATE_HEARTBEAT",
@@ -2261,6 +2265,16 @@ function shouldAttemptProviderRescue(
 	);
 }
 
+const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')\]]+/i;
+
+export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
+	if ((message.content.attachments?.length ?? 0) > 0) {
+		return true;
+	}
+
+	return HTTP_URL_PATTERN.test(getUserMessageText(message));
+}
+
 function buildProviderSelectionPrompt(draftReply?: string): string {
 	const trimmedDraftReply = draftReply?.trim() ?? "";
 	const draftReplySection =
@@ -2307,10 +2321,15 @@ Examples:
 
 async function recoverProvidersForTurn(args: {
 	runtime: IAgentRuntime;
+	message: Memory;
 	state: State;
 	draftReply?: string;
 	attachments?: GenerateTextAttachment[];
 }): Promise<string[]> {
+	if (shouldSkipDocumentProviderRescue(args.message)) {
+		return [];
+	}
+
 	try {
 		const parsed = await args.runtime.dynamicPromptExecFromState({
 			state: args.state,
@@ -5977,6 +5996,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 		) {
 			const rescuedProviders = await recoverProvidersForTurn({
 				runtime,
+				message,
 				state,
 				draftReply: String(responseContent.text || ""),
 				attachments: promptAttachments,
@@ -6528,6 +6548,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 		let groundedState = state;
 		const selectedProviders = await recoverProvidersForTurn({
 			runtime,
+			message,
 			state,
 			attachments: promptAttachments,
 		});
