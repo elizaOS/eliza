@@ -39,7 +39,6 @@ export * from "./config/index";
 export * from "./events/index";
 export * from "./hooks/useActivityEvents";
 export * from "./hooks/useBugReport";
-export * from "./hooks/useCanvasWindow";
 export * from "./hooks/useChatAvatarVoiceBridge";
 export * from "./hooks/useContextMenu";
 export {
@@ -47,7 +46,6 @@ export {
   useShortcutsHelp,
 } from "./hooks/useKeyboardShortcuts";
 export * from "./hooks/useMediaQuery";
-export * from "./hooks/useMusicPlayer";
 export * from "./hooks/useRenderGuard";
 export * from "./hooks/useSignalPairing";
 export * from "./hooks/useStreamPopoutNavigation";
