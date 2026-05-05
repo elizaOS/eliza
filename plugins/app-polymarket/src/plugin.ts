@@ -1,5 +1,7 @@
 import type http from "node:http";
 import type { Plugin, Route } from "@elizaos/core";
+import { polymarketActions } from "./actions";
+import { polymarketStatusProvider } from "./provider";
 import { handlePolymarketRoute } from "./routes";
 
 function polymarketRouteHandler(
@@ -34,6 +36,12 @@ const polymarketRoutes: Route[] = [
   },
   {
     type: "GET",
+    path: "/api/polymarket/orderbook",
+    rawPath: true,
+    handler: polymarketRouteHandler("/api/polymarket/orderbook"),
+  },
+  {
+    type: "GET",
     path: "/api/polymarket/orders",
     rawPath: true,
     handler: polymarketRouteHandler("/api/polymarket/orders"),
@@ -54,6 +62,9 @@ const polymarketRoutes: Route[] = [
 
 export const polymarketPlugin: Plugin = {
   name: "@elizaos/app-polymarket",
-  description: "Native Polymarket market discovery and readiness routes",
+  description:
+    "Native Polymarket market discovery, orderbook quote, position, and readiness routes/actions",
+  actions: polymarketActions,
+  providers: [polymarketStatusProvider],
   routes: polymarketRoutes,
 };

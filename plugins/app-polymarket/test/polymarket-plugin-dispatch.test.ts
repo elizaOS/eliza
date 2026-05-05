@@ -28,6 +28,7 @@ describe("Polymarket plugin route dispatch matching", () => {
       ["GET", "/api/polymarket/status"],
       ["GET", "/api/polymarket/markets"],
       ["GET", "/api/polymarket/market"],
+      ["GET", "/api/polymarket/orderbook"],
       ["GET", "/api/polymarket/orders"],
       ["POST", "/api/polymarket/orders"],
       ["GET", "/api/polymarket/positions"],
@@ -36,6 +37,20 @@ describe("Polymarket plugin route dispatch matching", () => {
       expect(route.path).toBe(path);
       expect(typeof route.handler).toBe("function");
     }
+  });
+
+  it("exposes Polymarket agent actions and provider when the app plugin is loaded", () => {
+    expect((polymarketPlugin.providers ?? []).map((item) => item.name)).toContain(
+      "POLYMARKET_STATUS",
+    );
+    expect((polymarketPlugin.actions ?? []).map((item) => item.name)).toEqual([
+      "POLYMARKET_STATUS",
+      "POLYMARKET_GET_MARKETS",
+      "POLYMARKET_GET_MARKET",
+      "POLYMARKET_GET_ORDERBOOK",
+      "POLYMARKET_GET_POSITIONS",
+      "POLYMARKET_PLACE_ORDER",
+    ]);
   });
 
   it("does not expose fake betting or redeem endpoints", () => {
@@ -121,6 +136,53 @@ describe("handlePolymarketRoute", () => {
           ],
         },
       ],
+    });
+  });
+
+  it("derives best bid and ask from all CLOB orderbook levels", async () => {
+    const requests: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      requests.push(String(input));
+      return Response.json({
+        market: "0xcondition",
+        asset_id: "token-123",
+        bids: [
+          { price: "0.01", size: "4" },
+          { price: "0.44", size: "8" },
+          { price: "bad", size: "99" },
+        ],
+        asks: [
+          { price: "0.99", size: "5" },
+          { price: "0.49", size: "7" },
+          { price: "0", size: "12" },
+        ],
+        last_trade_price: "0.46",
+        tick_size: "0.01",
+      });
+    };
+    const res = createJsonResponse();
+
+    await handlePolymarketRoute(
+      createRequest("/api/polymarket/orderbook?token_id=token-123"),
+      res.response,
+      "/api/polymarket/orderbook",
+      "GET",
+      { fetchImpl },
+    );
+
+    expect(res.statusCode()).toBe(200);
+    expect(requests[0]).toBe(
+      "https://clob.polymarket.com/book?token_id=token-123",
+    );
+    expect(res.json()).toMatchObject({
+      bestBid: "0.44",
+      bestBidSize: "8",
+      bestAsk: "0.49",
+      bestAskSize: "7",
+      midpoint: "0.465",
+      spread: "0.05",
+      bidLevels: 3,
+      askLevels: 3,
     });
   });
 

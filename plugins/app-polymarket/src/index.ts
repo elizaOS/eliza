@@ -1,5 +1,8 @@
 export * from "./client";
+export * from "./actions";
+export * from "./orderbook";
 export { polymarketPlugin } from "./plugin";
+export { polymarketStatusProvider } from "./provider";
 export * from "./polymarket-contracts";
 export { POLYMARKET_APP_NAME, polymarketApp } from "./polymarket-app";
 export * from "./routes";
