@@ -1,11 +1,25 @@
-import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  ModelTypeName,
+  ObjectGenerationParams,
+  RecordLlmCallDetails,
+} from "@elizaos/core";
+import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 import { generateObject, type LanguageModel } from "ai";
 import { createOllama } from "ollama-ai-provider";
 
 import { getBaseURL, getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { ensureModelAvailable } from "./availability";
+
+function applyUsageToDetails(details: RecordLlmCallDetails, usage: unknown): void {
+  const normalized = normalizeTokenUsage(usage);
+  if (!normalized) {
+    return;
+  }
+  details.promptTokens = normalized.promptTokens;
+  details.completionTokens = normalized.completionTokens;
+}
 
 async function generateOllamaObject(
   runtime: IAgentRuntime,
@@ -23,7 +37,21 @@ async function generateOllamaObject(
       temperature: params.temperature,
     };
 
-    const { object, usage } = await generateObject(generateParams);
+    const details: RecordLlmCallDetails = {
+      model,
+      systemPrompt: "",
+      userPrompt: params.prompt,
+      temperature: params.temperature ?? 0,
+      maxTokens: params.maxTokens ?? 8192,
+      purpose: "external_llm",
+      actionType: "ai.generateObject",
+    };
+    const { object, usage } = await recordLlmCall(runtime, details, async () => {
+      const result = await generateObject(generateParams);
+      details.response = JSON.stringify(result.object);
+      applyUsageToDetails(details, result.usage);
+      return result;
+    });
     emitModelUsed(
       runtime,
       modelType,

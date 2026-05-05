@@ -1,11 +1,11 @@
-import { useState, useCallback } from "react";
 import type { AgentRuntime } from "@elizaos/core";
-import { getRuntime, resetRuntime, isRuntimeInitialized } from "./runtime";
-import { useTrading } from "./hooks/useTrading";
-import { WalletSetup } from "./components/WalletSetup";
-import { TradingPanel } from "./components/TradingPanel";
+import { useCallback, useState } from "react";
 import { PositionList } from "./components/PositionList";
 import { TradeHistory } from "./components/TradeHistory";
+import { TradingPanel } from "./components/TradingPanel";
+import { WalletSetup } from "./components/WalletSetup";
+import { useTrading } from "./hooks/useTrading";
+import { getRuntime, isRuntimeInitialized, resetRuntime } from "./runtime";
 
 function App() {
   const [runtime, setRuntime] = useState<AgentRuntime | null>(null);

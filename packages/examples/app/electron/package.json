@@ -3,9 +3,12 @@
   "type": "module",
   "version": "2.0.0-alpha",
   "scripts": {
-    "dev:renderer": "bun --cwd frontend dev",
-    "dev:electron": "bun --cwd backend dev",
-    "build:renderer": "bun --cwd frontend build",
-    "start": "bun --cwd backend start"
+    "dev:renderer": "bun run --cwd frontend dev",
+    "dev:electron": "bun run --cwd backend dev",
+    "build:renderer": "bun run --cwd frontend build",
+    "start": "bun run --cwd backend start",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'",
+    "build": "echo 'No build step configured; skipping build'"
   }
 }

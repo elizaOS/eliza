@@ -188,7 +188,7 @@ function buildProvisionRequest(
   opts: { sync?: boolean; headers?: HeadersInit } = {},
 ): Promise<Response> {
   const query = opts.sync ? "?sync=true" : "";
-  return app.request(
+  const response = app.request(
     `https://elizacloud.ai/api/v1/eliza/agents/${TEST_AGENT_ID}/provision${query}`,
     {
       method: "POST",
@@ -199,6 +199,7 @@ function buildProvisionRequest(
       },
     },
   );
+  return Promise.resolve(response);
 }
 
 describe("eliza agent provision route", () => {

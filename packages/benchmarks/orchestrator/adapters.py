@@ -92,7 +92,15 @@ def _make_registry_adapter(
     ]
     cwd_value = str(next((candidate for candidate in cwd_candidates if candidate.exists()), workspace_root.resolve()))
     env_builder = None
-    if benchmark_id in {"gaia", "gaia_orchestrated", "realm", "rlm_bench", "social_alpha"}:
+    if benchmark_id in {
+        "agentbench",
+        "gaia",
+        "gaia_orchestrated",
+        "realm",
+        "rlm_bench",
+        "social_alpha",
+        "terminal_bench",
+    }:
         adapter_pythonpath = str((benchmarks_root / "eliza-adapter").resolve())
 
         def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
@@ -271,12 +279,38 @@ def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
 
 
 def _command_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    mode = str(ctx.request.extra_config.get("mode", "bridge")).strip().lower()
+    if mode in {"app-cli", "legacy"}:
+        args = [
+            "bun",
+            "run",
+            "run-benchmarks.ts",
+            "--root",
+            str(ctx.workspace_root.parent.resolve()),
+        ]
+        task_type = ctx.request.extra_config.get("type")
+        if isinstance(task_type, str) and task_type.strip():
+            args.extend(["--type", task_type.strip()])
+        task_id = ctx.request.extra_config.get("task")
+        if isinstance(task_id, str) and task_id.strip():
+            args.extend(["--task", task_id.strip()])
+        timeout = ctx.request.extra_config.get("timeout_ms")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
+        if ctx.request.extra_config.get("server") is True:
+            args.append("--server")
+        if ctx.request.extra_config.get("verbose") is True:
+            args.append("--verbose")
+        return args
+
     args = [
-        "bun",
-        "run",
-        "run-benchmarks.ts",
-        "--root",
-        str(ctx.workspace_root.parent.resolve()),
+        "python",
+        "-m",
+        "eliza_adapter.app_eval",
+        "--tasks-dir",
+        str((ctx.benchmarks_root / "app-eval" / "tasks").resolve()),
+        "--output",
+        str(ctx.output_root / "summary.json"),
     ]
     task_type = ctx.request.extra_config.get("type")
     if isinstance(task_type, str) and task_type.strip():
@@ -286,20 +320,32 @@ def _command_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
         args.extend(["--task", task_id.strip()])
     timeout = ctx.request.extra_config.get("timeout_ms")
     if isinstance(timeout, int) and timeout > 0:
-        args.extend(["--timeout", str(timeout)])
-    if ctx.request.extra_config.get("server") is True:
-        args.append("--server")
-    if ctx.request.extra_config.get("verbose") is True:
-        args.append("--verbose")
+        args.extend(["--timeout-ms", str(timeout)])
     return args
 
 
 def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    return {
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    env = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
         "ELIZA_APP_ROOT": str(ctx.workspace_root.parent.resolve()),
         "ELIZA_HEADLESS": "1",
         "LOG_LEVEL": "error",
     }
+    model = ctx.request.model.strip()
+    provider = ctx.request.provider.strip().upper()
+    if model:
+        env.update({
+            "BENCHMARK_MODEL_NAME": model,
+            "MODEL_NAME": model,
+            "SMALL_MODEL": model,
+            "LARGE_MODEL": model,
+        })
+        if provider and provider != "MOCK":
+            env[f"{provider}_SMALL_MODEL"] = model
+            env[f"{provider}_LARGE_MODEL"] = model
+    return env
 
 
 def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -479,9 +525,22 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
 def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     existing = ctx.env.get("PYTHONPATH", "")
     adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
-    return {
+    env = {
         "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
     }
+    model = ctx.request.model.strip()
+    provider = ctx.request.provider.strip().upper()
+    if model:
+        env.update({
+            "BENCHMARK_MODEL_NAME": model,
+            "MODEL_NAME": model,
+            "SMALL_MODEL": model,
+            "LARGE_MODEL": model,
+        })
+        if provider and provider != "MOCK":
+            env[f"{provider}_SMALL_MODEL"] = model
+            env[f"{provider}_LARGE_MODEL"] = model
+    return env
 
 
 def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
@@ -500,7 +559,11 @@ def _command_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
 
 
 def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    env: dict[str, str] = {}
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    env: dict[str, str] = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+    }
     model = ctx.request.model.strip()
     provider = ctx.request.provider.strip().lower()
     model_name = model if "/" in model or not provider else f"{provider}/{model}"
@@ -568,7 +631,10 @@ def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[st
 
 
 def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
     env: dict[str, str] = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
         "MODEL_NAME": ctx.request.model.strip(),
         "OUTPUT_DIR": str(ctx.output_root),
         "USE_EXTERNAL_SURFPOOL": "true"
@@ -1071,6 +1137,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             result_patterns=["results/latest/summary.json", "results/*/summary.json", "summary.json", "evaluation.json"],
             score_extractor=_score_from_app_eval,
             default_timeout_seconds=14400,
+            default_extra_config={"task": "research-001"},
         ),
         _make_extra_adapter(
             adapter_id="framework",
@@ -1204,6 +1271,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=_score_from_eliza_replay,
             default_timeout_seconds=300,
             default_extra_config={
+                "capture_path": str((benchmarks_root / "eliza-adapter" / "fixtures" / "replay").resolve()),
                 "capture_glob": "*.replay.json",
             },
             capability_notes="Offline replay scoring; capture_path should point to normalized replay artifacts.",

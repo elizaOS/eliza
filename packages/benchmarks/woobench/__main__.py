@@ -23,6 +23,24 @@ from .runner import WooBenchRunner
 from .scenarios import ALL_SCENARIOS, SCENARIOS_BY_SYSTEM, SCENARIOS_BY_ARCHETYPE
 
 
+def _configure_bridge_model_env(model: str) -> None:
+    if not model:
+        return
+    for key in (
+        "BENCHMARK_MODEL_NAME",
+        "MODEL_NAME",
+        "SMALL_MODEL",
+        "LARGE_MODEL",
+        "GROQ_SMALL_MODEL",
+        "GROQ_LARGE_MODEL",
+        "OPENAI_SMALL_MODEL",
+        "OPENAI_LARGE_MODEL",
+        "OPENROUTER_SMALL_MODEL",
+        "OPENROUTER_LARGE_MODEL",
+    ):
+        os.environ.setdefault(key, model)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="woobench",
@@ -177,6 +195,7 @@ async def _run(args: argparse.Namespace) -> None:
     # Build runner
     server_manager = None
     if args.agent == "eliza":
+        _configure_bridge_model_env(args.model)
         client = None
         if not os.environ.get("ELIZA_BENCH_URL"):
             from eliza_adapter.server_manager import ElizaServerManager
@@ -186,7 +205,7 @@ async def _run(args: argparse.Namespace) -> None:
             client = server_manager.client
         from eliza_adapter.woobench import build_eliza_bridge_agent_fn
 
-        agent_fn = build_eliza_bridge_agent_fn(client=client)
+        agent_fn = build_eliza_bridge_agent_fn(client=client, model_name=args.model)
     else:
         agent_fn = _create_dummy_agent
     runner = WooBenchRunner(

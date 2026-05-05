@@ -816,7 +816,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             if provider_name == "groq" and not model_name.startswith("groq/"):
                 model_name = f"groq/{model_name}"
             args.extend(["--model", model_name])
-        if extra.get("mock") is True:
+        provider_name = (model.provider or "").strip().lower()
+        if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         sample = extra.get("sample")
         if isinstance(sample, int) and sample > 0:
@@ -855,13 +856,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             # picked by the in-process elizaOS Python runtime (default) or by the
             # TS bridge (when --provider eliza is set).
             args.extend(["--model", model.model])
-        if extra.get("mock") is True:
+        provider_name = (model.provider or "").strip().lower()
+        if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
         # caller asks for the eliza agent (either via model.provider or the
         # explicit "agent": "eliza" extra).
         agent = extra.get("agent")
-        provider_name = (model.provider or "").strip().lower()
         if agent == "eliza" or provider_name == "eliza":
             args.extend(["--provider", "eliza"])
         return args
@@ -1049,7 +1050,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir),
         ]
-        if model.provider:
+        provider_name = (model.provider or "").strip().lower()
+        if provider_name == "mock":
+            args.extend(["--provider", "eliza"])
+        elif model.provider:
             args.extend(["--provider", model.provider])
         if model.model:
             args.extend(["--model", model.model])
@@ -1165,7 +1169,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         no_docker = extra.get("no_docker")
         if no_docker is True:
             args.append("--no-docker")
-        if extra.get("mock") is True:
+        provider_lower = (model.provider or "").strip().lower()
+        if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")
         return args
 
@@ -1202,7 +1207,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--max-steps", str(max_steps)])
         if extra.get("no_docker") is True:
             args.append("--no-docker")
-        if extra.get("mock") is True:
+        provider_lower = (model.provider or "").strip().lower()
+        if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")
 
         execution_mode = extra.get("execution_mode")
@@ -1304,7 +1310,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if sample is True:
             args.append("--sample")
         mock = extra.get("mock")
-        if mock is True:
+        provider_name = (model.provider or "").strip().lower()
+        if mock is True or provider_name == "mock":
             args.append("--mock")
         return args
 
@@ -1823,8 +1830,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--bridge")
             if model.provider and provider_lower not in {"eliza", "eliza-bridge", "eliza-ts"}:
                 args.extend(["--model-provider", model.provider])
-            if model.model:
-                args.extend(["--model", model.model])
+        if model.model:
+            args.extend(["--model", model.model])
+        provider_name = (model.provider or "").strip().lower()
+        if extra.get("mock") is True or provider_name == "mock":
+            args.append("--mock")
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
@@ -1902,7 +1912,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.eliza-format.cli",
+            "benchmarks.eliza_format.cli",
             "--provider",
             provider,
             "--out",
@@ -2173,9 +2183,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             description="GAIA real-world tasks benchmark",
             cwd_rel="benchmarks/gaia",
             requirements=BenchmarkRequirements(
-                env_vars=("GROQ_API_KEY",),
+                env_vars=(),
                 paths=(),
-                notes="Downloads dataset; requires provider key unless using local provider.",
+                notes="Sample/mock runs need no credentials. Full GAIA/provider runs require dataset and provider key setup.",
             ),
             build_command=_gaia_cmd,
             locate_result=_gaia_result,
@@ -2187,9 +2197,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             description="GAIA sample-backed orchestrated benchmark track",
             cwd_rel="benchmarks/gaia",
             requirements=BenchmarkRequirements(
-                env_vars=("GROQ_API_KEY",),
+                env_vars=(),
                 paths=(),
-                notes="Uses the GAIA runner with orchestrator profile defaults; safe sample runs avoid gated HF access.",
+                notes="Uses the GAIA runner with orchestrator profile defaults; safe sample/mock runs avoid gated HF access and provider keys.",
             ),
             build_command=_gaia_cmd,
             locate_result=_gaia_result,
@@ -2274,9 +2284,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             description="Web agent navigation benchmark (OSU-NLP-Group)",
             cwd_rel=".",
             requirements=BenchmarkRequirements(
-                env_vars=("GROQ_API_KEY",),
+                env_vars=(),
                 paths=(),
-                notes="Uses sample tasks by default; --hf loads from HuggingFace. Supports Groq, OpenAI, Anthropic.",
+                notes="Uses sample tasks by default; mock/sample runs need no credentials. --hf or real providers need their dataset/key setup.",
             ),
             build_command=_mind2web_cmd,
             locate_result=_mind2web_result,
@@ -2302,11 +2312,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             description="Multimodal desktop agent benchmark (369 tasks) - arXiv:2404.07972",
             cwd_rel="benchmarks/OSWorld",
             requirements=BenchmarkRequirements(
-                env_vars=("GROQ_API_KEY",),
+                env_vars=(),
                 paths=(),
                 notes=(
                     "Requires VM provider: Docker (with KVM), VMware, or VirtualBox. "
-                    "Uses the Eliza TypeScript benchmark bridge. "
+                    "Uses the Eliza TypeScript benchmark bridge; dry_run smoke requires no provider key. "
                     "Set provider_name, path_to_vm (VMware), observation_type, domain, task_id via extra config."
                 ),
             ),

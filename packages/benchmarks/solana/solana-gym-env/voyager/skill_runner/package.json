@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Swap benchmark environment for Solana DEX interactions",
   "scripts": {
-    "test": "vitest run --config ./vitest.config.ts"
+    "test": "vitest run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
   },
   "dependencies": {
     "@codama/nodes-from-anchor": "^1.2.3",

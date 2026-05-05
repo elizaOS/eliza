@@ -399,12 +399,12 @@ class AdventureGame {
 
   private handleAttack(withSword: boolean): string {
     const room = this.getCurrentRoom();
+    const enemy = room.enemy;
 
-    if (room.enemy.health <= 0) {
+    if (!enemy || enemy.health <= 0) {
       return "There is nothing to attack here.";
     }
 
-    const enemy = room.enemy;
     const playerDamage = withSword ? 35 : 15;
     const weaponText = withSword
       ? "strike with your ancient sword"
@@ -538,7 +538,7 @@ interface GameSession {
 class Configuration {
   static load(): AppConfiguration {
     const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey || !openaiKey.trim()) {
+    if (!openaiKey?.trim()) {
       throw new Error("OPENAI_API_KEY environment variable is required");
     }
 
@@ -579,7 +579,7 @@ class AdventureAgent {
 
     const config = Configuration.load();
     const character = AdventureAgent.createCharacter();
-    const agentId = stringToUuid(character.name);
+    const agentId = stringToUuid(character.name ?? "AdventureAgent");
 
     task.message("Creating AI adventurer...");
     // The sqlPlugin will handle database setup and migrations automatically

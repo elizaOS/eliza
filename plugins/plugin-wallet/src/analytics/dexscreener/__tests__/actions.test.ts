@@ -200,6 +200,50 @@ describe("DexScreener Actions", () => {
       });
     });
 
+    it("should handle token info from structured parameters", async () => {
+      const mockPairs = [
+        {
+          baseToken: {
+            name: "USD Coin",
+            symbol: "USDC",
+            address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          },
+          quoteToken: { symbol: "WETH" },
+          dexId: "uniswap",
+          chainId: "ethereum",
+          priceUsd: "1",
+          priceChange: { h24: 0.1 },
+          volume: { h24: 10000000 },
+          liquidity: { usd: 50000000 },
+        },
+      ];
+
+      mockService.getTokenPairs.mockResolvedValue({
+        success: true,
+        data: mockPairs,
+      });
+
+      const message = createTestMemory("Get token info");
+      const callback = createMockCallback();
+      const state = createMockState();
+
+      await getTokenInfoAction.handler(
+        mockRuntime,
+        message,
+        state,
+        {
+          parameters: {
+            tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          },
+        },
+        callback,
+      );
+
+      expect(mockService.getTokenPairs).toHaveBeenCalledWith({
+        tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      });
+    });
+
     it("should handle no token address", async () => {
       const message = createTestMemory("Get token info please");
       const callback = createMockCallback();

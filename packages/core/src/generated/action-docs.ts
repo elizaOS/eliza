@@ -3055,17 +3055,75 @@ export const allActionsSpec = {
 			name: "CHECK_PAYMENT",
 			description:
 				"Check if payment has been received for the current reading session.",
-			parameters: [],
+			parameters: [
+				{
+					name: "entityId",
+					description:
+						"Optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+				},
+				{
+					name: "roomId",
+					description:
+						"Optional room id whose active reading payment should be checked. Defaults to the current room.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional room id whose active reading payment should be checked. Defaults to the current room.",
+				},
+			],
 			descriptionCompressed:
 				"Check payment status for the active mysticism reading session.",
 			similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
+			exampleCalls: [
+				{
+					user: "Use CHECK_PAYMENT with the provided parameters.",
+					actions: ["CHECK_PAYMENT"],
+					params: {
+						CHECK_PAYMENT: {
+							entityId: "example",
+							roomId: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "CLAUDE_CODE_WORKBENCH_LIST",
 			description: "List available Claude Code workbench workflows.",
-			parameters: [],
+			parameters: [
+				{
+					name: "includeDisabled",
+					description:
+						"Whether to include disabled workbench workflows. Defaults to true.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether to include disabled workbench workflows. Defaults to true.",
+				},
+			],
 			descriptionCompressed: "list available Claude Code workbench workflow",
 			similes: ["LIST_WORKBENCH_WORKFLOWS", "WORKBENCH_LIST", "CCW_LIST"],
+			exampleCalls: [
+				{
+					user: "Use CLAUDE_CODE_WORKBENCH_LIST with the provided parameters.",
+					actions: ["CLAUDE_CODE_WORKBENCH_LIST"],
+					params: {
+						CLAUDE_CODE_WORKBENCH_LIST: {
+							includeDisabled: false,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "CLAUDE_CODE_WORKBENCH_RUN",
@@ -3287,15 +3345,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-		},
-		{
-			name: "COMMANDS_LIST",
-			description:
-				"List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
-			parameters: [],
-			descriptionCompressed:
-				"List available commands. Trigger: /commands, /cmds.",
-			similes: ["/commands", "/cmds"],
 		},
 		{
 			name: "COUNT_STATISTICS",
@@ -3689,8 +3738,30 @@ export const allActionsSpec = {
 			name: "DEXSCREENER_TOKEN_INFO",
 			description:
 				"Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
-			parameters: [],
+			parameters: [
+				{
+					name: "tokenAddress",
+					description: "Token contract address to look up on DexScreener.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Token contract address to look up on DexScreener.",
+				},
+			],
 			similes: ["token details", "token price", "get token", "check token"],
+			exampleCalls: [
+				{
+					user: "Use DEXSCREENER_TOKEN_INFO with the provided parameters.",
+					actions: ["DEXSCREENER_TOKEN_INFO"],
+					params: {
+						DEXSCREENER_TOKEN_INFO: {
+							tokenAddress: "example",
+						},
+					},
+				},
+			],
 			descriptionCompressed:
 				"Get detailed info about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
 		},
@@ -3914,10 +3985,47 @@ export const allActionsSpec = {
 			name: "FETCH_FEED_TOP",
 			description:
 				"Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
-			parameters: [],
+			parameters: [
+				{
+					name: "limit",
+					description: "Maximum ranked tweets to return.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 50,
+					},
+					descriptionCompressed: "max ranked tweets to return.",
+				},
+				{
+					name: "fetchCount",
+					description:
+						"Number of home timeline tweets to fetch before ranking.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 100,
+					},
+					descriptionCompressed:
+						"Number of home timeline tweets to fetch before ranking.",
+				},
+			],
 			descriptionCompressed:
 				"fetch home timeline x return top-n tweet rank engagement (like + retweet 2)",
 			similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
+			exampleCalls: [
+				{
+					user: "Use FETCH_FEED_TOP with the provided parameters.",
+					actions: ["FETCH_FEED_TOP"],
+					params: {
+						FETCH_FEED_TOP: {
+							limit: 1,
+							fetchCount: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "FILE_ACTION",
@@ -4183,14 +4291,26 @@ export const allActionsSpec = {
 				"Find the shortest path between two entities in the relationship graph.",
 			parameters: [
 				{
-					name: "values",
-					description: "The values to use.",
+					name: "startEntityId",
+					description:
+						"Optional entity id to use as the path start. Defaults to the first graph entity.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
+					descriptionCompressed:
+						"Optional entity id to use as the path start. Defaults to the first graph entity.",
+				},
+				{
+					name: "endEntityId",
+					description:
+						"Optional entity id to use as the path end. Defaults to the last graph entity.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional entity id to use as the path end. Defaults to the last graph entity.",
 				},
 			],
 			descriptionCompressed:
@@ -4202,7 +4322,8 @@ export const allActionsSpec = {
 					actions: ["FIND_PATH"],
 					params: {
 						FIND_PATH: {
-							values: "example",
+							startEntityId: "example",
+							endEntityId: "example",
 						},
 					},
 				},
@@ -4232,7 +4353,29 @@ export const allActionsSpec = {
 		{
 			name: "GET_LINEAR_ACTIVITY",
 			description: "Get recent Linear activity log with optional filters",
-			parameters: [],
+			parameters: [
+				{
+					name: "filters",
+					description:
+						"Optional activity filters, e.g. fromDate ISO timestamp, action, resource_type, resource_id, or success.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Optional activity filters, e. g. fromDate ISO timestamp, action, resource_type, resource_id, or success.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of activity log entries to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"max number of activity log entries to return.",
+				},
+			],
 			descriptionCompressed:
 				"get recent Linear activity log w/ optional filter",
 			similes: [
@@ -4241,20 +4384,42 @@ export const allActionsSpec = {
 				"view-linear-activity",
 				"check-linear-activity",
 			],
+			exampleCalls: [
+				{
+					user: "Use GET_LINEAR_ACTIVITY with the provided parameters.",
+					actions: ["GET_LINEAR_ACTIVITY"],
+					params: {
+						GET_LINEAR_ACTIVITY: {
+							filters: "example",
+							limit: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "GET_LINEAR_ISSUE",
 			description: "Get details of a specific Linear issue",
 			parameters: [
 				{
-					name: "name",
-					description: "The name to use.",
+					name: "issueId",
+					description: "Linear issue identifier or id, e.g. ENG-123.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The name to use.",
+					descriptionCompressed: "Linear issue id or id, e. g. ENG-123.",
+				},
+				{
+					name: "query",
+					description:
+						"Search text when the exact Linear issue identifier is unknown.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Search text when the exact Linear issue id is unknown.",
 				},
 			],
 			descriptionCompressed: "get detail specific Linear issue",
@@ -4271,7 +4436,8 @@ export const allActionsSpec = {
 					actions: ["GET_LINEAR_ISSUE"],
 					params: {
 						GET_LINEAR_ISSUE: {
-							name: "example",
+							issueId: "example",
+							query: "example",
 						},
 					},
 				},
@@ -4280,7 +4446,19 @@ export const allActionsSpec = {
 		{
 			name: "GET_MEETING_INFO",
 			description: "Get information about a Google Meet meeting",
-			parameters: [],
+			parameters: [
+				{
+					name: "meetingId",
+					description:
+						"Optional Google Meet space name or stored meeting ID. Omit to inspect the current active meeting.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional Google Meet space name or stored meeting ID. Omit to inspect the current active meeting.",
+				},
+			],
 			descriptionCompressed: "get information Google Meet meet",
 			similes: [
 				"meeting info",
@@ -4288,12 +4466,52 @@ export const allActionsSpec = {
 				"meeting status",
 				"meeting details",
 			],
+			exampleCalls: [
+				{
+					user: "Use GET_MEETING_INFO with the provided parameters.",
+					actions: ["GET_MEETING_INFO"],
+					params: {
+						GET_MEETING_INFO: {
+							meetingId: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "GET_N8N_EXECUTIONS",
 			description:
 				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
-			parameters: [],
+			parameters: [
+				{
+					name: "workflowId",
+					description: "Exact n8n workflow id to inspect.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Exact n8n workflow id to inspect.",
+				},
+				{
+					name: "workflowName",
+					description: "Workflow name or partial name when id is unknown.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Workflow name or partial name when id is unknown.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of executions to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "max number of executions to return.",
+				},
+			],
 			descriptionCompressed:
 				"get execution history n8n workflow show status, start time, error message identify workflow ID, name, semantic description language",
 			similes: [
@@ -4303,11 +4521,36 @@ export const allActionsSpec = {
 				"WORKFLOW_RUNS",
 				"WORKFLOW_EXECUTIONS",
 			],
+			exampleCalls: [
+				{
+					user: "Use GET_N8N_EXECUTIONS with the provided parameters.",
+					actions: ["GET_N8N_EXECUTIONS"],
+					params: {
+						GET_N8N_EXECUTIONS: {
+							workflowId: "example",
+							workflowName: "example",
+							limit: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "GET_PARTICIPANTS",
 			description: "Get the list of participants in a Google Meet conference",
-			parameters: [],
+			parameters: [
+				{
+					name: "conferenceRecordName",
+					description:
+						"Optional Google Meet conference record name, for example conferenceRecords/abc123. Omit to list the current active meeting participants.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional Google Meet conference record name, for example conferenceRecords/abc123. Omit to list the current active meeting participants.",
+				},
+			],
 			descriptionCompressed: "get list participant Google Meet conference",
 			similes: [
 				"who's in the meeting",
@@ -4315,21 +4558,77 @@ export const allActionsSpec = {
 				"attendees",
 				"who joined",
 			],
+			exampleCalls: [
+				{
+					user: "Use GET_PARTICIPANTS with the provided parameters.",
+					actions: ["GET_PARTICIPANTS"],
+					params: {
+						GET_PARTICIPANTS: {
+							conferenceRecordName: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "GET_SKILL_DETAILS",
 			description:
 				"Get detailed information about a specific skill including version, owner, and stats.",
-			parameters: [],
+			parameters: [
+				{
+					name: "slug",
+					description: "Skill slug to inspect, e.g. pdf-processing.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Skill slug to inspect, e. g. pdf-processing.",
+				},
+			],
 			descriptionCompressed: "Get skill version, owner, stats.",
 			similes: ["SKILL_INFO", "SKILL_DETAILS"],
+			exampleCalls: [
+				{
+					user: "Use GET_SKILL_DETAILS with the provided parameters.",
+					actions: ["GET_SKILL_DETAILS"],
+					params: {
+						GET_SKILL_DETAILS: {
+							slug: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "GET_TAILSCALE_STATUS",
 			description: "Get the current status of the Tailscale tunnel",
-			parameters: [],
+			parameters: [
+				{
+					name: "verbose",
+					description:
+						"When true, include backend provider details in the status text.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"When true, include backend provider details in the status text.",
+				},
+			],
 			descriptionCompressed: "get current status Tailscale tunnel",
 			similes: ["TAILSCALE_STATUS", "CHECK_TUNNEL", "TUNNEL_INFO"],
+			exampleCalls: [
+				{
+					user: "Use GET_TAILSCALE_STATUS with the provided parameters.",
+					actions: ["GET_TAILSCALE_STATUS"],
+					params: {
+						GET_TAILSCALE_STATUS: {
+							verbose: false,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "GOOGLE_CHAT_LIST_SPACES",
@@ -4365,15 +4664,6 @@ export const allActionsSpec = {
 				"GOOGLE_CHAT_EMOJI",
 				"ADD_GOOGLE_CHAT_REACTION",
 			],
-		},
-		{
-			name: "HELP_COMMAND",
-			description:
-				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
-			parameters: [],
-			descriptionCompressed:
-				"Show commands and descriptions. Trigger: /help, /h, /?.",
-			similes: ["/help", "/h", "/?"],
 		},
 		{
 			name: "ICHING_READING",
@@ -4440,7 +4730,30 @@ export const allActionsSpec = {
 			name: "LIST_ACTIVE_BLOCKS",
 			description:
 				"List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
-			parameters: [],
+			parameters: [
+				{
+					name: "includeLiveStatus",
+					description:
+						"Whether to include the current hosts-file/SelfControl live block state.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether to include the current hosts-file/SelfControl live block state.",
+				},
+				{
+					name: "includeManagedRules",
+					description:
+						"Whether to include managed LifeOps block rules and gate metadata.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether to include managed LifeOps block rules and gate metadata.",
+				},
+			],
 			descriptionCompressed:
 				"List live website blocker status and active block rules.",
 			similes: [
@@ -4448,12 +4761,36 @@ export const allActionsSpec = {
 				"SHOW_ACTIVE_BLOCKS",
 				"WEBSITE_BLOCKS_STATUS",
 			],
+			exampleCalls: [
+				{
+					user: "Use LIST_ACTIVE_BLOCKS with the provided parameters.",
+					actions: ["LIST_ACTIVE_BLOCKS"],
+					params: {
+						LIST_ACTIVE_BLOCKS: {
+							includeLiveStatus: false,
+							includeManagedRules: false,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "LIST_AGENTS",
 			description:
 				"List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.",
-			parameters: [],
+			parameters: [
+				{
+					name: "status",
+					description:
+						"Optional session/task status filter such as active, idle, completed, failed, or all.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional session/task status filter such as active, idle, completed, failed, or all.",
+				},
+			],
 			descriptionCompressed:
 				"List active task agents with progress for async status updates.",
 			similes: [
@@ -4466,18 +4803,62 @@ export const allActionsSpec = {
 				"LIST_SUB_AGENTS",
 				"SHOW_TASK_STATUS",
 			],
+			exampleCalls: [
+				{
+					user: "Use LIST_AGENTS with the provided parameters.",
+					actions: ["LIST_AGENTS"],
+					params: {
+						LIST_AGENTS: {
+							status: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "LIST_OVERDUE_FOLLOWUPS",
 			description:
 				"List contacts whose last-contacted-at timestamp exceeds their follow-up threshold. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "thresholdDays",
+					description:
+						"Override the default overdue threshold in days for this query.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Override the default overdue threshold in days for this query.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of overdue contacts to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "max number of overdue contacts to return.",
+				},
+			],
 			similes: [
 				"OVERDUE_FOLLOWUPS",
 				"WHO_TO_FOLLOW_UP",
 				"WHO_HAVEN_T_I_TALKED_TO",
 				"LIST_FOLLOWUPS",
 				"FOLLOWUP_LIST",
+			],
+			exampleCalls: [
+				{
+					user: "Use LIST_OVERDUE_FOLLOWUPS with the provided parameters.",
+					actions: ["LIST_OVERDUE_FOLLOWUPS"],
+					params: {
+						LIST_OVERDUE_FOLLOWUPS: {
+							thresholdDays: 1,
+							limit: 1,
+						},
+					},
+				},
 			],
 			descriptionCompressed:
 				"List contacts whose last-contacted-at timestamp exceeds their follow-up threshold.",
@@ -4488,14 +4869,15 @@ export const allActionsSpec = {
 				"List all saved playlists for the user. Works best in DMs to avoid flooding group chats.",
 			parameters: [
 				{
-					name: "data",
-					description: "The data to use.",
+					name: "limit",
+					description: "Maximum playlists to show.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "number",
+						minimum: 1,
+						maximum: 50,
 					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
+					descriptionCompressed: "max playlists to show.",
 				},
 			],
 			descriptionCompressed: "List all saved playlists.",
@@ -4511,7 +4893,7 @@ export const allActionsSpec = {
 					actions: ["LIST_PLAYLISTS"],
 					params: {
 						LIST_PLAYLISTS: {
-							data: "example",
+							limit: 1,
 						},
 					},
 				},
@@ -5234,14 +5616,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-		},
-		{
-			name: "MODELS_COMMAND",
-			description:
-				"List available AI models and providers. Only activates for /models slash command.",
-			parameters: [],
-			descriptionCompressed: "List AI models/providers. Trigger: /models.",
-			similes: ["/models"],
 		},
 		{
 			name: "MODIFY_EXISTING_N8N_WORKFLOW",
@@ -6377,7 +6751,26 @@ export const allActionsSpec = {
 		{
 			name: "READ_MCP_RESOURCE",
 			description: "Reads a resource from an MCP server",
-			parameters: [],
+			parameters: [
+				{
+					name: "serverName",
+					description: "MCP server name that exposes the resource.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "MCP server name that exposes the resource.",
+				},
+				{
+					name: "uri",
+					description: "Exact MCP resource URI to read.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Exact MCP resource URI to read.",
+				},
+			],
 			descriptionCompressed: "read resource MCP server",
 			similes: [
 				"READ_RESOURCE",
@@ -6389,13 +6782,48 @@ export const allActionsSpec = {
 				"ACCESS_RESOURCE",
 				"ACCESS_MCP_RESOURCE",
 			],
+			exampleCalls: [
+				{
+					user: "Use READ_MCP_RESOURCE with the provided parameters.",
+					actions: ["READ_MCP_RESOURCE"],
+					params: {
+						READ_MCP_RESOURCE: {
+							serverName: "example",
+							uri: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "READ_UNREAD_X_DMS",
 			description: "List unread Twitter/X direct messages.",
-			parameters: [],
+			parameters: [
+				{
+					name: "limit",
+					description: "Maximum direct messages to scan for unread items.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 100,
+					},
+					descriptionCompressed: "max direct msgs to scan for unread items.",
+				},
+			],
 			descriptionCompressed: "list unread Twitter/X direct message",
 			similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
+			exampleCalls: [
+				{
+					user: "Use READ_UNREAD_X_DMS with the provided parameters.",
+					actions: ["READ_UNREAD_X_DMS"],
+					params: {
+						READ_UNREAD_X_DMS: {
+							limit: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "READING_FOLLOWUP",
@@ -6700,14 +7128,24 @@ export const allActionsSpec = {
 			description: "Search for issues in Linear with various filters",
 			parameters: [
 				{
-					name: "name",
-					description: "The name to use.",
+					name: "filters",
+					description:
+						"Structured Linear issue filters: query, state, assignee, priority, team, label, and limit.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "object",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The name to use.",
+					descriptionCompressed:
+						"Structured Linear issue filters: query, state, assignee, priority, team, label, and limit.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of issues to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "max number of issues to return.",
 				},
 			],
 			descriptionCompressed: "search issue Linear w/ various filter",
@@ -6723,7 +7161,8 @@ export const allActionsSpec = {
 					actions: ["SEARCH_LINEAR_ISSUES"],
 					params: {
 						SEARCH_LINEAR_ISSUES: {
-							name: "example",
+							filters: "example",
+							limit: 1,
 						},
 					},
 				},
@@ -6733,18 +7172,95 @@ export const allActionsSpec = {
 			name: "SEARCH_SHOPIFY_STORE",
 			description:
 				"Search across products, orders, and customers in a connected Shopify store.",
-			parameters: [],
+			parameters: [
+				{
+					name: "query",
+					description:
+						"Search term for Shopify products, orders, or customers.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Search term for Shopify products, orders, or customers.",
+				},
+				{
+					name: "scope",
+					description:
+						"Restrict search to all, products, orders, or customers.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["all", "products", "orders", "customers"],
+					},
+					descriptionCompressed:
+						"Restrict search to all, products, orders, or customers.",
+				},
+				{
+					name: "limit",
+					description: "Maximum results per searched Shopify category.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "max results per searched Shopify category.",
+				},
+			],
 			descriptionCompressed: "Search Shopify products, orders, customers.",
 			similes: ["SHOPIFY_SEARCH", "STORE_SEARCH"],
+			exampleCalls: [
+				{
+					user: "Use SEARCH_SHOPIFY_STORE with the provided parameters.",
+					actions: ["SEARCH_SHOPIFY_STORE"],
+					params: {
+						SEARCH_SHOPIFY_STORE: {
+							query: "example",
+							scope: "all",
+							limit: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SEARCH_SKILLS",
 			description:
 				"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
-			parameters: [],
+			parameters: [
+				{
+					name: "query",
+					description: "Search query or skill category.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search query or skill category.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of skill results.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "max number of skill results.",
+				},
+			],
 			descriptionCompressed:
 				"Search skill registry by keyword/category; returns action chips.",
 			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
+			exampleCalls: [
+				{
+					user: "Use SEARCH_SKILLS with the provided parameters.",
+					actions: ["SEARCH_SKILLS"],
+					params: {
+						SEARCH_SKILLS: {
+							query: "example",
+							limit: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SEARCH_X",
@@ -6793,7 +7309,30 @@ export const allActionsSpec = {
 			name: "SEARCH_YOUTUBE",
 			description:
 				"Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific URL.",
-			parameters: [],
+			parameters: [
+				{
+					name: "query",
+					description: "Song, artist, or video query to search on YouTube.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Song, artist, or video query to search on YouTube.",
+				},
+				{
+					name: "limit",
+					description: "Maximum YouTube results to inspect.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 5,
+						minimum: 1,
+						maximum: 10,
+					},
+					descriptionCompressed: "max YouTube results to inspect.",
+				},
+			],
 			descriptionCompressed: "Search YouTube for song/video, return link.",
 			similes: [
 				"FIND_YOUTUBE",
@@ -6802,6 +7341,18 @@ export const allActionsSpec = {
 				"SEARCH_MUSIC",
 				"GET_YOUTUBE_LINK",
 				"LOOKUP_YOUTUBE",
+			],
+			exampleCalls: [
+				{
+					user: "Use SEARCH_YOUTUBE with the provided parameters.",
+					actions: ["SEARCH_YOUTUBE"],
+					params: {
+						SEARCH_YOUTUBE: {
+							query: "example",
+							limit: 5,
+						},
+					},
+				},
 			],
 		},
 		{
@@ -7155,9 +7706,33 @@ export const allActionsSpec = {
 		{
 			name: "SHOW_QUEUE",
 			description: "Show the current music queue",
-			parameters: [],
+			parameters: [
+				{
+					name: "limit",
+					description: "Maximum queued tracks to display, from 1 to 25.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 10,
+						minimum: 1,
+						maximum: 25,
+					},
+					descriptionCompressed: "max queued tracks to display, from 1 to 25.",
+				},
+			],
 			descriptionCompressed: "show current music queue",
 			similes: ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"],
+			exampleCalls: [
+				{
+					user: "Use SHOW_QUEUE with the provided parameters.",
+					actions: ["SHOW_QUEUE"],
+					params: {
+						SHOW_QUEUE: {
+							limit: 10,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SIGNAL_LIST_CONTACTS",
@@ -7297,7 +7872,18 @@ export const allActionsSpec = {
 		{
 			name: "SLACK_GET_USER_INFO",
 			description: "Get information about a Slack user",
-			parameters: [],
+			parameters: [
+				{
+					name: "userId",
+					description: "Slack user ID to look up, such as U0123456789.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Slack user ID to look up, such as U0123456789.",
+				},
+			],
 			descriptionCompressed: "Get Slack user info.",
 			similes: [
 				"GET_SLACK_USER",
@@ -7305,6 +7891,17 @@ export const allActionsSpec = {
 				"SLACK_USER",
 				"MEMBER_INFO",
 				"WHO_IS",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_GET_USER_INFO with the provided parameters.",
+					actions: ["SLACK_GET_USER_INFO"],
+					params: {
+						SLACK_GET_USER_INFO: {
+							userId: "example",
+						},
+					},
+				},
 			],
 		},
 		{
@@ -7604,14 +8201,6 @@ export const allActionsSpec = {
 			similes: ["START_TUNNEL", "OPEN_TUNNEL", "CREATE_TUNNEL", "TAILSCALE_UP"],
 		},
 		{
-			name: "STATUS_COMMAND",
-			description:
-				"Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
-			parameters: [],
-			descriptionCompressed: "Show session settings. Trigger: /status, /s.",
-			similes: ["/status", "/s"],
-		},
-		{
 			name: "STOP_AGENT",
 			description: "Stop a running task-agent session. ",
 			parameters: [
@@ -7659,15 +8248,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-		},
-		{
-			name: "STOP_COMMAND",
-			description:
-				"Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.",
-			parameters: [],
-			descriptionCompressed:
-				"Stop/abort running tasks. Trigger: /stop, /abort, /cancel.",
-			similes: ["/stop", "/abort", "/cancel"],
 		},
 		{
 			name: "STOP_MUSIC",

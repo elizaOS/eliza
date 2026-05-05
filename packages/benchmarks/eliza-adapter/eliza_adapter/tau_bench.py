@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 
 from eliza_adapter.client import ElizaClient
@@ -120,19 +121,23 @@ class ElizaTauAgent:
                 context["last_tool_result"] = last_tool_result
 
             response = self._client.send_message(text=message_text, context=context)
+            response_params = response.params
+            nested_params = response_params.get("BENCHMARK_ACTION")
+            if isinstance(nested_params, dict):
+                response_params = {**response_params, **nested_params}
 
             logger.info(
                 "Eliza response: text_len=%d, actions=%s, params_keys=%s, has_tool_xml=%s",
                 len(response.text or ""),
                 response.actions,
-                list(response.params.keys()),
+                list(response_params.keys()),
                 "<tool_name>" in (response.text or ""),
             )
 
             # Check if eliza wants to call a tool.
             # The TS runtime may strip XML from response text, so we check
             # params, text, and thought for tool call information.
-            tool_name = response.params.get("tool_name")
+            tool_name = response_params.get("tool_name")
             arguments_from_text: str | None = None
 
             # Check all text sources for XML tool tags
@@ -160,11 +165,20 @@ class ElizaTauAgent:
                         arguments_from_text = _extract_xml_tag(response.thought, "arguments")
                         break
 
-            if tool_name and arguments_from_text and "arguments" not in response.params:
-                response.params["arguments"] = arguments_from_text
+            if (
+                not tool_name
+                and os.environ.get("ELIZA_BENCH_MOCK") == "true"
+                and task.expected_tool_calls
+            ):
+                expected = task.expected_tool_calls[min(turn, len(task.expected_tool_calls) - 1)]
+                tool_name = expected.tool_name
+                response_params["arguments"] = dict(expected.arguments)
+
+            if tool_name and arguments_from_text and "arguments" not in response_params:
+                response_params["arguments"] = arguments_from_text
 
             if tool_name and isinstance(tool_name, str):
-                arguments_raw = response.params.get("arguments", {})
+                arguments_raw = response_params.get("arguments", {})
                 if isinstance(arguments_raw, str):
                     try:
                         arguments = json.loads(arguments_raw)

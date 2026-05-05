@@ -45,6 +45,14 @@ const examples: ActionExample[][] = [
   ],
 ];
 
+type GetExecutionsOptions = {
+  parameters?: {
+    workflowId?: unknown;
+    workflowName?: unknown;
+    limit?: unknown;
+  };
+};
+
 export const getExecutionsAction: Action = {
   name: 'GET_N8N_EXECUTIONS',
   similes: [
@@ -67,7 +75,7 @@ export const getExecutionsAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    _options?: unknown,
+    options?: unknown,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
@@ -100,8 +108,49 @@ export const getExecutionsAction: Action = {
         return { success: false };
       }
 
+      const params = (options as GetExecutionsOptions | undefined)?.parameters ?? {};
+      const limit =
+        typeof params.limit === 'number' && Number.isFinite(params.limit)
+          ? Math.max(1, Math.floor(params.limit))
+          : 10;
+      const workflowIdParam =
+        typeof params.workflowId === 'string' && params.workflowId.trim().length > 0
+          ? params.workflowId.trim()
+          : null;
+      const workflowNameParam =
+        typeof params.workflowName === 'string' && params.workflowName.trim().length > 0
+          ? params.workflowName.trim().toLowerCase()
+          : null;
+
       const context = buildConversationContext(message, state);
-      const matchResult = await matchWorkflow(runtime, context, workflows);
+      const matchResult = workflowIdParam
+        ? {
+          matchedWorkflowId: workflowIdParam,
+          confidence: 'high' as const,
+          matches: workflows.map((workflow) => ({
+            id: workflow.id,
+            name: workflow.name,
+            score: workflow.id === workflowIdParam ? 1 : 0,
+          })),
+          reason: 'workflowId parameter',
+        }
+        : workflowNameParam
+          ? {
+            matchedWorkflowId:
+                workflows.find((workflow) =>
+                  workflow.name.toLowerCase().includes(workflowNameParam),
+                )?.id ?? null,
+            confidence: 'high' as const,
+            matches: workflows.map((workflow) => ({
+              id: workflow.id,
+              name: workflow.name,
+              score: workflow.name.toLowerCase().includes(workflowNameParam)
+                ? 1
+                : 0,
+            })),
+            reason: 'workflowName parameter',
+          }
+          : await matchWorkflow(runtime, context, workflows);
 
       if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
         const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
@@ -116,7 +165,7 @@ export const getExecutionsAction: Action = {
       }
 
       const workflowId = matchResult.matchedWorkflowId;
-      const executions = await service.getWorkflowExecutions(workflowId, 10);
+      const executions = await service.getWorkflowExecutions(workflowId, limit);
 
       logger.info(
         { src: 'plugin:n8n-workflow:action:get-executions' },
@@ -188,6 +237,27 @@ export const getExecutionsAction: Action = {
       return { success: false };
     }
   },
+
+  parameters: [
+    {
+      name: 'workflowId',
+      description: 'Exact n8n workflow id to inspect.',
+      required: false,
+      schema: { type: 'string' as const },
+    },
+    {
+      name: 'workflowName',
+      description: 'Workflow name or partial name when id is unknown.',
+      required: false,
+      schema: { type: 'string' as const },
+    },
+    {
+      name: 'limit',
+      description: 'Maximum number of executions to return.',
+      required: false,
+      schema: { type: 'number' as const },
+    },
+  ],
 
   examples,
 };

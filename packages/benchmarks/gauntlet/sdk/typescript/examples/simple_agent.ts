@@ -1,4 +1,3 @@
-import { PublicKey, Transaction } from "@solana/web3.js";
 import {
   type AgentResponse,
   type GauntletAgent,
@@ -11,8 +10,6 @@ import {
  * A simple reference implementation of a Gauntlet Agent in TypeScript.
  */
 export class SimpleAgent implements GauntletAgent {
-  private context?: ScenarioContext;
-
   async initialize(context: ScenarioContext): Promise<void> {
     console.log(`Agent initialized for scenario: ${context.scenarioId}`);
     this.context = context;

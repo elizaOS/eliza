@@ -27,6 +27,11 @@ interface Relationship {
   created: string;
 }
 
+type FindPathParams = {
+  startEntityId?: unknown;
+  endEntityId?: unknown;
+};
+
 // Helper to get or initialize relational data state
 function getRelationalState(state: State | undefined): {
   entities: Record<string, Entity>;
@@ -947,7 +952,7 @@ const findPathAction: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: Record<string, unknown>,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
@@ -961,9 +966,25 @@ const findPathAction: Action = {
     }
 
     // Simple BFS path finding
+    const params = (options?.parameters ?? options ?? {}) as FindPathParams;
     const entities = Object.values(relState.entities);
-    const start = entities[0];
-    const end = entities[entities.length - 1];
+    const explicitStart =
+      typeof params.startEntityId === "string"
+        ? relState.entities[params.startEntityId]
+        : undefined;
+    const explicitEnd =
+      typeof params.endEntityId === "string"
+        ? relState.entities[params.endEntityId]
+        : undefined;
+    const start = explicitStart ?? entities[0];
+    const end = explicitEnd ?? entities[entities.length - 1];
+    if (!start || !end) {
+      return {
+        success: false,
+        text: "Error: Could not resolve path endpoints",
+        values: state?.values || {},
+      };
+    }
 
     // Build adjacency list
     const adjacency: Record<string, Set<string>> = {};
@@ -1031,6 +1052,22 @@ const findPathAction: Action = {
       },
     };
   },
+  parameters: [
+    {
+      name: "startEntityId",
+      description:
+        "Optional entity id to use as the path start. Defaults to the first graph entity.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "endEntityId",
+      description:
+        "Optional entity id to use as the path end. Defaults to the last graph entity.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
   examples: [
     [
       {

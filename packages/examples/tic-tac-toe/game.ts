@@ -14,16 +14,16 @@
 
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 
-import * as clack from "@clack/prompts";
 import { randomUUID } from "node:crypto";
+import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
   ChannelType,
+  createMessageMemory,
   type IAgentRuntime,
   ModelType,
-  parseToonKeyValue,
   type Plugin,
-  createMessageMemory,
+  parseToonKeyValue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -548,6 +548,7 @@ async function playHumanVsAI(session: GameSession): Promise<void> {
         message: "Your move (0-8):",
         placeholder: "Enter position number",
         validate: (value) => {
+          if (typeof value !== "string") return "Please enter a number 0-8";
           const pos = parseInt(value, 10);
           if (Number.isNaN(pos) || pos < 0 || pos > 8) {
             return "Please enter a number 0-8";

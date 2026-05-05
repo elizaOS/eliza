@@ -325,6 +325,7 @@ export class LocalModelManager {
     console.log(`[local-models] Downloading ${modelId}...`);
 
     const apiUrl = `https://huggingface.co/api/models/${modelId}`;
+    // @duplicate-component-audit-allow: Hugging Face model metadata download, not inference.
     const response = await fetch(apiUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch model info: ${response.statusText}`);
@@ -420,6 +421,7 @@ export class LocalModelManager {
   private async downloadOllamaModel(modelName: string): Promise<string> {
     console.log(`[local-models] Pulling Ollama model ${modelName}...`);
 
+    // @duplicate-component-audit-allow: Ollama pull downloads weights; no prompt is generated.
     const response = await fetch(`${this.ollamaUrl}/api/pull`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -467,6 +469,7 @@ export class LocalModelManager {
    */
   async listOllamaModels(): Promise<string[]> {
     try {
+      // @duplicate-component-audit-allow: Ollama tags lists installed models; no generation.
       const response = await fetch(`${this.ollamaUrl}/api/tags`);
       if (!response.ok) return [];
       const data = (await response.json()) as {
@@ -483,6 +486,7 @@ export class LocalModelManager {
    */
   async isOllamaRunning(): Promise<boolean> {
     try {
+      // @duplicate-component-audit-allow: Ollama tags health check; no generation.
       const response = await fetch(`${this.ollamaUrl}/api/tags`, {
         signal: AbortSignal.timeout(2000),
       });

@@ -83,7 +83,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onStop() {
+    public void onStop() {
         super.onStop();
         if (!isFinishing()) {
             // The gateway notification is only needed to keep the Capacitor

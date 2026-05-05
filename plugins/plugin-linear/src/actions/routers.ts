@@ -181,11 +181,7 @@ export function getLinearRouteForTest(
   options?: HandlerOptions | Record<string, unknown>
 ): string | null {
   const routes =
-    group === "issue"
-      ? issueRoutes
-      : group === "comment"
-        ? commentRoutes
-        : workflowRoutes;
+    group === "issue" ? issueRoutes : group === "comment" ? commentRoutes : workflowRoutes;
   return selectRoute(routes, message, options)?.subaction ?? null;
 }
 

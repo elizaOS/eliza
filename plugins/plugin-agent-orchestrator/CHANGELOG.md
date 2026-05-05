@@ -44,7 +44,7 @@
 
 ### Changed
 
-- **Canonical task-agent naming**: The plugin now treats task agents as the primary abstraction rather than coding agents. Canonical action names are `CREATE_TASK`, `SPAWN_AGENT`, `SEND_TO_AGENT`, `LIST_AGENTS`, and `STOP_AGENT`, with older coding-agent names preserved as aliases.
+- **Canonical task-agent naming**: The plugin now treats task agents as the primary abstraction rather than coding agents. Canonical action names are `START_CODING_TASK`, `SPAWN_AGENT`, `SEND_TO_AGENT`, `LIST_AGENTS`, and `STOP_AGENT`, with older coding-agent names preserved as aliases.
 - **Provider guidance broadened beyond coding**: Action examples and active workspace context now direct the main agent to orchestrate any substantial open-ended work through sub-agents, not only repository changes.
 - **Package docs and exports**: Default export is now `taskAgentPlugin`, with `codingAgentPlugin` kept as a compatibility alias.
 

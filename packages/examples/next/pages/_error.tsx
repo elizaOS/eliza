@@ -4,7 +4,7 @@ interface ErrorProps {
   statusCode: number;
 }
 
-function Error({ statusCode }: ErrorProps) {
+function ErrorPage({ statusCode }: ErrorProps) {
   return (
     <div
       style={{
@@ -29,9 +29,9 @@ function Error({ statusCode }: ErrorProps) {
   );
 }
 
-Error.getInitialProps = ({ res, err }: NextPageContext): ErrorProps => {
+ErrorPage.getInitialProps = ({ res, err }: NextPageContext): ErrorProps => {
   const statusCode = res?.statusCode ?? err?.statusCode ?? 404;
   return { statusCode };
 };
 
-export default Error;
+export default ErrorPage;

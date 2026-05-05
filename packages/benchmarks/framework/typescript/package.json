@@ -7,6 +7,9 @@
     "bench:quick": "bun run src/bench.ts --scenarios=single-message,startup-cold",
     "bench:full": "bun run src/bench.ts --all",
     "bench:real-llm": "bun run src/bench.ts --real-llm",
-    "bench:real-llm:quick": "bun run src/bench.ts --real-llm --scenarios=single-message,conversation-10"
+    "bench:real-llm:quick": "bun run src/bench.ts --real-llm --scenarios=single-message,conversation-10",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
   }
 }

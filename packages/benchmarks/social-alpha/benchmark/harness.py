@@ -399,6 +399,8 @@ def main(
     if system_name == "eliza":
         system_name = "eliza-bridge"
 
+    mgr = None
+
     if system_name == "oracle":
         console.print("\n[bold magenta]System: OracleSystem (perfect-knowledge validator)[/]")
         sys_instance: SocialAlphaSystem = OracleSystem(gt["calls"], gt["users"], gt["tokens"])
@@ -466,15 +468,19 @@ def main(
         all_messages = [c["content"] for c in gt["calls"]]
         sys_instance.warm_cache(all_messages)
 
-    # Run benchmarks
-    results = run_benchmark(sys_instance, gt, suites_to_run)
+    try:
+        # Run benchmarks
+        results = run_benchmark(sys_instance, gt, suites_to_run)
 
-    # Print results
-    print_results(results)
+        # Print results
+        print_results(results)
 
-    # Finalize system (save caches, print stats)
-    if hasattr(sys_instance, "finalize"):
-        sys_instance.finalize()
+        # Finalize system (save caches, print stats)
+        if hasattr(sys_instance, "finalize"):
+            sys_instance.finalize()
+    finally:
+        if mgr is not None:
+            mgr.stop()
 
     # Save results
     if output:

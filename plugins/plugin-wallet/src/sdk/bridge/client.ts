@@ -374,6 +374,7 @@ export class BridgeModule {
         error?: string;
       };
       try {
+        // @duplicate-component-audit-allow Circle attestation polling is not an LLM generation call.
         const res = await fetch(url, {
           headers: { Accept: "application/json" },
         });

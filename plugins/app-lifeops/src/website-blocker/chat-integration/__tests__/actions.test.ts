@@ -21,7 +21,7 @@ const { defaultSelfControlStatus } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../../actions/website-blocker.js", () => ({
+vi.mock("../../../actions/owner-website-block.js", () => ({
   blockWebsitesAction: {
     handler: vi.fn(async () => ({
       success: true,

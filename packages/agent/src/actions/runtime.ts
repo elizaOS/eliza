@@ -33,6 +33,10 @@ interface RuntimeSnapshotShape {
   meta: RuntimeMetaShape;
 }
 
+interface RuntimeStatusParams {
+  view?: "summary" | "counts";
+}
+
 export const getRuntimeStatusAction: Action = {
   name: "GET_RUNTIME_STATUS",
   similes: ["RUNTIME_STATUS", "AGENT_STATUS_RUNTIME", "RUNTIME_SNAPSHOT"],
@@ -41,7 +45,7 @@ export const getRuntimeStatusAction: Action = {
   descriptionCompressed:
     "fetch high-level runtime snapshot / api/runtime: agent state, model, plugin / action / provider / evaluator / service count",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message): Promise<ActionResult> => {
+  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,
@@ -60,14 +64,22 @@ export const getRuntimeStatusAction: Action = {
         };
       }
       const data = (await resp.json()) as RuntimeSnapshotShape;
+      const params = (options as HandlerOptions | undefined)?.parameters as
+        | RuntimeStatusParams
+        | undefined;
+      const view = params?.view === "counts" ? "counts" : "summary";
       const meta = data.meta ?? {};
-      const lines = [
-        `Runtime: ${data.runtimeAvailable ? "available" : "offline"}`,
-        `Agent: ${meta.agentName ?? "unknown"} (${meta.agentState ?? "?"})`,
-        `Model: ${meta.model ?? "n/a"}`,
-        `Plugins: ${meta.pluginCount ?? 0}, Actions: ${meta.actionCount ?? 0}, Providers: ${meta.providerCount ?? 0}, Evaluators: ${meta.evaluatorCount ?? 0}, Services: ${meta.serviceCount ?? 0}`,
-        `Generated: ${data.generatedAt}`,
-      ];
+      const countLine = `Plugins: ${meta.pluginCount ?? 0}, Actions: ${meta.actionCount ?? 0}, Providers: ${meta.providerCount ?? 0}, Evaluators: ${meta.evaluatorCount ?? 0}, Services: ${meta.serviceCount ?? 0}`;
+      const lines =
+        view === "counts"
+          ? [countLine]
+          : [
+              `Runtime: ${data.runtimeAvailable ? "available" : "offline"}`,
+              `Agent: ${meta.agentName ?? "unknown"} (${meta.agentState ?? "?"})`,
+              `Model: ${meta.model ?? "n/a"}`,
+              countLine,
+              `Generated: ${data.generatedAt}`,
+            ];
       return {
         success: true,
         text: lines.join("\n"),
@@ -75,7 +87,7 @@ export const getRuntimeStatusAction: Action = {
           runtimeAvailable: data.runtimeAvailable,
           actionCount: meta.actionCount ?? 0,
         },
-        data: { actionName: "GET_RUNTIME_STATUS", snapshot: data },
+        data: { actionName: "GET_RUNTIME_STATUS", snapshot: data, view },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -86,7 +98,18 @@ export const getRuntimeStatusAction: Action = {
       };
     }
   },
-  parameters: [],
+  parameters: [
+    {
+      name: "view",
+      description: "Runtime status view to return.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["summary", "counts"],
+        default: "summary",
+      },
+    },
+  ],
   examples: [
     [
       {

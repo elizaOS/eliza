@@ -261,7 +261,7 @@ export async function getHistory(config: AppConfig): Promise<ChatMessage[]> {
 
 export async function resetConversation(config: AppConfig): Promise<void> {
   const bundle = await getOrCreateRuntime(config);
-  await bundle.runtime.deleteAllMemories(bundle.roomId, "messages");
+  await bundle.runtime.deleteAllMemories([bundle.roomId], "messages");
 }
 
 export async function sendMessage(

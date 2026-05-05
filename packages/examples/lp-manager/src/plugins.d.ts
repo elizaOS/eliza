@@ -13,6 +13,7 @@ declare module "@elizaos/plugin-wallet" {
 
 declare module "@elizaos/plugin-sql" {
   import type { Plugin } from "@elizaos/core";
+
   const plugin: Plugin;
   export default plugin;
 }

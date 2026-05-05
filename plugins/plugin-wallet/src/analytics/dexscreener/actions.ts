@@ -7,6 +7,29 @@ import type {
 } from "@elizaos/core";
 import type { DexScreenerService } from "./service";
 
+function readParams(options?: unknown): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function readStringParam(options: unknown, ...keys: string[]): string | null {
+  const params = readParams(options);
+  for (const key of keys) {
+    const value = params[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
 // Search Action
 export const searchTokensAction: Action = {
   name: "DEXSCREENER_SEARCH",
@@ -16,7 +39,12 @@ export const searchTokensAction: Action = {
   validate: async (
     _runtime: IAgentRuntime,
     message: Memory,
+    _state?: unknown,
+    options?: unknown,
   ): Promise<boolean> => {
+    if (readStringParam(options, "tokenAddress", "address")) {
+      return true;
+    }
     const content =
       typeof message.content === "string"
         ? message.content
@@ -121,6 +149,14 @@ export const getTokenInfoAction: Action = {
   name: "DEXSCREENER_TOKEN_INFO",
   description:
     "Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
+  parameters: [
+    {
+      name: "tokenAddress",
+      description: "Token contract address to look up on DexScreener.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
 
   validate: async (
     _runtime: IAgentRuntime,
@@ -142,7 +178,7 @@ export const getTokenInfoAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _: any,
-    __: any,
+    options: any,
     callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
@@ -157,7 +193,10 @@ export const getTokenInfoAction: Action = {
         : message.content?.text || "";
 
     // Extract token address
-    const addressMatch = content.match(/0x[a-fA-F0-9]{40}/);
+    const explicitAddress = readStringParam(options, "tokenAddress", "address");
+    const addressMatch = explicitAddress
+      ? [explicitAddress]
+      : content.match(/0x[a-fA-F0-9]{40}/);
 
     if (!addressMatch) {
       callback({

@@ -1,9 +1,9 @@
 // Generate simple PNG icons for the extension
 // Run with: bun run icons/generate-icons.js
 
-import { writeFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

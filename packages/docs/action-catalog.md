@@ -508,11 +508,11 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ## Plugin / @elizaos/agent-orchestrator
 
-### CREATE_TASK
+### START_CODING_TASK
 
 - **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/start-coding-task.ts`
 - **Description:** Create one or more asynchronous task agents for any open-ended multi-step job.
-- **Similes:** `START_CODING_TASK`, `LAUNCH_CODING_TASK`, `RUN_CODING_TASK`, `START_AGENT_TASK`, `SPAWN_AND_PROVISION`, `CODE_THIS`, `LAUNCH_TASK`, `CREATE_SUBTASK`
+- **Similes:** `CREATE_TASK`, `LAUNCH_CODING_TASK`, `RUN_CODING_TASK`, `START_AGENT_TASK`, `SPAWN_AND_PROVISION`, `CODE_THIS`, `LAUNCH_TASK`, `CREATE_SUBTASK`
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes

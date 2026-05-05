@@ -6,11 +6,12 @@ const NOW = Date.parse("2026-05-05T12:00:00.000Z");
 type WorkloadCounts = Record<string, { allocated: number; retained: number }>;
 
 function makeNode(overrides: Partial<DockerNode> & Pick<DockerNode, "node_id">): DockerNode {
+  const { node_id, ...rest } = overrides;
   const now = new Date(NOW - 60 * 60 * 1000);
   return {
-    id: `id-${overrides.node_id}`,
-    node_id: overrides.node_id,
-    hostname: `${overrides.node_id}.example.com`,
+    id: `id-${node_id}`,
+    node_id,
+    hostname: `${node_id}.example.com`,
     ssh_port: 22,
     capacity: 4,
     enabled: true,
@@ -22,7 +23,7 @@ function makeNode(overrides: Partial<DockerNode> & Pick<DockerNode, "node_id">):
     metadata: {},
     created_at: now,
     updated_at: now,
-    ...overrides,
+    ...rest,
   };
 }
 

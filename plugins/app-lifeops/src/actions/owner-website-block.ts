@@ -943,13 +943,14 @@ export const ownerWebsiteBlockAction: Action & {
 // one canonical implementation.
 
 function makeSubactionShim(
+  shimName: string,
   fixedSubaction: WebsiteBlockSubaction,
   translate?: (
     legacy: Record<string, unknown>,
   ) => Record<string, unknown>,
 ): Action {
   return {
-    name: ACTION_NAME,
+    name: shimName,
     similes: ownerWebsiteBlockAction.similes,
     description: ownerWebsiteBlockAction.description,
     descriptionCompressed: ownerWebsiteBlockAction.descriptionCompressed,
@@ -982,6 +983,7 @@ function makeSubactionShim(
 }
 
 export const blockWebsitesAction: Action = makeSubactionShim(
+  "BLOCK_WEBSITES",
   "block",
   (legacy) => {
     const out: Record<string, unknown> = { ...legacy };
@@ -991,8 +993,15 @@ export const blockWebsitesAction: Action = makeSubactionShim(
     return out;
   },
 );
-export const unblockWebsitesAction: Action = makeSubactionShim("unblock");
-export const getWebsiteBlockStatusAction: Action = makeSubactionShim("status");
+export const unblockWebsitesAction: Action = makeSubactionShim(
+  "UNBLOCK_WEBSITES",
+  "unblock",
+);
+export const getWebsiteBlockStatusAction: Action = makeSubactionShim(
+  "GET_WEBSITE_BLOCK_STATUS",
+  "status",
+);
 export const requestWebsiteBlockingPermissionAction: Action = makeSubactionShim(
+  "REQUEST_WEBSITE_BLOCKING_PERMISSION",
   "request_permission",
 );

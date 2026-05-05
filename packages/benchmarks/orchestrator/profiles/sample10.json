@@ -6,13 +6,24 @@
     "agentbench": {
       "elizaos": true,
       "max_tasks": 1,
-      "env": ["os"]
+      "env": ["os"],
+      "no_docker": true
+    },
+    "app-eval": {
+      "task": "research-001"
     },
     "bfcl": {
       "sample": 10
     },
     "context_bench": {
       "quick": true
+    },
+    "clawbench": {
+      "scenario": "inbox_triage",
+      "start_server": true
+    },
+    "eliza_replay": {
+      "capture_path": "packages/benchmarks/eliza-adapter/fixtures/replay"
     },
     "evm": {
       "max_messages": 5
@@ -27,11 +38,14 @@
       "flags": "--scenarios=single-message,conversation-10,startup-cold"
     },
     "gaia": {
-      "max_questions": 3,
+      "max_questions": 1,
       "quick_test": true
     },
     "gauntlet": {
       "seed": 42
+    },
+    "hyperliquid_bench": {
+      "max_steps": 3
     },
     "hyperliquidbench": {
       "max_steps": 3
@@ -45,13 +59,19 @@
     },
     "osworld": {
       "max_tasks": 1,
-      "max_steps": 10
+      "max_steps": 10,
+      "dry_run": true
+    },
+    "openclaw_bench": {
+      "mode": "conceptual",
+      "task": "setup",
+      "start_server": true
     },
     "realm": {
       "max_tasks": 1
     },
     "rlm_bench": {
-      "mode": "eliza",
+      "mode": "stub",
       "tasks_per_config": 1,
       "context_lengths": [1000, 10000],
       "max_iterations": 5,
@@ -98,7 +118,7 @@
     },
     "gaia_orchestrated": {
       "dataset": "sample",
-      "max_questions": 5,
+      "max_questions": 1,
       "execution_mode": "orchestrated",
       "providers": ["claude-code", "swe-agent", "codex"],
       "strict_capabilities": true

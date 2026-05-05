@@ -66,8 +66,7 @@ export async function createBrowserPGlite(
   options: Partial<PGliteOptions> = {},
 ): Promise<PGlite> {
   const assets = await loadPGliteAssets();
-
-  return new PGlite({
+  const assetOptions = {
     ...options,
     fsBundle: assets.fsBundle,
     wasmModule: assets.wasmModule,
@@ -76,5 +75,7 @@ export async function createBrowserPGlite(
       fuzzystrmatch,
       ...options.extensions,
     },
-  });
+  };
+
+  return new PGlite(assetOptions as unknown as PGliteOptions);
 }

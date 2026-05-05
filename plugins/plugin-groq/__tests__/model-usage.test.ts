@@ -1,3 +1,4 @@
+import { runWithTrajectoryContext } from "@elizaos/core";
 import { generateObject, generateText } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,22 @@ function createRuntime(settings: Record<string, string> = {}) {
     emitEvent: vi.fn(async () => undefined),
     getSetting: vi.fn((key: string) => settings[key] ?? null),
   };
+}
+
+function createTrajectoryRuntime(settings: Record<string, string> = {}) {
+  const llmCalls: Record<string, unknown>[] = [];
+  const trajectoryLogger = {
+    isEnabled: () => true,
+    logLlmCall: vi.fn((call: Record<string, unknown>) => {
+      llmCalls.push(call);
+    }),
+  };
+  const runtime = {
+    ...createRuntime(settings),
+    getService: vi.fn((name: string) => (name === "trajectories" ? trajectoryLogger : null)),
+    getServicesByType: vi.fn((type: string) => (type === "trajectories" ? [trajectoryLogger] : [])),
+  };
+  return { runtime, llmCalls };
 }
 
 describe("groq MODEL_USED events", () => {
@@ -103,5 +120,43 @@ describe("groq MODEL_USED events", () => {
         }),
       })
     );
+  });
+
+  it("records text and object generation in active trajectories", async () => {
+    const { default: plugin } = await import("../index");
+    const { runtime, llmCalls } = createTrajectoryRuntime({
+      GROQ_API_KEY: "gsk_test",
+      GROQ_SMALL_MODEL: "small-model",
+    });
+
+    vi.mocked(generateText).mockResolvedValueOnce({
+      text: "trajectory text",
+      usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+    } as never);
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: { ok: true },
+      usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
+    } as never);
+
+    await runWithTrajectoryContext({ trajectoryStepId: "step-groq" }, async () => {
+      await plugin.models?.TEXT_SMALL?.(runtime as never, { prompt: "Say hello" });
+      await plugin.models?.OBJECT_SMALL?.(runtime as never, { prompt: "Return JSON" });
+    });
+
+    expect(llmCalls).toHaveLength(2);
+    expect(llmCalls[0]).toMatchObject({
+      stepId: "step-groq",
+      actionType: "ai.generateText",
+      response: "trajectory text",
+      promptTokens: 2,
+      completionTokens: 3,
+    });
+    expect(llmCalls[1]).toMatchObject({
+      stepId: "step-groq",
+      actionType: "ai.generateObject",
+      response: '{"ok":true}',
+      promptTokens: 4,
+      completionTokens: 5,
+    });
   });
 });

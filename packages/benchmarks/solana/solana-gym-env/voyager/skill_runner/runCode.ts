@@ -1,7 +1,5 @@
-import { exec } from "child_process";
-import { writeFileSync } from "fs";
-import path from "path";
-import { promisify } from "util";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
 
 // const execAsync = promisify(exec);
 
@@ -15,7 +13,7 @@ let transactionCount = 0;
 // In a real scenario, this would be a more complex object
 // that mirrors the Python SurfpoolEnv's capabilities.
 // For now, it simulates a transaction receipt.
-const surfpoolEnv = {
+const _surfpoolEnv = {
   // This is a simplified mock. In a real scenario, this would
   // interact with a Solana test validator or similar.
   // For the purpose of testing skills and returning a receipt,

@@ -222,7 +222,8 @@ try {
 // createRequire() in bun runtime; the await is resolved before module consumers read the binding.
 let pluginAgentOrchestrator: unknown = null;
 try {
-  pluginAgentOrchestrator = await import("@elizaos/plugin-agent-orchestrator");
+  const packageName = "@elizaos/plugin-agent-orchestrator";
+  pluginAgentOrchestrator = await import(packageName);
 } catch {
   pluginAgentOrchestrator = null;
 }
@@ -2492,21 +2493,23 @@ function installActionAliases(runtime: AgentRuntime): void {
   }
 
   // Compatibility alias: older prompts/docs still reference CODE_TASK,
-  // while agent-orchestrator exposes CREATE_TASK.
-  const createTaskAction = actions.find(
-    (action) => action?.name?.toUpperCase() === "CREATE_TASK",
-  );
-  if (createTaskAction) {
-    const similes = Array.isArray(createTaskAction.similes)
-      ? createTaskAction.similes
+  // while agent-orchestrator exposes START_CODING_TASK.
+  const codingTaskAction =
+    actions.find(
+      (action) => action?.name?.toUpperCase() === "START_CODING_TASK",
+    ) ??
+    actions.find((action) => action?.name?.toUpperCase() === "CREATE_TASK");
+  if (codingTaskAction) {
+    const similes = Array.isArray(codingTaskAction.similes)
+      ? codingTaskAction.similes
       : [];
     const hasCodeTaskAlias = similes.some(
       (simile) => simile.toUpperCase() === "CODE_TASK",
     );
     if (!hasCodeTaskAlias) {
-      createTaskAction.similes = [...similes, "CODE_TASK"];
+      codingTaskAction.similes = [...similes, "CODE_TASK"];
       logger.info(
-        "[eliza] Added action alias CODE_TASK -> CREATE_TASK for agent-orchestrator",
+        "[eliza] Added action alias CODE_TASK -> START_CODING_TASK for agent-orchestrator",
       );
     }
   }

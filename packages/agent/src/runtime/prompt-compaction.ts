@@ -124,6 +124,7 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
  */
 export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
   coding: new Set([
+    "START_CODING_TASK",
     "CREATE_TASK",
     "SPAWN_AGENT",
     "PROVISION_WORKSPACE",
@@ -232,7 +233,7 @@ export function buildFullParamActionSet(
  *
  * Targets lines like:
  *   (Eliza's internal thought: User wants me to spawn...)
- *   (Eliza's actions: REPLY, CREATE_TASK)
+ *   (Eliza's actions: REPLY, START_CODING_TASK)
  *   12:53 (17 minutes ago) [b850bc30-45f8-0041-a00a-83df46d8555d]
  *                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ UUID
  */
@@ -269,7 +270,7 @@ export function compactConversationHistory(prompt: string): string {
 
 /**
  * Strip the task-agent examples provider section when no task/coding intent
- * is detected. These examples teach the LLM how to use CREATE_TASK /
+ * is detected. These examples teach the LLM how to use START_CODING_TASK /
  * SPAWN_AGENT / FINALIZE_WORKSPACE and related aliases, which are unnecessary
  * for general chat, emote, or plugin-config messages.
  */

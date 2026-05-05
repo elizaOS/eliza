@@ -17,9 +17,11 @@ const {
   clearPersistedActiveServerMock,
   clientMock,
   completeOnboardingMock,
+  platformState,
   persistMobileRuntimeModeForServerTargetMock,
   savePersistedActiveServerMock,
   setStateMock,
+  shouldShowLocalOptionMock,
   startupDispatchMock,
   useAppMock,
 } = vi.hoisted(() => ({
@@ -37,9 +39,16 @@ const {
     setToken: vi.fn(),
   },
   completeOnboardingMock: vi.fn(),
+  platformState: {
+    isAndroid: false,
+    isDesktop: false,
+    isElizaOS: false,
+    isIOS: false,
+  },
   persistMobileRuntimeModeForServerTargetMock: vi.fn(),
   savePersistedActiveServerMock: vi.fn(),
   setStateMock: vi.fn(),
+  shouldShowLocalOptionMock: vi.fn(async () => false),
   startupDispatchMock: vi.fn(),
   useAppMock: vi.fn(),
 }));
@@ -66,14 +75,18 @@ vi.mock("../../onboarding/mobile-runtime-mode", () => ({
 }));
 
 vi.mock("../../onboarding/probe-local-agent", () => ({
-  shouldShowLocalOption: vi.fn(async () => false),
+  shouldShowLocalOption: shouldShowLocalOptionMock,
 }));
 
 vi.mock("../../platform/init", () => ({
-  isDesktopPlatform: vi.fn(() => false),
-  isAndroid: false,
-  isIOS: false,
-  isElizaOS: vi.fn(() => false),
+  isDesktopPlatform: vi.fn(() => platformState.isDesktop),
+  get isAndroid() {
+    return platformState.isAndroid;
+  },
+  get isIOS() {
+    return platformState.isIOS;
+  },
+  isElizaOS: vi.fn(() => platformState.isElizaOS),
 }));
 
 vi.mock("../../utils", () => ({
@@ -132,8 +145,21 @@ function setupApp() {
   });
 }
 
+function resetPlatformState() {
+  platformState.isAndroid = false;
+  platformState.isDesktop = false;
+  platformState.isElizaOS = false;
+  platformState.isIOS = false;
+}
+
+function runtimeChoiceNames(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll("[data-runtime-choice]")).map(
+    (node) => node.getAttribute("data-runtime-choice") ?? "",
+  );
+}
+
 describe("resolveRuntimeChoices", () => {
-  it("keeps the cloud entry path available on mobile, desktop, and web", () => {
+  it("offers Cloud, Local, and Remote on iOS and Android", () => {
     expect(
       resolveRuntimeChoices({
         isAndroid: false,
@@ -143,32 +169,8 @@ describe("resolveRuntimeChoices", () => {
         showLocalOption: false,
         localProbePending: false,
       }),
-    ).toEqual(["cloud", "remote"]);
-
-    expect(
-      resolveRuntimeChoices({
-        isAndroid: false,
-        isIOS: false,
-        isDesktop: true,
-        isDev: false,
-        showLocalOption: true,
-        localProbePending: false,
-      }),
     ).toEqual(["cloud", "local", "remote"]);
 
-    expect(
-      resolveRuntimeChoices({
-        isAndroid: false,
-        isIOS: false,
-        isDesktop: false,
-        isDev: false,
-        showLocalOption: false,
-        localProbePending: false,
-      }),
-    ).toEqual(["cloud", "remote"]);
-  });
-
-  it("keeps Cloud, Local, and Remote available on Android while the local probe resolves", () => {
     expect(
       resolveRuntimeChoices({
         isAndroid: true,
@@ -179,33 +181,113 @@ describe("resolveRuntimeChoices", () => {
         localProbePending: true,
       }),
     ).toEqual(["cloud", "local", "remote"]);
+  });
+});
 
-    expect(
-      resolveRuntimeChoices({
-        isAndroid: true,
-        isIOS: false,
-        isDesktop: false,
-        isDev: false,
-        showLocalOption: true,
-        localProbePending: false,
-      }),
-    ).toEqual(["cloud", "local", "remote"]);
+describe("RuntimeGate onboarding choices", () => {
+  beforeEach(() => {
+    resetPlatformState();
+    setupApp();
+    shouldShowLocalOptionMock.mockResolvedValue(false);
+  });
 
-    expect(
-      resolveRuntimeChoices({
-        isAndroid: true,
-        isIOS: false,
-        isDesktop: false,
-        isDev: false,
-        showLocalOption: false,
-        localProbePending: false,
-      }),
-    ).toEqual(["cloud", "local", "remote"]);
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    resetPlatformState();
+  });
+
+  it("shows Cloud, Local, and Remote on iOS", () => {
+    platformState.isIOS = true;
+
+    const { container } = render(<RuntimeGate />);
+
+    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
+  });
+
+  it("shows Cloud, Local, and Remote on Android while the local probe is pending", () => {
+    platformState.isAndroid = true;
+
+    const { container } = render(<RuntimeGate />);
+
+    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
+  });
+
+  it("starts the iOS Local path without persisting a localhost Cloud backend", () => {
+    platformState.isIOS = true;
+
+    const { container } = render(<RuntimeGate />);
+
+    fireEvent.click(
+      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
+
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(clientMock.setToken).toHaveBeenCalledWith(null);
+    expect(clearPersistedActiveServerMock).toHaveBeenCalled();
+    expect(savePersistedActiveServerMock).not.toHaveBeenCalled();
+    expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
+      "local",
+    );
+    expect(setStateMock).toHaveBeenCalledWith(
+      "onboardingServerTarget",
+      "local",
+    );
+    expect(startupDispatchMock).toHaveBeenCalledWith({
+      type: "SPLASH_CONTINUE",
+    });
+    expect(completeOnboardingMock).toHaveBeenCalled();
+  });
+
+  it("connects the iOS Remote path to the user supplied agent URL", () => {
+    platformState.isIOS = true;
+
+    const { container } = render(<RuntimeGate />);
+
+    fireEvent.click(
+      container.querySelector('[data-runtime-choice="remote"]') as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /select remote/i }));
+    fireEvent.input(
+      screen.getByPlaceholderText("https://your-agent.example.com"),
+      {
+        target: { value: "https://remote.example.com" },
+      },
+    );
+    fireEvent.input(screen.getByPlaceholderText("Access token (optional)"), {
+      target: { value: "remote-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^connect$/i }));
+
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "https://remote.example.com",
+    );
+    expect(clientMock.setToken).toHaveBeenCalledWith("remote-token");
+    expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
+      id: "remote:https://remote.example.com",
+      kind: "remote",
+      label: "https://remote.example.com",
+      apiBase: "https://remote.example.com",
+      accessToken: "remote-token",
+    });
+    expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
+      "remote",
+    );
+    expect(setStateMock).toHaveBeenCalledWith(
+      "onboardingServerTarget",
+      "remote",
+    );
+    expect(startupDispatchMock).toHaveBeenCalledWith({
+      type: "SPLASH_CONTINUE",
+    });
+    expect(completeOnboardingMock).toHaveBeenCalled();
   });
 });
 
 describe("RuntimeGate cloud provisioning startup handoff", () => {
   beforeEach(() => {
+    resetPlatformState();
     setupApp();
     clientMock.getCloudCompatAgents.mockResolvedValue({
       success: true,
@@ -253,6 +335,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     cleanup();
     vi.useRealTimers();
     vi.clearAllMocks();
+    resetPlatformState();
   });
 
   it("polls an async provisioning job, connects to the running agent, and completes startup", async () => {

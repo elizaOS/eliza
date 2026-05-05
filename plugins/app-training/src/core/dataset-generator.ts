@@ -15,7 +15,7 @@
  */
 
 import type { Trajectory } from "@elizaos/agent/types/trajectory";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, RecordLlmCallDetails } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
@@ -248,26 +248,14 @@ export interface TeacherModel {
   generate(systemPrompt: string, userPrompt: string): Promise<string>;
 }
 
-type TeacherCallLog = {
-  runtime?: IAgentRuntime;
-  model: string;
-  modelVersion?: string;
-  systemPrompt: string;
-  userPrompt: string;
-  response: string;
-  temperature: number;
-  maxTokens: number;
-  actionType: string;
-  latencyMs: number;
-  promptTokens?: number;
-  completionTokens?: number;
-};
-
-const logActiveTrajectoryLlmCall =
-  "logActiveTrajectoryLlmCall" in ElizaCore &&
-  typeof ElizaCore.logActiveTrajectoryLlmCall === "function"
-    ? ElizaCore.logActiveTrajectoryLlmCall
-    : undefined;
+const recordLlmCall =
+  "recordLlmCall" in ElizaCore && typeof ElizaCore.recordLlmCall === "function"
+    ? ElizaCore.recordLlmCall
+    : async <T>(
+        _runtime: IAgentRuntime | undefined,
+        _details: RecordLlmCallDetails,
+        callback: () => Promise<T> | T,
+      ): Promise<T> => await callback();
 
 const withStandaloneTrajectory =
   "withStandaloneTrajectory" in ElizaCore &&
@@ -278,36 +266,6 @@ const withStandaloneTrajectory =
         _options: Record<string, unknown>,
         callback: () => Promise<T>,
       ): Promise<T> => await callback();
-
-function logTeacherCall({
-  runtime,
-  model,
-  modelVersion,
-  systemPrompt,
-  userPrompt,
-  response,
-  temperature,
-  maxTokens,
-  actionType,
-  latencyMs,
-  promptTokens,
-  completionTokens,
-}: TeacherCallLog): void {
-  logActiveTrajectoryLlmCall?.(runtime, {
-    model,
-    modelVersion,
-    systemPrompt,
-    userPrompt,
-    response,
-    temperature,
-    maxTokens,
-    purpose: "training.teacher",
-    actionType,
-    latencyMs,
-    promptTokens,
-    completionTokens,
-  });
-}
 
 /**
  * Create a teacher model using the Anthropic API.
@@ -330,53 +288,51 @@ export function createAnthropicTeacher(
           },
         },
         async () => {
-          const startedAt = Date.now();
-          const response = await fetch(
-            "https://api.anthropic.com/v1/messages",
-            {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                "x-api-key": apiKey,
-                "anthropic-version": "2023-06-01",
-              },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 4096,
-                temperature: 1,
-                system: systemPrompt,
-                messages: [{ role: "user", content: userPrompt }],
-              }),
-            },
-          );
-          if (!response.ok) {
-            throw new Error(
-              `Anthropic API error: ${response.status} ${await response.text()}`,
-            );
-          }
-          const data = (await response.json()) as {
-            content: Array<{ type: string; text: string }>;
-            usage?: {
-              input_tokens?: number;
-              output_tokens?: number;
-            };
-          };
-          const text = data.content[0]?.text ?? "";
-          logTeacherCall({
-            runtime,
+          const details: RecordLlmCallDetails = {
             model: "anthropic/claude-sonnet-4.6",
             modelVersion: "claude-sonnet-4-6",
             systemPrompt,
             userPrompt,
-            response: text,
             temperature: 1,
             maxTokens: 4096,
+            purpose: "training.teacher",
             actionType: "training.teacher.anthropic.generate",
-            latencyMs: Date.now() - startedAt,
-            promptTokens: data.usage?.input_tokens,
-            completionTokens: data.usage?.output_tokens,
+          };
+          return await recordLlmCall(runtime, details, async () => {
+            const response = await fetch(
+              "https://api.anthropic.com/v1/messages",
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-api-key": apiKey,
+                  "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                  model: "claude-sonnet-4-6",
+                  max_tokens: 4096,
+                  temperature: 1,
+                  system: systemPrompt,
+                  messages: [{ role: "user", content: userPrompt }],
+                }),
+              },
+            );
+            if (!response.ok) {
+              throw new Error(
+                `Anthropic API error: ${response.status} ${await response.text()}`,
+              );
+            }
+            const data = (await response.json()) as {
+              content: Array<{ type: string; text: string }>;
+              usage?: {
+                input_tokens?: number;
+                output_tokens?: number;
+              };
+            };
+            details.promptTokens = data.usage?.input_tokens;
+            details.completionTokens = data.usage?.output_tokens;
+            return data.content[0]?.text ?? "";
           });
-          return text;
         },
       );
     },
@@ -404,55 +360,54 @@ export function createOpenAITeacher(
           },
         },
         async () => {
-          const startedAt = Date.now();
-          const response = await fetch(
-            "https://api.openai.com/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                authorization: `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify({
-                model: "gpt-5.4",
-                messages: [
-                  { role: "system", content: systemPrompt },
-                  { role: "user", content: userPrompt },
-                ],
-                max_tokens: 4096,
-                temperature: 0.9,
-              }),
-            },
-          );
-          if (!response.ok) {
-            throw new Error(
-              `OpenAI API error: ${response.status} ${await response.text()}`,
-            );
-          }
-          const data = (await response.json()) as {
-            model?: string;
-            choices: Array<{ message: { content: string } }>;
-            usage?: {
-              prompt_tokens?: number;
-              completion_tokens?: number;
-            };
-          };
-          const text = data.choices[0]?.message?.content ?? "";
-          logTeacherCall({
-            runtime,
+          const details: RecordLlmCallDetails = {
             model: "openai/gpt-5.4",
-            modelVersion: data.model,
+            modelVersion: "gpt-5.4",
             systemPrompt,
             userPrompt,
-            response: text,
             temperature: 0.9,
             maxTokens: 4096,
+            purpose: "training.teacher",
             actionType: "training.teacher.openai.generate",
-            latencyMs: Date.now() - startedAt,
-            promptTokens: data.usage?.prompt_tokens,
-            completionTokens: data.usage?.completion_tokens,
+          };
+          return await recordLlmCall(runtime, details, async () => {
+            const response = await fetch(
+              "https://api.openai.com/v1/chat/completions",
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  authorization: `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                  model: "gpt-5.4",
+                  messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt },
+                  ],
+                  max_tokens: 4096,
+                  temperature: 0.9,
+                }),
+              },
+            );
+            if (!response.ok) {
+              throw new Error(
+                `OpenAI API error: ${response.status} ${await response.text()}`,
+              );
+            }
+            const data = (await response.json()) as {
+              model?: string;
+              choices: Array<{ message: { content: string } }>;
+              usage?: {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+              };
+            };
+            details.modelVersion = data.model;
+            details.promptTokens = data.usage?.prompt_tokens;
+            details.completionTokens = data.usage?.completion_tokens;
+            return data.choices[0]?.message?.content ?? "";
           });
-          return text;
         },
       );
     },

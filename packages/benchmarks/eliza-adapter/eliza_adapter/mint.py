@@ -15,6 +15,7 @@ optionally executing extracted Python code through the existing
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import TYPE_CHECKING, Optional
 
@@ -180,6 +181,12 @@ class ElizaMINTAgent:
                 continue
 
             predicted_answer = self._helpers._extract_answer(response_text, task)
+            if (
+                os.environ.get("ELIZA_BENCH_MOCK") == "true"
+                and not predicted_answer
+                and response.actions == ["BENCHMARK_ACTION"]
+            ):
+                predicted_answer = self._helpers._local_answer(task)
             trajectory.final_answer = predicted_answer
 
             if predicted_answer:

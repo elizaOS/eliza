@@ -53,6 +53,37 @@ type SearchIntent = {
   scope: "all" | "products" | "orders" | "customers";
 };
 
+type SearchStoreParams = {
+  query?: unknown;
+  scope?: unknown;
+  limit?: unknown;
+};
+
+function readSearchStoreParams(
+  options?: HandlerOptions,
+): { intent: SearchIntent | null; limit: number } {
+  const params = (options?.parameters ?? {}) as SearchStoreParams;
+  const query =
+    typeof params.query === "string" && params.query.trim().length > 0
+      ? params.query.trim()
+      : null;
+  const scope =
+    params.scope === "products" ||
+    params.scope === "orders" ||
+    params.scope === "customers" ||
+    params.scope === "all"
+      ? params.scope
+      : "all";
+  const limit =
+    typeof params.limit === "number" && Number.isFinite(params.limit)
+      ? Math.max(1, Math.floor(params.limit))
+      : 5;
+  return {
+    intent: query ? { query, scope } : null,
+    limit,
+  };
+}
+
 async function classifyIntent(
   runtime: IAgentRuntime,
   text: string,
@@ -140,7 +171,8 @@ export const searchStoreAction: Action = {
 
     const text =
       typeof message.content?.text === "string" ? message.content.text : "";
-    const intent = await classifyIntent(runtime, text);
+    const structured = readSearchStoreParams(_options);
+    const intent = structured.intent ?? (await classifyIntent(runtime, text));
 
     if (!intent) {
       await callback?.({
@@ -157,7 +189,7 @@ export const searchStoreAction: Action = {
       if (intent.scope === "all" || intent.scope === "products") {
         const result = await svc.listProducts({
           query: intent.query,
-          first: 5,
+          first: structured.limit,
         });
         if (result.products.length > 0) {
           sections.push(
@@ -169,7 +201,10 @@ export const searchStoreAction: Action = {
 
       // Search orders
       if (intent.scope === "all" || intent.scope === "orders") {
-        const result = await svc.listOrders({ query: intent.query, first: 5 });
+        const result = await svc.listOrders({
+          query: intent.query,
+          first: structured.limit,
+        });
         if (result.orders.length > 0) {
           sections.push(
             `**Orders** (${result.orders.length}):\n${result.orders.map(formatOrderBrief).join("\n")}`,
@@ -182,7 +217,7 @@ export const searchStoreAction: Action = {
       if (intent.scope === "all" || intent.scope === "customers") {
         const result = await svc.listCustomers({
           query: intent.query,
-          first: 5,
+          first: structured.limit,
         });
         if (result.customers.length > 0) {
           sections.push(
@@ -213,6 +248,30 @@ export const searchStoreAction: Action = {
       return { success: false, error: msg };
     }
   },
+
+  parameters: [
+    {
+      name: "query",
+      description: "Search term for Shopify products, orders, or customers.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "scope",
+      description: "Restrict search to all, products, orders, or customers.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["all", "products", "orders", "customers"],
+      },
+    },
+    {
+      name: "limit",
+      description: "Maximum results per searched Shopify category.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
 
   examples,
 };

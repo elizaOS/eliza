@@ -271,6 +271,20 @@ export const mysticismPlugin: Plugin = {
           options,
           callback
         ),
+      parameters: [
+        {
+          name: "entityId",
+          description: "Optional entity id whose active reading payment should be checked.",
+          required: false,
+          schema: { type: "string" as const },
+        },
+        {
+          name: "roomId",
+          description: "Optional room id whose active reading payment should be checked.",
+          required: false,
+          schema: { type: "string" as const },
+        },
+      ],
       examples: [
         [
           {

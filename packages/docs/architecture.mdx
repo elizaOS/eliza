@@ -218,7 +218,7 @@ Actions are not wrapped because elizaOS's own action dispatch already has error 
 
 The runtime applies compatibility patches after creation:
 - `installRuntimeMethodBindings()` -- binds `getConversationLength()` to the runtime instance, fixing private-field access errors when plugins store and later invoke the method without a receiver
-- `installActionAliases()` -- adds backward-compatible action aliases (e.g., `CODE_TASK` maps to `CREATE_TASK`)
+- `installActionAliases()` -- adds backward-compatible action aliases (e.g., `CODE_TASK` maps to `START_CODING_TASK`)
 
 ## Plugin Loading Pipeline
 

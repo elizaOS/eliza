@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import datetime
@@ -342,7 +343,7 @@ class ElizaBridgeEVMExplorer:
     def _save_checkpoint(self) -> None:
         from benchmarks.evm.eliza_explorer import BENCH_DIR
 
-        d = BENCH_DIR / "metrics"
+        d = Path(os.getenv("METRICS_DIR", str(BENCH_DIR / "metrics")))
         d.mkdir(exist_ok=True)
         mc = dict(self._metrics)
         selectors_by = mc.get("selectors_by_contract")

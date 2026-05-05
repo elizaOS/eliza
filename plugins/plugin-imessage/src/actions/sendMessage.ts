@@ -35,6 +35,33 @@ interface SendMessageParams {
   to: string;
 }
 
+function parseSendMessageParams(response: string): SendMessageParams | null {
+  const toon = parseToonKeyValue<Record<string, unknown>>(response);
+  if (toon?.text) {
+    return {
+      text: String(toon.text),
+      to: String(toon.to || "current"),
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(response) as unknown;
+    if (parsed && typeof parsed === "object" && "text" in parsed) {
+      const record = parsed as Record<string, unknown>;
+      if (record.text) {
+        return {
+          text: String(record.text),
+          to: String(record.to || "current"),
+        };
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export const sendMessage: Action = {
   name: "IMESSAGE_SEND_MESSAGE",
   similes: ["SEND_IMESSAGE", "IMESSAGE_TEXT", "TEXT_IMESSAGE", "SEND_IMSG"],
@@ -132,12 +159,9 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+      const parsed = parseSendMessageParams(response);
       if (parsed?.text) {
-        msgInfo = {
-          text: String(parsed.text),
-          to: String(parsed.to || "current"),
-        };
+        msgInfo = parsed;
         break;
       }
     }

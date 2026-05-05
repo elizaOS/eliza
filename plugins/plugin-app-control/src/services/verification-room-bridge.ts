@@ -4,7 +4,7 @@
  * Closes the chat loop for the APP/PLUGIN create flow.
  *
  * The dispatchers in `actions/app-create.ts` and the plugin-manager's
- * `plugin-handlers/create.ts` start a coding agent via CREATE_TASK and
+ * `plugin-handlers/create.ts` start a coding agent via START_CODING_TASK and
  * return immediately ("Started task; verification will run when it's
  * done"). The user's chat turn ends. When the AppVerificationService
  * eventually verifies the workdir, the swarm coordinator broadcasts a
@@ -26,7 +26,7 @@
  * filter does not apply here.
  *
  * Owner gating: this service only writes to the originRoomId that the
- * dispatcher itself stamped onto the CREATE_TASK metadata. The
+ * dispatcher itself stamped onto the START_CODING_TASK metadata. The
  * dispatcher already enforced `hasOwnerAccess` at request time. The
  * bridge does not bypass any access check — it simply replies in the
  * same room the original create request came from.

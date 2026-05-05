@@ -2,8 +2,9 @@ import type {
   TextToSpeechParams as CoreTextToSpeechParams,
   TranscriptionParams as CoreTranscriptionParams,
   IAgentRuntime,
+  RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, recordLlmCall } from "@elizaos/core";
 import type {
   TextToSpeechParams as LocalTextToSpeechParams,
   TranscriptionParams as LocalTranscriptionParams,
@@ -53,6 +54,7 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
 }
 
 async function fetchAudioFromUrl(url: string): Promise<Blob> {
+  // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch audio from URL: ${response.status}`);
@@ -132,20 +134,40 @@ export async function handleTranscription(
   }
 
   const baseURL = getBaseURL(runtime);
-  const response = await fetch(`${baseURL}/audio/transcriptions`, {
-    method: "POST",
-    headers: getAuthHeader(runtime),
-    body: formData,
+  const details: RecordLlmCallDetails = {
+    model: modelName,
+    systemPrompt: extraParams.prompt ?? "",
+    userPrompt: [
+      `audio transcription request: filename=${filename}`,
+      `mimeType=${mimeType}`,
+      extraParams.language ? `language=${extraParams.language}` : "",
+      extraParams.responseFormat ? `responseFormat=${extraParams.responseFormat}` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    temperature: extraParams.temperature ?? 0,
+    maxTokens: 0,
+    purpose: "external_llm",
+    actionType: "openai.audio.transcriptions.create",
+  };
+  const data = await recordLlmCall(runtime, details, async () => {
+    const response = await fetch(`${baseURL}/audio/transcriptions`, {
+      method: "POST",
+      headers: getAuthHeader(runtime),
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      throw new Error(
+        `OpenAI transcription failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    const result = (await response.json()) as OpenAITranscriptionResponse;
+    details.response = result.text;
+    return result;
   });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
-    throw new Error(
-      `OpenAI transcription failed: ${response.status} ${response.statusText} - ${errorText}`
-    );
-  }
-
-  const data = (await response.json()) as OpenAITranscriptionResponse;
   return data.text;
 }
 
@@ -208,20 +230,35 @@ export async function handleTextToSpeech(
     requestBody.instructions = instructions;
   }
 
-  const response = await fetch(`${baseURL}/audio/speech`, {
-    method: "POST",
-    headers: {
-      ...getAuthHeader(runtime),
-      "Content-Type": "application/json",
-      ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
-    },
-    body: JSON.stringify(requestBody),
+  const details: RecordLlmCallDetails = {
+    model,
+    systemPrompt: instructions ?? "",
+    userPrompt: text,
+    temperature: 0,
+    maxTokens: 0,
+    purpose: "external_llm",
+    actionType: "openai.audio.speech.create",
+  };
+  return recordLlmCall(runtime, details, async () => {
+    const response = await fetch(`${baseURL}/audio/speech`, {
+      method: "POST",
+      headers: {
+        ...getAuthHeader(runtime),
+        "Content-Type": "application/json",
+        ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      throw new Error(
+        `OpenAI TTS failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    const audioBuffer = await response.arrayBuffer();
+    details.response = `[audio bytes=${audioBuffer.byteLength} format=${format}]`;
+    return audioBuffer;
   });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
-    throw new Error(`OpenAI TTS failed: ${response.status} ${response.statusText} - ${errorText}`);
-  }
-
-  return response.arrayBuffer();
 }

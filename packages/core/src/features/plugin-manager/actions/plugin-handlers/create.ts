@@ -266,11 +266,14 @@ async function dispatchCodingAgent({
 	pluginName: string;
 	callback?: HandlerCallback;
 }): Promise<DispatchResult> {
-	const createTask = runtime.actions?.find(
-		(action) => action.name === "CREATE_TASK",
-	);
+	const createTask =
+		runtime.actions?.find((action) => action.name === "START_CODING_TASK") ??
+		runtime.actions?.find((action) => action.name === "CREATE_TASK");
 	if (!createTask) {
-		return { dispatched: false, reason: "CREATE_TASK action not registered" };
+		return {
+			dispatched: false,
+			reason: "START_CODING_TASK action not registered",
+		};
 	}
 
 	const fakeMessage = {
@@ -308,7 +311,7 @@ async function dispatchCodingAgent({
 				result?.text ??
 				(typeof result?.error === "string"
 					? result.error
-					: "CREATE_TASK failed to start"),
+					: "START_CODING_TASK failed to start"),
 		};
 	}
 
@@ -316,7 +319,7 @@ async function dispatchCodingAgent({
 	if (agents.length === 0) {
 		return {
 			dispatched: false,
-			reason: "CREATE_TASK did not return a tracked task status",
+			reason: "START_CODING_TASK did not return a tracked task status",
 		};
 	}
 	return { dispatched: true, agents };

@@ -8,7 +8,7 @@ export {
   getWebsiteBlockStatusAction,
   requestWebsiteBlockingPermissionAction,
   unblockWebsitesAction,
-} from "../actions/website-blocker.ts";
+} from "../actions/owner-website-block.ts";
 
 export { websiteBlockerProvider } from "../providers/website-blocker.ts";
 export { getSelfControlAccess, SELFCONTROL_ACCESS_ERROR } from "./access.ts";

@@ -17,9 +17,9 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
-import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { v4 as uuidv4 } from "uuid";

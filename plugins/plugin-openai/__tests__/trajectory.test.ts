@@ -133,4 +133,38 @@ describe("OpenAI trajectory wrapping", () => {
       "openai.responses.create",
     ]);
   });
+
+  it("records audio transcription and speech generation calls", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/audio/transcriptions")) {
+        return new Response(JSON.stringify({ text: "transcribed audio" }), { status: 200 });
+      }
+      if (url.endsWith("/audio/speech")) {
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { handleTranscription, handleTextToSpeech } = await import("../models/audio");
+    const { runtime, llmCalls } = createTrajectoryRuntime();
+
+    await runWithTrajectoryContext({ trajectoryStepId: "step-openai-audio" }, async () => {
+      await handleTranscription(runtime, new Blob([new Uint8Array([1])], { type: "audio/webm" }));
+      await handleTextToSpeech(runtime, "Speak clearly");
+    });
+
+    expect(llmCalls.map((call) => call.actionType)).toEqual([
+      "openai.audio.transcriptions.create",
+      "openai.audio.speech.create",
+    ]);
+    expect(llmCalls[0]).toMatchObject({
+      stepId: "step-openai-audio",
+      response: "transcribed audio",
+    });
+    expect(llmCalls[1]).toMatchObject({
+      stepId: "step-openai-audio",
+      response: "[audio bytes=3 format=mp3]",
+    });
+  });
 });

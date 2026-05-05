@@ -65,7 +65,7 @@ const agent = {
 
 | Action | Description |
 |--------|-------------|
-| `CREATE_TASK` | Create an asynchronous task-agent job for substantial work |
+| `START_CODING_TASK` | Create an asynchronous task-agent job for substantial work |
 | `SPAWN_AGENT` | Spawn a task agent session immediately |
 | `SEND_TO_AGENT` | Send input or keys to a running task agent |
 | `LIST_AGENTS` | List active sessions and current task status |
@@ -73,7 +73,7 @@ const agent = {
 | `PROVISION_WORKSPACE` | Clone a repo or create a worktree |
 | `FINALIZE_WORKSPACE` | Commit, push, and optionally create PR |
 
-Legacy action names such as `START_CODING_TASK`, `SPAWN_CODING_AGENT`, `SEND_TO_CODING_AGENT`, `LIST_CODING_AGENTS`, and `STOP_CODING_AGENT` remain supported as aliases.
+Legacy action names such as `CREATE_TASK`, `SPAWN_CODING_AGENT`, `SEND_TO_CODING_AGENT`, `LIST_CODING_AGENTS`, and `STOP_CODING_AGENT` remain supported as aliases.
 
 ### Example Conversation
 

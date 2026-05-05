@@ -1,7 +1,5 @@
-import { render, RenderOptions } from "@testing-library/react";
-import { ReactElement } from "react";
-import { vi } from "vitest";
-import type { WalletAddresses } from "../../src/types";
+import { type RenderOptions, render } from "@testing-library/react";
+import type { ReactElement } from "react";
 
 // Mock API responses
 export const mockApiResponses = {
@@ -83,7 +81,7 @@ export async function waitForElement<T>(
     try {
       const result = callback();
       if (result) return result;
-    } catch (e) {
+    } catch (_e) {
       // Continue waiting
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
