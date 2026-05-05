@@ -28,8 +28,8 @@ import {
   buildCredentialsFromUserResponse,
   clearCredentials,
   saveCredentials,
-} from "../services/github-credentials";
-import { handleGitHubRoutes } from "./github-routes";
+} from "@elizaos/app-core/services/github-credentials";
+import { handleGitHubRoutes } from "../../routes/github-routes";
 
 interface FakeResponseRecord {
   status: number;

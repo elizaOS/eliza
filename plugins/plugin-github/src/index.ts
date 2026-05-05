@@ -19,12 +19,13 @@
  * default to `"user"`; the other actions default to `"agent"`.
  */
 
-import type { Plugin } from "@elizaos/core";
+import type { Plugin, Route } from "@elizaos/core";
 import { assignIssueAction } from "./actions/assign-issue.js";
 import { createIssueAction } from "./actions/create-issue.js";
 import { listPrsAction } from "./actions/list-prs.js";
 import { notificationTriageAction } from "./actions/notification-triage.js";
 import { reviewPrAction } from "./actions/review-pr.js";
+import { createGitHubRouteHandler } from "./routes/github-routes.js";
 import { GitHubService } from "./services/github-service.js";
 
 export { assignIssueAction } from "./actions/assign-issue.js";
@@ -39,6 +40,27 @@ export { reviewPrAction } from "./actions/review-pr.js";
 export { GitHubService } from "./services/github-service.js";
 export * from "./types.js";
 
+const githubRoutes: Route[] = [
+  {
+    type: "GET",
+    path: "/api/github/token",
+    rawPath: true,
+    handler: createGitHubRouteHandler("GET"),
+  },
+  {
+    type: "POST",
+    path: "/api/github/token",
+    rawPath: true,
+    handler: createGitHubRouteHandler("POST"),
+  },
+  {
+    type: "DELETE",
+    path: "/api/github/token",
+    rawPath: true,
+    handler: createGitHubRouteHandler("DELETE"),
+  },
+];
+
 export const githubPlugin: Plugin = {
   name: "github",
   description:
@@ -51,6 +73,7 @@ export const githubPlugin: Plugin = {
     assignIssueAction,
     notificationTriageAction,
   ],
+  routes: githubRoutes,
 };
 
 export default githubPlugin;
