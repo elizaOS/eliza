@@ -44,97 +44,10 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from lib.runtime_phases import classify_phase as classify  # noqa: E402
+
 log = logging.getLogger("classify")
-
-
-# ───────────────────────────── phase mapping ─────────────────────────────────
-#
-# Source of truth: docs/dataset/COVERAGE_AUDIT.md.
-# Anything not in these sets falls through to OOB.
-
-PHASE_1_SHOULD_RESPOND = frozenset({
-    "should_respond",
-    "should_respond_with_context",
-    "dialogue_routing",
-    "multiparty_should_respond",
-    "should_mute_room",
-    "should_unmute_room",
-    "should_follow_room",
-    "should_unfollow_room",
-    "context_routing",
-})
-
-PHASE_2_RESPONSE = frozenset({
-    "message_handler",
-    "agent_trace",
-    "reply",
-    "casual_reply",
-    "tool_call",
-    "mcp_tool_call",
-    "mcp_routing",
-    "shell_command",
-    "mobile_action",
-    "scam_defense",
-    "multi_step_decision",
-    "message_classifier",
-    "n8n_workflow_generation",
-})
-
-PHASE_3_ACTION = frozenset({
-    "add_contact",
-    "remove_contact",
-    "choose_option",
-    "extract_option",
-    "extract_secrets",
-    "extract_secret_operation",
-    "extract_secret_request",
-    "image_description",
-    "image_generation",
-    "post_creation",
-    "post_action_decision",
-    "autonomy_decide",
-    "autonomy_summary",
-    "autonomy_choose",
-    "autonomy_evaluate",
-})
-
-PHASE_4_EVALUATION = frozenset({
-    "reflection",
-    "reflection_evaluator",
-    "fact_extraction",
-    "fact_extractor",
-    "summarization",
-    "initial_summarization",
-    "relationship_extraction",
-    "skill_extraction",
-    "skill_refinement",
-    "long_term_extraction",
-})
-
-# task_types we KNOW are out-of-band (drop or transform — see audit doc)
-KNOWN_OOB = frozenset({
-    "reasoning_cot",
-    "claude_distill",
-    "abliteration_harmful",
-    "abliteration_harmless",
-    "dataset",
-    "prompt_entry",
-})
-
-
-def classify(task_type: str | None) -> str:
-    if not task_type:
-        return "OOB"
-    tt = task_type.strip().lower()
-    if tt in PHASE_1_SHOULD_RESPOND:
-        return "1"
-    if tt in PHASE_2_RESPONSE:
-        return "2"
-    if tt in PHASE_3_ACTION:
-        return "3"
-    if tt in PHASE_4_EVALUATION:
-        return "4"
-    return "OOB"
 
 
 # ───────────────────────────── input readers ─────────────────────────────────

@@ -37,6 +37,9 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+from lib.runtime_phases import classify_phase, PHASE_OOB  # noqa: E402
+
 NORMALIZED = ROOT / "data" / "normalized"
 SYNTHESIZED = ROOT / "data" / "synthesized"
 FINAL = ROOT / "data" / "final"
@@ -157,6 +160,17 @@ def main() -> int:
                     help="cap final train size after split (0 = no cap)")
     ap.add_argument("--val-frac", type=float, default=0.04)
     ap.add_argument("--test-frac", type=float, default=0.01)
+    ap.add_argument(
+        "--oob-policy",
+        choices=("drop", "route", "fail", "allow"),
+        default="route",
+        help=(
+            "How to handle records whose task_type does not map to a runtime "
+            "phase (see docs/dataset/COVERAGE_AUDIT.md). drop=silently exclude, "
+            "route=write to data/final/out_of_band.jsonl and exclude, fail=hard "
+            "error if any encountered, allow=pass through (legacy)."
+        ),
+    )
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -396,6 +410,10 @@ def main() -> int:
     by_task_type = Counter()
     n_train = n_val = n_test = 0
     n_group_forced = 0
+    n_oob = 0
+    by_oob_task_type: Counter = Counter()
+    oob_path = FINAL / "out_of_band.jsonl"
+    foob = oob_path.open("w", encoding="utf-8") if args.oob_policy == "route" else None
 
     with train_path.open("w", encoding="utf-8") as ftr, \
          val_path.open("w", encoding="utf-8") as fva, \
@@ -433,6 +451,21 @@ def main() -> int:
                     rec_tt = (rec.get("metadata") or {}).get("task_type") or ""
                     if rec_tt in ABLITERATION_TASK_TYPES:
                         continue
+                    if classify_phase(rec_tt) == PHASE_OOB:
+                        n_oob += 1
+                        by_oob_task_type[rec_tt or "<missing>"] += 1
+                        if args.oob_policy == "fail":
+                            log.error(
+                                "OOB record (task_type=%r) in %s; pack rejected. "
+                                "See docs/dataset/COVERAGE_AUDIT.md.",
+                                rec_tt, slug,
+                            )
+                            return 2
+                        if args.oob_policy in ("drop", "route"):
+                            if foob is not None:
+                                foob.write(line + "\n")
+                            continue
+                        # allow: legacy behavior — fall through to inclusion
                     h = record_hash(rec)
                     if h in seen:
                         n_dup += 1
@@ -510,6 +543,9 @@ def main() -> int:
         os.replace(tmp, train_path)
         n_train = n_emit
 
+    if foob is not None:
+        foob.close()
+
     manifest = {
         "totals": {"train": n_train, "val": n_val, "test": n_test},
         "by_source": dict(by_source.most_common()),
@@ -520,6 +556,11 @@ def main() -> int:
         "unique_records": len(seen),
         "unique_groups": len(group_split),
         "group_forced_routings": n_group_forced,
+        "out_of_band": {
+            "policy": args.oob_policy,
+            "count": n_oob,
+            "by_task_type": dict(by_oob_task_type.most_common()),
+        },
     }
     (FINAL / "manifest.json").write_text(json.dumps(manifest, indent=2),
                                           encoding="utf-8")
@@ -527,6 +568,13 @@ def main() -> int:
     log.info("totals: train=%d val=%d test=%d (unique=%d, groups=%d, forced=%d)",
              n_train, n_val, n_test, len(seen), len(group_split), n_group_forced)
     log.info("by_task_type: %s", dict(by_task_type.most_common()))
+    if n_oob:
+        log.warning(
+            "out-of-band records (policy=%s): %d total; by task_type=%s",
+            args.oob_policy, n_oob, dict(by_oob_task_type.most_common()),
+        )
+        if args.oob_policy == "route":
+            log.warning("  routed to %s for review/transform", oob_path)
     log.info("manifest at %s", FINAL / "manifest.json")
     return 0
 
