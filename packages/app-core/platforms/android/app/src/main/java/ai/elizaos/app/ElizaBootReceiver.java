@@ -27,7 +27,9 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         // apps at runtime, no-ops cleanly otherwise.
         allowUsageStatsAppOp(context);
         GatewayConnectionService.start(context);
-        ElizaAgentService.start(context);
+        if (BuildConfig.AOSP_BUILD) {
+            ElizaAgentService.start(context);
+        }
     }
 
     private static void allowUsageStatsAppOp(Context context) {

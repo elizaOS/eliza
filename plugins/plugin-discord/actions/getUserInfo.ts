@@ -9,8 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { GuildMember } from "discord.js";
@@ -39,8 +38,7 @@ const getUserIdentifier = async (
 		});
 
 		const parsedResponse =
-			parseKeyValueXml<Record<string, unknown>>(response) ??
-			parseJSONObjectFromText(response);
+			parseToonKeyValue<Record<string, unknown>>(response);
 		if (parsedResponse?.userIdentifier) {
 			return {
 				userIdentifier: String(parsedResponse.userIdentifier),

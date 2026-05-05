@@ -168,7 +168,7 @@ export const setVoiceConfigAction: Action = {
 
 			await callback?.({
 				text: summary,
-				thought: `Applied voice config: ${JSON.stringify({ provider, voiceId, modelId })}`,
+				thought: `Applied voice config: provider=${provider}; voiceId=${voiceId}; modelId=${modelId ?? "none"}`,
 				actions: ["SET_VOICE_CONFIG"],
 			});
 

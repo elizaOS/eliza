@@ -2,7 +2,7 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   Service,
 } from "@elizaos/core";
 
@@ -99,23 +99,14 @@ IMPORTANT: Only return TOON. Do not include explanation or extra text.`;
         maxTokens: 500,
       });
 
-      // Parse JSON response
+      // Parse TOON response
       let entities: DetectedMusicEntity[] = [];
       try {
         const cleaned = String(response).trim();
         let parsedEntities: RawDetectedMusicEntity[] = [];
-        const parsedToon = parseKeyValueXml<{ entities?: RawDetectedMusicEntity[] }>(cleaned);
+        const parsedToon = parseToonKeyValue<{ entities?: RawDetectedMusicEntity[] }>(cleaned);
         if (Array.isArray(parsedToon?.entities)) {
           parsedEntities = parsedToon.entities;
-        } else {
-          // Legacy fallback: try to extract JSON array from response
-          const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-          if (jsonMatch) {
-          parsedEntities = JSON.parse(jsonMatch[0]) as RawDetectedMusicEntity[];
-          } else {
-            // Try parsing the whole response
-            parsedEntities = JSON.parse(cleaned) as RawDetectedMusicEntity[];
-          }
         }
 
         // Validate and filter entities

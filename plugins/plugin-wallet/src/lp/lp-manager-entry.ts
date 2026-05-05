@@ -5,6 +5,7 @@ import { realTokenTestsSuite } from "./e2e/real-token-tests.ts";
 import { lpManagerScenariosSuite } from "./e2e/scenarios.ts";
 import { ConcentratedLiquidityService } from "./services/ConcentratedLiquidityService.ts";
 import { DexInteractionService } from "./services/DexInteractionService.ts";
+import { LpManagementService } from "./services/LpManagementService.ts";
 import { UserLpProfileService } from "./services/UserLpProfileService.ts";
 import { VaultService } from "./services/VaultService.ts";
 import { YieldOptimizationService } from "./services/YieldOptimizationService.ts";
@@ -156,36 +157,39 @@ async function loadSolanaDexes(
  */
 async function loadEvmDexes(
   dexes: EvmDex[],
-  _config: Record<string, string>,
+  config: Record<string, string>,
   runtime: IAgentRuntime,
 ): Promise<void> {
   for (const dex of dexes) {
     try {
       switch (dex) {
         case "uniswap": {
-          const { uniswapPlugin: _uniswapPlugin, UniswapV3LpService } =
-            await import("../chains/evm/dex/uniswap/index.ts");
-          const service = await UniswapV3LpService.start(runtime);
-          // Register with DexInteractionService
-          registerEvmService(runtime, service);
+          const { uniswapPlugin } = await import(
+            "../chains/evm/dex/uniswap/index.ts"
+          );
+          if (uniswapPlugin.init) {
+            await uniswapPlugin.init(config, runtime);
+          }
           logger.info(`[LP Manager] Loaded Uniswap V3 DEX`);
           break;
         }
         case "pancakeswap": {
-          const {
-            pancakeswapPlugin: _pancakeswapPlugin,
-            PancakeSwapV3LpService,
-          } = await import("../chains/evm/dex/pancakeswp/index.ts");
-          const service = await PancakeSwapV3LpService.start(runtime);
-          registerEvmService(runtime, service);
+          const { pancakeswapPlugin } = await import(
+            "../chains/evm/dex/pancakeswp/index.ts"
+          );
+          if (pancakeswapPlugin.init) {
+            await pancakeswapPlugin.init(config, runtime);
+          }
           logger.info(`[LP Manager] Loaded PancakeSwap V3 DEX`);
           break;
         }
         case "aerodrome": {
-          const { aerodromePlugin: _aerodromePlugin, AerodromeLpService } =
-            await import("../chains/evm/dex/aerodrome/index.ts");
-          const service = await AerodromeLpService.start(runtime);
-          registerEvmService(runtime, service);
+          const { aerodromePlugin } = await import(
+            "../chains/evm/dex/aerodrome/index.ts"
+          );
+          if (aerodromePlugin.init) {
+            await aerodromePlugin.init(config, runtime);
+          }
           logger.info(`[LP Manager] Loaded Aerodrome DEX`);
           break;
         }
@@ -199,34 +203,13 @@ async function loadEvmDexes(
   }
 }
 
-/**
- * Registers an EVM LP service with the DexInteractionService
- */
-function registerEvmService(runtime: IAgentRuntime, service: unknown): void {
-  // We'll register EVM services after a delay to ensure DexInteractionService is ready
-  setTimeout(() => {
-    const dexService =
-      runtime.getService<DexInteractionService>("dex-interaction");
-    if (
-      dexService &&
-      typeof (dexService as unknown as Record<string, unknown>)
-        .registerDexService === "function"
-    ) {
-      // EVM services need an adapter to work with the Solana-centric DexInteractionService
-      // For now, we just store them and they can be accessed directly
-      logger.info(
-        `[LP Manager] EVM service registered: ${(service as { getDexName?: () => string }).getDexName?.()}`,
-      );
-    }
-  }, 2000);
-}
-
 const lpManagerPlugin: Plugin = {
   name: LP_MANAGER_PLUGIN_NAME,
   description:
     "Unified Liquidity Pool manager for Solana DEXs (Raydium, Orca, Meteora) and EVM DEXs (Uniswap, PancakeSwap, Aerodrome).",
   actions: [LpManagementAgentAction],
   services: [
+    LpManagementService,
     VaultService,
     UserLpProfileService,
     DexInteractionService,
@@ -257,23 +240,7 @@ const lpManagerPlugin: Plugin = {
       logger.warn(
         `[LP Manager] No wallet credentials found. Please set SOLANA_PRIVATE_KEY and/or EVM_PRIVATE_KEY.`,
       );
-      logger.warn(`[LP Manager] Loading mock services for testing...`);
-
-      // Load mock services for testing
-      setTimeout(async () => {
-        try {
-          const { registerMockDexServices } = await import(
-            "./services/MockLpService.ts"
-          );
-          await registerMockDexServices(runtime);
-        } catch (error: unknown) {
-          logger.error(
-            `[LP Manager] Failed to load mock services:`,
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-      }, 3000);
-
+      logger.warn(`[LP Manager] No production mock LP services will be registered.`);
       return;
     }
 
@@ -286,33 +253,6 @@ const lpManagerPlugin: Plugin = {
     if (evmDexes.length > 0) {
       await loadEvmDexes(evmDexes, config, runtime);
     }
-
-    // Verify services loaded after a delay
-    setTimeout(async () => {
-      const dexService =
-        runtime.getService<DexInteractionService>("dex-interaction");
-      if (
-        dexService &&
-        typeof (dexService as unknown as Record<string, unknown>)
-          .getLpServices === "function"
-      ) {
-        const lpServices = (
-          dexService as DexInteractionService
-        ).getLpServices();
-        logger.info(`[LP Manager] ${lpServices.length} LP services registered`);
-
-        // If no services loaded but we have credentials, load mocks as fallback
-        if (lpServices.length === 0 && (hasSolana || hasEvm)) {
-          logger.warn(
-            `[LP Manager] No real DEX services loaded, registering mock services as fallback`,
-          );
-          const { registerMockDexServices } = await import(
-            "./services/MockLpService.ts"
-          );
-          await registerMockDexServices(runtime);
-        }
-      }
-    }, 5000);
 
     logger.info(
       `[LP Manager] Plugin ${LP_MANAGER_PLUGIN_NAME} initialized successfully.`,
@@ -344,6 +284,7 @@ export {
   ConcentratedLiquidityService,
   DexInteractionService,
   LpManagementAgentAction,
+  LpManagementService,
   UserLpProfileService,
   VaultService,
   YieldOptimizationService,

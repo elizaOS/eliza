@@ -124,6 +124,10 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
       rules.push(`array must have at most ${constraints.maxItems} items`);
     }
 
-    return rules.length > 0 ? rules.join(", ") : JSON.stringify(constraints);
+    return rules.length > 0
+      ? rules.join(", ")
+      : Object.entries(constraints)
+          .map(([key, value]) => `${key}: ${String(value)}`)
+          .join(", ");
   }
 }

@@ -6,7 +6,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createClipboardService } from "../services/clipboardService.ts";
@@ -51,7 +51,7 @@ async function extractSearchInfo(
 
 	logger.debug("[ClipboardSearch] Extract result:", result);
 
-	const parsed = parseKeyValueXml(String(result)) as Record<
+	const parsed = parseToonKeyValue(String(result)) as Record<
 		string,
 		unknown
 	> | null;

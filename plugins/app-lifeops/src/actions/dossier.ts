@@ -1,4 +1,3 @@
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
@@ -9,7 +8,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { LifeOpsService } from "../lifeops/service.js";
+import { runLifeOpsToonModel } from "./lifeops-google-helpers.js";
 
 const ACTION_NAME = "DOSSIER";
 
@@ -40,6 +41,88 @@ function coerceHandles(value: unknown): string[] {
       .filter((v) => v.length > 0);
   }
   return [];
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return undefined;
+  return trimmed;
+}
+
+function paramsAsToon(params: DossierActionParams): string {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => {
+        lines.push(`${key}[${index}]: ${String(entry)}`);
+      });
+      continue;
+    }
+    if (value !== undefined && value !== null && value !== "") {
+      lines.push(`${key}: ${String(value)}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+async function resolveDossierParamsWithToon(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  rawParams: DossierActionParams;
+}): Promise<DossierActionParams> {
+  const existingSubject =
+    nonEmptyString(args.rawParams.subject) ??
+    nonEmptyString(args.rawParams.intent);
+  if (existingSubject) {
+    return args.rawParams;
+  }
+
+  const currentMessage = extractText(args.message).trim();
+  const prompt = [
+    "Extract DOSSIER action parameters from the current user request.",
+    "Return TOON only with exactly these fields:",
+    "subject: meeting title, person name, topic, or null",
+    "calendarEventId: explicit calendar event id, or null",
+    "attendeeHandles: list of attendee handles/emails, empty when none",
+    "generatedForAt: ISO timestamp or natural date/time phrase, or null",
+    "",
+    "Rules:",
+    "- Use only details stated or clearly implied by the request.",
+    "- Prefer the person, meeting, or topic the user wants briefed as subject.",
+    "- Do not invent attendee handles or event ids.",
+    "- Return only TOON; no prose, markdown, JSON, or code fences.",
+    "",
+    "Already supplied parameters:",
+    paramsAsToon(args.rawParams) || "(none)",
+    "Current request:",
+    currentMessage || "(empty)",
+  ].join("\n");
+
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "DOSSIER.extract_params",
+    failureMessage: "Dossier parameter extraction model call failed",
+    source: "action:dossier",
+    modelType: ModelType.TEXT_SMALL,
+    purpose: "action",
+  });
+  const parsed = result?.parsed ?? {};
+  return {
+    intent: nonEmptyString(parsed.intent) ?? args.rawParams.intent,
+    calendarEventId:
+      args.rawParams.calendarEventId ??
+      nonEmptyString(parsed.calendarEventId),
+    subject: args.rawParams.subject ?? nonEmptyString(parsed.subject),
+    attendeeHandles:
+      args.rawParams.attendeeHandles ??
+      coerceHandles(parsed.attendeeHandles),
+    generatedForAt:
+      args.rawParams.generatedForAt ??
+      nonEmptyString(parsed.generatedForAt),
+  };
 }
 
 export const dossierAction: Action & {
@@ -97,16 +180,12 @@ export const dossierAction: Action & {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as DossierActionParams;
-    const params = (await extractActionParamsViaLlm<DossierActionParams>({
+    const params = await resolveDossierParamsWithToon({
       runtime,
       message,
       state,
-      actionName: ACTION_NAME,
-      actionDescription: dossierAction.description ?? "",
-      paramSchema: dossierAction.parameters ?? [],
-      existingParams: rawParams,
-      requiredFields: ["subject"],
-    })) as DossierActionParams;
+      rawParams,
+    });
 
     const subject =
       (params.subject && params.subject.trim()) ||

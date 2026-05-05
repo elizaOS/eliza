@@ -575,13 +575,14 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "updates",
-					description: "A JSON object of fields to update (stringified JSON).",
+					description:
+						"Structured fields to update, such as notes, tags, categories, preferences, or custom fields.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					examples: ['{"notes":"prefers email","tags":["friend"]}'],
-					descriptionCompressed: "Fields to update (JSON).",
+					examples: ["notes: prefers email; tags: friend"],
+					descriptionCompressed: "Structured fields to update.",
 				},
 			],
 			examples: [
@@ -1048,14 +1049,13 @@ export const coreActionsSpec = {
 			parameters: [
 				{
 					name: "updates",
-					description:
-						'A JSON array of {"key": string, "value": string} updates (stringified JSON).',
+					description: "Key/value setting updates to apply.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					examples: ['[{"key":"model","value":"gpt-5"}]'],
-					descriptionCompressed: "JSON array of {key, value} updates.",
+					examples: ["model: gpt-5"],
+					descriptionCompressed: "Key/value setting updates.",
 				},
 			],
 			examples: [
@@ -1156,14 +1156,13 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "updates",
-					description:
-						'A JSON array of {"name": string, "value": string} field updates (stringified JSON).',
+					description: "Named field updates to apply.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					examples: ['[{"name":"bio","value":"Loves Rust"}]'],
-					descriptionCompressed: "JSON array of {name, value} updates.",
+					examples: ["bio: Loves Rust"],
+					descriptionCompressed: "Named field updates.",
 				},
 			],
 			examples: [
@@ -1823,13 +1822,14 @@ export const allActionsSpec = {
 				},
 				{
 					name: "updates",
-					description: "A JSON object of fields to update (stringified JSON).",
+					description:
+						"Structured fields to update, such as notes, tags, categories, preferences, or custom fields.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					examples: ['{"notes":"prefers email","tags":["friend"]}'],
-					descriptionCompressed: "Fields to update (JSON).",
+					examples: ["notes: prefers email; tags: friend"],
+					descriptionCompressed: "Structured fields to update.",
 				},
 			],
 			examples: [
@@ -2296,14 +2296,13 @@ export const allActionsSpec = {
 			parameters: [
 				{
 					name: "updates",
-					description:
-						'A JSON array of {"key": string, "value": string} updates (stringified JSON).',
+					description: "Key/value setting updates to apply.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					examples: ['[{"key":"model","value":"gpt-5"}]'],
-					descriptionCompressed: "JSON array of {key, value} updates.",
+					examples: ["model: gpt-5"],
+					descriptionCompressed: "Key/value setting updates.",
 				},
 			],
 			examples: [
@@ -2404,14 +2403,13 @@ export const allActionsSpec = {
 				},
 				{
 					name: "updates",
-					description:
-						'A JSON array of {"name": string, "value": string} field updates (stringified JSON).',
+					description: "Named field updates to apply.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					examples: ['[{"name":"bio","value":"Loves Rust"}]'],
-					descriptionCompressed: "JSON array of {name, value} updates.",
+					examples: ["bio: Loves Rust"],
+					descriptionCompressed: "Named field updates.",
 				},
 			],
 			examples: [

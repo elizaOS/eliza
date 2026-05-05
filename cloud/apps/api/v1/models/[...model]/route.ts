@@ -13,7 +13,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 /**
  * GET /api/v1/models/[...model]
  * Gets details for a specific model by its identifier.
- * Supports both slash-separated and URL-encoded model names (e.g., "openai/gpt-4o-mini").
+ * Supports both slash-separated and URL-encoded model names (e.g., "openai/gpt-5-mini").
  *
  * @param request - The Next.js request object.
  * @param context - Route context containing model segments as an array.
@@ -40,7 +40,7 @@ async function __next_GET(request: Request, context: { params: Promise<{ model: 
       );
     }
 
-    // Join segments to support both "openai/gpt-4o-mini" and "openai%2Fgpt-4o-mini"
+    // Join segments to support both "openai/gpt-5-mini" and "openai%2Fgpt-5-mini"
     const model = modelSegments.join("/");
 
     if (isGroqNativeModel(model)) {

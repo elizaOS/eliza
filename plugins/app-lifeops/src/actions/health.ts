@@ -19,16 +19,15 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
 import type { HealthDataPoint } from "../lifeops/health-bridge.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import {
+  hasLifeOpsAccess,
+  runLifeOpsToonModel,
+} from "./lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
@@ -191,37 +190,17 @@ async function resolveHealthPlanWithLlm(args: {
     recentConversation || "(none)",
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
-    const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
-    if (!parsed) {
-      return {
-        subaction: null,
-        metric: null,
-        days: null,
-        shouldAct: null,
-      };
-    }
-    return {
-      subaction: normalizeHealthSubaction(parsed.subaction),
-      metric: normalizeHealthMetric(parsed.metric),
-      days: normalizeDays(parsed.days),
-      shouldAct: normalizeShouldAct(parsed.shouldAct),
-      response: normalizePlannerResponse(parsed.response),
-    };
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:health",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Health planning model call failed",
-    );
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "HEALTH.plan",
+    failureMessage: "Health planning model call failed",
+    source: "action:health",
+    modelType: ModelType.TEXT_SMALL,
+    purpose: "planner",
+  });
+  const parsed = result?.parsed;
+  if (!parsed) {
     return {
       subaction: null,
       metric: null,
@@ -229,6 +208,13 @@ async function resolveHealthPlanWithLlm(args: {
       shouldAct: null,
     };
   }
+  return {
+    subaction: normalizeHealthSubaction(parsed.subaction),
+    metric: normalizeHealthMetric(parsed.metric),
+    days: normalizeDays(parsed.days),
+    shouldAct: normalizeShouldAct(parsed.shouldAct),
+    response: normalizePlannerResponse(parsed.response),
+  };
 }
 
 function formatSummary(summary: {

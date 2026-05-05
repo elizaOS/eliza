@@ -3,8 +3,7 @@ import {
 	logger,
 	type Media,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type ReplyToMode,
 	trimTokens,
 } from "@elizaos/core";
@@ -296,8 +295,7 @@ export async function generateSummary(
 		prompt,
 	});
 
-	const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ??
-		parseJSONObjectFromText(response)) as {
+	const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
 		title?: string;
 		summary?: string;
 	} | null;
@@ -629,22 +627,24 @@ export function needsSmartSplit(content: string): boolean {
 }
 
 function parseJSONArrayFromText(text: string): JsonValue[] | null {
-	const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
-	let jsonData: JsonValue = null;
-	const jsonBlockMatch = text.match(jsonBlockPattern);
-
-	try {
-		if (jsonBlockMatch) {
-			jsonData = JSON.parse(jsonBlockMatch[1].trim()) as JsonValue;
-		} else {
-			jsonData = JSON.parse(text.trim()) as JsonValue;
-		}
-	} catch (_e) {
-		return null;
-	}
-
-	if (Array.isArray(jsonData)) {
-		return jsonData;
+	const toon = parseToonKeyValue<Record<string, unknown>>(text);
+	const toonChunks = toon?.chunks;
+	if (Array.isArray(toonChunks)) {
+		return toonChunks.filter(
+			(chunk): chunk is JsonValue =>
+				typeof chunk === "string" ||
+				typeof chunk === "number" ||
+				typeof chunk === "boolean" ||
+				chunk === null ||
+				(Array.isArray(chunk) &&
+					chunk.every(
+						(item) =>
+							typeof item === "string" ||
+							typeof item === "number" ||
+							typeof item === "boolean" ||
+							item === null,
+					)),
+		);
 	}
 
 	return null;
@@ -668,14 +668,17 @@ export async function smartSplitMessage(
 
 		const prompt = `Split the following text into ${estimatedChunks} parts for Discord messages (max ${maxLength} chars each).
 Keep related content together (don't split code blocks, keep list items with their headers, etc.).
-Return ONLY a JSON array of strings, no explanation.
+Return TOON only, no explanation.
 
 Text to split:
 """
 ${content}
 """
 
-Return format: ["chunk1", "chunk2", ...]`;
+Return format:
+chunks[2]:
+  - chunk1
+  - chunk2`;
 
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
 

@@ -12,6 +12,7 @@ import { musicInfoInstructionsProvider } from "./providers/musicInfoInstructions
 import { musicInfoProvider } from "./providers/musicInfoProvider";
 import musicLibraryProvider from "./providers/musicLibraryProvider";
 import { wikipediaProvider } from "./providers/wikipediaProvider";
+import { registerMusicLibrarySearchCategories } from "./search-category";
 import { MusicEntityDetectionService } from "./services/musicEntityDetectionService";
 import { MusicInfoService } from "./services/musicInfoService";
 import { MusicLibraryService } from "./services/musicLibraryService";
@@ -138,6 +139,7 @@ const musicLibraryPlugin: Plugin = {
     ],
   },
   init: async (_config: Record<string, string>, _runtime: IAgentRuntime) => {
+    registerMusicLibrarySearchCategories(_runtime);
     logger.debug(
       "Music Library plugin initialized with metadata APIs, playlists, analytics, and YouTube search",
     );

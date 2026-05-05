@@ -238,7 +238,6 @@ import { handleXRelayRoute } from "./x-relay-routes.js";
 
 export {
   executeFallbackParsedActions,
-  extractXmlParams,
   type FallbackParsedAction,
   inferBalanceChainFromText,
   isBalanceIntent,

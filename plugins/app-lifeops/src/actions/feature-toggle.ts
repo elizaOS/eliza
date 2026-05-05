@@ -11,8 +11,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
@@ -21,6 +20,7 @@ import {
   isLifeOpsFeatureKey,
   type LifeOpsFeatureKey,
 } from "../lifeops/feature-flags.types.js";
+import { formatPromptSection } from "./prompt-format.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 const ACTION_NAME = "TOGGLE_LIFEOPS_FEATURE";
@@ -104,7 +104,7 @@ async function extractToggleWithLlm(args: {
     "",
     `User message:\n${messageText(args.message)}`,
     "",
-    `Current parameters:\n${JSON.stringify(args.params)}`,
+    formatPromptSection("Current parameters", args.params),
     "",
     `Recent conversation:\n${recentConversation}`,
   ].join("\n");
@@ -112,8 +112,7 @@ async function extractToggleWithLlm(args: {
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const rawText = typeof raw === "string" ? raw : "";
   const parsed =
-    parseKeyValueXml<Record<string, unknown>>(rawText) ??
-    (parseJSONObjectFromText(rawText) as Record<string, unknown> | null);
+    parseToonKeyValue<Record<string, unknown>>(rawText);
 
   const featureKeyRaw = parsed?.featureKey;
   const featureKey = isLifeOpsFeatureKey(featureKeyRaw) ? featureKeyRaw : null;

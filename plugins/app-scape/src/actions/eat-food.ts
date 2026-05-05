@@ -3,8 +3,8 @@
  *
  * Expected LLM response format:
  *
- *   <action>EAT_FOOD</action>
- *   <slot>0</slot>
+ *   action: EAT_FOOD
+ *   slot: 0
  *
  * `slot` is optional; if omitted, the server picks the first item in
  * the agent's inventory. The LLM should usually specify a slot based
@@ -24,7 +24,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParamInt } from "./param-parser.js";
 
 export const eatFood: Action = {
@@ -39,7 +39,7 @@ export const eatFood: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "EAT_FOOD");
+    return hasActionRequest(message, "EAT_FOOD");
   },
   handler: async (
     runtime: IAgentRuntime,

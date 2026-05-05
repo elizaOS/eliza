@@ -136,7 +136,7 @@ export const executeCodeAction: Action = {
     {
       name: "script",
       description:
-        "Async function body. The script may use `await tools.<actionName>(args)` to call any registered action and `context.{agentId,roomId,entityId,getMemories,searchMemories}` to read runtime state. Return value is JSON-serialized into the action result.",
+        "Async function body. The script may use `await tools.<actionName>(args)` to call any registered action and `context.{agentId,roomId,entityId,getMemories,searchMemories}` to read runtime state. Return value is rendered as plain text in the action result.",
       required: true,
       schema: { type: "string" },
     },
@@ -298,7 +298,7 @@ export const executeCodeAction: Action = {
   },
 };
 
-/** Coerce a value to something JSON.stringify will round-trip. */
+/** Coerce a value to cloneable plain data before rendering it as text. */
 function jsonSafe(value: unknown): unknown {
   try {
     return JSON.parse(JSON.stringify(value));
@@ -310,11 +310,34 @@ function jsonSafe(value: unknown): unknown {
 function formatReturnValue(value: unknown): string {
   if (value === undefined) return "executeCode: completed";
   if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
+  return renderPlainData(value);
+}
+
+function renderPlainData(value: unknown, indent = 0): string {
+  const prefix = "  ".repeat(indent);
+  if (value === null || value === undefined) {
+    return "none";
   }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "items[0]:";
+    }
+    return [
+      `items[${value.length}]:`,
+      ...value.map((item) => `${prefix}- ${renderPlainData(item, indent + 1)}`),
+    ].join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nestedValue]) => {
+        if (nestedValue && typeof nestedValue === "object") {
+          return `${key}:\n${renderPlainData(nestedValue, indent + 1)}`;
+        }
+        return `${key}: ${renderPlainData(nestedValue, indent + 1)}`;
+      })
+      .join("\n");
+  }
+  return String(value);
 }
 
 export type { ToolCallResult };

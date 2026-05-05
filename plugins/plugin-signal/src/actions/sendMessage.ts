@@ -8,8 +8,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import { isValidGroupId, normalizeE164 } from "../types";
@@ -93,8 +92,7 @@ export const sendMessage: Action = {
       });
 
       const parsedResponse =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.text) {
         messageInfo = {
           text: String(parsedResponse.text),

@@ -43,7 +43,26 @@ type LoggedTextGenerationOptions = {
 };
 
 function serializeMessages(messages: ModelMessage[]): string {
-	return JSON.stringify(messages);
+	return messages
+		.map((message, index) => {
+			const content = Array.isArray(message.content)
+				? message.content
+						.map((part) => {
+							if (
+								part &&
+								typeof part === "object" &&
+								"text" in part &&
+								typeof part.text === "string"
+							) {
+								return part.text;
+							}
+							return "[non-text content]";
+						})
+						.join("\n")
+				: String(message.content ?? "");
+			return `message ${index + 1} (${message.role}):\n${content}`;
+		})
+		.join("\n\n");
 }
 
 async function generateLoggedText({

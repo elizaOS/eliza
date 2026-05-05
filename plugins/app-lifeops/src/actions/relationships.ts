@@ -11,7 +11,6 @@
  * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionResult,
@@ -20,18 +19,17 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import {
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
 } from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import {
+  hasLifeOpsAccess,
+  runLifeOpsToonModel,
+} from "./lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
@@ -324,7 +322,77 @@ type RelationshipLlmPlan = {
   subaction: Subaction | null;
   shouldAct: boolean | null;
   response?: string;
+  params?: Partial<RelationshipParameters>;
 };
+
+function normalizeMessageChannel(
+  value: unknown,
+): LifeOpsMessageChannel | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return LIFEOPS_MESSAGE_CHANNELS.includes(normalized as LifeOpsMessageChannel)
+    ? (normalized as LifeOpsMessageChannel)
+    : undefined;
+}
+
+function normalizeStringParam(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return undefined;
+  return trimmed;
+}
+
+function normalizeNumberParam(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function normalizeBooleanParam(value: unknown): boolean | undefined {
+  const normalized = normalizeShouldAct(value);
+  return normalized === null ? undefined : normalized;
+}
+
+function relationshipParamsFromToon(
+  parsed: Record<string, unknown>,
+): Partial<RelationshipParameters> {
+  const params: Partial<RelationshipParameters> = {};
+  const channel = normalizeMessageChannel(parsed.channel);
+  if (channel) params.channel = channel;
+
+  for (const key of [
+    "intent",
+    "name",
+    "handle",
+    "email",
+    "phone",
+    "notes",
+    "relationshipId",
+    "followUpId",
+    "reason",
+    "dueAt",
+  ] as const) {
+    const value = normalizeStringParam(parsed[key]);
+    if (value !== undefined) {
+      params[key] = value;
+    }
+  }
+
+  const thresholdDays = normalizeNumberParam(parsed.thresholdDays);
+  if (thresholdDays !== undefined) {
+    params.thresholdDays = thresholdDays;
+  }
+
+  const confirmed = normalizeBooleanParam(parsed.confirmed);
+  if (confirmed !== undefined) {
+    params.confirmed = confirmed;
+  }
+
+  return params;
+}
 
 const DEFAULT_FOLLOWUP_THRESHOLD_DAYS = 30;
 
@@ -422,6 +490,19 @@ async function resolveRelationshipPlanWithLlm(args: {
     "subaction: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
+    "intent: concise restatement of the user request, or null",
+    "name: contact display name, or null",
+    "channel: email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, or null",
+    "handle: primary channel handle/address, or null",
+    "email: email address, or null",
+    "phone: phone number, or null",
+    "notes: interaction/contact notes, or null",
+    "relationshipId: explicit relationship id/name, or null",
+    "followUpId: explicit follow-up id, or null",
+    "reason: follow-up reason, or null",
+    "dueAt: due date/time in user wording or ISO, or null",
+    "thresholdDays: positive integer cadence threshold, or null",
+    "confirmed: true, false, or null",
     "",
     "Choose list_contacts when the user wants to see, browse, list, or recall who is in the Rolodex.",
     "Choose add_contact when the user wants to remember a new person, store a handle, or add them to the contact list.",
@@ -435,6 +516,10 @@ async function resolveRelationshipPlanWithLlm(args: {
     "Choose set_followup_threshold when the user wants a durable cadence like every 14 days for a specific contact.",
     "Set shouldAct=false only when the request is too vague to safely choose any of the ten subactions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
+    "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, dates, or thresholds.",
+    "For add_contact, extract name plus channel and handle when present.",
+    "For add_follow_up, extract name/relationshipId, reason, and dueAt when present.",
+    "For set_followup_threshold, extract name/relationshipId and thresholdDays.",
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${args.intent}`,
@@ -444,33 +529,26 @@ async function resolveRelationshipPlanWithLlm(args: {
     `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
-    const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
-    if (!parsed) {
-      return { subaction: null, shouldAct: null };
-    }
-    const subaction = normalizeRelationshipSubaction(parsed.subaction);
-    return {
-      subaction,
-      shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
-      response: normalizePlannerResponse(parsed.response),
-    };
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:relationships",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Relationship planning model call failed",
-    );
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "OWNER_RELATIONSHIP.plan",
+    failureMessage: "Relationship planning model call failed",
+    source: "action:relationships",
+    modelType: ModelType.TEXT_SMALL,
+    purpose: "planner",
+  });
+  const parsed = result?.parsed;
+  if (!parsed) {
     return { subaction: null, shouldAct: null };
   }
+  const subaction = normalizeRelationshipSubaction(parsed.subaction);
+  return {
+    subaction,
+    shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
+    response: normalizePlannerResponse(parsed.response),
+    params: relationshipParamsFromToon(parsed),
+  };
 }
 
 function formatRelationshipLine(rel: {
@@ -579,16 +657,7 @@ export const relationshipAction: Action & {
     }
 
     const rawParams = getParams(options);
-    const params = (await extractActionParamsViaLlm<RelationshipParameters>({
-      runtime,
-      message,
-      state,
-      actionName: "OWNER_RELATIONSHIP",
-      actionDescription: relationshipAction.description ?? "",
-      paramSchema: relationshipAction.parameters ?? [],
-      existingParams: rawParams,
-      requiredFields: ["subaction"],
-    })) as RelationshipParameters;
+    let params = rawParams;
     const body = messageBodyText(message);
     const explicitSubaction = normalizeRelationshipSubaction(params.subaction);
     let subaction: Subaction | null = explicitSubaction;
@@ -602,6 +671,11 @@ export const relationshipAction: Action & {
         params,
       });
       subaction = plan.subaction;
+      params = {
+        ...(plan.params ?? {}),
+        ...rawParams,
+        ...(subaction ? { subaction } : {}),
+      };
       if (plan.shouldAct === false || !subaction) {
         const fallback =
           plan.response ??

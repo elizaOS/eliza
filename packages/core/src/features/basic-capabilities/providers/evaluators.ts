@@ -8,6 +8,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { pickRandomExampleName } from "../../../utils/example-names.ts";
+import { compressPromptDescription } from "../../../utils/prompt-compression.ts";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -82,9 +83,15 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
  */
 export function formatEvaluators(evaluators: Evaluator[]) {
 	return evaluators
-		.map(
-			(evaluator: Evaluator) => `'${evaluator.name}: ${evaluator.description}'`,
-		)
+		.map((evaluator: Evaluator) => {
+			const description =
+				evaluator.descriptionCompressed ??
+				evaluator.compressedDescription ??
+				(evaluator.description
+					? compressPromptDescription(evaluator.description)
+					: "No description available");
+			return `- ${evaluator.name}: ${description}`;
+		})
 		.join(",\n");
 }
 

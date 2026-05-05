@@ -6,7 +6,9 @@ import {
   type Memory,
   ModelType,
   parseBooleanFromText,
+  setTrajectoryPurpose,
   type UUID,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import { getRandomInterval } from "./environment";
@@ -20,6 +22,30 @@ import {
   isDuplicateTweet,
 } from "./utils/memory";
 import { getSetting } from "./utils/settings";
+
+function formatStyleForPrompt(style: unknown): string {
+  if (typeof style === "string") {
+    return style;
+  }
+  if (!style || typeof style !== "object" || Array.isArray(style)) {
+    return "";
+  }
+
+  const record = style as Record<string, unknown>;
+  if (Array.isArray(record.all)) {
+    return record.all.filter((item) => typeof item === "string").join(", ");
+  }
+
+  return Object.entries(record)
+    .map(([key, value]) => {
+      const formatted = Array.isArray(value)
+        ? value.map((item) => String(item)).join(", ")
+        : String(value);
+      return `${key}: ${formatted}`;
+    })
+    .join("; ");
+}
+
 /**
  * Class representing a Twitter post client for generating and posting tweets.
  */
@@ -153,6 +179,24 @@ export class TwitterPostClient {
    * @returns {Promise<boolean>} true if tweet was posted successfully
    */
   async generateNewTweet(): Promise<boolean> {
+    return await withStandaloneTrajectory(
+      this.runtime,
+      {
+        source: "plugin-x:auto-post",
+        metadata: {
+          platform: "x",
+          kind: "public_post_generation",
+          username: this.client.profile?.username,
+        },
+      },
+      async () => {
+        setTrajectoryPurpose("background");
+        return await this.generateNewTweetInner();
+      },
+    );
+  }
+
+  private async generateNewTweetInner(): Promise<boolean> {
     logger.info("Attempting to generate new tweet...");
 
     // Prevent concurrent posting
@@ -240,12 +284,7 @@ Your interests: ${this.runtime.character.topics?.join(", ") || "technology, cryp
 
 ${
   this.runtime.character.style
-    ? `Your style: ${
-        typeof this.runtime.character.style === "object"
-          ? this.runtime.character.style.all?.join(", ") ||
-            JSON.stringify(this.runtime.character.style)
-          : this.runtime.character.style
-      }`
+    ? `Your style: ${formatStyleForPrompt(this.runtime.character.style)}`
     : ""
 }
 

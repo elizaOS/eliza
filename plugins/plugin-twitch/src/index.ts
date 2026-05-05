@@ -13,19 +13,24 @@ export { TwitchService } from "./service.js";
 // Types
 export * from "./types.js";
 
+import { twitchChannelAction } from "./actions/channelRouter.js";
 import { joinChannel } from "./actions/joinChannel.js";
 import { leaveChannel } from "./actions/leaveChannel.js";
 import { listChannels } from "./actions/listChannels.js";
 // Actions
 import { sendMessage } from "./actions/sendMessage.js";
 
-export { sendMessage, joinChannel, leaveChannel, listChannels };
+export {
+  joinChannel,
+  leaveChannel,
+  listChannels,
+  sendMessage,
+  twitchChannelAction,
+};
 
-// Providers
-import { channelStateProvider } from "./providers/channelState.js";
 import { userContextProvider } from "./providers/userContext.js";
 
-export { channelStateProvider, userContextProvider };
+export { userContextProvider };
 
 // Import service for plugin
 import { TwitchService } from "./service.js";
@@ -40,9 +45,9 @@ const twitchPlugin: Plugin = {
 
   services: [TwitchService],
 
-  actions: [sendMessage, joinChannel, leaveChannel, listChannels],
+  actions: [twitchChannelAction],
 
-  providers: [channelStateProvider, userContextProvider],
+  providers: [userContextProvider],
 
   tests: [],
 

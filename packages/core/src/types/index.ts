@@ -2,7 +2,11 @@
 
 export { logger } from "../logger";
 // Utilities that are part of the public API.
-export { addHeader, composePromptFromState, parseKeyValueXml } from "../utils";
+export {
+	addHeader,
+	composePromptFromState,
+	parseToonKeyValue,
+} from "../utils";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";

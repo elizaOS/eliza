@@ -12,22 +12,18 @@ The user might ask for projects in various ways:
 - "Completed projects" → filter by state
 - "Projects starting next month" → filter by start date
 
-Return ONLY a JSON object:
-{
-  "teamFilter": "Team name or key if mentioned",
-  "stateFilter": "active/planned/completed/all",
-  "dateFilter": {
-    "type": "due/starting",
-    "period": "this-week/this-month/this-quarter/next-month/next-quarter",
-    "from": "ISO date if specific",
-    "to": "ISO date if specific"
-  },
-  "leadFilter": "Project lead name if mentioned",
-  "showAll": true/false (true if user explicitly asks for "all")
-}
+Respond with TOON/plain text only. Use these fields:
+teamFilter: Team name or key if mentioned
+stateFilter: active, planned, completed, or all
+dateFilter:
+  type: due or starting
+  period: this-week, this-month, this-quarter, next-month, or next-quarter
+  from: ISO date if a specific start is mentioned
+  to: ISO date if a specific end is mentioned
+leadFilter: Project lead name if mentioned
+showAll: true if the user explicitly asks for all projects; otherwise omit
 
-Only include fields that are clearly mentioned.
-
+Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.
 
 
 

@@ -248,7 +248,8 @@ async function extractNames(
 		"name: <kebab-case-slug>   (lowercase letters, digits, dashes; no spaces; 3-40 chars; cannot start with a digit)",
 		"displayName: <Title Case Display Name>   (1-40 chars)",
 		"",
-		`Request: ${JSON.stringify({ intent })}`,
+		"Request (TOON):",
+		`intent: ${intent.replace(/\s+/g, " ").trim()}`,
 	].join("\n");
 
 	let raw = "";

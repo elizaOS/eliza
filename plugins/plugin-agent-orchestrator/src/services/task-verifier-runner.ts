@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { parseKeyValueXml, type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
 import type {
   TaskNodeRecord,
   TaskRegistry,
@@ -32,12 +32,6 @@ const terminalNodeStates = new Set([
   "interrupted",
 ]);
 const activeVerifierRuns = new Set<string>();
-
-function extractJsonBlock(raw: string): string {
-  const trimmed = raw.trim();
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  return (fenceMatch?.[1] ?? trimmed).trim();
-}
 
 function normalizeChecklistItem(
   entry: unknown,
@@ -93,17 +87,7 @@ function normalizeAcceptanceEvaluation(
 }
 
 function parseAcceptanceEvaluation(raw: string): AcceptanceEvaluation | null {
-  const parsedToonOrXml = parseKeyValueXml<Record<string, unknown>>(raw);
-  const normalizedToonOrXml = normalizeAcceptanceEvaluation(parsedToonOrXml);
-  if (normalizedToonOrXml) {
-    return normalizedToonOrXml;
-  }
-
-  try {
-    return normalizeAcceptanceEvaluation(JSON.parse(extractJsonBlock(raw)));
-  } catch {
-    return null;
-  }
+  return normalizeAcceptanceEvaluation(parseToonKeyValue<Record<string, unknown>>(raw));
 }
 
 function getVerifierRootDir(): string {

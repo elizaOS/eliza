@@ -12,6 +12,7 @@ import {
 import type { Team } from "@linear/sdk";
 import { listProjectsTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
+import { getBooleanValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const listProjectsAction: Action = {
@@ -105,19 +106,18 @@ export const listProjectsAction: Action = {
 
         if (response) {
           try {
-            const parsed = JSON.parse(
-              response
-                .replace(/^```(?:json)?\n?/, "")
-                .replace(/\n?```$/, "")
-                .trim()
-            );
+            const parsed = parseLinearPromptResponse(response);
+            if (Object.keys(parsed).length === 0) {
+              throw new Error("No fields found in model response");
+            }
 
-            if (parsed.teamFilter) {
+            const teamFilter = getStringValue(parsed.teamFilter);
+            if (teamFilter) {
               const teams = await linearService.getTeams();
               const team = teams.find(
                 (t) =>
-                  t.key.toLowerCase() === parsed.teamFilter.toLowerCase() ||
-                  t.name.toLowerCase() === parsed.teamFilter.toLowerCase()
+                  t.key.toLowerCase() === teamFilter.toLowerCase() ||
+                  t.name.toLowerCase() === teamFilter.toLowerCase()
               );
               if (team) {
                 teamId = team.id;
@@ -125,8 +125,8 @@ export const listProjectsAction: Action = {
               }
             }
 
-            showAll = parsed.showAll === true;
-            stateFilter = parsed.stateFilter;
+            showAll = getBooleanValue(parsed.showAll) === true;
+            stateFilter = getStringValue(parsed.stateFilter);
           } catch (parseError) {
             logger.warn("Failed to parse project filters, using basic parsing:", parseError);
 

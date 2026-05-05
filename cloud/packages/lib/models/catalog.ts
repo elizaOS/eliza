@@ -525,9 +525,9 @@ export function getGroqCatalogModel(modelId: string): CatalogModel | null {
  */
 export const OPENROUTER_FREE_MODEL_MAP: Record<string, string> = {
   "openai/gpt-4o": "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-4o-mini": "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-4.1": "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-4.1-mini": "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-5-mini": "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-5.5": "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-5-mini": "meta-llama/llama-3.3-70b-instruct:free",
   "anthropic/claude-sonnet-4.6": "meta-llama/llama-3.3-70b-instruct:free",
   "anthropic/claude-sonnet-4-6": "meta-llama/llama-3.3-70b-instruct:free",
   "google/gemini-2.0-flash": "google/gemini-2.0-flash-exp:free",

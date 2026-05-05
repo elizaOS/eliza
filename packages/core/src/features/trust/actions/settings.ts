@@ -20,12 +20,70 @@ import {
 	composePrompt,
 	composePromptFromState,
 	parseJSONObjectFromText,
-	parseKeyValueXml,
+	parseToonKeyValue,
 } from "../../../utils.ts";
 
 interface SettingUpdate {
 	key: string;
 	value: string | boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeSettingValue(value: unknown): string | boolean | null {
+	if (typeof value === "string" || typeof value === "boolean") {
+		return value;
+	}
+	if (typeof value === "number" || typeof value === "bigint") {
+		return String(value);
+	}
+	return null;
+}
+
+function extractValidSettings(
+	result: unknown,
+	worldSettings: WorldSettings,
+): SettingUpdate[] {
+	const extracted: SettingUpdate[] = [];
+
+	const addUpdate = (rawKey: unknown, rawValue: unknown): boolean => {
+		const key = typeof rawKey === "string" ? rawKey.trim() : "";
+		const value = normalizeSettingValue(rawValue);
+		if (!key || value === null || !worldSettings[key]) {
+			return false;
+		}
+		extracted.push({ key, value });
+		return true;
+	};
+
+	const traverse = (node: unknown): void => {
+		if (Array.isArray(node)) {
+			for (const item of node) {
+				traverse(item);
+			}
+			return;
+		}
+
+		if (!isRecord(node)) {
+			return;
+		}
+
+		if ("key" in node && "value" in node) {
+			addUpdate(node.key, node.value);
+		}
+
+		for (const [key, value] of Object.entries(node)) {
+			const added = worldSettings[key] ? addUpdate(key, value) : false;
+			if (!added) {
+				traverse(value);
+			}
+		}
+	};
+
+	traverse(result);
+	return extracted;
 }
 
 const messageCompletionFooter = `\n# Instructions: Write the next message for {{agentName}}. Include the appropriate action from the list: {{actionNames}}
@@ -149,7 +207,7 @@ IMPORTANT: Only include settings from the Available Settings list above. Ignore 
 
 function parseGeneratedContent(response: string): Content {
 	return (
-		(parseKeyValueXml<Content>(response) as Content | null) ??
+		(parseToonKeyValue<Content>(response) as Content | null) ??
 		(parseJSONObjectFromText(response) as Content)
 	);
 }
@@ -271,25 +329,46 @@ async function extractSettingValues(
 
     Only return settings that are clearly mentioned in the user's message.
     If a setting is mentioned but no clear value is provided, do not include it.
+    Preserve the extracted value exactly, including punctuation.
     `;
 
 	try {
-		const result = await runtime.useModel<
-			typeof ModelType.OBJECT_LARGE,
-			SettingUpdate[]
-		>(ModelType.OBJECT_LARGE, {
-			prompt: basePrompt,
-			output: "array",
-			schema: {
-				type: "array",
-				items: {
-					type: "object",
-					properties: {
-						key: { type: "string" },
-						value: { type: "string" },
+		const result = await runtime.dynamicPromptExecFromState({
+			state,
+			params: { prompt: basePrompt },
+			schema: [
+				{
+					field: "updates",
+					description:
+						"Setting updates clearly present in the user message, or an empty list when none are clear",
+					type: "array",
+					items: {
+						description: "One setting update",
+						type: "object",
+						properties: [
+							{
+								field: "key",
+								description: "Exact setting key from Available settings",
+								required: true,
+							},
+							{
+								field: "value",
+								description:
+									"Exact value for the setting, preserving punctuation",
+								required: true,
+							},
+						],
 					},
-					required: ["key", "value"],
+					required: false,
+					validateField: false,
+					streamField: false,
 				},
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				preferredEncapsulation: "toon",
+				contextCheckLevel: 0,
+				maxRetries: 1,
 			},
 		});
 
@@ -297,32 +376,7 @@ async function extractSettingValues(
 			return [];
 		}
 
-		function extractValidSettings(obj: unknown, worldSettings: WorldSettings) {
-			const extracted: SettingUpdate[] = [];
-
-			function traverse(node: unknown): void {
-				if (Array.isArray(node)) {
-					for (const item of node) {
-						traverse(item);
-					}
-				} else if (typeof node === "object" && node !== null) {
-					for (const [key, value] of Object.entries(node)) {
-						if (worldSettings[key] && typeof value !== "object") {
-							extracted.push({ key, value });
-						} else {
-							traverse(value);
-						}
-					}
-				}
-			}
-
-			traverse(obj);
-			return extracted;
-		}
-
-		const extractedSettings = extractValidSettings(result, worldSettings);
-
-		return extractedSettings;
+		return extractValidSettings(result, worldSettings);
 	} catch (error) {
 		logger.error({ error }, "Error extracting settings:");
 		return [];

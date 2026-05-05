@@ -9,7 +9,7 @@ import type {
 } from "../../../../types/index.ts";
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
-import { parseKeyValueXml } from "../../../../utils.ts";
+import { parseToonKeyValue } from "../../../../utils.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseStructuredRecord(
 	response: string,
 ): Record<string, unknown> | null {
-	const parsed = parseKeyValueXml<Record<string, unknown>>(response);
+	const parsed = parseToonKeyValue<Record<string, unknown>>(response);
 	return isRecord(parsed) ? parsed : null;
 }
 

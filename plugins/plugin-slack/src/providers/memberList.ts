@@ -11,6 +11,7 @@ export const memberListProvider: Provider = {
   description:
     "Provides information about members in the current Slack channel",
   dynamic: true,
+  contexts: ["social", "connectors"],
   relevanceKeywords: [
     "slackmemberlist",
     "memberlistprovider",

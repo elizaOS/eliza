@@ -8,8 +8,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseJSONObjectFromText,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	Service,
 	type Task,
 	type UUID,
@@ -77,10 +76,7 @@ function parseRecommendationExtraction(response: string): {
 	recommendations: ExtractedSignal[];
 } | null {
 	const parsed =
-		parseKeyValueXml<{ recommendations?: ExtractedSignal[] }>(response) ??
-		(parseJSONObjectFromText(response) as {
-			recommendations?: ExtractedSignal[];
-		} | null);
+		parseToonKeyValue<{ recommendations?: ExtractedSignal[] }>(response);
 
 	if (!parsed?.recommendations || !Array.isArray(parsed.recommendations)) {
 		return null;

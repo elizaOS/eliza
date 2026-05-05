@@ -12,7 +12,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import {
@@ -38,7 +38,7 @@ interface TaskExtraction {
 }
 
 function parseExtraction(text: string): TaskExtraction {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
   if (!parsed) return {};
   const normalize = (v: unknown): string | undefined => {
     if (v == null) return undefined;

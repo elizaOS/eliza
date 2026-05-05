@@ -24,7 +24,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { encodeToonValue, logger } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -124,11 +124,43 @@ function normalizeRequest(
   };
 }
 
-function formatContextLine(hit: CrossChannelSearchHit, index: number): string {
-  const ts = hit.timestamp.slice(0, 16);
-  const body = hit.text.replace(/\s+/g, " ").trim().slice(0, 180);
-  const subject = hit.subject ? ` [${hit.subject}]` : "";
-  return `  ${index + 1}. [${hit.channel}] ${ts} ${hit.speaker}${subject}: ${body}`;
+function compactHit(hit: CrossChannelSearchHit) {
+  const citation: Record<string, string> = {
+    platform: hit.citation.platform,
+    label: hit.citation.label,
+  };
+  if (hit.citation.url) {
+    citation.url = hit.citation.url;
+  }
+  return {
+    channel: hit.channel,
+    id: hit.id,
+    sourceRef: hit.sourceRef,
+    timestamp: hit.timestamp,
+    speaker: hit.speaker,
+    ...(hit.subject ? { subject: hit.subject } : {}),
+    text: hit.text.replace(/\s+/g, " ").trim().slice(0, 180),
+    citation,
+  };
+}
+
+function renderCrossChannelContextToon(args: {
+  query: string;
+  hits: CrossChannelSearchHit[];
+  unsupported: unknown[];
+  degraded: unknown[];
+  channelsWithHits: CrossChannelSearchChannel[];
+}): string {
+  return encodeToonValue({
+    cross_channel_context: {
+      query: args.query,
+      hitCount: args.hits.length,
+      unsupportedCount: args.unsupported.length,
+      degradedCount: args.degraded.length,
+      channelsWithHits: args.channelsWithHits,
+      hits: args.hits.map(compactHit),
+    },
+  });
 }
 
 export const crossChannelContextProvider: Provider = {
@@ -210,16 +242,14 @@ export const crossChannelContextProvider: Provider = {
         };
       }
 
-      const lines: string[] = [];
-      lines.push(
-        `Cross-channel context for "${result.query}" — ${injected.length} hits`,
-      );
-      injected.forEach((hit, idx) => {
-        lines.push(formatContextLine(hit, idx));
-      });
-
       return {
-        text: lines.join("\n"),
+        text: renderCrossChannelContextToon({
+          query: result.query,
+          hits: injected,
+          unsupported: result.unsupported,
+          degraded: result.degraded,
+          channelsWithHits: result.channelsWithHits,
+        }),
         values: {
           crossChannelHits: injected.length,
           crossChannelUnsupported: result.unsupported.length,

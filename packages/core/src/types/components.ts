@@ -481,7 +481,7 @@ export interface ActionContext {
  * every copy. A single alias eliminates drift and makes future extensions
  * (field name, token index, session handle) a one-line additive change.
  *
- * WHY `accumulated`: Two independent XML stream extractors in `useModel`
+ * WHY `accumulated`: Two independent stream extractors in `useModel`
  * previously caused TTS garbling because consumers had to re-derive the full
  * text from deltas — and the two extractors produced deltas at different
  * timings. Providing the authoritative accumulated text from the extractor
@@ -493,9 +493,9 @@ export interface ActionContext {
  * @param chunk - Delta text since the last emission for this field.
  * @param messageId - Streaming session / message identifier (UUID or opaque string).
  * @param accumulated - Full extracted text so far for the streaming field.
- *   Present when the emission originates from a ValidationStreamExtractor
- *   (structured XML output). Undefined for raw-token streams (useModel
- *   without an extractor) where no field-level accumulation exists.
+ *   Present when the emission originates from a TOON field extractor.
+ *   Undefined for raw-token streams (useModel without an extractor) where no
+ *   field-level accumulation exists.
  */
 export type StreamChunkCallback = (
 	chunk: string,

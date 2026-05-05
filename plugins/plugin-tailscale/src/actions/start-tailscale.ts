@@ -6,7 +6,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { z } from "zod";
 import { getTunnelService } from "../types";
@@ -33,7 +33,7 @@ function isValidPort(value: number): boolean {
 }
 
 function parsePort(value: string): number {
-  const toonParsed = parseKeyValueXml<Record<string, unknown>>(value);
+  const toonParsed = parseToonKeyValue<Record<string, unknown>>(value);
   const toonResult = portPayloadSchema.safeParse(toonParsed);
   if (toonResult.success && isValidPort(toonResult.data.port))
     return toonResult.data.port;

@@ -8,7 +8,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { maybeStoreTaskClipboardItem } from "../services/taskClipboardPersistence.ts";
@@ -97,7 +97,7 @@ async function extractReadFileInput(
 		].join("\n"),
 		stopSequences: [],
 	});
-	const parsed = parseKeyValueXml(String(response)) as Record<
+	const parsed = parseToonKeyValue(String(response)) as Record<
 		string,
 		unknown
 	> | null;

@@ -6,7 +6,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	type State,
 } from "../../../../types/index.ts";
 import { createTaskClipboardService } from "../services/taskClipboardService.ts";
@@ -50,7 +50,7 @@ async function resolveItemId(
 		].join("\n"),
 		stopSequences: [],
 	});
-	const parsed = parseKeyValueXml(String(response)) as Record<
+	const parsed = parseToonKeyValue(String(response)) as Record<
 		string,
 		unknown
 	> | null;

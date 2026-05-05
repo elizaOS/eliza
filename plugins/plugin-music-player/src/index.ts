@@ -47,7 +47,7 @@ const musicPlayerPlugin: Plugin = {
   description:
     "Pure music playback engine with queue management, cross-fading, smart music fetching, and audio streaming API",
   services: [MusicService],
-  // Transport controls listed before PLAY_AUDIO so prompts/XML tend to prefer them
+  // Transport controls listed before PLAY_AUDIO so prompts tend to prefer them
   // for pause/skip/stop/resume (PLAY_AUDIO validate rejects transport-only text).
   actions: [
     pauseMusic,

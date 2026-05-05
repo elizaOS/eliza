@@ -92,17 +92,21 @@ async def _run_instance(
     client: object,
     instance: SWEBenchInstance,
     evaluator: SWEBenchEvaluator,
+    provider_label: str | None = None,
 ) -> SWEBenchResult:
     """Run a single SWE-bench instance through the bridge."""
     started = time.time()
+    task_id = f"{provider_label}:{instance.instance_id}" if provider_label else instance.instance_id
     try:
         send_message = client.send_message  # type: ignore[attr-defined]
-        client.reset(task_id=instance.instance_id, benchmark="swe_bench")  # type: ignore[attr-defined]
+        client.reset(task_id=task_id, benchmark="swe_bench")  # type: ignore[attr-defined]
         response = send_message(
             text=_build_prompt(instance),
             context={
                 "benchmark": "swe_bench",
-                "task_id": instance.instance_id,
+                "task_id": task_id,
+                "instance_id": instance.instance_id,
+                "provider": provider_label,
                 "repo": instance.repo,
                 "base_commit": instance.base_commit,
             },
@@ -138,6 +142,26 @@ async def _run_instance(
     result = await evaluator.evaluate_patch(instance, patch)
     result.duration_seconds = time.time() - started
     return result
+
+
+async def _run_instances(
+    client: object,
+    instances: list[SWEBenchInstance],
+    evaluator: SWEBenchEvaluator,
+    provider_label: str | None = None,
+) -> list[SWEBenchResult]:
+    results: list[SWEBenchResult] = []
+    for idx, inst in enumerate(instances):
+        label = f" provider={provider_label}" if provider_label else ""
+        logger.info(
+            "[swe_bench] %d/%d %s%s",
+            idx + 1,
+            len(instances),
+            inst.instance_id,
+            label,
+        )
+        results.append(await _run_instance(client, inst, evaluator, provider_label))
+    return results
 
 
 def _mock_instance() -> SWEBenchInstance:
@@ -188,7 +212,9 @@ class _MockClient:
 
 
 def _build_report(
-    config: SWEBenchConfig, results: list[SWEBenchResult]
+    config: SWEBenchConfig,
+    results: list[SWEBenchResult],
+    instances_by_id: dict[str, SWEBenchInstance] | None = None,
 ) -> SWEBenchReport:
     total = len(results)
     resolved = sum(1 for r in results if r.success)
@@ -204,7 +230,8 @@ def _build_report(
     by_repo: dict[str, RepoStats] = {}
     grouped: dict[str, list[SWEBenchResult]] = {}
     for r in results:
-        repo_key = r.instance_id.split("-", 1)[0]
+        instance = instances_by_id.get(r.instance_id) if instances_by_id else None
+        repo_key = instance.repo if instance else r.instance_id.split("-", 1)[0]
         grouped.setdefault(repo_key, []).append(r)
     for repo, rs in grouped.items():
         rresolved = sum(1 for r in rs if r.success)
@@ -313,6 +340,7 @@ async def _run(args: argparse.Namespace) -> int:
         timeout_seconds=config.timeout_seconds,
         use_docker=config.use_docker_eval,
     )
+    instances_by_id = {instance.instance_id: instance for instance in instances}
     docker_ok = (
         await evaluator.check_docker_available() if config.use_docker_eval else False
     )
@@ -321,44 +349,58 @@ async def _run(args: argparse.Namespace) -> int:
             "[swe_bench] docker not available — falling back to basic validation"
         )
 
-    results: list[SWEBenchResult] = []
     try:
-        for idx, inst in enumerate(instances):
-            logger.info(
-                "[swe_bench] %d/%d %s", idx + 1, len(instances), inst.instance_id
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        if args.orchestrated:
+            providers = args.providers or [args.provider or "direct_shell"]
+            provider_payloads: dict[str, dict[str, object]] = {}
+            provider_scores: dict[str, float] = {}
+            all_results: list[SWEBenchResult] = []
+            for provider in providers:
+                provider_results = await _run_instances(
+                    client,
+                    instances,
+                    evaluator,
+                    provider_label=provider,
+                )
+                all_results.extend(provider_results)
+                provider_report = _build_report(
+                    config,
+                    provider_results,
+                    instances_by_id,
+                )
+                provider_payloads[provider] = _report_to_dict(provider_report)
+                provider_scores[provider] = provider_report.resolve_rate
+
+            summary_report = _build_report(config, all_results, instances_by_id)
+            summary_payload = _report_to_dict(summary_report)
+            overall_score = (
+                sum(provider_scores.values()) / len(provider_scores)
+                if provider_scores
+                else 0.0
             )
-            res = await _run_instance(client, inst, evaluator)
-            results.append(res)
+            payload = {
+                "summary": summary_payload["summary"],
+                "metrics": {
+                    "overall_score": overall_score,
+                    "provider_scores": provider_scores,
+                },
+                "matrix": {
+                    "execution_mode": args.execution_mode,
+                    "providers": providers,
+                },
+                "orchestrated": provider_payloads,
+            }
+            out_path = Path(config.output_dir) / f"orchestrated-{timestamp}.json"
+        else:
+            results = await _run_instances(client, instances, evaluator)
+            report = _build_report(config, results, instances_by_id)
+            payload = _report_to_dict(report)
+            out_path = Path(config.output_dir) / f"swe-bench-{timestamp}.json"
     finally:
         if eliza_server is not None:
             eliza_server.stop()
 
-    report = _build_report(config, results)
-    payload = _report_to_dict(report)
-    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    if args.orchestrated:
-        providers = args.providers or [args.provider or "direct_shell"]
-        provider_payloads = {provider: payload for provider in providers}
-        payload = {
-            "summary": payload["summary"],
-            "metrics": {
-                "overall_score": payload["summary"]["resolve_rate"],
-                "provider_scores": {
-                    provider: payload["summary"]["resolve_rate"]
-                    for provider in providers
-                },
-            },
-            "matrix": {
-                "execution_mode": args.execution_mode,
-                "providers": providers,
-            },
-            "orchestrated": {
-                provider: provider_payloads[provider] for provider in providers
-            },
-        }
-        out_path = Path(config.output_dir) / f"orchestrated-{timestamp}.json"
-    else:
-        out_path = Path(config.output_dir) / f"swe-bench-{timestamp}.json"
     out_path.write_text(json.dumps(payload, indent=2))
     print(json.dumps(payload["summary"], indent=2))
     print(f"\nResult file: {out_path}")

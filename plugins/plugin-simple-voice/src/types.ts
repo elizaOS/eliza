@@ -14,9 +14,8 @@ export const DEFAULT_SAM_OPTIONS: SamTTSOptions = {
   mouth: 128,
 };
 
-export const SAMServiceType = {
-  SAM_TTS: "SAM_TTS" as const,
-};
+export const TTS_SERVICE_TYPE = "SAM_TTS" as const;
+export const SPEAK_ACTION_NAME = "SAY_ALOUD" as const;
 
 export interface HardwareBridgeService extends Service {
   sendAudioData(audioBuffer: Uint8Array): Promise<void>;

@@ -71,7 +71,7 @@ const ciExcludedRealPaths = [
   ),
   elizaWorkspacePattern("packages/benchmarks/app-eval/evaluate.real.test.ts"),
   elizaWorkspacePattern(
-    "plugins/app-form/src/tests/toon-integration.live.test.ts",
+    "plugins/plugin-form/src/tests/toon-integration.live.test.ts",
   ),
   elizaWorkspacePattern(
     "plugins/app-lifeops/test/lifeops-life-chat.real.test.ts",
@@ -324,15 +324,21 @@ const realResolveAlias: ModuleAlias[] = [
     ),
   },
   {
-    find: /^@elizaos\/app-form\/(.*)/,
-    replacement: path.join(elizaWorkspaceRoot, "apps", "app-form", "src", "$1"),
-  },
-  {
-    find: "@elizaos/app-form",
+    find: /^@elizaos\/plugin-form\/(.*)/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "apps",
-      "app-form",
+      "plugins",
+      "plugin-form",
+      "src",
+      "$1",
+    ),
+  },
+  {
+    find: "@elizaos/plugin-form",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins",
+      "plugin-form",
       "src",
       "index.ts",
     ),

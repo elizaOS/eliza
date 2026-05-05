@@ -16,7 +16,7 @@
  */
 
 import {
-  parseKeyValueXml,
+  parseToonKeyValue,
   type IAgentRuntime,
   type Logger,
   ModelType,
@@ -275,7 +275,7 @@ function parseLlmScores(raw: string): LlmScoreEntry[] {
   const trimmed = raw.trim();
   if (!trimmed) return [];
 
-  const parsedToon = parseKeyValueXml<Record<string, unknown>>(trimmed);
+  const parsedToon = parseToonKeyValue<Record<string, unknown>>(trimmed);
   const toonScores = Array.isArray(parsedToon?.scores)
     ? parsedToon.scores
         .map(normalizeLlmScoreEntry)

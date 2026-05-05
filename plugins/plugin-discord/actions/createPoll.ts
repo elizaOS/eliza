@@ -9,8 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { TextChannel } from "discord.js";
@@ -44,8 +43,7 @@ const getPollInfo = async (
 		});
 
 		const parsedResponse =
-			parseKeyValueXml<Record<string, unknown>>(response) ??
-			parseJSONObjectFromText(response);
+			parseToonKeyValue<Record<string, unknown>>(response);
 		if (
 			parsedResponse?.question &&
 			Array.isArray(parsedResponse.options) &&

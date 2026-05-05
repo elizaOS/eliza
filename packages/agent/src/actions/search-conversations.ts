@@ -5,6 +5,7 @@ import type {
   IAgentRuntime,
   Memory,
   Room,
+  SearchCategoryRegistration,
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -23,6 +24,50 @@ type SearchConversationsParams = {
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const MATCH_THRESHOLD = 0.6;
+
+const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
+  category: "conversations",
+  label: "Conversations",
+  description:
+    "Search stored conversation messages across connected platforms.",
+  contexts: ["social", "knowledge"],
+  filters: [
+    {
+      name: "source",
+      label: "Source",
+      description:
+        'Optional platform source, for example "discord" or "slack".',
+      type: "string",
+    },
+    {
+      name: "entityId",
+      label: "Entity ID",
+      description: "Optional participant entity ID.",
+      type: "string",
+    },
+  ],
+  resultSchemaSummary:
+    "Message results with line, id, roomId, entityId, text, and createdAt.",
+  capabilities: ["semantic", "messages", "cross-platform"],
+  source: "agent:conversations",
+};
+
+function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
+  try {
+    runtime.getSearchCategory(category, { includeDisabled: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function registerConversationSearchCategory(
+  runtime: IAgentRuntime,
+): void {
+  if (!hasSearchCategory(runtime, CONVERSATION_SEARCH_CATEGORY.category)) {
+    runtime.registerSearchCategory(CONVERSATION_SEARCH_CATEGORY);
+  }
+}
 
 function formatResultsWithLineNumbers(
   memories: Memory[],
@@ -68,11 +113,14 @@ export const searchConversationsAction: Action = {
     "search across conversation connect platform use semantic search find relevant message result include line number copy clipboard",
 
   validate: async (runtime, message, state) => {
+    registerConversationSearchCategory(runtime);
     if (!(await hasAdminAccess(runtime, message))) return false;
-    return hasContextSignalSyncForKey(message, state, "search_conversations");
+    void hasContextSignalSyncForKey(message, state, "search_conversations");
+    return false;
   },
 
   handler: async (runtime, message, state, options) => {
+    registerConversationSearchCategory(runtime);
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied: only the owner or admins may search conversations.",

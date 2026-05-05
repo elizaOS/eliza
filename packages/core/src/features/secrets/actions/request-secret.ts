@@ -3,7 +3,6 @@ import { extractSecretRequestTemplate as extractRequestTemplate } from "../../..
 import {
 	type Action,
 	type ActionExample,
-	composePromptFromState,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -54,15 +53,37 @@ export const requestSecretAction: Action = {
 		logger.info("[RequestSecret] Processing secret request");
 
 		const currentState = state ?? (await runtime.composeState(message));
-		const prompt = composePromptFromState({
-			state: currentState,
-			template: extractRequestTemplate,
-		});
 
 		try {
-			const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
-				prompt,
-			})) as { key?: string; reason?: string } | null;
+			const result = await runtime.dynamicPromptExecFromState({
+				state: currentState,
+				params: {
+					prompt: extractRequestTemplate,
+				},
+				schema: [
+					{
+						field: "key",
+						description:
+							"Name of the missing secret, usually UPPERCASE_WITH_UNDERSCORES",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "reason",
+						description: "Why the secret is needed",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.TEXT_SMALL,
+					preferredEncapsulation: "toon",
+					contextCheckLevel: 0,
+					maxRetries: 1,
+				},
+			});
 
 			if (!result?.key) {
 				logger.warn(
@@ -75,7 +96,9 @@ export const requestSecretAction: Action = {
 				};
 			}
 
-			const key = result.key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+			const key = String(result.key)
+				.toUpperCase()
+				.replace(/[^A-Z0-9_]/g, "_");
 
 			// Check if it already exists
 			const service = runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
@@ -100,7 +123,11 @@ export const requestSecretAction: Action = {
 				}
 			}
 
-			const text = `I require the secret '${key}' to proceed${result.reason ? ` (${result.reason})` : ""}. Please provide it securely using 'set secret ${key} <value>'.`;
+			const reason =
+				typeof result.reason === "string" && result.reason.trim()
+					? result.reason.trim()
+					: undefined;
+			const text = `I require the secret '${key}' to proceed${reason ? ` (${reason})` : ""}. Please provide it securely using 'set secret ${key} <value>'.`;
 
 			if (callback) {
 				await callback({
@@ -109,7 +136,7 @@ export const requestSecretAction: Action = {
 					content: {
 						secretRequest: {
 							key,
-							reason: result.reason,
+							reason,
 						},
 					},
 				});

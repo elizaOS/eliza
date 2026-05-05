@@ -244,7 +244,7 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
 
     try {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
+        model: openai("gpt-5-mini"),
         system: systemPrompt,
         prompt:
           "Create a compelling Discord announcement about this app that would engage a community. Focus on what makes it unique and valuable.",

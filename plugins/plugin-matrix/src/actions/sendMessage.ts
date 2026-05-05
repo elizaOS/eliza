@@ -14,8 +14,7 @@ import type {
 import {
   composePromptFromState,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import type { MatrixService } from "../service.js";
 import { isValidMatrixRoomAlias, isValidMatrixRoomId, MATRIX_SERVICE_NAME } from "../types.js";
@@ -88,8 +87,7 @@ export const sendMessage: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
-        parseJSONObjectFromText(String(response));
+        parseToonKeyValue<Record<string, unknown>>(String(response));
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

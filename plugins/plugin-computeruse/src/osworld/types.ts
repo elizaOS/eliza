@@ -15,7 +15,7 @@
 export interface OSWorldObservation {
   /** Base64-encoded PNG screenshot */
   screenshot: string;
-  /** XML/text accessibility tree of the focused window (optional) */
+  /** Text accessibility tree of the focused window (optional) */
   accessibility_tree?: string | null;
   /** Terminal output if relevant (optional) */
   terminal?: string | null;

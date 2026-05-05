@@ -328,7 +328,7 @@ async def run_benchmark(
             if not api_key:
                 raise RuntimeError(f"{key_var} is required for provider={runtime_provider}")
             model_name = model or {
-                "openai": "gpt-4o-mini",
+                "openai": "openai/gpt-oss-120b",
                 "groq": "openai/gpt-oss-120b",
                 "openrouter": "openai/gpt-oss-120b",
             }[runtime_provider]
@@ -361,11 +361,7 @@ async def run_benchmark(
                     provider_name = "openai"
             model_name = (model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
             if not model_name:
-                model_name = (
-                    "openai/gpt-oss-120b"
-                    if provider_name in {"groq", "openrouter"}
-                    else "gpt-4o-mini"
-                )
+                model_name = "openai/gpt-oss-120b"
             if provider_name:
                 os.environ["BENCHMARK_MODEL_PROVIDER"] = provider_name
             os.environ["BENCHMARK_MODEL_NAME"] = model_name

@@ -9,11 +9,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -50,6 +45,9 @@ import {
   hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
+  parseLifeOpsToonRecord,
+  runLifeOpsTextModel,
+  runLifeOpsToonModel,
   toActionData,
 } from "./lifeops-google-helpers.js";
 
@@ -468,6 +466,40 @@ const CALENDAR_READ_DISAMBIGUATION_RULES = [
   "If the request asks for a schedule, agenda, or list of events over a time window, choose feed.",
 ] as const;
 
+const CALENDAR_MUTATION_INTENT_PATTERN =
+  /\b(?:add|book|cancel|change|clear|create|delete|edit|move|put|remove|rename|reschedule|reserve|set\s+up|update)\b|\bschedule\s+(?:a|an|the|my|with|for|meeting|appointment|call|event|block|lunch|dinner)\b/i;
+const CALENDAR_BROAD_FEED_PATTERN =
+  /\b(?:agenda|week ahead)\b|\b(?:show|list|what(?:'s| is)).*(?:calendar|schedule|agenda)\b|\bwhat do i have (?:today|tomorrow|this|on)\b/i;
+const CALENDAR_NEXT_EVENT_PATTERN =
+  /\b(?:next|upcoming|nearest)\s+(?:appointment|event|meeting)\b|\bwhat(?:'s| is) my next\b/i;
+
+function isSafeReadOnlyCalendarPlan(
+  plan: CalendarLlmPlan | null,
+  currentMessage: string,
+  intent: string,
+): boolean {
+  if (!plan || plan.shouldAct === false || !plan.subaction) {
+    return false;
+  }
+  const text = `${currentMessage}\n${intent}`;
+  if (CALENDAR_MUTATION_INTENT_PATTERN.test(text)) {
+    return false;
+  }
+
+  switch (plan.subaction) {
+    case "feed":
+      return CALENDAR_BROAD_FEED_PATTERN.test(text);
+    case "next_event":
+      return CALENDAR_NEXT_EVENT_PATTERN.test(text);
+    case "search_events":
+      return plan.queries.length > 0;
+    case "trip_window":
+      return Boolean(plan.tripLocation || plan.queries.length > 0);
+    default:
+      return false;
+  }
+}
+
 async function disambiguateCalendarReadPlanWithLlm(args: {
   runtime: IAgentRuntime;
   currentMessage: string;
@@ -517,25 +549,14 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     `Current planner candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    return normalizeCalendarReadResolution(parsed);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar read disambiguation model call failed",
-    );
-    return null;
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.resolve_read_intent",
+    failureMessage: "Calendar read disambiguation model call failed",
+    source: "action:calendar",
+  });
+  return normalizeCalendarReadResolution(result?.parsed);
 }
 
 async function resolveCalendarLookupBoundaryWithLlm(args: {
@@ -573,25 +594,14 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     `Current candidate:\n${args.candidateSubaction}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    return normalizeCalendarLookupReadSubaction(parsed?.subaction);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar lookup boundary model call failed",
-    );
-    return null;
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.resolve_lookup_boundary",
+    failureMessage: "Calendar lookup boundary model call failed",
+    source: "action:calendar",
+  });
+  return normalizeCalendarLookupReadSubaction(result?.parsed?.subaction);
 }
 
 async function resolveCalendarMutationBoundaryWithLlm(args: {
@@ -633,25 +643,14 @@ async function resolveCalendarMutationBoundaryWithLlm(args: {
     `Current candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    return normalizeCalendarMutationSubaction(parsed?.subaction);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar mutation boundary model call failed",
-    );
-    return null;
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.resolve_mutation_boundary",
+    failureMessage: "Calendar mutation boundary model call failed",
+    source: "action:calendar",
+  });
+  return normalizeCalendarMutationSubaction(result?.parsed?.subaction);
 }
 
 async function finalizeCalendarPlan(args: {
@@ -662,7 +661,16 @@ async function finalizeCalendarPlan(args: {
   plan: CalendarLlmPlan | null;
 }): Promise<CalendarLlmPlan> {
   const { runtime, currentMessage, intent, recentConversation, plan } = args;
+  if (plan?.shouldAct === false) {
+    return plan;
+  }
+  const safeReadOnlyPlan = isSafeReadOnlyCalendarPlan(
+    plan,
+    currentMessage,
+    intent,
+  );
   if (
+    !safeReadOnlyPlan &&
     plan?.subaction !== "create_event" &&
     plan?.subaction !== "update_event" &&
     plan?.subaction !== "delete_event"
@@ -685,6 +693,10 @@ async function finalizeCalendarPlan(args: {
         response: undefined,
       };
     }
+  }
+
+  if (safeReadOnlyPlan && plan) {
+    return plan;
   }
 
   if (!shouldDisambiguateCalendarReadPlan(plan)) {
@@ -1886,14 +1898,14 @@ export async function extractCalendarPlanWithLlm(
     "  timeMax: optional ISO 8601 datetime",
     "  windowLabel: optional natural-language window label",
     "",
-    "Subactions and when to use each:",
-    "  feed — view today's, tomorrow's, or this week's schedule (e.g. 'what's on my calendar', 'what do I have today', 'this week's agenda')",
-    "  next_event — check the next upcoming event only (e.g. 'what's my next meeting', 'when is my next appointment')",
-    "  search_events — find events by title, attendee, location, or date range (e.g. 'find my flight', 'when is the dentist', 'meetings with John')",
-    "  create_event — schedule a new event (e.g. 'schedule a meeting tomorrow at 3pm', 'add lunch with Sarah on Friday')",
-    "  update_event — rename, reschedule, move, or edit an existing event (e.g. 'rename my meeting to standup', 'reschedule the dentist to Friday', 'move the call to 3pm')",
-    "  delete_event — remove or cancel an existing event (e.g. 'delete the team meeting', 'cancel my appointment', 'remove the duplicate event')",
-    "  trip_window — query what's happening during a trip or stay in a specific place (e.g. 'what's happening while I'm in Denver', 'my Tokyo itinerary')",
+    "subactions[7]{name,use}:",
+    "  feed,View schedule for today tomorrow or this week",
+    "  next_event,Check the next upcoming event only",
+    "  search_events,Find events by title attendee location or date range",
+    "  create_event,Schedule a new event",
+    "  update_event,Rename reschedule move or edit an existing event",
+    "  delete_event,Remove or cancel an existing event",
+    "  trip_window,Query what is happening during a trip or stay in a place",
     "Use only the exact subaction literals listed above.",
     "Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.",
     "If the user asks to put, add, book, schedule, or enter a new meeting, appointment, call, lunch, or block on the calendar at a stated time, prefer create_event over search_events.",
@@ -1913,7 +1925,7 @@ export async function extractCalendarPlanWithLlm(
     "For update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.",
     "For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.",
     "",
-    "Examples:",
+    "Example TOON outputs:",
     "request: what's on my calendar tomorrow",
     "subaction: feed",
     "shouldAct: true",
@@ -1967,27 +1979,19 @@ export async function extractCalendarPlanWithLlm(
     `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
-  let rawResponse = "";
   const parseResponse = (raw: string): CalendarLlmPlan | null => {
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
+    const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(raw);
     return parsed ? buildCalendarPlanFromParsed(parsed) : null;
   };
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    rawResponse = typeof result === "string" ? result : "";
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar action planning model call failed",
-    );
+  const plannerResult = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.plan",
+    failureMessage: "Calendar action planning model call failed",
+    source: "action:calendar",
+  });
+  if (!plannerResult) {
     return {
       subaction: null,
       queries: [],
@@ -1995,7 +1999,9 @@ export async function extractCalendarPlanWithLlm(
     };
   }
 
-  const parsedPlan = parseResponse(rawResponse);
+  const parsedPlan = plannerResult.parsed
+    ? buildCalendarPlanFromParsed(plannerResult.parsed)
+    : null;
   if (parsedPlan) {
     return finalizeCalendarPlan({
       runtime,
@@ -2006,40 +2012,35 @@ export async function extractCalendarPlanWithLlm(
     });
   }
 
-  try {
-    const repairResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildCalendarPlanRepairPrompt({
-        currentMessage,
-        intent,
-        recentConversation,
-        rawResponse,
-        timeZone,
-        nowIso,
-        localNow,
-      }),
-    });
-    const repairedRaw = typeof repairResult === "string" ? repairResult : "";
-    return finalizeCalendarPlan({
-      runtime,
+  const repairResult = await runLifeOpsTextModel({
+    runtime,
+    prompt: buildCalendarPlanRepairPrompt({
       currentMessage,
       intent,
       recentConversation,
-      plan: parseResponse(repairedRaw),
-    });
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar action repair model call failed",
-    );
+      rawResponse: plannerResult.rawResponse,
+      timeZone,
+      nowIso,
+      localNow,
+    }),
+    actionType: "lifeops.calendar.plan_repair",
+    failureMessage: "Calendar action repair model call failed",
+    source: "action:calendar",
+  });
+  if (repairResult === null) {
     return {
       subaction: null,
       queries: [],
       shouldAct: null,
     };
   }
+  return finalizeCalendarPlan({
+    runtime,
+    currentMessage,
+    intent,
+    recentConversation,
+    plan: parseResponse(repairResult),
+  });
 }
 
 function resolveCalendarSearchQueries(args: {
@@ -2089,43 +2090,33 @@ async function inferCalendarSearchQueriesWithLlm(args: {
     `Current planner output:\n${formatCalendarPromptValue(args.llmPlan ?? null)}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
-    if (!parsed) {
-      return [];
-    }
-
-    const rawQueries: string[] = [];
-    if (Array.isArray(parsed.queries)) {
-      for (const value of parsed.queries) {
-        if (typeof value === "string") {
-          rawQueries.push(value);
-        }
-      }
-    } else if (
-      typeof parsed.queries === "string" &&
-      parsed.queries.trim().length > 0
-    ) {
-      rawQueries.push(...parsed.queries.split(/\s{0,256}\|\|\s{0,256}/));
-    }
-
-    return dedupeCalendarQueries(rawQueries);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar search-query extraction model call failed",
-    );
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_search_queries",
+    failureMessage: "Calendar search-query extraction model call failed",
+    source: "action:calendar",
+  });
+  const parsed = result?.parsed;
+  if (!parsed) {
     return [];
   }
+
+  const rawQueries: string[] = [];
+  if (Array.isArray(parsed.queries)) {
+    for (const value of parsed.queries) {
+      if (typeof value === "string") {
+        rawQueries.push(value);
+      }
+    }
+  } else if (
+    typeof parsed.queries === "string" &&
+    parsed.queries.trim().length > 0
+  ) {
+    rawQueries.push(...parsed.queries.split(/\s{0,256}\|\|\s{0,256}/));
+  }
+
+  return dedupeCalendarQueries(rawQueries);
 }
 
 function normalizeIsShortPreparationFlag(value: unknown): boolean {
@@ -2392,13 +2383,6 @@ function formatCreateEventRecentConversation(state: State | undefined): string {
   return conversation.length > 0 ? conversation : "(none)";
 }
 
-function parseCreateEventExtractionResponse(
-  rawResponse: string,
-): Record<string, unknown> {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(rawResponse);
-  return parsed && typeof parsed === "object" ? parsed : {};
-}
-
 function formatUpdateEventTargetContext(
   event: LifeOpsCalendarEvent | null,
 ): string {
@@ -2506,20 +2490,14 @@ async function inferCreateEventDetails(
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return parseCreateEventExtractionResponse(rawResponse);
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar create-event extraction model call failed",
-    );
-    return {};
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_create_event",
+    failureMessage: "Calendar create-event extraction model call failed",
+    source: "action:calendar",
+  });
+  return result?.parsed ?? {};
 }
 
 async function inferUpdateEventDetails(
@@ -2569,20 +2547,14 @@ async function inferUpdateEventDetails(
     `Current event:\n${formatUpdateEventTargetContext(targetEvent)}`,
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return parseCreateEventExtractionResponse(rawResponse);
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar update-event extraction model call failed",
-    );
-    return {};
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_update_event",
+    failureMessage: "Calendar update-event extraction model call failed",
+    source: "action:calendar",
+  });
+  return result?.parsed ?? {};
 }
 
 async function repairCreateEventDetails(
@@ -2642,23 +2614,14 @@ async function repairCreateEventDetails(
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return parseCreateEventExtractionResponse(rawResponse);
-  } catch (repairError) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error:
-          repairError instanceof Error
-            ? repairError.message
-            : String(repairError),
-      },
-      "Calendar create-event repair model call failed",
-    );
-    return {};
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.repair_create_event",
+    failureMessage: "Calendar create-event repair model call failed",
+    source: "action:calendar",
+  });
+  return result?.parsed ?? {};
 }
 
 function scoreCalendarEvent(
@@ -2798,9 +2761,7 @@ function extractCalendarGroundedMatchIds(
   rawResponse: string,
   allowedIds: Set<string>,
 ): string[] | null {
-  const parsed =
-    parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-    parseJSONObjectFromText(rawResponse);
+  const parsed = parseLifeOpsToonRecord<Record<string, unknown>>(rawResponse);
   if (!parsed) {
     return null;
   }
@@ -2880,20 +2841,16 @@ async function groundCalendarSearchMatchesWithLlm(
     ),
   ].join("\n");
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    return extractCalendarGroundedMatchIds(rawResponse, allowedIds);
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Calendar search grounding model call failed",
-    );
-    return null;
-  }
+  const rawResponse = await runLifeOpsTextModel({
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.ground_search_matches",
+    failureMessage: "Calendar search grounding model call failed",
+    source: "action:calendar",
+  });
+  return rawResponse === null
+    ? null
+    : extractCalendarGroundedMatchIds(rawResponse, allowedIds);
 }
 
 function buildCalendarGroundingCandidates(

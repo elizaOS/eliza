@@ -23,8 +23,7 @@ import type {
 import {
   logger,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import {
@@ -175,8 +174,7 @@ async function extractSearchPlan(
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const text = typeof raw === "string" ? raw : "";
   const parsed =
-    parseKeyValueXml<Record<string, unknown>>(text) ??
-    (parseJSONObjectFromText(text) as Record<string, unknown> | null);
+    parseToonKeyValue<Record<string, unknown>>(text);
 
   if (!parsed) {
     return {

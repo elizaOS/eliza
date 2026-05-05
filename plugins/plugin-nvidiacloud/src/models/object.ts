@@ -40,7 +40,7 @@ async function generateObjectWithModel(
     });
 
     if (usage) {
-      emitModelUsageEvent(runtime, modelType, usage);
+      emitModelUsageEvent(runtime, modelType, usage, modelName, modelLabel);
     }
     return object as Record<string, unknown>;
   } catch (error: unknown) {

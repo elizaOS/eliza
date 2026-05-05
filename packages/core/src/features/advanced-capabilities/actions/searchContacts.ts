@@ -17,7 +17,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SEARCH_CONTACTS");
@@ -28,7 +28,7 @@ const SEARCH_KEYWORDS = getValidationKeywordTerms(
 	},
 );
 
-interface SearchContactsXmlResult {
+interface SearchContactsToonResult {
 	categories?: string;
 	searchTerm?: string;
 	tags?: string;
@@ -106,7 +106,7 @@ export const searchContactsAction: Action = {
 			stopSequences: [],
 		});
 
-		const parsedResponse = parseKeyValueXml<SearchContactsXmlResult>(response);
+		const parsedResponse = parseToonKeyValue<SearchContactsToonResult>(response);
 
 		// Build search criteria
 		const criteria: {

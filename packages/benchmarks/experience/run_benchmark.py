@@ -344,7 +344,7 @@ def _configure_bridge_model_env(args: argparse.Namespace) -> None:
         else:
             provider = "openai"
     if not model_name:
-        model_name = "openai/gpt-oss-120b" if provider in {"groq", "openrouter"} else "gpt-4o-mini"
+        model_name = "openai/gpt-oss-120b"
 
     os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
     os.environ["BENCHMARK_MODEL_NAME"] = model_name

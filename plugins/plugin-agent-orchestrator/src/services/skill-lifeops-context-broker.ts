@@ -342,9 +342,37 @@ function extractResultText(
   const capturedText = captured.join("\n").trim();
   if (capturedText) return capturedText;
   if (result?.data !== undefined) {
-    return JSON.stringify(result.data, null, 2);
+    return formatContextData(result.data);
   }
   return "(no LifeOps context returned)";
+}
+
+function formatContextData(value: unknown, indent = 0): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  const pad = " ".repeat(indent);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const formatted = formatContextData(item, indent + 2);
+        return `${pad}- ${formatted.replace(/\n/g, `\n${pad}  `)}`;
+      })
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => {
+        const formatted = formatContextData(entry, indent + 2);
+        return formatted.includes("\n")
+          ? `${pad}${key}:\n${formatted}`
+          : `${pad}${key}: ${formatted}`;
+      })
+      .join("\n");
+  }
+  return String(value);
 }
 
 function unsupportedText(plan: BrokerPlan): string {

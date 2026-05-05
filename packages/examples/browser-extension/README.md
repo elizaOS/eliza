@@ -51,7 +51,7 @@ npm run convert
 | Provider | API Key Required | Models |
 |----------|-----------------|--------|
 | ELIZA (Classic) | No | Pattern matching (offline) |
-| OpenAI | Yes | GPT-4o, GPT-4o-mini |
+| OpenAI | Yes | GPT-4o, gpt-5-mini |
 | Anthropic | Yes | Claude Sonnet, Claude Haiku |
 | Google Gemini | Yes | Gemini 2.0 Flash |
 | Groq | Yes | Llama 3.3 70B, Llama 3.1 8B |

@@ -2,9 +2,9 @@
 Evaluator Ablation Benchmark
 
 Compares agent performance on multi-step shell tasks with and without the
-PostActionEvaluator.  The evaluator enables recursive action chaining so the
-agent can execute multiple sequential steps in a single message-handling cycle,
-rather than waiting for a new iteration each time.
+PostActionEvaluator-era ablation flags while routing decisions through the
+TypeScript benchmark bridge. The legacy in-process Python Eliza agent has been
+removed.
 
 Usage:
     python evaluator_ablation.py [--model MODEL] [--verbose]
@@ -12,7 +12,7 @@ Usage:
 Requires:
     - Docker running (for the sandbox environment)
     - An LLM API key (OPENAI_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY)
-    - elizaos + elizaos_terminal_bench installed
+    - eliza-adapter + elizaos_terminal_bench installed
 """
 
 from __future__ import annotations
@@ -28,8 +28,11 @@ from pathlib import Path
 
 # terminal-bench lives alongside this script
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+ELIZA_ADAPTER_ROOT = Path(__file__).resolve().parent.parent / "eliza-adapter"
+if ELIZA_ADAPTER_ROOT.is_dir():
+    sys.path.insert(0, str(ELIZA_ADAPTER_ROOT))
 
-from elizaos_terminal_bench.eliza_agent import ElizaTerminalAgent
+from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
 from elizaos_terminal_bench.environment import TerminalEnvironment
 from elizaos_terminal_bench.types import (
     TaskCategory,
@@ -275,12 +278,11 @@ async def run_single(
     if task.setup_script:
         await env.execute(task.setup_script)
 
-    agent = ElizaTerminalAgent(
+    agent = ElizaBridgeTerminalAgent(
         environment=env,
         max_iterations=max_iterations,
         model_name=model,
         verbose=verbose,
-        use_post_action_evaluator=use_evaluator,
     )
 
     t0 = time.monotonic()
@@ -417,11 +419,11 @@ def print_report(report: AblationReport) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Compare agent task completion with/without PostActionEvaluator"
+        description="Compare terminal task completion through the Eliza TypeScript bridge"
     )
     parser.add_argument(
-        "--model", default="gpt-4o-mini",
-        help="LLM model name (default: gpt-4o-mini)",
+        "--model", default="openai/gpt-oss-120b",
+        help="LLM model name (default: openai/gpt-oss-120b)",
     )
     parser.add_argument(
         "--max-iterations", type=int, default=15,

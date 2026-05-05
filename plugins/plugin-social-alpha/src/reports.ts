@@ -766,7 +766,7 @@ ${formatTrends(monthlyTrends)}`.trim();
  * @param {Entity[]} recommenders - The list of recommenders to be formatted
  * @param {Map<string, RecommenderMetrics>} metrics - The map of recommender metrics
  * @param {Map<string, RecommenderMetricsHistory[]>} history - The map of historical metrics data
- * @returns {string} The formatted top recommenders overview in XML format
+ * @returns {string} The formatted top recommenders overview
  */
 export function formatTopRecommendersOverview(
 	recommenders: Entity[],

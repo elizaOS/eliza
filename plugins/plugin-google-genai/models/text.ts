@@ -1,6 +1,10 @@
-import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  RecordLlmCallDetails,
+} from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, recordLlmCall } from "@elizaos/core";
 import {
   createGoogleGenAI,
   getActionPlannerModel,
@@ -41,6 +45,10 @@ type ChatAttachment = {
 type GenerateTextParamsWithAttachments = GenerateTextParams & {
   attachments?: ChatAttachment[];
 };
+type GoogleGenAIClient = NonNullable<ReturnType<typeof createGoogleGenAI>>;
+type GenerateContentParams = Parameters<
+  GoogleGenAIClient["models"]["generateContent"]
+>[0];
 
 function buildPromptParts(prompt: string, attachments?: ChatAttachment[]) {
   const parts: Array<
@@ -121,6 +129,67 @@ function getModelNameForType(
   }
 }
 
+function createLlmCallDetails(
+  modelName: string,
+  modelType: string,
+  prompt: string,
+  systemInstruction: string | undefined,
+  temperature: number,
+  maxTokens: number,
+): RecordLlmCallDetails {
+  return {
+    model: modelName,
+    systemPrompt: systemInstruction ?? "",
+    userPrompt: prompt,
+    temperature,
+    maxTokens,
+    purpose: "external_llm",
+    actionType: `google-genai.${modelType}.generateContent`,
+  };
+}
+
+async function generateContentWithTrajectory(
+  runtime: IAgentRuntime,
+  genAI: GoogleGenAIClient,
+  modelName: string,
+  modelType: string,
+  prompt: string,
+  systemInstruction: string | undefined,
+  temperature: number,
+  maxTokens: number,
+  request: GenerateContentParams,
+): Promise<string> {
+  const details = createLlmCallDetails(
+    modelName,
+    modelType,
+    prompt,
+    systemInstruction,
+    temperature,
+    maxTokens,
+  );
+  const response = await recordLlmCall(runtime, details, async () => {
+    const result = await genAI.models.generateContent(request);
+    const text = result.text || "";
+    details.response = text;
+    details.promptTokens = await countTokens(prompt);
+    details.completionTokens = await countTokens(text);
+    return result;
+  });
+
+  const text = response.text || "";
+  const promptTokens = details.promptTokens ?? (await countTokens(prompt));
+  const completionTokens =
+    details.completionTokens ?? (await countTokens(text));
+
+  emitModelUsageEvent(runtime, modelType, prompt, {
+    promptTokens,
+    completionTokens,
+    totalTokens: promptTokens + completionTokens,
+  });
+
+  return text;
+}
+
 export async function handleTextSmall(
   runtime: IAgentRuntime,
   {
@@ -142,35 +211,32 @@ export async function handleTextSmall(
 
   try {
     const systemInstruction = runtime.character.system || undefined;
-    const response = await genAI.models.generateContent({
-      model: modelName,
-      contents:
-        (attachments?.length ?? 0) > 0
-          ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
-          : prompt,
-      config: {
-        temperature,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: maxTokens,
-        stopSequences,
-        safetySettings: getSafetySettings(),
-        ...(systemInstruction && { systemInstruction }),
+    return await generateContentWithTrajectory(
+      runtime,
+      genAI,
+      modelName,
+      TEXT_SMALL_MODEL_TYPE,
+      prompt,
+      systemInstruction,
+      temperature,
+      maxTokens,
+      {
+        model: modelName,
+        contents:
+          (attachments?.length ?? 0) > 0
+            ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
+            : prompt,
+        config: {
+          temperature,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: maxTokens,
+          stopSequences,
+          safetySettings: getSafetySettings(),
+          ...(systemInstruction && { systemInstruction }),
+        },
       },
-    });
-
-    const text = response.text || "";
-
-    const promptTokens = await countTokens(prompt);
-    const completionTokens = await countTokens(text);
-
-    emitModelUsageEvent(runtime, TEXT_SMALL_MODEL_TYPE, prompt, {
-      promptTokens,
-      completionTokens,
-      totalTokens: promptTokens + completionTokens,
-    });
-
-    return text;
+    );
   } catch (error) {
     logger.error(
       `[TEXT_SMALL] Error: ${error instanceof Error ? error.message : String(error)}`,
@@ -200,35 +266,32 @@ export async function handleTextLarge(
 
   try {
     const systemInstruction = runtime.character.system || undefined;
-    const response = await genAI.models.generateContent({
-      model: modelName,
-      contents:
-        (attachments?.length ?? 0) > 0
-          ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
-          : prompt,
-      config: {
-        temperature,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: maxTokens,
-        stopSequences,
-        safetySettings: getSafetySettings(),
-        ...(systemInstruction && { systemInstruction }),
+    return await generateContentWithTrajectory(
+      runtime,
+      genAI,
+      modelName,
+      TEXT_LARGE_MODEL_TYPE,
+      prompt,
+      systemInstruction,
+      temperature,
+      maxTokens,
+      {
+        model: modelName,
+        contents:
+          (attachments?.length ?? 0) > 0
+            ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
+            : prompt,
+        config: {
+          temperature,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: maxTokens,
+          stopSequences,
+          safetySettings: getSafetySettings(),
+          ...(systemInstruction && { systemInstruction }),
+        },
       },
-    });
-
-    const text = response.text || "";
-
-    const promptTokens = await countTokens(prompt);
-    const completionTokens = await countTokens(text);
-
-    emitModelUsageEvent(runtime, TEXT_LARGE_MODEL_TYPE, prompt, {
-      promptTokens,
-      completionTokens,
-      totalTokens: promptTokens + completionTokens,
-    });
-
-    return text;
+    );
   } catch (error) {
     logger.error(
       `[TEXT_LARGE] Error: ${error instanceof Error ? error.message : String(error)}`,
@@ -294,35 +357,32 @@ async function handleTextWithType(
 
   try {
     const systemInstruction = runtime.character.system || undefined;
-    const response = await genAI.models.generateContent({
-      model: modelName,
-      contents:
-        (attachments?.length ?? 0) > 0
-          ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
-          : prompt,
-      config: {
-        temperature,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: maxTokens,
-        stopSequences,
-        safetySettings: getSafetySettings(),
-        ...(systemInstruction && { systemInstruction }),
+    return await generateContentWithTrajectory(
+      runtime,
+      genAI,
+      modelName,
+      modelType,
+      prompt,
+      systemInstruction,
+      temperature,
+      maxTokens,
+      {
+        model: modelName,
+        contents:
+          (attachments?.length ?? 0) > 0
+            ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
+            : prompt,
+        config: {
+          temperature,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: maxTokens,
+          stopSequences,
+          safetySettings: getSafetySettings(),
+          ...(systemInstruction && { systemInstruction }),
+        },
       },
-    });
-
-    const text = response.text || "";
-
-    const promptTokens = await countTokens(prompt);
-    const completionTokens = await countTokens(text);
-
-    emitModelUsageEvent(runtime, modelType, prompt, {
-      promptTokens,
-      completionTokens,
-      totalTokens: promptTokens + completionTokens,
-    });
-
-    return text;
+    );
   } catch (error) {
     logger.error(
       `[${modelType}] Error: ${error instanceof Error ? error.message : String(error)}`,

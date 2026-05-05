@@ -126,7 +126,7 @@ app.post("/", async (c) => {
     const systemPrompt = isEditMode && character ? editSystemPrompt(character) : createSystemPrompt;
 
     const result = streamText({
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       system: systemPrompt,
       messages: await convertToModelMessages(messages),
       temperature: 0.7,

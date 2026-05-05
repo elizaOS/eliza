@@ -6,13 +6,14 @@ import {
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { BIRDEYE_SERVICE_NAME } from "./constants";
+import { BIRDEYE_ENDPOINTS, BIRDEYE_SERVICE_NAME } from "./constants";
+import { searchBirdeyeTokens } from "./search-category";
 import type {
   BirdeyeSupportedChain,
   GetCacheTimedOptions,
   IToken,
 } from "./types/shared";
-import { extractChain } from "./utils";
+import { convertToStringParams, extractChain } from "./utils";
 
 /** Route spec for {@link resolveCloudRoute} — local X-API-KEY or Eliza Cloud `/apis/birdeye` proxy. */
 export const BIRDEYE_ROUTE_SPEC: RouteSpec = {
@@ -76,6 +77,104 @@ export class BirdeyeService extends Service {
         ...this.access.headers,
       },
     };
+  }
+
+  private async fetchBirdeyeJson(
+    path: string,
+    params: Record<string, unknown> = {},
+    options: { headers?: Record<string, string> } = {},
+  ) {
+    const chain = options.headers?.["x-chain"] ?? "solana";
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([, value]) => value !== undefined),
+    );
+    const query = new URLSearchParams(
+      convertToStringParams(cleanParams),
+    ).toString();
+    const suffix = query ? `${path}?${query}` : path;
+    const fetchOptions = this.getBirdeyeFetchOptions(chain);
+    const response = await fetch(this.birdeyeUrl(suffix), {
+      ...fetchOptions,
+      headers: {
+        ...(fetchOptions.headers as Record<string, string>),
+        ...(options.headers ?? {}),
+      },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Birdeye API error ${response.status}: ${errorText || response.statusText}`,
+      );
+    }
+    return response.json();
+  }
+
+  async fetchSearchTokenMarketData(params: Record<string, unknown>) {
+    const chain = typeof params.chain === "string" ? params.chain : "solana";
+    return this.fetchBirdeyeJson(
+      BIRDEYE_ENDPOINTS.search.token_market,
+      params,
+      {
+        headers: { "x-chain": chain },
+      },
+    );
+  }
+
+  async fetchTokenOverview(
+    params: Record<string, unknown>,
+    options: { headers?: Record<string, string> } = {},
+  ) {
+    return this.fetchBirdeyeJson(
+      BIRDEYE_ENDPOINTS.token.overview,
+      params,
+      options,
+    );
+  }
+
+  async fetchTokenMarketData(
+    params: Record<string, unknown>,
+    options: { headers?: Record<string, string> } = {},
+  ) {
+    return this.fetchBirdeyeJson(
+      BIRDEYE_ENDPOINTS.token.market_data,
+      params,
+      options,
+    );
+  }
+
+  async fetchTokenSecurityByAddress(
+    params: Record<string, unknown>,
+    options: { headers?: Record<string, string> } = {},
+  ) {
+    return this.fetchBirdeyeJson(
+      BIRDEYE_ENDPOINTS.token.security,
+      params,
+      options,
+    );
+  }
+
+  async fetchTokenTradeDataSingle(
+    params: Record<string, unknown>,
+    options: { headers?: Record<string, string> } = {},
+  ) {
+    return this.fetchBirdeyeJson(
+      BIRDEYE_ENDPOINTS.token.trade_data_single,
+      params,
+      options,
+    );
+  }
+
+  async search(query: string, options: Record<string, unknown> = {}) {
+    return searchBirdeyeTokens(
+      this.runtime,
+      {
+        query,
+        mode: options.mode as "auto" | "symbol" | "address" | undefined,
+        filters: options,
+        limit: typeof options.limit === "number" ? options.limit : undefined,
+      },
+      this,
+    );
   }
 
   // definitely should take a list of chains

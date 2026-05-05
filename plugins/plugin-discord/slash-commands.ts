@@ -54,8 +54,8 @@ const cooldowns = new Map<string, Map<string, number>>();
 
 const FALLBACK_KNOWN_MODELS = [
 	"gpt-4o",
-	"gpt-4o-mini",
-	"gpt-4",
+	"gpt-5-mini",
+	"gpt-5.5",
 	"gpt-3.5-turbo",
 	"claude-sonnet-4-6",
 	"claude-opus-4-7",

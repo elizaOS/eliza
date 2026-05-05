@@ -10,24 +10,12 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
-import {
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
-  getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
-import {
-  Connection,
-  PublicKey,
-  SystemProgram,
-  type TransactionInstruction,
-  TransactionMessage,
-  VersionedTransaction,
-} from "@solana/web3.js";
-import { getWalletKey } from "../keypairUtils";
+import { SOLANA_SERVICE_NAME } from "../constants";
+import type { SolanaService, SolanaTransferParams, SolanaTransferResult } from "../service";
 import { confirmationRequired, isConfirmed } from "./confirmation";
 
 interface TransferContent extends Content {
@@ -47,6 +35,34 @@ function isTransferContent(content: unknown): content is TransferContent {
   if (c.tokenAddress !== null && typeof c.tokenAddress !== "string") return false;
 
   return true;
+}
+
+function normalizeTokenAddress(value: string | null): string | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "null" || trimmed.toUpperCase() === "SOL") {
+    return null;
+  }
+  return trimmed;
+}
+
+async function extractTransferContent(runtime: IAgentRuntime, prompt: string): Promise<unknown> {
+  const result = await withStandaloneTrajectory(
+    runtime,
+    {
+      source: "solana.transfer.extract",
+      metadata: {
+        action: spec.name,
+        purpose: "financial_parameter_extraction",
+      },
+    },
+    () =>
+      runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      })
+  );
+
+  return parseToonKeyValue(result);
 }
 
 /**
@@ -71,11 +87,15 @@ export default {
   name: spec.name,
   similes: spec.similes ? [...spec.similes] : [],
   validate: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: HandlerOptions
   ): Promise<boolean> => {
+    if (!runtime.getService(SOLANA_SERVICE_NAME)) {
+      return false;
+    }
+
     const keywords = ["transfer", "send", "give", "pay", "sol", "token"];
     const currentText =
       typeof message.content?.text === "string" ? message.content.text.toLowerCase() : "";
@@ -103,22 +123,21 @@ export default {
   descriptionCompressed: spec.descriptionCompressed,
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
-    state: State,
+    message: Memory,
+    state: State | undefined,
     options: Record<string, string | number | boolean> | undefined,
     callback?: HandlerCallback
   ): Promise<undefined | ActionResult | undefined> => {
-    // ... handler implementation ... (preserved)
+    if (!state) {
+      state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
+    }
+
     const transferPrompt = composePromptFromState({
       state,
       template: transferTemplate,
     });
 
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: transferPrompt,
-    });
-
-    const content = parseKeyValueXml(result) ?? parseJSONObjectFromText(result);
+    const content = await extractTransferContent(runtime, transferPrompt);
 
     if (!content) {
       if (callback) {
@@ -140,127 +159,59 @@ export default {
       return;
     }
 
+    const transferParams: SolanaTransferParams = {
+      tokenAddress: normalizeTokenAddress(content.tokenAddress),
+      recipient: content.recipient,
+      amount: content.amount,
+    };
+
     if (!isConfirmed(options)) {
-      const tokenLabel = content.tokenAddress === null ? "SOL" : content.tokenAddress;
+      const tokenLabel = transferParams.tokenAddress === null ? "SOL" : transferParams.tokenAddress;
       const preview = `Review Solana transfer before submitting: ${content.amount} ${tokenLabel} to ${content.recipient}. Re-invoke ${spec.name} with confirmed: true to submit.`;
       return confirmationRequired({
         actionName: spec.name,
         preview,
         parameters: {
-          tokenAddress: content.tokenAddress,
-          recipient: content.recipient,
-          amount: content.amount,
+          tokenAddress: transferParams.tokenAddress,
+          recipient: transferParams.recipient,
+          amount: transferParams.amount,
         },
         callback,
       });
     }
 
     try {
-      const { keypair: senderKeypair } = await getWalletKey(runtime, true);
-      if (!senderKeypair) {
-        if (callback) {
-          callback({
-            text: "Need a valid agent address.",
-            content: { error: "Invalid transfer content" },
-          });
-        }
-        return;
+      const solanaService = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService | null;
+      if (!solanaService) {
+        throw new Error("SolanaService not initialized");
       }
-      const rpcUrl = runtime.getSetting("SOLANA_RPC_URL");
-      const rpcUrlStr = typeof rpcUrl === "string" ? rpcUrl : "https://api.mainnet-beta.solana.com";
-      const connection = new Connection(rpcUrlStr);
-      const recipientPubkey = new PublicKey(content.recipient);
 
-      let signature: string;
+      const walletResult = await solanaService.handleWalletAction({
+        subaction: "transfer",
+        chain: "solana",
+        ...transferParams,
+        mode: options?.dryRun === true ? "prepare" : "execute",
+        dryRun: options?.dryRun === true,
+      });
+      if (!("kind" in walletResult)) {
+        throw new Error("SolanaService returned a non-transfer wallet action result");
+      }
+      const transferResult: SolanaTransferResult = walletResult;
 
-      if (content.tokenAddress === null) {
-        const lamports = Number(content.amount) * 1e9;
-
-        const instruction = SystemProgram.transfer({
-          fromPubkey: senderKeypair.publicKey,
-          toPubkey: recipientPubkey,
-          lamports,
+      if (callback) {
+        const tokenLabel = transferResult.kind === "sol" ? "SOL" : "tokens";
+        callback({
+          text: transferResult.dryRun
+            ? `Solana transfer dry run completed for ${transferResult.amount} ${tokenLabel}.`
+            : `Sent ${transferResult.amount} ${tokenLabel}. Transaction hash: ${transferResult.signature}`,
+          content: {
+            success: true,
+            signature: transferResult.signature,
+            dryRun: transferResult.dryRun,
+            amount: transferResult.amount,
+            recipient: transferResult.recipient,
+          },
         });
-
-        const messageV0 = new TransactionMessage({
-          payerKey: senderKeypair.publicKey,
-          recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
-          instructions: [instruction],
-        }).compileToV0Message();
-
-        const transaction = new VersionedTransaction(messageV0);
-        transaction.sign([senderKeypair]);
-
-        signature = await connection.sendTransaction(transaction);
-
-        if (callback) {
-          callback({
-            text: `Sent ${content.amount} SOL. Transaction hash: ${signature}`,
-            content: {
-              success: true,
-              signature,
-              amount: content.amount,
-              recipient: content.recipient,
-            },
-          });
-        }
-      } else {
-        const mintPubkey = new PublicKey(content.tokenAddress);
-        const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
-        const mintInfoValue = mintInfo.value;
-        const mintInfoData =
-          mintInfoValue && (mintInfoValue.data as { parsed: { info: { decimals: number } } });
-        const decimals = mintInfoData?.parsed?.info?.decimals ?? 9;
-        const adjustedAmount = BigInt(Number(content.amount) * 10 ** decimals);
-
-        const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
-        const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
-
-        const instructions: TransactionInstruction[] = [];
-
-        const recipientATAInfo = await connection.getAccountInfo(recipientATA);
-        if (!recipientATAInfo) {
-          instructions.push(
-            createAssociatedTokenAccountInstruction(
-              senderKeypair.publicKey,
-              recipientATA,
-              recipientPubkey,
-              mintPubkey
-            )
-          );
-        }
-
-        instructions.push(
-          createTransferInstruction(
-            senderATA,
-            recipientATA,
-            senderKeypair.publicKey,
-            adjustedAmount
-          )
-        );
-
-        const messageV0 = new TransactionMessage({
-          payerKey: senderKeypair.publicKey,
-          recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
-          instructions,
-        }).compileToV0Message();
-
-        const transaction = new VersionedTransaction(messageV0);
-        transaction.sign([senderKeypair]);
-
-        signature = await connection.sendTransaction(transaction);
-
-        if (callback) {
-          callback({
-            text: `Sent ${content.amount} tokens to ${content.recipient}\nTransaction hash: ${signature}`,
-            content: {
-              success: true,
-              signature,
-              amount: content.amount,
-              recipient: content.recipient,
-            },
-          });
-        }
       }
 
       return;

@@ -1,5 +1,5 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import {
   createConfig,
   EVM,
@@ -485,7 +485,7 @@ async function buildBridgeDetails(
     prompt: bridgeContext,
   });
 
-  const content = parseKeyValueXml(llmResponse);
+  const content = parseToonKeyValue(llmResponse);
 
   if (!content) {
     throw new EVMError(EVMErrorCode.INVALID_PARAMS, "Failed to parse bridge details from LLM");

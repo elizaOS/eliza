@@ -12,6 +12,7 @@ import {
 import type { Issue, IssueLabel } from "@linear/sdk";
 import { getIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
+import { getRecordValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const getIssueAction: Action = {
@@ -121,30 +122,33 @@ export const getIssueAction: Action = {
       }
 
       try {
-        const parsed = JSON.parse(
-          response
-            .replace(/^```(?:json)?\n?/, "")
-            .replace(/\n?```$/, "")
-            .trim()
-        );
+        const parsed = parseLinearPromptResponse(response);
+        if (Object.keys(parsed).length === 0) {
+          throw new Error("No fields found in model response");
+        }
 
-        if (parsed.directId) {
-          const issue = await linearService.getIssue(parsed.directId);
+        const directId = getStringValue(parsed.directId);
+        if (directId) {
+          const issue = await linearService.getIssue(directId);
           return await formatIssueResponse(issue, callback, message);
         }
 
-        if (parsed.searchBy && Object.keys(parsed.searchBy).length > 0) {
+        const searchBy = getRecordValue(parsed.searchBy);
+        if (searchBy && Object.keys(searchBy).length > 0) {
           const filters: Record<string, unknown> = {};
 
-          if (parsed.searchBy.title) {
-            filters.query = parsed.searchBy.title;
+          const title = getStringValue(searchBy.title);
+          if (title) {
+            filters.query = title;
           }
 
-          if (parsed.searchBy.assignee) {
-            filters.assignee = [parsed.searchBy.assignee];
+          const assignee = getStringValue(searchBy.assignee);
+          if (assignee) {
+            filters.assignee = [assignee];
           }
 
-          if (parsed.searchBy.priority) {
+          const priorityValue = getStringValue(searchBy.priority);
+          if (priorityValue) {
             const priorityMap: Record<string, number> = {
               urgent: 1,
               high: 2,
@@ -155,18 +159,20 @@ export const getIssueAction: Action = {
               "3": 3,
               "4": 4,
             };
-            const priority = priorityMap[parsed.searchBy.priority.toLowerCase()];
+            const priority = priorityMap[priorityValue.toLowerCase()];
             if (priority) {
               filters.priority = [priority];
             }
           }
 
-          if (parsed.searchBy.team) {
-            filters.team = parsed.searchBy.team;
+          const team = getStringValue(searchBy.team);
+          if (team) {
+            filters.team = team;
           }
 
-          if (parsed.searchBy.state) {
-            filters.state = [parsed.searchBy.state];
+          const state = getStringValue(searchBy.state);
+          if (state) {
+            filters.state = [state];
           }
 
           const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
@@ -176,7 +182,7 @@ export const getIssueAction: Action = {
 
           const issues = await linearService.searchIssues({
             ...filters,
-            limit: parsed.searchBy.recency ? 10 : 5,
+            limit: getStringValue(searchBy.recency) ? 10 : 5,
           });
 
           if (issues.length === 0) {
@@ -191,13 +197,13 @@ export const getIssueAction: Action = {
             };
           }
 
-          if (parsed.searchBy.recency) {
+          if (getStringValue(searchBy.recency)) {
             issues.sort(
               (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
             );
           }
 
-          if (parsed.searchBy.recency && issues.length > 0) {
+          if (getStringValue(searchBy.recency) && issues.length > 0) {
             return await formatIssueResponse(issues[0], callback, message);
           }
 

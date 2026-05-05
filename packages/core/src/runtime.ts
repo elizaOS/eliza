@@ -50,6 +50,11 @@ import {
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
+	withActionStep,
+	withEvaluatorStep,
+	withProviderStep,
+} from "./trajectory-utils";
+import {
 	type Action,
 	type ActionContext,
 	type ActionResult,
@@ -79,6 +84,9 @@ import {
 	type LogBody,
 	type Memory,
 	type MemoryMetadata,
+	type MessageConnector,
+	type MessageConnectorMetadata,
+	type MessageConnectorRegistration,
 	type Metadata,
 	type ModelHandler,
 	type ModelParamsMap,
@@ -141,6 +149,12 @@ import type {
 	ExecutionTrace,
 	ScoreSignal,
 } from "./types/prompt-optimization-trace";
+import {
+	type SearchCategoryEnumerationOptions,
+	type SearchCategoryLookupOptions,
+	type SearchCategoryRegistration,
+	SearchCategoryRegistryError,
+} from "./types/search";
 import type {
 	RetryBackoffConfig,
 	SchemaRow,
@@ -151,7 +165,7 @@ import type {
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import {
 	parseJSONObjectFromText,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	stringToUuid,
 } from "./utils";
 import {
@@ -177,7 +191,6 @@ import { resolveStateDir } from "./utils/state-dir";
 import {
 	ActionStreamFilter,
 	ToonFieldStreamExtractor,
-	ValidationStreamExtractor,
 } from "./utils/streaming";
 import { encodeToonValue } from "./utils/toon";
 import { isPlainObject } from "./utils/type-guards";
@@ -216,9 +229,9 @@ const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
 const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
 const TOON_FIELD_PATTERN =
 	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/m;
-const XML_LIKE_PATTERN = /<[/!?A-Za-z_][^>\n]*>/;
 const JSON_OBJECT_KEY_PATTERN =
 	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
+const WEB_SEARCH_SERVICE_TYPE = "web_search";
 
 /**
  * Thrown by `AgentRuntime.useModel` when a text-generation model is requested
@@ -251,7 +264,7 @@ const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_COMPLETION,
 ];
 
-type StructuredResponseFormat = "XML" | "JSON" | "TOON";
+type StructuredResponseFormat = "JSON" | "TOON";
 
 type StructuredResponseCandidate = {
 	text: string;
@@ -259,9 +272,7 @@ type StructuredResponseCandidate = {
 	source: string;
 };
 
-type DynamicPromptStreamExtractor =
-	| ValidationStreamExtractor
-	| ToonFieldStreamExtractor;
+type DynamicPromptStreamExtractor = ToonFieldStreamExtractor;
 
 function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
@@ -295,15 +306,13 @@ function resolveDynamicPromptModelType(
 /**
  * Resolves the default structured-output format from a setting value.
  * Used by `dynamicPromptExecFromState` when no per-call preference is given.
- * Accepts `toon`, `xml`, `json` (case-insensitive); anything else → TOON.
+ * Accepts `toon` or `json` (case-insensitive); anything else → TOON.
  */
 export function resolveDefaultOutputFormat(
 	raw: unknown,
-): "XML" | "JSON" | "TOON" {
+): StructuredResponseFormat {
 	if (typeof raw !== "string") return "TOON";
 	switch (raw.trim().toLowerCase()) {
-		case "xml":
-			return "XML";
 		case "json":
 			return "JSON";
 		case "toon":
@@ -476,6 +485,98 @@ function safeActionResultFilePart(value: string | undefined): string {
 	return normalized.slice(0, 80) || "unknown";
 }
 
+function getSearchCategoryKey(category: string): string {
+	return category.trim().toLowerCase();
+}
+
+function cloneSearchCategoryRegistration(
+	registration: SearchCategoryRegistration,
+): SearchCategoryRegistration {
+	return {
+		...registration,
+		contexts: registration.contexts ? [...registration.contexts] : undefined,
+		filters: registration.filters?.map((filter) => ({
+			...filter,
+			options: filter.options?.map((option) => ({ ...option })),
+		})),
+		capabilities: registration.capabilities
+			? [...registration.capabilities]
+			: undefined,
+	};
+}
+
+function normalizeSearchCategoryRegistration(
+	registration: SearchCategoryRegistration,
+): SearchCategoryRegistration {
+	const category =
+		typeof registration.category === "string"
+			? registration.category.trim()
+			: "";
+	const label =
+		typeof registration.label === "string" ? registration.label.trim() : "";
+	if (!category) {
+		throw new Error("Search category registration requires a category");
+	}
+	if (!label) {
+		throw new Error("Search category registration requires a label");
+	}
+	return cloneSearchCategoryRegistration({
+		...registration,
+		category,
+		label,
+		enabled: registration.enabled ?? true,
+	});
+}
+
+function labelFromMessageConnectorSource(source: string): string {
+	const label = source
+		.replace(/[_-]+/g, " ")
+		.trim()
+		.replace(/\b\w/g, (char) => char.toUpperCase());
+	return label || "Message Connector";
+}
+
+function cloneMessageConnector(connector: MessageConnector): MessageConnector {
+	return {
+		...connector,
+		capabilities: [...connector.capabilities],
+		supportedTargetKinds: [...connector.supportedTargetKinds],
+		contexts: [...connector.contexts],
+		metadata: connector.metadata ? { ...connector.metadata } : undefined,
+	};
+}
+
+function normalizeMessageConnector(
+	source: string,
+	metadata: MessageConnectorMetadata = {},
+): MessageConnector {
+	const connector: MessageConnector = {
+		source,
+		label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
+		capabilities: metadata.capabilities
+			? [...metadata.capabilities]
+			: ["send_message"],
+		supportedTargetKinds: metadata.supportedTargetKinds
+			? [...metadata.supportedTargetKinds]
+			: [],
+		contexts: metadata.contexts ? [...metadata.contexts] : [],
+	};
+
+	if (metadata.description) connector.description = metadata.description;
+	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
+	if (metadata.resolveTargets)
+		connector.resolveTargets = metadata.resolveTargets;
+	if (metadata.listRecentTargets)
+		connector.listRecentTargets = metadata.listRecentTargets;
+	if (metadata.listRooms) connector.listRooms = metadata.listRooms;
+	if (metadata.getChatContext)
+		connector.getChatContext = metadata.getChatContext;
+	if (metadata.getUserContext)
+		connector.getUserContext = metadata.getUserContext;
+
+	return connector;
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -503,6 +604,8 @@ export class AgentRuntime implements IAgentRuntime {
 	routes: Route[] = [];
 	private taskWorkers = new Map<string, TaskWorker>();
 	private sendHandlers = new Map<string, SendHandlerFunction>();
+	private messageConnectors = new Map<string, MessageConnector>();
+	private searchCategories = new Map<string, SearchCategoryRegistration>();
 	private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
 		new Map();
 
@@ -3071,17 +3174,18 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 
 				// Execute action with its own streaming context
-				const result = await runWithStreamingContext(
-					actionStreamingContext,
-					() =>
+				const actionRuntime = this as unknown as IAgentRuntime;
+				const result = await withActionStep(actionRuntime, action.name, () =>
+					runWithStreamingContext(actionStreamingContext, () =>
 						action.handler(
-							this as unknown as IAgentRuntime,
+							actionRuntime,
 							message,
 							accumulatedState,
 							options,
 							storageCallback,
 							responses,
 						),
+					),
 				);
 
 				// Handle void, null, true, false returns
@@ -3127,7 +3231,7 @@ export class AgentRuntime implements IAgentRuntime {
 										? result
 										: result === null
 											? null
-											: JSON.stringify(result);
+											: encodeToonValue({ result });
 						actionResult = {
 							success: true,
 							data: {
@@ -3403,7 +3507,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.stateCache.set(`${message.id}_action_results`, {
 					values: { actionResults },
 					data: { actionResults, actionPlan },
-					text: JSON.stringify(actionResults),
+					text: encodeToonValue({ actionResults }),
 				});
 			}
 		}
@@ -3458,13 +3562,16 @@ export class AgentRuntime implements IAgentRuntime {
 			if (!evaluator.handler) {
 				continue;
 			}
-			await evaluator.handler(
-				this as unknown as IAgentRuntime,
-				message,
-				state,
-				{},
-				callback,
-				responses,
+			const evaluatorRuntime = this as unknown as IAgentRuntime;
+			await withEvaluatorStep(evaluatorRuntime, evaluator.name, () =>
+				evaluator.handler(
+					evaluatorRuntime,
+					message,
+					state,
+					{},
+					callback,
+					responses,
+				),
 			);
 			this.adapter.createLogs([
 				{
@@ -3918,12 +4025,11 @@ export class AgentRuntime implements IAgentRuntime {
 				const start = Date.now();
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
+				const providerRuntime = this as unknown as IAgentRuntime;
 				try {
 					const result = await Promise.race([
-						provider.get(
-							this as unknown as IAgentRuntime,
-							message,
-							cachedState,
+						withProviderStep(providerRuntime, provider.name, () =>
+							provider.get(providerRuntime, message, cachedState),
 						),
 						new Promise<ProviderResult>((resolve) => {
 							timeoutHandle = setTimeout(() => {
@@ -4359,6 +4465,9 @@ export class AgentRuntime implements IAgentRuntime {
 			{ src: "agent", agentId: this.agentId, serviceType },
 			"Registering service (lazy; start() on first getService)",
 		);
+		if (serviceType === WEB_SEARCH_SERVICE_TYPE) {
+			this.ensureWebSearchCategoryRegistered();
+		}
 
 		this.serviceRegistrationStatus.set(serviceType, "pending");
 		if (!this.servicePromises.has(serviceType)) {
@@ -4746,7 +4855,7 @@ export class AgentRuntime implements IAgentRuntime {
 				? paramsObj.input
 				: null) ||
 			(paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-				? JSON.stringify(paramsObj.messages)
+				? encodeToonValue({ messages: paramsObj.messages })
 				: null) ||
 			(typeof params === "string" ? params : null);
 		const resolvedModel = this.resolveModelRegistration(
@@ -4927,7 +5036,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const resultRef: { current: unknown } = { current: rawResponse };
 		const modelOutToTrajectoryString = (v: unknown) =>
-			typeof v === "string" ? v : JSON.stringify(v);
+			typeof v === "string" ? v : encodeToonValue({ response: v });
 
 		// Stream: broadcast to callbacks if streaming
 		if (
@@ -4936,9 +5045,9 @@ export class AgentRuntime implements IAgentRuntime {
 			isTextStreamResult(rawResponse)
 		) {
 			// WHY undefined for accumulated: raw LLM tokens have no field-level
-			// extraction — accumulated text is only meaningful after an XML
-			// extractor (ValidationStreamExtractor) has parsed and isolated a
-			// field. Passing undefined is honest; consumers that need
+			// extraction; accumulated text is only meaningful after a TOON field
+			// extractor has parsed and isolated a field. Passing undefined is
+			// honest; consumers that need
 			// accumulated data get it from the extractor's onChunk bridge in
 			// dynamicPromptExecFromState, not from the raw token loop.
 			let fullText = "";
@@ -5432,8 +5541,8 @@ export class AgentRuntime implements IAgentRuntime {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "xml" | "toon";
-			forceFormat?: "json" | "xml" | "toon";
+			preferredEncapsulation?: "json" | "toon";
+			forceFormat?: "json" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -5610,16 +5719,13 @@ export class AgentRuntime implements IAgentRuntime {
 			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
-			let format: "XML" | "JSON" | "TOON" = resolveDefaultOutputFormat(
+			let format: StructuredResponseFormat = resolveDefaultOutputFormat(
 				this.getSetting("PROMPT_OUTPUT_FORMAT"),
 			);
-			if (options.forceFormat) {
-				format = options.forceFormat.toUpperCase() as "XML" | "JSON" | "TOON";
-			} else if (options.preferredEncapsulation) {
-				format = options.preferredEncapsulation.toUpperCase() as
-					| "XML"
-					| "JSON"
-					| "TOON";
+			const requestedFormat =
+				options.forceFormat ?? options.preferredEncapsulation;
+			if (requestedFormat) {
+				format = resolveDefaultOutputFormat(requestedFormat);
 			}
 
 			/**
@@ -5718,16 +5824,11 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 
 			// Generate prompt with format example
-			const isXML = format === "XML";
 			const isJSON = format === "JSON";
-			const CONTAINER_START = isXML ? "<response>" : isJSON ? "{" : "TOON root";
-			const CONTAINER_END = isXML ? "</response>" : isJSON ? "}" : "[end]";
 
-			const EXAMPLE = isXML
-				? this.renderXmlSchemaExample(schema)
-				: isJSON
-					? this.renderJsonSchemaExample(schema)
-					: this.renderToonSchemaExample(schema);
+			const EXAMPLE = isJSON
+				? this.renderJsonSchemaExample(schema)
+				: this.renderToonSchemaExample(schema);
 			const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
 				format,
 				schema,
@@ -5748,8 +5849,8 @@ export class AgentRuntime implements IAgentRuntime {
 					? smartRetryContextRaw.trim()
 					: "";
 
-			const section_start = isXML ? "<output>" : "# Strict Output instructions";
-			const section_end = isXML ? "</output>" : "";
+			const section_start = "# Strict Output instructions";
+			const section_end = "";
 
 			const variableSegments = this.joinPromptSegmentGroups([
 				checkpointCodesEnabled
@@ -5778,11 +5879,7 @@ Use this shape:
 ${EXAMPLE}
 
 Return exactly one ${
-				isXML
-					? `${CONTAINER_START}...${CONTAINER_END}`
-					: isJSON
-						? "JSON object"
-						: "TOON document"
+				isJSON ? "JSON object" : "TOON document"
 			}.
 ${section_end}`;
 			const endBlock = checkpointCodesEnabled
@@ -5812,16 +5909,14 @@ ${section_end}`;
 			);
 
 			// Create a structured extractor on first iteration if streaming.
-			// XML and TOON both need field-aware extraction; raw structured tokens
-			// must not be forwarded to user-visible streaming callbacks.
+			// TOON needs field-aware extraction; raw structured tokens must not be
+			// forwarded to user-visible streaming callbacks.
 			if (
 				currentRetry === 0 &&
 				options.onStreamChunk &&
 				!extractor &&
-				(isXML || format === "TOON")
+				format === "TOON"
 			) {
-				const hasRichConsumer = !!options.onStreamEvent;
-
 				const streamFields = schema
 					.filter((row) => {
 						if (row.streamField !== undefined) return row.streamField;
@@ -5851,32 +5946,24 @@ ${section_end}`;
 				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
 				// re-accumulating from deltas — which broke when two extractors ran
 				// concurrently (the dual-extractor garbling bug).
-				const onChunk = (chunk: string, _field?: string, accumulated?: string) =>
-					options.onStreamChunk?.(chunk, streamMessageId, accumulated);
+				const onChunk = (
+					chunk: string,
+					_field?: string,
+					accumulated?: string,
+				) => options.onStreamChunk?.(chunk, streamMessageId, accumulated);
 				const onEvent = options.onStreamEvent
 					? (event: StreamEvent) =>
 							options.onStreamEvent?.(event, streamMessageId)
 					: undefined;
 
-				extractor = isXML
-					? new ValidationStreamExtractor({
-							level: contextLevel,
-							schema,
-							streamFields: finalStreamFields,
-							expectedCodes: perFieldCodes,
-							onChunk,
-							onEvent,
-							abortSignal: options.abortSignal,
-							hasRichConsumer,
-						})
-					: new ToonFieldStreamExtractor({
-							level: contextLevel,
-							schema,
-							streamFields: finalStreamFields,
-							onChunk,
-							onEvent,
-							abortSignal: options.abortSignal,
-						});
+				extractor = new ToonFieldStreamExtractor({
+					level: contextLevel,
+					schema,
+					streamFields: finalStreamFields,
+					onChunk,
+					onEvent,
+					abortSignal: options.abortSignal,
+				});
 			}
 
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
@@ -6504,15 +6591,6 @@ ${section_end}`;
 		return flattened;
 	}
 
-	private renderXmlSchemaExample(rows: SchemaRow[]): string {
-		let example = "<response>\n";
-		for (const row of rows) {
-			example += `  <${row.field}>${row.description}</${row.field}>\n`;
-		}
-		example += "</response>\n";
-		return example;
-	}
-
 	private renderJsonSchemaExample(rows: SchemaRow[]): string {
 		const exampleObject = Object.fromEntries(
 			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
@@ -6703,23 +6781,20 @@ ${section_end}`;
 		includeFirstCheckpoint,
 		includeLastCheckpoint,
 	}: {
-		format: "XML" | "JSON" | "TOON";
+		format: StructuredResponseFormat;
 		schema: SchemaRow[];
 		perFieldCodes: Map<string, string>;
 		includeFirstCheckpoint: boolean;
 		includeLastCheckpoint: boolean;
 	}): string {
-		const isXML = format === "XML";
 		const isJsonLike = format === "JSON" || format === "TOON";
 		const lines: string[] = [];
 
 		if (includeFirstCheckpoint) {
 			lines.push(
-				isXML
-					? "Echo the prompt checkpoint tags: <one_initial_code>, <one_middle_code>, <one_end_code>."
-					: isJsonLike
-						? 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".'
-						: "",
+				isJsonLike
+					? 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".'
+					: "",
 			);
 		}
 
@@ -6730,21 +6805,17 @@ ${section_end}`;
 			}
 
 			lines.push(
-				isXML
-					? `Wrap <${row.field}> with <code_${row.field}_start>${fieldCode}</code_${row.field}_start> and <code_${row.field}_end>${fieldCode}</code_${row.field}_end>.`
-					: isJsonLike
-						? `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`
-						: "",
+				isJsonLike
+					? `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`
+					: "",
 			);
 		}
 
 		if (includeLastCheckpoint) {
 			lines.push(
-				isXML
-					? "Echo the final checkpoint tags: <two_initial_code>, <two_middle_code>, <two_end_code>."
-					: isJsonLike
-						? 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".'
-						: "",
+				isJsonLike
+					? 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".'
+					: "",
 			);
 		}
 
@@ -7169,8 +7240,8 @@ ${section_end}`;
 	): Record<string, unknown> | null {
 		const parserOrder =
 			expectedFormat === "JSON"
-				? (["JSON", "XML_OR_TOON"] as const)
-				: (["XML_OR_TOON", "JSON"] as const);
+				? (["JSON", "TOON"] as const)
+				: (["TOON", "JSON"] as const);
 		const candidates = this.extractStructuredResponseCandidates(response);
 
 		for (const candidate of candidates) {
@@ -7192,18 +7263,15 @@ ${section_end}`;
 					continue;
 				}
 
-				if (
-					!candidate.formats.includes("TOON") &&
-					!candidate.formats.includes("XML")
-				) {
+				if (!candidate.formats.includes("TOON")) {
 					continue;
 				}
 
-				const parsed = parseKeyValueXml(candidate.text);
+				const parsed = parseToonKeyValue(candidate.text);
 				if (parsed) {
 					if (candidate.source !== "raw" || expectedFormat === "JSON") {
 						this.logger.debug(
-							`dynamicPromptExecFromState recovered ${candidate.formats.includes("TOON") ? "TOON/XML" : "XML"} from ${candidate.source}`,
+							`dynamicPromptExecFromState recovered TOON from ${candidate.source}`,
 						);
 					}
 					return parsed;
@@ -7249,11 +7317,9 @@ ${section_end}`;
 			const hints: StructuredResponseFormat[] =
 				label === "json" || label === "json5"
 					? ["JSON"]
-					: label === "xml"
-						? ["XML"]
-						: label === "toon"
-							? ["TOON"]
-							: [];
+					: label === "toon"
+						? ["TOON"]
+						: [];
 			addCandidate(content, label ? `fence:${label}` : "fence", hints);
 		}
 
@@ -7282,10 +7348,6 @@ ${section_end}`;
 		if (this.looksLikeToonDocument(trimmed)) {
 			formats.push("TOON");
 		}
-		if (XML_LIKE_PATTERN.test(trimmed)) {
-			formats.push("XML");
-		}
-
 		return formats;
 	}
 
@@ -8776,6 +8838,152 @@ ${section_end}`;
 			"Control message sent",
 		);
 	}
+
+	private ensureWebSearchCategoryRegistered(): void {
+		if (this.searchCategories.has("web")) {
+			return;
+		}
+		this.registerSearchCategory({
+			category: "web",
+			label: "Web search",
+			description:
+				"Search current web pages and discovery surfaces through IWebSearchService.",
+			contexts: ["knowledge", "browser"],
+			filters: [
+				{
+					name: "query",
+					label: "Query",
+					type: "string",
+					required: true,
+				},
+				{
+					name: "limit",
+					label: "Limit",
+					type: "number",
+					description: "Maximum results to return.",
+				},
+				{
+					name: "region",
+					label: "Region",
+					type: "string",
+					description: "Optional region code.",
+				},
+				{
+					name: "language",
+					label: "Language",
+					type: "string",
+					description: "Optional language code.",
+				},
+				{
+					name: "sortBy",
+					label: "Sort",
+					type: "enum",
+					options: [
+						{ label: "Relevance", value: "relevance" },
+						{ label: "Date", value: "date" },
+						{ label: "Popularity", value: "popularity" },
+					],
+				},
+				{
+					name: "safeSearch",
+					label: "Safe search",
+					type: "enum",
+					options: [
+						{ label: "Strict", value: "strict" },
+						{ label: "Moderate", value: "moderate" },
+						{ label: "Off", value: "off" },
+					],
+				},
+			],
+			resultSchemaSummary:
+				"SearchResponse: query, results with title/url/description/snippet/source/publishedDate, suggestions, relatedSearches, nextPageToken.",
+			capabilities: [
+				"search",
+				"news",
+				"images",
+				"videos",
+				"suggestions",
+				"page_info",
+			],
+			serviceType: WEB_SEARCH_SERVICE_TYPE,
+		});
+	}
+
+	registerSearchCategory(registration: SearchCategoryRegistration): void {
+		const normalized = normalizeSearchCategoryRegistration(registration);
+		const key = getSearchCategoryKey(normalized.category);
+		if (this.searchCategories.has(key)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					searchCategory: normalized.category,
+				},
+				"Search category already registered, overwriting",
+			);
+		}
+		this.searchCategories.set(key, normalized);
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				searchCategory: normalized.category,
+			},
+			"Search category registered",
+		);
+	}
+
+	getSearchCategories(
+		options: SearchCategoryEnumerationOptions = {},
+	): SearchCategoryRegistration[] {
+		const requestedContexts =
+			options.contexts && options.contexts.length > 0
+				? new Set(options.contexts)
+				: null;
+		return Array.from(this.searchCategories.values())
+			.filter((registration) => {
+				if (!options.includeDisabled && registration.enabled === false) {
+					return false;
+				}
+				if (!requestedContexts) {
+					return true;
+				}
+				if (!registration.contexts || registration.contexts.length === 0) {
+					return true;
+				}
+				return registration.contexts.some((context) =>
+					requestedContexts.has(context),
+				);
+			})
+			.map(cloneSearchCategoryRegistration)
+			.sort((a, b) => a.category.localeCompare(b.category));
+	}
+
+	getSearchCategory(
+		category: string,
+		options: SearchCategoryLookupOptions = {},
+	): SearchCategoryRegistration {
+		const key = getSearchCategoryKey(category);
+		const registration = this.searchCategories.get(key);
+		if (!registration) {
+			throw new SearchCategoryRegistryError(
+				"SEARCH_CATEGORY_NOT_FOUND",
+				category,
+				`No search category registered for category: ${category}`,
+			);
+		}
+		if (!options.includeDisabled && registration.enabled === false) {
+			throw new SearchCategoryRegistryError(
+				"SEARCH_CATEGORY_DISABLED",
+				registration.category,
+				registration.disabledReason
+					? `Search category disabled: ${registration.category} (${registration.disabledReason})`
+					: `Search category disabled: ${registration.category}`,
+			);
+		}
+		return cloneSearchCategoryRegistration(registration);
+	}
+
 	registerSendHandler(source: string, handler: SendHandlerFunction): void {
 		if (this.sendHandlers.has(source)) {
 			this.logger.warn(
@@ -8784,11 +8992,40 @@ ${section_end}`;
 			);
 		}
 		this.sendHandlers.set(source, handler);
+		this.messageConnectors.set(source, normalizeMessageConnector(source));
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, handlerSource: source },
 			"Send handler registered",
 		);
 	}
+
+	registerMessageConnector(registration: MessageConnectorRegistration): void {
+		const source =
+			typeof registration.source === "string" ? registration.source.trim() : "";
+		if (!source) {
+			throw new Error("Message connector registration requires a source");
+		}
+		if (this.messageConnectors.has(source) || this.sendHandlers.has(source)) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, handlerSource: source },
+				"Message connector already registered, overwriting",
+			);
+		}
+
+		this.registerSendHandler(source, registration.sendHandler);
+		this.messageConnectors.set(
+			source,
+			normalizeMessageConnector(source, registration),
+		);
+	}
+
+	getMessageConnectors(): MessageConnector[] {
+		return Array.from(this.messageConnectors.values())
+			.filter((connector) => this.sendHandlers.has(connector.source))
+			.map(cloneMessageConnector)
+			.sort((a, b) => a.source.localeCompare(b.source));
+	}
+
 	async sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,

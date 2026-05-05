@@ -9,8 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { User } from "discord.js";
@@ -46,7 +45,7 @@ const getDMInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
+		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
 			recipientIdentifier: string;
 			messageContent: string;
 		} | null;

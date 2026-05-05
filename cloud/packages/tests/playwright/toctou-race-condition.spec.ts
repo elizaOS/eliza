@@ -69,7 +69,7 @@ test.describe("TOCTOU Race Condition - Credit Deduction", () => {
     console.log(`Initial balance: $${initialBalance.toFixed(4)}`);
 
     // 2. Calculate how many requests SHOULD fit in the balance
-    // Actual cost per request is ~$0.02 for gpt-4o-mini short message
+    // Actual cost per request is ~$0.02 for gpt-5-mini short message
     const actualCostPerRequest = 0.02;
     const maxPossibleRequests = Math.floor(initialBalance / actualCostPerRequest);
 
@@ -86,7 +86,7 @@ test.describe("TOCTOU Race Condition - Credit Deduction", () => {
         request.post(`${CLOUD_URL}/api/v1/chat/completions`, {
           headers: authHeaders(),
           data: {
-            model: "gpt-4o-mini",
+            model: "gpt-5-mini",
             messages: [{ role: "user", content: `Test ${i}: Say "ok"` }],
             max_tokens: 5,
             stream: false, // Non-streaming for simpler test
@@ -163,7 +163,7 @@ test.describe("TOCTOU Race Condition - Credit Deduction", () => {
       request.post(`${CLOUD_URL}/api/v1/chat/completions`, {
         headers: authHeaders(),
         data: {
-          model: "gpt-4o-mini",
+          model: "gpt-5-mini",
           messages: [{ role: "user", content: `Stream test ${i}: count to 3` }],
           max_tokens: 20,
           stream: true,

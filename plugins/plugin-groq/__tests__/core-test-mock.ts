@@ -10,6 +10,9 @@ vi.mock("@elizaos/core", () => {
   };
 
   return {
+    EventType: {
+      MODEL_USED: "MODEL_USED",
+    },
     ModelType: {
       ACTION_PLANNER: "ACTION_PLANNER",
       OBJECT_LARGE: "OBJECT_LARGE",

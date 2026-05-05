@@ -28,7 +28,7 @@ Run one benchmark:
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
   --benchmarks solana \
   --provider groq \
-  --model qwen/qwen3-32b
+  --model openai/gpt-oss-120b
 ```
 
 Run all benchmarks:
@@ -37,7 +37,7 @@ Run all benchmarks:
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
   --all \
   --provider groq \
-  --model qwen/qwen3-32b
+  --model openai/gpt-oss-120b
 ```
 
 Idempotent behavior:
@@ -50,10 +50,10 @@ Examples:
 
 ```bash
 # rerun only failed signatures
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run --all --rerun-failed --provider groq --model qwen/qwen3-32b
+/opt/miniconda3/bin/python -m benchmarks.orchestrator run --all --rerun-failed --provider groq --model openai/gpt-oss-120b
 
 # force fresh runs
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run --all --force --provider groq --model qwen/qwen3-32b
+/opt/miniconda3/bin/python -m benchmarks.orchestrator run --all --force --provider groq --model openai/gpt-oss-120b
 ```
 
 ## Extra benchmark config
@@ -67,7 +67,7 @@ while still letting you override knobs when needed.
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
   --benchmarks osworld \
   --provider groq \
-  --model qwen/qwen3-32b \
+  --model openai/gpt-oss-120b \
   --rerun-failed \
   --extra '{"max_tasks":1,"headless":true,"vm_ready_timeout_seconds":21600}'
 ```
@@ -80,7 +80,7 @@ in one `--all` run:
   --all \
   --agent eliza \
   --provider groq \
-  --model qwen/qwen3-32b \
+  --model openai/gpt-oss-120b \
   --extra "$(cat benchmarks/orchestrator/profiles/sample10.json)"
 ```
 
@@ -117,7 +117,7 @@ Research matrix example:
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
   --benchmarks gaia_orchestrated \
   --provider groq \
-  --model qwen/qwen3-32b \
+  --model openai/gpt-oss-120b \
   --extra '{"per_benchmark":{"gaia_orchestrated":{"matrix":true,"dataset":"sample","max_questions":10,"strict_capabilities":true}}}'
 ```
 
@@ -136,8 +136,8 @@ Replay scoring example (from normalized Eliza capture artifacts):
 ```bash
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
   --benchmarks eliza_replay \
-  --provider openai \
-  --model gpt-4o-mini \
+  --provider groq \
+  --model openai/gpt-oss-120b \
   --extra '{"per_benchmark":{"eliza_replay":{"capture_path":"/path/to/replays","capture_glob":"*.replay.json"}}}'
 ```
 

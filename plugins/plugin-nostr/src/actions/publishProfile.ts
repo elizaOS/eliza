@@ -9,11 +9,10 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { NostrService } from "../service.js";
+import { parseToonKeyValue } from "../toon.js";
 import { NOSTR_SERVICE_NAME, type NostrProfile } from "../types.js";
 
 const PUBLISH_PROFILE_TEMPLATE = `# Task: Extract Nostr profile data
@@ -76,9 +75,7 @@ export const publishProfile: Action = {
         prompt,
       });
 
-      const parsed =
-        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
-        parseJSONObjectFromText(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
       if (parsed) {
         profileInfo = {
           name: parsed.name ? String(parsed.name) : undefined,

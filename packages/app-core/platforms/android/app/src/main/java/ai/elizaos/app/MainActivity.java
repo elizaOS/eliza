@@ -82,10 +82,12 @@ public class MainActivity extends BridgeActivity {
         // Capacitor WebSocket gateway plugin) alive in the background.
         GatewayConnectionService.start(this);
 
-        // Start the local Eliza agent runtime as a foreground service so it
-        // survives backgrounding and Doze. The boot receiver covers the
-        // cold-boot path; this is the fast path when the user opens the app.
-        ElizaAgentService.start(this);
+        // The local Eliza agent runtime ships only in the AOSP/local-agent
+        // APK shape. Store/Capacitor builds strip assets/agent/, so starting
+        // the service there would fail during asset extraction.
+        if (BuildConfig.AOSP_BUILD) {
+            ElizaAgentService.start(this);
+        }
     }
 
     @Override

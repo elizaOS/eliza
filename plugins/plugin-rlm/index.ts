@@ -10,10 +10,16 @@
  * - Implementation: https://github.com/alexzhang13/rlm
  */
 
-import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  Plugin,
+  RecordLlmCallDetails,
+} from "@elizaos/core";
+import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 
 import { RLMClient, stubResult } from "./client";
+import { estimateTokenCount } from "./cost";
 import type { RLMConfig } from "./types";
 import { DEFAULT_CONFIG, ENV_VARS } from "./types";
 
@@ -132,7 +138,28 @@ async function handleTextGeneration(
   // Remove undefined values
   const cleanOpts = Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined));
 
-  const result = await client.infer(input, cleanOpts);
+  const runtimeConfig = (runtime as unknown as Record<string, unknown>).rlmConfig as
+    | Partial<RLMConfig>
+    | undefined;
+  const backend = runtimeConfig?.backend ?? DEFAULT_CONFIG.backend;
+  const model = `${backend}:rlm`;
+  const details: RecordLlmCallDetails = {
+    model,
+    systemPrompt: runtime.character.system ?? "",
+    userPrompt: input,
+    temperature: params.temperature ?? 0,
+    maxTokens: params.maxTokens ?? 0,
+    purpose: "external_llm",
+    actionType: "rlm.client.infer",
+    promptTokens: estimateTokenCount(input),
+  };
+
+  const result = await recordLlmCall(runtime, details, async () => {
+    const response = await client.infer(input, cleanOpts);
+    details.response = response.text;
+    details.completionTokens = estimateTokenCount(response.text);
+    return response;
+  });
   return result.text;
 }
 

@@ -8,7 +8,7 @@
  * @module services/stall-classifier
  */
 
-import { parseKeyValueXml, type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   buildTaskCompletionTimeline,
   extractTaskCompletionTraceRecords,
@@ -330,7 +330,7 @@ export async function classifyStallOutput(
 
     const parsed = parseStallClassificationResponse(result);
     if (!parsed) {
-      log(`Stall classification: no parseable TOON/JSON in LLM response`);
+      log(`Stall classification: no parseable TOON in LLM response`);
       return null;
     }
     // Map tool_running → still_working (StallClassification doesn't have tool_running).
@@ -410,7 +410,7 @@ function normalizeNullableString(value: unknown): string | undefined {
 function parseStallClassificationResponse(
   result: string,
 ): { state: string; prompt?: string; suggestedResponse?: string } | null {
-  const parsedToon = parseKeyValueXml<Record<string, unknown>>(result);
+  const parsedToon = parseToonKeyValue<Record<string, unknown>>(result);
   if (parsedToon && validStallStates.includes(String(parsedToon.state))) {
     return {
       state: String(parsedToon.state),
@@ -419,19 +419,7 @@ function parseStallClassificationResponse(
     };
   }
 
-  const jsonMatch = result.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  try {
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    if (!validStallStates.includes(String(parsed.state))) return null;
-    return {
-      state: String(parsed.state),
-      prompt: normalizeNullableString(parsed.prompt),
-      suggestedResponse: normalizeNullableString(parsed.suggestedResponse),
-    };
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**
@@ -599,7 +587,7 @@ export async function classifyAndDecideForCoordinator(
 
     const parsed = parseStallClassificationResponse(result);
     if (!parsed) {
-      log(`Combined classify+decide: no parseable TOON/JSON in LLM response`);
+      log(`Combined classify+decide: no parseable TOON in LLM response`);
       return null;
     }
 

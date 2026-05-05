@@ -1,5 +1,6 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { formatToonScalar, formatToonTable } from "../utils";
 
 interface TrendingToken {
   address: string;
@@ -52,7 +53,7 @@ export async function getCacheTimed<T>(
 export const trendingProvider: Provider = {
   name: "BIRDEYE_TRENDING_CRYPTOCURRENCY",
   description: "Birdeye's trending cryptocurrencies",
-  descriptionCompressed: "birdeye trend cryptocurrency",
+  descriptionCompressed: "birdeye trending cryptocurrency tokens",
   dynamic: true,
   //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
@@ -78,7 +79,11 @@ export const trendingProvider: Provider = {
         );
         return {
           values: {},
-          text: "No trending cryptocurrency data available at this time.",
+          text: [
+            "birdeye_trending_tokens:",
+            "  status: empty",
+            "  reason: no cached Solana trending token data",
+          ].join("\n"),
           data: {},
         };
       }
@@ -90,7 +95,11 @@ export const trendingProvider: Provider = {
         );
         return {
           values: {},
-          text: "No trending cryptocurrency data available at this time.",
+          text: [
+            "birdeye_trending_tokens:",
+            "  status: empty",
+            "  reason: no Solana trending tokens",
+          ].join("\n"),
           data: {},
         };
       }
@@ -113,9 +122,7 @@ export const trendingProvider: Provider = {
       price24hChangePercent: 1.17760374,
       */
 
-      let latestTxt = "\nCurrent Birdeye Trending list:\n";
-      latestTxt +=
-        "chain, CA, symbol, price (in USD), Market Capitalization, 24h volume, 24h change %, liquidity (in USD)\n";
+      const rows = [];
 
       const solanaService = runtime.getService("chain_solana") as
         | {
@@ -139,8 +146,8 @@ export const trendingProvider: Provider = {
         );
       }
 
-      solanaTokens.length = 33;
-      let tokens = [solanaTokens];
+      const topSolanaTokens = solanaTokens.slice(0, 33);
+      let tokens = [...topSolanaTokens];
 
       // Try to get supply data if solanaService is available
       let supplies: Record<
@@ -153,7 +160,7 @@ export const trendingProvider: Provider = {
       > = {};
       if (solanaService) {
         try {
-          const CAs = solanaTokens.map((t) => t.address);
+          const CAs = topSolanaTokens.map((t) => t.address);
           supplies = await solanaService.getSupply(CAs);
         } catch (error) {
           runtime.logger?.warn(
@@ -162,7 +169,7 @@ export const trendingProvider: Provider = {
         }
       }
 
-      for (const token of solanaTokens) {
+      for (const token of topSolanaTokens) {
         // has a marketcap but seems to always be 0
         //console.log('token', token)
         const rugKey = `rugcheck_solana_${token.address}`;
@@ -187,7 +194,16 @@ export const trendingProvider: Provider = {
           //console.log('Mac supply', supply, 'price', token.price, 'mcap', mcap.toFixed(0))
         }
 
-        latestTxt += `${["solana", token.address, token.symbol, token.price.toFixed(4), mcapValue, token.volume24hUSD.toFixed(0), token.price24hChangePercent.toFixed(2), token.liquidity.toFixed(2)].join(",")}\n`;
+        rows.push({
+          chain: "solana",
+          address: token.address,
+          symbol: token.symbol,
+          priceUsd: token.price.toFixed(4),
+          marketCapUsd: mcapValue,
+          volume24hUsd: token.volume24hUSD.toFixed(0),
+          change24hPct: token.price24hChangePercent.toFixed(2),
+          liquidityUsd: token.liquidity.toFixed(2),
+        });
       }
       // if in cache, then it's a lot of data, maybe too much
       const ethCache = await runtime.getCache<{
@@ -195,8 +211,7 @@ export const trendingProvider: Provider = {
         setAt: number;
       }>("tokens_v2_ethereum");
       if (ethCache?.data) {
-        const ethTokens = ethCache.data;
-        ethTokens.length = 33;
+        const ethTokens = ethCache.data.slice(0, 33);
         tokens = [...tokens, ...ethTokens];
         for (const token of ethTokens) {
           // has a marketcap but seems to always be 0
@@ -212,7 +227,16 @@ export const trendingProvider: Provider = {
             continue
           }
           */
-          latestTxt += `${["ethereum", token.address, token.symbol, token.price?.toFixed(4) || "0", "?", token.volume24hUSD?.toFixed(0) || "0", token.price24hChangePercent?.toFixed(2) || "0", token.liquidity?.toFixed(2) || "0"].join(",")}\n`;
+          rows.push({
+            chain: "ethereum",
+            address: token.address,
+            symbol: token.symbol,
+            priceUsd: token.price?.toFixed(4) || "0",
+            marketCapUsd: "unknown",
+            volume24hUsd: token.volume24hUSD?.toFixed(0) || "0",
+            change24hPct: token.price24hChangePercent?.toFixed(2) || "0",
+            liquidityUsd: token.liquidity?.toFixed(2) || "0",
+          });
         }
       }
       const baseCache = await runtime.getCache<{
@@ -220,8 +244,7 @@ export const trendingProvider: Provider = {
         setAt: number;
       }>("tokens_v2_base");
       if (baseCache?.data) {
-        const baseTokens = baseCache.data;
-        baseTokens.length = 33;
+        const baseTokens = baseCache.data.slice(0, 33);
         tokens = [...tokens, ...baseTokens];
         for (const token of baseTokens) {
           // has a marketcap but seems to always be 0
@@ -237,7 +260,16 @@ export const trendingProvider: Provider = {
             continue
           }
           */
-          latestTxt += `${["base", token.address, token.symbol, token.price?.toFixed(4) || "0", "?", token.volume24hUSD?.toFixed(0) || "0", token.price24hChangePercent?.toFixed(2) || "0", token.liquidity?.toFixed(2) || "0"].join(",")}\n`;
+          rows.push({
+            chain: "base",
+            address: token.address,
+            symbol: token.symbol,
+            priceUsd: token.price?.toFixed(4) || "0",
+            marketCapUsd: "unknown",
+            volume24hUsd: token.volume24hUSD?.toFixed(0) || "0",
+            change24hPct: token.price24hChangePercent?.toFixed(2) || "0",
+            liquidityUsd: token.liquidity?.toFixed(2) || "0",
+          });
         }
       }
 
@@ -278,7 +310,7 @@ export const trendingProvider: Provider = {
       */
       //latestTxt += '\n' + JSON.stringify(reduceTokens) + '\n';
 
-      //console.log('intel:provider - cmc token text', latestTxt)
+      //console.log('intel:provider - cmc token text', rows)
 
       const data = {
         tokens,
@@ -287,7 +319,20 @@ export const trendingProvider: Provider = {
       const values = {};
 
       // Combine all text sections
-      const text = `${latestTxt}\n`;
+      const text = [
+        "birdeye_trending_tokens:",
+        "  status: ok",
+        formatToonTable("  tokens", rows, [
+          "chain",
+          "address",
+          "symbol",
+          "priceUsd",
+          "marketCapUsd",
+          "volume24hUsd",
+          "change24hPct",
+          "liquidityUsd",
+        ]),
+      ].join("\n");
 
       return {
         data,
@@ -300,7 +345,11 @@ export const trendingProvider: Provider = {
       );
       return {
         values: {},
-        text: "Unable to fetch trending cryptocurrency data at this time. Please try again later.",
+        text: [
+          "birdeye_trending_tokens:",
+          "  status: error",
+          `  reason: ${formatToonScalar(error instanceof Error ? error.message : String(error))}`,
+        ].join("\n"),
         data: {},
       };
     }

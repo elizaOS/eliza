@@ -240,7 +240,7 @@ Sub-agents spawned via session tools can have their own model:
       "subagents": {
         "model": {
           "primary": "anthropic/claude-haiku-4.5-5",
-          "fallbacks": ["openai/gpt-4o-mini"]
+          "fallbacks": ["openai/gpt-5-mini"]
         }
       }
     }

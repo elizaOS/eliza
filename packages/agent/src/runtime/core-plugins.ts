@@ -56,7 +56,7 @@ export const ELIZAOS_ANDROID_CORE_PLUGINS: readonly string[] = [
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-embedding", // local embeddings — required for memory
-  // @elizaos/app-form — now built-in as advanced capability (form); enabled when advancedCapabilities: true
+  // @elizaos/plugin-form — standalone form plugin; load via plugin registry/config
   "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
@@ -68,7 +68,8 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-browser-bridge", // Agent Browser Bridge: Chrome/Safari companion pairing, tab + page context sync, packaging artifacts
   "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
-  // - experience, form, clipboard, personality: advanced capabilities (advancedCapabilities: true)
+  // - experience, clipboard, personality: advanced capabilities (advancedCapabilities: true)
+  // - form: standalone @elizaos/plugin-form
   // - trust: core capability (enableTrust: true)
   // - secrets (SECRETS): core capability (enableSecretsManager: true)
   // - plugin-manager: core capability (enablePluginManager: true)

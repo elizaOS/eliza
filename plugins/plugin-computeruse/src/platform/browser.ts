@@ -447,10 +447,37 @@ export async function executeBrowser(code: string): Promise<string> {
       const fn = new AsyncFunction(script);
       return await fn();
     }, code);
-    return JSON.stringify(result, null, 2);
+    return renderPlainData(result);
   } catch (err) {
     throw err instanceof Error ? err : new Error(String(err));
   }
+}
+
+function renderPlainData(value: unknown, indent = 0): string {
+  const prefix = "  ".repeat(indent);
+  if (value === null || value === undefined) {
+    return "none";
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "items[0]:";
+    }
+    return [
+      `items[${value.length}]:`,
+      ...value.map((item) => `${prefix}- ${renderPlainData(item, indent + 1)}`),
+    ].join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nestedValue]) => {
+        if (nestedValue && typeof nestedValue === "object") {
+          return `${key}:\n${renderPlainData(nestedValue, indent + 1)}`;
+        }
+        return `${key}: ${renderPlainData(nestedValue, indent + 1)}`;
+      })
+      .join("\n");
+  }
+  return String(value);
 }
 
 // ── Wait ────────────────────────────────────────────────────────────────────

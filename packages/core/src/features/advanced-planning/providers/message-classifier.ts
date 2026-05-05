@@ -1,8 +1,38 @@
 import { messageClassifierTemplate } from "../../../prompts.ts";
 import type { Provider } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePrompt } from "../../../utils.ts";
+import { composePrompt, parseToonKeyValue } from "../../../utils.ts";
 import type { JsonValue } from "../types.ts";
+
+function stringList(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value
+			.flatMap((entry) => stringList(entry))
+			.map((entry) => entry.trim())
+			.filter((entry) => entry.length > 0);
+	}
+	if (typeof value !== "string") {
+		return [];
+	}
+	return value
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
+}
+
+function legacyClassifierFields(responseText: string): Record<string, string> {
+	const fields: Record<string, string> = {};
+	for (const line of responseText.split("\n")) {
+		const separatorIndex = line.indexOf(":");
+		if (separatorIndex === -1) continue;
+		const key = line.slice(0, separatorIndex).trim().toLowerCase();
+		const value = line.slice(separatorIndex + 1).trim();
+		if (key) {
+			fields[key] = value;
+		}
+	}
+	return fields;
+}
 
 export const messageClassifierProvider: Provider = {
 	name: "messageClassifier",
@@ -41,41 +71,44 @@ export const messageClassifierProvider: Provider = {
 			});
 
 			const responseText = String(response);
-			const lines = responseText.split("\n");
-			const fields: Record<string, string> = {};
-			for (const line of lines) {
-				const separatorIndex = line.indexOf(":");
-				if (separatorIndex === -1) continue;
-				const key = line.slice(0, separatorIndex).trim();
-				const value = line.slice(separatorIndex + 1).trim();
-				if (key) {
-					fields[key] = value;
-				}
-			}
+			const parsed = parseToonKeyValue<Record<string, unknown>>(responseText);
+			const fields = parsed ?? legacyClassifierFields(responseText);
 
-			const parseField = (key: string): string[] => {
-				const value = fields[key];
-				if (!value) {
-					return [];
-				}
-				return value
-					.split(",")
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0);
-			};
-
-			const complexity = fields.COMPLEXITY || "simple";
-			const planningType = fields.PLANNING || "direct_action";
-			const confidenceStr = fields.CONFIDENCE || "0.5";
+			const complexity =
+				typeof fields.complexity === "string"
+					? fields.complexity
+					: typeof fields.COMPLEXITY === "string"
+						? fields.COMPLEXITY
+						: "simple";
+			const planningType =
+				typeof fields.planning === "string"
+					? fields.planning
+					: typeof fields.PLANNING === "string"
+						? fields.PLANNING
+						: "direct_action";
+			const confidenceStr =
+				typeof fields.confidence === "string" ||
+				typeof fields.confidence === "number"
+					? fields.confidence
+					: typeof fields.CONFIDENCE === "string" ||
+							typeof fields.CONFIDENCE === "number"
+						? fields.CONFIDENCE
+						: "0.5";
 			const confidence = Math.min(
 				1.0,
-				Math.max(0.0, Number.parseFloat(confidenceStr) || 0.5),
+				Math.max(0.0, Number.parseFloat(String(confidenceStr)) || 0.5),
 			);
 
-			const capabilities = parseField("CAPABILITIES:");
-			const stakeholders = parseField("STAKEHOLDERS:");
-			const constraints = parseField("CONSTRAINTS:");
-			const dependencies = parseField("DEPENDENCIES:");
+			const capabilities = stringList(
+				fields.capabilities ?? fields.CAPABILITIES,
+			);
+			const stakeholders = stringList(
+				fields.stakeholders ?? fields.STAKEHOLDERS,
+			);
+			const constraints = stringList(fields.constraints ?? fields.CONSTRAINTS);
+			const dependencies = stringList(
+				fields.dependencies ?? fields.DEPENDENCIES,
+			);
 
 			const planningRequired =
 				planningType !== "direct_action" && complexity !== "simple";

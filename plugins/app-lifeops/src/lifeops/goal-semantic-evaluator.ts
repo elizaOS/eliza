@@ -2,8 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import type {
   LifeOpsGoalDefinition,
@@ -202,8 +201,7 @@ function parseSemanticEvaluationOutput(
   raw: string,
 ): Record<string, unknown> | null {
   return (
-    parseKeyValueXml<Record<string, unknown>>(raw) ??
-    (parseJSONObjectFromText(raw) as Record<string, unknown> | null)
+    parseToonKeyValue<Record<string, unknown>>(raw)
   );
 }
 

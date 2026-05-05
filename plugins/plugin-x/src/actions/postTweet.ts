@@ -8,7 +8,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import type { TwitterService } from "../services/x.service";
+import type { XService } from "../services/x.service";
 import {
   terminalActionInteractionSemantics,
   terminalActionResultData,
@@ -89,7 +89,7 @@ export const postTweetAction: Action = {
 
     try {
       const twitterService = (runtime.getService("x") ??
-        runtime.getService("twitter")) as TwitterService | null;
+        runtime.getService("twitter")) as XService | null;
 
       if (!twitterService) {
         throw new Error("X service not available");

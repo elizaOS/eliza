@@ -63,12 +63,6 @@ function parseJsonLineField(prompt: string, label: string): string {
   return "";
 }
 
-function parseXmlField(prompt: string, tagName: string): string {
-  const pattern = new RegExp(`<${tagName}>\\s*([\\s\\S]*?)\\s*</${tagName}>`);
-  const match = pattern.exec(prompt);
-  return match?.[1]?.trim() ?? "";
-}
-
 function parseNextLineField(prompt: string, label: string): string {
   const lines = prompt.split("\n");
   for (let i = 0; i < lines.length - 1; i++) {
@@ -81,7 +75,6 @@ function parseNextLineField(prompt: string, label: string): string {
 
 function currentRequest(prompt: string): string {
   return (
-    parseXmlField(prompt, "current_request") ||
     parseJsonLineField(prompt, "Current request") ||
     parseNextLineField(prompt, "Current request") ||
     parseJsonLineField(prompt, "User request") ||

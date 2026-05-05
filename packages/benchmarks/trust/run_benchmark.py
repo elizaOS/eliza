@@ -103,7 +103,7 @@ class OpenAICompatibleTrustHandler:
             raise RuntimeError(f"{key_var} is required for the direct trust handler")
         self.provider = provider
         self.model = model_name or {
-            "openai": "gpt-4o-mini",
+            "openai": "openai/gpt-oss-120b",
             "groq": "openai/gpt-oss-120b",
             "openrouter": "openai/gpt-oss-120b",
         }[provider]
@@ -216,13 +216,6 @@ def _discover_handler_names() -> list[str]:
     """
     names: list[str] = ["oracle", "random", "llm"]
 
-    try:
-        from elizaos_trust_bench.real_handler import RealTrustHandler  # noqa: F401
-
-        names.append("real")
-    except ImportError:
-        pass
-
     # eliza-bridge: routes through the elizaOS TS benchmark server
     # (no in-process AgentRuntime needed). Always available because it only
     # depends on the lightweight eliza_adapter HTTP client.
@@ -248,7 +241,6 @@ def _create_handler(
     Handlers:
     - oracle: Ground truth (perfect score, validates benchmark framework)
     - random: Coin flip baseline (validates benchmark discriminates)
-    - real: Heuristic + runtime SecurityModuleService prompt-injection checks
     - eliza: LLM-based detection via the Eliza TypeScript benchmark bridge
     - llm: Direct OpenAI-compatible LLM classification
     """
@@ -256,10 +248,6 @@ def _create_handler(
         return PerfectHandler()
     if name == "random":
         return RandomHandler()
-    if name == "real":
-        from elizaos_trust_bench.real_handler import RealTrustHandler
-
-        return RealTrustHandler()
     if name == "llm":
         return OpenAICompatibleTrustHandler(
             model_provider=model_provider,
@@ -286,7 +274,6 @@ def main() -> None:
 Examples:
   python run_benchmark.py                                    # Run with oracle handler
   python run_benchmark.py --handler random                   # Run with random handler
-  python run_benchmark.py --handler real                     # Pattern-based detection
   python run_benchmark.py --handler eliza                    # LLM-based detection (Eliza)
   python run_benchmark.py --categories prompt_injection      # Only test prompt injection
   python run_benchmark.py --difficulty hard                   # Only hard cases
@@ -295,7 +282,6 @@ Examples:
 Handler descriptions:
   oracle         Ground truth oracle — validates benchmark framework (should score 100%%)
   random         Coin flip baseline — validates benchmark discriminates good from bad
-  real           Heuristic detection + Python SecurityModuleService (runtime)
   eliza          LLM-based detection routed through the elizaOS TS benchmark server
   eliza-bridge   LLM-based detection routed through the elizaOS TS benchmark server
   llm            LLM-based detection through an OpenAI-compatible HTTP endpoint

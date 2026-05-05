@@ -1,4 +1,9 @@
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+	type IAgentRuntime,
+	logger,
+	setTrajectoryPurpose,
+	withStandaloneTrajectory,
+} from "@elizaos/core";
 import type { BlueSkyClient } from "../client";
 import type {
 	BlueSkyConfig,
@@ -149,7 +154,7 @@ export class BlueSkyAgentManager {
 
 	private startAutomatedPosting(): void {
 		if (shouldPostImmediately(this.runtime)) {
-			this.createAutomatedPost();
+			void this.createAutomatedPost();
 		}
 		this.scheduleNextPost();
 	}
@@ -160,18 +165,31 @@ export class BlueSkyAgentManager {
 
 		this.postTimer = setTimeout(() => {
 			if (this.running) {
-				this.createAutomatedPost();
-				this.scheduleNextPost();
+				void this.createAutomatedPost().finally(() => this.scheduleNextPost());
 			}
 		}, interval);
 	}
 
-	private createAutomatedPost(): void {
-		const payload: BlueSkyCreatePostEventPayload = {
-			runtime: this.runtime,
-			source: "bluesky",
-			automated: true,
-		};
-		void this.runtime.emitEvent("bluesky.create_post", payload);
+	private async createAutomatedPost(): Promise<void> {
+		await withStandaloneTrajectory(
+			this.runtime,
+			{
+				source: "plugin-bluesky:auto-post",
+				metadata: {
+					platform: "bluesky",
+					kind: "public_post_generation",
+					automated: true,
+				},
+			},
+			async () => {
+				setTrajectoryPurpose("background");
+				const payload: BlueSkyCreatePostEventPayload = {
+					runtime: this.runtime,
+					source: "bluesky",
+					automated: true,
+				};
+				await this.runtime.emitEvent("bluesky.create_post", payload);
+			},
+		);
 	}
 }

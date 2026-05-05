@@ -5,10 +5,10 @@
  * or `advancedCapabilities: true` in plugin initialization.
  *
  * These provide additional agent features:
- * - Extended providers (facts, contacts, relationships, roles, settings, knowledge, clipboard, form, personality)
- * - Advanced actions (contacts management, room management, image generation, clipboard, form, personality, etc.)
- * - Evaluators (reflection, relationship extraction, experience learning, form extraction, character evolution)
- * - Additional services (experience, clipboard, form, personality)
+ * - Extended providers (facts, contacts, relationships, roles, settings, knowledge, clipboard, personality)
+ * - Advanced actions (contacts management, room management, image generation, clipboard, personality, etc.)
+ * - Evaluators (reflection, relationship extraction, experience learning, character evolution)
+ * - Additional services (experience, clipboard, personality)
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
@@ -35,13 +35,6 @@ import {
 	searchExperiencesAction,
 } from "./experience/index.ts";
 
-// Form imports
-import {
-	formContextProvider,
-	formEvaluator,
-	formRestoreAction,
-} from "./form/index.ts";
-
 // Personality imports
 import {
 	characterEvolutionEvaluator,
@@ -59,7 +52,7 @@ export * from "./actions/index.ts";
 export * from "./clipboard/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./experience/index.ts";
-export * from "./form/index.ts";
+export type * from "./form/index.ts";
 export * from "./personality/index.ts";
 export * from "./providers/index.ts";
 
@@ -81,7 +74,6 @@ export const advancedProviders = [
 	providers.settingsProvider,
 	experienceProvider,
 	clipboardProvider,
-	formContextProvider,
 	userPersonalityProvider,
 ];
 
@@ -111,8 +103,6 @@ export const advancedActions = [
 	readAttachmentAction,
 	saveAttachmentToClipboardAction,
 	removeFromClipboardAction,
-	// Form actions
-	formRestoreAction,
 	// Personality actions
 	modifyCharacterAction,
 	setVoiceConfigAction,
@@ -132,7 +122,6 @@ export const advancedEvaluators = [
 	evaluators.skillExtractionEvaluator,
 	evaluators.skillRefinementEvaluator,
 	experienceEvaluator,
-	formEvaluator,
 	characterEvolutionEvaluator,
 ];
 
@@ -145,13 +134,6 @@ export const advancedServices: ServiceClass[] = [
 		start: async (runtime: IAgentRuntime) => {
 			const { ExperienceService } = await import("./experience/service.ts");
 			return ExperienceService.start(runtime);
-		},
-	} as unknown as ServiceClass,
-	{
-		serviceType: "FORM",
-		start: async (runtime: IAgentRuntime) => {
-			const { FormService } = await import("./form/service.ts");
-			return FormService.start(runtime);
 		},
 	} as unknown as ServiceClass,
 	{

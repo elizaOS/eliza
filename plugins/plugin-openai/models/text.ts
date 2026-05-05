@@ -4,8 +4,13 @@
  * Provides text generation using OpenAI's language models.
  */
 
-import type { GenerateTextParams, IAgentRuntime, ModelTypeName } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  ModelTypeName,
+  RecordLlmCallDetails,
+} from "@elizaos/core";
+import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 import { generateText, type LanguageModelUsage, streamText } from "ai";
 import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
@@ -116,6 +121,34 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
   };
 }
 
+function createLlmCallDetails(
+  modelName: string,
+  params: GenerateTextParams,
+  systemPrompt: string | undefined,
+  actionType: string
+): RecordLlmCallDetails {
+  return {
+    model: modelName,
+    systemPrompt: systemPrompt ?? "",
+    userPrompt: params.prompt,
+    temperature: params.temperature ?? 0,
+    maxTokens: params.maxTokens ?? 8192,
+    purpose: "external_llm",
+    actionType,
+  };
+}
+
+function applyUsageToDetails(
+  details: RecordLlmCallDetails,
+  usage: LanguageModelUsage | undefined
+): void {
+  if (!usage) {
+    return;
+  }
+  details.promptTokens = usage.inputTokens ?? 0;
+  details.completionTokens = usage.outputTokens ?? 0;
+}
+
 // ============================================================================
 // Core Generation Function
 // ============================================================================
@@ -180,7 +213,9 @@ async function generateTextByModelType(
 
   // Handle streaming mode
   if (params.stream) {
-    const result = streamText(generateParams);
+    const details = createLlmCallDetails(modelName, params, systemPrompt, "ai.streamText");
+    details.response = "";
+    const result = await recordLlmCall(runtime, details, () => streamText(generateParams));
 
     return {
       textStream: result.textStream,
@@ -191,7 +226,13 @@ async function generateTextByModelType(
   }
 
   // Non-streaming mode
-  const { text, usage } = await generateText(generateParams);
+  const details = createLlmCallDetails(modelName, params, systemPrompt, "ai.generateText");
+  const { text, usage } = await recordLlmCall(runtime, details, async () => {
+    const result = await generateText(generateParams);
+    details.response = result.text;
+    applyUsageToDetails(details, result.usage);
+    return result;
+  });
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, params.prompt, usage);

@@ -41,17 +41,25 @@ export const journalProvider: Provider = {
     const memories = journal.getMemories(RECENT_MEMORY_COUNT);
     if (memories.length === 0) {
       return {
-        text: "# JOURNAL\n(no memories yet — this is your first step)",
+        text: encode({
+          scape_journal: {
+            status: "empty",
+            memories: [],
+          },
+        }),
       };
     }
 
     const toon = encode({
-      memories: memories.map((m) => ({
-        kind: m.kind,
-        text: m.text,
-        weight: m.weight ?? 1,
-      })),
+      scape_journal: {
+        status: "ready",
+        memories: memories.map((m) => ({
+          kind: m.kind,
+          text: m.text,
+          weight: m.weight ?? 1,
+        })),
+      },
     });
-    return { text: `# JOURNAL (recent ${memories.length})\n${toon}` };
+    return { text: toon };
   },
 };

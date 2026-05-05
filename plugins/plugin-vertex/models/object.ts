@@ -3,6 +3,11 @@ import { logger, ModelType } from "@elizaos/core";
 import { generateObject, jsonSchema } from "ai";
 import { createModelForName, detectProvider } from "../providers";
 import { getSmallModel, getLargeModel } from "../utils/config";
+import {
+  emitModelUsed,
+  estimateUsage,
+  normalizeTokenUsage,
+} from "../utils/modelUsage";
 import { executeWithRetry } from "../utils/retry";
 
 async function generateObjectWithModel(
@@ -18,19 +23,28 @@ async function generateObjectWithModel(
     `[Vertex:${provider}] Object generation using ${modelType}: ${modelName}`,
   );
 
-  const { object } = await executeWithRetry(`${modelType} object request`, () =>
-    generateObject({
-      model,
-      messages: [{ role: "user" as const, content: params.prompt }],
-      system: runtime.character.system ?? undefined,
-      schema: jsonSchema(
-        (params.schema ?? { type: "object" }) as Parameters<
-          typeof jsonSchema
-        >[0],
-      ),
-      temperature: params.temperature ?? 0.7,
-      maxOutputTokens: params.maxTokens ?? 8192,
-    }),
+  const { object, usage } = await executeWithRetry(
+    `${modelType} object request`,
+    () =>
+      generateObject({
+        model,
+        messages: [{ role: "user" as const, content: params.prompt }],
+        system: runtime.character.system ?? undefined,
+        schema: jsonSchema(
+          (params.schema ?? { type: "object" }) as Parameters<
+            typeof jsonSchema
+          >[0],
+        ),
+        temperature: params.temperature ?? 0.7,
+        maxOutputTokens: params.maxTokens ?? 8192,
+      }),
+  );
+  emitModelUsed(
+    runtime,
+    modelType,
+    modelName,
+    normalizeTokenUsage(usage) ?? estimateUsage(params.prompt, object),
+    provider,
   );
 
   return object as Record<string, unknown>;

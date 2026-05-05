@@ -55,6 +55,7 @@ export const providersProvider: Provider = {
 			"uploaded files, documents, or knowledge-base content -> AVAILABLE_DOCUMENTS, KNOWLEDGE",
 			"specific people or agents -> ENTITIES",
 			"connections between people -> RELATIONSHIPS",
+			"current platform chat or user identity -> PLATFORM_CHAT_CONTEXT, PLATFORM_USER_CONTEXT",
 			"factual lookup -> FACTS",
 			"world or environment context -> WORLD",
 		];

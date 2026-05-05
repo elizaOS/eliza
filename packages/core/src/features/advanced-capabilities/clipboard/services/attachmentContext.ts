@@ -4,7 +4,7 @@ import {
 	type Media,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
+	parseToonKeyValue,
 } from "../../../../types/index.ts";
 
 type AttachmentWithInlineData = Media & {
@@ -68,7 +68,7 @@ async function describeImageAttachment(
 		imageUrl,
 	});
 	if (typeof response === "string") {
-		const parsed = parseKeyValueXml(response) as Record<string, unknown> | null;
+		const parsed = parseToonKeyValue(response) as Record<string, unknown> | null;
 		if (parsed) {
 			const value =
 				(typeof parsed.text === "string" ? parsed.text : "") ||
@@ -173,7 +173,7 @@ export async function resolveAttachmentSelection(
 		prompt: selectionPrompt(text, attachments),
 		stopSequences: [],
 	});
-	const parsed = parseKeyValueXml(String(response)) as Record<
+	const parsed = parseToonKeyValue(String(response)) as Record<
 		string,
 		unknown
 	> | null;

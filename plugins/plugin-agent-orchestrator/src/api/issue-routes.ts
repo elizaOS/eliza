@@ -9,8 +9,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { RouteContext } from "./routes.js";
-import { parseBody, sendError, sendJson } from "./routes.js";
+import type { RouteContext } from "./route-utils.js";
+import { parseBody, sendError, sendJson } from "./route-utils.js";
 
 type JsonValue =
   | string

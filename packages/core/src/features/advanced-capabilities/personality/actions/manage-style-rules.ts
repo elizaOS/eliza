@@ -269,7 +269,7 @@ export const manageStyleRulesAction: Action = {
 
 			await callback?.({
 				text: summary,
-				thought: `Applied style change: ${JSON.stringify({ action: styleAction, category, items, index })}`,
+				thought: `Applied style change: action=${styleAction}; category=${category}; items=${items.join(", ")}; index=${index ?? "none"}`,
 				actions: ["MANAGE_STYLE_RULES"],
 			});
 

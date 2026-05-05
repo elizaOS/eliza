@@ -1,14 +1,16 @@
-import type { IAgentRuntime, ImageDescriptionParams } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  ImageDescriptionParams,
+  RecordLlmCallDetails,
+} from "@elizaos/core";
+import { logger, recordLlmCall } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
 import {
   createGoogleGenAI,
   getImageModel,
   getSafetySettings,
 } from "../utils/config";
-
-const crossFetch =
-  typeof globalThis.fetch === "function" ? globalThis.fetch : fetch;
+import { countTokens } from "../utils/tokenization";
 
 export async function handleImageDescription(
   runtime: IAgentRuntime,
@@ -36,7 +38,7 @@ export async function handleImageDescription(
   }
 
   try {
-    const imageResponse = await crossFetch(imageUrl);
+    const imageResponse = await fetch(imageUrl);
     if (!imageResponse.ok) {
       throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
     }
@@ -46,29 +48,45 @@ export async function handleImageDescription(
     const contentType =
       imageResponse.headers.get("content-type") || "image/jpeg";
 
-    const response = await genAI.models.generateContent({
+    const details: RecordLlmCallDetails = {
       model: modelName,
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: promptText },
-            {
-              inlineData: {
-                mimeType: contentType,
-                data: base64Image,
+      systemPrompt: "",
+      userPrompt: promptText,
+      temperature: 0.7,
+      maxTokens: 8192,
+      purpose: "external_llm",
+      actionType: "google-genai.IMAGE_DESCRIPTION.generateContent",
+    };
+    const response = await recordLlmCall(runtime, details, async () => {
+      const result = await genAI.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: promptText },
+              {
+                inlineData: {
+                  mimeType: contentType,
+                  data: base64Image,
+                },
               },
-            },
-          ],
+            ],
+          },
+        ],
+        config: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 8192,
+          safetySettings: getSafetySettings(),
         },
-      ],
-      config: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 8192,
-        safetySettings: getSafetySettings(),
-      },
+      });
+      const responseText = result.text || "";
+      details.response = responseText;
+      details.promptTokens = await countTokens(promptText);
+      details.completionTokens = await countTokens(responseText);
+      return result;
     });
 
     const responseText = response.text || "";

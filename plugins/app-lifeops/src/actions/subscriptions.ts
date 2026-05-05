@@ -9,8 +9,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
@@ -21,6 +20,7 @@ import {
   INTERNAL_URL,
   messageText,
 } from "./lifeops-google-helpers.js";
+import { formatPromptSection } from "./prompt-format.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 
@@ -174,9 +174,9 @@ async function resolveSubscriptionsPlanWithLlm(args: {
     '  "what happened with that subscription cancellation?"',
     "  -> mode: status; serviceName: null; serviceSlug: null; executor: null; queryWindowDays: null; confirmed: null; shouldAct: true; response: null",
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Existing parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    formatPromptSection("Current request", currentMessage),
+    formatPromptSection("Existing parameters", args.params),
+    formatPromptSection("Recent conversation", recentConversation),
   ].join("\n");
 
   try {
@@ -184,9 +184,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {};
     }

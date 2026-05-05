@@ -3,8 +3,9 @@
  *
  * Wraps `@elizaos/capacitor-phone`'s `listRecentCalls`. The native plugin reads
  * Android's `CallLog.Calls` content provider, so this requires the
- * `READ_CALL_LOG` runtime permission to be granted on device. Session-gated
- * at the plugin level; web/iOS fallback returns an empty list.
+ * `READ_CALL_LOG` runtime permission to be granted on device. The agent
+ * Android runtime adapter adds hosted-app session gating; web/iOS fallback
+ * returns an empty list.
  */
 
 import { Phone } from "@elizaos/capacitor-phone";

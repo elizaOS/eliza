@@ -387,8 +387,51 @@ export interface RemoveLiquidityConfig {
   slippageBps: number;
 }
 
+export type LpManagementSubaction =
+  | "onboard"
+  | "list_pools"
+  | "open"
+  | "close"
+  | "reposition"
+  | "list_positions"
+  | "get_position"
+  | "set_preferences";
+
 export interface LpActionParams {
-  intent:
+  subaction?: LpManagementSubaction;
+  chain?: ChainType | string;
+  chainId?: number;
+  dex?: string;
+  pool?: string;
+  position?: string;
+  amount?:
+    | string
+    | number
+    | {
+        value?: string | number;
+        tokenA?: string | number;
+        tokenB?: string | number;
+        lpToken?: string | number;
+        percentage?: number;
+      };
+  amounts?: {
+    tokenA?: string | number;
+    tokenB?: string | number;
+    lpToken?: string | number;
+  };
+  range?: {
+    tickLower?: number;
+    tickUpper?: number;
+    tickLowerIndex?: number;
+    tickUpperIndex?: number;
+    priceLower?: number;
+    priceUpper?: number;
+  };
+  tokenA?: string;
+  tokenB?: string;
+  feeTier?: number;
+  slippageBps?: number;
+  intent?:
     | "onboard_lp"
     | "deposit_lp"
     | "withdraw_lp"

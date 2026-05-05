@@ -12,6 +12,13 @@ import {
 import { updateIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearIssueInput } from "../types";
+import {
+  getPriorityNumberValue,
+  getRecordValue,
+  getStringArrayValue,
+  getStringValue,
+  parseLinearPromptResponse,
+} from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const updateIssueAction: Action = {
@@ -119,44 +126,47 @@ export const updateIssueAction: Action = {
       const updates: Partial<LinearIssueInput> = {};
 
       try {
-        const cleanedResponse = response
-          .replace(/^```(?:json)?\n?/, "")
-          .replace(/\n?```$/, "")
-          .trim();
-        const parsed = JSON.parse(cleanedResponse);
+        const parsed = parseLinearPromptResponse(response);
+        if (Object.keys(parsed).length === 0) {
+          throw new Error("No fields found in model response");
+        }
 
-        issueId = parsed.issueId;
+        issueId = getStringValue(parsed.issueId) ?? "";
         if (!issueId) {
           throw new Error("Issue ID not found in parsed response");
         }
 
-        if (parsed.updates?.title) {
-          updates.title = parsed.updates.title;
+        const parsedUpdates = getRecordValue(parsed.updates) ?? {};
+        const title = getStringValue(parsedUpdates.title);
+        if (title) {
+          updates.title = title;
         }
 
-        if (parsed.updates?.description) {
-          updates.description = parsed.updates.description;
+        const description = getStringValue(parsedUpdates.description);
+        if (description) {
+          updates.description = description;
         }
 
-        if (parsed.updates?.priority) {
-          updates.priority = Number(parsed.updates.priority);
+        const priority = getPriorityNumberValue(parsedUpdates.priority);
+        if (priority) {
+          updates.priority = priority;
         }
 
-        if (parsed.updates?.teamKey) {
+        const teamKey = getStringValue(parsedUpdates.teamKey);
+        if (teamKey) {
           const teams = await linearService.getTeams();
-          const team = teams.find(
-            (t) => t.key.toLowerCase() === parsed.updates.teamKey.toLowerCase()
-          );
+          const team = teams.find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
           if (team) {
             updates.teamId = team.id;
             logger.info(`Moving issue to team: ${team.name} (${team.key})`);
           } else {
-            logger.warn(`Team with key ${parsed.updates.teamKey} not found`);
+            logger.warn(`Team with key ${teamKey} not found`);
           }
         }
 
-        if (parsed.updates?.assignee) {
-          const cleanAssignee = parsed.updates.assignee.replace(/^@/, "");
+        const assignee = getStringValue(parsedUpdates.assignee);
+        if (assignee) {
+          const cleanAssignee = assignee.replace(/^@/, "");
           const users = await linearService.getUsers();
           const user = users.find(
             (u) =>
@@ -170,7 +180,8 @@ export const updateIssueAction: Action = {
           }
         }
 
-        if (parsed.updates?.status) {
+        const status = getStringValue(parsedUpdates.status);
+        if (status) {
           const issue = await linearService.getIssue(issueId);
           const issueTeam = await issue.team;
           const teamId = updates.teamId || issueTeam?.id;
@@ -181,30 +192,29 @@ export const updateIssueAction: Action = {
 
             const state = states.find(
               (s) =>
-                s.name.toLowerCase() === parsed.updates.status.toLowerCase() ||
-                s.type.toLowerCase() === parsed.updates.status.toLowerCase()
+                s.name.toLowerCase() === status.toLowerCase() ||
+                s.type.toLowerCase() === status.toLowerCase()
             );
 
             if (state) {
               updates.stateId = state.id;
               logger.info(`Changing status to: ${state.name}`);
             } else {
-              logger.warn(`Status ${parsed.updates.status} not found for team`);
+              logger.warn(`Status ${status} not found for team`);
             }
           }
         }
 
-        if (parsed.updates?.labels && Array.isArray(parsed.updates.labels)) {
+        const parsedLabels = getStringArrayValue(parsedUpdates.labels);
+        if (parsedLabels !== undefined) {
           const teamId = updates.teamId;
           const labels = await linearService.getLabels(teamId);
           const labelIds: string[] = [];
 
-          for (const labelName of parsed.updates.labels) {
-            if (labelName) {
-              const label = labels.find((l) => l.name.toLowerCase() === labelName.toLowerCase());
-              if (label) {
-                labelIds.push(label.id);
-              }
+          for (const labelName of parsedLabels) {
+            const label = labels.find((l) => l.name.toLowerCase() === labelName.toLowerCase());
+            if (label) {
+              labelIds.push(label.id);
             }
           }
 

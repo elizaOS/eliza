@@ -13,7 +13,6 @@ export interface RobloxConfig {
   placeId?: string;
   webhookSecret?: string;
   messagingTopic: string;
-  pollInterval: number;
   dryRun: boolean;
 }
 

@@ -12,7 +12,7 @@
  * @module services/swarm-event-triage
  */
 
-import { parseKeyValueXml, type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
 // ─── Types ───
@@ -161,7 +161,7 @@ export function buildTriagePrompt(ctx: TriageContext): string {
  * Parse the LLM's triage response. Returns null on failure.
  */
 export function parseTriageResponse(llmOutput: string): TriageTier | null {
-  const parsedToon = parseKeyValueXml<Record<string, unknown>>(llmOutput);
+  const parsedToon = parseToonKeyValue<Record<string, unknown>>(llmOutput);
   if (parsedToon?.tier === "routine" || parsedToon?.tier === "creative") {
     return parsedToon.tier;
   }

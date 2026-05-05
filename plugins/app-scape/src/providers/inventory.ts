@@ -39,38 +39,25 @@ export const inventoryProvider: Provider = {
     const inv = snapshot.inventory;
     const eq = snapshot.equipment;
 
-    const sections: string[] = [];
-
-    if (inv.length === 0) {
-      sections.push("# INVENTORY\n(empty)");
-    } else {
-      sections.push(
-        `# INVENTORY (${inv.length}/28)\n${encode({
+    return {
+      text: encode({
+        scape_inventory: {
+          count: inv.length,
+          capacity: 28,
           items: inv.map((item) => ({
             slot: item.slot,
             itemId: item.itemId,
             name: item.name,
             count: item.count,
           })),
-        })}`,
-      );
-    }
-
-    if (eq.length === 0) {
-      sections.push("# EQUIPMENT\n(nothing worn)");
-    } else {
-      sections.push(
-        `# EQUIPMENT\n${encode({
           worn: eq.map((item) => ({
             slot: item.slot,
             itemId: item.itemId,
             name: item.name,
             count: item.count,
           })),
-        })}`,
-      );
-    }
-
-    return { text: sections.join("\n\n") };
+        },
+      }),
+    };
   },
 };

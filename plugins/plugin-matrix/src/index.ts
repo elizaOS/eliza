@@ -21,12 +21,6 @@ import { sendReaction } from "./actions/sendReaction.js";
 
 export { joinRoom, listRooms, sendMessage, sendReaction };
 
-// Providers
-import { roomStateProvider } from "./providers/roomState.js";
-import { userContextProvider } from "./providers/userContext.js";
-
-export { roomStateProvider, userContextProvider };
-
 // Import service for plugin
 import { MatrixService } from "./service.js";
 
@@ -39,9 +33,9 @@ const matrixPlugin: Plugin = {
 
   services: [MatrixService],
 
-  actions: [sendMessage, sendReaction, listRooms, joinRoom],
+  actions: [sendReaction, listRooms, joinRoom],
 
-  providers: [roomStateProvider, userContextProvider],
+  providers: [],
 
   tests: [],
 

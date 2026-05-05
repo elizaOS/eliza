@@ -22,10 +22,15 @@
 import {
   type IAgentRuntime,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   Service,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
 
+import {
+  formatScapeRouterPrompt,
+  resolveScapeRouterAction,
+} from "../actions/router-definitions.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
 import { inventoryProvider } from "../providers/inventory.js";
@@ -58,54 +63,6 @@ const _DEFAULT_AGENT_NAME = "scape-agent";
 const DEFAULT_CONTROLLER: "hybrid" = "hybrid";
 const DEFAULT_LOOP_INTERVAL_MS = 15_000;
 const MAX_EVENT_LOG = 12;
-
-/**
- * The toolbelt the autonomous loop tells the LLM about. Mirrors the
- * `scapeActions` array in `actions/index.ts` — when adding a new tool,
- * update BOTH places.
- */
-const ACTION_LIST = [
-  {
-    name: "WALK_TO",
-    params: "x: N, z: N, run: true|false",
-    hint: "Walk to an absolute world tile. Useful to explore or approach something.",
-  },
-  {
-    name: "CHAT_PUBLIC",
-    params: "message: text (max 80 chars)",
-    hint: "Say something in public chat — narrate, socialize, or respond to operator.",
-  },
-  {
-    name: "ATTACK_NPC",
-    params: "npcId: N",
-    hint: "Attack a nearby NPC. Use an id from SCAPE_NEARBY's npcs section. Server walks into range automatically.",
-  },
-  {
-    name: "DROP_ITEM",
-    params: "slot: 0-27",
-    hint: "Drop the item in this inventory slot to the ground at your feet.",
-  },
-  {
-    name: "EAT_FOOD",
-    params: "slot: 0-27 (optional)",
-    hint: "Consume food to restore HP. If slot is omitted the server picks the first edible item.",
-  },
-  {
-    name: "SET_GOAL",
-    params: "title: text, notes: text (optional)",
-    hint: "Declare or update your active goal. The journal remembers it across steps and sessions.",
-  },
-  {
-    name: "COMPLETE_GOAL",
-    params: "status: completed|abandoned, notes: optional",
-    hint: "Close the active goal when done or when you've decided to give up.",
-  },
-  {
-    name: "REMEMBER",
-    params: "kind: note|lesson|landmark, text: note text, weight: 1-5",
-    hint: "Write a note to the Scape Journal so it survives the sliding event log.",
-  },
-] as const;
 
 type ScapeModelSize =
   | typeof ModelType.TEXT_NANO
@@ -489,56 +446,70 @@ export class ScapeGameService extends Service {
       const snapshot = this.botManager.getPerception();
       if (!snapshot) return;
 
-      this.stepNumber += 1;
+      await withStandaloneTrajectory(
+        this.runtime,
+        {
+          source: "app-scape.autonomous-loop",
+          metadata: {
+            game: "scape",
+            stepNumber: this.stepNumber + 1,
+            modelSize: this.modelSize,
+          },
+        },
+        async () => {
+          this.stepNumber += 1;
 
-      const providerContext = await this.gatherProviderContext();
-      const prompt = this.buildPrompt(snapshot, providerContext);
+          const providerContext = await this.gatherProviderContext();
+          const prompt = this.buildPrompt(snapshot, providerContext);
 
-      this.log(
-        `step ${this.stepNumber} → ${this.modelSize} (prompt=${prompt.length}ch)`,
-      );
+          this.log(
+            `step ${this.stepNumber} -> ${this.modelSize} (prompt=${prompt.length}ch)`,
+          );
 
-      let response: unknown;
-      try {
-        response = await this.runtime.useModel(this.modelSize, {
-          prompt,
-          maxTokens: 300,
-        });
-      } catch (err) {
-        this.log(
-          `step ${this.stepNumber} LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        return;
-      }
+          let response: unknown;
+          try {
+            response = await this.runtime.useModel(this.modelSize, {
+              prompt,
+              maxTokens: 300,
+            });
+          } catch (err) {
+            this.log(
+              `step ${this.stepNumber} LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return;
+          }
 
-      if (typeof response !== "string" || response.trim().length === 0) {
-        this.log(`step ${this.stepNumber} empty LLM response`);
-        return;
-      }
+          if (typeof response !== "string" || response.trim().length === 0) {
+            this.log(`step ${this.stepNumber} empty LLM response`);
+            return;
+          }
 
-      this.log(`step ${this.stepNumber} LLM: ${response.slice(0, 200)}`);
-      setCurrentLlmResponse(response);
+          this.log(`step ${this.stepNumber} LLM: ${response.slice(0, 200)}`);
+          setCurrentLlmResponse(response);
 
-      const parsed = this.parseActionFromResponse(response);
-      if (!parsed) {
-        this.pushEventLog(
-          "UNKNOWN",
-          false,
-          "could not parse action from response",
-        );
-        this.log(`step ${this.stepNumber} parse miss`);
-        return;
-      }
+          const parsed = this.parseActionFromResponse(response);
+          if (!parsed) {
+            this.pushEventLog(
+              "UNKNOWN",
+              false,
+              "could not parse action from response",
+            );
+            this.log(`step ${this.stepNumber} parse miss`);
+            return;
+          }
 
-      this.log(`step ${this.stepNumber} dispatching ${parsed.actionName}`);
-      const result = await this.dispatchFromLoop(parsed);
-      this.pushEventLog(
-        parsed.actionName,
-        result.success,
-        result.message ?? (result.success ? "ok" : "fail"),
-      );
-      this.log(
-        `step ${this.stepNumber} ${parsed.actionName} → ${result.success ? "OK" : "FAIL"}: ${result.message ?? ""}`,
+          const actionLabel = `${parsed.actionName}.${parsed.subaction}`;
+          this.log(`step ${this.stepNumber} dispatching ${actionLabel}`);
+          const result = await this.dispatchFromLoop(parsed);
+          this.pushEventLog(
+            actionLabel,
+            result.success,
+            result.message ?? (result.success ? "ok" : "fail"),
+          );
+          this.log(
+            `step ${this.stepNumber} ${actionLabel} -> ${result.success ? "OK" : "FAIL"}: ${result.message ?? ""}`,
+          );
+        },
       );
     } catch (err) {
       this.log(
@@ -606,9 +577,7 @@ export class ScapeGameService extends Service {
             )
             .join("\n");
 
-    const actionList = ACTION_LIST.map(
-      (a) => `  ${a.name}: ${a.params}\n    ↳ ${a.hint}`,
-    ).join("\n");
+    const actionList = formatScapeRouterPrompt();
 
     const operatorBlock = this.operatorGoal
       ? `\n# OPERATOR COMMAND (highest priority)\n"${this.operatorGoal}"\nYou MUST work toward this goal.\n`
@@ -624,13 +593,14 @@ ${eventLog}
 
 # Available Actions
 Choose exactly ONE action. Return only a TOON record:
-action: ACTION_NAME
+action: ROUTER_NAME
+subaction: router_operation
 param_name: value
 ${actionList}
 
 # Instructions
 - Walk somewhere interesting. Explore. Don't stand still.
-- WALK_TO takes absolute world coordinates. Use your current position (${self.x}, ${self.z}) as a reference and pick a nearby tile to move toward.
+- SCAPE_GAME with subaction walk_to takes absolute world coordinates. Use your current position (${self.x}, ${self.z}) as a reference and pick a nearby tile to move toward.
 - Do NOT repeat a failed action with the same params — try something different.
 - Keep responses short. Pick ONE action and provide its params.
 
@@ -639,37 +609,29 @@ Your choice:`;
 
   private parseActionFromResponse(
     response: string,
-  ): { actionName: string; params: Record<string, unknown> } | null {
-    const toonParsed = parseKeyValueXml<Record<string, unknown>>(response);
+  ): {
+    actionName: string;
+    subaction: string;
+    legacyAction: string;
+    params: Record<string, unknown>;
+  } | null {
+    const toonParsed = parseToonKeyValue<Record<string, unknown>>(response);
     const toonAction = this.extractActionName(toonParsed);
     if (toonAction) {
-      if (!ACTION_LIST.some((a) => a.name === toonAction)) return null;
+      const resolved = resolveScapeRouterAction(
+        toonAction,
+        this.extractSubactionName(toonParsed),
+      );
+      if (!resolved) return null;
       return {
-        actionName: toonAction,
+        actionName: resolved.routerName,
+        subaction: resolved.subaction,
+        legacyAction: resolved.legacyAction,
         params: this.extractParamsFromParsedResponse(toonParsed),
       };
     }
 
-    // Legacy fallback for old XML-shaped loop outputs.
-    const actionMatch = response.match(/<action>\s*(\w+)\s*<\/action>/i);
-    const actionName = actionMatch?.[1]?.toUpperCase() ?? null;
-    if (!actionName) return null;
-    if (!ACTION_LIST.some((a) => a.name === actionName)) return null;
-
-    // Bulk-extract every legacy XML tag in the response except the action tag.
-    const params: Record<string, unknown> = {};
-    const paramRegex = /<(\w+)>([\s\S]*?)<\/\1>/gi;
-    for (;;) {
-      const match = paramRegex.exec(response);
-      if (match === null) break;
-      const key = match[1];
-      const rawValue = match[2]?.trim() ?? "";
-      if (!key || key.toLowerCase() === "action") continue;
-      const num = Number(rawValue);
-      params[key] =
-        /^-?\d+$/.test(rawValue) && Number.isFinite(num) ? num : rawValue;
-    }
-    return { actionName, params };
+    return null;
   }
 
   private extractActionName(
@@ -683,6 +645,19 @@ Your choice:`;
         .trim()
         .replace(/[\s-]+/g, "_")
         .toUpperCase() || null
+    );
+  }
+
+  private extractSubactionName(
+    parsed: Record<string, unknown> | null,
+  ): string | null {
+    const raw = parsed?.subaction ?? parsed?.operation ?? parsed?.intent;
+    if (typeof raw !== "string") return null;
+    return (
+      raw
+        .trim()
+        .replace(/[\s-]+/g, "_")
+        .toLowerCase() || null
     );
   }
 
@@ -729,10 +704,11 @@ Your choice:`;
    */
   private async dispatchFromLoop(parsed: {
     actionName: string;
+    subaction: string;
     params: Record<string, unknown>;
   }): Promise<{ success: boolean; message?: string }> {
-    switch (parsed.actionName) {
-      case "WALK_TO": {
+    switch (parsed.subaction) {
+      case "walk_to": {
         const x = Number(parsed.params.x);
         const z = Number(parsed.params.z);
         if (!Number.isFinite(x) || !Number.isFinite(z)) {
@@ -741,29 +717,29 @@ Your choice:`;
         const run = parsed.params.run === true || parsed.params.run === "true";
         return this.executeAction({ action: "walkTo", x, z, run });
       }
-      case "CHAT_PUBLIC": {
+      case "chat_public": {
         const rawMessage = parsed.params.message ?? parsed.params.text ?? "";
         const text = String(rawMessage).trim();
         if (text.length === 0) {
-          return { success: false, message: "missing <message>" };
+          return { success: false, message: "missing message" };
         }
         return this.executeAction({ action: "chatPublic", text });
       }
-      case "ATTACK_NPC": {
+      case "attack_npc": {
         const npcId = Number(parsed.params.npcId ?? parsed.params.id);
         if (!Number.isFinite(npcId)) {
-          return { success: false, message: "missing <npcId>" };
+          return { success: false, message: "missing npcId" };
         }
         return this.executeAction({ action: "attackNpc", npcId });
       }
-      case "DROP_ITEM": {
+      case "drop_item": {
         const slot = Number(parsed.params.slot);
         if (!Number.isInteger(slot) || slot < 0 || slot >= 28) {
           return { success: false, message: "slot must be 0..27" };
         }
         return this.executeAction({ action: "dropItem", slot });
       }
-      case "EAT_FOOD": {
+      case "eat_food": {
         const slotRaw = parsed.params.slot;
         const slot =
           slotRaw === undefined || slotRaw === null
@@ -777,16 +753,16 @@ Your choice:`;
         }
         return this.executeAction({ action: "eatFood", slot });
       }
-      case "SET_GOAL": {
+      case "set_goal": {
         const title = String(parsed.params.title ?? "").trim();
-        if (!title) return { success: false, message: "missing <title>" };
+        if (!title) return { success: false, message: "missing title" };
         const notes = String(parsed.params.notes ?? "").trim() || undefined;
         const journal = this.journalService;
         if (!journal) return { success: false, message: "journal unavailable" };
         const goal = journal.setGoal({ title, notes, source: "agent" });
         return { success: true, message: `goal set: "${goal.title}"` };
       }
-      case "COMPLETE_GOAL": {
+      case "complete_goal": {
         const journal = this.journalService;
         if (!journal) return { success: false, message: "journal unavailable" };
         const statusRaw = String(
@@ -810,13 +786,13 @@ Your choice:`;
         );
         if (!updated)
           return { success: false, message: `goal ${goalId} not found` };
-        return { success: true, message: `goal → ${statusRaw}` };
+        return { success: true, message: `goal -> ${statusRaw}` };
       }
-      case "REMEMBER": {
+      case "remember": {
         const journal = this.journalService;
         if (!journal) return { success: false, message: "journal unavailable" };
         const text = String(parsed.params.text ?? "").trim();
-        if (!text) return { success: false, message: "missing <text>" };
+        if (!text) return { success: false, message: "missing text" };
         const kind = String(parsed.params.kind ?? "note");
         const weightRaw = Number(parsed.params.weight ?? 2);
         const weight = Math.max(1, Math.min(5, Math.floor(weightRaw)));
@@ -833,7 +809,7 @@ Your choice:`;
       default:
         return {
           success: false,
-          message: `unknown action ${parsed.actionName}`,
+          message: `unknown subaction ${parsed.actionName}.${parsed.subaction}`,
         };
     }
   }

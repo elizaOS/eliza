@@ -11,8 +11,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
@@ -216,8 +215,7 @@ async function resolveOwnerInboxPlanWithLlm(args: {
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return { subaction: null, channel: null, shouldAct: null };
     }

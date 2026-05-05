@@ -805,6 +805,12 @@ export interface PersistedActiveServer {
 }
 
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
+const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
+  "api.elizacloud.ai",
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+]);
 
 function trimPersistedValue(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -822,13 +828,28 @@ function normalizeApiBase(value: unknown): string | undefined {
   return trimmed.slice(0, end);
 }
 
+function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
+  const apiBase = normalizeApiBase(value);
+  if (!apiBase) return false;
+  try {
+    return ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(
+      new URL(apiBase).hostname.toLowerCase(),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function createPersistedActiveServer(args: {
   kind: PersistedActiveServer["kind"];
   apiBase?: string;
   accessToken?: string;
   label?: string;
 }): PersistedActiveServer {
-  const apiBase = normalizeApiBase(args.apiBase);
+  const normalizedApiBase = normalizeApiBase(args.apiBase);
+  const apiBase = isElizaCloudControlPlaneApiBase(normalizedApiBase)
+    ? undefined
+    : normalizedApiBase;
   const accessToken = trimPersistedValue(args.accessToken);
   const explicitLabel = trimPersistedValue(args.label);
 
@@ -884,16 +905,18 @@ function normalizePersistedActiveServer(
     return null;
   }
 
+  const normalizedApiBase = normalizeApiBase(value.apiBase);
+  const apiBase = isElizaCloudControlPlaneApiBase(normalizedApiBase)
+    ? undefined
+    : normalizedApiBase;
+  const accessToken = trimPersistedValue(value.accessToken);
+
   return {
     id,
     kind,
     label,
-    ...(normalizeApiBase(value.apiBase)
-      ? { apiBase: normalizeApiBase(value.apiBase) }
-      : {}),
-    ...(trimPersistedValue(value.accessToken)
-      ? { accessToken: trimPersistedValue(value.accessToken) }
-      : {}),
+    ...(apiBase ? { apiBase } : {}),
+    ...(accessToken ? { accessToken } : {}),
   };
 }
 

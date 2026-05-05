@@ -4,7 +4,7 @@ import { WAYPOINTS_SERVICE_TYPE, type WaypointsService } from "../services/waypo
 export const minecraftWaypointsProvider: Provider = {
   name: "MC_WAYPOINTS",
   description: "Saved Minecraft waypoints (names and coordinates)",
-  descriptionCompressed: "save Minecraft waypoint (name coordinate)",
+  descriptionCompressed: "saved Minecraft waypoint names and coordinates",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,

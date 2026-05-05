@@ -1,12 +1,12 @@
 import type { Plugin } from "@elizaos/core";
-import { sendMessageAction, sendReactionAction } from "./actions";
+import { sendReactionAction } from "./actions";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
 
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
   description: "WhatsApp integration for ElizaOS (Cloud API + Baileys)",
-  actions: [sendMessageAction, sendReactionAction],
+  actions: [sendReactionAction],
   services: [WhatsAppConnectorService],
   routes: whatsappSetupRoutes,
 };

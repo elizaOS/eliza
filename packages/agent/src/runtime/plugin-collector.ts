@@ -189,6 +189,7 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   streaming: "@elizaos/plugin-streaming",
+  form: "@elizaos/plugin-form",
   // Steward wallet plugin — short ID used by auto-enable
   "stwd-eliza-plugin": "@stwd/eliza-plugin",
 };

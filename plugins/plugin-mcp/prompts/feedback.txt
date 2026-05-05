@@ -4,7 +4,7 @@
 
 # Prompt
 
-You previously attempted to parse a JSON selection but encountered an error. You need to fix the issues and provide a valid JSON response.
+Your previous selection could not be parsed or validated. Correct it as compact TOON/plain text.
 
 PREVIOUS RESPONSE:
 {{{originalResponse}}
@@ -18,14 +18,26 @@ Available {{{itemType}}}s:
 User request: "{{{userMessage}}}"
 
 CORRECTED INSTRUCTIONS:
-1. Create a valid JSON object that selects the most appropriate {{{itemType}}} for the task
-2. Make sure to use proper JSON syntax with double quotes for keys and string values
+1. Select the most appropriate {{{itemType}}} for the task
+2. Use one key per line with exact field names and concrete values
 3. Ensure all values exactly match the available {{{itemType}}}s (names are case-sensitive!)
-4. Do not include any markdown formatting, explanations, or non-JSON content
+4. Do not include markdown fences, comments, tags, or explanatory text outside the fields
 5. Do not use placeholders - all values should be concrete and usable
+6. If no appropriate item exists, use noToolAvailable: true for tools or noResourceAvailable: true for resources
 
-YOUR CORRECTED VALID JSON RESPONSE:
+For tools, use this shape:
+serverName: exact-server-name
+toolName: exact-tool-name
+reasoning: short reason
+noToolAvailable: false
 
+For resources, use this shape:
+serverName: exact-server-name
+uri: exact-resource-uri
+reasoning: short reason
+noResourceAvailable: false
+
+YOUR CORRECTED TOON RESPONSE:
 
 
 

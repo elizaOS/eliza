@@ -1,4 +1,4 @@
-import { IAgentRuntime, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { IAgentRuntime, ModelType, parseToonKeyValue } from "@elizaos/core";
 import {
   TestStep,
   StepResult,
@@ -127,7 +127,7 @@ reasoning: The response meets the criteria because...
         temperature: 0.1,
       });
 
-      const parsed = parseKeyValueXml(result);
+      const parsed = parseToonKeyValue(result);
       if (!parsed) {
         throw new Error("Failed to parse LLM evaluation response");
       }

@@ -1,8 +1,6 @@
 import type { Action } from "@elizaos/core";
-import executeGameAction from "./executeGameAction";
-import getPlayerInfo from "./getPlayerInfo";
-import sendGameMessage from "./sendGameMessage";
+import robloxAction from "./robloxAction";
 
-export const robloxActions: Action[] = [sendGameMessage, executeGameAction, getPlayerInfo];
+export const robloxActions: Action[] = [robloxAction];
 
-export { executeGameAction, getPlayerInfo, sendGameMessage };
+export { robloxAction };

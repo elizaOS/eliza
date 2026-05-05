@@ -14,8 +14,7 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import {
   LIFEOPS_REMINDER_INTENSITIES,
@@ -94,8 +93,7 @@ function promptText(value: string): string {
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
   return (
-    parseKeyValueXml<Record<string, unknown>>(raw) ??
-    parseJSONObjectFromText(raw)
+    parseToonKeyValue<Record<string, unknown>>(raw)
   );
 }
 

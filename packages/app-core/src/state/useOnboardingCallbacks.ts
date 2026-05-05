@@ -602,7 +602,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             );
           }
 
-          await client.provisionCloudSandbox({
+          const provisionedAgent = await client.provisionCloudSandbox({
             cloudApiBase,
             authToken,
             name: onboardingName,
@@ -612,13 +612,13 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             },
           });
 
-          client.setBaseUrl(cloudApiBase);
+          client.setBaseUrl(provisionedAgent.bridgeUrl);
           client.setToken(authToken);
           persistMobileRuntimeModeForServerTarget(onboardingServerTarget);
           savePersistedActiveServer(
             createPersistedActiveServer({
               kind: "cloud",
-              apiBase: cloudApiBase,
+              apiBase: provisionedAgent.bridgeUrl,
               accessToken: authToken,
             }),
           );

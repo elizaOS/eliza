@@ -134,8 +134,8 @@ const PROVIDERS: Array<{
     defaultBaseUrl: "https://api.openai.com/v1",
     smallModelEnvVar: "OPENAI_SMALL_MODEL",
     largeModelEnvVar: "OPENAI_LARGE_MODEL",
-    defaultSmallModel: "gpt-4o-mini",
-    defaultLargeModel: "gpt-4o-mini",
+    defaultSmallModel: "gpt-5-mini",
+    defaultLargeModel: "gpt-5-mini",
   },
   {
     name: "anthropic",

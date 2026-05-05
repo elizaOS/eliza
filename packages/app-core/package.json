@@ -137,6 +137,7 @@
     "./runtime/app-route-plugin-registry": "./src/runtime/app-route-plugin-registry.ts",
     "./providers": "./src/providers/index.ts",
     "./services/plugin-installer": "./src/services/plugin-installer.ts",
+    "./account-pool": "./src/account-pool.ts",
     "./services/account-pool": "./src/services/account-pool.ts",
     "./services/account-usage": "./src/services/account-usage.ts",
     "./services/vault-bootstrap": "./src/services/vault-bootstrap.ts",

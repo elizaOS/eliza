@@ -1,4 +1,11 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import {
+  encodeToonValue,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core";
 import type { BotState } from "../sdk/types.js";
 
 interface Goal {
@@ -156,8 +163,8 @@ export const goalsProvider: Provider = {
   async get(
     runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State,
-  ): Promise<string> {
+    _state: State,
+  ): Promise<ProviderResult> {
     const service = runtime.getService("rs_2004scape") as
       | {
           getBotState(): BotState | null;
@@ -166,7 +173,11 @@ export const goalsProvider: Provider = {
       | undefined;
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
-      return "[RS_SDK_GOALS] Not in game — connect first.";
+      return {
+        text: encodeToonValue({
+          rs_2004_goals: { status: "not_in_game", goals: [] },
+        }),
+      };
     }
 
     const eventLog = service?.getEventLog?.() ?? [];
@@ -176,13 +187,15 @@ export const goalsProvider: Provider = {
         (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
     );
 
-    let output = "[RS_SDK_GOALS] Current priorities:\n";
-    for (const goal of goals) {
-      output += `  [${goal.priority}] ${goal.text}\n`;
-    }
-
-    output +=
-      "\nFollow IMMEDIATE goals first. Then SHORT_TERM. Only explore when nothing else is pressing.";
-    return output;
+    return {
+      text: encodeToonValue({
+        rs_2004_goals: {
+          status: "ready",
+          instruction:
+            "Follow IMMEDIATE goals first, then SHORT_TERM; explore only when nothing else is pressing.",
+          goals,
+        },
+      }),
+    };
   },
 };

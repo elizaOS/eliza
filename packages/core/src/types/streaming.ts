@@ -23,7 +23,8 @@
  * Interface for stream content extractors.
  *
  * Implementations decide HOW to filter LLM output for streaming.
- * Could be XML parsing, JSON parsing, plain text passthrough, or custom logic.
+ * Could be TOON field extraction, JSON suppression, plain text passthrough, or
+ * custom logic.
  *
  * The framework doesn't care about format - that's implementation choice.
  *
@@ -34,11 +35,11 @@
  * // Simple passthrough - streams everything as-is
  * const extractor = new PassthroughExtractor();
  *
- * // XML tag extraction - extracts content from <text> tag
- * const extractor = new XmlTagExtractor('text');
+ * // TOON field extraction - extracts content from the text field
+ * const extractor = new ToonFieldStreamExtractor(config);
  *
- * // Action-aware XML (DefaultMessageService)
- * const extractor = new ResponseStreamExtractor();
+ * // Action output filtering
+ * const extractor = new ActionStreamFilter();
  *
  * // Custom implementation
  * class MyExtractor implements IStreamExtractor {

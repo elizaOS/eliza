@@ -1,5 +1,9 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import {
+  createEvmLpProtocolProvider,
+  registerLpProtocolProvider,
+} from "../../../../lp/services/LpManagementService.ts";
 import { UniswapV3LpService } from "./services/UniswapV3LpService.ts";
 
 export const uniswapPlugin: Plugin = {
@@ -9,8 +13,20 @@ export const uniswapPlugin: Plugin = {
   actions: [],
   evaluators: [],
   providers: [],
-  init: async (_config: Record<string, string>, _runtime: IAgentRuntime) => {
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     console.info("Uniswap V3 Plugin initialized");
+    const service =
+      runtime.getService<UniswapV3LpService>(
+        UniswapV3LpService.serviceType,
+      ) ?? (await UniswapV3LpService.start(runtime));
+    await registerLpProtocolProvider(
+      runtime,
+      createEvmLpProtocolProvider({
+        dex: "uniswap",
+        label: "Uniswap V3",
+        service,
+      }),
+    );
   },
 };
 

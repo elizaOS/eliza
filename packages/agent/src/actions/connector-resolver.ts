@@ -62,10 +62,21 @@ export async function getGraphService(
 /** Returns the set of connector source names that have active send handlers. */
 export function getActiveConnectors(runtime: IAgentRuntime): Set<string> {
   const active = new Set<string>();
-  // sendHandlers is a Map<string, SendHandlerFunction> on the runtime
   const rt = runtime as unknown as {
+    getMessageConnectors?: () => Array<{ source?: string }>;
     sendHandlers?: Map<string, unknown>;
   };
+
+  if (typeof rt.getMessageConnectors === "function") {
+    for (const connector of rt.getMessageConnectors()) {
+      if (typeof connector.source === "string" && connector.source.trim()) {
+        active.add(connector.source);
+      }
+    }
+    return active;
+  }
+
+  // Legacy compatibility: older runtimes only expose the backing sendHandlers map.
   if (rt.sendHandlers) {
     for (const key of rt.sendHandlers.keys()) {
       active.add(key);

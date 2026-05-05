@@ -22,12 +22,13 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  MessageConnector,
   State,
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
+  sendMessageAction,
 } from "@elizaos/core";
 import {
   createCalendlySingleUseLink,
@@ -105,6 +106,19 @@ type DispatchContext = {
   target: string;
   body: string;
   subject?: string;
+  message?: Memory;
+  state?: State;
+};
+
+const SEND_MESSAGE_SOURCE_BY_CHANNEL: Partial<
+  Record<CrossChannelSendChannel, string>
+> = {
+  telegram: "telegram",
+  discord: "discord",
+  signal: "signal",
+  imessage: "imessage",
+  whatsapp: "whatsapp",
+  x_dm: "x",
 };
 
 function coerceString(value: unknown): string | undefined {
@@ -297,8 +311,7 @@ async function resolveCrossChannelSendPlanWithLlm(args: {
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {};
     }
@@ -414,20 +427,108 @@ function twilioResultToActionResult(args: {
 
 async function dispatchViaRuntimeSendHandler(
   runtime: IAgentRuntime,
-  channel: CrossChannelSendChannel,
+  source: string,
   target: string,
   message: string,
 ): Promise<void> {
   await runtime.sendMessageToTarget(
     {
-      source: channel,
+      source,
       channelId: target,
     } as Parameters<typeof runtime.sendMessageToTarget>[0],
     {
       text: message,
-      source: channel,
+      source,
     },
   );
+}
+
+function getRegisteredMessageConnector(
+  runtime: IAgentRuntime,
+  source: string,
+): MessageConnector | null {
+  const runtimeWithConnectors = runtime as IAgentRuntime & {
+    getMessageConnectors?: () => MessageConnector[];
+  };
+  if (typeof runtimeWithConnectors.getMessageConnectors !== "function") {
+    return null;
+  }
+  const normalized = source.trim().toLowerCase();
+  return (
+    runtimeWithConnectors
+      .getMessageConnectors()
+      .find(
+        (connector) =>
+          connector.source.trim().toLowerCase() === normalized &&
+          (connector.capabilities.length === 0 ||
+            connector.capabilities.includes("send_message")),
+      ) ?? null
+  );
+}
+
+async function dispatchViaSendMessageAction(
+  ctx: DispatchContext,
+  source: string,
+): Promise<ActionResult | null> {
+  const connector = getRegisteredMessageConnector(ctx.runtime, source);
+  if (!connector) {
+    return null;
+  }
+
+  if (!ctx.message || !sendMessageAction.handler) {
+    try {
+      await dispatchViaRuntimeSendHandler(
+        ctx.runtime,
+        source,
+        ctx.target,
+        ctx.body,
+      );
+      return buildDispatchSuccess({
+        channel: ctx.channel,
+        target: ctx.target,
+        body: ctx.body,
+        subject: ctx.subject,
+        result: { routedBy: "core_message_connector", source },
+      });
+    } catch (error) {
+      return buildDispatchFailure({
+        channel: ctx.channel,
+        target: ctx.target,
+        body: ctx.body,
+        subject: ctx.subject,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const result = await sendMessageAction.handler(ctx.runtime, ctx.message, ctx.state, {
+    parameters: {
+      source,
+      target: ctx.target,
+      message: ctx.body,
+    },
+  });
+  if (!result?.success) {
+    return buildDispatchFailure({
+      channel: ctx.channel,
+      target: ctx.target,
+      body: ctx.body,
+      subject: ctx.subject,
+      error: result?.text || "SEND_MESSAGE failed to dispatch.",
+    });
+  }
+
+  return buildDispatchSuccess({
+    channel: ctx.channel,
+    target: ctx.target,
+    body: ctx.body,
+    subject: ctx.subject,
+    result: {
+      routedBy: "SEND_MESSAGE",
+      source,
+      sendMessage: result.data ?? result.values ?? null,
+    },
+  });
 }
 
 function buildDispatchFailure(args: {
@@ -516,6 +617,28 @@ function createLifeOpsMethodDispatcher(args: {
   };
 }
 
+async function dispatchViaCoreRegistryWhenAvailable(
+  ctx: DispatchContext,
+): Promise<ActionResult | null> {
+  const source = SEND_MESSAGE_SOURCE_BY_CHANNEL[ctx.channel];
+  return source ? dispatchViaSendMessageAction(ctx, source) : null;
+}
+
+const legacyTelegramDispatcher = createLifeOpsMethodDispatcher({
+  method: "sendTelegramMessage",
+  buildRequest: ({ target, body }) => ({ target, message: body }),
+});
+
+const legacyIMessageDispatcher = createLifeOpsMethodDispatcher({
+  method: "sendIMessage",
+  buildRequest: ({ target, body }) => ({ to: target, text: body }),
+});
+
+const legacyWhatsAppDispatcher = createLifeOpsMethodDispatcher({
+  method: "sendWhatsAppMessage",
+  buildRequest: ({ target, body }) => ({ to: target, text: body }),
+});
+
 const CHANNEL_DISPATCHERS: Record<
   CrossChannelSendChannel,
   (ctx: DispatchContext) => Promise<ActionResult>
@@ -588,19 +711,21 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
-  telegram: createLifeOpsMethodDispatcher({
-    method: "sendTelegramMessage",
-    buildRequest: ({ target, body }) => ({ target, message: body }),
-  }),
-  imessage: createLifeOpsMethodDispatcher({
-    method: "sendIMessage",
-    buildRequest: ({ target, body }) => ({ to: target, text: body }),
-  }),
-  whatsapp: createLifeOpsMethodDispatcher({
-    method: "sendWhatsAppMessage",
-    buildRequest: ({ target, body }) => ({ to: target, text: body }),
-  }),
-  discord: async ({ runtime, channel, target, body }) => {
+  telegram: async (ctx) =>
+    (await dispatchViaCoreRegistryWhenAvailable(ctx)) ??
+    legacyTelegramDispatcher(ctx),
+  imessage: async (ctx) =>
+    (await dispatchViaCoreRegistryWhenAvailable(ctx)) ??
+    legacyIMessageDispatcher(ctx),
+  whatsapp: async (ctx) =>
+    (await dispatchViaCoreRegistryWhenAvailable(ctx)) ??
+    legacyWhatsAppDispatcher(ctx),
+  discord: async (ctx) => {
+    const registryResult = await dispatchViaCoreRegistryWhenAvailable(ctx);
+    if (registryResult) {
+      return registryResult;
+    }
+    const { runtime, channel, target, body } = ctx;
     try {
       await dispatchViaRuntimeSendHandler(runtime, "discord", target, body);
       return buildDispatchSuccess({ channel, target, body });
@@ -613,7 +738,12 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
-  signal: async ({ runtime, channel, target, body }) => {
+  signal: async (ctx) => {
+    const registryResult = await dispatchViaCoreRegistryWhenAvailable(ctx);
+    if (registryResult) {
+      return registryResult;
+    }
+    const { runtime, channel, target, body } = ctx;
     try {
       await dispatchViaRuntimeSendHandler(runtime, "signal", target, body);
       return buildDispatchSuccess({ channel, target, body });
@@ -709,7 +839,12 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
-  x_dm: async ({ service, channel, target, body }) => {
+  x_dm: async (ctx) => {
+    const registryResult = await dispatchViaCoreRegistryWhenAvailable(ctx);
+    if (registryResult) {
+      return registryResult;
+    }
+    const { service, channel, target, body } = ctx;
     try {
       const conversationPrefix = "conversation:";
       const participantIds = target
@@ -800,23 +935,25 @@ export const crossChannelSendAction: Action & {
     "OWNER_POST",
   ],
   description:
-    "OWNER-scoped message send: the OWNER asks the agent to send a message " +
-    "on the OWNER's behalf, using the OWNER's connected accounts (email, " +
-    "telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, " +
-    "x_dm, notifications). Always drafts first; caller must re-invoke with " +
-    "confirmed: true to dispatch. " +
+    "OWNER-scoped draft/approval wrapper for outbound message workflows. " +
+    "Use this only when LifeOps policy semantics are required: draft first, " +
+    "approval queue, escalation feature gates, owner account email, SMS/voice, " +
+    "push notifications, Calendly links, or X DM owner workflows. Core " +
+    "message connectors are dispatched through SEND_MESSAGE after approval. " +
     "Use this for any 'post <msg> to <channel>', 'send <msg> on <platform>', " +
     "or 'dm <person> on <platform>' request from the owner — the channel " +
     "name in the sentence (discord, telegram, signal, etc.) is the strongest " +
     "signal. " +
-    "Do NOT use this for the AGENT's own outbound messages to people or the " +
-    "owner (those use AGENT_SEND_MESSAGE). " +
+    "Do NOT use this for ordinary agent-owned connector sends without LifeOps " +
+    "approval/escalation policy; use SEND_MESSAGE directly. " +
     "Do NOT use this for 'broadcast/push/send <X> to all my devices' or " +
     "'broadcast a reminder to my phone/desktop/watch' — device-targeted " +
     "reminders belong to INTENT_SYNC. " +
     "Do NOT use OWNER_CALENDAR for channel-send requests even if the message " +
     "mentions a meeting-like word (e.g. 'standup', 'sync'); OWNER_CALENDAR " +
     "is for negotiating calendar proposals, not relaying chat messages.",
+  descriptionCompressed:
+    "Owner outbound draft/approval wrapper; delegates registered chat connectors to SEND_MESSAGE, keeps LifeOps email/SMS/voice/push/Calendly/escalation policy.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
@@ -1139,6 +1276,8 @@ export const crossChannelSendAction: Action & {
       target,
       body,
       subject: subject ?? pendingDraft?.subject ?? undefined,
+      message,
+      state,
     });
     if (result.success) {
       await clearPendingDraft(runtime, message.roomId);

@@ -21,7 +21,7 @@ import {
   type DirectAccountProvider,
 } from "@elizaos/agent/auth/types";
 import { logger } from "@elizaos/core";
-import { getDefaultAccountPool } from "../services/account-pool.js";
+import { getDefaultAccountPool } from "../account-pool.js";
 
 // ── File/Keychain readers ────────────────────────────────────────────
 

@@ -21,7 +21,7 @@ import type {
 import { asUUID, ModelType } from "../../../types/index.ts";
 import {
 	composePromptFromState,
-	parseKeyValueXml,
+	parseToonKeyValue,
 	stringToUuid,
 } from "../../../utils.ts";
 
@@ -31,7 +31,7 @@ const ADD_KEYWORDS = getValidationKeywordTerms("action.addContact.request", {
 	includeAllLocales: true,
 });
 
-interface AddContactXmlResult {
+interface AddContactToonResult {
 	contactName?: string;
 	entityId?: string;
 	categories?: string;
@@ -105,7 +105,7 @@ export const addContactAction: Action = {
 			stopSequences: [],
 		});
 
-		const parsedResponse = parseKeyValueXml<AddContactXmlResult>(response);
+		const parsedResponse = parseToonKeyValue<AddContactToonResult>(response);
 		if (!parsedResponse) {
 			logger.warn(
 				"[AddContact] Failed to parse contact information from response",

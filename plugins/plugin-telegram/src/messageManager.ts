@@ -509,6 +509,7 @@ export class MessageManager {
     ctx: Context,
     content: TelegramContent,
     replyToMessageId?: number,
+    messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
     if (content.attachments && content.attachments.length > 0) {
       content.attachments.map(async (attachment: Media) => {
@@ -575,6 +576,7 @@ export class MessageManager {
               i === 0 && replyToMessageId
                 ? { message_id: replyToMessageId }
                 : undefined,
+            message_thread_id: messageThreadId,
             parse_mode: 'MarkdownV2',
             ...Markup.inlineKeyboard(telegramButtons),
           },
@@ -1114,6 +1116,7 @@ export class MessageManager {
     chatId: number | string,
     content: Content,
     replyToMessageId?: number,
+    messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
     try {
       // Create a context-like object for sending
@@ -1126,6 +1129,7 @@ export class MessageManager {
         ctx as Context,
         content,
         replyToMessageId,
+        messageThreadId,
       );
 
       if (!sentMessages?.length) {
@@ -1133,10 +1137,19 @@ export class MessageManager {
       }
 
       // Create group ID
-      const roomId = createUniqueUuid(this.runtime, chatId.toString());
+      const roomKey = messageThreadId
+        ? `${chatId.toString()}-${messageThreadId}`
+        : chatId.toString();
+      const roomId = createUniqueUuid(this.runtime, roomKey);
 
       // Create memories for the sent messages
       const memories: Memory[] = [];
+      const contentMetadata =
+        content.metadata &&
+        typeof content.metadata === 'object' &&
+        !Array.isArray(content.metadata)
+          ? content.metadata
+          : {};
       for (const sentMessage of sentMessages) {
         const memory: Memory = {
           id: createUniqueUuid(this.runtime, sentMessage.message_id.toString()),
@@ -1154,6 +1167,9 @@ export class MessageManager {
                   : chatId,
               type: 'private', // Default to private, will be overridden if in context
             } as Chat),
+            ...(messageThreadId
+              ? { metadata: { ...contentMetadata, threadId: messageThreadId } }
+              : {}),
           },
           createdAt: sentMessage.date * 1000,
         };

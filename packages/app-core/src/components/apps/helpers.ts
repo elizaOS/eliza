@@ -45,7 +45,7 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/app-browser",
-  "@elizaos/app-form",
+  "@elizaos/plugin-form",
   "@elizaos/app-knowledge",
   "@elizaos/app-screenshare",
   "@elizaos/app-task-coordinator",

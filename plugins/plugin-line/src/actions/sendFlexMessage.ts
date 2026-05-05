@@ -14,8 +14,7 @@ import {
   composePromptFromState,
   logger,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { isLineOutboundActionContext } from "../line-action-validate.js";
 import type { LineService } from "../service.js";
@@ -128,8 +127,7 @@ export const sendFlexMessage: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsed?.title && parsed?.body) {
         flexInfo = {
           altText: String(parsed.altText || `${parsed.title}: ${parsed.body}`),

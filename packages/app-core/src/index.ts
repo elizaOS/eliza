@@ -74,6 +74,8 @@ export * from "./security/agent-vault-id";
 export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
 
+export * from "./account-pool.js";
+
 export * from "./shell/index";
 export * from "./state/index";
 export * from "./test-support/test-helpers";

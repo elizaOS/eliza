@@ -14,8 +14,7 @@ import {
 	composePromptFromState,
 	logger,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 } from "@elizaos/core";
 import { BLUEBUBBLES_SERVICE_NAME } from "../constants.js";
 import type { BlueBubblesService } from "../service.js";
@@ -95,9 +94,7 @@ export const sendReactionAction: Action = {
 				prompt,
 			});
 
-			const parsed =
-				parseKeyValueXml<Record<string, unknown>>(response) ??
-				parseJSONObjectFromText(response);
+			const parsed = parseToonKeyValue<Record<string, unknown>>(response);
 			if (parsed?.emoji) {
 				reactionInfo = {
 					emoji: String(parsed.emoji),

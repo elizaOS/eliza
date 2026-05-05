@@ -10,11 +10,10 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { NostrService } from "../service.js";
+import { parseToonKeyValue } from "../toon.js";
 import {
   isValidPubkey,
   NOSTR_SERVICE_NAME,
@@ -82,9 +81,7 @@ export const sendDm: Action = {
         prompt,
       });
 
-      const parsed =
-        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
-        parseJSONObjectFromText(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
       if (parsed?.text) {
         dmInfo = {
           text: String(parsed.text),

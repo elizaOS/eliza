@@ -14,8 +14,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 	trimTokens,
 } from "@elizaos/core";
@@ -46,8 +45,8 @@ const getAttachmentIds = async (
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
-		// try parsing to a json object
-		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
+		// Try parsing the TOON response.
+		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
 			objective: string;
 			attachmentIds: string[];
 		} | null;

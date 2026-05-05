@@ -17,11 +17,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -52,6 +47,7 @@ import {
   hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
+  runLifeOpsToonModel,
   toActionData,
 } from "./lifeops-google-helpers.js";
 
@@ -1239,15 +1235,6 @@ async function buildGmailPlanningContext(args: {
   };
 }
 
-function parseGmailPlannerRecord(
-  rawResponse: string,
-): Record<string, unknown> | null {
-  return (
-    parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-    parseJSONObjectFromText(rawResponse)
-  );
-}
-
 function formatGmailPromptValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "null";
@@ -1404,32 +1391,125 @@ function shouldExtractGmailPayload(subaction: GmailSubaction): boolean {
   return subaction !== "triage" && subaction !== "send_batch_replies";
 }
 
+function hasGmailPayloadSignal(payload: GmailPayloadPlan): boolean {
+  return Boolean(
+    payload.queries.length > 0 ||
+      payload.messageId ||
+      (payload.messageIds?.length ?? 0) > 0 ||
+      payload.replyNeededOnly !== undefined ||
+      payload.operation ||
+      (payload.labelIds?.length ?? 0) > 0 ||
+      payload.confirmDestructive !== undefined ||
+      payload.olderThanDays !== undefined ||
+      payload.confirmed !== undefined ||
+      payload.holdForApproval !== undefined ||
+      (payload.to?.length ?? 0) > 0 ||
+      (payload.cc?.length ?? 0) > 0 ||
+      (payload.bcc?.length ?? 0) > 0 ||
+      payload.subject ||
+      payload.bodyText,
+  );
+}
+
+function hasExecutablePayloadForGmailSubaction(
+  subaction: GmailSubaction,
+  payload: GmailPayloadPlan,
+): boolean {
+  switch (subaction) {
+    case "search":
+    case "needs_response":
+    case "recommend":
+    case "unresponded":
+    case "draft_batch_replies":
+      return (
+        payload.queries.length > 0 ||
+        payload.replyNeededOnly !== undefined ||
+        payload.olderThanDays !== undefined
+      );
+    case "read":
+    case "draft_reply":
+    case "send_reply":
+      return Boolean(payload.messageId || payload.queries.length > 0);
+    case "manage":
+      return Boolean(
+        payload.operation &&
+          (payload.messageId ||
+            (payload.messageIds?.length ?? 0) > 0 ||
+            payload.queries.length > 0),
+      );
+    case "send_message":
+      return Boolean(
+        (payload.to?.length ?? 0) > 0 ||
+          payload.subject ||
+          payload.bodyText ||
+          payload.confirmed !== undefined ||
+          payload.holdForApproval !== undefined,
+      );
+    case "triage":
+    case "send_batch_replies":
+      return true;
+  }
+}
+
+const GMAIL_FILTER_QUALIFIER_PATTERN =
+  /\b(?:about|after|before|from|important|label|newer|older|since|subject|today|tomorrow|unread|with|yesterday)\b|@|\b\d+\s*(?:d|day|days|w|week|weeks|month|months)\b/i;
+
+function canUsePlannedGmailPayload(args: {
+  subaction: GmailSubaction;
+  payload: GmailPayloadPlan;
+  context: GmailPlanningContext;
+  activeComposeDraft?: GmailComposeDraft | null;
+}): boolean {
+  if (hasGmailPayloadSignal(args.payload)) {
+    return hasExecutablePayloadForGmailSubaction(args.subaction, args.payload);
+  }
+
+  const hasFilterQualifier = GMAIL_FILTER_QUALIFIER_PATTERN.test(
+    args.context.currentMessage,
+  );
+  switch (args.subaction) {
+    case "needs_response":
+    case "recommend":
+      return !hasFilterQualifier;
+    case "unresponded":
+      return !hasFilterQualifier;
+    case "read":
+    case "draft_reply":
+    case "send_reply":
+      return Boolean(
+        args.context.latestMessageTarget || args.context.latestReplyDraft,
+      );
+    case "send_message":
+      return Boolean(args.activeComposeDraft);
+    default:
+      return false;
+  }
+}
+
+function withGmailSubactionDefaults(
+  subaction: GmailSubaction,
+  payload: GmailPayloadPlan,
+): GmailPayloadPlan {
+  if (subaction === "needs_response" && payload.replyNeededOnly === undefined) {
+    return { ...payload, replyNeededOnly: true };
+  }
+  return payload;
+}
+
 async function runGmailPlanningModel(args: {
   runtime: IAgentRuntime;
   prompt: string;
-  modelType: (typeof ModelType)[keyof typeof ModelType];
+  actionType: string;
   failureMessage: string;
 }): Promise<Record<string, unknown> | null> {
-  if (typeof args.runtime.useModel !== "function") {
-    return null;
-  }
-  try {
-    const runModel = args.runtime.useModel.bind(args.runtime);
-    const result = await runModel(args.modelType, {
-      prompt: args.prompt,
-    });
-    const rawResponse = typeof result === "string" ? result : "";
-    return parseGmailPlannerRecord(rawResponse);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:gmail",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      args.failureMessage,
-    );
-    return null;
-  }
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt: args.prompt,
+    actionType: args.actionType,
+    failureMessage: args.failureMessage,
+    source: "action:gmail",
+  });
+  return result?.parsed ?? null;
 }
 
 async function resolveGmailIntentPlanWithLlm(args: {
@@ -1457,8 +1537,8 @@ async function resolveGmailIntentPlanWithLlm(args: {
     "response: short natural-language reply, or null",
     "planSummary: short workflow summary, or null",
     "currentStepId: id of the step to execute now, or null",
-    "steps: step records; use TOON list syntax or a compact plain list",
-    "Each step must include id, kind, subaction, goal, status, dependsOn, requiresApproval, and any known Gmail fields.",
+    "steps[n]{id,kind,subaction,goal,status,dependsOn,requiresApproval,queries,messageId,operation,confirmed,holdForApproval}: TOON table of workflow steps",
+    "Each step row must include id, kind, subaction, goal, status, dependsOn, requiresApproval, and any known Gmail fields.",
     'Allowed step kind values: "gmail_subaction", "classify", "propose_action", "request_approval", "audit".',
     "Only gmail_subaction steps may set subaction. Use null subaction for classify/propose_action/request_approval/audit steps.",
     'Allowed step status values: "pending", "ready", "blocked", "completed". Use ready for the step to execute now.',
@@ -1487,32 +1567,32 @@ async function resolveGmailIntentPlanWithLlm(args: {
     "If there is an active compose draft and the user is filling in fields or confirming the send, choose send_message.",
     "",
     "Examples:",
-    "request: check my inbox",
+    "example_request: check my inbox",
     "subaction: triage",
     "shouldAct: true",
     "response: null",
     "planSummary: Triage Gmail inbox",
     "currentStepId: triage",
-    "steps:",
-    "  - id: triage; kind: gmail_subaction; subaction: triage; goal: Summarize the inbox; status: ready; dependsOn: none; requiresApproval: false",
+    "steps[1]{id,kind,subaction,goal,status,dependsOn,requiresApproval}:",
+    "  triage,gmail_subaction,triage,Summarize the inbox,ready,none,false",
     "",
-    "request: did Sarah email me this week",
+    "example_request: did Sarah email me this week",
     "subaction: search",
     "shouldAct: true",
     "response: null",
     "planSummary: Search Gmail for Sarah this week",
     "currentStepId: search_sarah",
-    "steps:",
-    "  - id: search_sarah; kind: gmail_subaction; subaction: search; goal: Find matching email threads; status: ready; queries: from:sarah newer_than:7d; dependsOn: none; requiresApproval: false",
+    "steps[1]{id,kind,subaction,goal,status,queries,dependsOn,requiresApproval}:",
+    '  search_sarah,gmail_subaction,search,Find matching email threads,ready,"from:sarah newer_than:7d",none,false',
     "",
-    "request: send that reply now",
+    "example_request: send that reply now",
     "subaction: send_reply",
     "shouldAct: true",
     "response: null",
     "planSummary: Send the existing Gmail reply draft",
     "currentStepId: send_reply",
-    "steps:",
-    "  - id: send_reply; kind: gmail_subaction; subaction: send_reply; goal: Send the confirmed reply draft; status: ready; dependsOn: none; requiresApproval: true; confirmed: true",
+    "steps[1]{id,kind,subaction,goal,status,dependsOn,requiresApproval,confirmed}:",
+    "  send_reply,gmail_subaction,send_reply,Send the confirmed reply draft,ready,none,true,true",
     ...(args.activeComposeDraft
       ? [
           "",
@@ -1555,7 +1635,7 @@ async function resolveGmailIntentPlanWithLlm(args: {
   const parsed = await runGmailPlanningModel({
     runtime: args.runtime,
     prompt,
-    modelType: ModelType.TEXT_LARGE,
+    actionType: "lifeops.gmail.plan_intent",
     failureMessage: "Gmail intent planning model call failed",
   });
   return normalizeGmailIntentPlan(parsed);
@@ -1701,7 +1781,7 @@ async function extractGmailPayloadWithLlm(args: {
   const parsed = await runGmailPlanningModel({
     runtime: args.runtime,
     prompt,
-    modelType: ModelType.TEXT_LARGE,
+    actionType: "lifeops.gmail.extract_payload",
     failureMessage: "Gmail parameter extraction model call failed",
   });
   const payload = normalizeGmailPayloadPlan(parsed);
@@ -1738,7 +1818,11 @@ export async function extractGmailPlanWithLlm(
   const stepPayload = currentStep
     ? payloadFromGmailPlanFields(currentStep)
     : { queries: [] };
-  const plannedPayload = mergeGmailPayloadPlans(intentPayload, stepPayload);
+  const basePlannedPayload = mergeGmailPayloadPlans(intentPayload, stepPayload);
+  const plannedPayload = withGmailSubactionDefaults(
+    subaction ?? "triage",
+    basePlannedPayload,
+  );
   if (!subaction || intentPlan.shouldAct === false) {
     return {
       subaction,
@@ -1764,6 +1848,24 @@ export async function extractGmailPlanWithLlm(
         (subaction === "needs_response" ? true : undefined),
     };
   }
+  if (
+    canUsePlannedGmailPayload({
+      subaction,
+      payload: basePlannedPayload,
+      context,
+      activeComposeDraft,
+    })
+  ) {
+    return {
+      subaction,
+      shouldAct: intentPlan.shouldAct,
+      response: intentPlan.response,
+      ...plannedPayload,
+      steps: intentPlan.steps,
+      currentStepId: intentPlan.currentStepId ?? currentStep?.id,
+      planSummary: intentPlan.planSummary,
+    };
+  }
   const payloadPlan = await extractGmailPayloadWithLlm({
     runtime,
     intent,
@@ -1773,7 +1875,10 @@ export async function extractGmailPlanWithLlm(
     context,
     activeComposeDraft,
   });
-  const mergedPayload = mergeGmailPayloadPlans(payloadPlan, plannedPayload);
+  const mergedPayload = withGmailSubactionDefaults(
+    subaction,
+    mergeGmailPayloadPlans(payloadPlan, plannedPayload),
+  );
   return {
     subaction,
     shouldAct: intentPlan.shouldAct,
@@ -1803,10 +1908,6 @@ async function recoverSendMessagePlanWithLlm(args: {
     activeDraft,
     previousSentDraft,
   } = args;
-  if (typeof runtime.useModel !== "function") {
-    return null;
-  }
-
   const recentConversation = (
     await collectGmailConversationContext({ runtime, message, state })
   ).join("\n");
@@ -1839,34 +1940,42 @@ async function recoverSendMessagePlanWithLlm(args: {
     "bodyText: body text, or empty",
     "",
     "Examples:",
-    '  current message: "send an email to zo@iqlabs.dev the subject should say hello anon and the body should say how are you doing today?"',
-    "  shouldResume: true",
-    "  cancelled: false",
-    "  to: zo@iqlabs.dev",
-    "  subject: hello anon",
-    "  bodyText: how are you doing today?",
-    '  current message: "send it to shawmakesmagic@gmail.com this time"',
-    "  shouldResume: true",
-    "  cancelled: false",
-    "  to: shawmakesmagic@gmail.com",
-    '  active draft recipient: ["shawmakesmagic@gmail.com"], current message: "send an email like \\"test\\""',
-    "  shouldResume: true",
-    "  cancelled: false",
-    "  to: shawmakesmagic@gmail.com",
-    "  subject: test",
-    "  bodyText: test",
-    '  active draft recipient: ["shawmakesmagic@gmail.com"], previous sent subject/body: "Quick test" / "test", current message: "same as the last email"',
-    "  shouldResume: true",
-    "  cancelled: false",
-    "  to: shawmakesmagic@gmail.com",
-    "  subject: Quick test",
-    "  bodyText: test",
-    '  current message: "enviale un correo a maria@example.com con asunto hola y cuerpo nos vemos manana"',
-    "  shouldResume: true",
-    "  cancelled: false",
-    "  to: maria@example.com",
-    "  subject: hola",
-    "  bodyText: nos vemos manana",
+    "example_request: send an email to zo@iqlabs.dev the subject should say hello anon and the body should say how are you doing today?",
+    "shouldResume: true",
+    "cancelled: false",
+    "to: zo@iqlabs.dev",
+    "subject: hello anon",
+    "bodyText: how are you doing today?",
+    "",
+    "example_request: send it to shawmakesmagic@gmail.com this time",
+    "shouldResume: true",
+    "cancelled: false",
+    "to: shawmakesmagic@gmail.com",
+    "",
+    "example_activeDraftTo: shawmakesmagic@gmail.com",
+    'example_request: send an email like "test"',
+    "shouldResume: true",
+    "cancelled: false",
+    "to: shawmakesmagic@gmail.com",
+    "subject: test",
+    "bodyText: test",
+    "",
+    "example_activeDraftTo: shawmakesmagic@gmail.com",
+    "example_previousSentSubject: Quick test",
+    "example_previousSentBody: test",
+    "example_request: same as the last email",
+    "shouldResume: true",
+    "cancelled: false",
+    "to: shawmakesmagic@gmail.com",
+    "subject: Quick test",
+    "bodyText: test",
+    "",
+    "example_request: enviale un correo a maria@example.com con asunto hola y cuerpo nos vemos manana",
+    "shouldResume: true",
+    "cancelled: false",
+    "to: maria@example.com",
+    "subject: hola",
+    "bodyText: nos vemos manana",
     `Current user message:\n${currentMessage}`,
     `Resolved intent:\n${intent}`,
     `Current Gmail planner draft:\n${formatGmailPromptValue({
@@ -1884,25 +1993,14 @@ async function recoverSendMessagePlanWithLlm(args: {
     `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
-  let rawResponse = "";
-  try {
-    const runModel = runtime.useModel.bind(runtime);
-    const result = await runModel(ModelType.TEXT_LARGE, { prompt });
-    rawResponse = typeof result === "string" ? result : "";
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:gmail",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Gmail compose recovery model call failed",
-    );
-    return null;
-  }
-
-  const parsed =
-    parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-    parseJSONObjectFromText(rawResponse);
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime,
+    prompt,
+    actionType: "lifeops.gmail.recover_compose",
+    failureMessage: "Gmail compose recovery model call failed",
+    source: "action:gmail",
+  });
+  const parsed = result?.parsed;
   if (!parsed) {
     return null;
   }

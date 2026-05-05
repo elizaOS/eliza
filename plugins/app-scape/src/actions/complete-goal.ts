@@ -5,9 +5,9 @@
  *
  * LLM response shape:
  *
- *   <action>COMPLETE_GOAL</action>
- *   <status>completed</status>  (or "abandoned")
- *   <notes>Hit level 20 at the cow field near Falador.</notes>
+ *   action: COMPLETE_GOAL
+ *   status: completed  (or "abandoned")
+ *   notes: Hit level 20 at the cow field near Falador.
  *
  * `id` is optional — if omitted, the active goal is used.
  */
@@ -21,13 +21,13 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParam } from "./param-parser.js";
 
 export const completeGoal: Action = {
   name: "COMPLETE_GOAL",
   description:
-    "Mark the active goal (or a specific goal id) as completed or abandoned. Use <status>completed|abandoned</status> and optional <notes>why</notes>.",
+    "Mark the active goal (or a specific goal id) as completed or abandoned. Use status: completed|abandoned and optional notes: why.",
   descriptionCompressed: "Mark goal completed or abandoned.",
   similes: ["FINISH_GOAL", "ABANDON_GOAL", "CLOSE_GOAL"],
   examples: [],
@@ -36,7 +36,7 @@ export const completeGoal: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "COMPLETE_GOAL");
+    return hasActionRequest(message, "COMPLETE_GOAL");
   },
   handler: async (
     runtime: IAgentRuntime,

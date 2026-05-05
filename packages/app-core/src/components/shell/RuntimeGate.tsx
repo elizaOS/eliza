@@ -134,13 +134,46 @@ function normalizeRuntimeUrl(value: unknown): string | undefined {
   return trimmed.slice(0, end);
 }
 
+function isCloudControlPlaneUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return (
+      host === "api.elizacloud.ai" ||
+      host === "elizacloud.ai" ||
+      host === "www.elizacloud.ai" ||
+      host === "dev.elizacloud.ai"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function resolveCloudAgentApiBase(agent: CloudCompatAgent): string | undefined {
-  return (
-    normalizeRuntimeUrl(agent.web_ui_url) ||
-    normalizeRuntimeUrl(agent.webUiUrl) ||
-    normalizeRuntimeUrl(agent.bridge_url) ||
-    normalizeRuntimeUrl(agent.containerUrl)
-  );
+  const directAgent = agent as CloudCompatAgent & {
+    apiBase?: string | null;
+    api_base?: string | null;
+    bridgeUrl?: string | null;
+    container_url?: string | null;
+    runtimeUrl?: string | null;
+    runtime_url?: string | null;
+  };
+  const candidates = [
+    directAgent.apiBase,
+    directAgent.api_base,
+    agent.bridge_url,
+    directAgent.bridgeUrl,
+    agent.containerUrl,
+    directAgent.container_url,
+    directAgent.runtimeUrl,
+    directAgent.runtime_url,
+    agent.web_ui_url,
+    agent.webUiUrl,
+  ]
+    .map(normalizeRuntimeUrl)
+    .filter((value): value is string => Boolean(value));
+
+  return candidates.find((value) => !isCloudControlPlaneUrl(value));
 }
 
 // TODO: replace with real onboarding artwork per runtime choice
@@ -150,7 +183,7 @@ function resolveCloudAgentApiBase(agent: CloudCompatAgent): string | undefined {
 //   remote: "app-heroes/log-viewer.png",
 // };
 
-function resolveRuntimeChoices(args: {
+export function resolveRuntimeChoices(args: {
   isAndroid: boolean;
   isIOS: boolean;
   isDesktop: boolean;
@@ -158,9 +191,12 @@ function resolveRuntimeChoices(args: {
   showLocalOption: boolean;
   localProbePending: boolean;
 }): RuntimeChoice[] {
-  if (args.isAndroid && args.localProbePending) return [];
-  if (args.isAndroid && args.showLocalOption) return ["local"];
-  if (args.isIOS || args.isAndroid) return ["cloud", "remote"];
+  if (args.isAndroid) {
+    return args.showLocalOption
+      ? ["cloud", "local", "remote"]
+      : ["cloud", "remote"];
+  }
+  if (args.isIOS) return ["cloud", "remote"];
   if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
   return ["cloud", "remote"];
 }
@@ -442,23 +478,26 @@ export function RuntimeGate() {
         return;
       }
 
+      const accessToken = client.getRestAuthToken() ?? undefined;
+
       savePersistedActiveServer({
         id: `cloud:${agent.agent_id}`,
         kind: "cloud",
         label: agent.agent_name,
         apiBase,
+        ...(accessToken ? { accessToken } : {}),
       });
       addAgentProfile({
         kind: "cloud",
         label: agent.agent_name,
         cloudAgentId: agent.agent_id,
         apiBase,
+        ...(accessToken ? { accessToken } : {}),
       });
 
       client.setBaseUrl(apiBase);
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setState("onboardingServerTarget", "elizacloud");
-      startupCoordinator.dispatch({ type: "SPLASH_CLOUD_SKIP" });
       // Apply embedding preference before handing off. Non-blocking: if this
       // fails the user can adjust it from Settings → Provider.
       if (useLocalEmbeddings) {
@@ -475,7 +514,7 @@ export function RuntimeGate() {
       }
       completeOnboarding();
     },
-    [completeOnboarding, setState, startupCoordinator, t, useLocalEmbeddings],
+    [completeOnboarding, setState, t, useLocalEmbeddings],
   );
 
   const finishAsLocal = useCallback(() => {
@@ -610,6 +649,10 @@ export function RuntimeGate() {
 
   const provisionAndConnect = useCallback(
     async (agentId: string) => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
       setCloudStage("provisioning");
       setProvisionStatus(
         t("runtimegate.startingProvisioning", {
@@ -617,6 +660,16 @@ export function RuntimeGate() {
         }),
       );
       const provRes = await client.provisionCloudCompatAgent(agentId);
+      if (!provRes.success) {
+        setError(
+          provRes.error ||
+            t("runtimegate.provisioningFailed", {
+              defaultValue: "Provisioning failed",
+            }),
+        );
+        setCloudStage("agent-list");
+        return;
+      }
       const jobId = provRes.data?.jobId;
 
       if (!jobId) {
