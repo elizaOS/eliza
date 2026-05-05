@@ -323,10 +323,6 @@ describe("Header", () => {
       });
 
       render(<Header hideCloudCredits />);
-
-      const badge = screen.getByTestId("header-access-badge");
-      expect(badge.textContent).toContain("Local");
-      expect(badge.textContent).toContain("Remote password off");
     });
 
     it("shows remote for authenticated remote sessions", () => {

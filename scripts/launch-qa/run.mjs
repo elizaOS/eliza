@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -180,7 +181,8 @@ function parseArgs(argv) {
     dryRun: false,
     json: false,
     list: false,
-    artifactsDir: path.join(repoRoot, "launchdocs", "artifacts", "launch-qa"),
+    /** Set via `--artifacts-dir`; default is allocated under os.tmpdir() when running (never under launchdocs/). */
+    artifactsDir: undefined,
     continueOnFailure: false,
   };
 
@@ -205,7 +207,7 @@ function parseArgs(argv) {
         if (id) args.skip.add(id);
       }
     } else if (arg === "--artifacts-dir") {
-      args.artifactsDir = path.resolve(argv[++i] ?? args.artifactsDir);
+      args.artifactsDir = path.resolve(argv[++i] ?? "");
     } else if (arg.startsWith("--artifacts-dir=")) {
       args.artifactsDir = path.resolve(arg.slice("--artifacts-dir=".length));
     } else if (arg === "--dry-run") {
@@ -259,7 +261,9 @@ export function selectTasks(options) {
 }
 
 function usage() {
-  return `Usage: node scripts/launch-qa/run.mjs [--suite quick|release|nightly|all] [--only a,b] [--skip a,b] [--dry-run] [--json] [--list] [--continue-on-failure]
+  return `Usage: node scripts/launch-qa/run.mjs [--suite quick|release|nightly|all] [--only a,b] [--skip a,b] [--artifacts-dir <path>] [--dry-run] [--json] [--list] [--continue-on-failure]
+
+Logs and summary.json are written under a fresh directory in ${os.tmpdir()} unless --artifacts-dir is set.
 
 Suites:
   quick    Fast launch gates intended for local iteration.
@@ -368,12 +372,17 @@ export async function runLaunchQa(argv = process.argv.slice(2)) {
     return { ok: true, tasks: listed, results: [] };
   }
 
+  const artifactsDir =
+    options.artifactsDir ??
+    fs.mkdtempSync(path.join(os.tmpdir(), "launch-qa-"));
+  const runOptions = { ...options, artifactsDir };
+
   const results = [];
   for (const task of tasks) {
     console.log(`\n[launch-qa] ${task.id}: ${task.description}`);
-    const result = await runTask(task, options);
+    const result = await runTask(task, runOptions);
     results.push(result);
-    if (result.status === "failed" && !options.continueOnFailure) {
+    if (result.status === "failed" && !runOptions.continueOnFailure) {
       break;
     }
   }
@@ -382,16 +391,16 @@ export async function runLaunchQa(argv = process.argv.slice(2)) {
     ok: results.every(
       (result) => result.status === "passed" || result.status === "skipped",
     ),
-    suite: options.suite,
-    artifactsDir: options.artifactsDir,
+    suite: runOptions.suite,
+    artifactsDir: runOptions.artifactsDir,
     results,
   };
-  fs.mkdirSync(options.artifactsDir, { recursive: true });
+  fs.mkdirSync(runOptions.artifactsDir, { recursive: true });
   fs.writeFileSync(
-    path.join(options.artifactsDir, "summary.json"),
+    path.join(runOptions.artifactsDir, "summary.json"),
     JSON.stringify(summary, null, 2),
   );
-  if (options.json) {
+  if (runOptions.json) {
     console.log(JSON.stringify(summary, null, 2));
   } else {
     const passed = results.filter(
@@ -406,7 +415,7 @@ export async function runLaunchQa(argv = process.argv.slice(2)) {
     console.log(
       `\n[launch-qa] passed=${passed} skipped=${skipped} failed=${failed}`,
     );
-    console.log(`[launch-qa] artifacts: ${options.artifactsDir}`);
+    console.log(`[launch-qa] artifacts: ${runOptions.artifactsDir}`);
   }
   return summary;
 }

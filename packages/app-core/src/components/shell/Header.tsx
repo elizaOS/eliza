@@ -83,12 +83,6 @@ const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
     "max(env(safe-area-inset-top, 0px), var(--eliza-macos-frame-top-inset, 0px))",
 };
 
-interface AccessBadgeContent {
-  primary: "Local" | "Remote";
-  secondary?: "Remote password set" | "Remote password off";
-  title: string;
-}
-
 interface HeaderProps {
   mobileCenter?: ReactNode;
   mobileLeft?: ReactNode;
@@ -107,33 +101,6 @@ function shouldShowMacDesktopTitleBar(): boolean {
 
   const route = resolveWindowShellRoute();
   return !isDetachedWindowShell(route);
-}
-
-function resolveAccessBadgeContent(
-  state: AuthStatusState,
-): AccessBadgeContent | null {
-  const access =
-    state.phase === "authenticated" || state.phase === "unauthenticated"
-      ? state.access
-      : undefined;
-  if (!access) return null;
-
-  if (access.mode === "local") {
-    const secondary = access.passwordConfigured
-      ? "Remote password set"
-      : "Remote password off";
-    return {
-      primary: "Local",
-      secondary,
-      title: `Local access, ${secondary}`,
-    };
-  }
-
-  if (state.phase !== "authenticated") return null;
-  return {
-    primary: "Remote",
-    title: "Remote session",
-  };
 }
 
 export function Header({
@@ -182,10 +149,6 @@ export function Header({
     ? MAC_TITLEBAR_PADDING_STYLE
     : undefined;
   const showCloudStatus = !hideCloudCredits && !isMobileViewport;
-  const accessBadgeContent = useMemo(
-    () => resolveAccessBadgeContent(authStatusState),
-    [authStatusState],
-  );
   const stopHeaderPointerPropagation = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -536,26 +499,6 @@ export function Header({
           onClick={openCloudBilling}
           dataTestId="header-cloud-status"
         />
-      ) : null}
-      {accessBadgeContent ? (
-        <div
-          className={ACCESS_BADGE_CLASSNAME}
-          title={accessBadgeContent.title}
-          data-testid="header-access-badge"
-        >
-          <span className="shrink-0 text-txt">
-            {accessBadgeContent.primary}
-          </span>
-          {accessBadgeContent.secondary ? (
-            <>
-              <span
-                className="h-1 w-1 shrink-0 rounded-full bg-muted/55"
-                aria-hidden="true"
-              />
-              <span className="truncate">{accessBadgeContent.secondary}</span>
-            </>
-          ) : null}
-        </div>
       ) : null}
       <div className="max-[819px]:hidden">
         <LanguageDropdown
