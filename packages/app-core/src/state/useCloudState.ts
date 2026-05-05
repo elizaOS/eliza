@@ -17,7 +17,6 @@
  * `submitOnboardingAndComplete`, which is defined later in AppContext's render order).
  */
 
-import { Capacitor } from "@capacitor/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import {
@@ -85,7 +84,15 @@ function isSameOriginLocalHttpBackend(): boolean {
 }
 
 function isCapacitorNativeRuntime(): boolean {
-  return Capacitor.isNativePlatform();
+  if (typeof globalThis === "undefined") return false;
+  const capacitor = (
+    globalThis as {
+      Capacitor?: {
+        isNativePlatform?: () => boolean;
+      };
+    }
+  ).Capacitor;
+  return Boolean(capacitor?.isNativePlatform?.());
 }
 
 function originsMatch(left: string, right: string): boolean {
