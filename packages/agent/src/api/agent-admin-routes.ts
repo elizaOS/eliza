@@ -186,6 +186,48 @@ export async function handleAgentAdminRoutes(
       clearPersistedOnboardingConfig(config);
       saveElizaConfig(config);
 
+      // Wipe cloud-related vault entries so the next boot doesn't re-hydrate
+      // the user back into a "signed in to Eliza Cloud" state. Without this,
+      // /api/agent/reset clears the renderer UI but the vault still holds
+      // ELIZAOS_CLOUD_API_KEY → vault-bootstrap rehydrates env on next start
+      // → useCloudState reports cloud connected → user sees themselves still
+      // logged in even though they just hit "Reset".
+      try {
+        const { sharedVault } = await import(
+          "@elizaos/app-core/services/vault-mirror"
+        );
+        const vault = sharedVault();
+        const cloudKeys = [
+          "ELIZAOS_CLOUD_API_KEY",
+          "ELIZAOS_CLOUD_BASE_URL",
+          "ELIZAOS_CLOUD_ENABLED",
+        ];
+        for (const key of cloudKeys) {
+          try {
+            await vault.remove(key);
+          } catch {
+            // Entry may not exist — fine.
+          }
+        }
+        // Also remove the vault-bootstrap marker so the next boot re-evaluates
+        // env hydration cleanly instead of trusting a stale "already-hydrated"
+        // hint that includes the cloud key.
+        try {
+          const fs = await import("node:fs");
+          const stateDirPath = resolveStateDir();
+          const markerPath = path.join(stateDirPath, ".vault-hydrated.json");
+          if (fs.existsSync(markerPath)) {
+            fs.unlinkSync(markerPath);
+          }
+        } catch {
+          // Marker missing or unreadable — fine.
+        }
+      } catch (vaultErr) {
+        logWarn(
+          `[eliza-api] Reset: failed to wipe cloud vault entries: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
+        );
+      }
+
       state.agentState = "stopped";
       state.agentName = resolveDefaultAgentName(config);
       state.model = undefined;

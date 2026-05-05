@@ -732,8 +732,17 @@ export async function handleCloudRoute(
         }
       }
 
+      // Return the cloud API key to the renderer so it can populate
+      // `globalThis.__ELIZA_CLOUD_AUTH_TOKEN__` and use the direct cloud
+      // path (`/api/v1/eliza/agents`) for agent creation/provisioning.
+      // Without this, every cloud op falls back to the proxy compat path,
+      // which creates agents in a namespace whose queue never drains
+      // (agents stay `status: "queued"` forever — onboarding hangs).
+      // Loopback-only HTTP on the user's machine; the key IS the user's
+      // own secret, not a server-owned credential.
       sendJson(res, {
         status: "authenticated",
+        token: data.apiKey,
         keyPrefix: data.keyPrefix,
         organizationId,
         userId,
