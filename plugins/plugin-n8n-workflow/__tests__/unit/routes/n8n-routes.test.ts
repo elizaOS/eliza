@@ -1,13 +1,16 @@
 import { Readable } from "node:stream";
+import type {
+  N8nSidecar,
+  N8nSidecarState,
+} from "@elizaos/app-core/services/n8n-sidecar";
 import type { AgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { N8nSidecar, N8nSidecarState } from "../services/n8n-sidecar";
 import {
   __resetCloudHealthCacheForTests,
   handleN8nRoutes,
   type N8nCloudHealth,
   type N8nRoutesConfigLike,
-} from "./n8n-routes";
+} from "../../../src/routes/n8n-routes";
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 
