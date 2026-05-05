@@ -219,6 +219,31 @@ declare module "@elizaos/app-training/core/context-types" {
   export const AGENT_CONTEXTS: AgentContext[];
 }
 
+declare module "@elizaos/app-contacts/plugin" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const contactsProvider: Provider;
+  export const appContactsPlugin: Plugin;
+  export default appContactsPlugin;
+}
+
+declare module "@elizaos/app-phone/plugin" {
+  import type { Action, Plugin } from "@elizaos/core";
+
+  export const placeCallAction: Action;
+  export const readCallLogAction: Action;
+  export const appPhonePlugin: Plugin;
+  export default appPhonePlugin;
+}
+
+declare module "@elizaos/app-wifi/plugin" {
+  import type { Action, Plugin } from "@elizaos/core";
+
+  export const scanWifiAction: Action;
+  export const appWifiPlugin: Plugin;
+  export default appWifiPlugin;
+}
+
 declare module "@elizaos/app-training/core/context-catalog" {
   import type { AgentContext } from "@elizaos/app-training";
 
