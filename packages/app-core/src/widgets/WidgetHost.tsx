@@ -13,6 +13,7 @@
 import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useApp } from "../state";
+import { useIsDeveloperMode } from "../state/useDeveloperMode";
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
@@ -89,11 +90,15 @@ export function WidgetHost({
   filter,
 }: WidgetHostProps) {
   const { plugins } = useApp();
+  const developerModeEnabled = useIsDeveloperMode();
 
   const resolved = useMemo(() => {
     const all = resolveWidgetsForSlot(slot, plugins ?? []);
-    return filter ? all.filter((entry) => filter(entry.declaration)) : all;
-  }, [slot, plugins, filter]);
+    const gated = developerModeEnabled
+      ? all
+      : all.filter((entry) => entry.declaration.developerOnly !== true);
+    return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
+  }, [slot, plugins, filter, developerModeEnabled]);
 
   if (resolved.length === 0 && hideWhenEmpty) return null;
 

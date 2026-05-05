@@ -5,12 +5,16 @@ import { fileURLToPath } from "node:url";
 
 import {
   AgentRuntime,
+  ChannelType,
   type Character,
   type Content,
   type HandlerCallback,
+  type IAgentRuntime,
   InMemoryDatabaseAdapter,
+  type Memory,
   ModelType,
   type Plugin,
+  type State,
   type UUID,
 } from "@elizaos/core";
 
@@ -180,6 +184,8 @@ type ModelOutputInspection = {
   thoughtTagCount: number;
   xmlTagCount: number;
 };
+type GroqPluginModule = { groqPlugin?: Plugin; default?: Plugin };
+type ElevenLabsPluginModule = { elevenLabsPlugin?: Plugin; default?: Plugin };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VOICEBENCH_DIR = resolve(__dirname, "../..");
@@ -189,6 +195,95 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000101" as UUID;
 const USER_ENTITY_ID = "00000000-0000-0000-0000-000000000102" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000103" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-000000000104" as UUID;
+
+const MOCK_TRANSCRIPT =
+  "Hello there. This is a short voice benchmark sample.";
+const MOCK_TEXT_RESPONSE = "Mock voicebench response is ready.";
+const MOCK_MESSAGE_HANDLER_XML = `<response>
+  <thought>Running deterministic voicebench mock response.</thought>
+  <actions>REPLY</actions>
+  <providers></providers>
+  <text>${MOCK_TEXT_RESPONSE}</text>
+  <simple>true</simple>
+</response>`;
+const MOCK_NON_SIMPLE_HANDLER_XML = `<response>
+  <thought>Running deterministic voicebench mock response with provider context.</thought>
+  <actions>REPLY</actions>
+  <providers>VOICEBENCH_CONTEXT</providers>
+  <text>${MOCK_TEXT_RESPONSE}</text>
+  <simple>false</simple>
+</response>`;
+const MOCK_REPLY_XML = `<response>
+  <thought>Generating deterministic benchmark dialog.</thought>
+  <text>${MOCK_TEXT_RESPONSE}</text>
+</response>`;
+const MOCK_SHOULD_RESPOND_XML = `<response>
+  <name>VoicebenchAgent</name>
+  <reasoning>Voicebench messages should receive a benchmark response.</reasoning>
+  <action>RESPOND</action>
+</response>`;
+const ZERO_EMBEDDING = Object.freeze(new Array(384).fill(0)) as readonly number[];
+
+function mockTextHandler(params: Record<string, unknown>): string {
+  const prompt = String(params.prompt ?? "");
+  if (
+    prompt.includes("should respond") ||
+    prompt.includes("RESPOND | IGNORE | STOP")
+  ) {
+    return MOCK_SHOULD_RESPOND_XML;
+  }
+  if (prompt.includes("Generate dialog for the character")) {
+    return MOCK_REPLY_XML;
+  }
+  if (prompt.includes("Voicebench non-simple path")) {
+    return MOCK_NON_SIMPLE_HANDLER_XML;
+  }
+  return MOCK_MESSAGE_HANDLER_XML;
+}
+
+const mockVoicebenchPlugin: Plugin = {
+  name: "voicebench-mock-models",
+  description:
+    "Deterministic voicebench model handlers for credential-free smoke tests",
+  providers: [
+    {
+      name: "VOICEBENCH_CONTEXT",
+      description: "Static provider context for voicebench mock runs",
+      get: async (
+        _runtime: IAgentRuntime,
+        _message: Memory,
+        _state?: State,
+      ) => ({
+        text: "Voicebench mock provider context.",
+        values: { voicebenchContext: "mock" },
+        data: {},
+      }),
+    },
+  ],
+  models: {
+    [ModelType.TEXT_SMALL]: async (_runtime, params) =>
+      mockTextHandler(params as unknown as Record<string, unknown>),
+    [ModelType.TEXT_LARGE]: async (_runtime, params) =>
+      mockTextHandler(params as unknown as Record<string, unknown>),
+    [ModelType.RESPONSE_HANDLER]: async (_runtime, params) =>
+      mockTextHandler(params as unknown as Record<string, unknown>),
+    [ModelType.ACTION_PLANNER]: async (_runtime, params) =>
+      mockTextHandler(params as unknown as Record<string, unknown>),
+    [ModelType.TEXT_COMPLETION]: async (_runtime, params) =>
+      mockTextHandler(params as unknown as Record<string, unknown>),
+    [ModelType.OBJECT_SMALL]: async () => ({ result: "voicebench_mock" }),
+    [ModelType.OBJECT_LARGE]: async () => ({ result: "voicebench_mock" }),
+    [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
+    [ModelType.TRANSCRIPTION]: async () => MOCK_TRANSCRIPT,
+    [ModelType.TEXT_TO_SPEECH]: async (_runtime, input) => {
+      const text =
+        typeof input === "string"
+          ? input
+          : String((input as { text?: unknown })?.text ?? "");
+      return new TextEncoder().encode(`voicebench-mock-audio:${text}`);
+    },
+  },
+};
 
 function parseArg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -409,15 +504,19 @@ async function seedRuntimeGraph(
 }
 
 async function resolvePlugins(profile: string): Promise<Plugin[]> {
+  if (profile === "mock") {
+    return [mockVoicebenchPlugin];
+  }
+
   // Try the npm-published packages first (the workspace install path), then
   // fall back to the sibling source-checkout layout that some workspaces use.
-  let groqModule: { groqPlugin?: Plugin; default?: Plugin } | null = null;
+  let groqModule: GroqPluginModule;
   try {
-    groqModule = (await import("@elizaos/plugin-groq")) as typeof groqModule;
+    groqModule = (await import("@elizaos/plugin-groq")) as unknown as GroqPluginModule;
   } catch {
     groqModule = (await import(
-      "../../../../plugins/plugin-groq/index.ts"
-    )) as typeof groqModule;
+      "../../../../../plugins/plugin-groq/index.ts"
+    )) as unknown as GroqPluginModule;
   }
   const groq = groqModule?.groqPlugin ?? groqModule?.default;
   if (!groq) {
@@ -428,16 +527,15 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     return [groq];
   }
 
-  let elevenLabsModule: { elevenLabsPlugin?: Plugin; default?: Plugin } | null =
-    null;
+  let elevenLabsModule: ElevenLabsPluginModule;
   try {
     elevenLabsModule = (await import(
       "@elizaos/plugin-elevenlabs"
-    )) as typeof elevenLabsModule;
+    )) as unknown as ElevenLabsPluginModule;
   } catch {
     elevenLabsModule = (await import(
-      "../../../../plugins/plugin-elevenlabs/src/index.ts"
-    )) as typeof elevenLabsModule;
+      "../../../../../plugins/plugin-elevenlabs/src/index.ts"
+    )) as unknown as ElevenLabsPluginModule;
   }
   const elevenLabs =
     elevenLabsModule?.elevenLabsPlugin ?? elevenLabsModule?.default;
@@ -566,8 +664,18 @@ async function main(): Promise<void> {
     ? dataset.samples
     : [{ id: "single-audio", audioPath, expectedText: null }];
 
-  const sttProvider = profile === "elevenlabs" ? "elevenLabs" : "groq";
-  const ttsProvider = profile === "elevenlabs" ? "elevenLabs" : "groq";
+  const sttProvider =
+    profile === "mock"
+      ? "voicebench-mock-models"
+      : profile === "elevenlabs"
+        ? "elevenLabs"
+        : "groq";
+  const ttsProvider =
+    profile === "mock"
+      ? "voicebench-mock-models"
+      : profile === "elevenlabs"
+        ? "elevenLabs"
+        : "groq";
 
   const results: IterationResult[] = [];
   const firstSentenceCache = new Map<string, Uint8Array>();
@@ -575,6 +683,10 @@ async function main(): Promise<void> {
 
   const runtime = await createRuntime(profile, character);
   try {
+    const messageService = runtime.messageService;
+    if (!messageService) {
+      throw new Error("VoiceBench runtime did not initialize messageService");
+    }
     const trajectoryService = runtime.getService(
       "trajectory_logger",
     ) as TrajectoryLoggerServiceLike | null;
@@ -589,7 +701,7 @@ async function main(): Promise<void> {
           const startedAt = nowMs();
 
           const transcriptionStart = nowMs();
-          const transcription = await runtime.useModel<string>(
+          const transcription = await runtime.useModel(
             ModelType.TRANSCRIPTION,
             sampleAudioBytes,
             sttProvider,
@@ -609,7 +721,7 @@ async function main(): Promise<void> {
               : null;
 
           const userPrompt = `${transcriptText}\n\n${config.responsePrompt}`;
-          const message = {
+          const message: Memory = {
             id: `00000000-0000-0000-2100-${messageIdSuffix}` as UUID,
             agentId: AGENT_ID,
             entityId: USER_ENTITY_ID,
@@ -618,7 +730,7 @@ async function main(): Promise<void> {
             content: {
               text: userPrompt,
               source: "voicebench",
-              channelType: "VOICE_DM",
+              channelType: ChannelType.VOICE_DM,
             },
             metadata: {
               trajectoryStepId: stepId,
@@ -641,7 +753,7 @@ async function main(): Promise<void> {
           };
 
           const responseStart = nowMs();
-          const responseResult = await runtime.messageService.handleMessage(
+          const responseResult = await messageService.handleMessage(
             runtime,
             message,
             callback,

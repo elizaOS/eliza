@@ -190,6 +190,8 @@ export function toAppInfo(
     uiExtension: meta?.uiExtension,
     viewer,
     session: meta?.session,
+    developerOnly: meta?.developerOnly,
+    visibleInAppStore: meta?.visibleInAppStore,
   };
 }
 

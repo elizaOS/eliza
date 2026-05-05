@@ -1,3 +1,4 @@
+import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
 import type { ComponentType } from "react";
 import type { PluginInfo } from "../api/client-types-config";
 import type { UiSpec } from "../config/ui-spec";
@@ -17,25 +18,13 @@ export type WidgetSlot =
 
 /**
  * Serializable widget metadata declared by a plugin.
- * Comes from the server via GET /api/plugins.
+ *
+ * The canonical shape lives in `@elizaos/core` (`PluginWidgetDeclaration`)
+ * so plugins can self-declare without depending on app-core. The client
+ * surface adds an optional `uiSpec` for plugins without bundled React
+ * components.
  */
-export interface PluginWidgetDeclaration {
-  /** Unique within the owning plugin, e.g. "lifeops-overview". */
-  id: string;
-  /** Owning plugin ID — matches PluginInfo.id. */
-  pluginId: string;
-  /** Where this widget renders. */
-  slot: WidgetSlot;
-  /** Human-readable label. */
-  label: string;
-  /** Lucide icon name (e.g. "ListTodo"). */
-  icon?: string;
-  /** Sort priority within the slot (lower = first). Default 100. */
-  order?: number;
-  /** Show by default when plugin is active. Default true. */
-  defaultEnabled?: boolean;
-  /** For nav-page slot: which header TabGroup to join. */
-  navGroup?: string;
+export interface PluginWidgetDeclaration extends CorePluginWidgetDeclaration {
   /** Declarative UI spec — fallback for plugins without bundled React components. */
   uiSpec?: UiSpec;
 }

@@ -151,7 +151,31 @@ export interface PluginInfo {
     order?: number;
     defaultEnabled?: boolean;
     navGroup?: string;
+    developerOnly?: boolean;
+    componentExport?: string;
   }>;
+  /**
+   * App metadata declared by the plugin (`Plugin.app`). Surfaces nav-tab
+   * registrations, developer-mode gating, and app-store visibility so the
+   * shell can wire pages dynamically without app-core hard-coding them.
+   */
+  app?: {
+    displayName?: string;
+    category?: string;
+    icon?: string | null;
+    developerOnly?: boolean;
+    visibleInAppStore?: boolean;
+    navTabs?: Array<{
+      id: string;
+      label: string;
+      icon?: string;
+      path: string;
+      order?: number;
+      developerOnly?: boolean;
+      group?: string;
+      componentExport?: string;
+    }>;
+  };
 }
 
 export interface CorePluginEntry {

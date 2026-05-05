@@ -30,8 +30,11 @@ logger = logging.getLogger(__name__)
 class WooBenchEvaluator:
     """LLM-powered evaluator that plays the persona and scores the reading agent."""
 
-    def __init__(self, evaluator_model: str = "gpt-5"):
+    def __init__(self, evaluator_model: str = "gpt-5", evaluator_mode: str = "llm"):
         self.evaluator_model = evaluator_model
+        if evaluator_mode not in {"llm", "heuristic"}:
+            raise ValueError("evaluator_mode must be 'llm' or 'heuristic'")
+        self.evaluator_mode = evaluator_mode
 
     # ------------------------------------------------------------------
     # Core evaluation methods
@@ -83,6 +86,13 @@ Scoring guide:
 
 Respond with exactly one word: POSITIVE, NEUTRAL, or NEGATIVE"""
 
+        if self.evaluator_mode == "heuristic":
+            return self._heuristic_condition_match(
+                agent_message=agent_message,
+                condition=condition,
+                hidden_context=hidden_context,
+            )
+
         result = await self._call_llm(prompt)
         cleaned = result.strip().upper()
         if cleaned not in ("POSITIVE", "NEGATIVE", "NEUTRAL"):
@@ -130,8 +140,8 @@ Conversation so far:
 
 Respond ONLY with the rephrased response, nothing else."""
 
-        # For determinism in benchmarking, optionally return the base response
-        if persona_state.get("use_scripted_responses", False):
+        # For deterministic smoke runs, avoid external LLM calls entirely.
+        if self.evaluator_mode == "heuristic" or persona_state.get("use_scripted_responses", False):
             return base_response
 
         result = await self._call_llm(prompt)
@@ -238,7 +248,7 @@ Respond ONLY with the rephrased response, nothing else."""
             "escalated": False,
             "trust_level": 0,
             "patience_remaining": scenario.persona.patience,
-            "use_scripted_responses": False,
+            "use_scripted_responses": self.evaluator_mode == "heuristic",
         }
 
         # --- Revenue tracking state ---
@@ -463,6 +473,55 @@ Respond ONLY with the rephrased response, nothing else."""
     # ------------------------------------------------------------------
     # LLM interface (override for different providers)
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _heuristic_condition_match(
+        *,
+        agent_message: str,
+        condition: str,
+        hidden_context: HiddenContext,
+    ) -> MatchResult:
+        """Cheap deterministic condition matcher for local smoke tests.
+
+        This is intentionally conservative: it exists to exercise benchmark
+        plumbing without provider credentials, not to replace the LLM judge.
+        """
+        message = agent_message.lower()
+        if not message.strip():
+            return MatchResult.NEGATIVE
+
+        positive_terms = {
+            "acknowledge", "ask", "address", "identify", "mention",
+            "touch", "sense", "connect", "provide", "close", "explain",
+            "reframe", "guidance", "practical", "compassion", "respect",
+            "question", "theme", "relationship", "family", "career",
+            "money", "grief", "anxiety", "payment", "resource",
+        }
+        condition_terms = {
+            token
+            for token in re.findall(r"[a-z]{4,}", condition.lower())
+            if token in positive_terms
+        }
+        context_terms = {
+            token
+            for source in (
+                hidden_context.life_situation,
+                hidden_context.emotional_state,
+                " ".join(hidden_context.key_themes),
+                " ".join(hidden_context.specific_details),
+            )
+            for token in re.findall(r"[a-z]{4,}", source.lower())
+        }
+
+        overlap = sum(1 for term in condition_terms | context_terms if term in message)
+        if overlap >= 2:
+            return MatchResult.POSITIVE
+        if overlap == 1 or any(
+            marker in message
+            for marker in ("i sense", "i see", "guidance", "energy", "reading")
+        ):
+            return MatchResult.NEUTRAL
+        return MatchResult.NEGATIVE
 
     async def _call_llm(self, prompt: str) -> str:
         """Call the evaluator LLM.

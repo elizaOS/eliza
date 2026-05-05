@@ -47,6 +47,9 @@ if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
     "${ROOT_DIR}/examples/town/public/assets/background.mp3"
     "${ROOT_DIR}/agent-town/public/assets/background.mp3"
   )
+  if [[ "${PROFILE}" == "mock" ]]; then
+    CANDIDATE_AUDIO_PATHS=("${SCRIPT_DIR}/shared/mock-audio.txt" "${CANDIDATE_AUDIO_PATHS[@]}")
+  fi
 
   for candidate in "${CANDIDATE_AUDIO_PATHS[@]}"; do
     if [[ -f "${candidate}" ]]; then
@@ -58,6 +61,7 @@ fi
 
 if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
   echo "No audio file found. Set VOICEBENCH_AUDIO_PATH to a short audio clip."
+  echo "For credential-free smoke tests, use --profile=mock."
   exit 1
 fi
 VOICEBENCH_AUDIO_PATH="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "${VOICEBENCH_AUDIO_PATH}")"

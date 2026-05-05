@@ -35,6 +35,20 @@ export interface RegistryAppMeta {
   uiExtension?: AppUiExtensionConfig;
   viewer?: RegistryAppViewerMeta;
   session?: RegistryAppSessionMeta;
+  /**
+   * If true, the app is a developer-tooling surface (logs, trajectory
+   * viewer, etc.) and is hidden from the main UI unless Developer Mode is
+   * enabled in Settings. The server exposes the flag here; the client
+   * gates the render.
+   */
+  developerOnly?: boolean;
+  /**
+   * Controls whether the app appears in the user-facing app store/catalog.
+   * Defaults to true. Set to false for apps that auto-install or are
+   * surfaced only via direct deep-links. The server exposes the flag;
+   * the client gates the render.
+   */
+  visibleInAppStore?: boolean;
 }
 
 export interface RegistryPluginInfo {

@@ -114,6 +114,24 @@ interface PluginEntry {
   prerequisites?: Array<{ label: string; met: boolean }>;
   /** Widget declarations for this plugin (rendered by the UI widget system). */
   widgets?: PluginWidgetDeclarationServer[];
+  /** App metadata (nav tabs, developer-only, app-store visibility). */
+  app?: {
+    displayName?: string;
+    category?: string;
+    icon?: string | null;
+    developerOnly?: boolean;
+    visibleInAppStore?: boolean;
+    navTabs?: Array<{
+      id: string;
+      label: string;
+      icon?: string;
+      path: string;
+      order?: number;
+      developerOnly?: boolean;
+      group?: string;
+      componentExport?: string;
+    }>;
+  };
 }
 
 type PluginHealthProbeResult = {
@@ -530,11 +548,48 @@ export async function handlePluginRoutes(
       }
     }
 
-    // Attach widget declarations from the static plugin widget map.
+    // Attach widget declarations: prefer each plugin instance's own
+    // `widgets` field (canonical), fall back to the static map for plugins
+    // that have not migrated yet.
+    const runtimePlugins = state.runtime?.plugins ?? [];
+    const normalizeId = (value: string): string => {
+      let v = value.trim();
+      if (v.startsWith("@")) {
+        const slash = v.indexOf("/");
+        if (slash > 0) v = v.slice(slash + 1);
+      }
+      if (v.startsWith("plugin-")) v = v.slice("plugin-".length);
+      if (v.startsWith("app-")) v = v.slice("app-".length);
+      return v;
+    };
     for (const plugin of allPlugins) {
-      const widgets = getPluginWidgets(plugin.id);
+      const widgets = getPluginWidgets(plugin.id, runtimePlugins);
       if (widgets.length > 0) {
         plugin.widgets = widgets;
+      }
+      const normalizedPluginId = normalizeId(plugin.id);
+      const matchedRuntime = runtimePlugins.find(
+        (p) => normalizeId(p.name) === normalizedPluginId,
+      );
+      if (matchedRuntime?.app) {
+        const a = matchedRuntime.app;
+        plugin.app = {
+          displayName: a.displayName,
+          category: a.category,
+          icon: a.icon,
+          developerOnly: a.developerOnly,
+          visibleInAppStore: a.visibleInAppStore,
+          navTabs: a.navTabs?.map((t) => ({
+            id: t.id,
+            label: t.label,
+            icon: t.icon,
+            path: t.path,
+            order: t.order,
+            developerOnly: t.developerOnly,
+            group: t.group,
+            componentExport: t.componentExport,
+          })),
+        };
       }
     }
 

@@ -237,6 +237,17 @@ function resolvePackagePath(pkgName, relativeTo) {
   return path.relative(relativeTo, fs.realpathSync(linked));
 }
 
+function resolveNativePluginPackagePath(pkgName, relativeTo) {
+  const match = pkgName.match(/^@elizaos\/capacitor-(.+)$/);
+  if (match) {
+    const localPluginRoot = path.join(nativePluginsDir, match[1]);
+    if (fs.existsSync(path.join(localPluginRoot, "package.json"))) {
+      return path.relative(relativeTo, localPluginRoot);
+    }
+  }
+  return resolvePackagePath(pkgName, relativeTo);
+}
+
 export function resolvePlatformTemplateRoot(
   platform,
   { repoRootValue = repoRoot } = {},
@@ -274,6 +285,10 @@ function replaceInFile(filePath, replacements) {
   return true;
 }
 
+function packageNameToPath(packageName) {
+  return path.join(...packageName.split("."));
+}
+
 export function applyIosAppIdentity({
   appDirValue = appDir,
   appId = APP.appId,
@@ -290,12 +305,12 @@ export function applyIosAppIdentity({
   if (fs.existsSync(projectPath)) {
     let project = fs.readFileSync(projectPath, "utf8");
     const original = project;
-    project = project.replaceAll(
-      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;",
+    project = project.replace(
+      /PRODUCT_BUNDLE_IDENTIFIER = [A-Za-z0-9_.-]+\.WebsiteBlockerContentExtension;/g,
       `PRODUCT_BUNDLE_IDENTIFIER = ${appId}.WebsiteBlockerContentExtension;`,
     );
-    project = project.replaceAll(
-      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
+    project = project.replace(
+      /PRODUCT_BUNDLE_IDENTIFIER = (?![A-Za-z0-9_.-]+\.WebsiteBlockerContentExtension;)[A-Za-z0-9_.-]+;/g,
       `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
     );
     const displayNameSetting = `ELIZA_DISPLAY_NAME = ${escapeXcodeBuildSetting(appName)};`;
@@ -327,7 +342,9 @@ export function applyIosAppIdentity({
 
   const replacements = [
     ["group.ai.elizaos.app", appGroup],
+    ["group.com.miladyai.milady", appGroup],
     ['"group.ai.elizaos.app"', `"${appGroup}"`],
+    ['"group.com.miladyai.milady"', `"${appGroup}"`],
   ];
   for (const relPath of [
     path.join("App", "App.entitlements"),
@@ -698,6 +715,41 @@ function removeApplicationComponentBlock(xml, componentName) {
   return xml.replace(componentRe, "\n");
 }
 
+function removeApplicationComponentClassBlock(xml, className) {
+  const escapedName = escapeRegExp(className);
+  const pairedRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
+    "g",
+  );
+  const selfClosingRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[^>]*/>\\s*`,
+    "g",
+  );
+  return xml.replace(pairedRe, "\n").replace(selfClosingRe, "\n");
+}
+
+function removeStaleAndroidJavaSourceRoots(dstJava) {
+  const candidates = [
+    "ai.elizaos.app",
+    "com.elizaai.eliza",
+    "com.miladyai.milady",
+    APP.appId,
+  ];
+  for (const packageName of candidates) {
+    const candidate = path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      packageNameToPath(packageName),
+    );
+    if (candidate !== dstJava && fs.existsSync(candidate)) {
+      fs.rmSync(candidate, { recursive: true, force: true });
+    }
+  }
+}
+
 // Replace the BRAND_USER_AGENT_MARKERS array contents in the templated
 // MainActivity.java with framework default + entries from
 // `app.config.ts > android.userAgentMarkers`. Idempotent: re-running on
@@ -749,20 +801,14 @@ function overlayAndroid() {
     "app",
   );
   const gradlePath = path.join(androidDir, "app", "build.gradle");
-  const namespace = fs.existsSync(gradlePath)
-    ? fs
-        .readFileSync(gradlePath, "utf8")
-        .match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
-    : APP.appId;
-
-  const androidPackage = namespace || APP.appId;
+  const androidPackage = APP.appId;
   const dstJava = path.join(
     androidDir,
     "app",
     "src",
     "main",
     "java",
-    ...androidPackage.split("."),
+    packageNameToPath(androidPackage),
   );
   const legacyJava = path.join(
     androidDir,
@@ -784,6 +830,7 @@ function overlayAndroid() {
   );
 
   if (fs.existsSync(srcJava)) {
+    removeStaleAndroidJavaSourceRoots(dstJava);
     for (const staleJava of [legacyJava, appIdJava]) {
       if (staleJava !== dstJava) {
         fs.rmSync(staleJava, { recursive: true, force: true });
@@ -931,6 +978,35 @@ function overlayAndroid() {
         xml,
         `${androidPackage}.${component}`,
       );
+      if (nextXml !== xml) {
+        xml = nextXml;
+        dirty = true;
+      }
+    }
+    for (const component of [
+      "ElizaDialActivity",
+      "ElizaAssistActivity",
+      "ElizaInCallService",
+      "ElizaSmsReceiver",
+      "ElizaMmsReceiver",
+      "ElizaRespondViaMessageService",
+      "ElizaSmsComposeActivity",
+      "ElizaBootReceiver",
+      "ElizaBrowserActivity",
+      "ElizaContactsActivity",
+      "ElizaCameraActivity",
+      "ElizaClockActivity",
+      "ElizaCalendarActivity",
+      "MiladyDialActivity",
+      "MiladyAssistActivity",
+      "MiladyInCallService",
+      "MiladySmsReceiver",
+      "MiladyMmsReceiver",
+      "MiladyRespondViaMessageService",
+      "MiladySmsComposeActivity",
+      "MiladyBootReceiver",
+    ]) {
+      const nextXml = removeApplicationComponentClassBlock(xml, component);
       if (nextXml !== xml) {
         xml = nextXml;
         dirty = true;
@@ -1345,6 +1421,9 @@ const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set([
   "CapacitorStatusBar",
 ]);
 
+const IOS_SIMULATOR_STRIPPED_SPM_PLUGINS = new Set(["LlamaCppCapacitor"]);
+const IOS_SIMULATOR_STRIPPED_PACKAGE_CLASSES = new Set(["LlamaCppPlugin"]);
+
 const IOS_BONJOUR_SERVICES = [
   "_eliza-gw._tcp",
   "_elizaos-gw._tcp",
@@ -1425,10 +1504,29 @@ function overlayIos() {
   applyIosAppIdentity();
 }
 
-export function prepareIosOverlay() {
+function isTruthyEnv(value) {
+  return /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
+}
+
+function isIosSimulatorBuildTarget(buildTarget) {
+  return (
+    buildTarget?.sdk === "iphonesimulator" ||
+    /\bSimulator\b/i.test(buildTarget?.destination ?? "")
+  );
+}
+
+export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
   stripSpmIncompatiblePlugins();
+  if (isIosSimulatorBuildTarget(buildTarget)) {
+    stripSpmPlugins(IOS_SIMULATOR_STRIPPED_SPM_PLUGINS, {
+      reason: "simulator build",
+    });
+    stripCapacitorPackageClasses(IOS_SIMULATOR_STRIPPED_PACKAGE_CLASSES, {
+      reason: "simulator build",
+    });
+  }
   return syncedFiles;
 }
 
@@ -1467,8 +1565,9 @@ function generatePodfile() {
   }
 
   for (const [name, pkg] of customPods) {
-    if (resolvePackagePath(pkg, podfileDir)) {
-      lines.push(`  pod '${name}', :path => node_package_path('${pkg}')`);
+    const p = resolveNativePluginPackagePath(pkg, podfileDir);
+    if (p) {
+      lines.push(`  pod '${name}', :path => '${p}'`);
     }
   }
 
@@ -1511,8 +1610,7 @@ end
 
 // ── Phase 5: Platform patches ───────────────────────────────────────────
 
-/** Strip incompatible official plugins from SPM Package.swift. */
-function stripSpmIncompatiblePlugins() {
+function stripSpmPlugins(pluginNames, { reason = "incompatible SPM plugin" } = {}) {
   const pkgPath = path.join(
     appDir,
     "ios",
@@ -1525,7 +1623,7 @@ function stripSpmIncompatiblePlugins() {
   let content = fs.readFileSync(pkgPath, "utf8");
   const lines = content.split("\n");
   const filtered = lines.filter((line) => {
-    for (const name of IOS_INCOMPATIBLE_SPM_PLUGINS) {
+    for (const name of pluginNames) {
       if (line.includes(`"${name}"`)) return false;
     }
     return true;
@@ -1537,11 +1635,53 @@ function stripSpmIncompatiblePlugins() {
     content = content.replace(/,(\s*[\])])/g, "$1").replace(/\n{3,}/g, "\n\n");
     fs.writeFileSync(pkgPath, content, "utf8");
     console.log(
-      `[mobile-build] Stripped incompatible SPM plugins: ${Array.from(
-        IOS_INCOMPATIBLE_SPM_PLUGINS,
+      `[mobile-build] Stripped ${reason} SPM plugins: ${Array.from(
+        pluginNames,
       ).join(", ")}`,
     );
   }
+}
+
+/** Strip incompatible official plugins from SPM Package.swift. */
+function stripSpmIncompatiblePlugins() {
+  stripSpmPlugins(IOS_INCOMPATIBLE_SPM_PLUGINS, {
+    reason: "incompatible",
+  });
+}
+
+function stripCapacitorPackageClasses(
+  classNames,
+  { reason = "native build" } = {},
+) {
+  const configPath = path.join(
+    appDir,
+    "ios",
+    "App",
+    "App",
+    "capacitor.config.json",
+  );
+  if (!fs.existsSync(configPath)) return;
+
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const packageClassList = config.packageClassList;
+  if (!Array.isArray(packageClassList)) return;
+
+  const filtered = packageClassList.filter(
+    (value) => typeof value !== "string" || !classNames.has(value),
+  );
+  if (filtered.length === packageClassList.length) return;
+
+  config.packageClassList = filtered;
+  fs.writeFileSync(
+    configPath,
+    `${JSON.stringify(config, null, "\t")}\n`,
+    "utf8",
+  );
+  console.log(
+    `[mobile-build] Stripped ${reason} Capacitor package classes: ${Array.from(
+      classNames,
+    ).join(", ")}`,
+  );
 }
 
 function patchAndroidGradleWrapperForReleaseCompat() {
@@ -1737,6 +1877,102 @@ function patchAndroidGradle() {
   }
 }
 
+const ANDROID_LAUNCHER_ICON_SIZES = {
+  "mipmap-mdpi": 48,
+  "mipmap-hdpi": 72,
+  "mipmap-xhdpi": 96,
+  "mipmap-xxhdpi": 144,
+  "mipmap-xxxhdpi": 192,
+};
+
+const ANDROID_SPLASH_SIZES = {
+  drawable: [480, 320],
+  "drawable-port-mdpi": [320, 480],
+  "drawable-port-hdpi": [480, 720],
+  "drawable-port-xhdpi": [640, 960],
+  "drawable-port-xxhdpi": [960, 1440],
+  "drawable-port-xxxhdpi": [1280, 1920],
+  "drawable-land-mdpi": [480, 320],
+  "drawable-land-hdpi": [720, 480],
+  "drawable-land-xhdpi": [960, 640],
+  "drawable-land-xxhdpi": [1440, 960],
+  "drawable-land-xxxhdpi": [1920, 1280],
+};
+
+async function generateAndroidBrandAssets() {
+  const resDir = path.join(androidDir, "app", "src", "main", "res");
+  if (!fs.existsSync(resDir)) return;
+
+  const iconSource = firstExisting([
+    path.join(appDir, "public", "android-chrome-512x512.png"),
+    path.join(appDir, "public", "apple-touch-icon.png"),
+    path.join(appDir, "public", "favicon-256x256.png"),
+  ]);
+  const splashSource = firstExisting([
+    path.join(appDir, "public", "splash-bg.png"),
+    path.join(appDir, "public", "splash-bg.jpg"),
+  ]);
+  if (!iconSource && !splashSource) return;
+
+  let sharp;
+  try {
+    sharp = (await import("sharp")).default;
+  } catch (error) {
+    throw new Error(
+      `sharp is required to generate Android brand assets for ${APP.appName}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  if (iconSource) {
+    for (const [dir, size] of Object.entries(ANDROID_LAUNCHER_ICON_SIZES)) {
+      const out = path.join(resDir, dir);
+      fs.mkdirSync(out, { recursive: true });
+      await sharp(iconSource)
+        .resize(size, size, { fit: "cover" })
+        .png()
+        .toFile(path.join(out, "ic_launcher.png"));
+      await sharp(iconSource)
+        .resize(size, size, { fit: "cover" })
+        .png()
+        .toFile(path.join(out, "ic_launcher_round.png"));
+
+      const foregroundSize = Math.round(size * 0.7);
+      const padding = Math.round(size * 0.4);
+      await sharp(iconSource)
+        .resize(foregroundSize, foregroundSize, { fit: "contain" })
+        .extend({
+          top: padding,
+          bottom: padding,
+          left: padding,
+          right: padding,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .resize(Math.round(size * 1.5), Math.round(size * 1.5), {
+          fit: "contain",
+        })
+        .png()
+        .toFile(path.join(out, "ic_launcher_foreground.png"));
+    }
+  }
+
+  if (splashSource) {
+    for (const [dir, [width, height]] of Object.entries(
+      ANDROID_SPLASH_SIZES,
+    )) {
+      const out = path.join(resDir, dir);
+      fs.mkdirSync(out, { recursive: true });
+      await sharp(splashSource)
+        .resize(width, height, { fit: "cover", position: "center" })
+        .png()
+        .toFile(path.join(out, "splash.png"));
+    }
+  }
+
+  console.log(`[mobile-build] Generated Android brand assets for ${APP.appName}.`);
+}
+
 // ── Phase 6: Native builds ──────────────────────────────────────────────
 
 export function shouldRunIosPodInstall(syncedFiles = []) {
@@ -1758,6 +1994,9 @@ export function resolveIosBuildTarget({
     };
   }
 
+  const includeDeviceOnlyLlama =
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(env.MILADY_IOS_INCLUDE_LLAMA);
   const llamaCppFramework = path.join(
     appDirValue,
     "node_modules",
@@ -1768,18 +2007,18 @@ export function resolveIosBuildTarget({
     "llama-cpp",
   );
 
-  if (fs.existsSync(llamaCppFramework)) {
+  if (includeDeviceOnlyLlama && fs.existsSync(llamaCppFramework)) {
     return {
       destination: "generic/platform=iOS",
       sdk: "iphoneos",
-      reason: "llama-cpp-capacitor ships a device iOS framework",
+      reason: "explicit device llama.cpp framework build",
     };
   }
 
   return {
     destination: "generic/platform=iOS Simulator",
     sdk: "iphonesimulator",
-    reason: "default simulator build",
+    reason: "default cloud simulator build",
   };
 }
 
@@ -1797,6 +2036,7 @@ async function buildAndroid() {
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
 
   patchAndroidGradle();
+  await generateAndroidBrandAssets();
   overlayAndroid();
   await stageAndroidAgentRuntime({
     androidDir,
@@ -1888,6 +2128,7 @@ async function buildAndroidSystem() {
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
 
   patchAndroidGradle();
+  await generateAndroidBrandAssets();
   overlayAndroid();
   await stageAndroidAgentRuntime({
     androidDir,
@@ -1940,7 +2181,11 @@ async function buildIos() {
   }
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
 
-  const syncedFiles = prepareIosOverlay();
+  const buildTarget = resolveIosBuildTarget();
+  console.log(
+    `[mobile-build] iOS build target: ${buildTarget.destination} (${buildTarget.sdk}; ${buildTarget.reason})`,
+  );
+  const syncedFiles = prepareIosOverlay({ buildTarget });
 
   // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
   if (
@@ -1954,8 +2199,6 @@ async function buildIos() {
   const projectArgs = fs.existsSync(wsPath)
     ? ["-workspace", "App.xcworkspace"]
     : ["-project", "App.xcodeproj"];
-  const buildTarget = resolveIosBuildTarget();
-
   await run(
     "xcodebuild",
     [

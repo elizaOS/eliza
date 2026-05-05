@@ -595,6 +595,26 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_woobench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract normalized WooBench score from its aggregate result JSON."""
+    root = expect_dict(data, ctx="woobench:root")
+    overall = expect_float(
+        get_required(root, "overall_score", ctx="woobench:root"),
+        ctx="woobench:overall_score",
+    )
+    return ScoreExtraction(
+        score=overall / 100.0,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_score": overall,
+            "revenue_efficiency": get_optional(root, "revenue_efficiency") or 0,
+            "resilience_score": get_optional(root, "resilience_score") or 0,
+            "failed_scenarios": get_optional(root, "failed_scenarios") or 0,
+        },
+    )
+
+
 def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from HyperliquidBench results.
 
@@ -1615,10 +1635,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         profile_raw = extra.get("profile")
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
+        elif (model.provider or "").strip().lower() == "mock":
+            profile = "mock"
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs"}:
-            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq or elevenlabs)")
+        if profile not in {"groq", "elevenlabs", "mock"}:
+            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq, elevenlabs, or mock)")
         args.append(f"--profile={profile}")
         iterations = extra.get("iterations")
         if isinstance(iterations, int) and iterations > 0:
@@ -1774,6 +1796,48 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _webshop_result(output_dir: Path) -> Path:
         return output_dir / "webshop-results.json"
+
+    # WooBench - mystical-reading conversation benchmark.
+    def _woobench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = [
+            python,
+            "-m",
+            "benchmarks.woobench",
+            "--output",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+
+        agent_raw = extra.get("agent")
+        provider_lower = (model.provider or "").strip().lower()
+        if agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
+            args.extend(["--agent", "dummy"])
+        else:
+            args.extend(["--agent", "eliza"])
+
+        evaluator = extra.get("evaluator")
+        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
+            args.extend(["--evaluator", evaluator])
+        elif agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
+            args.extend(["--evaluator", "heuristic"])
+
+        scenario = extra.get("scenario")
+        if isinstance(scenario, str) and scenario.strip():
+            args.extend(["--scenario", scenario.strip()])
+        system = extra.get("system")
+        if isinstance(system, str) and system.strip():
+            args.extend(["--system", system.strip()])
+        persona = extra.get("persona")
+        if isinstance(persona, str) and persona.strip():
+            args.extend(["--persona", persona.strip()])
+        concurrency = extra.get("concurrency")
+        if isinstance(concurrency, int) and concurrency > 0:
+            args.extend(["--concurrency", str(concurrency)])
+        return args
+
+    def _woobench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="woobench_*.json")
 
     # eliza-format — wraps training/scripts/benchmark/eliza_bench.py.
     # Default cwd is `training/` (resolved from workspace_root via cwd_rel),
@@ -2266,11 +2330,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             description="End-to-end voice latency benchmark (transcription + response + TTS)",
             cwd_rel="benchmarks/voicebench",
             requirements=BenchmarkRequirements(
-                env_vars=("GROQ_API_KEY",),
+                env_vars=(),
                 paths=("benchmarks/voicebench/run.sh", "benchmarks/voicebench/typescript/src/bench.ts"),
                 notes=(
-                    "Bun runtime via run.sh. Profiles: groq (default), elevenlabs (additionally needs "
-                    "ELEVENLABS_API_KEY). Audio fixture resolved from VOICEBENCH_AUDIO_PATH or repo defaults. "
+                    "Bun runtime via run.sh. Profiles: mock (no credentials), groq (needs GROQ_API_KEY), "
+                    "elevenlabs (needs GROQ_API_KEY and ELEVENLABS_API_KEY). Audio fixture resolved from "
+                    "VOICEBENCH_AUDIO_PATH or repo defaults. "
                     "Reports avg/p95/p99 end-to-end latency; lower is better."
                 ),
             ),
@@ -2331,6 +2396,24 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_webshop_cmd,
             locate_result=_webshop_result,
             extract_score=_score_from_webshop_json,
+        ),
+        BenchmarkDefinition(
+            id="woobench",
+            display_name="WooBench",
+            description="Mystical reading conversation and revenue benchmark",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/woobench",),
+                notes=(
+                    "Default run uses the eliza TS benchmark bridge plus the LLM evaluator. "
+                    "Set mock=true or agent=dummy with evaluator=heuristic for a deterministic "
+                    "no-credential smoke run. Score is overall_score normalized from 0..100 to 0..1."
+                ),
+            ),
+            build_command=_woobench_cmd,
+            locate_result=_woobench_result,
+            extract_score=_score_from_woobench_json,
         ),
         BenchmarkDefinition(
             id="eliza-format",

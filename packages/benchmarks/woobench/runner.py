@@ -42,11 +42,13 @@ class WooBenchRunner:
         self,
         agent_fn: Callable[[list[dict[str, str]]], Any],
         evaluator_model: str = "gpt-5",
+        evaluator_mode: str = "llm",
         scenarios: Optional[list[Scenario]] = None,
         concurrency: int = 4,
     ):
         self.agent_fn = agent_fn
         self.evaluator_model = evaluator_model
+        self.evaluator_mode = evaluator_mode
         self.concurrency = concurrency
 
         if scenarios is not None:
@@ -55,7 +57,10 @@ class WooBenchRunner:
             from .scenarios import ALL_SCENARIOS
             self.scenarios = ALL_SCENARIOS
 
-        self.evaluator = WooBenchEvaluator(evaluator_model=evaluator_model)
+        self.evaluator = WooBenchEvaluator(
+            evaluator_model=evaluator_model,
+            evaluator_mode=evaluator_mode,
+        )
 
     # ------------------------------------------------------------------
     # Run methods

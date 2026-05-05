@@ -86,6 +86,8 @@ export async function fetchFromNetwork(params: {
                   "commands" | "telemetry" | "pause" | "resume" | "suggestions"
                 >;
               };
+              developerOnly?: boolean;
+              visibleInAppStore?: boolean;
             };
           }
         >;
@@ -139,6 +141,8 @@ export async function fetchFromNetwork(params: {
                 }
               : undefined,
             session: e.app.session,
+            developerOnly: e.app.developerOnly,
+            visibleInAppStore: e.app.visibleInAppStore,
           };
         }
 

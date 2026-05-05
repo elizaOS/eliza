@@ -98,6 +98,10 @@ function lazyNamedView<
 }
 
 import { fetchWithCsrf } from "./api/csrf-client";
+import {
+  type AppShellPageRegistration,
+  listAppShellPages,
+} from "./app-shell-components";
 // Static imports for views that AppWindowRenderer (and DetachedShellRoot)
 // also import statically. WHY not lazy here: a `lazy()` for a module that
 // any other importer pulls eagerly is folded back into the main chunk by
@@ -116,6 +120,7 @@ import { SkillsView } from "./components/pages/SkillsView";
 import { TasksPageView } from "./components/pages/TasksPageView";
 import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { FineTuningView } from "./components/training/injected";
+import { useIsDeveloperMode } from "./state/useDeveloperMode";
 
 // True lazy boundaries: these views are only imported here, so Rollup can
 // honour the split into separate chunks.
@@ -372,6 +377,80 @@ function TabContentView({
   );
 }
 
+interface ResolvedDynamicPage {
+  id: string;
+  pluginId: string;
+  developerOnly: boolean;
+  registration?: AppShellPageRegistration;
+  componentExport?: string;
+}
+
+/**
+ * Resolve a tab id against the dynamic registry: first the in-process
+ * `registerAppShellPage` registrations, then any loaded plugin's
+ * `app.navTabs` declaration. Returns `null` when no plugin claims the tab.
+ */
+function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
+  const { plugins } = useApp();
+  return useMemo(() => {
+    const registrations = listAppShellPages();
+    const registered = registrations.find((entry) => entry.id === tab);
+    if (registered) {
+      return {
+        id: registered.id,
+        pluginId: registered.pluginId,
+        developerOnly: registered.developerOnly === true,
+        registration: registered,
+      };
+    }
+    for (const plugin of plugins) {
+      const navTabs = plugin.app?.navTabs;
+      if (!navTabs?.length) continue;
+      for (const navTab of navTabs) {
+        if (navTab.id !== tab) continue;
+        const reg = registrations.find(
+          (entry) => entry.id === navTab.id && entry.pluginId === plugin.id,
+        );
+        return {
+          id: navTab.id,
+          pluginId: plugin.id,
+          developerOnly:
+            plugin.app?.developerOnly === true || navTab.developerOnly === true,
+          registration: reg,
+          componentExport: navTab.componentExport,
+        };
+      }
+    }
+    return null;
+  }, [plugins, tab]);
+}
+
+/**
+ * Render a dynamically-resolved plugin page. Honors:
+ *   1. An in-process registration (`registerAppShellPage`) — preferred.
+ *   2. A `componentExport` import-spec like `"@elizaos/app-wallet/ui#InventoryView"`,
+ *      loaded with dynamic `import()` and rendered via Suspense.
+ *
+ * Plugins that declare a `componentExport` without a matching
+ * registration get a small loading placeholder until the import resolves.
+ * (Until a real dynamic-import boundary is plumbed for these strings,
+ * this is a documented placeholder; the plugin can also self-register.)
+ */
+function DynamicPluginPage({ resolved }: { resolved: ResolvedDynamicPage }) {
+  if (resolved.registration) {
+    const Component = resolved.registration.Component;
+    return <Component />;
+  }
+  // No bundled registration — display a lightweight loading placeholder
+  // so the shell stays responsive. Plugins that ship bundled components
+  // should call `registerAppShellPage` at boot to avoid this path.
+  return (
+    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+      Loading {resolved.id}…
+    </div>
+  );
+}
+
 function ViewRouter({
   onCharacterHeaderActionsChange,
 }: {
@@ -380,7 +459,16 @@ function ViewRouter({
   const { tab } = useApp();
   const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
+  const dynamicPage = useResolvedDynamicPage(tab);
+  const developerModeEnabled = useIsDeveloperMode();
   const view = (() => {
+    if (dynamicPage && (developerModeEnabled || !dynamicPage.developerOnly)) {
+      return (
+        <TabContentView>
+          <DynamicPluginPage resolved={dynamicPage} />
+        </TabContentView>
+      );
+    }
     switch (tab) {
       case "chat":
         return <ChatView />;

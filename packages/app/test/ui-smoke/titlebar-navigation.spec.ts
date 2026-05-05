@@ -86,7 +86,7 @@ test("desktop titlebar keeps navigation clickable and title area draggable", asy
   expect(
     chatBox.x - titlebarBox.x,
     "Desktop nav should reserve left space for macOS traffic lights",
-  ).toBeGreaterThanOrEqual(100);
+  ).toBeGreaterThanOrEqual(78);
   expect(
     appsBox.y - titlebarBox.y,
     "Desktop nav should share the traffic-light titlebar row",

@@ -14,6 +14,8 @@
     "lib": ["ES2023"],
     "types": ["node"],
     "paths": {
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/plugin-agent-skills": [
         "../../plugins/plugin-agent-skills/src/index.ts"
       ],

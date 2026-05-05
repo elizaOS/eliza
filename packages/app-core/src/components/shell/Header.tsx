@@ -10,6 +10,7 @@ import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useMediaQuery } from "../../hooks";
 import { type AuthStatusState, useAuthStatus } from "../../hooks/useAuthStatus";
 import {
+  type DynamicNavTab,
   getTabGroups,
   isAppsToolTab,
   type TabGroup,
@@ -20,6 +21,7 @@ import {
   resolveWindowShellRoute,
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
+import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import {
@@ -77,7 +79,7 @@ const ACCESS_BADGE_CLASSNAME =
   "inline-flex h-[2.375rem] max-w-[15rem] shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-bg/45 px-2 text-[11px] font-medium leading-none text-muted shadow-none";
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
   paddingInlineStart:
-    "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 112px))",
+    "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 80px))",
   paddingInlineEnd: "0.75rem",
   paddingTop:
     "max(env(safe-area-inset-top, 0px), var(--eliza-macos-frame-top-inset, 0px))",
@@ -206,9 +208,40 @@ export function Header({
     () => plugins.some((plugin) => plugin.id === "streaming" && plugin.enabled),
     [plugins],
   );
+  const developerModeEnabled = useIsDeveloperMode();
+
+  // Plugin-contributed nav tabs from each loaded plugin's `app.navTabs`.
+  // Filter out developer-only tabs unless Developer Mode is enabled.
+  const dynamicNavTabs = useMemo<DynamicNavTab[]>(() => {
+    const out: DynamicNavTab[] = [];
+    for (const plugin of plugins) {
+      if (!plugin.enabled) continue;
+      const navTabs = plugin.app?.navTabs;
+      if (!navTabs?.length) continue;
+      const appDeveloperOnly = plugin.app?.developerOnly === true;
+      for (const navTab of navTabs) {
+        const isDeveloperOnly =
+          appDeveloperOnly || navTab.developerOnly === true;
+        if (isDeveloperOnly && !developerModeEnabled) continue;
+        out.push({
+          tabId: navTab.id,
+          label: navTab.label,
+          navGroup: navTab.group,
+        });
+      }
+    }
+    return out;
+  }, [plugins, developerModeEnabled]);
+
   const tabGroups = useMemo(
-    () => getTabGroups(streamingEnabled, walletEnabled, browserEnabled),
-    [browserEnabled, streamingEnabled, walletEnabled],
+    () =>
+      getTabGroups(
+        streamingEnabled,
+        walletEnabled,
+        browserEnabled,
+        dynamicNavTabs,
+      ),
+    [browserEnabled, streamingEnabled, walletEnabled, dynamicNavTabs],
   );
   const settingsTabGroup = useMemo(
     () => tabGroups.find((group) => group.label === "Settings") ?? null,
