@@ -293,6 +293,16 @@ for (const packagePath of localPackages) {
         packageName: rootDep,
         target: path.join(packageDir, "typescript", "node_modules", rootDep),
       });
+      // Also ensure root-level node_modules has it so ESM resolution always
+      // finds the package regardless of which symlink depth Node traverses.
+      try {
+        linkRootDependency({
+          packageName: rootDep,
+          target: path.join(repoRoot, "node_modules", rootDep),
+        });
+      } catch {
+        // Not all deps may be installed; non-fatal.
+      }
     }
   }
 }
