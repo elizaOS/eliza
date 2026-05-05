@@ -14,7 +14,8 @@
 
 import type http from "node:http";
 import type { AgentRuntime, IAgentRuntime, Plugin, Route } from "@elizaos/core";
-import { handleCodingAgentRoutes, type RouteContext } from "./api/routes.js";
+import { handleCodingAgentRoutes } from "./api/routes.js";
+import type { RouteContext } from "./api/route-utils.js";
 import {
   CODING_AGENTS_FALLBACK_ROUTE_PATHS,
   handleCodingAgentsFallback,
@@ -167,7 +168,7 @@ const dedupedPaths = ALL_PATHS.filter((entry) => {
 
 const sharedHandler = codingAgentRouteHandler();
 
-export const codingAgentRoutes: Route[] = dedupedPaths.map(
+const codingAgentRoutes: Route[] = dedupedPaths.map(
   (r) =>
     ({
       type: r.type as Route["type"],

@@ -31,8 +31,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
@@ -1136,8 +1135,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {
         subaction: null,

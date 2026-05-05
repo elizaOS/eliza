@@ -192,7 +192,7 @@ def _parse_model_spec(spec: str) -> tuple[str, str, str | None]:
 
     Examples:
         ``vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1``
-        ``openai:gpt-4o-mini``
+        ``groq:openai/gpt-oss-120b``
     """
     raw = spec.strip()
     if not raw:

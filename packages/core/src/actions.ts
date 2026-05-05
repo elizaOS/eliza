@@ -17,10 +17,10 @@ import {
 import { compressPromptDescription } from "./utils/prompt-compression";
 import {
 	encodeToonValue,
+	formatToonCapabilityRows,
 	parseToonActionParams,
 	tryParseToonValue,
 } from "./utils/toon";
-import { parseJSONObjectFromText } from "./utils.ts";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -101,11 +101,7 @@ function formatActionCallExample(example: {
 	return `User: ${example.user}\nAssistant:\n${encodeToonValue(assistantPayload)}`;
 }
 
-/**
- * Render canonical action-call examples (including <params> blocks).
- *
- * Deterministic ordering is important to keep tests stable and avoid prompt churn.
- */
+/** Render canonical TOON action-call examples. */
 export function composeActionCallExamples(
 	actionsData: Action[],
 	maxExamples: number,
@@ -181,6 +177,28 @@ function getExampleActionHints(example: ActionExample[]): string[] {
 	return [...hints];
 }
 
+function formatPromptScalar(value: unknown): string {
+	if (value == null) return "null";
+	if (typeof value === "string") {
+		return value.replace(/\s+/g, " ").trim();
+	}
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+	if (Array.isArray(value)) {
+		return value
+			.map((item) => formatPromptScalar(item))
+			.filter(Boolean)
+			.join("|");
+	}
+	if (typeof value === "object") {
+		return Object.entries(value as Record<string, unknown>)
+			.map(([key, entry]) => `${key}:${formatPromptScalar(entry)}`)
+			.join(",");
+	}
+	return String(value);
+}
+
 function formatActionExampleSummary(action: Action): string | null {
 	const examples = action.examples ?? [];
 	if (!Array.isArray(examples) || examples.length === 0) {
@@ -198,10 +216,10 @@ function formatActionExampleSummary(action: Action): string | null {
 			continue;
 		}
 		if (actionHints.length === 0) {
-			return `User: ${JSON.stringify(userMessage)} -> actions: ${action.name}`;
+			return `User: ${formatPromptScalar(userMessage)} -> actions: ${action.name}`;
 		}
 
-		return `User: ${JSON.stringify(userMessage)} -> actions: ${actionHints.join(", ")}`;
+		return `User: ${formatPromptScalar(userMessage)} -> actions: ${actionHints.join(", ")}`;
 	}
 
 	return null;
@@ -211,36 +229,24 @@ function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 	return deterministicShuffle(items, seed);
 }
 
-function formatActionSimiles(action: Action): string | null {
-	const similes = [
+function collectActionSimiles(action: Action): string[] {
+	return [
 		...new Set(
 			(action.similes ?? [])
 				.filter((simile): simile is string => typeof simile === "string")
 				.map((simile) => simile.trim()),
 		),
 	].filter((simile) => simile.length > 0);
-
-	if (similes.length === 0) {
-		return null;
-	}
-
-	return `  aliases[${similes.length}]: ${similes.join(", ")}`;
 }
 
-function formatActionTags(action: Action): string | null {
-	const tags = [
+function collectActionTags(action: Action): string[] {
+	return [
 		...new Set(
 			(action.tags ?? [])
 				.filter((tag): tag is string => typeof tag === "string")
 				.map((tag) => tag.trim()),
 		),
 	].filter((tag) => tag.length > 0 && tag !== "always-include");
-
-	if (tags.length === 0) {
-		return null;
-	}
-
-	return `  tags[${tags.length}]: ${tags.join(", ")}`;
 }
 
 function renderCompressedDescription(item: {
@@ -266,43 +272,23 @@ export function formatActionNames(actions: Action[], seed = "actions"): string {
 export function formatActions(actions: Action[], seed = "actions"): string {
 	if (!actions?.length) return "";
 
-	const actionLines = shuffleActions(
+	const actionRows = shuffleActions(
 		actions,
 		buildDeterministicSeed(seed, "descriptions"),
-	)
-		.map((action) => {
-			const lines = [
-				`- ${action.name}: ${renderCompressedDescription(action) || "No description available"}`,
-			];
-			const exampleSummary = formatActionExampleSummary(action);
-			const similes = formatActionSimiles(action);
-			const tags = formatActionTags(action);
+	).map((action) => ({
+		name: action.name,
+		description:
+			renderCompressedDescription(action) || "No description available",
+		params:
+			action.parameters && action.parameters.length > 0
+				? formatActionParameters(action.parameters)
+				: "",
+		aliases: collectActionSimiles(action),
+		tags: collectActionTags(action),
+		example: formatActionExampleSummary(action) ?? "",
+	}));
 
-			if (similes) {
-				lines.push(similes);
-			}
-
-			if (tags) {
-				lines.push(tags);
-			}
-
-			if (action.parameters && action.parameters.length > 0) {
-				lines.push(
-					`  params[${action.parameters.length}]: ${formatActionParameters(
-						action.parameters,
-					)}`,
-				);
-			}
-
-			if (exampleSummary) {
-				lines.push(`  example: ${exampleSummary}`);
-			}
-
-			return lines.join("\n");
-		})
-		.join("\n");
-
-	return `actions[${actions.length}]:\n${actionLines}`;
+	return formatToonCapabilityRows("actions", actionRows);
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
@@ -318,12 +304,12 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
 			}
 
 			if (param.schema.default !== undefined) {
-				modifiers.push(`default=${JSON.stringify(param.schema.default)}`);
+				modifiers.push(`default=${formatPromptScalar(param.schema.default)}`);
 			}
 
 			if (param.examples && param.examples.length > 0) {
 				modifiers.push(
-					`examples=${param.examples.map((v) => JSON.stringify(v)).join("|")}`,
+					`examples=${param.examples.map((v) => formatPromptScalar(v)).join("|")}`,
 				);
 			}
 
@@ -354,190 +340,11 @@ function formatParameterType(schema: ActionParameterSchema): string {
 	}
 }
 
-/**
- * Parse action parameters from either the new nested format or the legacy flat format.
- *
- * New format (preferred):
- *   <actions>
- *     <action><name>ACTION1</name><params><p1>v1</p1></params></action>
- *   </actions>
- *
- * Legacy format (backward-compat – previously stored in content.params):
- *   <ACTION1><p1>v1</p1></ACTION1>
- */
+/** Parse action parameters from the TOON action params contract. */
 export function parseActionParams(
 	paramsInput: unknown,
 ): Map<string, ActionParameters> {
-	const toonParams = parseToonActionParams(paramsInput);
-	if (toonParams.size > 0) {
-		return toonParams;
-	}
-
-	const result = new Map<string, ActionParameters>();
-	if (!paramsInput || typeof paramsInput !== "string") {
-		return result;
-	}
-
-	const paramsXml = paramsInput;
-
-	// ---- New nested format: look for <action> children ----
-	const actionChildren = extractXmlChildren(paramsXml);
-	const actionElements = actionChildren.filter((c) => c.key === "action");
-
-	if (actionElements.length > 0) {
-		for (const { value: actionXml } of actionElements) {
-			const children = extractXmlChildren(actionXml);
-			const nameEntry = children.find((c) => c.key === "name");
-			const paramsEntry = children.find((c) => c.key === "params");
-
-			if (!nameEntry) continue;
-			const actionName = nameEntry.value.trim().toUpperCase();
-			if (!actionName) continue;
-
-			if (paramsEntry) {
-				const paramPairs = extractXmlChildren(paramsEntry.value);
-				const actionParams: ActionParameters = {};
-				for (const { key: paramName, value: paramValue } of paramPairs) {
-					actionParams[paramName] = parseParamValue(paramValue);
-				}
-				if (Object.keys(actionParams).length > 0) {
-					result.set(actionName, actionParams);
-				}
-			}
-		}
-		return result;
-	}
-
-	// ---- Legacy flat format: <ACTION_NAME><param>value</param></ACTION_NAME> ----
-	for (const { key: actionName, value: actionParamsXml } of actionChildren) {
-		const params = extractXmlChildren(actionParamsXml);
-		const actionParams: ActionParameters = {};
-
-		for (const { key: paramName, value: paramValue } of params) {
-			actionParams[paramName] = parseParamValue(paramValue);
-		}
-
-		if (Object.keys(actionParams).length === 0) {
-			const structuredParams =
-				parseJSONObjectFromText(actionParamsXml) ??
-				tryParseToonValue(actionParamsXml);
-			if (
-				structuredParams &&
-				typeof structuredParams === "object" &&
-				!Array.isArray(structuredParams)
-			) {
-				for (const [paramName, paramValue] of Object.entries(
-					structuredParams,
-				)) {
-					actionParams[paramName] = toActionParameterValue(paramValue);
-				}
-			}
-		}
-
-		if (Object.keys(actionParams).length > 0) {
-			result.set(actionName.toUpperCase(), actionParams);
-		}
-	}
-
-	return result;
-}
-
-function extractXmlChildren(
-	xml: string,
-): Array<{ key: string; value: string }> {
-	const pairs: Array<{ key: string; value: string }> = [];
-	const length = xml.length;
-	let i = 0;
-
-	while (i < length) {
-		const openIdx = xml.indexOf("<", i);
-		if (openIdx === -1) break;
-
-		if (
-			xml.startsWith("</", openIdx) ||
-			xml.startsWith("<!--", openIdx) ||
-			xml.startsWith("<?", openIdx)
-		) {
-			i = openIdx + 1;
-			continue;
-		}
-
-		let j = openIdx + 1;
-		let tag = "";
-		while (j < length) {
-			const ch = xml[j];
-			if (/^[A-Za-z0-9_-]$/.test(ch)) {
-				tag += ch;
-				j++;
-				continue;
-			}
-			break;
-		}
-		if (!tag) {
-			i = openIdx + 1;
-			continue;
-		}
-
-		const startTagEnd = xml.indexOf(">", j);
-		if (startTagEnd === -1) break;
-
-		const startTagText = xml.slice(openIdx, startTagEnd + 1);
-		if (/\/\s*>$/.test(startTagText)) {
-			i = startTagEnd + 1;
-			continue;
-		}
-
-		const closeSeq = `</${tag}>`;
-		let depth = 1;
-		let searchStart = startTagEnd + 1;
-		while (depth > 0 && searchStart < length) {
-			const nextOpen = xml.indexOf(`<${tag}`, searchStart);
-			const nextClose = xml.indexOf(closeSeq, searchStart);
-			if (nextClose === -1) break;
-
-			if (nextOpen !== -1 && nextOpen < nextClose) {
-				const nestedStartEnd = xml.indexOf(">", nextOpen + 1);
-				if (nestedStartEnd === -1) break;
-				const nestedStartText = xml.slice(nextOpen, nestedStartEnd + 1);
-				if (!/\/\s*>$/.test(nestedStartText)) {
-					depth++;
-				}
-				searchStart = nestedStartEnd + 1;
-			} else {
-				depth--;
-				searchStart = nextClose + closeSeq.length;
-			}
-		}
-
-		if (depth !== 0) {
-			i = startTagEnd + 1;
-			continue;
-		}
-
-		const closeIdx = searchStart - closeSeq.length;
-		const innerRaw = xml.slice(startTagEnd + 1, closeIdx).trim();
-
-		// LLM-tolerance: if the tag is a generic `<param name="X">value</param>`,
-		// prefer the `name` attribute as the key. Some planners emit attribute-
-		// named params instead of tag-named ones, and the canonical handler
-		// expects key=actual-param-name not key="param".
-		let resolvedKey = tag;
-		if (tag.toLowerCase() === "param") {
-			const nameAttrMatch = startTagText.match(
-				/\bname\s*=\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))/,
-			);
-			const candidate =
-				nameAttrMatch?.[1] ?? nameAttrMatch?.[2] ?? nameAttrMatch?.[3];
-			if (candidate && candidate.length > 0) {
-				resolvedKey = candidate;
-			}
-		}
-
-		pairs.push({ key: resolvedKey, value: innerRaw });
-		i = searchStart;
-	}
-
-	return pairs;
+	return parseToonActionParams(paramsInput);
 }
 
 function toActionParameterValue(value: unknown): ActionParameters[string] {
@@ -565,22 +372,6 @@ function toActionParameterValue(value: unknown): ActionParameters[string] {
 	}
 
 	return value === undefined ? null : String(value);
-}
-
-function parseParamValue(value: string): string | number | boolean | null {
-	if (!value || value === "") return null;
-
-	const lower = value.toLowerCase();
-	if (lower === "true") return true;
-	if (lower === "false") return false;
-	if (lower === "null") return null;
-
-	const num = Number(value);
-	if (!Number.isNaN(num) && value.trim() !== "") {
-		return num;
-	}
-
-	return value;
 }
 
 export function validateActionParams(
@@ -662,13 +453,6 @@ function coerceActionParamValue(
 		} catch {
 			// Fall through to the permissive toon/string coercion paths below.
 		}
-	}
-
-	const xmlChildren = extractXmlChildren(trimmed);
-	if (xmlChildren.length > 0) {
-		return xmlChildren.map(({ value: childValue }) =>
-			toActionParameterValue(childValue),
-		);
 	}
 
 	const toonValue = tryParseToonValue(trimmed);

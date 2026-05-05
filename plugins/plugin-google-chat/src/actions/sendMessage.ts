@@ -11,8 +11,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { GoogleChatService } from "../service.js";
@@ -98,8 +97,7 @@ export const sendMessage: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

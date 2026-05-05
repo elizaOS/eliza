@@ -9,8 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { Collection, Message, TextChannel } from "discord.js";
@@ -41,8 +40,7 @@ const getSearchParams = async (
 		});
 
 		const parsedResponse =
-			parseKeyValueXml<Record<string, unknown>>(response) ??
-			parseJSONObjectFromText(response);
+			parseToonKeyValue<Record<string, unknown>>(response);
 		if (parsedResponse?.query) {
 			// Remove quotes from query if present
 			const cleanQuery = String(parsedResponse.query).replace(

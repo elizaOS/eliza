@@ -35,18 +35,21 @@ const PROMPT_SCAN_FILES = [
 
 const PROMPT_SCAN_DIRS = ["packages/prompts/prompts"];
 
-const STRUCTURED_FORMAT_ALLOWLIST = [
-  {
-    file: "packages/prompts/prompts/extract_secret_request.txt",
-    match: "Output JSON with:",
-    reason: "secret request extractor returns JSON/null to existing parser",
-  },
-  {
-    file: "packages/core/src/prompts.ts",
-    match: "Output JSON with:",
-    reason: "generated copy of extract_secret_request JSON/null parser prompt",
-  },
-];
+const STRUCTURED_FORMAT_ALLOWLIST = [];
+
+const ACTION_SOURCE_ROOTS = ["packages", "plugins"];
+const ACTION_SOURCE_PATH_PATTERN = /(^|\/)actions(\/|\.tsx?$)/;
+const TEST_SOURCE_PATH_PATTERN =
+  /(^|\/)(__tests__|tests?|e2e)(\/|$)|\.(test|spec)\.tsx?$/;
+const SKIP_SCAN_DIR_NAMES = new Set([
+  ".git",
+  ".turbo",
+  ".next",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+]);
 
 const FORMAT_INSTRUCTION_PATTERNS = [
   /\bReturn\s+(?:ONLY\s+|only\s+|strict\s+|valid\s+)*(?:JSON|XML)\b/i,
@@ -59,6 +62,43 @@ const FORMAT_INSTRUCTION_PATTERNS = [
 
 const NEGATED_FORMAT_PATTERN =
   /\b(?:do not|don't|no|without)\b[^\n]*(?:JSON|XML)|(?:JSON|XML)[^\n]*\b(?:not allowed|forbidden)\b/i;
+
+const ACTION_XML_PATTERNS = [
+  {
+    pattern: /\bparseKeyValueXml\b/,
+    reason: "actions must parse TOON with parseToonKeyValue",
+  },
+  {
+    pattern:
+      /\b(?:extractXmlChildren|parseXml|parseXML|fromXml|fromXML|xmlTo[A-Z_]?|XMLTo[A-Z_]?|toXml|toXML)\b/,
+    reason: "actions must not use XML parser helpers",
+  },
+  {
+    pattern: /\bXML\b|\bxml\b/,
+    reason: "actions must not mention XML as their response contract",
+  },
+  {
+    pattern:
+      /<\/?(?:response|action|actions|params|param|message|text|thought|result)(?:\s|>|\/)/,
+    reason: "actions must not include XML response tag contracts",
+  },
+];
+
+const LEGACY_LLM_XML_HELPER_PATTERNS = [
+  {
+    pattern: /\bparseKeyValueXml\b/,
+    reason: "legacy XML structured-output parser must not be used or exported",
+  },
+  {
+    pattern:
+      /\b(?:findFirstXmlBlock|extractDirectChildren|parseXmlItems|XmlTagExtractor|ResponseStreamExtractor|ValidationStreamExtractor|extractXmlParams|parseSimpleXml|extractXmlTag|buildXmlResponse|compactXmlActionsBlock)\b/,
+    reason: "legacy LLM XML parser/helper must not be present",
+  },
+  {
+    pattern: /\b(?:legacy XML|XML fallback)\b/i,
+    reason: "legacy LLM XML fallback must not be present",
+  },
+];
 
 function readJson(relativePath) {
   const filePath = path.join(REPO_ROOT, relativePath);
@@ -76,6 +116,9 @@ function listFiles(root, predicate) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (SKIP_SCAN_DIR_NAMES.has(entry.name)) {
+          continue;
+        }
         stack.push(full);
         continue;
       }
@@ -218,6 +261,23 @@ function listPromptFiles() {
   return [...files].sort((a, b) => a.localeCompare(b));
 }
 
+function listActionSourceFiles() {
+  const files = new Set();
+  for (const root of ACTION_SOURCE_ROOTS) {
+    for (const file of listFiles(root, (filePath) => {
+      const relativePath = path.relative(REPO_ROOT, filePath);
+      return (
+        /\.(?:ts|tsx)$/.test(relativePath) &&
+        ACTION_SOURCE_PATH_PATTERN.test(relativePath) &&
+        !TEST_SOURCE_PATH_PATTERN.test(relativePath)
+      );
+    })) {
+      files.add(file);
+    }
+  }
+  return [...files].sort((a, b) => a.localeCompare(b));
+}
+
 function auditPromptFormats() {
   const violations = [];
   const usedAllowlist = new Set();
@@ -259,16 +319,91 @@ function auditPromptFormats() {
   return { violations, scannedLineCount };
 }
 
+function auditActionXmlUsage() {
+  const violations = [];
+  let scannedLineCount = 0;
+  let fileCount = 0;
+
+  for (const file of listActionSourceFiles()) {
+    const absolutePath = path.join(REPO_ROOT, file);
+    if (!fs.existsSync(absolutePath)) continue;
+    fileCount += 1;
+    const lines = fs.readFileSync(absolutePath, "utf8").split(/\r?\n/);
+    lines.forEach((line, index) => {
+      scannedLineCount += 1;
+      for (const { pattern, reason } of ACTION_XML_PATTERNS) {
+        if (!pattern.test(line)) continue;
+        violations.push(
+          `${file}:${index + 1}: ${reason}: ${line.trim()}`,
+        );
+      }
+    });
+  }
+
+  return { violations, fileCount, scannedLineCount };
+}
+
+function listSourceFilesForLegacyXmlScan() {
+  return listFiles(
+    "packages",
+    (filePath) =>
+      /\.(?:ts|tsx|mjs)$/.test(filePath) &&
+      !TEST_SOURCE_PATH_PATTERN.test(path.relative(REPO_ROOT, filePath)),
+  ).concat(
+    listFiles(
+      "plugins",
+      (filePath) =>
+        /\.(?:ts|tsx|mjs)$/.test(filePath) &&
+        !TEST_SOURCE_PATH_PATTERN.test(path.relative(REPO_ROOT, filePath)),
+    ),
+  );
+}
+
+function auditLegacyLlmXmlHelpers() {
+  const violations = [];
+  let scannedLineCount = 0;
+  let fileCount = 0;
+
+  for (const file of listSourceFilesForLegacyXmlScan()) {
+    const absolutePath = path.join(REPO_ROOT, file);
+    if (!fs.existsSync(absolutePath)) continue;
+    fileCount += 1;
+    const lines = fs.readFileSync(absolutePath, "utf8").split(/\r?\n/);
+    lines.forEach((line, index) => {
+      scannedLineCount += 1;
+      for (const { pattern, reason } of LEGACY_LLM_XML_HELPER_PATTERNS) {
+        if (!pattern.test(line)) continue;
+        violations.push(`${file}:${index + 1}: ${reason}: ${line.trim()}`);
+      }
+    });
+  }
+
+  return { violations, fileCount, scannedLineCount };
+}
+
 function main() {
   const specResult = auditSpecs();
   const promptResult = auditPromptFormats();
-  const violations = [...specResult.violations, ...promptResult.violations];
+  const actionXmlResult = auditActionXmlUsage();
+  const legacyXmlResult = auditLegacyLlmXmlHelpers();
+  const violations = [
+    ...specResult.violations,
+    ...promptResult.violations,
+    ...actionXmlResult.violations,
+    ...legacyXmlResult.violations,
+  ];
 
   console.log(
     `[prompt-compliance] specs: ${specResult.itemCount} docs, ${specResult.parameterCount} params`,
   );
   console.log(
     `[prompt-compliance] prompt lines scanned: ${promptResult.scannedLineCount}`,
+  );
+  console.log(
+    `[prompt-compliance] action XML scan: ${actionXmlResult.fileCount} files, ${actionXmlResult.scannedLineCount} lines`,
+  );
+  console.log(
+    `[prompt-compliance] legacy LLM XML helper scan: ${legacyXmlResult.fileCount} files, ${legacyXmlResult.scannedLineCount} lines`,
   );
 
   if (violations.length > 0) {

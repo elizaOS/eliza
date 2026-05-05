@@ -11,8 +11,7 @@ import type {
 import {
   logger,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
@@ -139,8 +138,7 @@ User message: "${text}"
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(response) ??
-      parseJSONObjectFromText(response);
+      parseToonKeyValue<Record<string, unknown>>(response);
     if (parsed?.action) {
       return readProductIntent(parsed as HandlerOptions);
     }

@@ -11,7 +11,29 @@ import {
 } from "@elizaos/core";
 import { getActivityTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
+import {
+  getNumberValue,
+  getRecordValue,
+  getStringArrayValue,
+  getStringValue,
+  parseLinearPromptResponse,
+} from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
+
+function formatActivityDetail(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "none";
+  }
+  if (Array.isArray(value)) {
+    return value.map(formatActivityDetail).join(", ");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nestedValue]) => `${key}=${formatActivityDetail(nestedValue)}`)
+      .join("; ");
+  }
+  return String(value);
+}
 
 export const getActivityAction: Action = {
   name: "GET_LINEAR_ACTIVITY",
@@ -103,21 +125,22 @@ export const getActivityAction: Action = {
 
         if (response) {
           try {
-            const parsed = JSON.parse(
-              response
-                .replace(/^```(?:json)?\n?/, "")
-                .replace(/\n?```$/, "")
-                .trim()
-            );
+            const parsed = parseLinearPromptResponse(response);
+            if (Object.keys(parsed).length === 0) {
+              throw new Error("No fields found in model response");
+            }
 
-            if (parsed.timeRange) {
+            const timeRange = getRecordValue(parsed.timeRange);
+            if (timeRange) {
               const now = new Date();
               let fromDate: Date | undefined;
 
-              if (parsed.timeRange.from) {
-                fromDate = new Date(parsed.timeRange.from);
-              } else if (parsed.timeRange.period) {
-                switch (parsed.timeRange.period) {
+              const from = getStringValue(timeRange.from);
+              const period = getStringValue(timeRange.period);
+              if (from) {
+                fromDate = new Date(from);
+              } else if (period) {
+                switch (period) {
                   case "today":
                     fromDate = new Date(now.setHours(0, 0, 0, 0));
                     break;
@@ -144,23 +167,27 @@ export const getActivityAction: Action = {
               }
             }
 
-            if (parsed.actionTypes && parsed.actionTypes.length > 0) {
-              filters.action = parsed.actionTypes[0];
+            const actionTypes = getStringArrayValue(parsed.actionTypes);
+            if (actionTypes && actionTypes.length > 0) {
+              filters.action = actionTypes[0];
             }
 
-            if (parsed.resourceTypes && parsed.resourceTypes.length > 0) {
-              filters.resource_type = parsed.resourceTypes[0];
+            const resourceTypes = getStringArrayValue(parsed.resourceTypes);
+            if (resourceTypes && resourceTypes.length > 0) {
+              filters.resource_type = resourceTypes[0];
             }
 
-            if (parsed.resourceId) {
-              filters.resource_id = parsed.resourceId;
+            const resourceId = getStringValue(parsed.resourceId);
+            if (resourceId) {
+              filters.resource_id = resourceId;
             }
 
-            if (parsed.successFilter && parsed.successFilter !== "all") {
-              filters.success = parsed.successFilter === "success";
+            const successFilter = getStringValue(parsed.successFilter);
+            if (successFilter && successFilter !== "all") {
+              filters.success = successFilter === "success";
             }
 
-            limit = parsed.limit || 10;
+            limit = getNumberValue(parsed.limit) || 10;
           } catch (parseError) {
             logger.warn("Failed to parse activity filters:", parseError);
           }
@@ -208,7 +235,7 @@ export const getActivityAction: Action = {
           const status = item.success ? "✅" : "❌";
           const details = Object.entries(item.details)
             .filter(([key]) => key !== "filters")
-            .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+            .map(([key, value]) => `${key}: ${formatActivityDetail(value)}`)
             .join(", ");
 
           return `${index + 1}. ${status} ${item.action} on ${item.resource_type} ${item.resource_id}\n   Time: ${time}\n   ${details ? `Details: ${details}` : ""}${item.error ? `\n   Error: ${item.error}` : ""}`;
@@ -236,7 +263,7 @@ export const getActivityAction: Action = {
             resource_id: item.resource_id,
             success: item.success,
             error: item.error,
-            details: JSON.stringify(item.details) as string,
+            details: formatActivityDetail(item.details),
             timestamp:
               typeof item.timestamp === "string"
                 ? item.timestamp

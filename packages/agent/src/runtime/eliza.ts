@@ -715,7 +715,7 @@ function isLikelyOpenAiTextModel(value: string | undefined): boolean {
  *
  * A common failure mode is routing the OpenAI plugin through Groq's
  * OpenAI-compatible base URL while leaving OpenAI defaults (`gpt-5.5`,
- * `gpt-5.5-mini`) in place. Structured XML/object generation then fails during
+ * `gpt-5-mini`) in place. Structured output generation then fails during
  * message handling because Groq does not serve those model IDs.
  *
  * When we can confidently detect that state, rewrite the effective runtime
@@ -2946,7 +2946,7 @@ export async function startEliza(
   // 2f. Install the multi-account pool shims and apply selected direct API
   //     accounts before plugin resolution snapshots process.env.
   try {
-    const accountPool = await import("@elizaos/app-core/services/account-pool");
+    const accountPool = await import("@elizaos/app-core/account-pool");
     accountPool.getDefaultAccountPool();
     await accountPool.applyAccountPoolApiCredentials({
       activeBackend: resolveServiceRoutingInConfig(
@@ -3938,9 +3938,7 @@ export async function startEliza(
           );
 
           try {
-            const accountPool = await import(
-              "@elizaos/app-core/services/account-pool"
-            );
+            const accountPool = await import("@elizaos/app-core/account-pool");
             accountPool.getDefaultAccountPool();
             await accountPool.applyAccountPoolApiCredentials({
               activeBackend: resolveServiceRoutingInConfig(

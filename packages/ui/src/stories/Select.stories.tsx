@@ -43,7 +43,7 @@ export const WithGroups: Story = {
         <SelectGroup>
           <SelectLabel>OpenAI</SelectLabel>
           <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-          <SelectItem value="gpt-4">GPT-4</SelectItem>
+          <SelectItem value="gpt-5.5">GPT-4</SelectItem>
           <SelectItem value="gpt-3.5">GPT-3.5 Turbo</SelectItem>
         </SelectGroup>
         <SelectGroup>

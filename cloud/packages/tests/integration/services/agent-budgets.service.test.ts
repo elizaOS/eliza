@@ -305,7 +305,7 @@ describe("AgentBudgetService", () => {
         amount: 15,
         description: "Test deduction",
         operationType: "inference",
-        model: "gpt-4",
+        model: "gpt-5.5",
       });
 
       // Assert

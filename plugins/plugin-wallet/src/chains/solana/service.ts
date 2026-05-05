@@ -1,12 +1,6 @@
-import {
-  type IAgentRuntime,
-  logger,
-  Service,
-  ServiceType,
-  type ServiceTypeName,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type ServiceTypeName } from "@elizaos/core";
 
-interface WalletAsset {
+export interface WalletAsset {
   address: string;
   symbol: string;
   balance: string;
@@ -14,13 +8,15 @@ interface WalletAsset {
   valueUsd: number;
 }
 
-interface WalletPortfolioType {
+export interface WalletPortfolioType {
   totalValueUsd: number;
   assets: WalletAsset[];
 }
 
 import {
   AccountLayout,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
   ExtensionType,
   getAssociatedTokenAddressSync,
   getExtensionData,
@@ -42,6 +38,7 @@ import {
   PublicKey,
   SendTransactionError,
   SystemProgram,
+  type TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
@@ -50,6 +47,11 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
 import { getWalletKey } from "./keypairUtils";
+import type {
+  WalletChainHandler,
+  WalletRouterExecution,
+  WalletRouterParams,
+} from "../../types/wallet-router.js";
 import type {
   BirdeyePriceResponse,
   BirdeyeWalletTokenListResponse,
@@ -81,11 +83,64 @@ const PROVIDER_CONFIG = {
   },
 };
 
+export const SOLANA_WALLET_COMPAT_SERVICE_NAME = `${SOLANA_SERVICE_NAME}_wallet`;
+
 export type MintBalance = {
   amount: string;
   decimals: number;
   uiAmount: number;
 };
+
+export type SolanaWalletSubaction = "transfer" | "swap";
+
+export type SolanaWalletActionMode = "prepare" | "execute";
+
+export type SolanaTransferParams = {
+  tokenAddress?: string | null;
+  fromToken?: string | null;
+  recipient: string;
+  amount: string | number;
+  dryRun?: boolean;
+  mode?: SolanaWalletActionMode;
+};
+
+export type SolanaSwapParams = {
+  inputTokenCA?: string | null;
+  outputTokenCA?: string | null;
+  fromToken?: string | null;
+  toToken?: string | null;
+  inputTokenSymbol?: string | null;
+  outputTokenSymbol?: string | null;
+  amount: string | number;
+  slippageBps?: number;
+  dryRun?: boolean;
+  mode?: SolanaWalletActionMode;
+};
+
+export type SolanaWalletActionParams =
+  | ({ subaction: "transfer"; chain?: string } & SolanaTransferParams)
+  | ({ subaction: "swap"; chain?: string } & SolanaSwapParams);
+
+export type SolanaTransferResult = {
+  success: true;
+  signature: string | null;
+  dryRun: boolean;
+  kind: "sol" | "spl";
+  amount: string;
+  recipient: string;
+  tokenAddress: string | null;
+};
+
+export type SolanaSwapResult = {
+  success: true;
+  txid: string | null;
+  dryRun: boolean;
+  inputTokenCA: string;
+  outputTokenCA: string;
+  amount: string;
+};
+
+export type SolanaWalletActionResult = SolanaTransferResult | SolanaSwapResult;
 
 type KeyedParsedTokenAccount = {
   pubkey: PublicKey;
@@ -101,13 +156,13 @@ export interface ISolanaPluginServiceAPI extends Service {
     wallets: Array<{ keypair: Keypair; amount: number }>,
     signal: TradingSignal
   ) => Promise<Record<string, SwapExecutionResponse>>;
-  getPublicKey: () => PublicKey | null;
+  getPublicKey: () => Promise<PublicKey | null>;
 }
 
 export class SolanaWalletService extends Service {
-  static override readonly serviceType: string = ServiceType.WALLET;
+  static override readonly serviceType: string = SOLANA_WALLET_COMPAT_SERVICE_NAME;
   public readonly capabilityDescription =
-    "Provides standardized access to Solana wallet balances and portfolios.";
+    "Deprecated Solana wallet compatibility adapter. Use chain_solana.";
 
   private _solanaService: SolanaService | null = null;
 
@@ -127,95 +182,19 @@ export class SolanaWalletService extends Service {
   }
 
   public async getPortfolio(owner?: string): Promise<WalletPortfolioType> {
-    const publicKey = await this.solanaService.getPublicKey();
-    const publicKeyBase58 = publicKey?.toBase58();
-    if (owner && publicKeyBase58 && owner !== publicKeyBase58) {
-      throw new Error(
-        `This SolanaService instance can only get the portfolio for its configured wallet: ${publicKeyBase58}`
-      );
-    }
-    const wp: WalletPortfolio = await this.solanaService.updateWalletData(true);
-    const out: WalletPortfolioType = {
-      totalValueUsd: parseFloat(wp.totalUsd),
-      assets: wp.items.map((i) => ({
-        address: i.address,
-        symbol: i.symbol,
-        balance: Number(i.uiAmount ?? 0).toString(),
-        decimals: i.decimals,
-        valueUsd: Number(i.valueUsd ?? 0),
-      })),
-    };
-    return out;
+    return this.solanaService.getPortfolio(owner);
   }
 
   public async getBalance(assetAddress: string, owner?: string): Promise<number> {
-    const publicKey = await this.solanaService.getPublicKey();
-    const publicKeyBase58 = publicKey ? publicKey.toBase58() : null;
-    const ownerAddress: string | null = owner ?? publicKeyBase58;
-    if (!ownerAddress) {
-      return -1;
-    }
-    if (
-      assetAddress.toUpperCase() === "SOL" ||
-      assetAddress === PROVIDER_CONFIG.TOKEN_ADDRESSES.SOL
-    ) {
-      const balances = await this.solanaService.getBalancesByAddrs([ownerAddress]);
-      const balance = balances[ownerAddress] ?? 0;
-      return balance;
-    }
-    const tokensBalances: Record<string, KeyedParsedTokenAccount[]> =
-      await this.solanaService.getTokenAccountsByKeypairs([ownerAddress]);
-    const heldTokens = tokensBalances[ownerAddress] || [];
-    for (const t of heldTokens) {
-      if (t.account.data.parsed.info.mint === assetAddress) {
-        return t.account.data.parsed.info.tokenAmount.uiAmount;
-      }
-    }
-    this.runtime.logger.log("could not find", assetAddress, "in", heldTokens);
-    return -1;
+    return this.solanaService.getBalance(assetAddress, owner);
   }
 
-  public async transferSol(from: Keypair, to: PublicKey, lamports: number): Promise<string> {
-    try {
-      const payerKey = await this.solanaService.getPublicKey();
-      if (!payerKey) {
-        throw new Error("SolanaService is not initialized with a fee payer key");
-      }
-      const connection = this.solanaService.getConnection();
-
-      const transaction = new TransactionMessage({
-        payerKey,
-        recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
-        instructions: [
-          SystemProgram.transfer({
-            fromPubkey: from.publicKey,
-            toPubkey: to,
-            lamports: lamports,
-          }),
-        ],
-      }).compileToV0Message();
-
-      const versionedTransaction = new VersionedTransaction(transaction);
-
-      const serviceKeypair = await this.solanaService.getWalletKeypair();
-      versionedTransaction.sign([from, serviceKeypair]);
-
-      const signature = await connection.sendTransaction(versionedTransaction, {
-        skipPreflight: false,
-      });
-
-      const confirmation = await connection.confirmTransaction(signature, "confirmed");
-      if (confirmation.value.err) {
-        throw new Error(
-          `Transaction confirmation failed: ${JSON.stringify(confirmation.value.err)}`
-        );
-      }
-
-      return signature;
-    } catch (error) {
-      this.runtime.logger.error({ error }, "SolanaService: transferSol failed");
-      throw error;
-    }
+  public async transferSol(
+    from: Keypair,
+    to: PublicKey,
+    lamports: number | bigint
+  ): Promise<string> {
+    return this.solanaService.transferSol(from, to, lamports);
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -226,7 +205,7 @@ export class SolanaWalletService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const client = runtime.getService(ServiceType.WALLET) as SolanaService | null;
+    const client = runtime.getService(SOLANA_WALLET_COMPAT_SERVICE_NAME) as Service | null;
     if (!client) {
       logger.error("SolanaWalletService not found during static stop");
       return;
@@ -372,6 +351,504 @@ export class SolanaService extends Service {
 
   public getConnection(): Connection {
     return this.connection;
+  }
+
+  public getWalletChainHandler(): WalletChainHandler {
+    return {
+      chainId: "solana-mainnet",
+      chain: "solana",
+      name: "Solana",
+      aliases: ["solana", "sol", "mainnet-beta", "solana-mainnet"],
+      supportedActions: ["transfer", "swap"] as const,
+      tokens: [
+        {
+          symbol: "SOL",
+          address: PROVIDER_CONFIG.TOKEN_ADDRESSES.SOL,
+          decimals: 9,
+          native: true,
+        },
+      ],
+      signer: {
+        required: true,
+        kind: "solana",
+        source: "chain_solana wallet keypair",
+        description: "Required only for execute mode.",
+      },
+      dryRun: {
+        supported: true,
+        supportedActions: ["transfer", "swap"],
+        description: "Prepare mode and dry-run build route metadata without submitting.",
+      },
+      execute: (params: WalletRouterParams) => this.executeWalletRouterAction(params),
+    };
+  }
+
+  public async handleWalletAction(
+    params: SolanaWalletActionParams
+  ): Promise<SolanaWalletActionResult> {
+    if (params.chain && params.chain.toLowerCase() !== "solana") {
+      throw new Error(`Unsupported Solana wallet chain: ${params.chain}`);
+    }
+
+    if (params.subaction === "transfer") {
+      return this.transfer(params);
+    }
+    if (params.subaction === "swap") {
+      return this.swap(params);
+    }
+
+    const exhaustive: never = params;
+    throw new Error(`Unsupported Solana wallet action: ${String(exhaustive)}`);
+  }
+
+  public async executeWalletRouterAction(
+    params: WalletRouterParams
+  ): Promise<WalletRouterExecution> {
+    const mode = params.mode;
+    const dryRun = params.dryRun || mode === "prepare";
+
+    if (params.subaction === "transfer") {
+      const result = await this.transfer({
+        tokenAddress: params.fromToken,
+        recipient: params.recipient ?? "",
+        amount: params.amount ?? "",
+        mode,
+        dryRun,
+      });
+      return {
+        status: result.dryRun ? "prepared" : "submitted",
+        chain: "solana",
+        chainId: "solana-mainnet",
+        subaction: "transfer",
+        dryRun: result.dryRun,
+        mode,
+        signature: result.signature ?? undefined,
+        to: result.recipient,
+        amount: result.amount,
+        fromToken: result.tokenAddress ?? PROVIDER_CONFIG.TOKEN_ADDRESSES.SOL,
+        metadata: {
+          kind: result.kind,
+        },
+      };
+    }
+
+    const result = await this.swap({
+      inputTokenCA: params.fromToken,
+      outputTokenCA: params.toToken,
+      amount: params.amount ?? "",
+      slippageBps: params.slippageBps,
+      mode,
+      dryRun,
+    });
+    return {
+      status: result.dryRun ? "prepared" : "submitted",
+      chain: "solana",
+      chainId: "solana-mainnet",
+      subaction: "swap",
+      dryRun: result.dryRun,
+      mode,
+      signature: result.txid ?? undefined,
+      amount: result.amount,
+      fromToken: result.inputTokenCA,
+      toToken: result.outputTokenCA,
+    };
+  }
+
+  public async getPortfolio(owner?: string): Promise<WalletPortfolioType> {
+    const publicKey = await this.getPublicKey();
+    const publicKeyBase58 = publicKey?.toBase58();
+    if (owner && publicKeyBase58 && owner !== publicKeyBase58) {
+      throw new Error(
+        `This SolanaService instance can only get the portfolio for its configured wallet: ${publicKeyBase58}`
+      );
+    }
+
+    const wp = await this.updateWalletData(true);
+    return {
+      totalValueUsd: parseFloat(wp.totalUsd),
+      assets: wp.items.map((i) => ({
+        address: i.address,
+        symbol: i.symbol,
+        balance: Number(i.uiAmount ?? 0).toString(),
+        decimals: i.decimals,
+        valueUsd: Number(i.valueUsd ?? 0),
+      })),
+    };
+  }
+
+  public async getBalance(assetAddress: string, owner?: string): Promise<number> {
+    const publicKey = await this.getPublicKey();
+    const publicKeyBase58 = publicKey ? publicKey.toBase58() : null;
+    const ownerAddress = owner ?? publicKeyBase58;
+    if (!ownerAddress) {
+      return -1;
+    }
+
+    if (this.isNativeSol(assetAddress)) {
+      const balances = await this.getBalancesByAddrs([ownerAddress]);
+      return balances[ownerAddress] ?? 0;
+    }
+
+    const tokensBalances = await this.getTokenAccountsByKeypairs([ownerAddress]);
+    const heldTokens = tokensBalances[ownerAddress] || [];
+    for (const t of heldTokens) {
+      if (t.account.data.parsed.info.mint === assetAddress) {
+        return t.account.data.parsed.info.tokenAmount.uiAmount;
+      }
+    }
+
+    this.runtime.logger.log("could not find", assetAddress, "in", heldTokens);
+    return -1;
+  }
+
+  public async transferSol(
+    from: Keypair,
+    to: PublicKey,
+    lamports: number | bigint
+  ): Promise<string> {
+    try {
+      const payerKey = await this.getPublicKey();
+      if (!payerKey) {
+        throw new Error("SolanaService is not initialized with a fee payer key");
+      }
+
+      const transaction = new TransactionMessage({
+        payerKey,
+        recentBlockhash: (await this.connection.getLatestBlockhash()).blockhash,
+        instructions: [
+          SystemProgram.transfer({
+            fromPubkey: from.publicKey,
+            toPubkey: to,
+            lamports,
+          }),
+        ],
+      }).compileToV0Message();
+
+      const versionedTransaction = new VersionedTransaction(transaction);
+      const serviceKeypair = await this.getWalletKeypair();
+      versionedTransaction.sign([from, serviceKeypair]);
+
+      const signature = await this.connection.sendTransaction(versionedTransaction, {
+        skipPreflight: false,
+      });
+
+      const confirmation = await this.connection.confirmTransaction(signature, "confirmed");
+      if (confirmation.value.err) {
+        throw new Error(
+          `Transaction confirmation failed: ${JSON.stringify(confirmation.value.err)}`
+        );
+      }
+
+      return signature;
+    } catch (error) {
+      this.runtime.logger.error({ error }, "SolanaService: transferSol failed");
+      throw error;
+    }
+  }
+
+  public async transfer(params: SolanaTransferParams): Promise<SolanaTransferResult> {
+    const tokenAddress = this.normalizeSolanaTokenAddress(params.tokenAddress ?? params.fromToken);
+    const amount = this.normalizePositiveAmount(params.amount);
+    const recipientPubkey = new PublicKey(params.recipient);
+    const senderKeypair = await this.getWalletKeypair();
+    const dryRun = params.dryRun === true || params.mode === "prepare";
+    const isSolTransfer = tokenAddress === null;
+
+    const instructions: TransactionInstruction[] = [];
+
+    if (isSolTransfer) {
+      instructions.push(
+        SystemProgram.transfer({
+          fromPubkey: senderKeypair.publicKey,
+          toPubkey: recipientPubkey,
+          lamports: this.toAtomicAmount(amount, 9),
+        })
+      );
+    } else {
+      const mintPubkey = new PublicKey(tokenAddress);
+      const decimals = await this.getTokenDecimalsForTransfer(mintPubkey);
+      const adjustedAmount = this.toAtomicAmount(amount, decimals);
+      const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
+      const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
+
+      const recipientATAInfo = await this.connection.getAccountInfo(recipientATA);
+      if (!recipientATAInfo) {
+        instructions.push(
+          createAssociatedTokenAccountInstruction(
+            senderKeypair.publicKey,
+            recipientATA,
+            recipientPubkey,
+            mintPubkey
+          )
+        );
+      }
+
+      instructions.push(
+        createTransferInstruction(senderATA, recipientATA, senderKeypair.publicKey, adjustedAmount)
+      );
+    }
+
+    if (dryRun) {
+      return {
+        success: true,
+        signature: null,
+        dryRun: true,
+        kind: isSolTransfer ? "sol" : "spl",
+        amount: amount.toString(),
+        recipient: params.recipient,
+        tokenAddress,
+      };
+    }
+
+    const messageV0 = new TransactionMessage({
+      payerKey: senderKeypair.publicKey,
+      recentBlockhash: (await this.connection.getLatestBlockhash()).blockhash,
+      instructions,
+    }).compileToV0Message();
+
+    const transaction = new VersionedTransaction(messageV0);
+    transaction.sign([senderKeypair]);
+
+    const signature = await this.connection.sendTransaction(transaction);
+
+    return {
+      success: true,
+      signature,
+      dryRun: false,
+      kind: isSolTransfer ? "sol" : "spl",
+      amount: amount.toString(),
+      recipient: params.recipient,
+      tokenAddress,
+    };
+  }
+
+  public async swap(params: SolanaSwapParams): Promise<SolanaSwapResult> {
+    const inputTokenCA = this.normalizeRequiredTokenAddress(
+      params.inputTokenCA ?? params.fromToken,
+      "input token"
+    );
+    const outputTokenCA = this.normalizeRequiredTokenAddress(
+      params.outputTokenCA ?? params.toToken,
+      "output token"
+    );
+    const amount = this.normalizePositiveAmount(params.amount);
+    const dryRun = params.dryRun === true || params.mode === "prepare";
+
+    const walletPublicKey = await this.getPublicKey();
+    if (!walletPublicKey) {
+      throw new Error("SolanaService is not initialized with a wallet public key");
+    }
+
+    const swapResult = await this.buildJupiterSwapTransaction({
+      inputTokenCA,
+      outputTokenCA,
+      amount,
+      walletPublicKey,
+      slippageBps: params.slippageBps,
+    });
+
+    if (dryRun) {
+      return {
+        success: true,
+        txid: null,
+        dryRun: true,
+        inputTokenCA,
+        outputTokenCA,
+        amount: amount.toString(),
+      };
+    }
+
+    const transactionBuf = Buffer.from(swapResult.swapTransaction, "base64");
+    const transaction = VersionedTransaction.deserialize(transactionBuf);
+    const keypair = await this.getWalletKeypair();
+    if (keypair.publicKey.toBase58() !== walletPublicKey.toBase58()) {
+      throw new Error("Generated public key doesn't match expected public key");
+    }
+
+    transaction.sign([keypair]);
+
+    const latestBlockhash = await this.connection.getLatestBlockhash();
+    const txid = await this.connection.sendTransaction(transaction, {
+      skipPreflight: false,
+      maxRetries: 3,
+      preflightCommitment: "confirmed",
+    });
+
+    const confirmation = await this.connection.confirmTransaction(
+      {
+        signature: txid,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      },
+      "confirmed"
+    );
+
+    if (confirmation.value.err) {
+      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
+
+    return {
+      success: true,
+      txid,
+      dryRun: false,
+      inputTokenCA,
+      outputTokenCA,
+      amount: amount.toString(),
+    };
+  }
+
+  private isNativeSol(assetAddress: string | null | undefined): boolean {
+    if (assetAddress === null || assetAddress === undefined) return true;
+    const normalized = String(assetAddress).trim();
+    return (
+      normalized === "" ||
+      normalized.toLowerCase() === "null" ||
+      normalized.toUpperCase() === "SOL" ||
+      normalized === PROVIDER_CONFIG.TOKEN_ADDRESSES.SOL
+    );
+  }
+
+  private normalizeSolanaTokenAddress(value: string | null | undefined): string | null {
+    if (this.isNativeSol(value)) {
+      return null;
+    }
+    const normalized = String(value).trim();
+    if (!this.validateAddress(normalized)) {
+      throw new Error(`Invalid Solana token address: ${normalized}`);
+    }
+    return normalized;
+  }
+
+  private normalizeRequiredTokenAddress(value: string | null | undefined, label: string): string {
+    if (value === null || value === undefined || String(value).trim() === "") {
+      throw new Error(`Missing Solana ${label} address`);
+    }
+    const candidate = String(value).trim();
+    if (candidate.toLowerCase() === "null") {
+      throw new Error(`Missing Solana ${label} address`);
+    }
+    if (this.isNativeSol(candidate)) {
+      return PROVIDER_CONFIG.TOKEN_ADDRESSES.SOL;
+    }
+    const normalized = this.normalizeSolanaTokenAddress(candidate);
+    if (!normalized) {
+      throw new Error(`Missing Solana ${label} address`);
+    }
+    if (!this.validateAddress(normalized)) {
+      throw new Error(`Invalid Solana ${label} address: ${normalized}`);
+    }
+    return normalized;
+  }
+
+  private normalizePositiveAmount(value: string | number): BigNumber {
+    const amount = new BigNumber(String(value));
+    if (!amount.isFinite() || amount.lte(0)) {
+      throw new Error(`Invalid Solana amount: ${String(value)}`);
+    }
+    return amount;
+  }
+
+  private toAtomicAmount(amount: BigNumber, decimals: number): bigint {
+    const atomic = amount
+      .multipliedBy(new BigNumber(10).pow(decimals))
+      .integerValue(BigNumber.ROUND_FLOOR);
+    if (!atomic.isFinite() || atomic.lte(0)) {
+      throw new Error(`Invalid atomic Solana amount: ${amount.toString()}`);
+    }
+    return BigInt(atomic.toFixed(0));
+  }
+
+  private async getTokenDecimalsForTransfer(mintPubkey: PublicKey): Promise<number> {
+    const cached = await this.getDecimal(mintPubkey);
+    if (cached >= 0) {
+      return cached;
+    }
+
+    const mintInfo = await this.connection.getParsedAccountInfo(mintPubkey);
+    const mintInfoValue = mintInfo.value;
+    const mintInfoData =
+      mintInfoValue && (mintInfoValue.data as { parsed?: { info?: { decimals?: number } } });
+    const decimals = mintInfoData?.parsed?.info?.decimals;
+    if (typeof decimals !== "number") {
+      throw new Error(`Unable to fetch token decimals for ${mintPubkey.toBase58()}`);
+    }
+    this.decimalsCache.set(mintPubkey.toBase58(), decimals);
+    return decimals;
+  }
+
+  private async buildJupiterSwapTransaction(params: {
+    walletPublicKey: PublicKey;
+    inputTokenCA: string;
+    outputTokenCA: string;
+    amount: BigNumber;
+    slippageBps?: number;
+  }): Promise<{ swapTransaction: string; error?: string }> {
+    let decimals: BigNumber;
+    if (this.isNativeSol(params.inputTokenCA)) {
+      decimals = new BigNumber(9);
+    } else {
+      decimals = new BigNumber(
+        await this.getTokenDecimalsForTransfer(new PublicKey(params.inputTokenCA))
+      );
+    }
+
+    const adjustedAmount = params.amount.multipliedBy(new BigNumber(10).pow(decimals));
+    const slippageQuery =
+      params.slippageBps !== undefined
+        ? `slippageBps=${encodeURIComponent(String(params.slippageBps))}`
+        : "dynamicSlippage=true";
+    const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${encodeURIComponent(
+      params.inputTokenCA
+    )}&outputMint=${encodeURIComponent(params.outputTokenCA)}&amount=${encodeURIComponent(
+      adjustedAmount.toFixed(0)
+    )}&${slippageQuery}&maxAccounts=64`;
+
+    const fetchFn = this.runtime.fetch || globalThis.fetch;
+    const quoteResponse = await fetchFn(quoteUrl);
+    const quoteData = (await quoteResponse.json()) as {
+      error?: string;
+      swapTransaction?: string;
+    };
+
+    if (!quoteData || quoteData.error) {
+      this.runtime.logger.error({ quoteData }, "Quote error");
+      throw new Error(`Failed to get quote: ${quoteData?.error || "Unknown error"}`);
+    }
+
+    const swapRequestBody = {
+      quoteResponse: quoteData,
+      userPublicKey: params.walletPublicKey.toBase58(),
+      dynamicComputeUnitLimit: true,
+      dynamicSlippage: params.slippageBps === undefined,
+      priorityLevelWithMaxLamports: {
+        maxLamports: 4000000,
+        priorityLevel: "veryHigh",
+      },
+    };
+
+    const swapResponse = await fetchFn("https://quote-api.jup.ag/v6/swap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(swapRequestBody),
+    });
+
+    const swapData = (await swapResponse.json()) as {
+      error?: string;
+      swapTransaction?: string;
+      [key: string]: string | number | boolean | undefined;
+    };
+
+    if (!swapData?.swapTransaction) {
+      this.runtime.logger.error({ swapData }, "Swap error");
+      throw new Error(
+        `Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`
+      );
+    }
+
+    return {
+      swapTransaction: swapData.swapTransaction,
+      error: swapData.error,
+    };
   }
 
   async registerExchange(provider: ExchangeProvider) {

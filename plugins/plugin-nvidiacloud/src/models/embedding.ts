@@ -276,6 +276,8 @@ export async function handleTextEmbedding(
           runtime,
           ModelType.TEXT_EMBEDDING,
           languageModelUsage(inputTokens, outputTokens, totalTokens),
+          model,
+          "TEXT_EMBEDDING",
         );
       }
       logger.debug("[NVIDIA NIM] embeddings OK via AI SDK embed()");
@@ -342,7 +344,13 @@ export async function handleTextEmbedding(
             0,
             data.usage.total_tokens ?? data.usage.prompt_tokens ?? 0,
           );
-          emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, usage);
+          emitModelUsageEvent(
+            runtime,
+            ModelType.TEXT_EMBEDDING,
+            usage,
+            model,
+            "TEXT_EMBEDDING",
+          );
         }
         return embedding;
       }

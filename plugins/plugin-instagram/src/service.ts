@@ -1,4 +1,13 @@
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  type Content,
+  type IAgentRuntime,
+  type MessageConnectorChatContext,
+  type MessageConnectorQueryContext,
+  type MessageConnectorTarget,
+  type MessageConnectorUserContext,
+  Service,
+  type TargetInfo,
+} from "@elizaos/core";
 import { INSTAGRAM_SERVICE_NAME, MAX_DM_LENGTH } from "./constants";
 import type {
   InstagramConfig,
@@ -7,6 +16,55 @@ import type {
   InstagramThread,
   InstagramUser,
 } from "./types";
+
+const INSTAGRAM_CONNECTOR_CONTEXTS = ["social", "connectors"];
+const INSTAGRAM_CONNECTOR_CAPABILITIES = [
+  "send_message",
+  "resolve_targets",
+  "list_rooms",
+  "chat_context",
+  "user_context",
+];
+
+function normalizeInstagramQuery(value: string): string {
+  return value.trim().replace(/^@/, "").toLowerCase();
+}
+
+function scoreInstagramMatch(
+  query: string,
+  id: string,
+  labels: Array<string | null | undefined>
+): number {
+  if (!query) {
+    return 0.45;
+  }
+  if (id.toLowerCase() === query) {
+    return 1;
+  }
+
+  let bestScore = 0;
+  for (const label of labels) {
+    const normalized = label?.trim().replace(/^@/, "").toLowerCase();
+    if (!normalized) {
+      continue;
+    }
+    if (normalized === query) {
+      bestScore = Math.max(bestScore, 0.95);
+    } else if (normalized.startsWith(query)) {
+      bestScore = Math.max(bestScore, 0.85);
+    } else if (normalized.includes(query)) {
+      bestScore = Math.max(bestScore, 0.7);
+    }
+  }
+  return bestScore;
+}
+
+function getInstagramTargetMetadata(target: TargetInfo): Record<string, unknown> | undefined {
+  const metadata = (target as { metadata?: unknown }).metadata;
+  return metadata && typeof metadata === "object"
+    ? (metadata as Record<string, unknown>)
+    : undefined;
+}
 
 /**
  * Instagram Service for elizaOS
@@ -30,6 +88,41 @@ export class InstagramService extends Service {
     await service.initialize();
     await service.startService();
     return service;
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: InstagramService): void {
+    if (!serviceInstance) {
+      return;
+    }
+
+    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+    if (typeof runtime.registerMessageConnector === "function") {
+      runtime.registerMessageConnector({
+        source: "instagram",
+        label: "Instagram",
+        description: "Instagram DM connector for sending private messages to existing DM threads.",
+        capabilities: [...INSTAGRAM_CONNECTOR_CAPABILITIES],
+        supportedTargetKinds: ["thread"],
+        contexts: [...INSTAGRAM_CONNECTOR_CONTEXTS],
+        metadata: {
+          service: INSTAGRAM_SERVICE_NAME,
+          maxMessageLength: MAX_DM_LENGTH,
+        },
+        resolveTargets: serviceInstance.resolveConnectorTargets.bind(serviceInstance),
+        listRecentTargets: serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
+        listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
+        getChatContext: serviceInstance.getConnectorChatContext.bind(serviceInstance),
+        getUserContext: serviceInstance.getConnectorUserContext.bind(serviceInstance),
+        sendHandler,
+      });
+      runtime.logger.info(
+        { src: "plugin:instagram", agentId: runtime.agentId },
+        "Registered Instagram DM connector"
+      );
+      return;
+    }
+
+    runtime.registerSendHandler("instagram", sendHandler);
   }
 
   /**
@@ -267,6 +360,176 @@ export class InstagramService extends Service {
 
     // In a real implementation, this would fetch from Instagram API
     return [];
+  }
+
+  async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content
+  ): Promise<void> {
+    if (!this.isRunning) {
+      throw new Error("Instagram service is not running");
+    }
+
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      throw new Error("Instagram DM connector requires non-empty text content.");
+    }
+
+    let threadId = target.threadId ?? target.channelId;
+    const metadata = getInstagramTargetMetadata(target);
+    threadId =
+      threadId ??
+      (typeof metadata?.instagramThreadId === "string" ? metadata.instagramThreadId : undefined);
+
+    if (!threadId && target.roomId) {
+      const room = await runtime.getRoom(target.roomId);
+      const roomMetadata = room?.metadata as Record<string, unknown> | undefined;
+      threadId =
+        room?.channelId ??
+        (typeof roomMetadata?.instagramThreadId === "string"
+          ? roomMetadata.instagramThreadId
+          : undefined);
+    }
+
+    if (!threadId) {
+      throw new Error("Instagram DM connector requires a thread/channel target.");
+    }
+
+    await this.sendDirectMessage(threadId, text);
+  }
+
+  async resolveConnectorTargets(
+    query: string,
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    const normalizedQuery = normalizeInstagramQuery(query);
+    const threads = await this.getThreads();
+    return threads
+      .map((thread) => {
+        const score = scoreInstagramMatch(normalizedQuery, thread.id, [
+          thread.threadTitle,
+          ...thread.users.flatMap((user) => [user.username, user.fullName]),
+        ]);
+        return score > 0 ? this.buildThreadTarget(thread, score) : null;
+      })
+      .filter((target): target is MessageConnectorTarget => Boolean(target))
+      .slice(0, 25);
+  }
+
+  async listConnectorRooms(
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    const threads = await this.getThreads();
+    return threads.map((thread) => this.buildThreadTarget(thread, 0.5)).slice(0, 50);
+  }
+
+  async listRecentConnectorTargets(
+    context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    const targets: MessageConnectorTarget[] = [];
+    if (context.target?.channelId || context.target?.threadId) {
+      targets.push({
+        target: {
+          source: "instagram",
+          channelId: context.target.channelId ?? context.target.threadId,
+          threadId: context.target.threadId ?? context.target.channelId,
+        } as TargetInfo,
+        kind: "thread",
+        label: `Instagram thread ${context.target.channelId ?? context.target.threadId}`,
+        score: 0.95,
+      });
+    }
+    targets.push(...(await this.listConnectorRooms(context)));
+    return targets.slice(0, 25);
+  }
+
+  async getConnectorChatContext(
+    target: TargetInfo,
+    context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorChatContext | null> {
+    let threadId = target.threadId ?? target.channelId;
+    if (!threadId && target.roomId) {
+      const room = await context.runtime.getRoom(target.roomId);
+      threadId = room?.channelId;
+    }
+    if (!threadId) {
+      return null;
+    }
+
+    const messages = await this.getThreadMessages(threadId);
+    return {
+      target: {
+        source: "instagram",
+        channelId: threadId,
+        threadId,
+      } as TargetInfo,
+      label: `Instagram thread ${threadId}`,
+      recentMessages: messages.slice(-20).map((message) => ({
+        name: message.user.username,
+        text: message.text ?? "",
+        timestamp: message.timestamp.getTime(),
+        metadata: {
+          instagramMessageId: message.id,
+          instagramUserId: message.user.pk,
+        },
+      })),
+      metadata: {
+        instagramThreadId: threadId,
+      },
+    };
+  }
+
+  async getConnectorUserContext(
+    entityId: string,
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorUserContext | null> {
+    const numericId = Number.parseInt(entityId, 10);
+    if (!Number.isFinite(numericId)) {
+      return null;
+    }
+    const user = await this.getUserInfo(numericId);
+    return {
+      entityId,
+      label: user.fullName || `@${user.username}`,
+      aliases: [user.username, user.fullName].filter((value): value is string => Boolean(value)),
+      handles: {
+        instagram: user.username,
+      },
+      metadata: {
+        instagramUserId: user.pk,
+        isPrivate: user.isPrivate,
+        isVerified: user.isVerified,
+      },
+    };
+  }
+
+  private buildThreadTarget(thread: InstagramThread, score: number): MessageConnectorTarget {
+    const label =
+      thread.threadTitle ||
+      thread.users.map((user) => `@${user.username}`).join(", ") ||
+      `Instagram thread ${thread.id}`;
+    return {
+      target: {
+        source: "instagram",
+        channelId: thread.id,
+        threadId: thread.id,
+      } as TargetInfo,
+      label,
+      kind: "thread",
+      description: thread.isGroup ? "Instagram group DM thread" : "Instagram DM thread",
+      score,
+      contexts: [...INSTAGRAM_CONNECTOR_CONTEXTS],
+      metadata: {
+        instagramThreadId: thread.id,
+        isGroup: thread.isGroup,
+        users: thread.users.map((user) => ({
+          id: user.pk,
+          username: user.username,
+          fullName: user.fullName,
+        })),
+      },
+    };
   }
 
   /**

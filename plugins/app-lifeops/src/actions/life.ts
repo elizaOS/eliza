@@ -13,8 +13,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import type {
@@ -678,8 +677,7 @@ async function extractDeferredLifeDraftFollowupWithLlm(args: {
     });
     const raw = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      parseJSONObjectFromText(raw);
+      parseToonKeyValue<Record<string, unknown>>(raw);
     const mode =
       parsed && typeof parsed.mode === "string"
         ? parsed.mode.trim().toLowerCase()

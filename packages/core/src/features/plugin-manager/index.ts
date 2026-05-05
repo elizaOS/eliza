@@ -11,17 +11,12 @@ import * as types from "./types.ts";
 // --- Re-exports ---
 
 // Actions
-export { coreStatusAction } from "./actions/coreStatusAction.ts";
-export { listEjectedPluginsAction } from "./actions/listEjectedPluginsAction.ts";
 export {
 	createPluginAction,
 	type PluginMode,
+	type PluginSubaction,
 	pluginAction,
 } from "./actions/plugin.ts";
-export {
-	getPluginDetailsAction,
-	searchPluginAction,
-} from "./actions/searchPluginAction.ts";
 export type { ExtendedRuntime } from "./coreExtensions.ts";
 // Core extensions
 export {

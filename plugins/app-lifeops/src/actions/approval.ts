@@ -4,7 +4,7 @@
  * These resolve a pending `ApprovalRequest` from the LifeOps approval queue
  * (WS6). Parameter extraction is LLM-driven: the handler asks TEXT_LARGE to
  * pick the target request id and a resolution reason from the incoming
- * message plus a snapshot of the queue. The prompt is multilingual — the
+ * message plus a snapshot of the queue. The TOON prompt is multilingual — the
  * model is instructed to understand any language and to echo the reason in
  * the user's language.
  */
@@ -18,7 +18,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
@@ -27,12 +27,13 @@ import {
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { executeApprovedBookTravel } from "./book-travel-executor.js";
+import { executeApprovedBookTravel } from "./book-travel.js";
 import {
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,
 } from "./cross-channel-send.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { formatPromptValue } from "./prompt-format.js";
 
 type ApprovalIntent = "approve" | "reject";
 
@@ -45,8 +46,8 @@ function formatPending(requests: ReadonlyArray<ApprovalRequest>): string {
   if (requests.length === 0) return "(no pending requests)";
   return requests
     .map((r, i) => {
-      const payloadSummary = JSON.stringify(r.payload);
-      return `${i + 1}. id=${r.id} action=${r.action} channel=${r.channel} reason=${r.reason} payload=${payloadSummary}`;
+      const payloadSummary = formatPromptValue(r.payload, 2);
+      return `${i + 1}. id=${r.id} action=${r.action} channel=${r.channel} reason=${r.reason}\n  payload:\n${payloadSummary}`;
     })
     .join("\n");
 }
@@ -81,14 +82,14 @@ ${userText}
 Pending requests:
 ${formatPending(pending)}
 
-Respond as strict JSON with exactly these keys:
-{
-  "requestId": "<id of the single targeted request, or null if ambiguous>",
-  "reason": "<short human-readable reason in the user's language, or null if none given>"
-}`;
+Return TOON only with exactly these keys:
+requestId: id of the single targeted request, or null if ambiguous
+reason: short human-readable reason in the user's language, or null if none given`;
   // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
   const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-  const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : "");
+  const parsed = parseToonKeyValue<Record<string, unknown>>(
+    typeof raw === "string" ? raw : "",
+  );
   if (!parsed || typeof parsed !== "object") {
     return { requestId: null, reason: null };
   }

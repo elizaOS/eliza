@@ -177,26 +177,40 @@ function handleStreamingGeneration(
   modelType: TextModelType,
   generateParams: GenerateParams,
   prompt: string,
-  _modelLabel: string
+  modelName: string,
+  modelLabel: string
 ): TextStreamResult {
   const streamResult = streamText(generateParams);
+  const usagePromise = Promise.resolve(streamResult.usage).then((usage) => {
+    if (!usage) {
+      return undefined;
+    }
+
+    return emitModelUsageEvent(runtime, modelType, prompt, usage, modelName, modelLabel);
+  });
+  const ignoreUsageError = (): undefined => undefined;
+
+  async function* textStreamWithUsage(): AsyncIterable<string> {
+    let completed = false;
+    try {
+      for await (const chunk of streamResult.textStream) {
+        yield chunk;
+      }
+      completed = true;
+    } finally {
+      if (completed) {
+        await usagePromise.catch(ignoreUsageError);
+      }
+    }
+  }
 
   return {
-    textStream: streamResult.textStream,
-    text: Promise.resolve(streamResult.text),
-    usage: Promise.resolve(streamResult.usage).then((usage) => {
-      if (usage) {
-        emitModelUsageEvent(runtime, modelType, prompt, usage);
-        const inputTokens = usage.inputTokens ?? 0;
-        const outputTokens = usage.outputTokens ?? 0;
-        return {
-          promptTokens: inputTokens,
-          completionTokens: outputTokens,
-          totalTokens: inputTokens + outputTokens,
-        };
-      }
-      return undefined;
+    textStream: textStreamWithUsage(),
+    text: Promise.resolve(streamResult.text).then(async (text) => {
+      await usagePromise.catch(ignoreUsageError);
+      return text;
     }),
+    usage: usagePromise,
     finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
   };
 }
@@ -206,21 +220,27 @@ async function generateTextWithModel(
   modelType: TextModelType,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const {
-    generateParams,
-    modelName: _modelName,
-    modelLabel,
-    prompt,
-  } = buildGenerateParams(runtime, modelType, params);
+  const { generateParams, modelName, modelLabel, prompt } = buildGenerateParams(
+    runtime,
+    modelType,
+    params
+  );
 
   if (params.stream) {
-    return handleStreamingGeneration(runtime, modelType, generateParams, prompt, modelLabel);
+    return handleStreamingGeneration(
+      runtime,
+      modelType,
+      generateParams,
+      prompt,
+      modelName,
+      modelLabel
+    );
   }
 
   const response = await generateText(generateParams);
 
   if (response.usage) {
-    emitModelUsageEvent(runtime, modelType, prompt, response.usage);
+    emitModelUsageEvent(runtime, modelType, prompt, response.usage, modelName, modelLabel);
   }
 
   return response.text;

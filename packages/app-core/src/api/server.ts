@@ -134,7 +134,9 @@ import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
-import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
+
+// Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
+// Now served via walletRoutePlugin.routes (rawPath) on the runtime plugin route system.
 
 // Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
 // Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,
@@ -776,8 +778,8 @@ async function handleCompatRoute(
   // Workbench / todos routes — extracted to workbench-compat-routes.ts
   if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
 
-  // Public cached market overview for wallet empty states and cloud feeds.
-  if (await handleWalletMarketOverviewRoute(req, res)) return true;
+  // Public cached market overview for wallet empty states and cloud feeds —
+  // now served via @elizaos/plugin-wallet:routes Plugin.routes (rawPath).
   if (url.pathname.startsWith("/api/secrets/")) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {

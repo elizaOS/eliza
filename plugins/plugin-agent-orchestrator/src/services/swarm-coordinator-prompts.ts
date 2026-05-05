@@ -8,7 +8,7 @@
  * @module services/swarm-coordinator-prompts
  */
 
-import { parseKeyValueXml } from "@elizaos/core";
+import { parseToonKeyValue } from "@elizaos/core";
 
 /** Per-session task context provided to the LLM for decision-making. */
 export interface TaskContextSummary {
@@ -518,16 +518,9 @@ function normalizeCoordinationResponse(
 export function parseCoordinationResponse(
   llmOutput: string,
 ): CoordinationLLMResponse | null {
-  const parsedToon = parseKeyValueXml<Record<string, unknown>>(llmOutput);
+  const parsedToon = parseToonKeyValue<Record<string, unknown>>(llmOutput);
   const normalizedToon = normalizeCoordinationResponse(parsedToon);
   if (normalizedToon) return normalizedToon;
 
-  const jsonMatch = llmOutput.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-
-  try {
-    return normalizeCoordinationResponse(JSON.parse(jsonMatch[0]));
-  } catch {
-    return null;
-  }
+  return null;
 }

@@ -8,7 +8,13 @@
  * SEARCH_VECTORS         → POST /api/database/vectors/search
  */
 
-import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  SearchCategoryRegistration,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
@@ -444,6 +450,54 @@ interface VectorSearchResponse {
   results: VectorSearchHit[];
 }
 
+const VECTOR_SEARCH_CATEGORY: SearchCategoryRegistration = {
+  category: "vectors",
+  label: "Vector store",
+  description: "Search semantically similar memory/vector rows.",
+  contexts: ["system", "knowledge"],
+  filters: [
+    {
+      name: "table",
+      label: "Table",
+      description:
+        "Memory table to search. One of: messages, memories, facts, documents, knowledge.",
+      type: "enum",
+      options: [
+        { label: "messages", value: "messages" },
+        { label: "memories", value: "memories" },
+        { label: "facts", value: "facts" },
+        { label: "documents", value: "documents" },
+        { label: "knowledge", value: "knowledge" },
+      ],
+    },
+    {
+      name: "threshold",
+      label: "Threshold",
+      description: "Minimum similarity threshold from 0 to 1.",
+      type: "number",
+    },
+  ],
+  resultSchemaSummary:
+    "VectorSearchHit[] with id, text, similarity, roomId, entityId, createdAt, and tableName.",
+  capabilities: ["semantic", "embeddings", "database"],
+  source: "agent:database",
+};
+
+function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
+  try {
+    runtime.getSearchCategory(category, { includeDisabled: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function registerVectorSearchCategory(runtime: IAgentRuntime): void {
+  if (!hasSearchCategory(runtime, VECTOR_SEARCH_CATEGORY.category)) {
+    runtime.registerSearchCategory(VECTOR_SEARCH_CATEGORY);
+  }
+}
+
 export const searchVectorsAction: Action = {
   name: "SEARCH_VECTORS",
   similes: ["VECTOR_SEARCH", "EMBEDDING_SEARCH", "SIMILARITY_SEARCH"],
@@ -451,8 +505,13 @@ export const searchVectorsAction: Action = {
     "Search the agent's vector store for semantically similar items via /api/database/vectors/search. Embeds the query with the runtime's TEXT_EMBEDDING model and returns top-k matches with similarity scores.",
   descriptionCompressed:
     "search agent vector store semantically similar item via / api/database/vectors/search embed query w/ runtime TEXT_EMBEDDING model return top-k match w/ similarity score",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async (runtime, message) => {
+    registerVectorSearchCategory(runtime);
+    await hasOwnerAccess(runtime, message);
+    return false;
+  },
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+    registerVectorSearchCategory(runtime);
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,

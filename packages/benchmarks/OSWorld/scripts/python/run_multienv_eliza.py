@@ -11,7 +11,7 @@ Usage:
     python scripts/python/run_multienv_eliza.py \
         --provider_name docker \
         --observation_type screenshot_a11y_tree \
-        --model qwen/qwen3-32b \
+        --model openai/gpt-oss-120b \
         --max_steps 15 \
         --result_dir ./results/eliza \
         --task_id 030eeff7-b492-4218-b312-701ec99ee0cc
@@ -20,7 +20,7 @@ Usage:
     python scripts/python/run_multienv_eliza.py \
         --provider_name docker \
         --observation_type screenshot_a11y_tree \
-        --model qwen/qwen3-32b \
+        --model openai/gpt-oss-120b \
         --max_steps 15 \
         --num_envs 5 \
         --result_dir ./results/eliza
@@ -30,7 +30,7 @@ Usage:
         --provider_name vmware \
         --path_to_vm ~/Virtual\\ Machines.localized/Ubuntu.vmwarevm/Ubuntu.vmx \
         --observation_type screenshot_a11y_tree \
-        --model qwen/qwen3-32b \
+        --model openai/gpt-oss-120b \
         --max_steps 15 \
         --result_dir ./results/eliza
 """
@@ -77,8 +77,8 @@ def parse_args() -> argparse.Namespace:
                         help="VM snapshot to revert to")
 
     # Agent configuration
-    parser.add_argument("--model", type=str, default="qwen/qwen3-32b",
-                        help="LLM model to use (e.g., qwen/qwen3-32b)")
+    parser.add_argument("--model", type=str, default="openai/gpt-oss-120b",
+                        help="LLM model to use (e.g., openai/gpt-oss-120b)")
     parser.add_argument("--observation_type", type=str, default="screenshot_a11y_tree",
                         choices=["screenshot", "a11y_tree", "screenshot_a11y_tree"],
                         help="Observation type")

@@ -9,11 +9,11 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { recentConversationTexts } from "./life-recent-context.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
+import { formatPromptSection } from "./prompt-format.js";
 import { scheduleOnceTriggerTask } from "./scheduled-trigger-task.js";
 
 type ChatThreadOperation = "mute_chat" | "unmute_chat";
@@ -118,16 +118,15 @@ async function resolveChatThreadPlan(args: {
     '  "Unmute the Telegram group crypto signals." -> operation: unmute_chat; platform: telegram; chatName: crypto signals; roomId: null; durationMinutes: null; shouldAct: true; response: null',
     '  "Mute that room." -> operation: null; platform: null; chatName: null; roomId: null; durationMinutes: null; shouldAct: false; response: Which chat should I mute, and on which platform?',
     "",
-    `Current request: ${JSON.stringify(currentText)}`,
-    `Recent conversation: ${JSON.stringify(recent.join("\n"))}`,
+    formatPromptSection("Current request", currentText),
+    formatPromptSection("Recent conversation", recent.join("\n")),
   ].join("\n");
 
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(
-        typeof raw === "string" ? raw : "",
-      ) ?? parseJSONObjectFromText(typeof raw === "string" ? raw : "");
+    const parsed = parseToonKeyValue<Record<string, unknown>>(
+      typeof raw === "string" ? raw : "",
+    );
     if (!parsed) {
       return { operation: null, shouldAct: null };
     }

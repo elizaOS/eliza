@@ -2,7 +2,19 @@
  * LINE service implementation for ElizaOS.
  */
 
-import type { EventPayload, IAgentRuntime } from "@elizaos/core";
+import type {
+  Content,
+  EventPayload,
+  IAgentRuntime,
+  MessageConnectorChatContext,
+  MessageConnectorTarget,
+  MessageConnectorUserContext,
+  Metadata,
+  MetadataValue,
+  Room,
+  TargetInfo,
+  UUID,
+} from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 import { type MiddlewareConfig, messagingApi, middleware, type webhook } from "@line/bot-sdk";
 
@@ -25,13 +37,85 @@ import {
   type LineLocationMessage,
   type LineMessage,
   type LineMessageSendOptions,
+  type LineQuickReplyItem,
   type LineSendResult,
   type LineSettings,
   type LineTemplateMessage,
   type LineUser,
   MAX_LINE_BATCH_SIZE,
+  normalizeLineTarget,
   splitMessageForLine,
 } from "./types.js";
+
+function objectToMetadataValue(obj: object): MetadataValue {
+  return JSON.parse(JSON.stringify(obj)) as MetadataValue;
+}
+
+function normalizeLineQuery(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function scoreLineCandidate(values: Array<string | undefined>, query: string): number {
+  const normalized = normalizeLineQuery(query);
+  if (!normalized) {
+    return 0.45;
+  }
+  const candidates = values
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim().toLowerCase());
+  if (candidates.some((candidate) => candidate === normalized)) {
+    return 1;
+  }
+  return candidates.some((candidate) => candidate.includes(normalized)) ? 0.8 : 0;
+}
+
+function lineRoomToConnectorTarget(room: Room, score = 0.55): MessageConnectorTarget {
+  const channelId = String(room.channelId ?? "");
+  const chatType = channelId ? getChatTypeFromId(channelId) : undefined;
+  return {
+    target: {
+      source: LINE_SERVICE_NAME,
+      roomId: room.id,
+      channelId,
+    },
+    label: room.name || channelId || String(room.id),
+    kind: chatType === "user" ? "contact" : chatType || "room",
+    description: "LINE chat from stored room context",
+    score,
+    contexts: ["social", "connectors"],
+    metadata: {
+      chatType,
+      channelId,
+      roomType: room.type,
+    },
+  };
+}
+
+function quickReplyItemsFromStrings(values: unknown): LineQuickReplyItem[] | undefined {
+  if (!Array.isArray(values)) {
+    return undefined;
+  }
+  const items = values
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .slice(0, 13)
+    .map((text) => ({
+      type: "action" as const,
+      action: {
+        type: "message" as const,
+        label: text.slice(0, 20),
+        text,
+      },
+    }));
+  return items.length > 0 ? items : undefined;
+}
+
+function lineDataFromContent(content: Content): Record<string, unknown> {
+  const data = content.data as Record<string, unknown> | undefined;
+  if (data?.line && typeof data.line === "object") {
+    return data.line as Record<string, unknown>;
+  }
+  return data ?? {};
+}
 
 /**
  * LINE messaging service for ElizaOS agents.
@@ -57,6 +141,133 @@ export class LineService extends Service implements ILineService {
     const service = new LineService(runtime);
     await service.initialize();
     return service;
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, service: LineService): void {
+    const sendHandler = service.handleSendMessage.bind(service);
+
+    if (typeof runtime.registerMessageConnector === "function") {
+      runtime.registerMessageConnector({
+        source: LINE_SERVICE_NAME,
+        label: "LINE",
+        capabilities: [
+          "send_message",
+          "send_flex_message",
+          "send_location",
+          "send_template_message",
+          "quick_reply",
+        ],
+        supportedTargetKinds: ["contact", "group", "room", "channel"],
+        contexts: ["social", "connectors"],
+        description:
+          "Send LINE text, flex/card, template, quick reply, and location messages to known LINE chats.",
+        sendHandler,
+        resolveTargets: async (query, context) => {
+          const normalizedTarget = normalizeLineTarget(query);
+          const exactTarget = normalizedTarget
+            ? [
+                {
+                  target: {
+                    source: LINE_SERVICE_NAME,
+                    channelId: normalizedTarget,
+                  },
+                  label: normalizedTarget,
+                  kind:
+                    getChatTypeFromId(normalizedTarget) === "user"
+                      ? "contact"
+                      : getChatTypeFromId(normalizedTarget),
+                  score: 1,
+                  contexts: ["social", "connectors"],
+                  metadata: {
+                    chatType: getChatTypeFromId(normalizedTarget),
+                  },
+                } satisfies MessageConnectorTarget,
+              ]
+            : [];
+
+          const roomTargets = (await service.listConnectorRooms(context.runtime))
+            .map((room) => ({
+              room,
+              score: scoreLineCandidate([room.name, room.channelId, String(room.id)], query),
+            }))
+            .filter(({ score }) => score > 0)
+            .map(({ room, score }) => lineRoomToConnectorTarget(room, score));
+
+          return [...exactTarget, ...roomTargets]
+            .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+            .slice(0, 10);
+        },
+        listRecentTargets: async (context) =>
+          (await service.listConnectorRooms(context.runtime))
+            .slice(0, 10)
+            .map((room) => lineRoomToConnectorTarget(room)),
+        listRooms: async (context) =>
+          (await service.listConnectorRooms(context.runtime)).map((room) =>
+            lineRoomToConnectorTarget(room)
+          ),
+        getChatContext: async (target, context) => {
+          const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
+          const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
+          if (!channelId) {
+            return null;
+          }
+
+          const chatType = getChatTypeFromId(channelId);
+          let label = room?.name || channelId;
+          let metadata: Metadata = { chatType, channelId };
+
+          if (chatType === "group" || chatType === "room") {
+            const group = await service.getGroupInfo(channelId).catch(() => null);
+            if (group?.groupName) {
+              label = group.groupName;
+            }
+            metadata = {
+              ...metadata,
+              ...(group ? { group: objectToMetadataValue(group) } : {}),
+            };
+          } else {
+            const user = await service.getUserProfile(channelId).catch(() => null);
+            if (user?.displayName) {
+              label = user.displayName;
+            }
+            metadata = {
+              ...metadata,
+              ...(user ? { user: objectToMetadataValue(user) } : {}),
+            };
+          }
+
+          return {
+            target: {
+              source: LINE_SERVICE_NAME,
+              roomId: target.roomId,
+              channelId,
+            },
+            label,
+            summary: `LINE ${chatType} chat`,
+            metadata,
+          } satisfies MessageConnectorChatContext;
+        },
+        getUserContext: async (entityId, context) => {
+          const entity =
+            typeof context.runtime.getEntityById === "function"
+              ? await context.runtime.getEntityById(String(entityId) as UUID)
+              : null;
+          if (!entity) {
+            return null;
+          }
+          return {
+            entityId,
+            label: entity.names?.[0],
+            aliases: entity.names,
+            handles: {},
+            metadata: entity.metadata,
+          } satisfies MessageConnectorUserContext;
+        },
+      });
+      return;
+    }
+
+    runtime.registerSendHandler(LINE_SERVICE_NAME, sendHandler);
   }
 
   /**
@@ -342,7 +553,85 @@ export class LineService extends Service implements ILineService {
     return this.settings;
   }
 
+  async sendDirectMessage(target: string, content: Content): Promise<void> {
+    await this.sendConnectorContent(target, content);
+  }
+
+  async sendRoomMessage(target: string, content: Content): Promise<void> {
+    await this.sendConnectorContent(target, content);
+  }
+
   // Private methods
+
+  private async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content
+  ): Promise<void> {
+    const room = target.roomId ? await runtime.getRoom(target.roomId) : null;
+    const chatId = String(target.channelId ?? room?.channelId ?? "").trim();
+    if (!chatId) {
+      throw new Error("LINE target is missing a user, group, or room ID");
+    }
+    await this.sendConnectorContent(chatId, content);
+  }
+
+  private async sendConnectorContent(to: string, content: Content): Promise<void> {
+    const data = lineDataFromContent(content);
+    const flexMessage = data.flexMessage as LineFlexMessage | undefined;
+    if (flexMessage) {
+      const result = await this.sendFlexMessage(to, flexMessage);
+      if (!result.success) {
+        throw new Error(result.error || "LINE flex message send failed");
+      }
+      return;
+    }
+
+    const location = data.location as LineLocationMessage | undefined;
+    if (location) {
+      const result = await this.sendLocationMessage(to, location);
+      if (!result.success) {
+        throw new Error(result.error || "LINE location send failed");
+      }
+      return;
+    }
+
+    const templateMessage = data.templateMessage as LineTemplateMessage | undefined;
+    if (templateMessage) {
+      const result = await this.sendTemplateMessage(to, templateMessage);
+      if (!result.success) {
+        throw new Error(result.error || "LINE template message send failed");
+      }
+      return;
+    }
+
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      return;
+    }
+
+    const result = await this.sendMessage(to, text, {
+      quickReplyItems: quickReplyItemsFromStrings(data.quickReplies),
+    });
+    if (!result.success) {
+      throw new Error(result.error || "LINE message send failed");
+    }
+  }
+
+  private async listConnectorRooms(runtime: IAgentRuntime): Promise<Room[]> {
+    if (typeof runtime.getRoomsForParticipant !== "function") {
+      return [];
+    }
+    const roomIds = await runtime.getRoomsForParticipant(runtime.agentId).catch(() => []);
+    const rooms: Room[] = [];
+    for (const roomId of roomIds) {
+      const room = await runtime.getRoom(roomId).catch(() => null);
+      if (room?.source === LINE_SERVICE_NAME && room.channelId) {
+        rooms.push(room);
+      }
+    }
+    return rooms;
+  }
 
   private loadSettings(): LineSettings {
     if (!this.runtime) {

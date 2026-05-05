@@ -95,7 +95,7 @@ export default scenario({
       name: "snooze reminder through chat",
       room: "discord",
       text: "snooze call dentist for 30 minutes",
-      plannerIncludesAll: ["<name>life</name>", "snooze"],
+      plannerIncludesAll: ["life", "snooze"],
       responseIncludesAny: ["30", "snooze", "later"],
     },
     {

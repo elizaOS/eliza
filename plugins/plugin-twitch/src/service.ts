@@ -5,15 +5,22 @@
  */
 
 import {
+  type Content,
   type EventPayload,
   type IAgentRuntime,
   logger,
+  type MessageConnectorChatContext,
+  type MessageConnectorQueryContext,
+  type MessageConnectorTarget,
   Service,
+  type TargetInfo,
 } from "@elizaos/core";
 import { RefreshingAuthProvider, StaticAuthProvider } from "@twurple/auth";
 import { ChatClient, type ChatMessage } from "@twurple/chat";
 import {
   type ITwitchService,
+  formatChannelForDisplay,
+  MAX_TWITCH_MESSAGE_LENGTH,
   normalizeChannel,
   splitMessageForTwitch,
   stripMarkdownForTwitch,
@@ -28,6 +35,35 @@ import {
   type TwitchSettings,
   type TwitchUserInfo,
 } from "./types.js";
+
+const TWITCH_CONNECTOR_CONTEXTS = ["social", "connectors"];
+const TWITCH_CONNECTOR_CAPABILITIES = [
+  "send_message",
+  "resolve_targets",
+  "list_rooms",
+  "chat_context",
+];
+
+function normalizeTwitchConnectorQuery(value: string): string {
+  return normalizeChannel(value.trim().replace(/^@/, "")).toLowerCase();
+}
+
+function scoreTwitchChannelMatch(query: string, channel: string): number {
+  const normalized = normalizeTwitchConnectorQuery(channel);
+  if (!query) {
+    return 0.45;
+  }
+  if (normalized === query) {
+    return 1;
+  }
+  if (normalized.startsWith(query)) {
+    return 0.85;
+  }
+  if (normalized.includes(query)) {
+    return 0.7;
+  }
+  return 0;
+}
 
 /**
  * Twitch chat service for ElizaOS agents.
@@ -49,6 +85,41 @@ export class TwitchService extends Service implements ITwitchService {
     const service = new TwitchService();
     await service.initialize(runtime);
     return service;
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: TwitchService): void {
+    if (!serviceInstance) {
+      return;
+    }
+
+    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+    if (typeof runtime.registerMessageConnector === "function") {
+      runtime.registerMessageConnector({
+        source: "twitch",
+        label: "Twitch",
+        description:
+          "Twitch public chat connector for sending messages to joined channels.",
+        capabilities: [...TWITCH_CONNECTOR_CAPABILITIES],
+        supportedTargetKinds: ["channel"],
+        contexts: [...TWITCH_CONNECTOR_CONTEXTS],
+        metadata: {
+          service: TWITCH_SERVICE_NAME,
+          maxMessageLength: MAX_TWITCH_MESSAGE_LENGTH,
+        },
+        resolveTargets: serviceInstance.resolveConnectorTargets.bind(serviceInstance),
+        listRecentTargets: serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
+        listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
+        getChatContext: serviceInstance.getConnectorChatContext.bind(serviceInstance),
+        sendHandler,
+      });
+      runtime.logger.info(
+        { src: "plugin:twitch", agentId: runtime.agentId },
+        "Registered Twitch chat connector"
+      );
+      return;
+    }
+
+    runtime.registerSendHandler("twitch", sendHandler);
   }
 
   /**
@@ -389,6 +460,144 @@ export class TwitchService extends Service implements ITwitchService {
 
   getJoinedChannels(): string[] {
     return Array.from(this.joinedChannels);
+  }
+
+  async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content
+  ): Promise<void> {
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      throw new Error("Twitch connector requires non-empty text content.");
+    }
+
+    let channel = target.channelId;
+    let replyTo = target.threadId;
+
+    if (target.roomId && !channel) {
+      const room = await runtime.getRoom(target.roomId);
+      channel = room?.channelId;
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      replyTo =
+        replyTo ??
+        (typeof metadata?.twitchReplyTo === "string" ? metadata.twitchReplyTo : undefined);
+    }
+
+    await this.sendMessage(text, {
+      channel: channel ? normalizeChannel(channel) : this.getPrimaryChannel(),
+      replyTo,
+    });
+  }
+
+  async resolveConnectorTargets(
+    query: string,
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    const normalizedQuery = normalizeTwitchConnectorQuery(query);
+    return this.getConnectorChannels()
+      .map((channel) => {
+        const score = scoreTwitchChannelMatch(normalizedQuery, channel);
+        return score > 0 ? this.buildChannelTarget(channel, score) : null;
+      })
+      .filter((target): target is MessageConnectorTarget => Boolean(target))
+      .slice(0, 25);
+  }
+
+  async listConnectorRooms(
+    _context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    return this.getConnectorChannels()
+      .map((channel) => this.buildChannelTarget(channel, 0.5))
+      .slice(0, 50);
+  }
+
+  async listRecentConnectorTargets(
+    context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorTarget[]> {
+    const targets: MessageConnectorTarget[] = [];
+    const room =
+      context.roomId && typeof context.runtime.getRoom === "function"
+        ? await context.runtime.getRoom(context.roomId)
+        : null;
+    const channel = context.target?.channelId ?? room?.channelId;
+    if (channel) {
+      targets.push(this.buildChannelTarget(channel, 0.95));
+    }
+    targets.push(...(await this.listConnectorRooms(context)));
+
+    const seen = new Set<string>();
+    return targets
+      .filter((target) => {
+        const channelId = target.target.channelId;
+        if (!channelId || seen.has(channelId)) {
+          return false;
+        }
+        seen.add(channelId);
+        return true;
+      })
+      .slice(0, 25);
+  }
+
+  async getConnectorChatContext(
+    target: TargetInfo,
+    context: MessageConnectorQueryContext
+  ): Promise<MessageConnectorChatContext | null> {
+    let channel = target.channelId;
+    if (!channel && target.roomId) {
+      const room = await context.runtime.getRoom(target.roomId);
+      channel = room?.channelId;
+    }
+    channel = channel ? normalizeChannel(channel) : this.getPrimaryChannel();
+
+    return {
+      target: {
+        source: "twitch",
+        channelId: channel,
+      } as TargetInfo,
+      label: formatChannelForDisplay(channel),
+      summary:
+        "Twitch chat messages are public and visible to viewers in the channel.",
+      metadata: {
+        twitchChannel: channel,
+        botUsername: this.getBotUsername(),
+        joined: this.joinedChannels.has(channel),
+      },
+    };
+  }
+
+  private getConnectorChannels(): string[] {
+    const channels = new Set<string>();
+    if (this.settings?.channel) {
+      channels.add(normalizeChannel(this.settings.channel));
+    }
+    for (const channel of this.settings?.additionalChannels ?? []) {
+      channels.add(normalizeChannel(channel));
+    }
+    for (const channel of this.joinedChannels) {
+      channels.add(normalizeChannel(channel));
+    }
+    return Array.from(channels);
+  }
+
+  private buildChannelTarget(channel: string, score: number): MessageConnectorTarget {
+    const normalized = normalizeChannel(channel);
+    return {
+      target: {
+        source: "twitch",
+        channelId: normalized,
+      } as TargetInfo,
+      label: formatChannelForDisplay(normalized),
+      kind: "channel",
+      description: "Twitch public chat channel",
+      score,
+      contexts: [...TWITCH_CONNECTOR_CONTEXTS],
+      metadata: {
+        twitchChannel: normalized,
+        joined: this.joinedChannels.has(normalized),
+        primary: normalized === this.getPrimaryChannel(),
+      },
+    };
   }
 
   isUserAllowed(user: TwitchUserInfo): boolean {

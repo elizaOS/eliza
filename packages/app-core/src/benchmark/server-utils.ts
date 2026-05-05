@@ -336,6 +336,12 @@ export function normalizeBenchmarkContext(
   ) {
     normalized.actionSpace = normalized.action_space;
   }
+  if (
+    !Array.isArray(normalized.actionSpace) &&
+    Array.isArray(normalized.available_actions)
+  ) {
+    normalized.actionSpace = normalized.available_actions;
+  }
 
   if (normalized.task_id === undefined) {
     normalized.task_id = session.taskId;

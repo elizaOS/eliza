@@ -13,7 +13,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePrompt, parseKeyValueXml } from "../../../utils.ts";
+import { composePrompt, parseToonKeyValue } from "../../../utils.ts";
 
 const spec = requireActionSpec("CHOOSE_OPTION");
 
@@ -163,7 +163,7 @@ export const choiceAction: Action = {
 			stopSequences: [],
 		});
 
-		const parsed = parseKeyValueXml(result);
+		const parsed = parseToonKeyValue(result);
 		interface ParsedChoice {
 			taskId?: string;
 			selectedOption?: string;

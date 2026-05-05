@@ -281,7 +281,7 @@ class OpenAICompatibleMind2WebAgent:
                 or "openai/gpt-oss-120b"
             )
         if not model_name:
-            model_name = "gpt-4o-mini" if provider == "openai" else "openai/gpt-oss-120b"
+            model_name = "openai/gpt-oss-120b"
         provider_prefix = f"{provider}/"
         if model_name.lower().startswith(provider_prefix):
             return model_name[len(provider_prefix) :]

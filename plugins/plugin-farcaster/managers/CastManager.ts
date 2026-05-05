@@ -1,4 +1,11 @@
-import { createUniqueUuid, type EventPayload, EventType, type IAgentRuntime } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  type EventPayload,
+  EventType,
+  type IAgentRuntime,
+  setTrajectoryPurpose,
+  withStandaloneTrajectory,
+} from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import {
   FARCASTER_SOURCE,
@@ -83,43 +90,57 @@ export class FarcasterCastManager {
   }
 
   private async generateNewCast(): Promise<void> {
-    this.runtime.logger.info("Generating new cast");
-    try {
-      const worldId = createUniqueUuid(this.runtime, this.fid.toString());
-      const roomId = createUniqueUuid(this.runtime, `${this.fid}-home`);
-
-      const callback = standardCastHandlerCallback({
-        client: this.client,
-        runtime: this.runtime,
-        config: this.config,
-        roomId,
-        onCompletion: async (casts, _memories) => {
-          const lastCast = casts[casts.length - 1];
-          await this.runtime.setCache<LastCast>(lastCastCacheKey(this.fid), {
-            hash: lastCast.hash,
-            timestamp: new Date(lastCast.timestamp).getTime(),
-          });
+    await withStandaloneTrajectory(
+      this.runtime,
+      {
+        source: "plugin-farcaster:auto-cast",
+        metadata: {
+          platform: FARCASTER_SOURCE,
+          kind: "public_post_generation",
+          fid: this.fid,
         },
-      });
+      },
+      async () => {
+        setTrajectoryPurpose("background");
+        this.runtime.logger.info("Generating new cast");
+        try {
+          const worldId = createUniqueUuid(this.runtime, this.fid.toString());
+          const roomId = createUniqueUuid(this.runtime, `${this.fid}-home`);
 
-      await this.runtime.emitEvent(EventType.POST_GENERATED, {
-        runtime: this.runtime,
-        callback,
-        worldId,
-        userId: this.runtime.agentId,
-        roomId,
-        source: FARCASTER_SOURCE,
-      });
+          const callback = standardCastHandlerCallback({
+            client: this.client,
+            runtime: this.runtime,
+            config: this.config,
+            roomId,
+            onCompletion: async (casts, _memories) => {
+              const lastCast = casts[casts.length - 1];
+              await this.runtime.setCache<LastCast>(lastCastCacheKey(this.fid), {
+                hash: lastCast.hash,
+                timestamp: new Date(lastCast.timestamp).getTime(),
+              });
+            },
+          });
 
-      await this.runtime.emitEvent(
-        FarcasterEventTypes.CAST_GENERATED as string,
-        {
-          runtime: this.runtime,
-          source: FARCASTER_SOURCE,
-        } as EventPayload
-      );
-    } catch (error) {
-      this.runtime.logger.error({ error }, "[Farcaster] Error generating new cast");
-    }
+          await this.runtime.emitEvent(EventType.POST_GENERATED, {
+            runtime: this.runtime,
+            callback,
+            worldId,
+            userId: this.runtime.agentId,
+            roomId,
+            source: FARCASTER_SOURCE,
+          });
+
+          await this.runtime.emitEvent(
+            FarcasterEventTypes.CAST_GENERATED as string,
+            {
+              runtime: this.runtime,
+              source: FARCASTER_SOURCE,
+            } as EventPayload
+          );
+        } catch (error) {
+          this.runtime.logger.error({ error }, "[Farcaster] Error generating new cast");
+        }
+      }
+    );
   }
 }

@@ -22,6 +22,7 @@ const PLUGIN_STATE_PROVIDER_KEYWORDS = buildProviderKeywords(
 		"unloaded plugins",
 		"ready plugins",
 		"plugin errors",
+		"ejected plugins",
 		"enabled plugins",
 		"disabled plugins",
 		"protected plugins",
@@ -123,6 +124,13 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 
 		const protectedPlugins = pluginManager.getProtectedPlugins();
 		const originalPlugins = pluginManager.getOriginalPlugins();
+		const ejectedPlugins = await pluginManager.listEjectedPlugins();
+
+		if (ejectedPlugins.length > 0) {
+			sections.push(
+				`**Ejected Plugins:**\n${ejectedPlugins.map((p) => `- ${p.name} (v${p.version}) at ${p.path}`).join("\n")}`,
+			);
+		}
 
 		if (protectedPlugins.length > 0 || originalPlugins.length > 0) {
 			sections.push(
@@ -145,6 +153,7 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 				errorCount: errorPlugins.length,
 				readyCount: readyPlugins.length,
 				unloadedCount: unloadedPlugins.length,
+				ejectedCount: ejectedPlugins.length,
 				protectedPlugins,
 				originalPlugins,
 			},
@@ -160,6 +169,7 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 					isProtected: protectedPlugins.includes(p.name),
 					isOriginal: originalPlugins.includes(p.name),
 				})),
+				ejectedPlugins,
 			},
 		};
 	},

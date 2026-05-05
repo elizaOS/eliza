@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { clearActivityAction } from "./actions/clearActivity";
 import { createCommentAction } from "./actions/createComment";
 import { createIssueAction } from "./actions/createIssue";
@@ -13,6 +13,7 @@ import { linearActivityProvider } from "./providers/activity";
 import { linearIssuesProvider } from "./providers/issues";
 import { linearProjectsProvider } from "./providers/projects";
 import { linearTeamsProvider } from "./providers/teams";
+import { registerLinearSearchCategory } from "./search-category";
 import { LinearService } from "./services/linear";
 
 export const linearPlugin: Plugin = {
@@ -37,6 +38,9 @@ export const linearPlugin: Plugin = {
     linearProjectsProvider,
     linearActivityProvider,
   ],
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    registerLinearSearchCategory(runtime);
+  },
 };
 
 export { LinearService } from "./services/linear";

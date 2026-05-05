@@ -68,7 +68,7 @@ const mcpDefinitions = [
           },
           model: {
             type: "enum",
-            options: ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-6", "gemini-2.0-flash-exp"],
+            options: ["gpt-4o", "gpt-5-mini", "claude-sonnet-4-6", "gemini-2.0-flash-exp"],
             optional: true,
             default: "gpt-4o",
             description: "The AI model to use for generation",

@@ -39,6 +39,31 @@ const GENERIC_NO_RESPONSE_TEXT =
   "Sorry, I couldn't generate a response right now. Please try again.";
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const LOCAL_STORAGE_API_BASE_KEY = "elizaos_api_base";
+const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
+  "api.elizacloud.ai",
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+]);
+
+function normalizeBaseUrl(value: string | null | undefined): string {
+  const trimmed = value?.slice(0, 4096).trim() ?? "";
+  let end = trimmed.length;
+  while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
+  return trimmed.slice(0, end);
+}
+
+function isElizaCloudControlPlaneBase(value: string | null | undefined): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    return ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(
+      new URL(normalized).hostname.toLowerCase(),
+    );
+  } catch {
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Client
@@ -96,10 +121,13 @@ export class ElizaClient {
 
     const bootBase = getBootConfig().apiBase;
     const injectedBase = getElizaApiBase();
-    const storedBase =
+    const storedBaseRaw =
       typeof window !== "undefined" && window.localStorage
         ? window.localStorage.getItem(LOCAL_STORAGE_API_BASE_KEY)
         : null;
+    const storedBase = isElizaCloudControlPlaneBase(storedBaseRaw)
+      ? null
+      : storedBaseRaw;
 
     this._userSetBase = baseUrl != null;
 
@@ -180,14 +208,18 @@ export class ElizaClient {
     return this.baseUrl;
   }
 
-  setBaseUrl(baseUrl: string | null): void {
-    const trimmed = baseUrl?.slice(0, 4096).trim() ?? "";
-    let end = trimmed.length;
-    while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
-    const normalized = trimmed.slice(0, end);
+  setBaseUrl(
+    baseUrl: string | null,
+    options?: { persist?: boolean },
+  ): void {
+    const normalized = normalizeBaseUrl(baseUrl);
+    const persist = options?.persist !== false;
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.disconnectWs();
+    if (!persist) {
+      return;
+    }
     // Update boot config so other consumers (resolveApiUrl, etc.) see the new base.
     const config = getBootConfig();
     setBootConfig({ ...config, apiBase: normalized || undefined });

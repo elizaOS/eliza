@@ -85,7 +85,7 @@ export async function setupScenario(
   // Register mock services for testing
   // The real DEX plugins are not properly registering their services currently
   const { registerMockDexServices } = await import(
-    "../services/MockLpService.ts"
+    "../services/__tests__/MockLpService.ts"
   );
   await registerMockDexServices(runtime);
 

@@ -106,12 +106,115 @@ export const kaminoPoolProvider: Provider = {
   },
 };
 
+function asPromptRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function formatPoolDataForPrompt(poolData: unknown): string {
+  if (!poolData) {
+    return "pool_status: not found";
+  }
+
+  const pool = asPromptRecord(poolData);
+  const lines = [
+    "pool_status: found",
+    `address: ${formatPromptValue(pool.address)}`,
+    `last_updated: ${formatPromptValue(pool.timestamp)}`,
+  ];
+
+  if (pool.note) {
+    lines.push(`note: ${formatPromptValue(pool.note)}`);
+  }
+
+  if (pool.strategy) {
+    const strategy = asPromptRecord(pool.strategy);
+    const positions = Array.isArray(strategy.positions)
+      ? strategy.positions
+      : [];
+    lines.push(
+      "strategy:",
+      `  address: ${formatPromptValue(strategy.address)}`,
+      `  type: ${formatPromptValue(strategy.strategyType)}`,
+      `  tvl_usd: ${formatPromptValue(strategy.estimatedTvl)}`,
+      `  volume_24h_usd: ${formatPromptValue(strategy.volume24h)}`,
+      `  apy_percent: ${formatPromptValue(strategy.apy)}`,
+      `  fee_tier: ${formatPromptValue(strategy.feeTier)}`,
+      `  rebalancing: ${formatPromptValue(strategy.rebalancing)}`,
+      `  last_rebalance: ${formatPromptValue(strategy.lastRebalance)}`,
+      `  token_a: ${formatPromptValue(strategy.tokenA)}`,
+      `  token_b: ${formatPromptValue(strategy.tokenB)}`,
+      `  position_count: ${positions.length}`,
+    );
+
+    positions.forEach((positionData, index) => {
+      const position = asPromptRecord(positionData);
+      lines.push(
+        `positions[${index}]: type=${formatPromptValue(position.type)}, range=${formatPromptValue(position.range)}, liquidity_usd=${formatPromptValue(position.liquidity)}, fees_earned_usd=${formatPromptValue(position.feesEarned)}`,
+      );
+    });
+  }
+
+  if (pool.tokenInfo) {
+    const tokenInfo = asPromptRecord(pool.tokenInfo);
+    lines.push(
+      "token_info:",
+      `  name: ${formatPromptValue(tokenInfo.name)}`,
+      `  symbol: ${formatPromptValue(tokenInfo.symbol)}`,
+      `  address: ${formatPromptValue(tokenInfo.address)}`,
+      `  price_usd: ${formatPromptValue(tokenInfo.price)}`,
+      `  liquidity_usd: ${formatPromptValue(tokenInfo.liquidity)}`,
+      `  market_cap_usd: ${formatPromptValue(tokenInfo.marketCap)}`,
+      `  volume_24h_usd: ${formatPromptValue(tokenInfo.volume24h)}`,
+      `  price_change_24h_percent: ${formatPromptValue(tokenInfo.priceChange24h)}`,
+      `  decimals: ${formatPromptValue(tokenInfo.decimals)}`,
+    );
+  }
+
+  if (pool.metrics) {
+    const metrics = asPromptRecord(pool.metrics);
+    lines.push(
+      "metrics:",
+      `  total_value_locked_usd: ${formatPromptValue(metrics.totalValueLocked)}`,
+      `  volume_24h_usd: ${formatPromptValue(metrics.volume24h)}`,
+      `  apy_percent: ${formatPromptValue(metrics.apy)}`,
+      `  fee_tier: ${formatPromptValue(metrics.feeTier)}`,
+      `  rebalancing: ${formatPromptValue(metrics.rebalancing)}`,
+      `  position_count: ${formatPromptValue(metrics.positionCount)}`,
+      `  last_rebalance: ${formatPromptValue(metrics.lastRebalance)}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function formatPromptValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "N/A";
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "N/A";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return String(value);
+  }
+
+  return String(value);
+}
+
 /**
  * Generate detailed pool report
  */
 async function generatePoolReport(
   runtime: IAgentRuntime,
-  poolData: any,
+  poolData: unknown,
   _kaminoLiquidityService: KaminoLiquidityService,
 ): Promise<string> {
   let report = "";
@@ -213,14 +316,14 @@ async function generatePoolReport(
  */
 async function generateEnhancedPoolAnalysis(
   runtime: IAgentRuntime,
-  poolData: any,
+  poolData: unknown,
 ): Promise<string> {
   try {
     // Create a focused prompt for the LLM
     const analysisPrompt = `You are a professional DeFi analyst specializing in Kamino Finance liquidity pools. Generate a concise, insightful analysis for the pool with address ${poolData.address}.
 
 POOL DATA:
-${JSON.stringify(poolData, null, 2)}
+${formatPoolDataForPrompt(poolData)}
 
 Please provide a brief but comprehensive analysis that includes:
 

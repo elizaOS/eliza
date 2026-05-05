@@ -8,8 +8,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import {
@@ -101,8 +100,7 @@ export const sendReaction: Action = {
       });
 
       const parsedResponse =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (
         parsedResponse?.emoji &&
         parsedResponse?.targetTimestamp &&

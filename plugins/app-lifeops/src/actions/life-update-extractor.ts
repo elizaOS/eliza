@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { parseJSONObjectFromText, parseKeyValueXml } from "@elizaos/core";
+import { parseToonKeyValue } from "@elizaos/core";
 import { runExtractorPipeline } from "./extractor-pipeline.js";
 
 const VALID_CADENCE_KINDS = new Set([
@@ -39,8 +39,7 @@ function promptText(value: string): string {
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
   return (
-    parseKeyValueXml<Record<string, unknown>>(raw) ??
-    parseJSONObjectFromText(raw)
+    parseToonKeyValue<Record<string, unknown>>(raw)
   );
 }
 

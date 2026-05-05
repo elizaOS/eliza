@@ -311,7 +311,7 @@ async def social_alpha_model_handler(
     if not isinstance(runtime_model, str):
         runtime_model = ""
     env_model = os.environ.get("OPENAI_LARGE_MODEL", "")
-    model = str(params.get("model") or runtime_model or env_model or "gpt-4o-mini")
+    model = str(params.get("model") or runtime_model or env_model or "openai/gpt-oss-120b")
     temperature = float(params.get("temperature", 0.0))
     max_tokens = int(params.get("max_tokens", params.get("maxTokens", 4096)))
 

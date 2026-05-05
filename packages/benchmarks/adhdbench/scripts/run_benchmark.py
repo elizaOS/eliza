@@ -90,7 +90,7 @@ def _configure_bridge_model_env(model_name: str | None) -> None:
 
     model = (model_name or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
     if not model:
-        model = "openai/gpt-oss-120b" if provider in {"groq", "openrouter"} else "gpt-4o-mini"
+        model = "openai/gpt-oss-120b"
 
     if provider:
         os.environ["BENCHMARK_MODEL_PROVIDER"] = provider

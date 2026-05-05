@@ -79,7 +79,7 @@ export function getModelOptions(): {
       description: "Flagship OpenAI model for coding and reasoning.",
     },
     {
-      id: "openai/gpt-5.5-mini",
+      id: "openai/gpt-5-mini",
       name: "GPT-5.5 Mini",
       provider: "OpenAI",
       description: "High-volume OpenAI mini model.",

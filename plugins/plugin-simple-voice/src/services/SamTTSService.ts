@@ -3,12 +3,12 @@ import SamJs from "sam-js";
 import {
   DEFAULT_SAM_OPTIONS,
   type HardwareBridgeService,
-  SAMServiceType,
   type SamTTSOptions,
+  TTS_SERVICE_TYPE,
 } from "../types";
 
 export class SamTTSService extends Service {
-  static serviceType = SAMServiceType.SAM_TTS;
+  static serviceType = TTS_SERVICE_TYPE;
   protected declare runtime: IAgentRuntime;
 
   static async start(runtime: IAgentRuntime): Promise<SamTTSService> {

@@ -9,8 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import { PermissionsBitField, type TextChannel } from "discord.js";
@@ -46,7 +45,7 @@ const getChannelInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
+		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
 			channelIdentifier: string;
 			messageCount: number;
 			summarize?: boolean;

@@ -5,8 +5,8 @@
  * triggers a `WifiManager.startScan` on Android (or reuses a recent scan if
  * within `maxAge` of the previous one) and reads `scanResults`. Requires
  * `ACCESS_FINE_LOCATION` to be granted on device for the platform to
- * populate the list. Session-gated at the plugin level; web/iOS fallback
- * returns an empty list.
+ * populate the list. The agent Android runtime adapter adds hosted-app
+ * session gating; web/iOS fallback returns an empty list.
  */
 
 import { WiFi } from "@elizaos/capacitor-wifi";

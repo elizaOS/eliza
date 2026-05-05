@@ -14,8 +14,7 @@ import {
   composePromptFromState,
   logger,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import type { IMessageService } from "../service.js";
 import { IMESSAGE_SERVICE_NAME, isValidIMessageTarget, normalizeIMessageTarget } from "../types.js";
@@ -139,8 +138,7 @@ export const sendMessage: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsed?.text) {
         msgInfo = {
           text: String(parsed.text),

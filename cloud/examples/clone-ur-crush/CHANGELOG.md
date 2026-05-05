@@ -9,7 +9,7 @@
 
 **Models Used:**
 - Groq: `llama-3.3-70b-versatile` (chat), `llama-3.2-90b-vision-preview` (vision)
-- OpenAI: `gpt-4o-mini` (chat/vision), `dall-e-3` (images)
+- OpenAI: `gpt-5-mini` (chat/vision), `dall-e-3` (images)
 
 ### 📱 Enhanced Mobile Experience
 - **Responsive Design**: Optimized for all screen sizes from mobile to desktop

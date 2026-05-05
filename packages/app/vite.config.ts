@@ -111,6 +111,19 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function resolvePackageExportTarget(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const record = value as Record<string, unknown>;
+  for (const condition of ["source", "types", "import", "default"]) {
+    const target = record[condition];
+    if (typeof target === "string") return target;
+  }
+
+  return null;
+}
+
 function createWorkspacePackageAliases(packageRoots: string[]) {
   const aliases = [];
   for (const packageRoot of packageRoots) {
@@ -128,12 +141,13 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
       if (!pkgName) continue;
       const pkgDir = path.dirname(pkgPath);
       for (const [key, value] of Object.entries(pkg.exports || {})) {
-        if (typeof value !== "string") continue;
+        const exportTarget = resolvePackageExportTarget(value);
+        if (!exportTarget) continue;
         const aliasKey =
           key === "." ? pkgName : `${pkgName}/${key.replace(/^\.\//, "")}`;
         aliases.push({
           find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
-          replacement: path.resolve(pkgDir, value),
+          replacement: path.resolve(pkgDir, exportTarget),
         });
       }
       aliases.push({
@@ -1630,18 +1644,16 @@ export default defineConfig({
         const sharedPkg = JSON.parse(fs.readFileSync(sharedPkgPath, "utf8"));
         const aliases = [];
         for (const [key, value] of Object.entries(sharedPkg.exports || {})) {
-          if (typeof value === "string") {
-            const aliasKey =
-              key === "."
-                ? "@elizaos/shared"
-                : `@elizaos/shared/${key.replace(/^\.\//, "")}`;
-            aliases.push({
-              find: new RegExp(
-                `^${aliasKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-              ),
-              replacement: path.resolve(sharedPkgDir, value),
-            });
-          }
+          const exportTarget = resolvePackageExportTarget(value);
+          if (!exportTarget) continue;
+          const aliasKey =
+            key === "."
+              ? "@elizaos/shared"
+              : `@elizaos/shared/${key.replace(/^\.\//, "")}`;
+          aliases.push({
+            find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
+            replacement: path.resolve(sharedPkgDir, exportTarget),
+          });
         }
         return aliases;
       })(),
@@ -1662,30 +1674,30 @@ export default defineConfig({
         const generatedAliases = [];
 
         for (const [key, value] of Object.entries(appCorePkg.exports || {})) {
-          if (typeof value === "string") {
-            const aliasKey =
-              key === "."
-                ? "@elizaos/app-core"
-                : `@elizaos/app-core/${key.replace(/^\.\//, "")}`;
-            // Keep the renderer on a browser-safe entry. The package root barrel
-            // re-exports server modules that pull Node-only code like sharp into
-            // the Vite client graph.
-            const targetPath =
-              key === "."
-                ? appCoreBrowserEntry
-                : path.resolve(appCorePkgDir, value);
+          const exportTarget = resolvePackageExportTarget(value);
+          if (!exportTarget) continue;
+          const aliasKey =
+            key === "."
+              ? "@elizaos/app-core"
+              : `@elizaos/app-core/${key.replace(/^\.\//, "")}`;
+          // Keep the renderer on a browser-safe entry. The package root barrel
+          // re-exports server modules that pull Node-only code like sharp into
+          // the Vite client graph.
+          const targetPath =
+            key === "."
+              ? appCoreBrowserEntry
+              : path.resolve(appCorePkgDir, exportTarget);
 
+          generatedAliases.push({
+            find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
+            replacement: targetPath,
+          });
+          // Also map .js extension for users importing it as .js
+          if (!aliasKey.endsWith(".js") && !aliasKey.endsWith(".css")) {
             generatedAliases.push({
-              find: new RegExp(`^${aliasKey}$`),
+              find: new RegExp(`^${escapeRegExp(aliasKey)}\\.js$`),
               replacement: targetPath,
             });
-            // Also map .js extension for users importing it as .js
-            if (!aliasKey.endsWith(".js") && !aliasKey.endsWith(".css")) {
-              generatedAliases.push({
-                find: new RegExp(`^${aliasKey}\\.js$`),
-                replacement: targetPath,
-              });
-            }
           }
         }
 

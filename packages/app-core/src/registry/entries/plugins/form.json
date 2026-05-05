@@ -1,7 +1,8 @@
 {
   "id": "form",
   "name": "Form",
-  "description": "Structured conversational forms — FORM service, form context provider, and form evaluator built into elizaOS core as an advanced capability.",
+  "description": "Structured conversational forms — FORM service, form context provider, form evaluator, and restore action provided by @elizaos/plugin-form.",
+  "npmName": "@elizaos/plugin-form",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
   "tags": ["form", "conversational", "data-collection"],

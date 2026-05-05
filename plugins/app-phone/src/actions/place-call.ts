@@ -5,9 +5,9 @@
  * any other platform's web fallback rejects, which surfaces as a failed action
  * rather than a silent no-op.
  *
- * Session gating is applied at the plugin level via
- * `gatePluginSessionForHostedApp`, so this action only validates while the
- * Phone overlay app is the active session.
+ * Session gating is applied by the agent Android runtime adapter, so this
+ * action only validates while the Phone overlay app is the active session
+ * once registered in the mobile runtime.
  */
 
 import { Phone } from "@elizaos/capacitor-phone";

@@ -3,8 +3,9 @@ import type {
   JsonValue,
   ModelTypeName,
   ObjectGenerationParams,
+  RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 import { generateObject, type LanguageModel } from "ai";
 import { createOpenAIClient } from "../providers";
 import { getLargeModel, getSmallModel } from "../utils/config";
@@ -37,11 +38,28 @@ async function generateObjectByModelType(
   }
 
   const model = openai.chat(modelName);
-  const { object, usage } = await generateObject({
-    model,
-    output: "no-schema",
-    prompt: params.prompt,
-    experimental_repairText: getJsonRepairFunction(),
+  const details: RecordLlmCallDetails = {
+    model: modelName,
+    systemPrompt: "",
+    userPrompt: params.prompt,
+    temperature: params.temperature ?? 0,
+    maxTokens: 8192,
+    purpose: "external_llm",
+    actionType: "ai.generateObject",
+  };
+  const { object, usage } = await recordLlmCall(runtime, details, async () => {
+    const result = await generateObject({
+      model,
+      output: "no-schema",
+      prompt: params.prompt,
+      experimental_repairText: getJsonRepairFunction(),
+    });
+    details.response = JSON.stringify(result.object);
+    if (result.usage) {
+      details.promptTokens = result.usage.inputTokens ?? 0;
+      details.completionTokens = result.usage.outputTokens ?? 0;
+    }
+    return result;
   });
 
   if (usage) {

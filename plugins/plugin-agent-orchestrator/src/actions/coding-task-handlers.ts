@@ -130,6 +130,34 @@ function truncateForPrompt(value: string, maxChars: number): string {
   return `${value.slice(0, maxChars - 15).trimEnd()}\n...[truncated]`;
 }
 
+function formatUnknownForPrompt(value: unknown, indent = 0): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  const pad = " ".repeat(indent);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const formatted = formatUnknownForPrompt(item, indent + 2);
+        return `${pad}- ${formatted.replace(/\n/g, `\n${pad}  `)}`;
+      })
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => {
+        const formatted = formatUnknownForPrompt(entry, indent + 2);
+        return formatted.includes("\n")
+          ? `${pad}${key}:\n${formatted}`
+          : `${pad}${key}: ${formatted}`;
+      })
+      .join("\n");
+  }
+  return String(value);
+}
+
 function stringifyPromptValue(value: unknown, maxChars: number): string {
   if (typeof value === "string") {
     return truncateForPrompt(value.trim(), maxChars);
@@ -137,11 +165,7 @@ function stringifyPromptValue(value: unknown, maxChars: number): string {
   if (value === undefined || value === null) {
     return "";
   }
-  try {
-    return truncateForPrompt(JSON.stringify(value, null, 2), maxChars);
-  } catch {
-    return truncateForPrompt(String(value), maxChars);
-  }
+  return truncateForPrompt(formatUnknownForPrompt(value), maxChars);
 }
 
 function formatCharacterBio(bio: unknown): string {

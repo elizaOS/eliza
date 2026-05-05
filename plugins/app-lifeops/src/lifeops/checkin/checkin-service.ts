@@ -127,6 +127,64 @@ function formatDurationMinutes(durationMin: number | null): string | null {
   return `${hours}h${minutes}m`;
 }
 
+function isPromptRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatPromptScalar(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  const text =
+    value instanceof Date ? value.toISOString() : String(value).trim();
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function appendPromptToonValue(
+  lines: string[],
+  key: string,
+  value: unknown,
+  indent = 0,
+): void {
+  const prefix = "  ".repeat(indent);
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      lines.push(`${prefix}${key}: []`);
+      return;
+    }
+    value.forEach((entry, index) => {
+      appendPromptToonValue(lines, `${key}[${index}]`, entry, indent);
+    });
+    return;
+  }
+  if (isPromptRecord(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      lines.push(`${prefix}${key}: {}`);
+      return;
+    }
+    lines.push(`${prefix}${key}:`);
+    for (const [childKey, childValue] of entries) {
+      appendPromptToonValue(lines, childKey, childValue, indent + 1);
+    }
+    return;
+  }
+  lines.push(`${prefix}${key}: ${formatPromptScalar(value)}`);
+}
+
+function formatCheckinReportForPrompt(
+  report: Omit<CheckinReport, "summaryText">,
+): string {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(report)) {
+    appendPromptToonValue(lines, key, value);
+  }
+  return lines.join("\n");
+}
+
 /**
  * Build the LLM prompt for a check-in summary. Exported for direct unit
  * testing of prompt content (especially the night-only sleep recap section).
@@ -169,7 +227,13 @@ export function buildCheckinSummaryPrompt(
     );
   }
 
-  lines.push("", "Report JSON:", JSON.stringify(report), "", "Summary:");
+  lines.push(
+    "",
+    "Report TOON:",
+    formatCheckinReportForPrompt(report),
+    "",
+    "Summary:",
+  );
   return lines.join("\n");
 }
 

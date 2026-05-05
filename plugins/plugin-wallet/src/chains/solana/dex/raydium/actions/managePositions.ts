@@ -7,8 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelClass,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
   settings,
 } from "@elizaos/core";
@@ -212,7 +211,7 @@ export async function extractAndValidateConfiguration(
 
   try {
     const configuration =
-      parseKeyValueXml<Record<string, unknown>>(content) ?? parseJSONObjectFromText(content);
+      parseToonKeyValue<Record<string, unknown>>(content);
     if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
       throw new Error("Configuration must be a structured object");
     }

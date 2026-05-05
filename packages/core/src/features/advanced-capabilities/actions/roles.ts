@@ -14,13 +14,13 @@ import type {
 	World,
 } from "../../../types/index.ts";
 import { ChannelType, ModelType } from "../../../types/index.ts";
-import { composePrompt, parseKeyValueXml } from "../../../utils.ts";
+import { composePrompt, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_ROLE");
 
 /** Shape of individual assignment in structured responses. */
-interface RoleAssignmentXml {
+interface RoleAssignmentToon {
 	entityId?: string;
 	newRole?: string;
 }
@@ -29,19 +29,19 @@ interface RoleAssignmentXml {
 interface RoleExtractionResult {
 	assignments?:
 		| {
-				assignment?: RoleAssignmentXml | RoleAssignmentXml[];
+				assignment?: RoleAssignmentToon | RoleAssignmentToon[];
 		  }
-		| RoleAssignmentXml[];
+		| RoleAssignmentToon[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeRoleAssignments(value: unknown): RoleAssignmentXml[] {
+function normalizeRoleAssignments(value: unknown): RoleAssignmentToon[] {
 	if (Array.isArray(value)) {
 		return value.filter(
-			(entry): entry is RoleAssignmentXml =>
+			(entry): entry is RoleAssignmentToon =>
 				isRecord(entry) &&
 				(typeof entry.entityId === "string" ||
 					typeof entry.newRole === "string"),
@@ -56,7 +56,7 @@ function normalizeRoleAssignments(value: unknown): RoleAssignmentXml[] {
 		isRecord(value) &&
 		(typeof value.entityId === "string" || typeof value.newRole === "string")
 	) {
-		return [value as RoleAssignmentXml];
+		return [value as RoleAssignmentToon];
 	}
 
 	return [];
@@ -279,13 +279,13 @@ IMPORTANT: Your response must ONLY contain the TOON document above. Do not inclu
 			stopSequences: [],
 		});
 
-		const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
+		const parsedToon = parseToonKeyValue<RoleExtractionResult>(response);
 
 		// Handle the parsed structured response.
-		const assignmentArray = normalizeRoleAssignments(parsedXml?.assignments);
+		const assignmentArray = normalizeRoleAssignments(parsedToon?.assignments);
 		const assignments: RoleAssignment[] = assignmentArray
 			.filter(
-				(a): a is RoleAssignmentXml & { entityId: string; newRole: string } =>
+				(a): a is RoleAssignmentToon & { entityId: string; newRole: string } =>
 					typeof a.entityId === "string" && typeof a.newRole === "string",
 			)
 			.map((a) => ({

@@ -70,7 +70,7 @@ function parseEntityResolutionResponse(
 ): (ParsedResolution & { type?: string; entityId?: string }) | null {
 	if (!text) return null;
 
-	const parsed = utils.parseKeyValueXml<Record<string, unknown>>(text);
+	const parsed = utils.parseToonKeyValue<Record<string, unknown>>(text);
 	const trimmed = text.trim();
 
 	if (parsed) {

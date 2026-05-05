@@ -62,21 +62,23 @@ function extractRlmAnswer(prompt: string): string | null {
 }
 
 function extractArithmeticAnswer(prompt: string): string | null {
-  const match = /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(
-    prompt,
-  );
+  const match =
+    /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(prompt) ??
+    /Question:\s*(?:what is\s*)?(-?\d+)\s+(times|multiplied by|plus|minus)\s+(-?\d+)/i.exec(prompt);
   if (!match) return null;
   const left = Number(match[1]);
   const op = match[2].toLowerCase();
   const right = Number(match[3]);
   if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
-  if (op === "+") return String(left + right);
-  if (op === "-") return String(left - right);
-  if (op === "*" || op === "x") return String(left * right);
+  if (op === "+" || op === "plus") return String(left + right);
+  if (op === "-" || op === "minus") return String(left - right);
+  if (op === "*" || op === "x" || op === "times" || op === "multiplied by") {
+    return String(left * right);
+  }
   return null;
 }
 
-function buildReplyXml(answer: string): string {
+function buildReplyToon(answer: string): string {
   return `<response>
 <thought>Answering the benchmark question directly.</thought>
 <actions>REPLY</actions>
@@ -85,7 +87,7 @@ function buildReplyXml(answer: string): string {
 </response>`;
 }
 
-function buildHyperliquidPlanXml(): string {
+function buildHyperliquidPlanToon(): string {
   const plan = {
     steps: [
       {
@@ -115,10 +117,10 @@ function buildHyperliquidPlanXml(): string {
       { cancel_all: { coin: "BTC" } },
     ],
   };
-  return buildReplyXml(JSON.stringify(plan));
+  return buildReplyToon(JSON.stringify(plan));
 }
 
-function buildVendingActionXml(prompt: string): string {
+function buildVendingActionToon(prompt: string): string {
   const hasPending =
     /pending orders/i.test(prompt) && !/no pending orders/i.test(prompt);
   const action = hasPending
@@ -129,7 +131,70 @@ function buildVendingActionXml(prompt: string): string {
         items: { water: 12 },
         reasoning: "Initial stock order for a high-demand product.",
       };
-  return buildReplyXml(JSON.stringify(action));
+  return buildReplyToon(JSON.stringify(action));
+}
+
+function buildClawBenchReplyToon(): string {
+  return buildReplyToon(
+    [
+      "Inbox triage complete.",
+      "Boss Q4 report is urgent and needs an EOD draft response.",
+      "HR benefits enrollment is action-required before January 20.",
+      "BigCorp client email needs scheduling for the project timeline call.",
+      "Newsletter is low priority and the shopping promo should be archived.",
+      "Draft replies are ready for review; please approve before I send anything.",
+    ].join(" "),
+  );
+}
+
+function extractAdhdAction(prompt: string): string {
+  const lower = prompt.toLowerCase();
+  const messageMatch = /Current user message:\s*([\s\S]*?)(?:\n\n|$)/i.exec(prompt);
+  const message = (messageMatch?.[1] ?? prompt).toLowerCase();
+  if (/what time|hello|hey|how are|favourite color|favorite color|status update/.test(message)) {
+    return "REPLY";
+  }
+  if (/send a message|tell alice|message to/.test(message)) return "SEND_MESSAGE";
+  if (/mute this|too noisy/.test(message)) return "MUTE_ROOM";
+  if (/unmute/.test(message)) return "UNMUTE_ROOM";
+  if (/follow the/.test(message)) return "FOLLOW_ROOM";
+  if (/stop following|unfollow/.test(message)) return "UNFOLLOW_ROOM";
+  if (/find all|search/.test(message)) return "SEARCH_CONTACTS";
+  if (/make .* admin|update role/.test(message)) return "UPDATE_ROLE";
+  if (/remind me|follow.?up|tomorrow/.test(message)) return "SCHEDULE_FOLLOW_UP";
+  if (/add .* contact|add my new colleague/.test(message)) return "ADD_CONTACT";
+  if (/remove .* contact/.test(message)) return "REMOVE_CONTACT";
+  if (/notification preferences|settings/.test(message)) return "UPDATE_SETTINGS";
+  if (/clear everything|start fresh|reset/.test(message)) return "RESET_SESSION";
+  if (/phone number|contact info/.test(message)) return "UPDATE_CONTACT_INFO";
+  if (/generate .*picture|image/.test(message)) return "GENERATE_IMAGE";
+  if (/ignore that last/.test(message)) return "IGNORE";
+  if (/create .*plan|detailed plan/.test(message)) return "CREATE_PLAN";
+  return lower.includes("reply") ? "REPLY" : "REPLY";
+}
+
+function buildAdhdBenchToon(prompt: string): string {
+  const action = extractAdhdAction(prompt);
+  const text = action === "REPLY" ? "Replying directly with the requested information." : `Selected ${action}`;
+  if (["REPLY", "IGNORE", "NONE"].includes(action)) {
+    return `<response>
+<thought>Selecting ${action} for this ADHDBench turn.</thought>
+<actions>${action}</actions>
+<providers>RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES</providers>
+<text>${text}</text>
+</response>`;
+  }
+  return `<response>
+<thought>Selecting ${action} for this ADHDBench turn.</thought>
+<actions>BENCHMARK_ACTION</actions>
+<providers>RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES</providers>
+<text>${text}</text>
+<params>
+<BENCHMARK_ACTION>
+<command>${action}</command>
+</BENCHMARK_ACTION>
+</params>
+</response>`;
 }
 
 function extractValidationFields(prompt: string): Record<string, string> {
@@ -157,7 +222,7 @@ function extractValidationFields(prompt: string): Record<string, string> {
   return tags;
 }
 
-function buildXmlResponse(
+function buildToonResponse(
   prompt: string,
   fields: Record<string, string | undefined>,
 ): string {
@@ -177,7 +242,7 @@ function buildCompletion(prompt: string): string {
 
   // shouldRespondTemplate
   if (prompt.includes("Decide on behalf of") && prompt.includes("RESPOND")) {
-    return buildXmlResponse(prompt, {
+    return buildToonResponse(prompt, {
       name: "BenchmarkAgent",
       reasoning: "Benchmark requests should always be processed.",
       action: "RESPOND",
@@ -189,7 +254,7 @@ function buildCompletion(prompt: string): string {
     prompt.includes("Determine the next step") &&
     prompt.includes("<isFinish>")
   ) {
-    return buildXmlResponse(prompt, {
+    return buildToonResponse(prompt, {
       thought: "The benchmark task can be completed in this step.",
       action: "",
       providers: "",
@@ -199,32 +264,40 @@ function buildCompletion(prompt: string): string {
 
   // multiStepSummaryTemplate
   if (prompt.includes("Summarize what the assistant has done so far")) {
-    return buildXmlResponse(prompt, {
+    return buildToonResponse(prompt, {
       thought: "Summarizing completed benchmark execution.",
       text: `Executed ${command}`,
     });
   }
 
-  if (/Benchmark:\s*(rlm-bench|rlm_bench)/i.test(prompt)) {
-    return buildReplyXml(`<answer>${extractRlmAnswer(prompt) ?? "UNKNOWN"}</answer>`);
+  if (/Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) || /RLM benchmark task/i.test(prompt)) {
+    return buildReplyToon(`<answer>${extractRlmAnswer(prompt) ?? "UNKNOWN"}</answer>`);
   }
 
-  if (/Benchmark:\s*gaia/i.test(prompt)) {
+  if (/Benchmark:\*{0,2}\s*gaia/i.test(prompt) || /GAIA benchmark task|FINAL ANSWER/i.test(prompt)) {
     const answer = extractArithmeticAnswer(prompt) ?? "mock-answer";
-    return buildReplyXml(`FINAL ANSWER: ${answer}`);
+    return buildReplyToon(`FINAL ANSWER: ${answer}`);
   }
 
-  if (/Benchmark:\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(prompt)) {
-    return buildHyperliquidPlanXml();
+  if (/Benchmark:\*{0,2}\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(prompt) || /Hyperliquid DEX|HyperliquidBench/i.test(prompt)) {
+    return buildHyperliquidPlanToon();
   }
 
-  if (/Benchmark:\s*(vending-bench|vending_bench)/i.test(prompt)) {
-    return buildVendingActionXml(prompt);
+  if (/Benchmark:\*{0,2}\s*(vending-bench|vending_bench)/i.test(prompt) || /Vending-Bench|vending machine business/i.test(prompt)) {
+    return buildVendingActionToon(prompt);
+  }
+
+  if (/Benchmark:\*{0,2}\s*clawbench/i.test(prompt) || /ClawBench|Review my inbox/i.test(prompt)) {
+    return buildClawBenchReplyToon();
+  }
+
+  if (/Benchmark:\*{0,2}\s*adhdbench/i.test(prompt) || /ADHDBench/i.test(prompt)) {
+    return buildAdhdBenchToon(prompt);
   }
 
   // Default message handler path (single-shot core)
   const validationTags = extractValidationFields(prompt);
-  const validationXml = Object.entries(validationTags)
+  const validationToon = Object.entries(validationTags)
     .map(([key, value]) => `<${key}>${value}</${key}>`)
     .join("\n");
 
@@ -238,7 +311,7 @@ function buildCompletion(prompt: string): string {
 <command>${command}</command>
 </BENCHMARK_ACTION>
 </params>
-${validationXml}
+${validationToon}
 </response>`;
 }
 

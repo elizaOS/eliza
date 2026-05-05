@@ -43,13 +43,12 @@ import {
   polygon,
 } from "viem/chains";
 import {
-  createWallet,
-  createX402Client,
-  DEFAULT_SUPPORTED_NETWORKS,
   NATIVE_TOKEN,
   setSpendPolicy,
-  USDC_ADDRESSES,
-} from "./index.js";
+  createWallet,
+} from "./wallet-core.js";
+import { createX402Client } from "./x402/middleware.js";
+import { DEFAULT_SUPPORTED_NETWORKS, USDC_ADDRESSES } from "./x402/types.js";
 
 // ─── Chain registry ────────────────────────────────────────────────────────
 

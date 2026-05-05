@@ -9,13 +9,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
-} from "@elizaos/core";
+import { composePromptFromState, ModelType } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
+import { parseToonKeyValue } from "../toon.js";
 import { normalizeChannel, TWITCH_SERVICE_NAME } from "../types.js";
 
 const SEND_MESSAGE_TEMPLATE = `You are helping to extract send message parameters for Twitch chat.
@@ -135,9 +131,9 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed =
-        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
-        parseJSONObjectFromText(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(
+        String(response),
+      );
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

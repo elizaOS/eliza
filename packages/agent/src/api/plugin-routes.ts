@@ -48,7 +48,6 @@ const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
   Record<AdvancedCapabilityPluginId, string>
 > = {
   experience: "EXPERIENCE",
-  form: "FORM",
   personality: "CHARACTER_MANAGEMENT",
 };
 

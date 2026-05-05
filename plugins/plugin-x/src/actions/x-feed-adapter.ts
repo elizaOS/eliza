@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import type { TwitterService } from "../services/x.service.js";
+import type { XService } from "../services/x.service.js";
 import type { XDirectMessage, XFeedTweet } from "./x-feed-helpers.js";
 import { getTwitterService } from "./x-feed-helpers.js";
 
@@ -70,7 +70,7 @@ function buildUsernameMap(
  * client directly for fields we need (public_metrics, author context).
  */
 export class RealXFeedAdapter implements XFeedAdapter {
-  constructor(private readonly service: TwitterService) {}
+  constructor(private readonly service: XService) {}
 
   private async v2Client() {
     const base = this.service.twitterClient?.client;

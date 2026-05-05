@@ -153,13 +153,6 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=8192,
         cost_per_1k_tokens=0.00005,
     ),
-    "groq/llama-3.3-70b-versatile": ModelConfig(
-        provider=ModelProvider.GROQ,
-        model_id="llama-3.3-70b-versatile",
-        display_name="Llama 3.3 70B Versatile (Groq)",
-        max_tokens=32768,
-        cost_per_1k_tokens=0.00059,
-    ),
     "groq/openai/gpt-oss-120b": ModelConfig(
         provider=ModelProvider.GROQ,
         model_id="openai/gpt-oss-120b",

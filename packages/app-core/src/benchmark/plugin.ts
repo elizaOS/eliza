@@ -172,6 +172,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "vending-bench",
     "vending_bench",
   ]).has(benchmark);
+  const isAdhdBenchmark = benchmark === "adhdbench";
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -293,6 +294,16 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     );
     sections.push(
       `Only use REPLY after you have gathered all needed information via tool calls.`,
+    );
+  } else if (isAdhdBenchmark) {
+    sections.push(
+      `Select exactly one action from the Available Actions list for the current ADHDBench turn.`,
+    );
+    sections.push(
+      `If the selected action is REPLY, IGNORE, or NONE, put that action name directly in <actions>.`,
+    );
+    sections.push(
+      `For every other selected action, use BENCHMARK_ACTION and set <command> to the selected action name exactly.`,
     );
   } else {
     sections.push(

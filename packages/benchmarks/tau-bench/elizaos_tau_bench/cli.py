@@ -410,7 +410,7 @@ def main() -> int:
 
     model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
     if not model_name:
-        model_name = "openai/gpt-oss-120b" if provider in {"groq", "openrouter"} else "gpt-4o-mini"
+        model_name = "openai/gpt-oss-120b"
 
     if not config.use_mock:
         if provider:

@@ -6,7 +6,7 @@ export const minecraftVisionProvider: Provider = {
   description:
     "Semantic environment context: biome, what I'm looking at, key nearby blocks (logs/ores), nearby entities",
   descriptionCompressed:
-    "semantic environment context: biome, what I'm look, key nearby block (logs/ore), nearby entity",
+    "Minecraft environment: biome looked-at block nearby blocks nearby entities",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,

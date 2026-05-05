@@ -63,8 +63,6 @@ SUPPORTED_MODELS: dict[ModelProvider, list[str]] = {
         "openai/gpt-oss-120b",        # Default Groq model for benchmarks
         # Llama models
         "llama-3.1-8b-instant",       # Fast, low-cost fallback
-        "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile",
         "llama-3.2-90b-vision-preview",  # Vision capable
         "llama-3.2-11b-vision-preview",
         # Mixtral

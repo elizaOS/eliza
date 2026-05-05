@@ -8,7 +8,7 @@
  *     (`account-storage.ts`),
  *   - rich `LinkedAccountConfig` records (label / enabled / priority /
  *     health / usage) owned by `AccountPool` in
- *     `@elizaos/app-core/services/account-pool`,
+ *     `@elizaos/app-core/account-pool`,
  *   - the in-flight OAuth flow registry (`auth/oauth-flow.ts`) used by
  *     the `oauth/start` + SSE `oauth/status` + `oauth/cancel` trio.
  *
@@ -65,7 +65,7 @@ import type { RouteRequestContext } from "./route-helpers.js";
 // ─── Account pool (single source of truth) ──────────────────────────
 //
 // All `LinkedAccountConfig` records (label / enabled / priority / health /
-// usage) are owned by `@elizaos/app-core/services/account-pool`. We hit
+// usage) are owned by `@elizaos/app-core/account-pool`. We hit
 // it via dynamic import to avoid a cyclic package dep — app-core depends
 // on agent, not the other way around. The promise is cached at module
 // scope so we pay the import cost once per process.
@@ -86,7 +86,7 @@ let cachedPoolPromise: Promise<PoolFacade> | null = null;
 
 async function getPool(): Promise<PoolFacade> {
   if (!cachedPoolPromise) {
-    const moduleId = "@elizaos/app-core/services/account-pool";
+    const moduleId = "@elizaos/app-core/account-pool";
     cachedPoolPromise = (async () => {
       const mod = (await import(/* @vite-ignore */ moduleId)) as {
         getDefaultAccountPool: () => PoolFacade;
@@ -336,7 +336,7 @@ async function probeCodexUsage(
       signal: controller.signal,
       headers,
       body: JSON.stringify({
-        model: "gpt-5.5-mini",
+        model: "gpt-5-mini",
         max_tokens: 1,
         messages: [{ role: "user", content: "hi" }],
       }),

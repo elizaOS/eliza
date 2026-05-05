@@ -83,8 +83,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import type {
   ApprovalAction,
@@ -473,8 +472,7 @@ function coercePayload(
 
 function parsePlannerOutput(raw: string): Record<string, unknown> | null {
   return (
-    parseKeyValueXml<Record<string, unknown>>(raw) ??
-    (parseJSONObjectFromText(raw) as Record<string, unknown> | null)
+    parseToonKeyValue<Record<string, unknown>>(raw)
   );
 }
 

@@ -7,7 +7,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { YouTubeSearchService } from "../services/youtubeSearch";
@@ -105,6 +105,41 @@ function summarizeSearchResults(results: SearchResultSnippet[]): string {
     .slice(0, 3)
     .map((result) => result.description || result.snippet || "")
     .join("\n");
+}
+
+function formatPromptValue(value: unknown, depth = 0): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item != null)
+      .slice(0, 20)
+      .map((item) => {
+        const rendered = formatPromptValue(item, depth + 1);
+        return rendered ? `${"  ".repeat(depth)}- ${rendered}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry != null && entry !== "")
+      .slice(0, 20)
+      .map(([key, entry]) => {
+        const rendered = formatPromptValue(entry, depth + 1);
+        if (!rendered) return "";
+        if (rendered.includes("\n")) {
+          return `${"  ".repeat(depth)}${key}:\n${rendered}`;
+        }
+        return `${"  ".repeat(depth)}${key}: ${rendered}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(value);
 }
 
 /**
@@ -210,7 +245,7 @@ searchQuery: if direct_search, the query to use`;
       return null;
     }
 
-    const parsedToon = parseKeyValueXml<Record<string, unknown>>(response);
+    const parsedToon = parseToonKeyValue<Record<string, unknown>>(response);
     if (parsedToon?.queryType) {
       return {
         ...parsedToon,
@@ -220,14 +255,7 @@ searchQuery: if direct_search, the query to use`;
       } as unknown as MusicQueryIntent;
     }
 
-    // Legacy fallback: extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return null;
-    }
-
-    const intent = JSON.parse(jsonMatch[0]) as MusicQueryIntent;
-    return intent;
+    return null;
   } catch (error) {
     logger.error(
       "Error analyzing music query:",
@@ -275,7 +303,8 @@ const researchMusicInfo = async (
             // Use LLM to extract first single/album from discography
             const prompt = `From this artist discography, what was their first ${intent.queryType === "first_single" ? "single" : "album"}?
 
-Discography: ${JSON.stringify(artistInfo.discography).substring(0, 2000)}
+Discography (TOON/plain text):
+${formatPromptValue(artistInfo.discography).substring(0, 2000)}
 
 Respond with ONLY the song/album name, nothing else.`;
 

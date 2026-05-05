@@ -9,7 +9,7 @@
 # Environment variables (required):
 #   TINKER_API_KEY - Your Tinker API key from Thinking Machines
 #   DATABASE_URL - PostgreSQL connection URL
-#   OPENAI_API_KEY - For RLAIF judge (gpt-4o-mini)
+#   OPENAI_API_KEY - For RLAIF judge (gpt-5-mini)
 
 # =============================================================================
 # Tinker Model Settings
@@ -73,8 +73,8 @@ environment:
 # =============================================================================
 judge:
   # Model for scoring trajectories
-  # gpt-4o-mini is cost-effective, gpt-4o for higher quality
-  model: "gpt-4o-mini"
+  # gpt-5-mini is cost-effective, gpt-4o for higher quality
+  model: "gpt-5-mini"
   
   # Temperature for judge responses
   # Lower = more deterministic scoring

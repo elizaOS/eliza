@@ -25,7 +25,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_ENTITY");
@@ -308,7 +308,7 @@ export const updateEntityAction: Action = {
 		});
 
 		// Parse the generated data
-		const parsedResult = parseKeyValueXml<ComponentExtractionResult>(result);
+		const parsedResult = parseToonKeyValue<ComponentExtractionResult>(result);
 
 		if (!parsedResult?.source || !parsedResult.data) {
 			logger.error(

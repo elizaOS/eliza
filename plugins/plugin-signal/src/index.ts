@@ -2,12 +2,7 @@ import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import listContacts from "./actions/listContacts";
 import listGroups from "./actions/listGroups";
 import readRecentMessages from "./actions/readRecentMessages";
-// Actions
-import sendMessage from "./actions/sendMessage";
 import sendReaction from "./actions/sendReaction";
-
-// Providers
-import { conversationStateProvider } from "./providers/conversationState";
 
 // Service
 import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
@@ -22,8 +17,8 @@ const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
   services: [SignalService],
-  actions: [sendMessage, sendReaction, listContacts, listGroups, readRecentMessages],
-  providers: [conversationStateProvider],
+  actions: [sendReaction, listContacts, listGroups, readRecentMessages],
+  providers: [],
   routes: signalSetupRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
@@ -128,8 +123,6 @@ export {
   signalAuthExists,
   signalLogout,
 } from "./pairing-service";
-// Export providers
-export { conversationStateProvider } from "./providers/conversationState";
 // RPC client exports
 export {
   createSignalEventStream,

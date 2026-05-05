@@ -53,7 +53,7 @@ export const walletSearchAddressAction = {
   description:
     "Search for detailed wallet information including portfolio and transaction data by address",
   descriptionCompressed:
-    "search detail wallet information includ portfolio transaction data address",
+    "birdeye wallet portfolio and transaction search by address",
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

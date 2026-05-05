@@ -1,79 +1,131 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { findNearestBank } from "../data/banks.js";
-import { getTrainingRecommendations } from "../data/training.js";
+import {
+  encodeToonValue,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core";
 import type { BotState } from "../sdk/types.js";
+
+const BANKS = [
+  { name: "Lumbridge bank", x: 3208, z: 3220 },
+  { name: "Varrock east bank", x: 3253, z: 3420 },
+  { name: "Draynor bank", x: 3093, z: 3243 },
+  { name: "Falador west bank", x: 2946, z: 3368 },
+  { name: "Al Kharid bank", x: 3269, z: 3167 },
+];
+
+const TRAINING_METHODS: Record<
+  string,
+  Array<{ minLevel: number; method: string; location: string }>
+> = {
+  woodcutting: [
+    { minLevel: 1, method: "normal trees", location: "Lumbridge woods" },
+    { minLevel: 15, method: "oak trees", location: "Varrock road" },
+    { minLevel: 30, method: "willow trees", location: "Draynor" },
+  ],
+  mining: [
+    { minLevel: 1, method: "copper or tin", location: "Varrock east mine" },
+    { minLevel: 15, method: "iron rocks", location: "Varrock east mine" },
+  ],
+  fishing: [
+    { minLevel: 1, method: "small net shrimp", location: "Lumbridge swamp" },
+    { minLevel: 20, method: "fly fishing", location: "Barbarian Village" },
+  ],
+  attack: [{ minLevel: 1, method: "chickens or cows", location: "Lumbridge" }],
+  strength: [
+    { minLevel: 1, method: "chickens or cows", location: "Lumbridge" },
+  ],
+  defence: [
+    { minLevel: 1, method: "chickens or cows", location: "Lumbridge" },
+  ],
+  cooking: [
+    { minLevel: 1, method: "cook shrimp or meat", location: "range or fire" },
+  ],
+  smithing: [
+    { minLevel: 1, method: "bronze bars", location: "furnace and anvil" },
+  ],
+};
+
+const FOOD_ITEMS = [
+  "shrimp",
+  "anchovies",
+  "bread",
+  "meat",
+  "chicken",
+  "trout",
+  "salmon",
+  "tuna",
+  "lobster",
+  "swordfish",
+  "cake",
+  "pie",
+];
+
+function chebyshevDistance(ax: number, az: number, bx: number, bz: number) {
+  return Math.max(Math.abs(ax - bx), Math.abs(az - bz));
+}
+
+function nearestBank(x: number, z: number) {
+  return BANKS.map((bank) => ({
+    ...bank,
+    distance: chebyshevDistance(x, z, bank.x, bank.z),
+  })).sort((a, b) => a.distance - b.distance)[0];
+}
+
+function trainingRecommendation(skillName: string, level: number) {
+  const methods = TRAINING_METHODS[skillName.toLowerCase()] ?? [];
+  return methods
+    .filter((method) => level >= method.minLevel)
+    .sort((a, b) => b.minLevel - a.minLevel)[0];
+}
 
 export const worldKnowledgeProvider: Provider = {
   name: "RS_SDK_WORLD_KNOWLEDGE",
   description:
-    "Game world knowledge: nearest bank, skill training recommendations, and important warnings.",
-  descriptionCompressed: "Nearest bank, skill training tips, warnings.",
+    "TOON game world knowledge: nearest bank, skill training recommendations, and warnings.",
+  descriptionCompressed: "TOON nearest bank, skill tips, warnings.",
 
   async get(
     runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State,
-  ): Promise<string> {
+    _state: State,
+  ): Promise<ProviderResult> {
     const service = runtime.getService("rs_2004scape") as
       | { getBotState(): BotState | null }
       | undefined;
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
-      return "[RS_SDK_WORLD_KNOWLEDGE] Not in game.";
+      return {
+        text: encodeToonValue({
+          rs_2004_world_knowledge: { status: "not_in_game" },
+        }),
+      };
     }
 
     const { worldX: x, worldZ: z } = state.player;
-    let output = "[RS_SDK_WORLD_KNOWLEDGE]\n";
+    const trainable = state.skills
+      .map((skill) => {
+        const recommendation = trainingRecommendation(skill.name, skill.level);
+        return recommendation
+          ? {
+              skill: skill.name,
+              level: skill.level,
+              method: recommendation.method,
+              location: recommendation.location,
+            }
+          : null;
+      })
+      .filter(Boolean);
 
-    // Nearest bank
-    const bank = findNearestBank(x, z);
-    output += `Nearest bank: ${bank.name} (${bank.distance} tiles away at ${bank.x}, ${bank.z})\n`;
-
-    // Training recommendations for current skills
-    const trainable = state.skills.filter((s) =>
-      [
-        "Woodcutting",
-        "Mining",
-        "Fishing",
-        "Attack",
-        "Strength",
-        "Defence",
-        "Cooking",
-        "Smithing",
-      ].includes(s.name),
-    );
-
-    if (trainable.length > 0) {
-      output += "\nTraining recommendations:\n";
-      for (const skill of trainable) {
-        const recs = getTrainingRecommendations(skill.name, skill.level);
-        if (recs.length > 0) {
-          const rec = recs[0];
-          output += `  ${skill.name} (lvl ${skill.level}): ${rec.method} at ${rec.location}`;
-          if (rec.xpPerHour) output += ` (${rec.xpPerHour}/hr)`;
-          output += "\n";
-        }
-      }
-    }
-
-    // Important warnings based on position
     const warnings: string[] = [];
-
-    // Dark wizards near Varrock
     if (x >= 3210 && x <= 3240 && z >= 3360 && z <= 3390) {
-      warnings.push(
-        "DANGER: Dark wizards area! They are aggressive and can kill low-level players.",
-      );
+      warnings.push("Dark wizards nearby; low-level players should leave.");
     }
-
-    // Wilderness warning
     if (z >= 3520) {
-      warnings.push(
-        "WARNING: You are near or in the Wilderness. Other players can attack you here.",
-      );
+      warnings.push("Wilderness nearby; other players may attack.");
     }
-
-    // Al Kharid toll gate
     if (
       x >= 3258 &&
       x <= 3270 &&
@@ -81,40 +133,26 @@ export const worldKnowledgeProvider: Provider = {
       z <= 3235 &&
       state.player.combatLevel < 10
     ) {
-      warnings.push(
-        "Note: The Al Kharid toll gate costs 10gp to pass through (or complete Prince Ali Rescue quest).",
-      );
+      warnings.push("Al Kharid toll gate costs 10gp for low-level players.");
     }
-
-    // No food in combat
     if (
       state.player.inCombat &&
       !state.inventory.some((item) =>
-        [
-          "shrimp",
-          "anchovies",
-          "bread",
-          "meat",
-          "chicken",
-          "trout",
-          "salmon",
-          "tuna",
-          "lobster",
-          "swordfish",
-          "cake",
-          "pie",
-        ].some((food) => item.name.toLowerCase().includes(food)),
+        FOOD_ITEMS.some((food) => item.name.toLowerCase().includes(food)),
       )
     ) {
-      warnings.push(
-        "WARNING: You are in combat with no food! Walk away immediately.",
-      );
+      warnings.push("In combat with no visible food; walk away immediately.");
     }
 
-    if (warnings.length > 0) {
-      output += `\n⚠ Warnings:\n${warnings.map((w) => `  ${w}`).join("\n")}\n`;
-    }
-
-    return output;
+    return {
+      text: encodeToonValue({
+        rs_2004_world_knowledge: {
+          status: "ready",
+          nearestBank: nearestBank(x, z),
+          training: trainable,
+          warnings,
+        },
+      }),
+    };
   },
 };

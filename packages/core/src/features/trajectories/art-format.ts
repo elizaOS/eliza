@@ -18,6 +18,7 @@ import type {
 	TrajectoryGroup,
 	TrajectoryStep,
 } from "./types";
+import { encodeToonValue } from "../../utils/toon";
 
 /**
  * Convert rich trajectory to ART message format.
@@ -76,7 +77,7 @@ function buildUserMessage(step: TrajectoryStep): string | null {
 
 	for (const provider of step.providerAccesses) {
 		parts.push(`\n${provider.providerName} data:`);
-		parts.push(JSON.stringify(provider.data, null, 2));
+		parts.push(encodeToonValue({ data: provider.data }));
 	}
 
 	parts.push("\nWhat action should you take?");
@@ -96,7 +97,7 @@ function buildAssistantMessage(step: TrajectoryStep): string | null {
 	if (action.reasoning) {
 		parts.push(`Reasoning: ${action.reasoning}`);
 	}
-	parts.push(`Parameters: ${JSON.stringify(action.parameters)}`);
+	parts.push(`Parameters:\n${encodeToonValue({ parameters: action.parameters })}`);
 
 	return parts.join("\n");
 }

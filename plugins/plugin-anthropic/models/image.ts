@@ -65,7 +65,13 @@ export async function handleImageDescription(
     );
 
     if (response.usage) {
-      emitModelUsageEvent(runtime, ModelType.IMAGE_DESCRIPTION, promptText, response.usage);
+      emitModelUsageEvent(
+        runtime,
+        ModelType.IMAGE_DESCRIPTION,
+        promptText,
+        response.usage,
+        modelName
+      );
     }
 
     return {

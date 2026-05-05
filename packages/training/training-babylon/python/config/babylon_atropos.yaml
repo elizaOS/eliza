@@ -54,7 +54,7 @@ env:
   max_steps_per_trajectory: 20
   
   # LLM Judge settings for RLAIF
-  judge_model: "gpt-4o-mini"
+  judge_model: "gpt-5-mini"
   judge_temperature: 0.3
   judge_max_tokens: 2000
   

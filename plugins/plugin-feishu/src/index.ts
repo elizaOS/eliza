@@ -9,7 +9,7 @@ const feishuPlugin: Plugin = {
 	name: FEISHU_SERVICE_NAME,
 	description: "Feishu/Lark client plugin for elizaOS",
 	services: [FeishuService],
-	actions: [sendMessageAction],
+	actions: [],
 	providers: [chatStateProvider],
 	tests: [],
 };

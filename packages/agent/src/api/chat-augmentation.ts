@@ -16,7 +16,7 @@ import {
   type Media,
   ModelType,
   parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type UUID,
 } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
@@ -328,7 +328,7 @@ export async function maybeAugmentChatMessageWithKnowledge(
       const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
       const raw = typeof result === "string" ? result : "";
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(raw) ??
+        parseToonKeyValue<Record<string, unknown>>(raw) ??
         parseJSONObjectFromText(raw);
       if (!parsed) {
         return [];

@@ -1,15 +1,13 @@
 import type {
   Action,
   ActionExample,
+  ActionResult,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
@@ -26,12 +24,20 @@ import {
   stopSelfControlBlock,
 } from "../website-blocker/engine.ts";
 import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
+import { runLifeOpsToonModel } from "./lifeops-google-helpers.js";
 
 type BlockWebsitesParameters = {
+  subaction?: WebsiteBlockerSubaction | string;
   websites?: string[] | string;
   durationMinutes?: number | string | null;
   confirmed?: boolean | string | null;
 };
+
+type WebsiteBlockerSubaction =
+  | "block"
+  | "status"
+  | "request_permission"
+  | "unblock";
 
 function coerceConfirmedFlag(value: unknown): boolean {
   if (typeof value === "boolean") {
@@ -42,6 +48,34 @@ function coerceConfirmedFlag(value: unknown): boolean {
     return normalized === "true" || normalized === "yes" || normalized === "1";
   }
   return false;
+}
+
+function normalizeWebsiteBlockerSubaction(
+  value: unknown,
+): WebsiteBlockerSubaction | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  const aliases: Record<string, WebsiteBlockerSubaction> = {
+    block: "block",
+    start: "block",
+    start_block: "block",
+    block_websites: "block",
+    selfcontrol_block_websites: "block",
+    status: "status",
+    get_status: "status",
+    get_website_block_status: "status",
+    check_website_block_status: "status",
+    request_permission: "request_permission",
+    permission: "request_permission",
+    request_website_blocking_permission: "request_permission",
+    unblock: "unblock",
+    stop: "unblock",
+    stop_block: "unblock",
+    unblock_websites: "unblock",
+  };
+  return aliases[normalized] ?? null;
 }
 
 type WebsiteBlockPlan = {
@@ -415,43 +449,32 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "Current request:",
     currentMessage || "(empty)",
     "Recent conversation turns:",
-    recentTurns.join("\n") || "(none)",
+    recentTurns.map((t) => `${t.speaker}: ${t.text}`).join("\n") || "(none)",
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
-    if (!parsed) {
-      return {
-        websites: [],
-        shouldAct: null,
-      };
-    }
-    return {
-      shouldAct: normalizeShouldAct(parsed.shouldAct),
-      confirmed: normalizeShouldAct(parsed.confirmed),
-      response: normalizePlannerResponse(parsed.response),
-      websites: normalizeWebsiteCandidates(parsed.websites),
-      durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
-    };
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:website-blocker",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Website blocker planning model call failed",
-    );
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "WEBSITE_BLOCKER.plan_block",
+    failureMessage: "Website blocker planning model call failed",
+    source: "action:website-blocker",
+    modelType: ModelType.TEXT_LARGE,
+    purpose: "planner",
+  });
+  const parsed = result?.parsed;
+  if (!parsed) {
     return {
       websites: [],
       shouldAct: null,
     };
   }
+  return {
+    shouldAct: normalizeShouldAct(parsed.shouldAct),
+    confirmed: normalizeShouldAct(parsed.confirmed),
+    response: normalizePlannerResponse(parsed.response),
+    websites: normalizeWebsiteCandidates(parsed.websites),
+    durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
+  };
 }
 
 async function recoverWebsiteContextWithLlm(args: {
@@ -487,28 +510,23 @@ async function recoverWebsiteContextWithLlm(args: {
     "Current request:",
     currentMessage || "(empty)",
     "Recent conversation turns:",
-    recentTurns.join("\n") || "(none)",
+    recentTurns.map((t) => `${t.speaker}: ${t.text}`).join("\n") || "(none)",
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
-    return normalizeWebsiteCandidates(parsed?.websites);
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:website-blocker",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Website blocker context recovery model call failed",
-    );
+  const result = await runLifeOpsToonModel<Record<string, unknown>>({
+    runtime: args.runtime,
+    prompt,
+    actionType: "WEBSITE_BLOCKER.recover_context",
+    failureMessage: "Website blocker context recovery model call failed",
+    source: "action:website-blocker",
+    modelType: ModelType.TEXT_LARGE,
+    purpose: "planner",
+  });
+  const parsed = result?.parsed;
+  if (!parsed) {
     return [];
   }
+  return normalizeWebsiteCandidates(parsed.websites);
 }
 
 export const blockWebsitesAction: Action & {

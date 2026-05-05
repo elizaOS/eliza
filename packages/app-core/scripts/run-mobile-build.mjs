@@ -455,7 +455,7 @@ const ANDROID_PERMISSIONS = [
 
 function replaceOrInsertGradleString(content, key, value) {
   const quoted = `${key} "${value}"`;
-  const assignmentRe = new RegExp(`${key}\\s+["'][^"']+["']`);
+  const assignmentRe = new RegExp(`${key}\\s*(?:=\\s*)?["'][^"']+["']`);
   if (assignmentRe.test(content)) {
     return content.replace(assignmentRe, quoted);
   }

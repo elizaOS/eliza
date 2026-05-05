@@ -19,7 +19,7 @@ import { ModelType } from "../../../types/index.ts";
 import {
 	composePromptFromState,
 	parseBooleanFromText,
-	parseKeyValueXml,
+	parseToonKeyValue,
 } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -90,7 +90,7 @@ export const followRoomAction: Action = {
 				stopSequences: [],
 			});
 
-			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
+			const parsed = parseToonKeyValue<{ decision?: boolean | string }>(
 				response,
 			);
 			const decisionValue = parsed?.decision ?? response.trim();

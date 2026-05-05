@@ -1,5 +1,15 @@
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
-import type { Action, Memory, ProviderDataRecord } from "@elizaos/core";
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  ProviderDataRecord,
+} from "@elizaos/core";
+import {
+  assertActiveTrajectoryForLlmCall,
+  ModelType,
+  parseToonKeyValue,
+} from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -59,6 +69,76 @@ export function messageSource(message: Memory): string | null {
 export function messageText(message: Memory): string {
   const text = (message.content as Record<string, unknown> | undefined)?.text;
   return typeof text === "string" ? text : "";
+}
+
+type LifeOpsModelType = (typeof ModelType)[keyof typeof ModelType];
+
+type LifeOpsModelCallArgs = {
+  runtime: IAgentRuntime;
+  prompt: string;
+  actionType: string;
+  failureMessage: string;
+  source: string;
+  modelType?: LifeOpsModelType;
+  purpose?: string;
+};
+
+export type LifeOpsToonModelResult<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> = {
+  rawResponse: string;
+  parsed: T | null;
+};
+
+export function parseLifeOpsToonRecord<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(rawResponse: string): T | null {
+  return parseToonKeyValue<T>(rawResponse);
+}
+
+export async function runLifeOpsTextModel(
+  args: LifeOpsModelCallArgs,
+): Promise<string | null> {
+  if (typeof args.runtime.useModel !== "function") {
+    return null;
+  }
+
+  const modelType = args.modelType ?? ModelType.TEXT_LARGE;
+  assertActiveTrajectoryForLlmCall({
+    actionType: args.actionType,
+    modelType: String(modelType),
+    purpose: args.purpose ?? "planner",
+  });
+
+  try {
+    const result = await args.runtime.useModel(modelType, {
+      prompt: args.prompt,
+    });
+    return typeof result === "string" ? result : "";
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: args.source,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      args.failureMessage,
+    );
+    return null;
+  }
+}
+
+export async function runLifeOpsToonModel<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(args: LifeOpsModelCallArgs): Promise<LifeOpsToonModelResult<T> | null> {
+  const rawResponse = await runLifeOpsTextModel(args);
+  if (rawResponse === null) {
+    return null;
+  }
+
+  return {
+    rawResponse,
+    parsed: parseLifeOpsToonRecord<T>(rawResponse),
+  };
 }
 
 export async function hasLifeOpsAccess(

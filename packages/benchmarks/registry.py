@@ -1716,15 +1716,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
         Routes through the click-based ``benchmark.harness`` CLI installed by
         the ``trust-marketplace-benchmark`` pyproject. Defaults to the bundled
-        ``trenches-chat-dataset`` checked into the benchmark dir; callers can
-        override via ``data_dir``. Defaults to the ``baseline`` system unless
-        another system is requested via ``extra.system`` or ``model.provider``.
+        smoke fixture when the full ``trenches-chat-dataset`` checkout is not
+        present; callers can override via ``data_dir``. Defaults to the
+        ``baseline`` system unless another system is requested via
+        ``extra.system`` or ``model.provider``.
         """
         data_dir_raw = extra.get("data_dir")
         if isinstance(data_dir_raw, str) and data_dir_raw.strip():
             data_dir = data_dir_raw.strip()
         else:
-            data_dir = "trenches-chat-dataset/data"
+            full_data_dir = repo_root / "benchmarks/social-alpha/trenches-chat-dataset/data"
+            data_dir = "trenches-chat-dataset/data" if full_data_dir.exists() else "fixtures/smoke-data"
         args = [
             python,
             "-m",
@@ -2433,10 +2435,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel="benchmarks/social-alpha",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("benchmarks/social-alpha/trenches-chat-dataset",),
+                paths=("benchmarks/social-alpha/fixtures/smoke-data",),
                 notes=(
                     "Defaults to the rule-based BaselineSystem (no LLM). Set system=eliza|full|smart|oracle "
                     "via extra to swap implementations; eliza/full additionally need provider keys. "
+                    "Uses the bundled smoke fixture when the full dataset is absent. "
                     "Score: composite Trust Marketplace Score (0..1)."
                 ),
             ),

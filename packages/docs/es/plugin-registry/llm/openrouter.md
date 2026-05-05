@@ -96,7 +96,7 @@ OpenRouter proporciona acceso a modelos de todos los proveedores principales. Us
 | ID del modelo | Descripción |
 |---------------|-------------|
 | `openai/gpt-4o` | GPT-4o multimodal |
-| `openai/gpt-4o-mini` | Rápido y eficiente |
+| `openai/gpt-5-mini` | Rápido y eficiente |
 | `openai/o1` | Modelo de razonamiento |
 | `openai/o3-mini` | Razonamiento rápido |
 

@@ -316,7 +316,7 @@ async function readRichLinkedAccountsFromPool(): Promise<
   Record<string, LinkedAccountConfig>
 > {
   try {
-    const moduleId = "@elizaos/app-core/services/account-pool";
+    const moduleId = "@elizaos/app-core/account-pool";
     const mod = (await import(/* @vite-ignore */ moduleId)) as {
       getDefaultAccountPool: () => {
         list(): LinkedAccountConfig[];

@@ -2,6 +2,21 @@ import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import type { LinearActivityItem } from "../types";
 
+function formatDetails(details: unknown): string {
+  if (details === null || details === undefined) {
+    return "none";
+  }
+  if (Array.isArray(details)) {
+    return details.map(formatDetails).join(", ");
+  }
+  if (typeof details !== "object") {
+    return String(details);
+  }
+  return Object.entries(details as Record<string, unknown>)
+    .map(([key, value]) => `${key}: ${formatDetails(value)}`)
+    .join("; ");
+}
+
 export const linearActivityProvider: Provider = {
   name: "LINEAR_ACTIVITY",
   description: "Provides context about recent Linear activity",
@@ -42,7 +57,7 @@ export const linearActivityProvider: Provider = {
             resource_id: item.resource_id,
             success: item.success,
             error: item.error,
-            details: JSON.stringify(item.details) as string,
+            details: formatDetails(item.details),
             timestamp:
               typeof item.timestamp === "string"
                 ? item.timestamp

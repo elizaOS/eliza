@@ -34,8 +34,8 @@ export function getAIProvider(): AIProvider {
     apiKey: openaiKey,
     chatEndpoint: "https://api.openai.com/v1/chat/completions",
     imageEndpoint: "https://api.openai.com/v1/images/generations",
-    visionModel: "gpt-4o-mini",
-    chatModel: "gpt-4o-mini",
+    visionModel: "gpt-5-mini",
+    chatModel: "gpt-5-mini",
     imageModel: "dall-e-3",
   };
 }
@@ -70,8 +70,8 @@ export function getImageProvider(): AIProvider | null {
     apiKey: openaiKey,
     chatEndpoint: "https://api.openai.com/v1/chat/completions",
     imageEndpoint: "https://api.openai.com/v1/images/generations",
-    visionModel: "gpt-4o-mini",
-    chatModel: "gpt-4o-mini",
+    visionModel: "gpt-5-mini",
+    chatModel: "gpt-5-mini",
     imageModel: "dall-e-3",
   };
 }

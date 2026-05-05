@@ -19,7 +19,7 @@ import { encodeToonValue } from "../../../utils/toon";
 import {
 	composePrompt,
 	parseJSONObjectFromText,
-	parseKeyValueXml,
+	parseToonKeyValue,
 } from "../../../utils.ts";
 import {
 	formatTaskCompletionStatus,
@@ -30,8 +30,8 @@ import {
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("REFLECTION");
 
-/** Shape of a single fact in legacy structured responses. */
-interface FactXml {
+/** Shape of a single fact in structured TOON responses. */
+interface FactToon {
 	claim?: string;
 	type?: string;
 	in_bio?: string;
@@ -39,7 +39,7 @@ interface FactXml {
 }
 
 /** Shape of a single relationship in structured responses. */
-interface RelationshipXml {
+interface RelationshipToon {
 	sourceEntityId?: string;
 	targetEntityId?: string;
 	tags?: string;
@@ -47,25 +47,25 @@ interface RelationshipXml {
 }
 
 /** Shape of task completion in structured responses. */
-interface TaskCompletionXml {
+interface TaskCompletionToon {
 	completed?: string | boolean;
 	reason?: string;
 }
 
-interface ReflectionXmlResult {
+interface ReflectionToonResult {
 	thought?: string;
 	facts?:
 		| {
-				fact?: FactXml | FactXml[];
+				fact?: FactToon | FactToon[];
 		  }
-		| FactXml[];
+		| FactToon[];
 	relationships?:
 		| {
-				relationship?: RelationshipXml | RelationshipXml[];
+				relationship?: RelationshipToon | RelationshipToon[];
 		  }
-		| RelationshipXml[];
-	task?: TaskCompletionXml;
-	taskCompletion?: TaskCompletionXml;
+		| RelationshipToon[];
+	task?: TaskCompletionToon;
+	taskCompletion?: TaskCompletionToon;
 	task_completed?: string | boolean;
 	taskCompleted?: string | boolean;
 	task_completion_reason?: string;
@@ -89,54 +89,28 @@ function formatPromptData(value: unknown): string {
 	}
 }
 
-function parseXmlItems<T>(xml: string, tag: string): T[] {
-	const results: T[] = [];
-	const openTag = `<${tag}`;
-	const closeTag = `</${tag}>`;
-	let pos = 0;
-	while (pos < xml.length) {
-		const start = xml.indexOf(openTag, pos);
-		if (start === -1) break;
-		const end = xml.indexOf(closeTag, start);
-		if (end === -1) break;
-		const block = xml.slice(start, end + closeTag.length);
-		const parsed = parseKeyValueXml<T>(block);
-		if (parsed && isRecord(parsed)) results.push(parsed);
-		pos = end + closeTag.length;
-	}
-	return results;
-}
-
-function normalizeFactEntries(value: unknown): FactXml[] {
+function normalizeFactEntries(value: unknown): FactToon[] {
 	if (Array.isArray(value)) {
-		return value.filter(isRecord) as FactXml[];
+		return value.filter(isRecord) as FactToon[];
 	}
 
 	if (isRecord(value) && "fact" in value) {
 		return normalizeFactEntries(value.fact);
 	}
 
-	if (typeof value === "string" && value.includes("<fact")) {
-		return parseXmlItems<FactXml>(value, "fact");
-	}
-
-	return isRecord(value) ? [value as FactXml] : [];
+	return isRecord(value) ? [value as FactToon] : [];
 }
 
-function normalizeRelationshipEntries(value: unknown): RelationshipXml[] {
+function normalizeRelationshipEntries(value: unknown): RelationshipToon[] {
 	if (Array.isArray(value)) {
-		return value.filter(isRecord) as RelationshipXml[];
+		return value.filter(isRecord) as RelationshipToon[];
 	}
 
 	if (isRecord(value) && "relationship" in value) {
 		return normalizeRelationshipEntries(value.relationship);
 	}
 
-	if (typeof value === "string" && value.includes("<relationship")) {
-		return parseXmlItems<RelationshipXml>(value, "relationship");
-	}
-
-	return isRecord(value) ? [value as RelationshipXml] : [];
+	return isRecord(value) ? [value as RelationshipToon] : [];
 }
 
 function isOmittedStructuredList(value: unknown, itemKey: string): boolean {
@@ -261,7 +235,7 @@ function extractEmbeddedToonDocument(text: string): string | null {
 
 function extractJsonReflectionRecord(
 	value: Record<string, unknown>,
-): ReflectionXmlResult | null {
+): ReflectionToonResult | null {
 	const candidates = [
 		value,
 		isRecord(value.response) ? value.response : null,
@@ -285,30 +259,30 @@ function extractJsonReflectionRecord(
 			continue;
 		}
 
-		const reflection: ReflectionXmlResult = {};
+		const reflection: ReflectionToonResult = {};
 		if ("thought" in candidate && typeof candidate.thought === "string") {
 			reflection.thought = candidate.thought;
 		}
 		if ("facts" in candidate) {
-			reflection.facts = candidate.facts as ReflectionXmlResult["facts"];
+			reflection.facts = candidate.facts as ReflectionToonResult["facts"];
 		}
 		if ("relationships" in candidate) {
 			reflection.relationships =
-				candidate.relationships as ReflectionXmlResult["relationships"];
+				candidate.relationships as ReflectionToonResult["relationships"];
 		}
 		if ("task" in candidate && isRecord(candidate.task)) {
-			reflection.task = candidate.task as TaskCompletionXml;
+			reflection.task = candidate.task as TaskCompletionToon;
 		}
 		if ("taskCompletion" in candidate && isRecord(candidate.taskCompletion)) {
-			reflection.taskCompletion = candidate.taskCompletion as TaskCompletionXml;
+			reflection.taskCompletion = candidate.taskCompletion as TaskCompletionToon;
 		}
 		if ("task_completed" in candidate) {
 			reflection.task_completed =
-				candidate.task_completed as ReflectionXmlResult["task_completed"];
+				candidate.task_completed as ReflectionToonResult["task_completed"];
 		}
 		if ("taskCompleted" in candidate) {
 			reflection.taskCompleted =
-				candidate.taskCompleted as ReflectionXmlResult["taskCompleted"];
+				candidate.taskCompleted as ReflectionToonResult["taskCompleted"];
 		}
 		if ("task_completion_reason" in candidate) {
 			reflection.task_completion_reason =
@@ -326,7 +300,7 @@ function extractJsonReflectionRecord(
 }
 
 function parseReflectionResponse(response: string): {
-	reflection: ReflectionXmlResult | null;
+	reflection: ReflectionToonResult | null;
 	lookedStructured: boolean;
 } {
 	const trimmed = response.trim();
@@ -335,9 +309,7 @@ function parseReflectionResponse(response: string): {
 	}
 
 	const candidates = new Set<string>([trimmed]);
-	const fencedBlocks = trimmed.matchAll(
-		/```(?:toon|xml|json)?\s*([\s\S]*?)\s*```/gi,
-	);
+	const fencedBlocks = trimmed.matchAll(/```(?:toon|json)?\s*([\s\S]*?)\s*```/gi);
 	for (const block of fencedBlocks) {
 		const candidate = block[1]?.trim();
 		if (candidate) {
@@ -351,7 +323,7 @@ function parseReflectionResponse(response: string): {
 	}
 
 	for (const candidate of candidates) {
-		const parsed = parseKeyValueXml<ReflectionXmlResult>(candidate);
+		const parsed = parseToonKeyValue<ReflectionToonResult>(candidate);
 		if (parsed) {
 			return { reflection: parsed, lookedStructured: true };
 		}
@@ -367,8 +339,6 @@ function parseReflectionResponse(response: string): {
 
 	const lookedStructured =
 		candidates.size > 1 ||
-		trimmed.includes("<response>") ||
-		trimmed.includes("</response>") ||
 		trimmed.startsWith("{") ||
 		TOON_FIELD_PATTERN.test(trimmed) ||
 		TOON_HEADER_PATTERN.test(trimmed);
@@ -521,7 +491,7 @@ function formatActionResults(actionResults: ActionResult[]): string {
 }
 
 function normalizeTaskCompletion(
-	reflection: ReflectionXmlResult,
+	reflection: ReflectionToonResult,
 	messageId?: UUID,
 ): TaskCompletionAssessment {
 	const nestedTask = isRecord(reflection.task)
@@ -568,7 +538,7 @@ function normalizeTaskCompletion(
 async function storeTaskCompletionReflection(
 	runtime: IAgentRuntime,
 	message: Memory,
-	reflection: ReflectionXmlResult,
+	reflection: ReflectionToonResult,
 	taskCompletion: TaskCompletionAssessment,
 ): Promise<void> {
 	const summaryText = taskCompletion.assessed

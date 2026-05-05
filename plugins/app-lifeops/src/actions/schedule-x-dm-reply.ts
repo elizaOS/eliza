@@ -8,8 +8,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { recentConversationTexts } from "./life-recent-context.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
@@ -84,10 +83,9 @@ async function resolveSchedulePlan(args: {
 
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(
-        typeof raw === "string" ? raw : "",
-      ) ?? parseJSONObjectFromText(typeof raw === "string" ? raw : "");
+    const parsed = parseToonKeyValue<Record<string, unknown>>(
+      typeof raw === "string" ? raw : "",
+    );
     if (!parsed) {
       return { shouldAct: null };
     }

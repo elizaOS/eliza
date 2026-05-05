@@ -3,7 +3,7 @@ import {
   getTrajectoryContext,
   ModelType,
   parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { asRecord, getRecentMessagesData } from "@elizaos/shared";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.js";
@@ -54,7 +54,7 @@ function looksLikeStructuredReply(raw: string): boolean {
   }
   if (
     parseJSONObjectFromText(trimmed) ||
-    parseKeyValueXml<Record<string, unknown>>(trimmed)
+    parseToonKeyValue<Record<string, unknown>>(trimmed)
   ) {
     return true;
   }

@@ -202,7 +202,7 @@ export const managePostExamplesAction: Action = {
 
 			await callback?.({
 				text: summary,
-				thought: `Applied post example change: ${JSON.stringify({ action: postAction, index })}`,
+				thought: `Applied post example change: action=${postAction}; index=${index ?? "none"}`,
 				actions: ["MANAGE_POST_EXAMPLES"],
 			});
 

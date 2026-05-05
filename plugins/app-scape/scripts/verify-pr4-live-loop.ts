@@ -81,11 +81,11 @@ function makeRuntime(): {
         // produce a distinct destination (the test just checks
         // that POSITION CHANGED, not that it matches an exact
         // tile).
-        return "<action>WALK_TO</action><x>3225</x><z>3222</z>";
+        return "action: WALK_TO\nx: 3225\nz: 3222";
       }
       const x = current.self.x + 1;
       const z = current.self.z;
-      return `I am at (${current.self.x}, ${current.self.z}). I'll step east.\n<action>WALK_TO</action><x>${x}</x><z>${z}</z>`;
+      return `action: WALK_TO\nx: ${x}\nz: ${z}`;
     }) as unknown as IAgentRuntime["useModel"],
     getService: (() => null) as unknown as IAgentRuntime["getService"],
   };

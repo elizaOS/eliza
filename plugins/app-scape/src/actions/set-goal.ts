@@ -5,9 +5,9 @@
  *
  * LLM response shape:
  *
- *   <action>SET_GOAL</action>
- *   <title>Reach 20 mining</title>
- *   <notes>Train on copper ore near Lumbridge until level 20.</notes>
+ *   action: SET_GOAL
+ *   title: Reach 20 mining
+ *   notes: Train on copper ore near Lumbridge until level 20.
  *
  * Operator-initiated goals flow through a different path (the HTTP
  * endpoint in PR 7); this action is strictly agent-self-managed.
@@ -22,7 +22,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParam } from "./param-parser.js";
 
 export const setGoal: Action = {
@@ -37,7 +37,7 @@ export const setGoal: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "SET_GOAL");
+    return hasActionRequest(message, "SET_GOAL");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -59,7 +59,7 @@ export const setGoal: Action = {
     const text = resolveActionText(message);
     const title = extractParam(text, "title");
     if (!title) {
-      const err = "SET_GOAL requires <title>text</title>.";
+      const err = "SET_GOAL requires title: text.";
       callback?.({ text: err, action: "SET_GOAL" });
       return { success: false, text: err };
     }

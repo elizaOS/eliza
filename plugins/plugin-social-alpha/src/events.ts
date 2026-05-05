@@ -6,8 +6,7 @@ import {
 	type Memory,
 	type MessageReceivedHandlerParams,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { TRUST_LEADERBOARD_WORLD_SEED } from "./config";
@@ -243,8 +242,7 @@ const messageReceivedHandler = async ({
 			); // Changed to error for visibility
 
 			const relevanceResult =
-				parseKeyValueXml<Record<string, unknown>>(relevanceResponseRaw) ??
-				parseJSONObjectFromText(relevanceResponseRaw);
+				parseToonKeyValue<Record<string, unknown>>(relevanceResponseRaw);
 
 			logger.debug(
 				`[HANDLER DEBUG] Parsed relevanceResult: ${JSON.stringify(relevanceResult)} (type: ${typeof relevanceResult})`,
@@ -293,10 +291,9 @@ const messageReceivedHandler = async ({
 				conviction: "NONE" | "LOW" | "MEDIUM" | "HIGH";
 				quote: string;
 			};
-			const extractionResult = (parseKeyValueXml<{
+			const extractionResult = (parseToonKeyValue<{
 				recommendations?: ExtractedRec[];
-			}>(extractionResponseRaw) ??
-				parseJSONObjectFromText(extractionResponseRaw)) as {
+			}>(extractionResponseRaw)) as {
 				recommendations: ExtractedRec[];
 			} | null;
 

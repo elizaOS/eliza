@@ -146,7 +146,7 @@ class Mind2WebRunner:
                     or "openai/gpt-oss-120b"
                 )
             else:
-                model_name = "gpt-4o-mini"
+                model_name = "openai/gpt-oss-120b"
 
         os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
         os.environ["BENCHMARK_MODEL_NAME"] = model_name

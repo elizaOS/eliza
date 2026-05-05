@@ -1,6 +1,6 @@
 /**
  * Auto-generated prompt templates
- * DO NOT EDIT - Generated from ../../../../../prompts/*.txt
+ * DO NOT EDIT - Generated from ../../../../prompts/*.txt
  *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
@@ -35,7 +35,7 @@ export const feedbackTemplate = `{{{mcpProvider.text}}}
 
 # Prompt
 
-You previously attempted to parse a JSON selection but encountered an error. You need to fix the issues and provide a valid JSON response.
+Your previous selection could not be parsed or validated. Correct it as compact TOON/plain text.
 
 PREVIOUS RESPONSE:
 {{{originalResponse}}
@@ -49,13 +49,26 @@ Available {{{itemType}}}s:
 User request: "{{{userMessage}}}"
 
 CORRECTED INSTRUCTIONS:
-1. Create a valid JSON object that selects the most appropriate {{{itemType}}} for the task
-2. Make sure to use proper JSON syntax with double quotes for keys and string values
+1. Select the most appropriate {{{itemType}}} for the task
+2. Use one key per line with exact field names and concrete values
 3. Ensure all values exactly match the available {{{itemType}}}s (names are case-sensitive!)
-4. Do not include any markdown formatting, explanations, or non-JSON content
+4. Do not include markdown fences, comments, tags, or explanatory text outside the fields
 5. Do not use placeholders - all values should be concrete and usable
+6. If no appropriate item exists, use noToolAvailable: true for tools or noResourceAvailable: true for resources
 
-YOUR CORRECTED VALID JSON RESPONSE:`;
+For tools, use this shape:
+serverName: exact-server-name
+toolName: exact-tool-name
+reasoning: short reason
+noToolAvailable: false
+
+For resources, use this shape:
+serverName: exact-server-name
+uri: exact-resource-uri
+reasoning: short reason
+noResourceAvailable: false
+
+YOUR CORRECTED TOON RESPONSE:`;
 
 export const FEEDBACK_TEMPLATE = feedbackTemplate;
 
@@ -98,33 +111,35 @@ You are an intelligent assistant helping select the right resource to address a 
 CRITICAL INSTRUCTIONS:
 1. You MUST specify both a valid serverName AND uri from the list above
 2. The serverName value should match EXACTLY the server name shown in parentheses (Server: X)
-   CORRECT: "serverName": "github"  (if the server is called "github") 
-   WRONG: "serverName": "GitHub" or "Github" or any other variation
+   CORRECT: serverName: github (if the server is called "github")
+   WRONG: serverName: GitHub, serverName: Github, or any other variation
 3. The uri value should match EXACTLY the resource uri listed
-   CORRECT: "uri": "weather://San Francisco/current"  (if that's the exact uri)
-   WRONG: "uri": "weather://sanfrancisco/current" or any variation
+   CORRECT: uri: weather://San Francisco/current (if that's the exact uri)
+   WRONG: uri: weather://sanfrancisco/current or any variation
 4. Identify the user's information need from the conversation context
 5. Select the most appropriate resource based on its description and the request
-6. If no resource seems appropriate, output {"noResourceAvailable": true}
+6. If no resource seems appropriate, set noResourceAvailable: true
 
-!!! YOUR RESPONSE MUST BE A VALID JSON OBJECT ONLY !!! 
+Respond with compact TOON/plain text only.
 
 STRICT FORMAT REQUIREMENTS:
-- NO code block formatting (NO backticks or \`\`\`)
-- NO comments (NO // or /* */)
+- Use one key per line
+- Include noResourceAvailable: false when selecting a resource
+- NO code block formatting (NO backticks)
+- NO comments
 - NO placeholders like "replace with...", "example", "your...", "actual", etc.
 - Every parameter value must be a concrete, usable value (not instructions to replace)
-- Use proper JSON syntax with double quotes for strings
-- NO explanatory text before or after the JSON object
+- NO explanatory text before or after the TOON fields
 
 EXAMPLE RESPONSE:
-{
-  "serverName": "weather-server",
-  "uri": "weather://San Francisco/current",
-  "reasoning": "Based on the conversation, the user is asking about current weather in San Francisco. This resource provides up-to-date weather information for that city."
-}
+serverName: weather-server
+uri: weather://San Francisco/current
+reasoning: The user is asking about current weather in San Francisco. This resource provides up-to-date weather information for that city.
+noResourceAvailable: false
 
-REMEMBER: Your response will be parsed directly as JSON. If it fails to parse, the operation will fail completely!`;
+NO RESOURCE EXAMPLE:
+reasoning: None of the available resources match the user's request.
+noResourceAvailable: true`;
 
 export const RESOURCE_SELECTION_TEMPLATE = resourceSelectionTemplate;
 
@@ -159,47 +174,46 @@ export const TOOL_REASONING_TEMPLATE = toolReasoningTemplate;
 
 export const toolSelectionArgumentTemplate = `{{recentMessages}}
 
-# TASK: Generate a Strictly Valid JSON Object for Tool Execution
+# TASK: Generate Tool Arguments for Tool Execution
 
 You have chosen the "{{toolSelectionName.toolName}}" tool from the "{{toolSelectionName.serverName}}" server to address the user's request.
 The reasoning behind this selection is: "{{toolSelectionName.reasoning}}"
 
 ## CRITICAL INSTRUCTIONS
-1. Ensure the "toolArguments" object strictly adheres to the structure and requirements defined in the schema.
+1. Ensure the toolArguments block strictly adheres to the structure and requirements defined in the schema.
 2. All parameter values must be extracted from the conversation context and must be concrete, usable values.
 3. Avoid placeholders or generic terms unless explicitly provided by the user.
 
-!!! YOUR RESPONSE MUST BE A VALID JSON OBJECT ONLY !!! 
+Respond with compact TOON/plain text only.
 
 ## STRICT FORMAT REQUIREMENTS
-- The response MUST be a single valid JSON object.
-- DO NOT wrap the JSON in triple backticks (\`\`\`), code blocks, or include any explanatory text.
-- DO NOT include comments (// or /* */) anywhere.
+- The response MUST be one TOON document.
+- DO NOT wrap it in triple backticks, code blocks, or include any explanatory text.
+- DO NOT include comments anywhere.
 - DO NOT use placeholders (e.g., "replace with...", "example", "your...", etc.)
-- ALL strings must use double quotes
 
 ## CRITICAL NOTES
 - All values must be fully grounded in user input or inferred contextually.
 - No missing fields unless they are explicitly optional in the schema.
 - All types must match the schema (strings, numbers, booleans).
+- Put all executable parameters under the indented toolArguments block.
 
-## JSON OBJECT STRUCTURE
+## RESPONSE STRUCTURE
 Your response MUST contain ONLY these two top-level keys:
-1. "toolArguments" — An object matching the input schema: {{toolInputSchema}}
-2. "reasoning" — A string explaining how the values were inferred from the conversation.
+1. toolArguments - nested fields matching the input schema: {{toolInputSchema}}
+2. reasoning - a short explanation of how the values were inferred from the conversation.
 
 ## EXAMPLE RESPONSE
-{
-  "toolArguments": {
-    "owner": "facebook",
-    "repo": "react",
-    "path": "README.md",
-    "branch": "main"
-  },
-  "reasoning": "The user wants to see the README from the facebook/react repository based on our conversation."
-}
+toolArguments:
+  owner: facebook
+  repo: react
+  path: README.md
+  branch: main
+reasoning: The user wants to see the README from the facebook/react repository based on our conversation.
 
-REMEMBER: Your response will be parsed directly as JSON. If it fails to parse, the operation will fail completely.`;
+If the tool takes no arguments, use an empty toolArguments block:
+toolArguments:
+reasoning: The selected tool does not require arguments for this request.`;
 
 export const TOOL_SELECTION_ARGUMENT_TEMPLATE = toolSelectionArgumentTemplate;
 
@@ -209,57 +223,50 @@ export const toolSelectionNameTemplate = `{{mcpProvider.text}}
 
 # TASK: Select the Most Appropriate Tool and Server
 
-You must select the most appropriate tool from the list above to fulfill the user's request. Your response must be a valid JSON object with the required properties.
+You must select the most appropriate tool from the list above to fulfill the user's request. Respond with compact TOON/plain text.
 
 ## CRITICAL INSTRUCTIONS
-1. Provide both "serverName" and "toolName" from the options listed above.
+1. Provide both serverName and toolName from the options listed above.
 2. Each name must match EXACTLY as shown in the list:
-   - Example (correct): "serverName": "github"
-   - Example (incorrect): "serverName": "GitHub", "Github", or variations
+   - Example (correct): serverName: github
+   - Example (incorrect): serverName: GitHub, serverName: Github, or variations
 3. Extract ACTUAL parameter values from the conversation context.
    - Do not invent or use placeholders like "octocat" or "Hello-World" unless the user said so.
-4. Include a "reasoning" field explaining why the selected tool fits the request.
-5. If no tool is appropriate, respond with:
-   {
-     "noToolAvailable": true
-   }
-
-!!! YOUR RESPONSE MUST BE A VALID JSON OBJECT ONLY !!! 
-
-CRITICAL: Your response must START with { and END with }. DO NOT include ANY text before or after the JSON.
+4. Include a reasoning field explaining why the selected tool fits the request.
+5. If no tool is appropriate, set noToolAvailable: true.
 
 ## STRICT FORMAT REQUIREMENTS
-- The response MUST be a single valid JSON object.
-- DO NOT wrap the JSON in triple backticks (\`\`\`), code blocks, or include any explanatory text.
-- DO NOT include comments (// or /* */) anywhere.
+- The response MUST be one TOON document.
+- Use one key per line.
+- DO NOT wrap it in triple backticks, code blocks, or include any explanatory text.
+- DO NOT include comments anywhere.
 - DO NOT use placeholders (e.g., "replace with...", "example", "your...", etc.)
-- ALL strings must use double quotes.
 
 ## CRITICAL NOTES
 - All values must be fully grounded in user input or inferred contextually.
 - No missing fields unless they are explicitly optional in the schema.
 - All types must match the schema (strings, numbers, booleans).
 
-## JSON OBJECT STRUCTURE
+## RESPONSE STRUCTURE
 Your response MUST contain ONLY these top-level keys:
-1. "serverName" — The name of the server (e.g., "github", "notion")
-2. "toolName" — The name of the tool (e.g., "get_file_contents", "search")
-3. "reasoning" — A string explaining how the values were inferred from the conversation.
-4. "noToolAvailable" — A boolean indicating if no tool is available (true/false)
+1. serverName - The name of the server (e.g., github, notion)
+2. toolName - The name of the tool (e.g., get_file_contents, search)
+3. reasoning - A short explanation of how the values were inferred from the conversation
+4. noToolAvailable - true or false
 
 ## EXAMPLE RESPONSE
-{
-  "serverName": "github",
-  "toolName": "get_file_contents",
-  "reasoning": "The user wants to retrieve the README from the facebook/react repository.",
-  "noToolAvailable": false
-}
+serverName: github
+toolName: get_file_contents
+reasoning: The user wants to retrieve the README from the facebook/react repository.
+noToolAvailable: false
+
+## NO TOOL EXAMPLE
+reasoning: None of the available tools match the user's request.
+noToolAvailable: true
 
 ## REMINDERS
 - Use "github" as serverName for GitHub tools.
 - Use "notion" as serverName for Notion tools.
-- For search and knowledge-based tasks, MCP tools are often appropriate.
-
-REMEMBER: This output will be parsed directly as JSON. If the format is incorrect, the operation will fail.`;
+- For search and knowledge-based tasks, MCP tools are often appropriate.`;
 
 export const TOOL_SELECTION_NAME_TEMPLATE = toolSelectionNameTemplate;

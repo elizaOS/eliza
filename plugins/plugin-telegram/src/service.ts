@@ -6,6 +6,11 @@ import {
   EventType,
   type IAgentRuntime,
   logger,
+  type Memory,
+  type MessageConnectorChatContext,
+  type MessageConnectorQueryContext,
+  type MessageConnectorTarget,
+  type MessageConnectorUserContext,
   Role,
   type Room,
   Service,
@@ -29,6 +34,21 @@ import {
 } from './types';
 
 const CANONICAL_OWNER_SETTING_KEYS = ['ELIZA_ADMIN_ENTITY_ID'] as const;
+const TELEGRAM_CONNECTOR_CONTEXTS = ['social', 'connectors'];
+const TELEGRAM_CONNECTOR_CAPABILITIES = [
+  'send_message',
+  'resolve_targets',
+  'list_rooms',
+  'chat_context',
+  'user_context',
+];
+const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
+const TELEGRAM_THREADED_CHANNEL_PATTERN = /^(-?\d+)-(\d+)$/;
+
+type TelegramTargetParts = {
+  chatId: number | string;
+  threadId?: number;
+};
 
 function resolveTelegramBotToken(runtime: IAgentRuntime): string | null {
   const fromRuntime = runtime.getSetting('TELEGRAM_BOT_TOKEN');
@@ -92,6 +112,67 @@ function getTelegramChatDisplayName(
   }
 
   return fallback;
+}
+
+function normalizeTelegramConnectorQuery(value: string): string {
+  return value.trim().replace(/^@/, '').toLowerCase();
+}
+
+function scoreTelegramConnectorMatch(
+  query: string,
+  id: string,
+  labels: Array<string | null | undefined>,
+): number {
+  if (!query) {
+    return 0.45;
+  }
+  if (id.toLowerCase() === query) {
+    return 1;
+  }
+
+  let bestScore = 0;
+  for (const label of labels) {
+    const normalized = label?.trim().replace(/^@/, '').toLowerCase();
+    if (!normalized) {
+      continue;
+    }
+    if (normalized === query) {
+      bestScore = Math.max(bestScore, 0.95);
+    } else if (normalized.startsWith(query)) {
+      bestScore = Math.max(bestScore, 0.85);
+    } else if (normalized.includes(query)) {
+      bestScore = Math.max(bestScore, 0.7);
+    }
+  }
+  return bestScore;
+}
+
+function parseTelegramTargetParts(
+  channelId: string,
+  explicitThreadId?: string,
+): TelegramTargetParts {
+  const explicitThreadNumber =
+    explicitThreadId && /^\d+$/.test(explicitThreadId)
+      ? Number.parseInt(explicitThreadId, 10)
+      : undefined;
+  const threadedMatch = channelId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
+  if (threadedMatch) {
+    return {
+      chatId: threadedMatch[1],
+      threadId: explicitThreadNumber ?? Number.parseInt(threadedMatch[2], 10),
+    };
+  }
+  return { chatId: channelId, threadId: explicitThreadNumber };
+}
+
+function telegramChatKind(chat: Chat): MessageConnectorTarget['kind'] {
+  if (chat.type === 'private') {
+    return 'user';
+  }
+  if (chat.type === 'channel') {
+    return 'channel';
+  }
+  return 'group';
 }
 
 /**
@@ -1297,18 +1378,343 @@ export class TelegramService extends Service {
     }
   }
 
+  private buildConnectorChatTarget(
+    chat: Chat,
+    score = 0.5,
+    threadId?: number,
+  ): MessageConnectorTarget {
+    const chatId = chat.id.toString();
+    const roomKey = threadId ? `${chatId}-${threadId}` : chatId;
+    const roomId = createUniqueUuid(this.runtime, roomKey) as UUID;
+    const label = getTelegramChatDisplayName(chat, chatId);
+
+    return {
+      target: {
+        source: 'telegram',
+        roomId,
+        channelId: roomKey,
+        threadId: threadId?.toString(),
+      } as TargetInfo,
+      label,
+      kind: threadId ? 'thread' : telegramChatKind(chat),
+      description:
+        threadId && 'title' in chat
+          ? `Telegram topic ${threadId} in ${chat.title}`
+          : `Telegram ${chat.type}`,
+      score,
+      contexts: ['social', 'connectors'],
+      metadata: {
+        telegramChatId: chatId,
+        telegramThreadId: threadId,
+        telegramChatType: chat.type,
+        username: 'username' in chat ? chat.username : undefined,
+        title: 'title' in chat ? chat.title : undefined,
+      },
+    };
+  }
+
+  private buildConnectorRoomTarget(
+    room: Room,
+    score = 0.5,
+  ): MessageConnectorTarget | null {
+    if (room.source !== 'telegram' || !room.channelId) {
+      return null;
+    }
+
+    const metadata = room.metadata as Record<string, unknown> | undefined;
+    const threadId =
+      typeof metadata?.threadId === 'string'
+        ? metadata.threadId
+        : typeof room.channelId === 'string'
+          ? parseTelegramTargetParts(room.channelId).threadId?.toString()
+          : undefined;
+    return {
+      target: {
+        source: 'telegram',
+        roomId: room.id,
+        channelId: room.channelId,
+        threadId,
+      } as TargetInfo,
+      label: room.name || room.channelId,
+      kind: threadId ? 'thread' : 'group',
+      description: threadId
+        ? `Telegram topic ${threadId}`
+        : 'Telegram chat room',
+      score,
+      contexts: ['social', 'connectors'],
+      metadata: {
+        telegramChatId: room.channelId,
+        telegramThreadId: threadId,
+        roomName: room.name,
+      },
+    };
+  }
+
+  private dedupeConnectorTargets(
+    targets: MessageConnectorTarget[],
+  ): MessageConnectorTarget[] {
+    const byKey = new Map<string, MessageConnectorTarget>();
+    for (const target of targets) {
+      const key = [
+        target.kind ?? 'target',
+        target.target.channelId ?? '',
+        target.target.entityId ?? '',
+        target.target.threadId ?? '',
+      ].join(':');
+      const existing = byKey.get(key);
+      if (!existing || (target.score ?? 0) > (existing.score ?? 0)) {
+        byKey.set(key, target);
+      }
+    }
+    return Array.from(byKey.values()).sort(
+      (a, b) => (b.score ?? 0) - (a.score ?? 0),
+    );
+  }
+
+  private async getTelegramChatForTarget(
+    chatId: number | string,
+  ): Promise<Chat | null> {
+    const known = this.knownChats.get(String(chatId));
+    if (known) {
+      return known;
+    }
+    if (!this.bot) {
+      return null;
+    }
+    try {
+      const chat = await this.bot.telegram.getChat(chatId);
+      this.knownChats.set(String(chat.id), chat);
+      return chat;
+    } catch {
+      return null;
+    }
+  }
+
+  async resolveConnectorTargets(
+    query: string,
+    context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorTarget[]> {
+    const normalizedQuery = normalizeTelegramConnectorQuery(query);
+    const targets: MessageConnectorTarget[] = [];
+
+    for (const chat of this.knownChats.values()) {
+      const score = scoreTelegramConnectorMatch(
+        normalizedQuery,
+        chat.id.toString(),
+        [
+          'title' in chat ? chat.title : undefined,
+          'username' in chat ? chat.username : undefined,
+          'first_name' in chat ? chat.first_name : undefined,
+          'last_name' in chat ? chat.last_name : undefined,
+        ],
+      );
+      if (score <= 0) {
+        continue;
+      }
+      targets.push(this.buildConnectorChatTarget(chat, score));
+    }
+
+    if (
+      normalizedQuery &&
+      (TELEGRAM_CHAT_ID_PATTERN.test(normalizedQuery) || query.trim().startsWith('@'))
+    ) {
+      const lookup = TELEGRAM_CHAT_ID_PATTERN.test(normalizedQuery)
+        ? normalizedQuery
+        : query.trim();
+      const chat = await this.getTelegramChatForTarget(lookup);
+      if (chat) {
+        targets.push(this.buildConnectorChatTarget(chat, 1));
+      }
+    }
+
+    const room =
+      context.roomId && typeof context.runtime.getRoom === 'function'
+        ? await context.runtime.getRoom(context.roomId)
+        : null;
+    if (room) {
+      const roomTarget = this.buildConnectorRoomTarget(room, 0.6);
+      if (roomTarget) {
+        targets.push(roomTarget);
+      }
+    }
+
+    return this.dedupeConnectorTargets(targets).slice(0, 25);
+  }
+
+  async listConnectorRooms(
+    context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorTarget[]> {
+    const targets = Array.from(this.knownChats.values()).map((chat) =>
+      this.buildConnectorChatTarget(chat, 0.5),
+    );
+
+    const room =
+      context.roomId && typeof context.runtime.getRoom === 'function'
+        ? await context.runtime.getRoom(context.roomId)
+        : null;
+    if (room) {
+      const roomTarget = this.buildConnectorRoomTarget(room, 0.7);
+      if (roomTarget) {
+        targets.push(roomTarget);
+      }
+    }
+
+    return this.dedupeConnectorTargets(targets).slice(0, 50);
+  }
+
+  async listRecentConnectorTargets(
+    context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorTarget[]> {
+    return this.listConnectorRooms(context);
+  }
+
+  async getConnectorChatContext(
+    target: TargetInfo,
+    context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorChatContext | null> {
+    const room =
+      target.roomId && typeof context.runtime.getRoom === 'function'
+        ? await context.runtime.getRoom(target.roomId)
+        : null;
+    const channelId = target.channelId ?? room?.channelId;
+    if (!channelId) {
+      return null;
+    }
+
+    const parts = parseTelegramTargetParts(channelId, target.threadId);
+    const chat = await this.getTelegramChatForTarget(parts.chatId);
+    const roomId =
+      target.roomId ??
+      room?.id ??
+      (createUniqueUuid(
+        this.runtime,
+        parts.threadId ? `${parts.chatId}-${parts.threadId}` : String(parts.chatId),
+      ) as UUID);
+    const memories = await context.runtime.getMemories({
+      tableName: 'messages',
+      roomId,
+      count: 10,
+      orderBy: 'createdAt',
+      orderDirection: 'desc',
+    });
+    const recentMessages = memories
+      .slice()
+      .reverse()
+      .map((memory: Memory) => ({
+        entityId: memory.entityId,
+        name:
+          typeof memory.content?.name === 'string'
+            ? memory.content.name
+            : undefined,
+        text: memory.content?.text ?? '',
+        timestamp: memory.createdAt,
+        metadata: {
+          memoryId: memory.id,
+          source: memory.content?.source,
+        },
+      }))
+      .filter((message) => message.text.trim().length > 0);
+
+    return {
+      target: {
+        source: 'telegram',
+        roomId,
+        channelId,
+        threadId: parts.threadId?.toString(),
+      } as TargetInfo,
+      label:
+        room?.name ||
+        (chat ? getTelegramChatDisplayName(chat, String(parts.chatId)) : channelId),
+      summary: chat ? `Telegram ${chat.type}` : undefined,
+      recentMessages,
+      metadata: {
+        telegramChatId: String(parts.chatId),
+        telegramThreadId: parts.threadId,
+        telegramChatType: chat?.type,
+      },
+    };
+  }
+
+  async getConnectorUserContext(
+    entityId: UUID | string,
+    context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorUserContext | null> {
+    const entity =
+      typeof context.runtime.getEntityById === 'function'
+        ? await context.runtime.getEntityById(String(entityId) as UUID)
+        : null;
+    const telegramMetadata =
+      entity?.metadata?.telegram &&
+      typeof entity.metadata.telegram === 'object'
+        ? (entity.metadata.telegram as Record<string, unknown>)
+        : null;
+    const telegramId =
+      typeof telegramMetadata?.id === 'number' ||
+      typeof telegramMetadata?.id === 'string'
+        ? telegramMetadata.id
+        : TELEGRAM_CHAT_ID_PATTERN.test(String(entityId))
+          ? entityId
+          : null;
+    if (!telegramId) {
+      return null;
+    }
+
+    const chat = await this.getTelegramChatForTarget(telegramId);
+    const aliases = [
+      entity?.names?.[0],
+      chat && 'username' in chat ? chat.username : undefined,
+      chat && 'first_name' in chat ? chat.first_name : undefined,
+      chat && 'last_name' in chat ? chat.last_name : undefined,
+    ].filter((value): value is string => Boolean(value));
+
+    return {
+      entityId,
+      label: aliases[0] ?? String(telegramId),
+      aliases,
+      handles: { telegram: String(telegramId) },
+      metadata: {
+        telegramId: String(telegramId),
+        telegramChatType: chat?.type,
+        username: chat && 'username' in chat ? chat.username : undefined,
+      },
+    };
+  }
+
   static registerSendHandlers(
     runtime: IAgentRuntime,
     serviceInstance: TelegramService,
   ) {
     if (serviceInstance?.bot) {
-      runtime.registerSendHandler(
-        'telegram',
-        serviceInstance.handleSendMessage.bind(serviceInstance),
-      );
+      const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+      if (typeof runtime.registerMessageConnector === 'function') {
+        runtime.registerMessageConnector({
+          source: 'telegram',
+          label: 'Telegram',
+          description:
+            'Telegram connector for sending messages to chats, topics, and users.',
+          capabilities: [...TELEGRAM_CONNECTOR_CAPABILITIES],
+          supportedTargetKinds: ['channel', 'group', 'thread', 'user'],
+          contexts: [...TELEGRAM_CONNECTOR_CONTEXTS],
+          metadata: {
+            service: TELEGRAM_SERVICE_NAME,
+          },
+          resolveTargets:
+            serviceInstance.resolveConnectorTargets.bind(serviceInstance),
+          listRecentTargets:
+            serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
+          listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
+          getChatContext:
+            serviceInstance.getConnectorChatContext.bind(serviceInstance),
+          getUserContext:
+            serviceInstance.getConnectorUserContext.bind(serviceInstance),
+          sendHandler,
+        });
+      } else {
+        runtime.registerSendHandler('telegram', sendHandler);
+      }
       logger.info(
         { src: 'plugin:telegram', agentId: runtime.agentId },
-        'Registered send handler',
+        'Registered Telegram message connector',
       );
     } else {
       logger.warn(
@@ -1335,18 +1741,28 @@ export class TelegramService extends Service {
     }
 
     let chatId: number | string | undefined;
+    let threadId: number | undefined;
 
     // Determine the target chat ID
     if (target.channelId) {
       // Use channelId directly if provided (might be string like chat_id-thread_id or just chat_id)
       // We might need to parse this depending on how room IDs are stored vs Telegram IDs
-      chatId = target.channelId;
+      const parts = parseTelegramTargetParts(target.channelId, target.threadId);
+      chatId = parts.chatId;
+      threadId = parts.threadId;
     } else if (target.roomId) {
       // Fallback: Try to use roomId if channelId isn't available
       // This assumes roomId maps directly to Telegram chat ID or requires lookup
       // Placeholder - requires logic to map roomId -> telegram chat ID if different
       const room = await runtime.getRoom(target.roomId);
-      chatId = room?.channelId; // Assuming channelId on Room IS the telegram ID
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      const metadataThreadId =
+        typeof metadata?.threadId === 'string' ? metadata.threadId : undefined;
+      if (room?.channelId) {
+        const parts = parseTelegramTargetParts(room.channelId, metadataThreadId);
+        chatId = parts.chatId;
+        threadId = parts.threadId;
+      }
       if (!chatId) {
         throw new Error(
           `Could not resolve Telegram chat ID from roomId ${target.roomId}`,
@@ -1376,6 +1792,9 @@ export class TelegramService extends Service {
         );
       }
       chatId = telegramId as number | string;
+      if (target.threadId && /^\d+$/.test(target.threadId)) {
+        threadId = Number.parseInt(target.threadId, 10);
+      }
     } else {
       throw new Error(
         'Telegram SendHandler requires channelId, roomId, or entityId.',
@@ -1391,9 +1810,9 @@ export class TelegramService extends Service {
     try {
       // Use existing MessageManager method, pass chatId and content
       // Assuming sendMessage handles splitting, markdown, etc.
-      await this.messageManager.sendMessage(chatId, content);
+      await this.messageManager.sendMessage(chatId, content, undefined, threadId);
       logger.info(
-        { src: 'plugin:telegram', agentId: runtime.agentId, chatId },
+        { src: 'plugin:telegram', agentId: runtime.agentId, chatId, threadId },
         'Message sent',
       );
     } catch (error) {

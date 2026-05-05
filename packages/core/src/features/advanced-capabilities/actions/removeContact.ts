@@ -17,7 +17,7 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("REMOVE_CONTACT");
@@ -28,7 +28,7 @@ const REMOVE_CONTACT_TERMS = getValidationKeywordTerms(
 	},
 );
 
-interface RemoveContactXmlResult {
+interface RemoveContactToonResult {
 	contactName?: string;
 	confirmed?: string;
 }
@@ -88,7 +88,7 @@ export const removeContactAction: Action = {
 				prompt,
 				stopSequences: [],
 			});
-			const parsed = parseKeyValueXml<RemoveContactXmlResult>(response);
+			const parsed = parseToonKeyValue<RemoveContactToonResult>(response);
 
 			if (!parsed?.contactName) {
 				logger.warn("[RemoveContact] No contact name provided");

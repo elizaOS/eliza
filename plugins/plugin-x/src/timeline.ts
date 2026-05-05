@@ -6,7 +6,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
   type UUID,
 } from "@elizaos/core";
@@ -424,7 +424,7 @@ ${tweet.text}`;
       const quoteResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: quotePrompt,
       });
-      const responseObject = parseKeyValueXml(quoteResponse);
+      const responseObject = parseToonKeyValue(quoteResponse);
 
       if (responseObject.post) {
         if (this.isDryRun) {
@@ -504,7 +504,7 @@ ${tweet.text}`;
       const replyResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: replyPrompt,
       });
-      const responseObject = parseKeyValueXml(replyResponse);
+      const responseObject = parseToonKeyValue(replyResponse);
 
       if (responseObject.post) {
         if (this.isDryRun) {

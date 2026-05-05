@@ -9,8 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -122,8 +121,7 @@ export const editMessage: Action = {
       });
 
       const parsedResponse =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.messageTs && parsedResponse?.newText) {
         editInfo = {
           messageTs: String(parsedResponse.messageTs),

@@ -8,8 +8,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	parseKeyValueXml,
-	parseJSONObjectFromText,
+	parseToonKeyValue,
 	type State,
 } from "@elizaos/core";
 import type { Message, TextChannel } from "discord.js";
@@ -89,9 +88,9 @@ const deleteMessage: Action = {
 				prompt,
 			});
 
-			const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(
+			const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(
 				response,
-			) ?? parseJSONObjectFromText(response)) as Record<string, unknown> | null;
+			)) as Record<string, unknown> | null;
 			if (parsedResponse && typeof parsedResponse.messageId === "string") {
 				deleteParams = {
 					messageId: parsedResponse.messageId,

@@ -9,22 +9,20 @@ The user might reference an issue by:
 - Recency (e.g., "the latest bug", "most recent issue")
 - Team context (e.g., "newest issue in ELIZA team")
 
-Return ONLY a JSON object:
-{
-  "directId": "Issue ID if explicitly mentioned (e.g., ENG-123)",
-  "searchBy": {
-    "title": "Keywords from issue title if mentioned",
-    "assignee": "Name/email of assignee if mentioned", 
-    "priority": "Priority level if mentioned (urgent/high/normal/low or 1-4)",
-    "team": "Team name or key if mentioned",
-    "state": "Issue state if mentioned (todo/in-progress/done)",
-    "recency": "latest/newest/recent/last if mentioned",
-    "type": "bug/feature/task if mentioned"
-  }
-}
+Respond with TOON/plain text only. Use directId when an issue ID is explicitly mentioned:
+directId: Issue ID such as ENG-123
 
-Only include fields that are clearly mentioned or implied.
+When no issue ID is provided, use searchBy fields:
+searchBy:
+  title: Keywords from issue title if mentioned
+  assignee: Name or email of assignee if mentioned
+  priority: Priority level if mentioned; urgent, high, normal, low, or 1-4
+  team: Team name or key if mentioned
+  state: Issue state if mentioned, such as todo, in-progress, or done
+  recency: latest, newest, recent, or last if mentioned
+  type: bug, feature, or task if mentioned
 
+Only include fields that are clearly mentioned or implied. Output only the fields, with no prose before or after them.
 
 
 

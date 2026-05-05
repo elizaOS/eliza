@@ -4,12 +4,11 @@
  *
  * tsup 8.5.1's rollup-plugin-dts integration hard-codes `baseUrl: "."` when
  * no explicit baseUrl is set. TypeScript 6.0 deprecated `baseUrl` and emits
- * TS5101 for it, breaking any DTS build that didn't suppress the error with
- * `ignoreDeprecations: "6.0"`.
+ * TS5101 for it when injected unconditionally.
  *
  * The workspace-root tsup is already patched. This script finds every
  * bun-cached tsup@8.5.1 that still has the unpatched line and removes the
- * `baseUrl` injection so all plugins build cleanly without `ignoreDeprecations`.
+ * `baseUrl` injection so DTS builds do not trigger TS5101.
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";

@@ -1,19 +1,32 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { managePositions } from "./actions/managePositions.ts";
-import { managePositionActionRetriggerEvaluator } from "./evaluators/repositionEvaluator.ts";
+import {
+  createSolanaLpProtocolProvider,
+  registerLpProtocolProvider,
+} from "../../../../lp/services/LpManagementService.ts";
 import { positionProvider } from "./providers/positionProvider.ts";
 import { OrcaService } from "./services/srv_orca.ts";
 
 export const orcaPlugin: Plugin = {
   name: "@elizaos/plugin-lp-manager/orca",
   description: "Orca Whirlpool LP management plugin for Solana",
-  evaluators: [managePositionActionRetriggerEvaluator],
+  evaluators: [],
   providers: [positionProvider],
-  actions: [managePositions],
+  actions: [],
   services: [OrcaService],
-  init: async (_config: Record<string, string>, _runtime: IAgentRuntime) => {
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     console.info("Orca Plugin initialized");
+    const service =
+      runtime.getService<OrcaService>(OrcaService.serviceType) ??
+      (await OrcaService.start(runtime));
+    await registerLpProtocolProvider(
+      runtime,
+      createSolanaLpProtocolProvider({
+        dex: "orca",
+        label: "Orca",
+        service,
+      }),
+    );
   },
 };
 

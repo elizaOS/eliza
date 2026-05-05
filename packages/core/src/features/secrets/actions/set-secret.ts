@@ -11,11 +11,9 @@ import {
 	type Action,
 	type ActionExample,
 	ChannelType,
-	composePromptFromState,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
-	type JsonValue,
 	type Memory,
 	ModelType,
 	type State,
@@ -136,21 +134,69 @@ export const setSecretAction: Action = {
 		// Extract secrets from user message using LLM
 		let extracted: ExtractedSecrets;
 		try {
-			const prompt = composePromptFromState({
+			const result = await runtime.dynamicPromptExecFromState({
 				state: currentState,
-				template: extractSecretsTemplate,
+				params: {
+					prompt: extractSecretsTemplate,
+				},
+				schema: [
+					{
+						field: "secrets",
+						description: "Secrets extracted from the user's message",
+						type: "array",
+						items: {
+							description: "One extracted secret",
+							type: "object",
+							properties: [
+								{
+									field: "key",
+									description: "Secret key, usually UPPERCASE_WITH_UNDERSCORES",
+									required: true,
+								},
+								{
+									field: "value",
+									description: "Secret value",
+									required: true,
+								},
+								{
+									field: "description",
+									description: "Optional short description",
+									required: false,
+								},
+								{
+									field: "type",
+									description:
+										"Secret type: api_key, secret, credential, url, or config",
+									required: false,
+								},
+							],
+						},
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "level",
+						description: "Storage level: global, world, or user",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.TEXT_SMALL,
+					preferredEncapsulation: "toon",
+					contextCheckLevel: 0,
+					maxRetries: 1,
+				},
 			});
 
-			const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
-				prompt,
-			})) as Record<string, JsonValue>;
-
 			// Validate and transform the result
-			const secretsArray = Array.isArray(result.secrets) ? result.secrets : [];
+			const secretsArray = Array.isArray(result?.secrets) ? result.secrets : [];
 			extracted = {
 				secrets: secretsArray
 					.filter(
-						(s): s is Record<string, JsonValue> =>
+						(s): s is Record<string, unknown> =>
 							s !== null && typeof s === "object",
 					)
 					.map((s) => ({
@@ -160,7 +206,7 @@ export const setSecretAction: Action = {
 						type: s.type as ExtractedSecret["type"],
 					}))
 					.filter((s) => s.key && s.value),
-				level: result.level as ExtractedSecrets["level"],
+				level: result?.level as ExtractedSecrets["level"],
 			};
 		} catch (error) {
 			const errorMessage =

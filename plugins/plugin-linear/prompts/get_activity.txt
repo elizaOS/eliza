@@ -10,23 +10,19 @@ The user might ask for activity in various ways:
 - "Recent comment activity" → action type + recency
 - "Failed operations this week" → success filter + time range
 
-Return ONLY a JSON object:
-{
-  "timeRange": {
-    "period": "today/yesterday/this-week/last-week/this-month",
-    "from": "ISO datetime if specific",
-    "to": "ISO datetime if specific"
-  },
-  "actionTypes": ["create_issue/update_issue/delete_issue/create_comment/search_issues/etc"],
-  "resourceTypes": ["issue/project/comment/team"],
-  "resourceId": "Specific resource ID if mentioned (e.g., ENG-123)",
-  "user": "User name or 'me' for current user",
-  "successFilter": "success/failed/all",
-  "limit": number (default 10)
-}
+Respond with TOON/plain text only. Use these fields:
+timeRange:
+  period: today, yesterday, this-week, last-week, or this-month
+  from: ISO datetime if a specific start is mentioned
+  to: ISO datetime if a specific end is mentioned
+actionTypes: Comma-separated action types such as create_issue, update_issue, delete_issue, create_comment, or search_issues
+resourceTypes: Comma-separated resource types such as issue, project, comment, or team
+resourceId: Specific resource ID if mentioned, such as ENG-123
+user: User name, or me for current user
+successFilter: success, failed, or all
+limit: Number of activity entries to show; default 10
 
-Only include fields that are clearly mentioned.
-
+Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.
 
 
 

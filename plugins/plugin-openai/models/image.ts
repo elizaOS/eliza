@@ -1,5 +1,10 @@
-import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  ImageDescriptionParams,
+  ImageGenerationParams,
+  RecordLlmCallDetails,
+} from "@elizaos/core";
+import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 import type {
   ImageDescriptionResult,
   ImageGenerationResult,
@@ -61,23 +66,36 @@ export async function handleImageGeneration(
     requestBody.style = extendedParams.style;
   }
 
-  const response = await fetch(`${baseURL}/images/generations`, {
-    method: "POST",
-    headers: {
-      ...getAuthHeader(runtime),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
+  const details: RecordLlmCallDetails = {
+    model: modelName,
+    systemPrompt: "",
+    userPrompt: params.prompt,
+    temperature: 0,
+    maxTokens: 0,
+    purpose: "external_llm",
+    actionType: "openai.images.generate",
+  };
+  const data = await recordLlmCall(runtime, details, async () => {
+    const response = await fetch(`${baseURL}/images/generations`, {
+      method: "POST",
+      headers: {
+        ...getAuthHeader(runtime),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      throw new Error(
+        `OpenAI image generation failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    const responseData = (await response.json()) as OpenAIImageGenerationResponse;
+    details.response = JSON.stringify(responseData.data);
+    return responseData;
   });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
-    throw new Error(
-      `OpenAI image generation failed: ${response.status} ${response.statusText} - ${errorText}`
-    );
-  }
-
-  const data = (await response.json()) as OpenAIImageGenerationResponse;
 
   if (data.data.length === 0) {
     throw new Error("OpenAI API returned no images");
@@ -138,23 +156,40 @@ export async function handleImageDescription(
     max_tokens: maxTokens,
   };
 
-  const response = await fetch(`${baseURL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      ...getAuthHeader(runtime),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
+  const details: RecordLlmCallDetails = {
+    model: modelName,
+    systemPrompt: "",
+    userPrompt: promptText,
+    temperature: 0,
+    maxTokens,
+    purpose: "external_llm",
+    actionType: "openai.chat.completions.create",
+  };
+  const data = await recordLlmCall(runtime, details, async () => {
+    const response = await fetch(`${baseURL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        ...getAuthHeader(runtime),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      throw new Error(
+        `OpenAI image description failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    const responseData = (await response.json()) as OpenAIChatCompletionResponse;
+    details.response = responseData.choices?.[0]?.message?.content ?? "";
+    if (responseData.usage) {
+      details.promptTokens = responseData.usage.prompt_tokens;
+      details.completionTokens = responseData.usage.completion_tokens;
+    }
+    return responseData;
   });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
-    throw new Error(
-      `OpenAI image description failed: ${response.status} ${response.statusText} - ${errorText}`
-    );
-  }
-
-  const data = (await response.json()) as OpenAIChatCompletionResponse;
 
   if (data.usage) {
     emitModelUsageEvent(

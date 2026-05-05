@@ -47,9 +47,9 @@ describe("Plugin metadata", () => {
     expect(linePlugin.description).toContain("LINE");
   });
 
-  it("exports actions array", () => {
+  it("registers unified-send connector actions instead of platform send actions", () => {
     expect(Array.isArray(linePlugin.actions)).toBe(true);
-    expect(linePlugin.actions?.length).toBe(3);
+    expect(linePlugin.actions?.length).toBe(0);
   });
 
   it("exports providers array", () => {

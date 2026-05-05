@@ -22,13 +22,14 @@
 import type http from "node:http";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
 import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
-import type { Plugin, Route } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
 import { assignIssueAction } from "./actions/assign-issue.js";
 import { createIssueAction } from "./actions/create-issue.js";
 import { listPrsAction } from "./actions/list-prs.js";
 import { notificationTriageAction } from "./actions/notification-triage.js";
 import { reviewPrAction } from "./actions/review-pr.js";
 import { handleGitHubRoutes } from "./routes/github-routes.js";
+import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
 
 function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
@@ -100,6 +101,9 @@ export const githubPlugin: Plugin = {
     notificationTriageAction,
   ],
   routes: githubRoutes,
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    registerGitHubSearchCategory(runtime);
+  },
 };
 
 export default githubPlugin;

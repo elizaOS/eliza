@@ -8,118 +8,15 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
-import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
-import BigNumber, { type BigNumber as BigNumberType } from "../bn";
 import { SOLANA_SERVICE_NAME } from "../constants";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
-import { getWalletKey } from "../keypairUtils";
-import type { SolanaService } from "../service";
+import type { SolanaService, SolanaSwapParams, SolanaSwapResult } from "../service";
 import type { Item } from "../types";
 import { confirmationRequired, isConfirmed } from "./confirmation";
-
-async function getTokenDecimals(connection: Connection, mintAddress: string): Promise<number> {
-  const mintPublicKey = new PublicKey(mintAddress);
-  const tokenAccountInfo = await connection.getParsedAccountInfo(mintPublicKey);
-
-  if (
-    tokenAccountInfo.value &&
-    typeof tokenAccountInfo.value.data === "object" &&
-    "parsed" in tokenAccountInfo.value.data
-  ) {
-    const parsedInfo = tokenAccountInfo.value.data.parsed?.info;
-    if (parsedInfo && typeof parsedInfo.decimals === "number") {
-      return parsedInfo.decimals;
-    }
-  }
-
-  throw new Error("Unable to fetch token decimals");
-}
-
-async function swapToken(
-  connection: Connection,
-  walletPublicKey: PublicKey,
-  inputTokenCA: string,
-  outputTokenCA: string,
-  amount: number
-): Promise<{ swapTransaction: string; error?: string }> {
-  try {
-    let decimals: BigNumberType;
-    if (process.env.SOL_ADDRESS && inputTokenCA === process.env.SOL_ADDRESS) {
-      decimals = new BigNumber(9);
-    } else {
-      decimals = new BigNumber(await getTokenDecimals(connection, inputTokenCA));
-    }
-
-    logger.log("Decimals:", decimals.toString());
-
-    const amountBN = new BigNumber(amount);
-    const adjustedAmount = amountBN.multipliedBy(new BigNumber(10).pow(decimals));
-
-    logger.log(
-      {
-        inputMint: inputTokenCA,
-        outputMint: outputTokenCA,
-        amount: adjustedAmount,
-      },
-      "Fetching quote with params:"
-    );
-
-    const quoteResponse = await fetch(
-      `https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`
-    );
-    const quoteData = (await quoteResponse.json()) as {
-      error?: string;
-      swapTransaction?: string;
-    };
-
-    if (!quoteData || quoteData.error) {
-      logger.error({ quoteData }, "Quote error");
-      throw new Error(`Failed to get quote: ${quoteData?.error || "Unknown error"}`);
-    }
-
-    const swapRequestBody = {
-      quoteResponse: quoteData,
-      userPublicKey: walletPublicKey.toBase58(),
-      dynamicComputeUnitLimit: true,
-      dynamicSlippage: true,
-      priorityLevelWithMaxLamports: {
-        maxLamports: 4000000,
-        priorityLevel: "veryHigh",
-      },
-    };
-
-    const swapResponse = await fetch("https://quote-api.jup.ag/v6/swap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(swapRequestBody),
-    });
-
-    const swapData = (await swapResponse.json()) as {
-      error?: string;
-      swapTransaction?: string;
-      [key: string]: string | number | boolean | undefined;
-    };
-
-    if (!swapData?.swapTransaction) {
-      logger.error({ swapData }, "Swap error");
-      throw new Error(
-        `Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`
-      );
-    }
-
-    return {
-      swapTransaction: swapData.swapTransaction,
-      error: swapData.error,
-    };
-  } catch (error) {
-    logger.error({ error }, "Error in swapToken:");
-    throw error;
-  }
-}
 
 async function getTokenFromWallet(
   runtime: IAgentRuntime,
@@ -149,7 +46,52 @@ async function getTokenFromWallet(
 
 import { swapTemplate } from "../generated/prompts/typescript/prompts.js";
 
-const spec = requireActionSpec("SWAP_SOLANA");
+const spec = requireActionSpec("SWAP");
+
+type ExtractedSwapParams = {
+  inputTokenSymbol?: string | null;
+  outputTokenSymbol?: string | null;
+  inputTokenCA?: string | null;
+  outputTokenCA?: string | null;
+  amount?: string | number | null;
+};
+
+async function extractSwapParams(
+  runtime: IAgentRuntime,
+  prompt: string
+): Promise<ExtractedSwapParams> {
+  const result = await withStandaloneTrajectory(
+    runtime,
+    {
+      source: "solana.swap.extract",
+      metadata: {
+        action: spec.name,
+        purpose: "financial_parameter_extraction",
+      },
+    },
+    () =>
+      runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      })
+  );
+
+  return parseToonKeyValue(result) as ExtractedSwapParams;
+}
+
+function toAmount(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || String(value).toLowerCase() === "null") {
+    return null;
+  }
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function normalizeTokenValue(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "null") return null;
+  return trimmed;
+}
 
 export const executeSwap: Action = {
   name: spec.name,
@@ -191,30 +133,17 @@ export const executeSwap: Action = {
         template: swapTemplate,
       });
 
-      const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: swapPrompt,
-      });
-
-      const parsedExtraction = parseKeyValueXml(result) ?? parseJSONObjectFromText(result);
-      const response = parsedExtraction as {
-        inputTokenSymbol?: string;
-        outputTokenSymbol?: string;
-        inputTokenCA?: string;
-        outputTokenCA?: string;
-        amount?: number;
-      };
+      const response = await extractSwapParams(runtime, swapPrompt);
+      response.inputTokenCA = normalizeTokenValue(response.inputTokenCA);
+      response.outputTokenCA = normalizeTokenValue(response.outputTokenCA);
+      response.inputTokenSymbol = normalizeTokenValue(response.inputTokenSymbol);
+      response.outputTokenSymbol = normalizeTokenValue(response.outputTokenSymbol);
 
       if (response.inputTokenSymbol?.toUpperCase() === "SOL") {
-        if (!process.env.SOL_ADDRESS) {
-          throw new Error("SOL_ADDRESS is not configured");
-        }
-        response.inputTokenCA = process.env.SOL_ADDRESS;
+        response.inputTokenCA = "SOL";
       }
       if (response.outputTokenSymbol?.toUpperCase() === "SOL") {
-        if (!process.env.SOL_ADDRESS) {
-          throw new Error("SOL_ADDRESS is not configured");
-        }
-        response.outputTokenCA = process.env.SOL_ADDRESS;
+        response.outputTokenCA = "SOL";
       }
       if (!response.inputTokenCA && response.inputTokenSymbol) {
         response.inputTokenCA =
@@ -236,13 +165,22 @@ export const executeSwap: Action = {
         }
       }
 
-      if (!response.amount) {
+      const amount = toAmount(response.amount);
+      if (!amount) {
         callback?.({ text: "Please specify the amount you want to swap" });
         return;
       }
 
+      const swapParams: SolanaSwapParams = {
+        inputTokenSymbol: response.inputTokenSymbol,
+        outputTokenSymbol: response.outputTokenSymbol,
+        inputTokenCA: response.inputTokenCA,
+        outputTokenCA: response.outputTokenCA,
+        amount,
+      };
+
       if (!isConfirmed(options)) {
-        const preview = `Review Solana swap before submitting: ${response.amount} ${response.inputTokenCA ?? response.inputTokenSymbol ?? "input token"} to ${response.outputTokenCA ?? response.outputTokenSymbol ?? "output token"}. Re-invoke ${spec.name} with confirmed: true to submit.`;
+        const preview = `Review Solana swap before submitting: ${amount} ${response.inputTokenCA ?? response.inputTokenSymbol ?? "input token"} to ${response.outputTokenCA ?? response.outputTokenSymbol ?? "output token"}. Re-invoke ${spec.name} with confirmed: true to submit.`;
         return confirmationRequired({
           actionName: spec.name,
           preview,
@@ -251,62 +189,25 @@ export const executeSwap: Action = {
             outputTokenSymbol: response.outputTokenSymbol ?? null,
             inputTokenCA: response.inputTokenCA ?? null,
             outputTokenCA: response.outputTokenCA ?? null,
-            amount: response.amount,
+            amount,
           },
           callback,
         });
       }
 
-      const rpcUrl = runtime.getSetting("SOLANA_RPC_URL");
-      const rpcUrlStr = typeof rpcUrl === "string" ? rpcUrl : "https://api.mainnet-beta.solana.com";
-      const connection = new Connection(rpcUrlStr);
-      const { publicKey: walletPublicKey } = await getWalletKey(runtime, false);
-
-      const swapResult = await swapToken(
-        connection,
-        walletPublicKey as PublicKey,
-        response.inputTokenCA as string,
-        response.outputTokenCA as string,
-        response.amount as number
-      );
-
-      const transactionBuf = Buffer.from(swapResult.swapTransaction, "base64");
-      const transaction = VersionedTransaction.deserialize(transactionBuf);
-
-      const { keypair } = await getWalletKey(runtime, true);
-      if (keypair?.publicKey.toBase58() !== walletPublicKey?.toBase58()) {
-        throw new Error("Generated public key doesn't match expected public key");
-      }
-
-      if (keypair) {
-        transaction.sign([keypair]);
-      } else {
-        throw new Error("Keypair not found");
-      }
-
-      const latestBlockhash = await connection.getLatestBlockhash();
-      const txid = await connection.sendTransaction(transaction, {
-        skipPreflight: false,
-        maxRetries: 3,
-        preflightCommitment: "confirmed",
-      });
-
-      const confirmation = await connection.confirmTransaction(
-        {
-          signature: txid,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        },
-        "confirmed"
-      );
-
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed: ${confirmation.value.err}`);
-      }
+      const swapResult = (await solanaService.handleWalletAction({
+        subaction: "swap",
+        chain: "solana",
+        ...swapParams,
+        mode: options?.dryRun === true ? "prepare" : "execute",
+        dryRun: options?.dryRun === true,
+      })) as SolanaSwapResult;
 
       callback?.({
-        text: `Swap completed successfully! Transaction ID: ${txid}`,
-        content: { success: true, txid },
+        text: swapResult.dryRun
+          ? "Solana swap dry run completed."
+          : `Swap completed successfully! Transaction ID: ${swapResult.txid}`,
+        content: { success: true, txid: swapResult.txid, dryRun: swapResult.dryRun },
       });
 
       return;

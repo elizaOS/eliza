@@ -6,7 +6,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import { formatEther, type Hex, parseEther } from "viem";
@@ -65,7 +65,7 @@ export class TransferAction {
   }
 }
 
-async function buildTransferDetails(
+export async function buildTransferDetails(
   state: State,
   message: Memory,
   runtime: IAgentRuntime,
@@ -73,14 +73,14 @@ async function buildTransferDetails(
 ): Promise<TransferParams> {
   const chains = wp.getSupportedChains();
   const balances = await wp.getWalletBalances();
+  state = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
+
   state.chainBalances = Object.entries(balances)
     .map(([chain, balance]) => {
       const chainConfig = wp.getChainConfigs(chain as SupportedChain);
       return `${chain}: ${balance} ${chainConfig.nativeCurrency.symbol}`;
     })
     .join(", ");
-
-  state = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
   state.supportedChains = chains.join(" | ");
 
   const context = composePromptFromState({
@@ -93,7 +93,7 @@ async function buildTransferDetails(
     prompt: context,
   });
 
-  const parsedResponse = parseKeyValueXml(llmResponse);
+  const parsedResponse = parseToonKeyValue(llmResponse);
 
   if (!parsedResponse) {
     throw new EVMError(

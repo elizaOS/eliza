@@ -56,7 +56,7 @@ vi.mock("@elizaos/core", () => {
     createUniqueUuid: (_runtime: { agentId?: string }, value: string) => stringToUuid(value),
     logger,
     parseJSONObjectFromText: (text: string) => JSON.parse(text),
-    parseKeyValueXml: <T = Record<string, unknown>>(text: string): T | null => {
+    parseToonKeyValue: <T = Record<string, unknown>>(text: string): T | null => {
       if (!text) return null;
       const match = /<(\w+)>([\s\S]*?)<\/\1>/g;
       const result: Record<string, unknown> = {};

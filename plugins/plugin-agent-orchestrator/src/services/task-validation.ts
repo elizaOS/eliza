@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-import { parseKeyValueXml, type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
 import type {
   SwarmCoordinatorContext,
   TaskContext,
@@ -70,12 +70,6 @@ type ScreenshotSemanticResult = {
   contentVerificationError?: string;
 };
 
-function extractJsonBlock(raw: string): string {
-  const trimmed = raw.trim();
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  return (fenceMatch?.[1] ?? trimmed).trim();
-}
-
 function normalizeValidationResponse(parsed: unknown): ValidationResponse | null {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return null;
@@ -109,17 +103,7 @@ function normalizeValidationResponse(parsed: unknown): ValidationResponse | null
 }
 
 function parseValidationResponse(raw: string): ValidationResponse | null {
-  const parsedToonOrXml = parseKeyValueXml<Record<string, unknown>>(raw);
-  const normalizedToonOrXml = normalizeValidationResponse(parsedToonOrXml);
-  if (normalizedToonOrXml) {
-    return normalizedToonOrXml;
-  }
-
-  try {
-    return normalizeValidationResponse(JSON.parse(extractJsonBlock(raw)));
-  } catch {
-    return null;
-  }
+  return normalizeValidationResponse(parseToonKeyValue<Record<string, unknown>>(raw));
 }
 
 function getValidationRootDir(): string {

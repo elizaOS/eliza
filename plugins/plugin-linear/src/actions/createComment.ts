@@ -12,6 +12,7 @@ import {
 import { createCommentTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateCommentParameters } from "../types/index.js";
+import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const createCommentAction: Action = {
@@ -130,19 +131,21 @@ export const createCommentAction: Action = {
           }
         } else {
           try {
-            const parsed = JSON.parse(
-              response
-                .replace(/^```(?:json)?\n?/, "")
-                .replace(/\n?```$/, "")
-                .trim()
-            );
+            const parsed = parseLinearPromptResponse(response);
+            if (Object.keys(parsed).length === 0) {
+              throw new Error("No fields found in model response");
+            }
 
-            if (parsed.issueId) {
-              issueId = parsed.issueId;
-              commentBody = parsed.commentBody;
-            } else if (parsed.issueDescription) {
+            const parsedIssueId = getStringValue(parsed.issueId);
+            const issueDescription = getStringValue(parsed.issueDescription);
+            const parsedCommentBody = getStringValue(parsed.commentBody) ?? "";
+
+            if (parsedIssueId) {
+              issueId = parsedIssueId;
+              commentBody = parsedCommentBody;
+            } else if (issueDescription) {
               const filters: { query: string; limit: number; team?: string } = {
-                query: parsed.issueDescription,
+                query: issueDescription,
                 limit: 5,
               };
 
@@ -154,7 +157,7 @@ export const createCommentAction: Action = {
               const issues = await linearService.searchIssues(filters);
 
               if (issues.length === 0) {
-                const errorMessage = `No issues found matching "${parsed.issueDescription}". Please provide a specific issue ID.`;
+                const errorMessage = `No issues found matching "${issueDescription}". Please provide a specific issue ID.`;
                 await callback?.({
                   text: errorMessage,
                   source: message.content.source,
@@ -167,7 +170,7 @@ export const createCommentAction: Action = {
 
               if (issues.length === 1) {
                 issueId = issues[0].identifier;
-                commentBody = parsed.commentBody;
+                commentBody = parsedCommentBody;
               } else {
                 const issueList = await Promise.all(
                   issues.map(async (issue, index) => {
@@ -176,7 +179,7 @@ export const createCommentAction: Action = {
                   })
                 );
 
-                const clarifyMessage = `Found multiple issues matching "${parsed.issueDescription}":\n${issueList.join("\n")}\n\nPlease specify which issue to comment on by its ID.`;
+                const clarifyMessage = `Found multiple issues matching "${issueDescription}":\n${issueList.join("\n")}\n\nPlease specify which issue to comment on by its ID.`;
                 await callback?.({
                   text: clarifyMessage,
                   source: message.content.source,
@@ -192,7 +195,7 @@ export const createCommentAction: Action = {
                       identifier: i.identifier,
                       title: i.title,
                     })),
-                    pendingComment: parsed.commentBody,
+                    pendingComment: parsedCommentBody,
                   },
                 };
               }
@@ -200,8 +203,9 @@ export const createCommentAction: Action = {
               throw new Error("No issue identifier or description found");
             }
 
-            if (parsed.commentType && parsed.commentType !== "note") {
-              commentBody = `[${parsed.commentType.toUpperCase()}] ${commentBody}`;
+            const commentType = getStringValue(parsed.commentType)?.toLowerCase();
+            if (commentType && commentType !== "note") {
+              commentBody = `[${commentType.toUpperCase()}] ${commentBody}`;
             }
           } catch (parseError) {
             logger.warn("Failed to parse LLM response, falling back to regex:", parseError);

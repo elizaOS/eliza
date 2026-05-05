@@ -1,9 +1,14 @@
 import {
   type IAgentRuntime,
   ModelType,
-  parseKeyValueXml,
+  parseToonKeyValue,
   Service,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
+import {
+  formatRs2004RouterPrompt,
+  resolveRs2004RouterAction,
+} from "../actions/router-definitions.js";
 import { type GatewayHandle, startGateway } from "../gateway/index.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
@@ -31,104 +36,6 @@ const MODEL_SIZE_MAP: Record<string, string> = {
 };
 
 const DEFAULT_MODEL_SIZE = ModelType.TEXT_SMALL;
-
-/** All actions the LLM can choose from. Name → param hint shown in prompt. */
-const ACTION_LIST = [
-  {
-    name: "WALK_TO",
-    params: "destination: name OR x: N, z: N",
-  },
-  { name: "OPEN_DOOR", params: "(no params — opens nearest door/gate)" },
-  { name: "TALK_TO_NPC", params: "npc: name" },
-  { name: "NAVIGATE_DIALOG", params: "option: 1-based index" },
-  {
-    name: "INTERACT_OBJECT",
-    params: "object: name, option: action",
-  },
-  { name: "CHOP_TREE", params: "tree: type (optional)" },
-  { name: "MINE_ROCK", params: "rock: type (optional)" },
-  { name: "FISH", params: "spot: type (optional)" },
-  { name: "ATTACK_NPC", params: "npc: name" },
-  { name: "EAT_FOOD", params: "(no params — eats first food found)" },
-  {
-    name: "SET_COMBAT_STYLE",
-    params: "style: 0=Atk 1=Str 2=Def 3=Ctrl",
-  },
-  { name: "DROP_ITEM", params: "item: name" },
-  { name: "PICKUP_ITEM", params: "item: name" },
-  { name: "EQUIP_ITEM", params: "item: name" },
-  { name: "UNEQUIP_ITEM", params: "item: name" },
-  { name: "USE_ITEM", params: "item: name" },
-  {
-    name: "USE_ITEM_ON_ITEM",
-    params: "item1: name, item2: name",
-  },
-  {
-    name: "USE_ITEM_ON_OBJECT",
-    params: "item: name, object: name",
-  },
-  { name: "OPEN_BANK", params: "(no params — finds nearest bank)" },
-  { name: "CLOSE_BANK", params: "(no params)" },
-  {
-    name: "DEPOSIT_ITEM",
-    params: "item: name, count: N (optional)",
-  },
-  {
-    name: "WITHDRAW_ITEM",
-    params: "item: name, count: N (optional)",
-  },
-  { name: "OPEN_SHOP", params: "npc: shopkeeper name" },
-  { name: "CLOSE_SHOP", params: "(no params)" },
-  { name: "BUY_FROM_SHOP", params: "item: name, count: N" },
-  { name: "SELL_TO_SHOP", params: "item: name, count: N" },
-  { name: "BURN_LOGS", params: "(no params — uses tinderbox on logs)" },
-  { name: "COOK_FOOD", params: "food: raw food name (optional)" },
-  { name: "FLETCH_LOGS", params: "(no params)" },
-  { name: "CRAFT_LEATHER", params: "(no params)" },
-  { name: "SMITH_AT_ANVIL", params: "item: item to smith (optional)" },
-  { name: "PICKPOCKET_NPC", params: "npc: name" },
-  {
-    name: "CAST_SPELL",
-    params: "spell: spellId, target: npcNid (optional)",
-  },
-];
-
-/** Map action names from LLM response to dispatch keys. */
-const ACTION_NAME_TO_DISPATCH: Record<string, string> = {
-  WALK_TO: "walkTo",
-  OPEN_DOOR: "openDoor",
-  TALK_TO_NPC: "talkToNpc",
-  NAVIGATE_DIALOG: "navigateDialog",
-  INTERACT_OBJECT: "interactObject",
-  CHOP_TREE: "chopTree",
-  MINE_ROCK: "mineRock",
-  FISH: "fish",
-  ATTACK_NPC: "attackNpc",
-  EAT_FOOD: "eatFood",
-  SET_COMBAT_STYLE: "setCombatStyle",
-  DROP_ITEM: "dropItem",
-  PICKUP_ITEM: "pickupItem",
-  EQUIP_ITEM: "equipItem",
-  UNEQUIP_ITEM: "unequipItem",
-  USE_ITEM: "useItem",
-  USE_ITEM_ON_ITEM: "useItemOnItem",
-  USE_ITEM_ON_OBJECT: "useItemOnObject",
-  OPEN_BANK: "openBank",
-  CLOSE_BANK: "closeBank",
-  DEPOSIT_ITEM: "depositItem",
-  WITHDRAW_ITEM: "withdrawItem",
-  OPEN_SHOP: "openShop",
-  CLOSE_SHOP: "closeShop",
-  BUY_FROM_SHOP: "buyFromShop",
-  SELL_TO_SHOP: "sellToShop",
-  BURN_LOGS: "burnLogs",
-  COOK_FOOD: "cookFood",
-  FLETCH_LOGS: "fletchLogs",
-  CRAFT_LEATHER: "craftLeather",
-  SMITH_AT_ANVIL: "smithAtAnvil",
-  PICKPOCKET_NPC: "pickpocketNpc",
-  CAST_SPELL: "castSpell",
-};
 
 export class RsSdkGameService extends Service {
   static serviceType = "rs_2004scape";
@@ -300,49 +207,65 @@ export class RsSdkGameService extends Service {
         return;
       }
 
-      this.stepNumber++;
+      await withStandaloneTrajectory(
+        this.runtime,
+        {
+          source: "app-2004scape.autonomous-loop",
+          metadata: {
+            game: "2004scape",
+            stepNumber: this.stepNumber + 1,
+            modelSize: this.modelSize,
+          },
+        },
+        async () => {
+          this.stepNumber++;
 
-      // 1. Gather provider context
-      const providerContext = await this.gatherProviderContext();
+          // 1. Gather provider context
+          const providerContext = await this.gatherProviderContext();
 
-      // 2. Build the full prompt
-      const prompt = this.buildPrompt(botState, providerContext);
+          // 2. Build the full prompt
+          const prompt = this.buildPrompt(botState, providerContext);
 
-      // 3. Call the LLM with the configured model size
-      this.log(`Step ${this.stepNumber} — calling ${this.modelSize}`);
-      const response = await this.runtime.useModel(this.modelSize as any, {
-        prompt,
-        maxTokens: 400,
-      });
+          // 3. Call the LLM with the configured model size
+          this.log(`Step ${this.stepNumber} - calling ${this.modelSize}`);
+          const response = await this.runtime.useModel(this.modelSize as any, {
+            prompt,
+            maxTokens: 400,
+          });
 
-      if (
-        !response ||
-        typeof response !== "string" ||
-        response.trim().length === 0
-      ) {
-        this.log(`Step ${this.stepNumber} — empty LLM response`);
-        return;
-      }
+          if (
+            !response ||
+            typeof response !== "string" ||
+            response.trim().length === 0
+          ) {
+            this.log(`Step ${this.stepNumber} - empty LLM response`);
+            return;
+          }
 
-      this.log(`Step ${this.stepNumber} — LLM: ${response.slice(0, 200)}`);
+          this.log(`Step ${this.stepNumber} - LLM: ${response.slice(0, 200)}`);
 
-      // Store for action handlers that might read it
-      setCurrentLlmResponse(response);
+          // Store for action handlers that might read it
+          setCurrentLlmResponse(response);
 
-      // 4. Parse the chosen action from the response
-      const parsed = this.parseActionFromResponse(response);
-      if (!parsed) {
-        this.log(
-          `Step ${this.stepNumber} — could not parse action from response`,
-        );
-        return;
-      }
+          // 4. Parse the chosen action from the response
+          const parsed = this.parseActionFromResponse(response);
+          if (!parsed) {
+            this.log(
+              `Step ${this.stepNumber} - could not parse action from response`,
+            );
+            return;
+          }
 
-      // 5. Execute the action
-      this.log(`Step ${this.stepNumber} — executing ${parsed.actionType}`);
-      const result = await this.executeAction(parsed.actionType, parsed.params);
-      this.log(
-        `Step ${this.stepNumber} — ${result.action}: ${result.success ? "OK" : "FAIL"} — ${result.message}`,
+          // 5. Execute the action
+          this.log(`Step ${this.stepNumber} - executing ${parsed.actionType}`);
+          const result = await this.executeAction(
+            parsed.actionType,
+            parsed.params,
+          );
+          this.log(
+            `Step ${this.stepNumber} - ${result.action}: ${result.success ? "OK" : "FAIL"} - ${result.message}`,
+          );
+        },
       );
     } catch (err) {
       this.log(
@@ -354,26 +277,50 @@ export class RsSdkGameService extends Service {
   }
 
   private async gatherProviderContext(): Promise<string> {
-    const dummy = { content: { text: "" } } as any;
+    const dummyMemory = {
+      content: { text: "" },
+    } as unknown as import("@elizaos/core").Memory;
+    const dummyState = {
+      values: {},
+      data: {},
+      text: "",
+    } as unknown as import("@elizaos/core").State;
     const sections: string[] = [];
 
     try {
-      sections.push(await mapAreaProvider.get(this.runtime, dummy));
+      sections.push(
+        (await mapAreaProvider.get(this.runtime, dummyMemory, dummyState))
+          .text ?? "",
+      );
     } catch {
       /* provider optional */
     }
     try {
-      sections.push(await worldKnowledgeProvider.get(this.runtime, dummy));
+      sections.push(
+        (
+          await worldKnowledgeProvider.get(
+            this.runtime,
+            dummyMemory,
+            dummyState,
+          )
+        ).text ?? "",
+      );
     } catch {
       /* provider optional */
     }
     try {
-      sections.push(await goalsProvider.get(this.runtime, dummy));
+      sections.push(
+        (await goalsProvider.get(this.runtime, dummyMemory, dummyState)).text ??
+          "",
+      );
     } catch {
       /* provider optional */
     }
     try {
-      sections.push(await botStateProvider.get(this.runtime, dummy));
+      sections.push(
+        (await botStateProvider.get(this.runtime, dummyMemory, dummyState))
+          .text ?? "",
+      );
     } catch {
       /* provider optional */
     }
@@ -392,9 +339,7 @@ export class RsSdkGameService extends Service {
       )
       .join("\n");
 
-    const actionListStr = ACTION_LIST.map(
-      (a) => `  ${a.name}: ${a.params}`,
-    ).join("\n");
+    const actionListStr = formatRs2004RouterPrompt();
 
     return `You are an autonomous RuneScape bot playing 2004scape. Step ${this.stepNumber}.
 Your name: ${p.name} | Combat: ${p.combatLevel} | HP: ${p.hp}/${p.maxHp} | Position: (${p.worldX}, ${p.worldZ}) | Inventory: ${state.inventory.length}/28
@@ -406,7 +351,8 @@ ${recentActions || "  (none yet)"}
 
 # Available Actions
 Choose exactly ONE action. Return only a TOON record:
-action: ACTION_NAME
+action: ROUTER_NAME
+subaction: router_operation
 param_name: value
 ${actionListStr}
 
@@ -422,52 +368,20 @@ Your choice:`;
   private parseActionFromResponse(
     response: string,
   ): { actionType: string; params: Record<string, unknown> } | null {
-    const toonParsed = parseKeyValueXml<Record<string, unknown>>(response);
+    const toonParsed = parseToonKeyValue<Record<string, unknown>>(response);
     const toonAction = this.extractActionName(toonParsed);
     if (toonAction) {
-      const dispatchKey = ACTION_NAME_TO_DISPATCH[toonAction];
-      if (!dispatchKey) return null;
+      const resolved = resolveRs2004RouterAction(
+        toonAction,
+        this.extractSubactionName(toonParsed),
+      );
+      if (!resolved) return null;
       const params = this.extractParamsFromParsedResponse(toonParsed);
-      this.mapParamAliases(dispatchKey, params);
-      return { actionType: dispatchKey, params };
+      this.mapParamAliases(resolved.dispatch, params);
+      return { actionType: resolved.dispatch, params };
     }
 
-    // Legacy fallback for old XML-shaped loop outputs.
-    const actionMatch = response.match(/<action>\s*(\w+)\s*<\/action>/i);
-    let actionName: string | null = actionMatch?.[1]?.toUpperCase() ?? null;
-
-    // Fallback: look for any known action name in the response
-    if (!actionName) {
-      for (const name of Object.keys(ACTION_NAME_TO_DISPATCH)) {
-        if (response.toUpperCase().includes(name)) {
-          actionName = name;
-          break;
-        }
-      }
-    }
-
-    if (!actionName) return null;
-
-    const dispatchKey = ACTION_NAME_TO_DISPATCH[actionName];
-    if (!dispatchKey) return null;
-
-    // Extract legacy XML params.
-    const params: Record<string, unknown> = {};
-    const paramRegex = /<(\w+)>([\s\S]*?)<\/\1>/gi;
-    let match: RegExpExecArray | null;
-    while ((match = paramRegex.exec(response)) !== null) {
-      const key = match[1];
-      if (key === "action") continue; // skip the action tag itself
-      const val = match[2].trim();
-      // Try numeric
-      const num = Number(val);
-      params[key] = Number.isFinite(num) && /^\d+$/.test(val) ? num : val;
-    }
-
-    // Map common param names to what dispatchAction expects.
-    this.mapParamAliases(dispatchKey, params);
-
-    return { actionType: dispatchKey, params };
+    return null;
   }
 
   private extractActionName(
@@ -481,6 +395,19 @@ Your choice:`;
         .trim()
         .replace(/[\s-]+/g, "_")
         .toUpperCase() || null
+    );
+  }
+
+  private extractSubactionName(
+    parsed: Record<string, unknown> | null,
+  ): string | null {
+    const raw = parsed?.subaction ?? parsed?.operation ?? parsed?.intent;
+    if (typeof raw !== "string") return null;
+    return (
+      raw
+        .trim()
+        .replace(/[\s-]+/g, "_")
+        .toLowerCase() || null
     );
   }
 

@@ -3,7 +3,6 @@ import type { RobloxConfig } from "../types";
 
 export const ROBLOX_DEFAULTS = {
   MESSAGING_TOPIC: "eliza-agent",
-  POLL_INTERVAL: 30,
   DRY_RUN: false,
 } as const;
 
@@ -37,10 +36,6 @@ export function validateRobloxConfig(runtime: IAgentRuntime): RobloxConfig {
   const webhookSecret = runtime.getSetting("ROBLOX_WEBHOOK_SECRET") as string | undefined;
   const messagingTopic =
     (runtime.getSetting("ROBLOX_MESSAGING_TOPIC") as string) || ROBLOX_DEFAULTS.MESSAGING_TOPIC;
-  const pollIntervalStr = runtime.getSetting("ROBLOX_POLL_INTERVAL") as string | undefined;
-  const pollInterval = pollIntervalStr
-    ? parseInt(pollIntervalStr, 10)
-    : ROBLOX_DEFAULTS.POLL_INTERVAL;
   const dryRunStr = runtime.getSetting("ROBLOX_DRY_RUN") as string | undefined;
   const dryRun = dryRunStr === "true";
 
@@ -50,7 +45,6 @@ export function validateRobloxConfig(runtime: IAgentRuntime): RobloxConfig {
     placeId,
     webhookSecret,
     messagingTopic,
-    pollInterval,
     dryRun,
   };
 }

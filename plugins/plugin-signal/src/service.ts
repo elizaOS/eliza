@@ -15,9 +15,13 @@ import {
   lifeOpsPassiveConnectorsEnabled,
   type Media,
   type Memory,
+  type MessageConnectorChatContext,
+  type MessageConnectorTarget,
+  type MessageConnectorUserContext,
   type Room,
   Service,
   stringToUuid,
+  type TargetInfo,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -44,10 +48,109 @@ const getMessageService = (runtime: IAgentRuntime): MessageService | null => {
   return null;
 };
 
+function normalizeSignalQuery(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function scoreSignalCandidate(values: Array<string | undefined>, query: string): number {
+  const normalized = normalizeSignalQuery(query);
+  if (!normalized) {
+    return 0.4;
+  }
+
+  const candidates = values
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim().toLowerCase());
+
+  if (candidates.some((candidate) => candidate === normalized)) {
+    return 1;
+  }
+  if (candidates.some((candidate) => candidate.includes(normalized))) {
+    return 0.85;
+  }
+
+  const digits = normalized.replace(/\D/g, "");
+  if (digits && candidates.some((candidate) => candidate.replace(/\D/g, "").includes(digits))) {
+    return 0.8;
+  }
+
+  return 0;
+}
+
+function signalContactToConnectorTarget(
+  contact: SignalContact,
+  score = 0.5
+): MessageConnectorTarget {
+  const label = getSignalContactDisplayName(contact);
+  return {
+    target: {
+      source: SIGNAL_SERVICE_NAME,
+      channelId: contact.number,
+      entityId: stringToUuid(`signal-user-${contact.number}`),
+    },
+    label,
+    kind: "contact",
+    description: contact.blocked ? "Blocked Signal contact" : "Signal contact",
+    score,
+    contexts: ["social", "connectors"],
+    metadata: {
+      number: contact.number,
+      uuid: contact.uuid,
+      blocked: contact.blocked,
+    },
+  };
+}
+
+function signalGroupToConnectorTarget(group: SignalGroup, score = 0.5): MessageConnectorTarget {
+  return {
+    target: {
+      source: SIGNAL_SERVICE_NAME,
+      channelId: group.id,
+    },
+    label: group.name || `Signal Group ${group.id}`,
+    kind: "group",
+    description:
+      group.description ||
+      `${group.members.length} Signal member${group.members.length === 1 ? "" : "s"}`,
+    score,
+    contexts: ["social", "connectors"],
+    metadata: {
+      groupId: group.id,
+      isMember: group.isMember,
+      isBlocked: group.isBlocked,
+      memberCount: group.members.length,
+    },
+  };
+}
+
+function signalRecentToConnectorTarget(
+  recent: SignalRecentMessage,
+  score = 0.55
+): MessageConnectorTarget {
+  return {
+    target: {
+      source: SIGNAL_SERVICE_NAME,
+      roomId: recent.roomId as UUID,
+      channelId: recent.channelId,
+    },
+    label: recent.roomName,
+    kind: recent.isGroup ? "group" : "contact",
+    description: `${recent.speakerName}: ${recent.text.slice(0, 120)}`,
+    score,
+    contexts: ["social", "connectors"],
+    metadata: {
+      recentMessageId: recent.id,
+      isGroup: recent.isGroup,
+      createdAt: recent.createdAt,
+    },
+  };
+}
+
 import { missingSignalCliMessage, resolveSignalCliExecutable } from "./pairing-service";
 import {
   getSignalContactDisplayName,
   type ISignalService,
+  isValidGroupId,
   isValidUuid,
   MAX_SIGNAL_MESSAGE_LENGTH,
   normalizeE164,
@@ -413,7 +516,7 @@ export class SignalService extends Service implements ISignalService {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: SignalService): void {
-    runtime.registerSendHandler("signal", async (_runtime, target, content) => {
+    const sendHandler = async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
       const text = typeof content.text === "string" ? content.text.trim() : "";
       if (!text) {
         return;
@@ -447,7 +550,134 @@ export class SignalService extends Service implements ISignalService {
         }),
         "messages"
       );
-    });
+    };
+
+    if (typeof runtime.registerMessageConnector === "function") {
+      runtime.registerMessageConnector({
+        source: SIGNAL_SERVICE_NAME,
+        label: "Signal",
+        capabilities: [
+          "send_message",
+          "send_direct_message",
+          "send_group_message",
+          "send_reaction",
+          "list_contacts",
+          "list_groups",
+          "read_recent_messages",
+        ],
+        supportedTargetKinds: ["contact", "phone", "group", "room"],
+        contexts: ["social", "connectors"],
+        description:
+          "Send Signal direct and group messages to known contacts, phone numbers, groups, and recent Signal rooms.",
+        sendHandler,
+        resolveTargets: async (query) => {
+          const contacts = await service.listConnectorContacts();
+          const groups = await service.listConnectorGroups();
+          const recentMessages = await service.getRecentMessages(30).catch(() => []);
+          const recentTargets = recentMessages
+            .map((recent) => ({
+              recent,
+              score: scoreSignalCandidate(
+                [recent.roomName, recent.channelId, recent.speakerName, recent.text],
+                query
+              ),
+            }))
+            .filter(({ score }) => score > 0)
+            .map(({ recent, score }) => signalRecentToConnectorTarget(recent, score));
+
+          const contactTargets = contacts
+            .map((contact) => ({
+              contact,
+              score: scoreSignalCandidate(
+                [contact.number, contact.name, contact.profileName, contact.uuid],
+                query
+              ),
+            }))
+            .filter(({ score }) => score > 0)
+            .map(({ contact, score }) => signalContactToConnectorTarget(contact, score));
+
+          const groupTargets = groups
+            .map((group) => ({
+              group,
+              score: scoreSignalCandidate([group.id, group.name, group.description], query),
+            }))
+            .filter(({ score }) => score > 0)
+            .map(({ group, score }) => signalGroupToConnectorTarget(group, score));
+
+          return [...contactTargets, ...groupTargets, ...recentTargets]
+            .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+            .slice(0, 12);
+        },
+        listRecentTargets: async () => {
+          const recent = await service.getRecentMessages(12).catch(() => []);
+          return recent.map((message) => signalRecentToConnectorTarget(message));
+        },
+        listRooms: async () => {
+          const groups = await service.listConnectorGroups();
+          return groups.map((group) => signalGroupToConnectorTarget(group));
+        },
+        getChatContext: async (target, context) => {
+          const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
+          const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
+          if (!channelId) {
+            return null;
+          }
+
+          const recentMessages = (await service.getRecentMessages(50).catch(() => []))
+            .filter((recent) => recent.channelId === channelId || recent.roomId === target.roomId)
+            .slice(0, 10)
+            .map((recent) => ({
+              name: recent.speakerName,
+              text: recent.text,
+              timestamp: recent.createdAt,
+              metadata: {
+                isFromAgent: recent.isFromAgent,
+                isGroup: recent.isGroup,
+              },
+            }));
+
+          return {
+            target: {
+              source: SIGNAL_SERVICE_NAME,
+              roomId: target.roomId,
+              channelId,
+            },
+            label: room?.name || channelId,
+            recentMessages,
+            metadata: {
+              isGroup: room?.type === ChannelType.GROUP,
+              channelId,
+            },
+          } satisfies MessageConnectorChatContext;
+        },
+        getUserContext: async (entityId) => {
+          const contacts = await service.listConnectorContacts();
+          const contact = contacts.find(
+            (candidate) => stringToUuid(`signal-user-${candidate.number}`) === entityId
+          );
+          if (!contact) {
+            return null;
+          }
+          return {
+            entityId,
+            label: getSignalContactDisplayName(contact),
+            aliases: [contact.name, contact.profileName, contact.number].filter(
+              (value): value is string => typeof value === "string" && value.length > 0
+            ),
+            handles: {
+              signal: contact.number,
+            },
+            metadata: {
+              uuid: contact.uuid,
+              blocked: contact.blocked,
+            },
+          } satisfies MessageConnectorUserContext;
+        },
+      });
+      return;
+    }
+
+    runtime.registerSendHandler(SIGNAL_SERVICE_NAME, sendHandler);
   }
 
   private async initialize(): Promise<void> {
@@ -1050,6 +1280,26 @@ export class SignalService extends Service implements ISignalService {
     return { timestamp: lastTimestamp };
   }
 
+  async sendDirectMessage(target: string, content: Content): Promise<void> {
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      return;
+    }
+    await this.sendMessage(target, text);
+  }
+
+  async sendRoomMessage(target: string, content: Content): Promise<void> {
+    const text = typeof content.text === "string" ? content.text.trim() : "";
+    if (!text) {
+      return;
+    }
+    if (isValidGroupId(target)) {
+      await this.sendGroupMessage(target, text);
+      return;
+    }
+    await this.sendMessage(target, text);
+  }
+
   private async recordOutgoingMessage(args: {
     channelId: string;
     text: string;
@@ -1129,6 +1379,14 @@ export class SignalService extends Service implements ISignalService {
     return contacts;
   }
 
+  private async listConnectorContacts(): Promise<SignalContact[]> {
+    try {
+      return await this.getContacts();
+    } catch {
+      return Array.from(this.contactCache.values());
+    }
+  }
+
   async getGroups(): Promise<SignalGroup[]> {
     if (!this.client) {
       throw new Error("Signal client not initialized");
@@ -1142,6 +1400,14 @@ export class SignalService extends Service implements ISignalService {
     }
 
     return groups;
+  }
+
+  private async listConnectorGroups(): Promise<SignalGroup[]> {
+    try {
+      return await this.getGroups();
+    } catch {
+      return Array.from(this.groupCache.values());
+    }
   }
 
   async getRecentMessages(limit: number = 20): Promise<SignalRecentMessage[]> {

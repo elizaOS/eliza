@@ -3,8 +3,8 @@
  *
  * Expected LLM response format:
  *
- *   <action>ATTACK_NPC</action>
- *   <npcId>42</npcId>
+ *   action: ATTACK_NPC
+ *   npcId: 42
  *
  * The LLM gets NPC instance ids from the `SCAPE_NEARBY` provider,
  * which lists them in the `npcs[].id` column each step.
@@ -25,7 +25,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParamInt } from "./param-parser.js";
 
 export const attackNpc: Action = {
@@ -40,7 +40,7 @@ export const attackNpc: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "ATTACK_NPC");
+    return hasActionRequest(message, "ATTACK_NPC");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -61,7 +61,7 @@ export const attackNpc: Action = {
     const text = resolveActionText(message);
     const npcId = extractParamInt(text, "npcId") ?? extractParamInt(text, "id");
     if (npcId === null) {
-      const err = "ATTACK_NPC requires <npcId>N</npcId>.";
+      const err = "ATTACK_NPC requires npcId: N.";
       callback?.({ text: err, action: "ATTACK_NPC" });
       return { success: false, text: err };
     }

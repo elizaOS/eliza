@@ -29,6 +29,18 @@ from .suites import ExtractSuite, RankSuite, DetectSuite, ProfitSuite
 
 console = Console()
 LOG_LINES: list[str] = []  # accumulate detailed logs
+BENCHMARK_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SMOKE_DATA_DIR = BENCHMARK_ROOT / "fixtures" / "smoke-data"
+
+
+def _resolve_data_path(data_path: Path) -> Path:
+    """Use the bundled smoke fixture when the full external dataset is absent."""
+    if data_path.exists():
+        return data_path
+    if data_path.as_posix().endswith("trenches-chat-dataset/data") and SMOKE_DATA_DIR.exists():
+        return SMOKE_DATA_DIR
+    raise click.ClickException(f"data directory does not exist: {data_path}")
 
 
 def log(msg: str, level: str = "INFO") -> None:
@@ -350,7 +362,7 @@ def print_results(results: dict[str, dict]) -> None:
 
 
 @click.command()
-@click.option("--data-dir", required=True, type=click.Path(exists=True), help="Path to trenches-chat-dataset/data/")
+@click.option("--data-dir", required=True, type=click.Path(), help="Path to trenches-chat-dataset/data/")
 @click.option("--suite", multiple=True, help="Specific suite(s) to run (extract, rank, detect, profit)")
 @click.option("--output", default=None, type=click.Path(), help="Output directory for results JSON")
 @click.option("--generate-gt", is_flag=True, help="Only generate ground truth, don't run benchmarks")
@@ -367,7 +379,7 @@ def main(
     api_base: str | None,
 ) -> None:
     """Trust Marketplace Benchmark Harness."""
-    data_path = Path(data_dir)
+    data_path = _resolve_data_path(Path(data_dir))
 
     console.print("[bold]Trust Marketplace Benchmark[/]")
     console.print(f"Data: {data_path}")
@@ -398,10 +410,17 @@ def main(
         console.print(f"\n[bold green]System: FullSystem (LLM extraction + balanced trust scoring)[/]")
         console.print(f"  Cache dir: {cache_dir.resolve()}")
         from dotenv import load_dotenv
-        load_dotenv(Path(__file__).resolve().parents[3] / ".env")  # load from workspace root
+        load_dotenv(REPO_ROOT / ".env")
         if api_base:
             os.environ["OPENAI_BASE_URL"] = api_base
-        sys_instance = FullSystem(cache_dir=cache_dir, model=model or "gpt-4o-mini")
+        selected_model = (
+            model
+            or os.environ.get("BENCHMARK_MODEL_NAME")
+            or os.environ.get("MODEL_NAME")
+            or os.environ.get("GROQ_LARGE_MODEL")
+            or "openai/gpt-oss-120b"
+        )
+        sys_instance = FullSystem(cache_dir=cache_dir, model=selected_model)
     elif system_name in ("eliza-bridge", "eliza-ts"):
         cache_dir = data_path / ".." / ".benchmark_cache"
         console.print(
@@ -409,7 +428,17 @@ def main(
         )
         console.print(f"  Cache dir: {cache_dir.resolve()}")
         from dotenv import load_dotenv
-        load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+        load_dotenv(REPO_ROOT / ".env")
+        if model:
+            for key in (
+                "BENCHMARK_MODEL_NAME",
+                "MODEL_NAME",
+                "SMALL_MODEL",
+                "LARGE_MODEL",
+                "GROQ_SMALL_MODEL",
+                "GROQ_LARGE_MODEL",
+            ):
+                os.environ.setdefault(key, model)
         # Auto-spawn the TS benchmark server (idempotent — no-op if already running)
         try:
             from eliza_adapter.server_manager import ElizaServerManager

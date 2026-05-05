@@ -126,7 +126,7 @@ async function generateObjectByModelType(
   }
 
   if (usage) {
-    emitModelUsageEvent(runtime, modelType, params.prompt, usage);
+    emitModelUsageEvent(runtime, modelType, params.prompt, usage, modelName);
   }
 
   logger.debug("Attempting to parse response from Anthropic model");

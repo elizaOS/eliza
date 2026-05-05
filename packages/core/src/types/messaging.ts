@@ -11,7 +11,8 @@ import type { IAgentRuntime } from "./runtime";
 /**
  * Information describing the target of a message.
  */
-export interface TargetInfo extends ProtoTargetInfo {
+export interface TargetInfo
+	extends Omit<ProtoTargetInfo, "$typeName" | "$unknown"> {
 	roomId?: UUID;
 	entityId?: UUID;
 }

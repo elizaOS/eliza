@@ -342,10 +342,8 @@ export interface InstallSkillOptions {
 // PROMPT GENERATION TYPES
 // ============================================================
 
-/**
- * Options for generating skill metadata XML for prompts.
- */
-export interface PromptXmlOptions {
+/** Options for generating skill metadata TOON for prompts. */
+export interface PromptToonOptions {
 	/** Include location paths */
 	includeLocation?: boolean;
 

@@ -34,7 +34,7 @@ PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider
 
 ```bash
 export OPENAI_API_KEY=your_key_here
-PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider openai --model gpt-4o-mini
+PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider groq --model openai/gpt-oss-120b
 ```
 
 ### Run Full Benchmark from HuggingFace

@@ -31,7 +31,7 @@ export const models: LLMModel[] = [
     tier: "$$",
   },
   {
-    id: "openai/gpt-4o-mini",
+    id: "openai/gpt-5-mini",
     name: "GPT-4o (Legacy)",
     provider: "OpenAI",
     providerId: "openai",
@@ -40,7 +40,7 @@ export const models: LLMModel[] = [
     fast: true, // Restored fast attribute
   },
   {
-    id: "openai/gpt-4-turbo",
+    id: "openai/gpt-5.5",
     name: "GPT-4 Turbo (Legacy)",
     provider: "OpenAI",
     providerId: "openai",

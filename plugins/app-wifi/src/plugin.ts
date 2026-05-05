@@ -1,6 +1,7 @@
 /**
- * elizaOS runtime plugin for the WiFi app — exposes a single SCAN_WIFI action,
- * gated to the WiFi app's session.
+ * elizaOS runtime plugin for the WiFi app: exposes a single SCAN_WIFI action.
+ * The agent Android adapter applies hosted-app session gating when this
+ * package's `/plugin` export is registered.
  */
 
 import type { Plugin } from "@elizaos/core";

@@ -153,7 +153,7 @@ env:
   min_actions_per_trajectory: 3
   
   # LLM Judge settings
-  judge_model: gpt-4o-mini
+  judge_model: gpt-5-mini
   judge_temperature: 0.3
 ```
 

@@ -11,8 +11,7 @@ import type {
 import {
   composePromptFromState,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
 } from "@elizaos/core";
 
 export const WHATSAPP_SEND_REACTION_ACTION = "WHATSAPP_SEND_REACTION";
@@ -93,8 +92,7 @@ export const sendReactionAction: Action = {
         prompt,
       });
 
-      const parsed = (parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response)) as unknown as ReactionParams | null;
+      const parsed = (parseToonKeyValue<Record<string, unknown>>(response)) as unknown as ReactionParams | null;
       if (!parsed?.messageId || !parsed.emoji) {
         // Try to use context from message
         const messageId = message.content?.messageId as string;

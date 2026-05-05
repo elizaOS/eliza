@@ -1,6 +1,6 @@
 /**
  * Auto-generated prompt templates
- * DO NOT EDIT - Generated from ../../../../prompts/*.txt
+ * DO NOT EDIT - Generated from ../../../prompts/*.txt
  *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
@@ -19,15 +19,14 @@ The user might express this in various ways:
 - "Reply to COM2-7: Thanks for the update"
 - "Let the payment issue know that it's blocked by API changes"
 
-Return ONLY a JSON object:
-{
-  "issueId": "Direct issue ID if explicitly mentioned (e.g., ENG-123)",
-  "issueDescription": "Description/keywords of the issue if no ID provided",
-  "commentBody": "The actual comment content to add",
-  "commentType": "note/reply/update/question/feedback (inferred from context)"
-}
+Respond with TOON/plain text only. Use these fields:
+issueId: Direct issue ID if explicitly mentioned (for example ENG-123)
+issueDescription: Description or keywords of the issue if no ID was provided
+commentBody: The actual comment content to add
+commentType: note, reply, update, question, or feedback
 
-Extract the core message the user wants to convey as the comment body.`;
+Extract the core message the user wants to convey as the comment body.
+Omit unknown fields. Output only the fields, with no prose before or after them.`;
 
 export const CREATE_COMMENT_TEMPLATE = createCommentTemplate;
 
@@ -35,17 +34,15 @@ export const createIssueTemplate = `Given the user's request, extract the inform
 
 User request: "{{userMessage}}"
 
-Extract and return ONLY a JSON object (no markdown formatting, no code blocks) with the following structure:
-{
-  "title": "Brief, clear issue title",
-  "description": "Detailed description of the issue (optional, omit or use null if not provided)",
-  "teamKey": "Team key if mentioned (e.g., ENG, PROD) - omit or use null if not mentioned",
-  "priority": "Priority level if mentioned (1=urgent, 2=high, 3=normal, 4=low) - omit or use null if not mentioned",
-  "labels": ["label1", "label2"] (if any labels are mentioned, empty array if none),
-  "assignee": "Assignee username or email if mentioned - omit or use null if not mentioned"
-}
+Respond with TOON/plain text only. Use these fields:
+title: Brief, clear issue title
+description: Detailed description of the issue
+teamKey: Team key if mentioned, such as ENG or PROD
+priority: Priority level if mentioned; use 1 urgent, 2 high, 3 normal, or 4 low
+labels: Comma-separated labels if labels are mentioned
+assignee: Assignee username or email if mentioned
 
-Return only the JSON object, no other text.`;
+Omit optional fields when they are not provided. Output only the fields, with no prose before or after them.`;
 
 export const CREATE_ISSUE_TEMPLATE = createIssueTemplate;
 
@@ -53,12 +50,10 @@ export const deleteIssueTemplate = `Given the user's request to delete/archive a
 
 User request: "{{userMessage}}"
 
-Extract and return ONLY a JSON object (no markdown formatting, no code blocks) with:
-{
-  "issueId": "The issue identifier (e.g., ENG-123, COM2-7)"
-}
+Respond with TOON/plain text only:
+issueId: The issue identifier, such as ENG-123 or COM2-7
 
-Return only the JSON object, no other text.`;
+Output only the field, with no prose before or after it.`;
 
 export const DELETE_ISSUE_TEMPLATE = deleteIssueTemplate;
 
@@ -74,22 +69,19 @@ The user might ask for activity in various ways:
 - "Recent comment activity" → action type + recency
 - "Failed operations this week" → success filter + time range
 
-Return ONLY a JSON object:
-{
-  "timeRange": {
-    "period": "today/yesterday/this-week/last-week/this-month",
-    "from": "ISO datetime if specific",
-    "to": "ISO datetime if specific"
-  },
-  "actionTypes": ["create_issue/update_issue/delete_issue/create_comment/search_issues/etc"],
-  "resourceTypes": ["issue/project/comment/team"],
-  "resourceId": "Specific resource ID if mentioned (e.g., ENG-123)",
-  "user": "User name or 'me' for current user",
-  "successFilter": "success/failed/all",
-  "limit": number (default 10)
-}
+Respond with TOON/plain text only. Use these fields:
+timeRange:
+  period: today, yesterday, this-week, last-week, or this-month
+  from: ISO datetime if a specific start is mentioned
+  to: ISO datetime if a specific end is mentioned
+actionTypes: Comma-separated action types such as create_issue, update_issue, delete_issue, create_comment, or search_issues
+resourceTypes: Comma-separated resource types such as issue, project, comment, or team
+resourceId: Specific resource ID if mentioned, such as ENG-123
+user: User name, or me for current user
+successFilter: success, failed, or all
+limit: Number of activity entries to show; default 10
 
-Only include fields that are clearly mentioned.`;
+Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.`;
 
 export const GET_ACTIVITY_TEMPLATE = getActivityTemplate;
 
@@ -104,21 +96,20 @@ The user might reference an issue by:
 - Recency (e.g., "the latest bug", "most recent issue")
 - Team context (e.g., "newest issue in ELIZA team")
 
-Return ONLY a JSON object:
-{
-  "directId": "Issue ID if explicitly mentioned (e.g., ENG-123)",
-  "searchBy": {
-    "title": "Keywords from issue title if mentioned",
-    "assignee": "Name/email of assignee if mentioned", 
-    "priority": "Priority level if mentioned (urgent/high/normal/low or 1-4)",
-    "team": "Team name or key if mentioned",
-    "state": "Issue state if mentioned (todo/in-progress/done)",
-    "recency": "latest/newest/recent/last if mentioned",
-    "type": "bug/feature/task if mentioned"
-  }
-}
+Respond with TOON/plain text only. Use directId when an issue ID is explicitly mentioned:
+directId: Issue ID such as ENG-123
 
-Only include fields that are clearly mentioned or implied.`;
+When no issue ID is provided, use searchBy fields:
+searchBy:
+  title: Keywords from issue title if mentioned
+  assignee: Name or email of assignee if mentioned
+  priority: Priority level if mentioned; urgent, high, normal, low, or 1-4
+  team: Team name or key if mentioned
+  state: Issue state if mentioned, such as todo, in-progress, or done
+  recency: latest, newest, recent, or last if mentioned
+  type: bug, feature, or task if mentioned
+
+Only include fields that are clearly mentioned or implied. Output only the fields, with no prose before or after them.`;
 
 export const GET_ISSUE_TEMPLATE = getIssueTemplate;
 
@@ -136,21 +127,18 @@ The user might ask for projects in various ways:
 - "Completed projects" → filter by state
 - "Projects starting next month" → filter by start date
 
-Return ONLY a JSON object:
-{
-  "teamFilter": "Team name or key if mentioned",
-  "stateFilter": "active/planned/completed/all",
-  "dateFilter": {
-    "type": "due/starting",
-    "period": "this-week/this-month/this-quarter/next-month/next-quarter",
-    "from": "ISO date if specific",
-    "to": "ISO date if specific"
-  },
-  "leadFilter": "Project lead name if mentioned",
-  "showAll": true/false (true if user explicitly asks for "all")
-}
+Respond with TOON/plain text only. Use these fields:
+teamFilter: Team name or key if mentioned
+stateFilter: active, planned, completed, or all
+dateFilter:
+  type: due or starting
+  period: this-week, this-month, this-quarter, next-month, or next-quarter
+  from: ISO date if a specific start is mentioned
+  to: ISO date if a specific end is mentioned
+leadFilter: Project lead name if mentioned
+showAll: true if the user explicitly asks for all projects; otherwise omit
 
-Only include fields that are clearly mentioned.`;
+Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.`;
 
 export const LIST_PROJECTS_TEMPLATE = listProjectsTemplate;
 
@@ -167,16 +155,14 @@ The user might ask for teams in various ways:
 - "Active teams" → teams with recent activity
 - "Frontend and backend teams" → multiple team types
 
-Return ONLY a JSON object:
-{
-  "nameFilter": "Keywords to search in team names",
-  "specificTeam": "Specific team name or key if looking for one team",
-  "myTeams": true/false (true if user wants their teams),
-  "showAll": true/false (true if user explicitly asks for "all"),
-  "includeDetails": true/false (true if user wants detailed info)
-}
+Respond with TOON/plain text only. Use these fields:
+nameFilter: Keywords to search in team names
+specificTeam: Specific team name or key if looking for one team
+myTeams: true if the user wants their teams; otherwise omit
+showAll: true if the user explicitly asks for all teams; otherwise omit
+includeDetails: true if the user wants detailed info; otherwise omit
 
-Only include fields that are clearly mentioned.`;
+Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.`;
 
 export const LIST_TEAMS_TEMPLATE = listTeamsTemplate;
 
@@ -194,29 +180,25 @@ The user might express searches in various ways:
 - "Bugs that are almost done" → label + state filter
 - "Show me the oldest open issues" → state + sort order
 
-Extract and return ONLY a JSON object:
-{
-  "query": "General search text for title/description",
-  "states": ["state names like In Progress, Done, Todo, Backlog"],
-  "assignees": ["assignee names or emails, or 'me' for current user"],
-  "priorities": ["urgent/high/normal/low or 1/2/3/4"],
-  "teams": ["team names or keys"],
-  "labels": ["label names"],
-  "hasAssignee": true/false (true = has assignee, false = unassigned),
-  "dateRange": {
-    "field": "created/updated/completed",
-    "period": "today/yesterday/this-week/last-week/this-month/last-month",
-    "from": "ISO date if specific date",
-    "to": "ISO date if specific date"
-  },
-  "sort": {
-    "field": "created/updated/priority",
-    "order": "asc/desc"
-  },
-  "limit": number (default 10)
-}
+Respond with TOON/plain text only. Use these fields:
+query: General search text for title or description
+states: Comma-separated state names such as In Progress, Done, Todo, or Backlog
+assignees: Comma-separated assignee names or emails; use me for current user
+priorities: Comma-separated priorities; urgent, high, normal, low, or 1-4
+teams: Comma-separated team names or keys
+labels: Comma-separated label names
+hasAssignee: true if assigned, false if unassigned
+dateRange:
+  field: created, updated, or completed
+  period: today, yesterday, this-week, last-week, this-month, or last-month
+  from: ISO date if a specific start is mentioned
+  to: ISO date if a specific end is mentioned
+sort:
+  field: created, updated, or priority
+  order: asc or desc
+limit: Number of issues to show; default 10
 
-Only include fields that are clearly mentioned or implied. For "my" issues, set assignees to ["me"].`;
+Only include fields that are clearly mentioned or implied. For "my" issues, set assignees to me. Output only the fields, with no prose before or after them.`;
 
 export const SEARCH_ISSUES_TEMPLATE = searchIssuesTemplate;
 
@@ -224,20 +206,17 @@ export const updateIssueTemplate = `Given the user's request to update a Linear 
 
 User request: "{{userMessage}}"
 
-Extract and return ONLY a JSON object (no markdown formatting, no code blocks) with the following structure:
-{
-  "issueId": "The issue identifier (e.g., ENG-123, COM2-7)",
-  "updates": {
-    "title": "New title if changing the title",
-    "description": "New description if changing the description",
-    "priority": "Priority level if changing (1=urgent, 2=high, 3=normal, 4=low)",
-    "teamKey": "New team key if moving to another team (e.g., ENG, ELIZA, COM2)",
-    "assignee": "New assignee username or email if changing",
-    "status": "New status if changing (e.g., todo, in-progress, done, canceled)",
-    "labels": ["label1", "label2"] (if changing labels, empty array to clear)
-  }
-}
+Respond with TOON/plain text only. Use this shape:
+issueId: Issue identifier such as ENG-123 or COM2-7
+updates:
+  title: New title if changing the title
+  description: New description if changing the description
+  priority: Priority level if changing; use 1 urgent, 2 high, 3 normal, or 4 low
+  teamKey: New team key if moving to another team, such as ENG, ELIZA, or COM2
+  assignee: New assignee username or email if changing
+  status: New status if changing, such as todo, in-progress, done, or canceled
+  labels: Comma-separated labels if changing labels; use none to clear all labels
 
-Only include fields that are being updated. Return only the JSON object, no other text.`;
+Only include fields that are being updated. Output only the fields, with no prose before or after them.`;
 
 export const UPDATE_ISSUE_TEMPLATE = updateIssueTemplate;

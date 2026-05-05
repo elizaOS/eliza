@@ -13,8 +13,7 @@ import type {
 import {
   logger,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "../inbox/config.js";
@@ -268,8 +267,7 @@ async function resolveSubactionPlan(
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const raw = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(raw) ??
-      (parseJSONObjectFromText(raw) as Record<string, unknown> | null);
+      parseToonKeyValue<Record<string, unknown>>(raw);
     if (!parsed) {
       return {
         subaction: null,

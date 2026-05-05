@@ -10,8 +10,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { GoogleChatService } from "../service.js";
@@ -97,8 +96,7 @@ export const sendReaction: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsed?.emoji && parsed?.messageName) {
         reactionInfo = {
           emoji: String(parsed.emoji),

@@ -1,5 +1,5 @@
-import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { EventPayload, IAgentRuntime, ModelTypeName } from "@elizaos/core";
+import { EventType } from "@elizaos/core";
 
 interface AIUsage {
   inputTokens?: number;
@@ -9,26 +9,43 @@ interface AIUsage {
   totalTokens?: number;
 }
 
+export type NormalizedModelUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
 export function emitModelUsageEvent(
-  _runtime: IAgentRuntime,
+  runtime: IAgentRuntime,
   modelType: ModelTypeName,
-  prompt: string,
-  usage: AIUsage
-): void {
+  _prompt: string,
+  usage: AIUsage,
+  modelName?: string,
+  modelLabel?: string
+): NormalizedModelUsage {
   const inputTokens = usage.inputTokens ?? usage.promptTokens ?? 0;
   const outputTokens = usage.outputTokens ?? usage.completionTokens ?? 0;
   const totalTokens = usage.totalTokens ?? inputTokens + outputTokens;
+  const model = modelName?.trim() || modelLabel?.trim() || String(modelType);
 
-  logger.debug({
-    event: "model:usage",
-    modelType,
+  runtime.emitEvent(EventType.MODEL_USED, {
+    runtime,
+    source: "openrouter",
     provider: "openrouter",
-    prompt: prompt.substring(0, 100),
-    usage: {
-      promptTokens: inputTokens,
-      completionTokens: outputTokens,
-      totalTokens,
+    type: modelType,
+    model,
+    modelName: model,
+    modelLabel: modelLabel ?? String(modelType),
+    tokens: {
+      prompt: inputTokens,
+      completion: outputTokens,
+      total: totalTokens,
     },
-    timestamp: Date.now(),
-  });
+  } as EventPayload);
+
+  return {
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens,
+  };
 }

@@ -139,11 +139,17 @@ export async function generateViaCli(
 
   const usage = parseUsage(data.modelUsage);
   if (usage) {
-    emitModelUsageEvent(runtime, modelType, prompt, {
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      totalTokens: usage.totalTokens,
-    });
+    emitModelUsageEvent(
+      runtime,
+      modelType,
+      prompt,
+      {
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.totalTokens,
+      },
+      modelName
+    );
   }
 
   return { text: data.result, usage };
@@ -223,11 +229,17 @@ export function streamViaCli(
           if (event.type === "result") {
             const usage = parseUsage(event.modelUsage);
             if (usage) {
-              emitModelUsageEvent(runtime, modelType, prompt, {
-                promptTokens: usage.promptTokens,
-                completionTokens: usage.completionTokens,
-                totalTokens: usage.totalTokens,
-              });
+              emitModelUsageEvent(
+                runtime,
+                modelType,
+                prompt,
+                {
+                  promptTokens: usage.promptTokens,
+                  completionTokens: usage.completionTokens,
+                  totalTokens: usage.totalTokens,
+                },
+                modelName
+              );
               resolveUsage(usage);
             } else {
               resolveUsage(undefined);

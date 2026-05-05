@@ -4,8 +4,8 @@
  *
  * Expected LLM response format:
  *
- *   <action>DROP_ITEM</action>
- *   <slot>3</slot>
+ *   action: DROP_ITEM
+ *   slot: 3
  *
  * `slot` is the inventory slot index (0..27). The LLM gets slot
  * numbers from the `SCAPE_INVENTORY` provider.
@@ -23,7 +23,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
-import { hasActionTag, resolveActionText } from "../shared-state.js";
+import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParamInt } from "./param-parser.js";
 
 export const dropItem: Action = {
@@ -38,7 +38,7 @@ export const dropItem: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionTag(message, "DROP_ITEM");
+    return hasActionRequest(message, "DROP_ITEM");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -59,7 +59,7 @@ export const dropItem: Action = {
     const text = resolveActionText(message);
     const slot = extractParamInt(text, "slot");
     if (slot === null) {
-      const err = "DROP_ITEM requires <slot>N</slot>.";
+      const err = "DROP_ITEM requires slot: N.";
       callback?.({ text: err, action: "DROP_ITEM" });
       return { success: false, text: err };
     }

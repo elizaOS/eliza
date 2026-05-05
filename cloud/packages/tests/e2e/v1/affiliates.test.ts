@@ -63,7 +63,7 @@ describe("Affiliates API", () => {
     const chatRes = await api.post(
       "/api/v1/chat/completions",
       {
-        model: "openai/gpt-4o-mini",
+        model: "openai/gpt-5-mini",
         messages: [{ role: "user", content: largeInferencePrompt }],
         max_tokens: 1200,
       },

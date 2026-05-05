@@ -11,8 +11,7 @@ import type {
 import {
   logger,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import type {
   LifeOpsXDm,
@@ -161,8 +160,7 @@ async function resolveXReadPlanWithLlm(args: {
     });
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
+      parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {
         subaction: null,

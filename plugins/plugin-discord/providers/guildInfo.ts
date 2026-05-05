@@ -20,6 +20,7 @@ const spec = requireProviderSpec("guildInfo");
 export const guildInfoProvider: Provider = {
 	name: spec.name,
 	dynamic: true,
+	contexts: ["social", "connectors"],
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		// If message source is not discord, return empty
 		if (message.content.source !== "discord") {

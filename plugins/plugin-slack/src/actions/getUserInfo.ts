@@ -9,8 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseKeyValueXml,
-  parseJSONObjectFromText,
+  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { SlackService } from "../service";
@@ -119,8 +118,7 @@ export const getUserInfo: Action = {
       });
 
       const parsedResponse =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.userId) {
         userInfo = {
           userId: String(parsedResponse.userId),

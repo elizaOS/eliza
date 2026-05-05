@@ -10,8 +10,7 @@ import type {
 import {
   ChannelType,
   ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
+  parseToonKeyValue,
   type Role,
   stringToUuid,
 } from "@elizaos/core";
@@ -209,10 +208,9 @@ async function resolveGatewayPlan(args: {
 
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(
-        typeof raw === "string" ? raw : "",
-      ) ?? parseJSONObjectFromText(typeof raw === "string" ? raw : "");
+    const parsed = parseToonKeyValue<Record<string, unknown>>(
+      typeof raw === "string" ? raw : "",
+    );
     if (!parsed) {
       return { subaction: null, shouldAct: null };
     }

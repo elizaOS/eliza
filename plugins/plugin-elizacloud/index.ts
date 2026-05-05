@@ -1,10 +1,7 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { checkCloudCreditsAction } from "./actions/check-credits";
-import { freezeCloudAgentAction } from "./actions/freeze-agent";
 // Cloud actions
-import { provisionCloudAgentAction } from "./actions/provision-agent";
-import { resumeCloudAgentAction } from "./actions/resume-agent";
+import { cloudAgentAction } from "./actions/cloud-agent";
 // Cloud providers
 import { cloudStatusProvider } from "./cloud-providers/cloud-status";
 import { containerHealthProvider } from "./cloud-providers/container-health";
@@ -128,12 +125,7 @@ export const elizaOSCloudPlugin: Plugin = {
   ],
 
   // ─── Cloud Actions ───────────────────────────────────────────────────
-  actions: [
-    provisionCloudAgentAction,
-    freezeCloudAgentAction,
-    resumeCloudAgentAction,
-    checkCloudCreditsAction,
-  ],
+  actions: [cloudAgentAction],
 
   // ─── Cloud Providers ─────────────────────────────────────────────────
   providers: [

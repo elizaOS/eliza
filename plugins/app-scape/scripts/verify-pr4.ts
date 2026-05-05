@@ -81,7 +81,7 @@ function mockRuntime(perception: PerceptionSnapshot | null): IAgentRuntime {
 }
 
 function makeDummyMemory(): Memory {
-  return { content: { text: "" } } as unknown as Memory;
+  return { content: { text: "action: WALK_TO\nx: 3225\nz: 3220" } } as unknown as Memory;
 }
 
 function makeSamplePerception(): PerceptionSnapshot {
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
 
   // 5. Param parser round-trips
   console.log("\n[5] param parser");
-  const llmResponse = `<action>WALK_TO</action><x>3225</x><z>3220</z><run>true</run>`;
+  const llmResponse = "action: WALK_TO\nx: 3225\nz: 3220\nrun: true";
   assertTrue("extractParamInt x", extractParamInt(llmResponse, "x") === 3225);
   assertTrue("extractParamInt z", extractParamInt(llmResponse, "z") === 3220);
   assertTrue(

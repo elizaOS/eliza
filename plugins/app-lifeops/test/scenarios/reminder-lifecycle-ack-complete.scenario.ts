@@ -137,7 +137,7 @@ export default scenario({
       name: "overview before completion",
       room: "discord",
       text: "what life ops tasks are still left for today?",
-      plannerIncludesAll: ["<name>life</name>", "overview"],
+      plannerIncludesAll: ["life", "overview"],
       responseIncludesAny: ["call dentist", "call the dentist"],
     },
     {
