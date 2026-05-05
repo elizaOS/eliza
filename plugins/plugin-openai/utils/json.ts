@@ -64,7 +64,6 @@ export function safeStringify(value: unknown, indent = 0): string {
       return {
         name: val.name,
         message: val.message,
-        stack: val.stack,
       };
     }
 

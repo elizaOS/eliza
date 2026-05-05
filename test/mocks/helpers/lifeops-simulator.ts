@@ -233,18 +233,21 @@ async function findDiscordWorkspaceTabId(
   );
   const tabs = Array.isArray(body.tabs) ? body.tabs : [];
   const ownerPartition = `lifeops-discord-${runtime.agentId}-owner`;
+  function isDiscordUrl(url: unknown): boolean {
+    if (typeof url !== "string") return false;
+    try {
+      const { hostname } = new URL(url);
+      return hostname === "discord.com" || hostname.endsWith(".discord.com");
+    } catch {
+      return false;
+    }
+  }
+
   const tab =
     tabs.find(
       (candidate) =>
-        candidate.partition === ownerPartition &&
-        typeof candidate.url === "string" &&
-        candidate.url.includes("discord.com"),
-    ) ??
-    tabs.find(
-      (candidate) =>
-        typeof candidate.url === "string" &&
-        candidate.url.includes("discord.com"),
-    );
+        candidate.partition === ownerPartition && isDiscordUrl(candidate.url),
+    ) ?? tabs.find((candidate) => isDiscordUrl(candidate.url));
   if (!tab) {
     throw new Error("Simulator Discord send requires an open Discord tab.");
   }

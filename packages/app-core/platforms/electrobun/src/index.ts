@@ -841,12 +841,20 @@ async function startRendererServer(): Promise<string> {
 	// config the SettingsView reads). Without the second one, the same renderer
 	// loaded via a regular browser at this static-server's origin falls back to
 	// `pageOrigin` for apiBase and every /api/* call returns SPA HTML.
+
+	// JSON.stringify does not escape "</" sequences, so `</script>` embedded in a
+	// JSON string value would terminate the surrounding <script> block in HTML.
+	// Replace "</" with "<\/" which is valid JSON/JS but is safe in HTML context.
+	function safeJsonForHtml(value: unknown): string {
+		return JSON.stringify(value).replace(/<\//g, "<\\/");
+	}
+
 	function injectApiBaseIntoHtml(html: string): string {
 		if (!initialApiBase) {
 			return html;
 		}
-		const baseLiteral = JSON.stringify(initialApiBase);
-		const tokenLiteral = initialApiToken ? JSON.stringify(initialApiToken) : "";
+		const baseLiteral = safeJsonForHtml(initialApiBase);
+		const tokenLiteral = initialApiToken ? safeJsonForHtml(initialApiToken) : "";
 		const tokenInject = tokenLiteral
 			? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
 			: "";
