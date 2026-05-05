@@ -7,7 +7,7 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { sendMessageAction, sendReactionAction } from "./actions/index.js";
+import { bluebubblesMessageOp } from "./actions/index.js";
 import { BlueBubblesService } from "./service.js";
 import {
 	blueBubblesSetupRoutes,
@@ -18,11 +18,10 @@ export * from "./constants.js";
 // Re-export types and service
 export * from "./types.js";
 export {
+	bluebubblesMessageOp,
 	BlueBubblesService,
 	blueBubblesSetupRoutes,
 	resolveBlueBubblesWebhookPath,
-	sendMessageAction,
-	sendReactionAction,
 };
 
 /**
@@ -33,7 +32,7 @@ const blueBubblesPlugin: Plugin = {
 	description: "BlueBubbles iMessage bridge plugin for ElizaOS agents",
 
 	services: [BlueBubblesService],
-	actions: [sendReactionAction],
+	actions: [bluebubblesMessageOp],
 	providers: [],
 	routes: blueBubblesSetupRoutes,
 	tests: [],
