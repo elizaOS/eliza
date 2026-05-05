@@ -85,9 +85,19 @@ reflection, and distill records use task-specific shapes.
 | `agent_trace`                 | TOON planner envelope                                                                         |
 | `mobile_action`               | TOON planner envelope                                                                         |
 | `n8n_workflow_generation`     | TOON planner envelope; the workflow JSON rides under `actions[1].params.workflow`             |
-| `reflection`                  | TOON: `thought`, `task_completed: bool`, `task_completion_reason`                             |
-| `reasoning_cot`               | TOON: `thought, text` (slim) or full planner envelope                                         |
-| `claude_distill`              | RAW: `<think>{reasoning}</think>{final answer}` — preserved verbatim from the Claude distill source so the model learns the same `<think>` envelope that Qwen3.6 / Qwopus emit at inference. NOT TOON-encoded. |
+| `reflection`                  | TOON: `thought`, `quality_score: 0-100`, `strengths`, `improvements`, `learnings`             |
+| `reflection_evaluator`        | TOON: `thought`, `task_completed: bool`, `task_completion_reason`, `relationships[N]{sourceEntityId,targetEntityId,tags[M]}` |
+| `fact_extractor`              | RAW JSON: `{"ops":[{"op":"add_durable\|add_current\|strengthen\|decay\|contradict", ...}]}` — empty `{"ops":[]}` is a valid (and common) output. NOT TOON-encoded. |
+| `summarization`               | TOON: `text`, `topics[N]`, `keyPoints[M]`                                                     |
+| `long_term_extraction`        | TOON: `memories[N]{category: episodic\|semantic\|procedural, content, confidence: >=0.85}` — empty `memories` block is the common case |
+| `add_contact`                 | TOON: action-specific; see `addContactTemplate` in `eliza/packages/core/src/prompts.ts`        |
+| `choose_option`               | TOON: `option`, `reasoning`                                                                   |
+| `extract_secrets`             | TOON: `key`, `value`, `exists: bool`                                                          |
+| `multi_step_decision`         | TOON: action+next-step decision per `multiStepDecisionTemplate`                               |
+| `message_classifier`          | TOON: classification only per `messageClassifierTemplate`                                     |
+| `should_follow_room`          | TOON: `decision: true\|false`                                                                 |
+| `reasoning_cot`               | TOON: `thought, text` (slim) or full planner envelope — **OUT OF BAND, see COVERAGE_AUDIT.md** |
+| `claude_distill`              | RAW: `<think>{reasoning}</think>{final answer}` — **OUT OF BAND, transformed into `reply` per COVERAGE_AUDIT.md** |
 
 `scripts/audit_pipeline_shapes.py` validates each record against the
 schema for its `task_type` and writes `previews/PIPELINE_AUDIT.md` —
