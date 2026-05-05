@@ -8,12 +8,12 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
 import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
 } from "@elizaos/agent/api/http-helpers";
+import type { AgentRuntime } from "@elizaos/core";
 import type { PTYService } from "../services/pty-service.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
