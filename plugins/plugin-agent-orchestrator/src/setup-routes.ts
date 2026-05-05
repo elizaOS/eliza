@@ -14,10 +14,7 @@
 
 import type http from "node:http";
 import type { AgentRuntime, IAgentRuntime, Plugin, Route } from "@elizaos/core";
-import {
-  handleCodingAgentRoutes,
-  type RouteContext,
-} from "./api/routes.js";
+import { handleCodingAgentRoutes, type RouteContext } from "./api/routes.js";
 import {
   CODING_AGENTS_FALLBACK_ROUTE_PATHS,
   handleCodingAgentsFallback,
@@ -41,7 +38,11 @@ function buildRouteContext(runtime: IAgentRuntime): RouteContext {
 }
 
 function codingAgentRouteHandler(): PluginRouteHandler {
-  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const agentRuntime = runtime as AgentRuntime;
@@ -71,7 +72,12 @@ function codingAgentRouteHandler(): PluginRouteHandler {
     // 1. Full orchestrator dispatcher — covers spawn, send, output, hooks,
     //    coordinator, bridge, parent-context, workspace, and issue routes.
     const ctx = buildRouteContext(agentRuntime);
-    const handled = await handleCodingAgentRoutes(httpReq, httpRes, pathname, ctx);
+    const handled = await handleCodingAgentRoutes(
+      httpReq,
+      httpRes,
+      pathname,
+      ctx,
+    );
     if (handled) return;
 
     // 2. Compatibility fallback — task/session/scratch/preflight/auth/status
