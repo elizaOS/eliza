@@ -1,4 +1,4 @@
-import { type IAgentRuntime, type Media, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, type Media, ModelType, withStandaloneTrajectory } from "@elizaos/core";
 import type { EmbedCast, EmbedUrl, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
 
 export function isEmbedUrl(embed: EmbedCast | EmbedUrl): embed is EmbedUrl {
@@ -149,11 +149,16 @@ export class EmbedManager {
     let title = "Image";
 
     try {
-      const result = await this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-        prompt:
-          "Analyze this image and provide a concise title and description. Focus on the main subject and any notable details.",
-        imageUrl: url,
-      });
+      const result = await withStandaloneTrajectory(
+        this.runtime,
+        { source: "farcaster-embed" },
+        async () =>
+          this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+            prompt:
+              "Analyze this image and provide a concise title and description. Focus on the main subject and any notable details.",
+            imageUrl: url,
+          })
+      );
 
       if (result && typeof result === "object") {
         const typedResult = result as { title?: string; description?: string };

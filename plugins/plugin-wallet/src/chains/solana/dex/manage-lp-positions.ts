@@ -99,20 +99,15 @@ export const manageLpPositionsAction: Action = {
   ],
   description:
     "Automatically rebalance Solana CLMM LP positions when they drift too far from the pool price. Supports Orca Whirlpools and Raydium CLMM via { dex: 'orca' | 'raydium' }.",
-  descriptionCompressed:
-    "Solana LP rebalance: orca or raydium CLMM (dex switch).",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State
-  ): Promise<boolean> => {
+  descriptionCompressed: "Solana LP rebalance: orca or raydium CLMM (dex switch).",
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const text =
-      typeof message?.content?.text === "string"
-        ? message.content.text.toLowerCase()
-        : "";
+      typeof message?.content?.text === "string" ? message.content.text.toLowerCase() : "";
     const keywords = ["manage", "position", "rebalance", "liquidity", "orca", "raydium"];
     const keywordOk = keywords.some((kw) => text.includes(kw));
-    const regexOk = /\b(?:manage|position|positions|rebalance|liquidity|orca|raydium)\b/i.test(text);
+    const regexOk = /\b(?:manage|position|positions|rebalance|liquidity|orca|raydium)\b/i.test(
+      text
+    );
     if (!(keywordOk && regexOk)) return false;
     return Boolean(message.content || state || runtime.agentId);
   },

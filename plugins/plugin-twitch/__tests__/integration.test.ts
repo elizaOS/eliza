@@ -1,11 +1,9 @@
 import { describe, expect, test, beforeEach, vi } from "vitest";
 import twitchPlugin, {
   TwitchService,
-  joinChannel,
-  leaveChannel,
-  listChannels,
   sendMessage,
   twitchChannelAction,
+  twitchChannelsProvider,
   userContextProvider,
   normalizeChannel,
   formatChannelForDisplay,
@@ -91,16 +89,18 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.description).toContain("Twitch");
   });
 
-  test("registers the channel router action", () => {
-    expect(twitchPlugin.actions).toHaveLength(1);
+  test("registers the channel router and send-message actions", () => {
+    expect(twitchPlugin.actions).toHaveLength(2);
     const names = twitchPlugin.actions!.map((a) => a.name);
-    expect(names).toContain("TWITCH_CHANNEL");
+    expect(names).toContain("TWITCH_CHANNEL_OP");
+    expect(names).toContain("TWITCH_SEND_MESSAGE");
   });
 
-  test("registers the user context provider", () => {
-    expect(twitchPlugin.providers).toHaveLength(1);
+  test("registers the user context and channels providers", () => {
+    expect(twitchPlugin.providers).toHaveLength(2);
     const names = twitchPlugin.providers!.map((p) => p.name);
     expect(names).toContain("twitchUserContext");
+    expect(names).toContain("twitchChannels");
   });
 
   test("registers exactly 1 service", () => {
@@ -327,10 +327,10 @@ describe("Custom Errors", () => {
 
 describe("twitchChannelAction", () => {
   test("has router metadata", () => {
-    expect(twitchChannelAction.name).toBe("TWITCH_CHANNEL");
+    expect(twitchChannelAction.name).toBe("TWITCH_CHANNEL_OP");
+    expect(twitchChannelAction.similes).toContain("TWITCH_CHANNEL");
     expect(twitchChannelAction.similes).toContain("TWITCH_JOIN_CHANNEL");
     expect(twitchChannelAction.similes).toContain("TWITCH_LEAVE_CHANNEL");
-    expect(twitchChannelAction.similes).toContain("TWITCH_LIST_CHANNELS");
   });
 });
 
@@ -419,172 +419,27 @@ describe("sendMessage action", () => {
 });
 
 // ===========================================================================
-// 7. joinChannel Action
+// 7. twitchChannelsProvider
 // ===========================================================================
 
-describe("joinChannel action", () => {
+describe("twitchChannelsProvider", () => {
   test("has correct metadata", () => {
-    expect(joinChannel.name).toBe("TWITCH_JOIN_CHANNEL");
-    expect(joinChannel.description).toContain("Join");
-    expect(joinChannel.description).toContain("Twitch channel");
-    expect(joinChannel.similes).toContain("JOIN_TWITCH_CHANNEL");
-    expect(joinChannel.similes).toContain("ENTER_CHANNEL");
-    expect(joinChannel.similes).toContain("CONNECT_CHANNEL");
-    expect(joinChannel.similes).toHaveLength(3);
+    expect(twitchChannelsProvider.name).toBe("twitchChannels");
+    expect(twitchChannelsProvider.description).toContain("Twitch");
+    expect(twitchChannelsProvider.dynamic).toBe(true);
   });
 
-  test("has examples", () => {
-    expect(joinChannel.examples!.length).toBeGreaterThan(0);
-  });
-
-  test("validate returns true for twitch source", async () => {
-    const runtime = makeMockRuntime();
-    expect(await joinChannel.validate!(runtime, makeMemory("twitch"))).toBe(
-      true,
-    );
-  });
-
-  test("validate returns false for non-twitch source", async () => {
-    const runtime = makeMockRuntime();
-    expect(await joinChannel.validate!(runtime, makeMemory("discord"))).toBe(
-      false,
-    );
-    expect(await joinChannel.validate!(runtime, makeMemory(""))).toBe(false);
-  });
-
-  test("handler returns error when service unavailable", async () => {
+  test("returns not_connected when service unavailable", async () => {
     const runtime = makeMockRuntime({ service: null });
-    const memory = makeMemory("twitch");
-    let callbackText = "";
-    const callback = (resp: any) => {
-      callbackText = resp.text;
-    };
-
-    const result = await joinChannel.handler!(
+    const result = await twitchChannelsProvider.get!(
       runtime,
-      memory,
+      makeMemory("twitch"),
       makeState(),
-      {},
-      callback,
     );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Twitch service not available");
-    expect(callbackText).toBe("Twitch service is not available.");
-  });
-});
-
-// ===========================================================================
-// 8. leaveChannel Action
-// ===========================================================================
-
-describe("leaveChannel action", () => {
-  test("has correct metadata", () => {
-    expect(leaveChannel.name).toBe("TWITCH_LEAVE_CHANNEL");
-    expect(leaveChannel.description).toBe("Leave a Twitch channel");
-    expect(leaveChannel.similes).toContain("LEAVE_TWITCH_CHANNEL");
-    expect(leaveChannel.similes).toContain("EXIT_CHANNEL");
-    expect(leaveChannel.similes).toContain("PART_CHANNEL");
-    expect(leaveChannel.similes).toContain("DISCONNECT_CHANNEL");
-    expect(leaveChannel.similes).toHaveLength(4);
+    expect(String(result.text)).toContain("not_connected");
   });
 
-  test("has examples", () => {
-    expect(leaveChannel.examples!.length).toBeGreaterThan(0);
-  });
-
-  test("validate returns true for twitch source", async () => {
-    const runtime = makeMockRuntime();
-    expect(await leaveChannel.validate!(runtime, makeMemory("twitch"))).toBe(
-      true,
-    );
-  });
-
-  test("validate returns false for non-twitch source", async () => {
-    const runtime = makeMockRuntime();
-    expect(await leaveChannel.validate!(runtime, makeMemory("discord"))).toBe(
-      false,
-    );
-  });
-
-  test("handler returns error when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const memory = makeMemory("twitch");
-    let callbackText = "";
-    const callback = (resp: any) => {
-      callbackText = resp.text;
-    };
-
-    const result = await leaveChannel.handler!(
-      runtime,
-      memory,
-      makeState(),
-      {},
-      callback,
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Twitch service not available");
-    expect(callbackText).toBe("Twitch service is not available.");
-  });
-});
-
-// ===========================================================================
-// 9. listChannels Action
-// ===========================================================================
-
-describe("listChannels action", () => {
-  test("has correct metadata", () => {
-    expect(listChannels.name).toBe("TWITCH_LIST_CHANNELS");
-    expect(listChannels.description).toContain("List");
-    expect(listChannels.description).toContain("Twitch channels");
-    expect(listChannels.similes).toContain("LIST_TWITCH_CHANNELS");
-    expect(listChannels.similes).toContain("SHOW_CHANNELS");
-    expect(listChannels.similes).toContain("GET_CHANNELS");
-    expect(listChannels.similes).toContain("CURRENT_CHANNELS");
-    expect(listChannels.similes).toHaveLength(4);
-  });
-
-  test("has examples", () => {
-    expect(listChannels.examples!.length).toBeGreaterThan(0);
-  });
-
-  test("validate returns true for twitch source", async () => {
-    const runtime = makeMockRuntime();
-    expect(await listChannels.validate!(runtime, makeMemory("twitch"))).toBe(
-      true,
-    );
-  });
-
-  test("validate returns false for non-twitch source", async () => {
-    const runtime = makeMockRuntime();
-    expect(await listChannels.validate!(runtime, makeMemory("slack"))).toBe(
-      false,
-    );
-  });
-
-  test("handler returns error when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const memory = makeMemory("twitch");
-    let callbackText = "";
-    const callback = (resp: any) => {
-      callbackText = resp.text;
-    };
-
-    const result = await listChannels.handler!(
-      runtime,
-      memory,
-      makeState(),
-      {},
-      callback,
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Twitch service not available");
-    expect(callbackText).toBe("Twitch service is not available.");
-  });
-
-  test("handler returns channel list when service connected", async () => {
+  test("returns channel list when service connected", async () => {
     const service = makeMockTwitchService({
       connected: true,
       primaryChannel: "mainchannel",
@@ -594,30 +449,20 @@ describe("listChannels action", () => {
       service,
       getService: () => service,
     });
-    const memory = makeMemory("twitch");
-    let callbackText = "";
-    const callback = (resp: any) => {
-      callbackText = resp.text;
-    };
-
-    const result = await listChannels.handler!(
+    const result = await twitchChannelsProvider.get!(
       runtime,
-      memory,
+      makeMemory("twitch"),
       makeState(),
-      {},
-      callback,
     );
 
-    expect(result.success).toBe(true);
-    expect(result.data.channelCount).toBe(2);
-    expect(result.data.channels).toEqual(["mainchannel", "otherchannel"]);
-    expect(result.data.primaryChannel).toBe("mainchannel");
-    expect(callbackText).toContain("2 channel(s)");
-    expect(callbackText).toContain("#mainchannel (primary)");
-    expect(callbackText).toContain("#otherchannel");
+    expect(result.data!.channelCount).toBe(2);
+    expect(result.data!.channels).toEqual(["mainchannel", "otherchannel"]);
+    expect(result.data!.primaryChannel).toBe("mainchannel");
+    expect(String(result.text)).toContain("ready");
+    expect(String(result.text)).toContain("mainchannel");
   });
 
-  test("handler returns empty message for no channels", async () => {
+  test("returns empty list when no channels", async () => {
     const service = makeMockTwitchService({
       connected: true,
       primaryChannel: "main",
@@ -627,23 +472,12 @@ describe("listChannels action", () => {
       service,
       getService: () => service,
     });
-    const memory = makeMemory("twitch");
-    let callbackText = "";
-    const callback = (resp: any) => {
-      callbackText = resp.text;
-    };
-
-    const result = await listChannels.handler!(
+    const result = await twitchChannelsProvider.get!(
       runtime,
-      memory,
+      makeMemory("twitch"),
       makeState(),
-      {},
-      callback,
     );
-
-    expect(result.success).toBe(true);
-    expect(result.data.channelCount).toBe(0);
-    expect(callbackText).toBe("Not currently in any channels.");
+    expect(result.data!.channelCount).toBe(0);
   });
 });
 

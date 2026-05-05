@@ -37,10 +37,10 @@ export default scenario({
       assertTurn: (turn) =>
         expectTurnToCallAction({
           acceptedActions: [
-            "PUBLISH_DEVICE_INTENT",
-            "CALL_USER",
-            "CROSS_CHANNEL_SEND",
-            "INBOX",
+            "OWNER_DEVICE_INTENT",
+            "OWNER_VOICE_CALL",
+            "SEND_DRAFT",
+            "TRIAGE_MESSAGES",
           ],
           description: "expired ID workflow escalation",
           includesAny: ["id", "expired", "workflow", "copy"],
@@ -49,10 +49,10 @@ export default scenario({
           description:
             "expired ID workflow creates a real intervention payload",
           actionName: [
-            "PUBLISH_DEVICE_INTENT",
-            "CALL_USER",
-            "CROSS_CHANNEL_SEND",
-            "INBOX",
+            "OWNER_DEVICE_INTENT",
+            "OWNER_VOICE_CALL",
+            "SEND_DRAFT",
+            "TRIAGE_MESSAGES",
           ],
           includesAny: ["updated copy", "expired", "workflow", "dashboard"],
         })(turn),
@@ -69,10 +69,10 @@ export default scenario({
     {
       type: "selectedAction",
       actionName: [
-        "PUBLISH_DEVICE_INTENT",
-        "CALL_USER",
-        "CROSS_CHANNEL_SEND",
-        "INBOX",
+        "OWNER_DEVICE_INTENT",
+        "OWNER_VOICE_CALL",
+        "SEND_DRAFT",
+        "TRIAGE_MESSAGES",
       ],
     },
     {
@@ -84,10 +84,10 @@ export default scenario({
       name: "ea-collect-id-copy-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "PUBLISH_DEVICE_INTENT",
-          "CALL_USER",
-          "CROSS_CHANNEL_SEND",
-          "INBOX",
+          "OWNER_DEVICE_INTENT",
+          "OWNER_VOICE_CALL",
+          "SEND_DRAFT",
+          "TRIAGE_MESSAGES",
         ],
         description: "expired ID workflow escalation",
         includesAny: ["id", "expired", "workflow", "copy"],
@@ -100,10 +100,10 @@ export default scenario({
         description:
           "intervention reaches the user through an explicit action result payload rather than a silent log entry",
         actionName: [
-          "PUBLISH_DEVICE_INTENT",
-          "CALL_USER",
-          "CROSS_CHANNEL_SEND",
-          "INBOX",
+          "OWNER_DEVICE_INTENT",
+          "OWNER_VOICE_CALL",
+          "SEND_DRAFT",
+          "TRIAGE_MESSAGES",
         ],
         includesAny: ["updated copy", "expired", "workflow", "dashboard"],
       }),

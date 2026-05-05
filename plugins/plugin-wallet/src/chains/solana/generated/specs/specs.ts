@@ -35,8 +35,7 @@ export const coreActionsSpec = {
     {
       name: "SOLANA_TRANSFER",
       description: "Transfer SOL or SPL tokens from the agent's Solana wallet to another address",
-      descriptionCompressed:
-        "Solana transfer: send SOL or SPL tokens to another address.",
+      descriptionCompressed: "Solana transfer: send SOL or SPL tokens to another address.",
       similes: [
         "TRANSFER",
         "SEND_SOL",
@@ -53,8 +52,7 @@ export const coreActionsSpec = {
       name: "SWAP",
       description:
         "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
-      descriptionCompressed:
-        "Solana token swap: SOL or SPL tokens via Jupiter routing.",
+      descriptionCompressed: "Solana token swap: SOL or SPL tokens via Jupiter routing.",
       similes: [
         "SWAP_SOL",
         "SWAP_SOLANA",
@@ -82,8 +80,7 @@ export const allActionsSpec = {
     {
       name: "SOLANA_TRANSFER",
       description: "Transfer SOL or SPL tokens from the agent's Solana wallet to another address",
-      descriptionCompressed:
-        "Solana transfer: send SOL or SPL tokens to another address.",
+      descriptionCompressed: "Solana transfer: send SOL or SPL tokens to another address.",
       similes: [
         "TRANSFER",
         "SEND_SOL",
@@ -100,8 +97,7 @@ export const allActionsSpec = {
       name: "SWAP",
       description:
         "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
-      descriptionCompressed:
-        "Solana token swap: SOL or SPL tokens via Jupiter routing.",
+      descriptionCompressed: "Solana token swap: SOL or SPL tokens via Jupiter routing.",
       similes: [
         "SWAP_SOL",
         "SWAP_SOLANA",

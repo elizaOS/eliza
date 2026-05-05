@@ -49,6 +49,7 @@ import type {
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
 const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
+const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
 const DIRECT_ELIZA_CLOUD_WEB_HOSTS = new Set([
   "elizacloud.ai",
   "www.elizacloud.ai",
@@ -242,6 +243,73 @@ function directCloudBodyData(body: BodyInit | null | undefined): unknown {
   }
 }
 
+async function withDirectCloudHttpTimeout<T>(
+  request: Promise<T>,
+  args: { method: string; url: string },
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(
+        new Error(
+          `Eliza Cloud request timed out after ${Math.round(
+            DIRECT_CLOUD_HTTP_TIMEOUT_MS / 1000,
+          )}s (${args.method} ${args.url})`,
+        ),
+      );
+    }, DIRECT_CLOUD_HTTP_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function fetchDirectCloudWithTimeout(
+  url: string,
+  init: RequestInit,
+  args: { method: string; url: string },
+): Promise<Response> {
+  const controller = new AbortController();
+  let abortListener: (() => void) | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  if (init.signal) {
+    if (init.signal.aborted) {
+      throw new Error(
+        `Eliza Cloud request aborted (${args.method} ${args.url})`,
+      );
+    }
+    abortListener = () => controller.abort();
+    init.signal.addEventListener("abort", abortListener, { once: true });
+  }
+
+  timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, DIRECT_CLOUD_HTTP_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) {
+      throw new Error(
+        `Eliza Cloud request timed out after ${Math.round(
+          DIRECT_CLOUD_HTTP_TIMEOUT_MS / 1000,
+        )}s (${args.method} ${args.url})`,
+      );
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (init.signal && abortListener) {
+      init.signal.removeEventListener("abort", abortListener);
+    }
+  }
+}
+
 async function directCloudJsonResponse<T>(
   url: string,
   init?: RequestInit,
@@ -254,15 +322,18 @@ async function directCloudJsonResponse<T>(
 
   if (shouldUseNativeCloudHttp()) {
     const data = directCloudBodyData(init?.body);
-    const res = await CapacitorHttp.request({
-      url,
-      method,
-      headers,
-      ...(data !== undefined ? { data } : {}),
-      responseType: "json",
-      connectTimeout: 10_000,
-      readTimeout: 10_000,
-    });
+    const res = await withDirectCloudHttpTimeout(
+      CapacitorHttp.request({
+        url,
+        method,
+        headers,
+        ...(data !== undefined ? { data } : {}),
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      }),
+      { method, url },
+    );
     const parsed = parseDirectCloudJsonSafe(res.data) as T;
     return {
       ok: res.status >= 200 && res.status < 300,
@@ -272,7 +343,11 @@ async function directCloudJsonResponse<T>(
     };
   }
 
-  const res = await fetch(url, { ...init, method, headers });
+  const res = await fetchDirectCloudWithTimeout(
+    url,
+    { ...init, method, headers },
+    { method, url },
+  );
   const text = await res.text().catch(() => res.statusText);
   const parsed = parseDirectCloudJsonSafe(text) as T;
   return {
@@ -281,6 +356,25 @@ async function directCloudJsonResponse<T>(
     data: parsed,
     text,
   };
+}
+
+function directCloudResponseErrorMessage(
+  status: number,
+  body: unknown,
+): string {
+  let detail: string | null = null;
+  if (typeof body === "object" && body !== null) {
+    const record = body as Record<string, unknown>;
+    const candidate = record.error ?? record.message ?? record.reason;
+    if (typeof candidate === "string" && candidate.trim()) {
+      detail = candidate.trim();
+    }
+  } else if (typeof body === "string" && body.trim()) {
+    detail = body.trim();
+  }
+  return detail
+    ? `Cloud request failed (${status}): ${detail}`
+    : `Cloud request failed (${status})`;
 }
 
 async function directCloudRequest<T>(
@@ -307,36 +401,49 @@ async function directCloudRequest<T>(
 
   if (shouldUseNativeCloudHttp()) {
     const data = directCloudBodyData(init?.body);
-    const res = await CapacitorHttp.request({
-      url,
-      method,
-      headers,
-      ...(data !== undefined ? { data } : {}),
-      responseType: "json",
-      connectTimeout: 10_000,
-      readTimeout: 10_000,
-    });
+    const res = await withDirectCloudHttpTimeout(
+      CapacitorHttp.request({
+        url,
+        method,
+        headers,
+        ...(data !== undefined ? { data } : {}),
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      }),
+      { method, url },
+    );
     const parsed = parseDirectCloudJson(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
-      throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
-        status: res.status,
-        data: res.data,
-        url,
-      });
+      throw Object.assign(
+        new Error(directCloudResponseErrorMessage(res.status, parsed)),
+        {
+          status: res.status,
+          data: res.data,
+          url,
+        },
+      );
     }
     return parsed;
   }
 
-  const res = await fetch(url, { ...init, method, headers });
+  const res = await fetchDirectCloudWithTimeout(
+    url,
+    { ...init, method, headers },
+    { method, url },
+  );
   const data = await res.json().catch(async () => ({
     error: await res.text().catch(() => res.statusText),
   }));
   if (!isAcceptableDirectCloudResponse(res.status, data)) {
-    throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
-      status: res.status,
-      data,
-      url,
-    });
+    throw Object.assign(
+      new Error(directCloudResponseErrorMessage(res.status, data)),
+      {
+        status: res.status,
+        data,
+        url,
+      },
+    );
   }
   return data as T;
 }

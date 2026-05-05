@@ -19,6 +19,7 @@
  * control to the main app shell.
  */
 
+import { Capacitor } from "@capacitor/core";
 import {
   Button,
   Card,
@@ -41,7 +42,12 @@ import {
 } from "../../bridge/gateway-discovery";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
-import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
+import {
+  ANDROID_LOCAL_AGENT_API_BASE,
+  ANDROID_LOCAL_AGENT_LABEL,
+  ANDROID_LOCAL_AGENT_SERVER_ID,
+  persistMobileRuntimeModeForServerTarget,
+} from "../../onboarding/mobile-runtime-mode";
 import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
 import {
   isAndroid,
@@ -64,7 +70,30 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
-const LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+const LOCAL_AGENT_API_BASE = ANDROID_LOCAL_AGENT_API_BASE;
+const PROVISION_START_TIMEOUT_MS = 20_000;
+
+type NativeAgentPlugin = {
+  start?: () => Promise<unknown>;
+};
+
+async function startAndroidLocalAgent(): Promise<void> {
+  if (!isAndroid) return;
+  try {
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, NativeAgentPlugin | undefined>;
+    };
+    const registeredAgent =
+      capacitorWithPlugins.Plugins?.Agent ??
+      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
+    await registeredAgent.start?.();
+  } catch (err) {
+    console.warn(
+      "[RuntimeGate] Failed to start Android local agent",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
 
 /**
  * URL query flag that deliberately re-opens the RuntimeGate picker on
@@ -174,6 +203,68 @@ function resolveCloudAgentApiBase(agent: CloudCompatAgent): string | undefined {
     .filter((value): value is string => Boolean(value));
 
   return candidates.find((value) => !isCloudControlPlaneUrl(value));
+}
+
+function resolveCloudJobRuntimeUrl(
+  job: Pick<CloudCompatJob, "result" | "data">,
+): string | undefined {
+  const payloads = [job.result, job.data].filter(
+    (value): value is Record<string, unknown> =>
+      Boolean(value) && typeof value === "object",
+  );
+  const keys = [
+    "apiBase",
+    "api_base",
+    "bridgeUrl",
+    "bridge_url",
+    "runtimeUrl",
+    "runtime_url",
+    "containerUrl",
+    "container_url",
+    "webUiUrl",
+    "web_ui_url",
+  ];
+
+  for (const payload of payloads) {
+    for (const key of keys) {
+      const url = normalizeRuntimeUrl(payload[key]);
+      if (url && !isCloudControlPlaneUrl(url)) return url;
+    }
+  }
+}
+
+function mergeCloudRuntimeUrl(
+  agent: CloudCompatAgent,
+  runtimeUrl: string | undefined,
+): CloudCompatAgent {
+  if (!runtimeUrl || resolveCloudAgentApiBase(agent)) return agent;
+  return {
+    ...agent,
+    bridge_url: runtimeUrl,
+    containerUrl: runtimeUrl,
+  };
+}
+
+async function withProvisionStartTimeout<T>(
+  request: Promise<T>,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(message));
+    }, PROVISION_START_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function displayErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 // TODO: replace with real onboarding artwork per runtime choice
@@ -536,16 +627,17 @@ export function RuntimeGate() {
       client.setBaseUrl(LOCAL_AGENT_API_BASE);
       client.setToken(null);
       savePersistedActiveServer({
-        id: "local:android",
+        id: ANDROID_LOCAL_AGENT_SERVER_ID,
         kind: "remote",
-        label: "On-device agent",
+        label: ANDROID_LOCAL_AGENT_LABEL,
         apiBase: LOCAL_AGENT_API_BASE,
       });
       addAgentProfile({
         kind: "remote",
-        label: "On-device agent",
+        label: ANDROID_LOCAL_AGENT_LABEL,
         apiBase: LOCAL_AGENT_API_BASE,
       });
+      void startAndroidLocalAgent();
     } else {
       client.setBaseUrl(null);
       client.setToken(null);
@@ -665,7 +757,27 @@ export function RuntimeGate() {
           defaultValue: "Starting provisioning...",
         }),
       );
-      const provRes = await client.provisionCloudCompatAgent(agentId);
+      let provRes: Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>;
+      try {
+        provRes = await withProvisionStartTimeout(
+          client.provisionCloudCompatAgent(agentId),
+          t("runtimegate.provisioningStartTimeout", {
+            defaultValue:
+              "Cloud did not return a provisioning job. Please retry.",
+          }),
+        );
+      } catch (err) {
+        setError(
+          displayErrorMessage(
+            err,
+            t("runtimegate.provisioningFailed", {
+              defaultValue: "Provisioning failed",
+            }),
+          ),
+        );
+        setCloudStage("agent-list");
+        return;
+      }
       if (!provRes.success) {
         setError(
           provRes.error ||
@@ -816,9 +928,21 @@ export function RuntimeGate() {
           setProvisionStatus(
             t("runtimegate.connecting", { defaultValue: "Connecting..." }),
           );
-          const ready = await fetchAgentWithUrl(
-            Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
-          );
+          const jobRuntimeUrl = resolveCloudJobRuntimeUrl(job);
+          const readyFromJob =
+            jobRuntimeUrl && !isCloudControlPlaneUrl(jobRuntimeUrl)
+              ? await client
+                  .getCloudCompatAgent(agentId)
+                  .then((agentRes) =>
+                    agentRes.success
+                      ? mergeCloudRuntimeUrl(agentRes.data, jobRuntimeUrl)
+                      : null,
+                  )
+                  .catch(() => null)
+              : null;
+          const ready =
+            readyFromJob ??
+            (await fetchAgentWithUrl(Date.now() + AGENT_URL_WAIT_DEADLINE_MS));
           if (ready) {
             finishAsCloud(ready);
           } else {

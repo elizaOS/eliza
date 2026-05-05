@@ -40,8 +40,8 @@ export default scenario({
         "SCHEDULE_FOLLOW_UP",
         "CREATE_TASK",
         "ADD_CONTACT",
-        "BLOCK_WEBSITES",
-        "BLOCK_APPS",
+        "OWNER_WEBSITE_BLOCK",
+        "OWNER_APP_BLOCK",
       ],
       assertResponse: (text: string) => {
         if (!text || text.trim().length === 0) {

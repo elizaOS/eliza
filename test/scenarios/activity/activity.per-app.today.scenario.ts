@@ -57,8 +57,8 @@ export default scenario({
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
           "OWNER_SCREEN_TIME",
-          "SCREEN_TIME",
-          "GET_ACTIVITY_REPORT",
+          "OWNER_SCREEN_TIME",
+          "OWNER_SCREEN_TIME",
         ],
         description: "per-app usage lookup",
       }),
@@ -68,7 +68,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["OWNER_SCREEN_TIME", "SCREEN_TIME", "GET_ACTIVITY_REPORT"],
+      actionName: ["OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME"],
     },
     {
       type: "custom",
@@ -76,8 +76,8 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: [
           "OWNER_SCREEN_TIME",
-          "SCREEN_TIME",
-          "GET_ACTIVITY_REPORT",
+          "OWNER_SCREEN_TIME",
+          "OWNER_SCREEN_TIME",
         ],
         description: "per-app usage lookup",
       }),
@@ -87,7 +87,7 @@ export default scenario({
       name: "per-app-today-results",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find((action) =>
-          ["OWNER_SCREEN_TIME", "SCREEN_TIME", "GET_ACTIVITY_REPORT"].includes(
+          ["OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME", "OWNER_SCREEN_TIME"].includes(
             action.actionName,
           ),
         );

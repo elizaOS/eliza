@@ -102,7 +102,9 @@ function readGovOp(options: Record<string, unknown> | undefined): GovOp {
   if (op === "propose" || op === "vote" || op === "queue" || op === "execute") {
     return op;
   }
-  throw new Error("Missing or invalid 'op' parameter (expected 'propose' | 'vote' | 'queue' | 'execute')");
+  throw new Error(
+    "Missing or invalid 'op' parameter (expected 'propose' | 'vote' | 'queue' | 'execute')"
+  );
 }
 
 function readBase(options: Record<string, unknown>): GovOpParamsBase {
@@ -117,7 +119,9 @@ function readBase(options: Record<string, unknown>): GovOpParamsBase {
 
 function readProposeParams(options: Record<string, unknown>): ProposeProposalParams {
   if (!options.targets || !options.values || !options.calldatas || !options.description) {
-    throw new Error("Missing required parameters for proposal (targets, values, calldatas, description)");
+    throw new Error(
+      "Missing required parameters for proposal (targets, values, calldatas, description)"
+    );
   }
   const base = readBase(options);
   return {
@@ -130,7 +134,11 @@ function readProposeParams(options: Record<string, unknown>): ProposeProposalPar
 }
 
 function readVoteParams(options: Record<string, unknown>): VoteParams {
-  if (options.proposalId === undefined || options.support === undefined || options.support === null) {
+  if (
+    options.proposalId === undefined ||
+    options.support === undefined ||
+    options.support === null
+  ) {
     throw new Error("Missing required 'proposalId' or 'support' for vote");
   }
   const base = readBase(options);
@@ -143,7 +151,9 @@ function readVoteParams(options: Record<string, unknown>): VoteParams {
 
 function readQueueParams(options: Record<string, unknown>): QueueProposalParams {
   if (!options.targets || !options.values || !options.calldatas || !options.description) {
-    throw new Error("Missing required parameters for queue (targets, values, calldatas, description)");
+    throw new Error(
+      "Missing required parameters for queue (targets, values, calldatas, description)"
+    );
   }
   const base = readBase(options);
   return {
@@ -275,8 +285,19 @@ export const govOpAction = {
     }
   },
   validate: createEvmActionValidator({
-    keywords: ["propose", "proposal", "governance", "dao", "vote", "queue", "execute", "governor", "timelock"],
-    regex: /\b(?:propose|proposal|governance|dao|vote|abstain|queue|queued|timelock|execute|execution|governor)\b/i,
+    keywords: [
+      "propose",
+      "proposal",
+      "governance",
+      "dao",
+      "vote",
+      "queue",
+      "execute",
+      "governor",
+      "timelock",
+    ],
+    regex:
+      /\b(?:propose|proposal|governance|dao|vote|abstain|queue|queued|timelock|execute|execution|governor)\b/i,
   }),
   examples: [
     [

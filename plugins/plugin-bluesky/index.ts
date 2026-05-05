@@ -1,8 +1,10 @@
 import type { IAgentRuntime, Plugin, TestCase, TestSuite } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { postBlueskyAction } from "./actions/post";
 import { BlueSkyService } from "./services/bluesky";
 import { getApiKeyOptional } from "./utils/config";
 
+export { postBlueskyAction } from "./actions/post";
 export { BlueSkyClient } from "./client";
 export { BlueSkyService } from "./services/bluesky";
 
@@ -90,6 +92,8 @@ export const blueSkyPlugin: Plugin = {
 	async init(_config, _runtime) {
 		logger.log("BlueSky plugin initialized");
 	},
+
+	actions: [postBlueskyAction],
 
 	services: [BlueSkyService],
 

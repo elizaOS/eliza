@@ -26,7 +26,7 @@ export default scenario({
       name: "request-conditional-unblock",
       room: "main",
       text: "Unlock X for 60 minutes after my workout every day, then block it again.",
-      expectedActions: ["BLOCK_WEBSITES"],
+      expectedActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: ["workout", "60", "unlock", "x"],
     },
   ],

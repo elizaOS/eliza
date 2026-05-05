@@ -124,11 +124,12 @@ export class MusicBrainzClient {
       }
 
       const data = (await response.json()) as MusicBrainzRecordingResponse;
-      if (data.recordings.length === 0) {
+      const recordings = data.recordings ?? [];
+      if (recordings.length === 0) {
         return null;
       }
 
-      const recording = data.recordings[0];
+      const recording = recordings[0];
       const trackInfo: TrackInfo = {
         title: recording.title,
         artist:
@@ -177,11 +178,12 @@ export class MusicBrainzClient {
       }
 
       const data = (await response.json()) as MusicBrainzArtistResponse;
-      if (data.artists.length === 0) {
+      const artists = data.artists ?? [];
+      if (artists.length === 0) {
         return null;
       }
 
-      const artist = data.artists[0];
+      const artist = artists[0];
       const artistInfo: ArtistInfo = {
         name: artist.name,
         genres: artist.tags?.map((tag) => tag.name) || [],
@@ -227,11 +229,12 @@ export class MusicBrainzClient {
       }
 
       const data = (await response.json()) as MusicBrainzReleaseResponse;
-      if (data.releases.length === 0) {
+      const releases = data.releases ?? [];
+      if (releases.length === 0) {
         return null;
       }
 
-      const release = data.releases[0];
+      const release = releases[0];
       const albumInfo: AlbumInfo = {
         title: release.title,
         artist:

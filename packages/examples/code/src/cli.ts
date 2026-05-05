@@ -14,8 +14,8 @@
 
 import * as fs from "node:fs/promises";
 import * as readline from "node:readline";
+import type { AgentRuntime } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import { initializeAgent, shutdownAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { ensureSessionIdentity, getMainRoomElizaId } from "./lib/identity.js";
@@ -307,9 +307,13 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
   }
 
   // Initialize agent
-  let runtime: Awaited<ReturnType<typeof initializeAgent>> | undefined;
+  let runtime: AgentRuntime | undefined;
+  let shutdownAgent: ((runtime: AgentRuntime) => Promise<void>) | undefined;
 
   try {
+    const agentModule = await import("./lib/agent.js");
+    shutdownAgent = agentModule.shutdownAgent;
+    const { initializeAgent } = agentModule;
     runtime = await initializeAgent();
 
     const agentClient = getAgentClient();
@@ -363,7 +367,7 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
       },
     };
   } finally {
-    if (runtime) {
+    if (runtime && shutdownAgent) {
       await shutdownAgent(runtime);
     }
   }

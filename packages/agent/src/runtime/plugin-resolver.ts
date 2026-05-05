@@ -17,7 +17,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
+import { formatError, isMobilePlatform } from "@elizaos/shared";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
@@ -926,6 +926,7 @@ export async function resolvePlugins(
   const autoEnableResult = applyPluginAutoEnable({
     config,
     env: process.env,
+    isNativePlatform: isMobilePlatform(),
   } satisfies ApplyPluginAutoEnableParams);
   if (autoEnableResult.changes.length > 0) {
     logger.info(
@@ -1075,6 +1076,12 @@ export async function resolvePlugins(
         // This keeps local node_modules links working while avoiding staging
         // bugs in workspace packages with nested symlinked dependencies.
         mod = staticElizaPlugin as PluginModuleShape;
+      } else if (pluginName === "@elizaos/plugin-sql") {
+        // Mobile bundles run without a node_modules tree. The static plugin
+        // registry is the normal fast path, but use a literal import fallback
+        // so Bun can still inline the required SQL plugin if module init order
+        // leaves the registry empty.
+        mod = (await import("@elizaos/plugin-sql")) as PluginModuleShape;
       } else if (workspaceOverridePath) {
         const shouldPreferRepoNodeModules =
           isOfficialElizaPlugin &&

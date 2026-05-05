@@ -263,6 +263,87 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("fails hung native Cloud provisioning requests instead of waiting forever", async () => {
+    vi.useFakeTimers();
+    capacitorMocks.request.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = client.provisionCloudCompatAgent("agent-1");
+    const expectation = expect(result).rejects.toThrow(
+      "Eliza Cloud request timed out after 15s",
+    );
+
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await expectation;
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        method: "POST",
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("includes the Cloud error body when native direct provisioning is rejected", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 500,
+      data: {
+        success: false,
+        error: "Failed to start provisioning",
+        code: "provision_enqueue_failed",
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+
+    await expect(client.provisionCloudCompatAgent("agent-1")).rejects.toThrow(
+      "Cloud request failed (500): Failed to start provisioning",
+    );
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        method: "POST",
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("accepts an existing native direct provisioning job even when Cloud returns 409", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 409,
+      data: {
+        success: true,
+        alreadyInProgress: true,
+        data: {
+          jobId: "job-existing",
+          status: "in_progress",
+          agentId: "agent-1",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.provisionCloudCompatAgent("agent-1");
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        alreadyInProgress: true,
+        data: expect.objectContaining({ jobId: "job-existing" }),
+      }),
+    );
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        method: "POST",
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
   it("polls direct Cloud provision jobs on native", async () => {
     capacitorMocks.request.mockResolvedValue({
       status: 200,

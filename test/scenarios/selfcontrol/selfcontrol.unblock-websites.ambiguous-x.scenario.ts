@@ -26,7 +26,7 @@ export default scenario({
       name: "start-timed-block",
       room: "main",
       text: "Block x.com for 30 minutes.",
-      expectedActions: ["BLOCK_WEBSITES"],
+      expectedActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [/30/i, /x/i, /block/i],
     },
     {
@@ -34,7 +34,7 @@ export default scenario({
       name: "ambiguous-unblock-still-routes",
       room: "main",
       text: "Can you unblock x?",
-      expectedActions: ["UNBLOCK_WEBSITES"],
+      expectedActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [
         /removed the website block/i,
         /before its scheduled end time/i,
@@ -45,7 +45,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "UNBLOCK_WEBSITES",
+      actionName: "OWNER_WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

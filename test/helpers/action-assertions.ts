@@ -9,7 +9,7 @@
  *   const before = Date.now();
  *   await handleMessage(runtime, message);
  *   const invocations = await getActionInvocations(runtime, roomId, before);
- *   expectActionCalled(invocations, "CALENDAR_ACTION", { status: "success" });
+ *   expectActionCalled(invocations, "OWNER_CALENDAR", { status: "success" });
  */
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
@@ -20,7 +20,7 @@ import { expect } from "vitest";
  * an action_result memory persisted by the runtime.
  */
 export interface ActionInvocation {
-  /** Canonical action name as recorded by the runtime (e.g. "CALENDAR_ACTION"). */
+  /** Canonical action name as recorded by the runtime (e.g. "OWNER_CALENDAR"). */
   actionName: string;
   /** Whether the action succeeded or failed. */
   actionStatus: "success" | "failed" | string;
@@ -38,8 +38,8 @@ export interface ActionInvocation {
 
 /**
  * Normalize an action name for fuzzy comparison: uppercase and strip
- * underscores so that "calendar_action", "CALENDAR_ACTION", and
- * "CalendarAction" all match.
+ * underscores so that "owner_calendar", "OWNER_CALENDAR", and
+ * "OwnerCalendar" all match.
  */
 function normalizeActionName(name: string): string {
   return name.toUpperCase().replace(/_/g, "");
@@ -93,7 +93,7 @@ export async function getActionInvocations(
  * Assert that a specific action was called among the given invocations.
  *
  * Name matching is fuzzy: strips underscores and compares uppercase, so
- * "CALENDAR_ACTION" matches "calendar_action" or "CalendarAction".
+ * "OWNER_CALENDAR" matches "owner_calendar" or "OwnerCalendar".
  *
  * Optionally checks that the action's status and/or params match.
  * Throws a descriptive error listing what WAS called if the expected
@@ -217,7 +217,7 @@ export function expectActionOrder(
  * Assert that at least one of the given action names was called.
  *
  * Useful when multiple actions could satisfy a user request (e.g. the
- * agent might choose SEND_EMAIL or GMAIL_ACTION for an email task).
+ * agent might choose SEND_DRAFT or RESPOND_TO_MESSAGE for an email task).
  */
 export function expectAnyActionCalled(
   invocations: ActionInvocation[],

@@ -604,54 +604,35 @@ export function injectNoCompressTarGz(content) {
 }
 
 /**
- * Inject an app-thinning hook that strips the AOSP-only `assets/agent/`
- * payload (bundled bun runtime, libllama, agent-bundle, PGlite payload,
- * GGUF models) from the Capacitor APK while preserving it for the AOSP
- * privileged-system-app build.
+ * Inject an optional app-thinning hook for `assets/agent/`.
  *
- * Why: the same gradle module produces two distinct APK shapes depending
- * on whether `-PelizaAospBuild=true` is set. The AOSP path must ship the
- * full local-inference runtime under assets/agent/* (~250 MB). The
- * Capacitor path uses @elizaos/llama-cpp-capacitor's jniLibs path for
- * inference (DeviceBridge over loopback) and doesn't need any of those
- * blobs — shipping them bloats the store APK from ~30 MB → ~250 MB and
- * triggers the 200 MB Play Store size cap.
- *
- * Implementation note: AGP's `sourceSets.assets.exclude` pattern is
- * silently ignored for the assets dir (verified with AGP 9.x + cuttlefish
- * APK build — pattern is accepted but never applied to mergeReleaseAssets
- * output). The reliable mechanism is a `doLast` action on the merge task
- * that deletes the agent/ subtree post-merge, which we install at the
- * project level via `afterEvaluate`.
+ * Local mode on stock Capacitor APKs now depends on the staged bun runtime,
+ * agent-bundle, and PGlite payload, so the default mobile build must keep
+ * assets/agent/*. CI/release jobs that deliberately want a cloud-only slim APK
+ * can opt into stripping with `-PelizaStripAgentAssets=true`.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
 export function injectAospAssetThinning(content) {
   if (/\[app-thinning\]/.test(content)) return content;
   const block =
-    `\n// App thinning: strip the AOSP-only assets (bun runtime, libllama,\n` +
-    `// agent-bundle, PGlite payload, GGUF models) from the Capacitor APK.\n` +
-    `// Preserved for the AOSP privileged-system-app build that sets\n` +
-    `// -PelizaAospBuild=true. See SETUP_AOSP.md for the dual-build map.\n` +
-    `// AGP's sourceSets.assets.exclude is a no-op for the assets dir, so\n` +
-    `// we hook the merge task and delete agent/ post-merge.\n` +
+    `\n// Optional app thinning: keep assets/agent/ by default so stock\n` +
+    `// Capacitor APKs can run the bundled local agent. Set\n` +
+    `// -PelizaStripAgentAssets=true only for an explicitly cloud-only slim APK.\n` +
     `afterEvaluate {\n` +
     `    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->\n` +
-    `        // Track the build mode as a task input so switching between\n` +
-    `        // Capacitor and AOSP forces a re-merge. Without this the merge\n` +
-    `        // task is UP-TO-DATE on the second invocation and reuses the\n` +
-    `        // shape the previous build left in merged_assets.\n` +
     `        mergeTask.inputs.property('elizaAospBuild', project.findProperty('elizaAospBuild') ?: 'false')\n` +
+    `        mergeTask.inputs.property('elizaStripAgentAssets', project.findProperty('elizaStripAgentAssets') ?: 'false')\n` +
     `        mergeTask.doLast {\n` +
-    `            if (project.findProperty('elizaAospBuild') != 'true') {\n` +
+    `            if (project.findProperty('elizaAospBuild') != 'true' && project.findProperty('elizaStripAgentAssets') == 'true') {\n` +
     `                def assetsDir = mergeTask.outputDir.get().asFile\n` +
     `                def agentDir = new File(assetsDir, 'agent')\n` +
     `                if (agentDir.exists()) {\n` +
-    `                    println "[app-thinning] removing assets/agent/ from \${mergeTask.name} (Capacitor build)"\n` +
+    `                    println "[app-thinning] removing assets/agent/ from \${mergeTask.name} (explicit slim Capacitor build)"\n` +
     `                    agentDir.deleteDir()\n` +
     `                }\n` +
     `            } else {\n` +
-    `                println "[app-thinning] keeping assets/agent/ in \${mergeTask.name} (AOSP build)"\n` +
+    `                println "[app-thinning] keeping assets/agent/ in \${mergeTask.name} (local-agent capable build)"\n` +
     `            }\n` +
     `        }\n` +
     `    }\n` +

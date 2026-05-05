@@ -5,12 +5,7 @@ import {
   type PlaybackTransportKind,
 } from "../utils/playbackTransportIntent.js";
 
-const INTENT_ACTION: Record<PlaybackTransportKind, string> = {
-  pause: "PAUSE_MUSIC",
-  resume: "RESUME_MUSIC",
-  skip: "SKIP_TRACK",
-  stop: "STOP_MUSIC",
-};
+const PLAYBACK_OP_ACTION = "PLAYBACK_OP";
 
 type RuntimeWithPatch = IAgentRuntime & {
   __elizaMusicTransportPatch?: boolean;
@@ -26,7 +21,8 @@ type RuntimeWithPatch = IAgentRuntime & {
 /**
  * elizaOS runs action handlers without calling validate() first; validate only
  * filters the ACTIONS provider text. The model can still emit PLAY_AUDIO for
- * "pause" — rewrite those to PAUSE_MUSIC / etc. before processActions runs.
+ * "pause" — rewrite those to PLAYBACK_OP with op=pause/resume/skip/stop before
+ * processActions runs.
  */
 export function installProcessActionsTransportPatch(
   runtime: IAgentRuntime,
@@ -45,11 +41,14 @@ export function installProcessActionsTransportPatch(
       } | null;
       const text =
         typeof msg?.content?.text === "string" ? msg.content.text : "";
-      const intent = classifyPlaybackTransportIntent(text);
+      const intent: PlaybackTransportKind | null =
+        classifyPlaybackTransportIntent(text);
       if (intent && Array.isArray(responses)) {
-        const replacement = INTENT_ACTION[intent];
         for (const res of responses as Array<{
-          content?: { actions?: string[] };
+          content?: {
+            actions?: string[];
+            params?: Record<string, Record<string, unknown>>;
+          };
         }>) {
           const c = res?.content;
           if (!c || !Array.isArray(c.actions)) continue;
@@ -59,11 +58,22 @@ export function installProcessActionsTransportPatch(
             continue;
           }
           const next = c.actions.map((a) =>
-            String(a).toUpperCase() === "PLAY_AUDIO" ? replacement : a,
+            String(a).toUpperCase() === "PLAY_AUDIO" ? PLAYBACK_OP_ACTION : a,
           );
-          res.content = { ...c, actions: next };
+          const params =
+            c.params && typeof c.params === "object" ? c.params : {};
+          const existing = params[PLAYBACK_OP_ACTION] ?? {};
+          const playbackParams = {
+            ...existing,
+            op: intent,
+          };
+          res.content = {
+            ...c,
+            actions: next,
+            params: { ...params, [PLAYBACK_OP_ACTION]: playbackParams },
+          };
           logger.info(
-            `[music-player] Rewrote PLAY_AUDIO -> ${replacement} (transport intent: ${intent})`,
+            `[music-player] Rewrote PLAY_AUDIO -> ${PLAYBACK_OP_ACTION} op=${intent} (transport intent)`,
           );
         }
       }

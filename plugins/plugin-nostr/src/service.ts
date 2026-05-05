@@ -335,12 +335,19 @@ export class NostrService extends Service implements INostrService {
       }
     }
 
-    // Decrypt the message
+    // Decrypt the message (NIP-04)
     let plaintext: string;
     try {
+      logger.debug(
+        { src: "plugin:nostr", op: "nip04:decrypt", from: event.pubkey },
+        "Decrypting Nostr DM"
+      );
       plaintext = decrypt(privateKey, event.pubkey, event.content);
     } catch (err) {
-      logger.warn(`Failed to decrypt DM from ${event.pubkey}: ${err}`);
+      logger.warn(
+        { src: "plugin:nostr", op: "nip04:decrypt", from: event.pubkey, err: String(err) },
+        "Failed to decrypt Nostr DM"
+      );
       return;
     }
 
@@ -511,9 +518,13 @@ export class NostrService extends Service implements INostrService {
       };
     }
 
-    // Encrypt the message
+    // Encrypt the message (NIP-04)
     let ciphertext: string;
     try {
+      logger.debug(
+        { src: "plugin:nostr", op: "nip04:encrypt", to: toPubkey },
+        "Encrypting Nostr DM"
+      );
       ciphertext = encrypt(privateKey, toPubkey, options.text);
     } catch (err) {
       return {
@@ -539,6 +550,10 @@ export class NostrService extends Service implements INostrService {
 
     for (const relay of settings.relays) {
       try {
+        logger.debug(
+          { src: "plugin:nostr", op: "pool.publish", kind: 4, relay, eventId: event.id },
+          "Publishing Nostr DM event to relay"
+        );
         await pool.publish([relay], event);
         successRelays.push(relay);
       } catch (err) {
@@ -615,6 +630,10 @@ export class NostrService extends Service implements INostrService {
 
     for (const relay of settings.relays) {
       try {
+        logger.debug(
+          { src: "plugin:nostr", op: "pool.publish", kind: 0, relay, eventId: event.id },
+          "Publishing Nostr profile event to relay"
+        );
         await pool.publish([relay], event);
         successRelays.push(relay);
       } catch (err) {
@@ -638,6 +657,74 @@ export class NostrService extends Service implements INostrService {
         relays: successRelays,
       } as EventPayload);
     }
+
+    return {
+      success: true,
+      eventId: event.id,
+      relays: successRelays,
+    };
+  }
+
+  /**
+   * Publish a text note (kind:1).
+   */
+  async publishNote(text: string, tags: string[][] = []): Promise<NostrSendResult> {
+    const settings = this.settings;
+    const pool = this.pool;
+    const privateKey = this.privateKey;
+
+    if (!settings || !pool || !privateKey) {
+      return {
+        success: false,
+        error: "Service not initialized",
+      };
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return {
+        success: false,
+        error: "Note content cannot be empty",
+      };
+    }
+
+    const event = finalizeEvent(
+      {
+        kind: 1,
+        content: trimmed,
+        tags,
+        created_at: Math.floor(Date.now() / 1000),
+      },
+      privateKey
+    );
+
+    const successRelays: string[] = [];
+    const errors: string[] = [];
+
+    for (const relay of settings.relays) {
+      try {
+        logger.debug(
+          { src: "plugin:nostr", op: "pool.publish", kind: 1, relay, eventId: event.id },
+          "Publishing Nostr note to relay"
+        );
+        await pool.publish([relay], event);
+        successRelays.push(relay);
+      } catch (err) {
+        errors.push(`${relay}: ${err}`);
+      }
+    }
+
+    if (successRelays.length === 0) {
+      return {
+        success: false,
+        error: `Failed to publish note to any relay: ${errors.join("; ")}`,
+      };
+    }
+
+    logger.info(
+      { src: "plugin:nostr", op: "publishNote", eventId: event.id, relays: successRelays.length },
+      "Nostr note published"
+    );
 
     return {
       success: true,

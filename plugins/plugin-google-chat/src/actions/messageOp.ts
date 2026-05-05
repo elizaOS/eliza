@@ -93,7 +93,7 @@ async function handleSend(
   info: GoogleChatOpInfo,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
-  if (!info.text || !info.text.trim()) {
+  if (!info.text?.trim()) {
     callback?.({
       text: "I couldn't understand what message you want me to send. Please try again.",
       source: "google-chat",

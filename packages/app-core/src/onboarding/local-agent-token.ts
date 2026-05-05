@@ -12,6 +12,9 @@ type AgentWithLocalToken = {
   }>;
 };
 
+const agentPluginName = "Agent";
+const agentPluginId = "@elizaos/capacitor-agent";
+
 export function isAndroidLocalAgentUrl(value: string): boolean {
   let parsed: URL;
   try {
@@ -37,12 +40,26 @@ function isNativeAndroid(): boolean {
 }
 
 async function readNativeLocalAgentToken(): Promise<string | null> {
-  const agentPluginId = "@elizaos/capacitor-agent";
+  let agent: AgentWithLocalToken | null = null;
   try {
-    const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
-      Agent?: AgentWithLocalToken;
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, AgentWithLocalToken | undefined>;
     };
-    const result = await mod.Agent?.getLocalAgentToken?.();
+    agent =
+      capacitorWithPlugins.Plugins?.[agentPluginName] ??
+      Capacitor.registerPlugin<AgentWithLocalToken>(agentPluginName);
+  } catch {
+    agent = null;
+  }
+
+  try {
+    if (!agent?.getLocalAgentToken) {
+      const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
+        Agent?: AgentWithLocalToken;
+      };
+      agent = mod.Agent ?? null;
+    }
+    const result = await agent?.getLocalAgentToken?.();
     const token = result?.token?.trim();
     return result?.available && token ? token : null;
   } catch {

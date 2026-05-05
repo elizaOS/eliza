@@ -22,6 +22,8 @@ import {
 	tryParseToonValue,
 } from "./utils/toon";
 
+export { parseToonActionParams } from "./utils/toon";
+
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
 const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(

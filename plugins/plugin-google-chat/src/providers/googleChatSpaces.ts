@@ -2,17 +2,11 @@
  * Google Chat spaces provider — TOON-encoded list of spaces the bot is in.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 import { encode } from "@toon-format/toon";
 import type { GoogleChatService } from "../service.js";
-import { getSpaceDisplayName, GOOGLE_CHAT_SERVICE_NAME, isDirectMessage } from "../types.js";
+import { GOOGLE_CHAT_SERVICE_NAME, getSpaceDisplayName, isDirectMessage } from "../types.js";
 
 const RELEVANCE_KEYWORDS = ["google", "chat", "space", "spaces", "room", "rooms"] as const;
 const RELEVANCE_REGEX = /\b(?:google|chat|spaces?|rooms?)\b/i;
@@ -26,16 +20,13 @@ interface GoogleChatSpaceEntry {
 
 export const googleChatSpacesProvider: Provider = {
   name: "googleChatSpaces",
-  description: "Lists Google Chat spaces the bot is a member of with display name, type, and threaded flag.",
+  description:
+    "Lists Google Chat spaces the bot is a member of with display name, type, and threaded flag.",
   descriptionCompressed: "Google Chat spaces (display name, type, threaded).",
   dynamic: true,
   contexts: ["social", "connectors"],
   relevanceKeywords: [...RELEVANCE_KEYWORDS],
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     const recentMessages = (state?.recentMessagesData as Memory[] | undefined) ?? [];
     const isRelevant =
       validateActionKeywords(message, recentMessages, [...RELEVANCE_KEYWORDS]) ||

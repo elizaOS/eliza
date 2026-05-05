@@ -7,7 +7,6 @@ import mcpPlugin from "@elizaos/plugin-mcp";
 import openaiPlugin from "@elizaos/plugin-openai";
 import { shellPlugin } from "@elizaos/plugin-shell";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import trajectoryLoggerPlugin from "@elizaos/plugin-trajectory-logger";
 import { resolveModelProvider } from "./model-provider.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 
@@ -100,7 +99,6 @@ export async function initializeAgent(): Promise<AgentRuntime> {
     providerPlugin,
     mcpPlugin,
     goalsPlugin,
-    trajectoryLoggerPlugin,
     shellPlugin,
     coderPlugin, // Direct coding capabilities
     agentOrchestratorPlugin, // Agent orchestration

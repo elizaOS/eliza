@@ -40,34 +40,31 @@ const SUBACTIONS: SubactionsMap<RemoteSubaction> = {
       "If running in local mode (ELIZA_REMOTE_LOCAL_MODE=1) no pairing code is needed; " +
       "otherwise a valid 6-digit pairing code is required.",
     descriptionCompressed:
-      "open remote session via RemoteSessionService confirmed-true pairing-code-may-be-required local-mode-skips-code",
+      "open remote session confirmed-true pairing-code 6-digit local-mode-skips",
     required: ["confirmed"],
     optional: ["pairingCode"],
   },
   status: {
-    description:
-      "Look up one remote session by id via the legacy backend.",
-    descriptionCompressed:
-      "look up one remote session by id via legacy backend",
+    description: "Look up one remote session by id via the legacy backend.",
+    descriptionCompressed: "lookup remote session by id legacy",
     required: ["sessionId"],
   },
   end: {
     description: "Close a remote session by id via the legacy backend.",
-    descriptionCompressed: "close remote session by id via legacy backend",
+    descriptionCompressed: "close remote session by id legacy",
     required: ["sessionId"],
   },
   list: {
     description:
       "List active remote sessions via RemoteSessionService with ids, statuses, ingress URLs, and local-mode hints.",
     descriptionCompressed:
-      "list active remote sessions via service ids status ingress local-mode-hint",
+      "list active remote sessions ids status ingress local-mode-hint",
     required: [],
   },
   revoke: {
     description:
       "Revoke an active remote session by id via RemoteSessionService.",
-    descriptionCompressed:
-      "revoke active remote session by id via service",
+    descriptionCompressed: "revoke active remote session by id",
     required: ["sessionId"],
   },
 };

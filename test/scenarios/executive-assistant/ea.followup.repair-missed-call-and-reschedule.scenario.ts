@@ -35,10 +35,10 @@ export default scenario({
       text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap, but hold the note for my approval first.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "INBOX",
-          "GMAIL_ACTION",
-          "CALENDAR_ACTION",
-          "CROSS_CHANNEL_SEND",
+          "TRIAGE_MESSAGES",
+          "TRIAGE_MESSAGES",
+          "OWNER_CALENDAR",
+          "SEND_DRAFT",
         ],
         description: "missed-call repair draft",
         includesAny: [
@@ -69,10 +69,10 @@ export default scenario({
       text: "Yes, approve that repair note and send it now.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "INBOX",
-          "APPROVE_REQUEST",
-          "CROSS_CHANNEL_SEND",
-          "GMAIL_ACTION",
+          "TRIAGE_MESSAGES",
+          "OWNER_RESOLVE_REQUEST",
+          "SEND_DRAFT",
+          "TRIAGE_MESSAGES",
         ],
         description: "repair approval and dispatch",
         includesAny: ["approve", "send", "repair", "Frontier Tower"],
@@ -90,7 +90,7 @@ export default scenario({
       room: "main",
       text: "They confirmed Thursday at 2pm works. Mark the Frontier Tower follow-up done and close the loop.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["OWNER_RELATIONSHIP", "CALENDAR_ACTION", "INBOX"],
+        acceptedActions: ["OWNER_RELATIONSHIP", "OWNER_CALENDAR", "TRIAGE_MESSAGES"],
         description: "follow-up loop closure",
         includesAny: [
           "Frontier Tower",
@@ -117,36 +117,36 @@ export default scenario({
     {
       type: "selectedAction",
       actionName: [
-        "INBOX",
+        "TRIAGE_MESSAGES",
         "OWNER_RELATIONSHIP",
-        "APPROVE_REQUEST",
-        "GMAIL_ACTION",
-        "CALENDAR_ACTION",
-        "CROSS_CHANNEL_SEND",
+        "OWNER_RESOLVE_REQUEST",
+        "TRIAGE_MESSAGES",
+        "OWNER_CALENDAR",
+        "SEND_DRAFT",
       ],
     },
     {
       type: "approvalRequestExists",
       expected: true,
       state: ["approved", "executing", "done"],
-      actionName: ["CROSS_CHANNEL_SEND", "GMAIL_ACTION", "INBOX"],
+      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
     },
     {
       type: "connectorDispatchOccurred",
       channel: ["gmail", "telegram", "discord", "signal"],
-      actionName: ["INBOX", "GMAIL_ACTION", "CROSS_CHANNEL_SEND"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES", "SEND_DRAFT"],
     },
     {
       type: "custom",
       name: "ea-repair-missed-call-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "INBOX",
+          "TRIAGE_MESSAGES",
           "OWNER_RELATIONSHIP",
-          "APPROVE_REQUEST",
-          "GMAIL_ACTION",
-          "CALENDAR_ACTION",
-          "CROSS_CHANNEL_SEND",
+          "OWNER_RESOLVE_REQUEST",
+          "TRIAGE_MESSAGES",
+          "OWNER_CALENDAR",
+          "SEND_DRAFT",
         ],
         description: "missed-call repair lifecycle",
         includesAny: [
@@ -165,7 +165,7 @@ export default scenario({
       predicate: expectApprovalRequest({
         description:
           "repair note is queued behind approval before the outbound send happens",
-        actionName: ["CROSS_CHANNEL_SEND", "GMAIL_ACTION", "INBOX"],
+        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
       }),
     },
     {
@@ -175,7 +175,7 @@ export default scenario({
         description: "repair approval moved pending → approved before dispatch",
         from: "pending",
         to: "approved",
-        actionName: ["CROSS_CHANNEL_SEND", "GMAIL_ACTION", "INBOX"],
+        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
       }),
     },
     {

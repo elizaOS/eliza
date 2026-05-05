@@ -10,10 +10,10 @@ import {
   logger,
   type Memory,
   ModelType,
+  parseToonActionParams,
   type State,
 } from "@elizaos/core";
 import type { NostrService } from "../service.js";
-import { parseToonKeyValue } from "../toon.js";
 import {
   isValidPubkey,
   NOSTR_SERVICE_NAME,
@@ -32,13 +32,14 @@ Based on the conversation, determine what message to send and to whom.
 Recent conversation:
 {{recentMessages}}
 
-Extract the following:
-- text: The message content to send
-- toPubkey: The target pubkey (npub or hex format, or "current" for the current conversation)
+Output a TOON action-call block:
 
-Respond with TOON only:
-text: message content here
-toPubkey: npub1... or hex pubkey or current`;
+actions: NOSTR_SEND_DM
+params:
+  NOSTR_SEND_DM:
+    text: message content here
+    toPubkey: npub1... or hex pubkey or current
+`;
 
 export const sendDm: Action = {
   name: "NOSTR_SEND_DM",
@@ -81,11 +82,12 @@ export const sendDm: Action = {
         prompt,
       });
 
-      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
-      if (parsed?.text) {
+      const parsed = parseToonActionParams(String(response));
+      const actionParams = parsed.get("NOSTR_SEND_DM");
+      if (actionParams?.text) {
         dmInfo = {
-          text: String(parsed.text),
-          toPubkey: String(parsed.toPubkey || "current"),
+          text: String(actionParams.text),
+          toPubkey: String(actionParams.toPubkey || "current"),
         };
         break;
       }

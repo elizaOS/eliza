@@ -30,7 +30,7 @@ export default scenario({
       room: "main",
       text: "Draft an iMessage reply to mom saying I'll call after dinner.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "imessage draft reply",
         includesAny: ["imessage", "mom", "draft", "reply"],
       }),
@@ -47,7 +47,7 @@ export default scenario({
       room: "main",
       text: "Send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "imessage send after confirmation",
         includesAny: ["send", "imessage", "reply"],
       }),
@@ -62,7 +62,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["INBOX", "CROSS_CHANNEL_SEND"],
+      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
     },
     {
       type: "custom",
@@ -88,7 +88,7 @@ export default scenario({
       type: "custom",
       name: "imessage-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "imessage draft then send",
         includesAny: ["imessage", "draft", "send", "reply"],
         minCount: 2,

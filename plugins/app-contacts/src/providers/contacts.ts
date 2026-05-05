@@ -1,9 +1,10 @@
 /**
- * CONTACTS provider - read-only address-book context for the Contacts app.
+ * androidContacts provider — read-only Android address-book context.
  *
  * Listing contacts is state exposure, not an agent operation with side
- * effects. Keep it as a dynamic provider so the planner can request contact
- * context when needed, while PLACE_CALL remains the live Phone action.
+ * effects. Surfaced as a dynamic provider so the planner can pull contact
+ * context when relevant. PLACE_CALL on the Phone app remains the live
+ * operation for actually dialling a contact.
  */
 
 import { type ContactSummary, Contacts } from "@elizaos/capacitor-contacts";
@@ -14,31 +15,35 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { encode } from "@toon-format/toon";
 
-export const CONTACTS_PROVIDER_NAME = "CONTACTS";
+export const CONTACTS_PROVIDER_NAME = "androidContacts";
 
 const CONTACTS_PROVIDER_LIMIT = 50;
 
-function formatContact(contact: ContactSummary): string {
-  const fields = [
-    `name: ${contact.displayName || "(unnamed)"}`,
-    contact.phoneNumbers.length > 0
-      ? `phones: ${contact.phoneNumbers.join(", ")}`
-      : null,
-    contact.emailAddresses.length > 0
-      ? `emails: ${contact.emailAddresses.join(", ")}`
-      : null,
-  ].filter(Boolean);
+interface AndroidContactEntry {
+  id: string;
+  displayName: string;
+  phones: string[];
+  emails: string[];
+  starred: boolean;
+}
 
-  return `- ${fields.join("; ")}`;
+function toEntry(contact: ContactSummary): AndroidContactEntry {
+  return {
+    id: contact.id,
+    displayName: contact.displayName ?? "",
+    phones: contact.phoneNumbers,
+    emails: contact.emailAddresses,
+    starred: Boolean(contact.starred),
+  };
 }
 
 export const contactsProvider: Provider = {
   name: CONTACTS_PROVIDER_NAME,
   description:
-    "Provides read-only Android address-book contacts for resolving names, phone numbers, and email addresses.",
-  descriptionCompressed:
-    "Android contacts: names, phone numbers, emails for contact resolution.",
+    "Read-only Android address-book contacts (id, display name, phone numbers, emails, starred) for resolving people referenced in chat.",
+  descriptionCompressed: "Android contacts: id, name, phones, emails, starred.",
   dynamic: true,
   contexts: ["system"],
 
@@ -51,23 +56,22 @@ export const contactsProvider: Provider = {
       const { contacts } = await Contacts.listContacts({
         limit: CONTACTS_PROVIDER_LIMIT,
       });
-      const text =
-        contacts.length === 0
-          ? "contacts[0]: none"
-          : [
-              `contacts[${contacts.length}]:`,
-              ...contacts.map(formatContact),
-            ].join("\n");
+      const entries = contacts.map(toEntry);
 
       return {
-        text,
+        text: encode({
+          android_contacts: {
+            count: entries.length,
+            items: entries,
+          },
+        }),
         values: {
-          contactsAvailable: contacts.length > 0,
-          contactsCount: contacts.length,
+          contactsAvailable: entries.length > 0,
+          contactsCount: entries.length,
         },
         data: {
-          contacts,
-          count: contacts.length,
+          contacts: entries,
+          count: entries.length,
           limit: CONTACTS_PROVIDER_LIMIT,
         },
       };
@@ -75,7 +79,7 @@ export const contactsProvider: Provider = {
       const message = error instanceof Error ? error.message : String(error);
 
       return {
-        text: `contacts_error: ${message}`,
+        text: "",
         values: {
           contactsAvailable: false,
           contactsCount: 0,

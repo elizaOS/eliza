@@ -9,10 +9,10 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  parseToonActionParams,
   type State,
 } from "@elizaos/core";
 import type { NostrService } from "../service.js";
-import { parseToonKeyValue } from "../toon.js";
 import { NOSTR_SERVICE_NAME, type NostrProfile } from "../types.js";
 
 const PUBLISH_PROFILE_TEMPLATE = `# Task: Extract Nostr profile data
@@ -21,18 +21,18 @@ Based on the conversation, determine what profile information to update.
 Recent conversation:
 {{recentMessages}}
 
-Extract any of the following profile fields that should be updated:
-- name: Display name
-- about: Bio/description
-- picture: Profile picture URL
-- banner: Banner image URL
-- nip05: Nostr verification (user@domain.com)
-- lud16: Lightning address (user@domain.com)
-- website: Website URL
+Output a TOON action-call block listing only the fields to update:
 
-Respond with TOON only. Include only fields to update:
-name: optional name
-about: optional bio`;
+actions: NOSTR_PUBLISH_PROFILE
+params:
+  NOSTR_PUBLISH_PROFILE:
+    name: optional display name
+    about: optional bio
+    picture: optional profile picture URL
+    banner: optional banner URL
+    nip05: optional user@domain.com
+    lud16: optional lightning address
+    website: optional website URL`;
 
 export const publishProfile: Action = {
   name: "NOSTR_PUBLISH_PROFILE",
@@ -75,17 +75,18 @@ export const publishProfile: Action = {
         prompt,
       });
 
-      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
-      if (parsed) {
+      const parsed = parseToonActionParams(String(response));
+      const actionParams = parsed.get("NOSTR_PUBLISH_PROFILE");
+      if (actionParams) {
         profileInfo = {
-          name: parsed.name ? String(parsed.name) : undefined,
-          displayName: parsed.displayName ? String(parsed.displayName) : undefined,
-          about: parsed.about ? String(parsed.about) : undefined,
-          picture: parsed.picture ? String(parsed.picture) : undefined,
-          banner: parsed.banner ? String(parsed.banner) : undefined,
-          nip05: parsed.nip05 ? String(parsed.nip05) : undefined,
-          lud16: parsed.lud16 ? String(parsed.lud16) : undefined,
-          website: parsed.website ? String(parsed.website) : undefined,
+          name: actionParams.name ? String(actionParams.name) : undefined,
+          displayName: actionParams.displayName ? String(actionParams.displayName) : undefined,
+          about: actionParams.about ? String(actionParams.about) : undefined,
+          picture: actionParams.picture ? String(actionParams.picture) : undefined,
+          banner: actionParams.banner ? String(actionParams.banner) : undefined,
+          nip05: actionParams.nip05 ? String(actionParams.nip05) : undefined,
+          lud16: actionParams.lud16 ? String(actionParams.lud16) : undefined,
+          website: actionParams.website ? String(actionParams.website) : undefined,
         };
         break;
       }

@@ -19,6 +19,7 @@ import {
   type WalletRpcSelections,
 } from "../contracts/wallet.js";
 
+export type { CloudApiKeyRuntimeLike };
 // Re-exported for backwards compatibility — the canonical source is now
 // `../cloud/cloud-api-key.ts`. Consumers that imported these from here
 // continue to work; new code should import from the cloud module directly.
@@ -27,7 +28,6 @@ export {
   resolveCloudApiBaseUrl,
   resolveCloudApiKey,
 };
-export type { CloudApiKeyRuntimeLike };
 // Multiple BSC public RPCs so we have working fallbacks when Eliza
 // Cloud's proxy returns 401 (plan/account issue) AND the primary
 // Binance dataseed endpoint is blocked/rate-limited. Order matters —

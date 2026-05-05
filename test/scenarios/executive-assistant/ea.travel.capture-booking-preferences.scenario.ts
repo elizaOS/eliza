@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "Set up a list of my flight and hotel preferences so you don't have to ask every time.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["UPDATE_OWNER_PROFILE", "LIFE"],
+        acceptedActions: ["OWNER_PROFILE", "OWNER_LIFE"],
         description: "travel preference capture",
         includesAny: ["flight", "hotel", "preferences", "every time"],
       }),
@@ -53,7 +53,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["UPDATE_OWNER_PROFILE", "LIFE"],
+      actionName: ["OWNER_PROFILE", "OWNER_LIFE"],
     },
     {
       type: "memoryWriteOccurred",
@@ -63,7 +63,7 @@ export default scenario({
       type: "custom",
       name: "ea-travel-prefs-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["UPDATE_OWNER_PROFILE", "LIFE"],
+        acceptedActions: ["OWNER_PROFILE", "OWNER_LIFE"],
         description: "travel preference capture",
         includesAny: ["flight", "hotel", "preferences", "every time"],
       }),

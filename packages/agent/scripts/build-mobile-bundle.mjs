@@ -7,6 +7,7 @@
 //   eliza/packages/agent/dist-mobile/
 //     agent-bundle.js              the actual bun-runnable payload
 //     pglite.wasm                  PGlite WebAssembly module
+//     initdb.wasm                  PGlite init database WebAssembly module
 //     pglite.data                  PGlite filesystem image
 //     vector.tar.gz                pgvector contrib (referenced via ../)
 //     fuzzystrmatch.tar.gz         fuzzystrmatch contrib (referenced via ../)
@@ -22,6 +23,7 @@
 // PGlite extension paths:
 //   `@electric-sql/pglite` resolves four assets via `new URL(..., import.meta.url)`:
 //     - "./pglite.wasm"            => same dir as the bundle
+//     - "./initdb.wasm"            => same dir as the bundle
 //     - "./pglite.data"            => same dir as the bundle
 //     - "../vector.tar.gz"         => one dir above the bundle
 //     - "../fuzzystrmatch.tar.gz"  => one dir above the bundle
@@ -360,7 +362,7 @@ console.log(
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`
 // lands here.
-for (const asset of ["pglite.wasm", "pglite.data"]) {
+for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
     console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);
@@ -394,6 +396,7 @@ const manifest = {
   platform: "android",
   pglite: {
     wasm: "pglite.wasm",
+    initdb: "initdb.wasm",
     data: "pglite.data",
     extensions: {
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },

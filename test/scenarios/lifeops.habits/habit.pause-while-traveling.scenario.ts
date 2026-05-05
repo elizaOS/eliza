@@ -76,7 +76,7 @@ export default scenario({
       kind: "message",
       name: "travel-reschedule-request",
       text: "Run my morning check-in.",
-      expectedActions: ["RUN_MORNING_CHECKIN"],
+      expectedActions: ["OWNER_CHECKIN"],
     },
   ],
   finalChecks: [
@@ -85,7 +85,7 @@ export default scenario({
       name: "habit-pause-is-reflected",
       predicate: async (ctx) => {
         const action = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "RUN_MORNING_CHECKIN",
+          (entry) => entry.actionName === "OWNER_CHECKIN",
         );
         const data =
           action?.result?.data && typeof action.result.data === "object"

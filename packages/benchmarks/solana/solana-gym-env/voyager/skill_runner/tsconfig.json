@@ -15,6 +15,7 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": true,
-    "types": []
-  }
+    "types": ["node"]
+  },
+  "exclude": ["_test_bad.ts", "code.ts"]
 }
