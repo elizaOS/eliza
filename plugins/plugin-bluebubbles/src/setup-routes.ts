@@ -28,42 +28,42 @@
  */
 
 import type {
-  IAgentRuntime,
-  Route,
-  RouteRequest,
-  RouteResponse,
+	IAgentRuntime,
+	Route,
+	RouteRequest,
+	RouteResponse,
 } from "@elizaos/core";
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
 
 type BlueBubblesWebhookPayload = {
-  type: string;
-  data: Record<string, unknown>;
+	type: string;
+	data: Record<string, unknown>;
 };
 
 type BlueBubblesChat = Record<string, unknown>;
 type BlueBubblesMessage = Record<string, unknown>;
 
 interface BlueBubblesClientLike {
-  listChats(limit?: number, offset?: number): Promise<BlueBubblesChat[]>;
-  getMessages(
-    chatGuid: string,
-    limit?: number,
-    offset?: number,
-  ): Promise<BlueBubblesMessage[]>;
+	listChats(limit?: number, offset?: number): Promise<BlueBubblesChat[]>;
+	getMessages(
+		chatGuid: string,
+		limit?: number,
+		offset?: number,
+	): Promise<BlueBubblesMessage[]>;
 }
 
 interface BlueBubblesServiceLike {
-  isConnected(): boolean;
-  getWebhookPath(): string;
-  getClient(): BlueBubblesClientLike | null;
-  handleWebhook(payload: BlueBubblesWebhookPayload): Promise<void>;
+	isConnected(): boolean;
+	getWebhookPath(): string;
+	getClient(): BlueBubblesClientLike | null;
+	handleWebhook(payload: BlueBubblesWebhookPayload): Promise<void>;
 }
 
 function resolveService(runtime: IAgentRuntime): BlueBubblesServiceLike | null {
-  const raw = runtime.getService(BLUEBUBBLES_SERVICE_NAME);
-  return (raw as unknown as BlueBubblesServiceLike | null | undefined) ?? null;
+	const raw = runtime.getService(BLUEBUBBLES_SERVICE_NAME);
+	return (raw as unknown as BlueBubblesServiceLike | null | undefined) ?? null;
 }
 
 /**
@@ -73,152 +73,163 @@ function resolveService(runtime: IAgentRuntime): BlueBubblesServiceLike | null {
  *
  * Exported so the agent shell can compute the same value the plugin uses.
  */
-export function resolveBlueBubblesWebhookPath(runtime: IAgentRuntime | null | undefined): string {
-  if (!runtime) return DEFAULT_WEBHOOK_PATH;
-  const service = resolveService(runtime);
-  const configuredPath = service?.getWebhookPath();
-  if (typeof configuredPath === "string" && configuredPath.trim().length > 0) {
-    return configuredPath.trim();
-  }
-  return DEFAULT_WEBHOOK_PATH;
+export function resolveBlueBubblesWebhookPath(
+	runtime: IAgentRuntime | null | undefined,
+): string {
+	if (!runtime) return DEFAULT_WEBHOOK_PATH;
+	const service = resolveService(runtime);
+	const configuredPath = service?.getWebhookPath();
+	if (typeof configuredPath === "string" && configuredPath.trim().length > 0) {
+		return configuredPath.trim();
+	}
+	return DEFAULT_WEBHOOK_PATH;
 }
 
 // ── GET /api/bluebubbles/status ────────────────────────────────────
 async function handleStatus(
-  _req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime,
+	_req: RouteRequest,
+	res: RouteResponse,
+	runtime: IAgentRuntime,
 ): Promise<void> {
-  const service = resolveService(runtime);
-  const webhookPath = resolveBlueBubblesWebhookPath(runtime);
-  if (!service) {
-    res.status(200).json({
-      available: false,
-      connected: false,
-      webhookPath,
-      reason: "bluebubbles service not registered",
-    });
-    return;
-  }
-  res.status(200).json({
-    available: true,
-    connected: service.isConnected(),
-    webhookPath,
-  });
+	const service = resolveService(runtime);
+	const webhookPath = resolveBlueBubblesWebhookPath(runtime);
+	if (!service) {
+		res.status(200).json({
+			available: false,
+			connected: false,
+			webhookPath,
+			reason: "bluebubbles service not registered",
+		});
+		return;
+	}
+	res.status(200).json({
+		available: true,
+		connected: service.isConnected(),
+		webhookPath,
+	});
 }
 
 // ── GET /api/bluebubbles/chats ─────────────────────────────────────
 async function handleChats(
-  req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime,
+	req: RouteRequest,
+	res: RouteResponse,
+	runtime: IAgentRuntime,
 ): Promise<void> {
-  const service = resolveService(runtime);
-  if (!service) {
-    res.status(503).json({ error: "bluebubbles service not registered" });
-    return;
-  }
-  const client = service.getClient();
-  if (!client) {
-    res.status(503).json({ error: "bluebubbles client not available" });
-    return;
-  }
-  const url = new URL(req.url ?? "/api/bluebubbles/chats", "http://localhost");
-  const limit = Math.min(
-    Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100),
-    500,
-  );
-  const offset = Math.max(
-    0,
-    Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-  );
-  try {
-    const chats = await client.listChats(limit, offset);
-    res.status(200).json({ chats, count: chats.length, limit, offset });
-  } catch (error) {
-    res.status(500).json({
-      error: `failed to read bluebubbles chats: ${error instanceof Error ? error.message : String(error)}`,
-    });
-  }
+	const service = resolveService(runtime);
+	if (!service) {
+		res.status(503).json({ error: "bluebubbles service not registered" });
+		return;
+	}
+	const client = service.getClient();
+	if (!client) {
+		res.status(503).json({ error: "bluebubbles client not available" });
+		return;
+	}
+	const url = new URL(req.url ?? "/api/bluebubbles/chats", "http://localhost");
+	const limit = Math.min(
+		Math.max(
+			1,
+			Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
+		),
+		500,
+	);
+	const offset = Math.max(
+		0,
+		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+	);
+	try {
+		const chats = await client.listChats(limit, offset);
+		res.status(200).json({ chats, count: chats.length, limit, offset });
+	} catch (error) {
+		res.status(500).json({
+			error: `failed to read bluebubbles chats: ${error instanceof Error ? error.message : String(error)}`,
+		});
+	}
 }
 
 // ── GET /api/bluebubbles/messages ──────────────────────────────────
 async function handleMessages(
-  req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime,
+	req: RouteRequest,
+	res: RouteResponse,
+	runtime: IAgentRuntime,
 ): Promise<void> {
-  const service = resolveService(runtime);
-  if (!service) {
-    res.status(503).json({ error: "bluebubbles service not registered" });
-    return;
-  }
-  const client = service.getClient();
-  if (!client) {
-    res.status(503).json({ error: "bluebubbles client not available" });
-    return;
-  }
-  const url = new URL(req.url ?? "/api/bluebubbles/messages", "http://localhost");
-  const chatGuid = (url.searchParams.get("chatGuid") ?? "").trim();
-  if (!chatGuid) {
-    res.status(400).json({ error: "chatGuid query parameter is required" });
-    return;
-  }
-  const limit = Math.min(
-    Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50),
-    500,
-  );
-  const offset = Math.max(
-    0,
-    Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-  );
-  try {
-    const messages = await client.getMessages(chatGuid, limit, offset);
-    res.status(200).json({
-      chatGuid,
-      messages,
-      count: messages.length,
-      limit,
-      offset,
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: `failed to read bluebubbles messages: ${error instanceof Error ? error.message : String(error)}`,
-    });
-  }
+	const service = resolveService(runtime);
+	if (!service) {
+		res.status(503).json({ error: "bluebubbles service not registered" });
+		return;
+	}
+	const client = service.getClient();
+	if (!client) {
+		res.status(503).json({ error: "bluebubbles client not available" });
+		return;
+	}
+	const url = new URL(
+		req.url ?? "/api/bluebubbles/messages",
+		"http://localhost",
+	);
+	const chatGuid = (url.searchParams.get("chatGuid") ?? "").trim();
+	if (!chatGuid) {
+		res.status(400).json({ error: "chatGuid query parameter is required" });
+		return;
+	}
+	const limit = Math.min(
+		Math.max(
+			1,
+			Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
+		),
+		500,
+	);
+	const offset = Math.max(
+		0,
+		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+	);
+	try {
+		const messages = await client.getMessages(chatGuid, limit, offset);
+		res.status(200).json({
+			chatGuid,
+			messages,
+			count: messages.length,
+			limit,
+			offset,
+		});
+	} catch (error) {
+		res.status(500).json({
+			error: `failed to read bluebubbles messages: ${error instanceof Error ? error.message : String(error)}`,
+		});
+	}
 }
 
 // ── POST /webhooks/bluebubbles ─────────────────────────────────────
 async function handleWebhook(
-  req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime,
+	req: RouteRequest,
+	res: RouteResponse,
+	runtime: IAgentRuntime,
 ): Promise<void> {
-  const service = resolveService(runtime);
-  if (!service) {
-    res.status(503).json({ error: "bluebubbles service not registered" });
-    return;
-  }
-  const payload = req.body as BlueBubblesWebhookPayload | undefined;
-  if (
-    !payload ||
-    typeof payload.type !== "string" ||
-    !payload.type.trim() ||
-    typeof payload.data !== "object" ||
-    payload.data === null ||
-    Array.isArray(payload.data)
-  ) {
-    res.status(400).json({ error: "invalid BlueBubbles webhook payload" });
-    return;
-  }
-  try {
-    await service.handleWebhook(payload);
-    res.status(200).json({ ok: true });
-  } catch (error) {
-    res.status(500).json({
-      error: `failed to handle bluebubbles webhook: ${error instanceof Error ? error.message : String(error)}`,
-    });
-  }
+	const service = resolveService(runtime);
+	if (!service) {
+		res.status(503).json({ error: "bluebubbles service not registered" });
+		return;
+	}
+	const payload = req.body as BlueBubblesWebhookPayload | undefined;
+	if (
+		!payload ||
+		typeof payload.type !== "string" ||
+		!payload.type.trim() ||
+		typeof payload.data !== "object" ||
+		payload.data === null ||
+		Array.isArray(payload.data)
+	) {
+		res.status(400).json({ error: "invalid BlueBubbles webhook payload" });
+		return;
+	}
+	try {
+		await service.handleWebhook(payload);
+		res.status(200).json({ ok: true });
+	} catch (error) {
+		res.status(500).json({
+			error: `failed to handle bluebubbles webhook: ${error instanceof Error ? error.message : String(error)}`,
+		});
+	}
 }
 
 /**
@@ -229,30 +240,30 @@ async function handleWebhook(
  * BlueBubbles server posts to it from outside the loopback API.
  */
 export const blueBubblesSetupRoutes: Route[] = [
-  {
-    type: "GET",
-    path: "/api/bluebubbles/status",
-    handler: handleStatus,
-    rawPath: true,
-  },
-  {
-    type: "GET",
-    path: "/api/bluebubbles/chats",
-    handler: handleChats,
-    rawPath: true,
-  },
-  {
-    type: "GET",
-    path: "/api/bluebubbles/messages",
-    handler: handleMessages,
-    rawPath: true,
-  },
-  {
-    type: "POST",
-    path: DEFAULT_WEBHOOK_PATH,
-    handler: handleWebhook,
-    rawPath: true,
-    public: true,
-    name: "bluebubbles-webhook",
-  },
+	{
+		type: "GET",
+		path: "/api/bluebubbles/status",
+		handler: handleStatus,
+		rawPath: true,
+	},
+	{
+		type: "GET",
+		path: "/api/bluebubbles/chats",
+		handler: handleChats,
+		rawPath: true,
+	},
+	{
+		type: "GET",
+		path: "/api/bluebubbles/messages",
+		handler: handleMessages,
+		rawPath: true,
+	},
+	{
+		type: "POST",
+		path: DEFAULT_WEBHOOK_PATH,
+		handler: handleWebhook,
+		rawPath: true,
+		public: true,
+		name: "bluebubbles-webhook",
+	},
 ];
