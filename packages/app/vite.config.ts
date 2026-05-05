@@ -190,6 +190,8 @@ const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/app-lifeops/register-routes",
   "@elizaos/plugin-github/register-routes",
   "@elizaos/plugin-computeruse/register-routes",
+  "@elizaos/plugin-elizacloud/register-routes",
+  "@elizaos/plugin-n8n-workflow/register-routes",
 ];
 
 // Mirror branded app env into ELIZA_* before the shared runtime helpers resolve ports.

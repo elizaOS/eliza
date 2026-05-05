@@ -2,12 +2,12 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
+import { type CloudRouteState, handleCloudRoute } from "../../routes/cloud-routes";
 
 const testCloudRouteServices: CloudRouteState["services"] = {
   applyCanonicalOnboardingConfig: (
     config: Record<string, unknown>,
-    patch: Record<string, unknown>,
+    patch: Record<string, unknown>
   ) => {
     Object.assign(config, patch);
   },
@@ -33,9 +33,7 @@ function jsonResponse(): http.ServerResponse & {
       return this;
     },
     setHeader(name: string, value: number | string | readonly string[]) {
-      this.headers[name.toLowerCase()] = Array.isArray(value)
-        ? value.join(", ")
-        : String(value);
+      this.headers[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
       return this;
     },
   };
@@ -57,9 +55,7 @@ describe("cloud-routes", () => {
         organizationId?: string;
         userId?: string;
       }) => {
-        calls.push(
-          `auth:${input.apiKey}:${input.userId}:${input.organizationId}`,
-        );
+        calls.push(`auth:${input.apiKey}:${input.userId}:${input.organizationId}`);
       },
     };
     const cloudRelay = {
@@ -87,7 +83,7 @@ describe("cloud-routes", () => {
       },
       updateAgent: async (
         _agentId: string,
-        update: { secrets: Record<string, string | number | boolean> },
+        update: { secrets: Record<string, string | number | boolean> }
       ) => {
         calls.push(`db:${update.secrets.ELIZAOS_CLOUD_API_KEY}`);
       },
@@ -101,14 +97,14 @@ describe("cloud-routes", () => {
         replaceApiKey: async (apiKey: string) => {
           calls.push(`replace-manager:${apiKey}`);
         },
-      } as CloudRouteState["cloudManager"],
+      } as unknown as CloudRouteState["cloudManager"],
       config: {
         cloud: { apiKey: "old-key" },
         serviceRouting: {
           llmText: { backend: "elizacloud", transport: "cloud-proxy" },
         },
       } as CloudRouteState["config"],
-      runtime: runtime as CloudRouteState["runtime"],
+      runtime: runtime as unknown as CloudRouteState["runtime"],
       services: testCloudRouteServices,
     };
     const req = jsonRequest({
@@ -118,13 +114,7 @@ describe("cloud-routes", () => {
     });
     const res = jsonResponse();
 
-    const handled = await handleCloudRoute(
-      req,
-      res,
-      "/api/cloud/login/persist",
-      "POST",
-      state,
-    );
+    const handled = await handleCloudRoute(req, res, "/api/cloud/login/persist", "POST", state);
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
@@ -172,7 +162,7 @@ describe("cloud-routes", () => {
       res,
       "/api/cloud/relay-status",
       "GET",
-      state,
+      state
     );
 
     expect(handled).toBe(true);

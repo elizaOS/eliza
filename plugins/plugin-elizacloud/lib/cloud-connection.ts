@@ -1,9 +1,7 @@
-import {
-  applyCanonicalOnboardingConfig,
-  type ElizaConfig,
-  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
-  validateCloudBaseUrl,
-} from "@elizaos/agent";
+import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
+import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
+import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
+import type { ElizaConfig } from "@elizaos/agent/config";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -12,7 +10,7 @@ import {
   migrateLegacyRuntimeConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import { normalizeEnvValue } from "../utils/env";
+import { normalizeEnvValue } from "@elizaos/app-core/utils/env";
 import {
   clearCloudSecrets,
   getCloudSecret,

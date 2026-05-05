@@ -13,25 +13,26 @@ import { describe, expect, it } from "vitest";
  * user notices their voice/image/embedding features stopped working.
  *
  * This test is a compile-free guard: it asserts the literal patch in
- * `server.ts` lists all five `serviceRouting` keys. The patch object
- * is not exported (its handler is wired inline in the request flow),
- * and `server.ts` is owned by another agent in this batch — so we
- * verify the patch SHAPE by reading the source text instead of
- * spinning up the server, refactoring the handler, or mocking the
- * compat loopback. If a future refactor extracts the patch into a
- * named constant + export, this test should be replaced with a direct
- * import + structural assertion.
+ * the cloud-route plugin (`plugin.ts`) lists all five `serviceRouting`
+ * keys. The patch object is wired inline in the disconnect handler;
+ * we verify the patch SHAPE by reading the source text rather than
+ * spinning up the runtime route plugin system. If a future refactor
+ * extracts the patch into a named constant + export, replace this test
+ * with a direct import + structural assertion.
  *
  * Failure mode this test guards against: someone removes one of the
  * service-routing keys (or adds a new routed service without nulling
  * it on disconnect), reintroducing the original orphan-route bug.
+ *
+ * Migrated from packages/app-core/src/api/server.cloud-disconnect.test.ts
+ * when the cloud route handlers moved into plugin-elizacloud.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SERVER_TS = path.resolve(HERE, "server.ts");
+const PLUGIN_TS = path.resolve(HERE, "..", "plugin.ts");
 
-function readServerSource(): string {
-  return readFileSync(SERVER_TS, "utf8");
+function readPluginSource(): string {
+  return readFileSync(PLUGIN_TS, "utf8");
 }
 
 function findDisconnectPatchBlock(source: string): string {
@@ -39,7 +40,7 @@ function findDisconnectPatchBlock(source: string): string {
   const startIdx = source.indexOf(startMarker);
   expect(
     startIdx,
-    "Expected `const disconnectPatch = { ... }` literal in server.ts handler for /api/cloud/disconnect",
+    "Expected `const disconnectPatch = { ... }` literal in plugin-elizacloud plugin.ts handler for /api/cloud/disconnect"
   ).toBeGreaterThanOrEqual(0);
 
   // Walk braces forward to find the matching closing brace of the patch
@@ -55,34 +56,31 @@ function findDisconnectPatchBlock(source: string): string {
       if (depth === 0) return source.slice(startIdx, i + 1);
     }
   }
-  throw new Error(
-    "Unbalanced braces while extracting disconnectPatch object literal",
-  );
+  throw new Error("Unbalanced braces while extracting disconnectPatch object literal");
 }
 
 describe("/api/cloud/disconnect orphan-route patch", () => {
   it("clears llmText, tts, media, embeddings, and rpc service routes", () => {
-    const block = findDisconnectPatchBlock(readServerSource());
+    const block = findDisconnectPatchBlock(readPluginSource());
 
     // Each route must be explicitly nulled (not just present, not set
-    // to a string, not commented out). Using `key: null,` matches the
-    // canonical formatting used throughout server.ts.
+    // to a string, not commented out).
     for (const key of ["llmText", "tts", "media", "embeddings", "rpc"]) {
       expect(
         block,
-        `Expected serviceRouting.${key} to be cleared (set to null) in the disconnect patch`,
+        `Expected serviceRouting.${key} to be cleared (set to null) in the disconnect patch`
       ).toMatch(new RegExp(`\\b${key}\\s*:\\s*null\\b`));
     }
   });
 
   it("disables cloud and clears the cached apiKey", () => {
-    const block = findDisconnectPatchBlock(readServerSource());
+    const block = findDisconnectPatchBlock(readPluginSource());
     expect(block).toMatch(/\benabled\s*:\s*false\b/);
     expect(block).toMatch(/\bapiKey\s*:\s*null\b/);
   });
 
   it("marks the elizacloud linked-account as unlinked", () => {
-    const block = findDisconnectPatchBlock(readServerSource());
+    const block = findDisconnectPatchBlock(readPluginSource());
     // Guards against the auto-reconnect-on-restart bug: state.config
     // must explicitly carry status="unlinked" so the next saveElizaConfig
     // does not overwrite the canonical unlinked state.

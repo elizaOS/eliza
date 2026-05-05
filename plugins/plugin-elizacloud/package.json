@@ -26,6 +26,26 @@
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
+    },
+    "./plugin": {
+      "types": "./plugin.ts",
+      "import": "./plugin.ts",
+      "default": "./plugin.ts"
+    },
+    "./register-routes": {
+      "types": "./register-routes.ts",
+      "import": "./register-routes.ts",
+      "default": "./register-routes.ts"
+    },
+    "./routes/*": {
+      "types": "./routes/*.ts",
+      "import": "./routes/*.ts",
+      "default": "./routes/*.ts"
+    },
+    "./lib/*": {
+      "types": "./lib/*.ts",
+      "import": "./lib/*.ts",
+      "default": "./lib/*.ts"
     }
   },
   "files": [
@@ -50,6 +70,8 @@
     "vitest": "^4.1.4"
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "zod": "^4.4.2"
   },
   "scripts": {
