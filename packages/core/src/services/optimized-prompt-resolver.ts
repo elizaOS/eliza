@@ -21,7 +21,7 @@ import type {
  *
  * When the artifact carries `fewShotExamples`, they are inlined into the
  * system prompt under a `Demonstrations:` block. The structure mirrors
- * `apps/app-training/src/optimizers/bootstrap-fewshot.ts#renderDemonstrations`
+ * `plugins/app-training/src/optimizers/bootstrap-fewshot.ts#renderDemonstrations`
  * so an artifact written by either backend renders identically at the call
  * site.
  */

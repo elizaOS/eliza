@@ -851,7 +851,7 @@ function watchWorkspacePackagesPlugin(): Plugin {
  * middleware; in build the files are copied into the output.
  */
 function companionAssetsPlugin(): Plugin {
-  const companionPublic = path.resolve(elizaRoot, "apps/app-companion/public");
+  const companionPublic = path.resolve(elizaRoot, "plugins/app-companion/public");
   return {
     name: "companion-assets",
     configureServer(server) {

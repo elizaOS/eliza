@@ -2347,7 +2347,7 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // BSC trade routes and wallet trade execute — now handled by
-  // @elizaos/app-steward plugin routes. See apps/app-steward/src/plugin.ts.
+  // @elizaos/app-steward plugin routes. See plugins/app-steward/src/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
 
   if (

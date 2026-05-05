@@ -210,6 +210,23 @@ const EMPTY_PERMISSIONS = {
     canRequest: false,
   },
 };
+const EMPTY_LIFEOPS_OVERVIEW_SUMMARY = {
+  activeOccurrenceCount: 0,
+  overdueOccurrenceCount: 0,
+  snoozedOccurrenceCount: 0,
+  activeReminderCount: 0,
+  activeGoalCount: 0,
+};
+const EMPTY_LIFEOPS_CHANNEL_COUNTS = {
+  gmail: { total: 0, unread: 0 },
+  discord: { total: 0, unread: 0 },
+  telegram: { total: 0, unread: 0 },
+  signal: { total: 0, unread: 0 },
+  imessage: { total: 0, unread: 0 },
+  whatsapp: { total: 0, unread: 0 },
+  sms: { total: 0, unread: 0 },
+  x_dm: { total: 0, unread: 0 },
+};
 
 function formatPageIssue(kind: string, value: unknown): string {
   if (value instanceof Error) {
@@ -233,6 +250,62 @@ function installPageIssueGuards(page: Page): string[] {
     issues.push(formatPageIssue("pageerror", error));
   });
   return issues;
+}
+
+async function installDesktopPermissionsBridge(page: Page): Promise<void> {
+  await page.addInitScript((permissions) => {
+    const existing = window.__ELIZA_ELECTROBUN_RPC__;
+    window.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        ...(existing?.request ?? {}),
+        permissionsGetAll: async () => permissions,
+        permissionsIsShellEnabled: async () => false,
+        permissionsGetPlatform: async () => "linux",
+      },
+      onMessage: existing?.onMessage ?? (() => {}),
+      offMessage: existing?.offMessage ?? (() => {}),
+    };
+  }, EMPTY_PERMISSIONS);
+}
+
+function emptyLifeOpsOverview() {
+  const section = {
+    occurrences: [],
+    goals: [],
+    reminders: [],
+    summary: EMPTY_LIFEOPS_OVERVIEW_SUMMARY,
+  };
+  return {
+    occurrences: [],
+    goals: [],
+    reminders: [],
+    summary: EMPTY_LIFEOPS_OVERVIEW_SUMMARY,
+    owner: section,
+    agentOps: section,
+    schedule: null,
+  };
+}
+
+function emptyLifeOpsSocialSummary(url: URL) {
+  return {
+    since: url.searchParams.get("since") ?? SMOKE_GENERATED_AT,
+    until: url.searchParams.get("until") ?? SMOKE_GENERATED_AT,
+    totalSeconds: 0,
+    services: [],
+    devices: [],
+    surfaces: [],
+    browsers: [],
+    sessions: [],
+    messages: {
+      channels: [],
+      inbound: 0,
+      outbound: 0,
+      opened: 0,
+      replied: 0,
+    },
+    dataSources: [],
+    fetchedAt: SMOKE_GENERATED_AT,
+  };
 }
 
 async function installSupplementalSafeRoutes(page: Page): Promise<void> {
@@ -330,9 +403,162 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     },
   );
 
+  await page.route("**/api/lifeops/connectors/x/status**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: "x",
+        side: "owner",
+        mode: "local",
+        defaultMode: "local",
+        availableModes: ["local"],
+        configured: false,
+        connected: false,
+        reason: "disconnected",
+        preferredByAgent: false,
+        cloudConnectionId: null,
+        grantedCapabilities: [],
+        grantedScopes: [],
+        identity: null,
+        hasCredentials: false,
+        feedRead: false,
+        feedWrite: false,
+        dmRead: false,
+        dmWrite: false,
+        dmInbound: false,
+        grant: null,
+      }),
+    });
+  });
+
+  await page.route("**/api/lifeops/capabilities", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        generatedAt: SMOKE_GENERATED_AT,
+        appEnabled: true,
+        relativeTime: null,
+        capabilities: [],
+        summary: {
+          totalCount: 0,
+          workingCount: 0,
+          degradedCount: 0,
+          blockedCount: 0,
+          notConfiguredCount: 0,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/lifeops/overview", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(emptyLifeOpsOverview()),
+    });
+  });
+
+  await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        calendarId: "primary",
+        events: [],
+        source: "cache",
+        timeMin: url.searchParams.get("timeMin") ?? SMOKE_GENERATED_AT,
+        timeMax: url.searchParams.get("timeMax") ?? SMOKE_GENERATED_AT,
+        syncedAt: null,
+      }),
+    });
+  });
+
+  await page.route("**/api/lifeops/inbox**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        messages: [],
+        channelCounts: EMPTY_LIFEOPS_CHANNEL_COUNTS,
+        threadGroups: [],
+        fetchedAt: SMOKE_GENERATED_AT,
+      }),
+    });
+  });
+
+  await page.route("**/api/lifeops/screen-time/summary**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], totalSeconds: 0 }),
+    });
+  });
+
+  await page.route("**/api/lifeops/screen-time/breakdown**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        totalSeconds: 0,
+        bySource: [],
+        byCategory: [],
+        byDevice: [],
+        byService: [],
+        byBrowser: [],
+        fetchedAt: SMOKE_GENERATED_AT,
+      }),
+    });
+  });
+
+  await page.route("**/api/lifeops/social/summary**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(emptyLifeOpsSocialSummary(new URL(request.url()))),
+    });
+  });
+
   await page.route("**/api/lifeops/activity-signals**", async (route) => {
     const method = route.request().method();
-    if (method !== "GET" && method !== "POST") {
+    if (method !== "GET" && method !== "POST" && method !== "PUT") {
       await route.fallback();
       return;
     }
@@ -691,6 +917,7 @@ async function clickSafeAllowlist(
 }
 
 test.beforeEach(async ({ page }) => {
+  await installDesktopPermissionsBridge(page);
   await seedAppStorage(page);
   await installSupplementalSafeRoutes(page);
   await installDefaultAppRoutes(page);

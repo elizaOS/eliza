@@ -15,7 +15,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { stopRun as twoThousandFourStopRun } from "../../app-2004scape/src/routes.js";
 // Relative imports so no workspace-dep wiring is required. Path-check:
-// apps/app-lifeops/test/ → apps/app-<name>/src/routes.ts.
+// plugins/app-lifeops/test/ → plugins/app-<name>/src/routes.ts.
 import { stopRun as babylonStopRun } from "../../app-babylon/src/routes.js";
 import { stopRun as clawvilleStopRun } from "../../app-clawville/src/routes.js";
 import { stopRun as defenseStopRun } from "../../app-defense-of-the-agents/src/routes.js";

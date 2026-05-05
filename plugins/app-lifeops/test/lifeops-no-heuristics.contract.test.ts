@@ -23,7 +23,7 @@ async function readRepoFile(relativePath: string): Promise<string> {
 
 describe("LifeOps no-heuristics source-level invariants (lint-style, not behavioral)", () => {
   it("keeps LIFE operation routing on the extractor path", async () => {
-    const source = await readRepoFile("apps/app-lifeops/src/actions/life.ts");
+    const source = await readRepoFile("plugins/app-lifeops/src/actions/life.ts");
     expect(source).not.toContain("export function classifyIntent");
     expect(source).not.toContain("classifyIntent(intent)");
     expect(source).not.toContain("getValidationKeywordTerms");
@@ -31,7 +31,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps INBOX subaction selection off keyword term banks", async () => {
-    const source = await readRepoFile("apps/app-lifeops/src/actions/inbox.ts");
+    const source = await readRepoFile("plugins/app-lifeops/src/actions/inbox.ts");
     expect(source).not.toContain("const TRIAGE_TERMS");
     expect(source).not.toContain("const DIGEST_TERMS");
     expect(source).not.toContain("const RESPOND_TERMS");
@@ -42,7 +42,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps inbox approval safety on model reflection instead of phrase lists", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/inbox/reflection.ts",
+      "plugins/app-lifeops/src/inbox/reflection.ts",
     );
     expect(source).not.toContain("CONFIRMATION_PATTERN");
     expect(source).not.toContain("REJECTION_PATTERN");
@@ -52,7 +52,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps inbox triage on explicit LLM classification failure handling", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/inbox/triage-classifier.ts",
+      "plugins/app-lifeops/src/inbox/triage-classifier.ts",
     );
     expect(source).not.toContain('pattern.split(":")');
     expect(source).not.toContain("defaulting to notify");
@@ -61,7 +61,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps cross-channel send execution on the dispatcher registry", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/cross-channel-send.ts",
+      "plugins/app-lifeops/src/actions/cross-channel-send.ts",
     );
     expect(source).not.toContain("switch (channel)");
     expect(source).toContain("CHANNEL_DISPATCHERS");
@@ -69,7 +69,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps CALENDAR action routing on structured params and the LLM planner", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/calendar.ts",
+      "plugins/app-lifeops/src/actions/calendar.ts",
     );
     expect(source).not.toContain("getValidationKeywordTerms");
     expect(source).not.toContain("textIncludesKeywordTerm");
@@ -87,7 +87,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps Gmail follow-up handling on LLM planning instead of phrase lists", async () => {
-    const source = await readRepoFile("apps/app-lifeops/src/actions/gmail.ts");
+    const source = await readRepoFile("plugins/app-lifeops/src/actions/gmail.ts");
     expect(source).not.toContain(
       "function looksLikeReplyDraftRewriteFollowup(",
     );
@@ -97,7 +97,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps scheduling negotiation routing on structured params and the LLM planner", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/scheduling.ts",
+      "plugins/app-lifeops/src/actions/scheduling.ts",
     );
     expect(source).not.toContain("function inferSchedulingSubaction(");
     expect(source).toContain("resolveSchedulingPlanWithLlm");
@@ -105,7 +105,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps RELATIONSHIP subaction routing on the LLM planner instead of English regex", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/relationships.ts",
+      "plugins/app-lifeops/src/actions/relationships.ts",
     );
     expect(source).not.toContain("function inferSubaction(");
     expect(source).not.toContain("list\\s+(contacts|people|rolodex)");
@@ -114,7 +114,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps HEALTH subaction and metric routing on the LLM planner instead of English regex", async () => {
-    const source = await readRepoFile("apps/app-lifeops/src/actions/health.ts");
+    const source = await readRepoFile("plugins/app-lifeops/src/actions/health.ts");
     expect(source).not.toContain("function inferSubaction(");
     expect(source).not.toContain("function inferMetric(");
     expect(source).not.toContain(
@@ -124,7 +124,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps LIFE goal-update time-phrase extraction off English regex", async () => {
-    const source = await readRepoFile("apps/app-lifeops/src/actions/life.ts");
+    const source = await readRepoFile("plugins/app-lifeops/src/actions/life.ts");
     expect(source).not.toContain("function extractNaturalTimePhrase(");
     expect(source).not.toContain("\\bmornings?\\s+only\\b");
     expect(source).not.toContain("\\bafternoons?\\s+only\\b");
@@ -132,7 +132,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps inbox classifier JSON parsing off fragile regex extraction", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/inbox/triage-classifier.ts",
+      "plugins/app-lifeops/src/inbox/triage-classifier.ts",
     );
     expect(source).not.toContain("raw.match(/\\[[\\s\\S]*\\]/)");
     expect(source).toContain("parseTriageJsonArray");
@@ -140,7 +140,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps CALENDAR personal/travel/preparation event detection off English regex", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/calendar.ts",
+      "plugins/app-lifeops/src/actions/calendar.ts",
     );
     // These are legacy English-only keyword regex helpers used to score
     // suggested durations and trip-window candidates. They must be replaced
@@ -161,7 +161,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps scheduling day-of-week resolution off English weekday strings", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/scheduling.ts",
+      "plugins/app-lifeops/src/actions/scheduling.ts",
     );
     // The day-of-week helper must derive the weekday numerically from
     // getZonedDateParts + UTC anchoring rather than parsing a localized
@@ -176,14 +176,14 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps X read routing on structured params and the LLM planner", async () => {
-    const source = await readRepoFile("apps/app-lifeops/src/actions/x-read.ts");
+    const source = await readRepoFile("plugins/app-lifeops/src/actions/x-read.ts");
     expect(source).not.toContain("function inferSubactionFromIntent(");
     expect(source).toContain("resolveXReadPlanWithLlm");
   });
 
   it("keeps app blocker routing on the planner instead of package-name text scraping", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/app-blocker.ts",
+      "plugins/app-lifeops/src/actions/app-blocker.ts",
     );
     expect(source).not.toContain("function extractDurationMinutesFromText(");
     expect(source).not.toContain("function extractPackageNamesFromText(");
@@ -192,7 +192,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps website blocker routing on structured params and the LLM planner", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/website-blocker.ts",
+      "plugins/app-lifeops/src/actions/website-blocker.ts",
     );
     expect(source).not.toContain("extractDurationMinutesFromText");
     expect(source).not.toContain("extractWebsiteTargetsFromText");
@@ -204,11 +204,11 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   it("keeps follow-up action gating on owner access instead of text heuristics", async () => {
     const sources = await Promise.all([
       readRepoFile(
-        "apps/app-lifeops/src/followup/actions/listOverdueFollowups.ts",
+        "plugins/app-lifeops/src/followup/actions/listOverdueFollowups.ts",
       ),
-      readRepoFile("apps/app-lifeops/src/followup/actions/markFollowupDone.ts"),
+      readRepoFile("plugins/app-lifeops/src/followup/actions/markFollowupDone.ts"),
       readRepoFile(
-        "apps/app-lifeops/src/followup/actions/setFollowupThreshold.ts",
+        "plugins/app-lifeops/src/followup/actions/setFollowupThreshold.ts",
       ),
     ]);
     for (const source of sources) {
@@ -220,7 +220,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps website blocker engine parsing structured-only", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/website-blocker/engine.ts",
+      "plugins/app-lifeops/src/website-blocker/engine.ts",
     );
     expect(source).toContain(
       "parseSelfControlBlockRequest(options?: HandlerOptions)",
@@ -237,7 +237,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps website blocker routes on typed request bodies instead of synthetic chat messages", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/routes/website-blocker-routes.ts",
+      "plugins/app-lifeops/src/routes/website-blocker-routes.ts",
     );
     expect(source).not.toContain("text?: string");
     expect(source).not.toContain("function toSyntheticMessage(");
@@ -258,7 +258,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps owner profile updates on typed action parameters", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/update-owner-profile.ts",
+      "plugins/app-lifeops/src/actions/update-owner-profile.ts",
     );
     expect(source).not.toContain("function extractOwnerProfilePatchFromText(");
     expect(source).toContain("normalizeLifeOpsOwnerProfilePatch(params ?? {})");
@@ -266,7 +266,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("keeps Gmail triage free of sender-regex matching and additive score math", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/lifeops/google-gmail.ts",
+      "plugins/app-lifeops/src/lifeops/google-gmail.ts",
     );
     expect(source).not.toContain("no-?reply");
     expect(source).not.toContain("triageScore +=");
@@ -274,7 +274,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
 
   it("surfaces connector degradation in the provider context", async () => {
     const source = await readRepoFile(
-      "apps/app-lifeops/src/providers/lifeops.ts",
+      "plugins/app-lifeops/src/providers/lifeops.ts",
     );
     expect(source).toContain("connector degraded");
     expect(source).toContain("status unavailable");

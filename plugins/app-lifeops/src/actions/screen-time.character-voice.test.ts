@@ -7,7 +7,7 @@
  * got a chance to chain REPLY and re-voice the output.
  *
  * The handler now routes every reply through `renderLifeOpsActionReply`
- * (`apps/app-lifeops/src/actions/lifeops-grounded-reply.ts`), which calls
+ * (`plugins/app-lifeops/src/actions/lifeops-grounded-reply.ts`), which calls
  * `useModel(TEXT_SMALL)` with bio + system + style + recent conversation
  * + action history + the canonical fallback. These tests assert that the
  * model is called once per turn with the character voice context and that

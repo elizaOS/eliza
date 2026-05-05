@@ -13,7 +13,7 @@
     "apps/app/electrobun",
     "eliza/packages/native-plugins/*",
     "eliza/packages/app-core/platforms/electrobun",
-    "eliza/apps/*",
+    "eliza/plugins/*",
     "eliza/plugins/*",
     "eliza/packages/*",
     "eliza/cloud/packages/sdk"

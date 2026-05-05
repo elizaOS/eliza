@@ -7,7 +7,7 @@
  * "Updated meeting preferences (...)", "You're free from ... to ...",
  * "Started Negotiation ... and notified the counterparty.") with no LLM
  * rewrite pass. Each emit-site now routes through `renderLifeOpsActionReply`
- * (`apps/app-lifeops/src/actions/lifeops-grounded-reply.ts`), which calls
+ * (`plugins/app-lifeops/src/actions/lifeops-grounded-reply.ts`), which calls
  * `useModel(TEXT_SMALL)` with bio + system + style + recent conversation
  * + action history + the canonical fallback. This test asserts that the
  * model is called once per turn with the character voice context and that

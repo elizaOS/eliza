@@ -11,7 +11,7 @@
  *   3. LLM provides both (action wins)
  *   4. LLM provides malformed/missing params (error paths)
  *
- * Run: bunx vitest run eliza/apps/app-lifeops/test/life-smoke.integration.test.ts
+ * Run: bunx vitest run eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

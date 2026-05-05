@@ -106,6 +106,36 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function createWorkspacePackageAliases(packageRoots: string[]) {
+  const aliases = [];
+  for (const packageRoot of packageRoots) {
+    if (!fs.existsSync(packageRoot)) continue;
+    for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const pkgPath = path.join(packageRoot, entry.name, "package.json");
+      if (!fs.existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      const pkgName = pkg.name;
+      if (!pkgName) continue;
+      const pkgDir = path.dirname(pkgPath);
+      for (const [key, value] of Object.entries(pkg.exports || {})) {
+        if (typeof value !== "string") continue;
+        const aliasKey =
+          key === "." ? pkgName : `${pkgName}/${key.replace(/^\.\//, "")}`;
+        aliases.push({
+          find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
+          replacement: path.resolve(pkgDir, value),
+        });
+      }
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}/(.*)`),
+        replacement: path.resolve(pkgDir, "src/$1"),
+      });
+    }
+  }
+  return aliases;
+}
+
 function resolveAppShellMetadata() {
   const branding = resolveAppBranding(appConfig);
   const themeColor = appConfig.web?.themeColor?.trim() || "#08080a";
@@ -1310,7 +1340,10 @@ function watchWorkspacePackagesPlugin(): Plugin {
  * middleware; in build the files are copied into the output.
  */
 function companionAssetsPlugin(): Plugin {
-  const companionPublic = path.resolve(elizaRoot, "apps/app-companion/public");
+  const companionPublic = path.resolve(
+    elizaRoot,
+    "plugins/app-companion/public",
+  );
   return {
     name: "companion-assets",
     configureServer(server) {
@@ -1523,40 +1556,12 @@ export default defineConfig({
         find: /^@elizaos\/ui\/lib\/(.*)$/,
         replacement: `${uiPkgRoot}/src/lib/$1.ts`,
       },
-      // Dynamic aliases for all eliza/apps/* packages
-      ...(() => {
-        const appsDir = path.resolve(elizaRoot, "apps");
-        const aliases = [];
-        for (const entry of fs.readdirSync(appsDir, { withFileTypes: true })) {
-          if (!entry.isDirectory()) continue;
-          const pkgPath = path.join(appsDir, entry.name, "package.json");
-          if (!fs.existsSync(pkgPath)) continue;
-          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-          const pkgName = pkg.name;
-          if (!pkgName) continue;
-          const pkgDir = path.dirname(pkgPath);
-          // Generate export-map aliases
-          for (const [key, value] of Object.entries(pkg.exports || {})) {
-            if (typeof value !== "string") continue;
-            const aliasKey =
-              key === "." ? pkgName : `${pkgName}/${key.replace(/^\.\//, "")}`;
-            aliases.push({
-              find: new RegExp(
-                `^${aliasKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-              ),
-              replacement: path.resolve(pkgDir, value),
-            });
-          }
-          // Catch-all subpath for direct src/ access
-          aliases.push({
-            find: new RegExp(
-              `^${pkgName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/(.*)`,
-            ),
-            replacement: path.resolve(pkgDir, "src/$1"),
-          });
-        }
-        return aliases;
-      })(),
+      // Dynamic aliases for local app packages. Older checkouts used
+      // eliza/apps/*; current workspaces use plugins/app-*.
+      ...createWorkspacePackageAliases([
+        path.resolve(elizaRoot, "apps"),
+        path.resolve(elizaRoot, "plugins"),
+      ]),
       ...(() => {
         const sharedPkgPath = path.resolve(
           elizaRoot,

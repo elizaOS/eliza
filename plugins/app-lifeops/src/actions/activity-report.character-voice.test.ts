@@ -4,7 +4,7 @@
  * GET_ACTIVITY_REPORT used to stream the raw "Activity report (Xm total):..."
  * template directly to the user via `callback?.({ text })`, with no LLM
  * rewrite pass. The handler now routes every reply through
- * `renderLifeOpsActionReply` (`apps/app-lifeops/src/actions/lifeops-grounded-reply.ts`),
+ * `renderLifeOpsActionReply` (`plugins/app-lifeops/src/actions/lifeops-grounded-reply.ts`),
  * which calls `useModel(TEXT_SMALL)` with bio + system + style + recent
  * conversation + action history + the canonical fallback. This test asserts
  * that the model is called once per turn with the character voice context and

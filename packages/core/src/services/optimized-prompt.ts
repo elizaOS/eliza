@@ -2,7 +2,7 @@
  * OptimizedPromptService — runtime cache of native-optimizer artifacts.
  *
  * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
- * `apps/app-training/src/optimizers/`) write a JSON artifact per task into
+ * `plugins/app-training/src/optimizers/`) write a JSON artifact per task into
  * `~/.eliza/optimized-prompts/<task>/<timestamp>.json`. The runtime consults
  * this service before constructing the system prompt for one of the five core
  * decision tasks and substitutes the optimized prompt (plus any few-shot
@@ -22,7 +22,7 @@
  * intervention (touching a file) can promote an older artifact.
  *
  * The on-disk format intentionally mirrors `OptimizedPromptArtifact` from
- * `apps/app-training/src/optimizers/types.ts`. We re-declare the type here
+ * `plugins/app-training/src/optimizers/types.ts`. We re-declare the type here
  * (instead of importing) because `@elizaos/core` is upstream of
  * `@elizaos/app-training` and adding the dependency would invert the layering.
  */
@@ -58,7 +58,7 @@ export type OptimizerName =
 	| "bootstrap-fewshot";
 
 /**
- * Mirror of `OptimizationExample` from `apps/app-training/src/optimizers/types.ts`.
+ * Mirror of `OptimizationExample` from `plugins/app-training/src/optimizers/types.ts`.
  * Kept narrow on purpose — the runtime only renders these into the prompt.
  */
 export interface OptimizedPromptFewShotExample {

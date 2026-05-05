@@ -9,12 +9,12 @@ const agentSrc = path.join(monorepoRoot, "packages/agent/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
-const appLifeopsSrc = path.join(monorepoRoot, "apps/app-lifeops/src");
+const appLifeopsSrc = path.join(monorepoRoot, "plugins/app-lifeops/src");
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
-  "apps/app-task-coordinator/src",
+  "plugins/app-task-coordinator/src",
 );
-const appCompanionSrc = path.join(monorepoRoot, "apps/app-companion/src");
+const appCompanionSrc = path.join(monorepoRoot, "plugins/app-companion/src");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/typescript");
 const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
@@ -88,7 +88,7 @@ export default defineConfig({
         find: /^@elizaos\/app-lifeops\/selfcontrol$/,
         replacement: path.join(
           monorepoRoot,
-          "apps/app-lifeops/src/website-blocker/public.ts",
+          "plugins/app-lifeops/src/website-blocker/public.ts",
         ),
       },
       {

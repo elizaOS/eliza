@@ -11,7 +11,7 @@
  *   GOOGLE_SHEETS_TEST_SPREADSHEET_ID — a known Spreadsheet ID to test getSheetContent
  *
  * Run:
- *   GOOGLE_OAUTH_TEST_TOKEN=ya29.xxx bunx vitest run eliza/apps/app-lifeops/test/google-drive.integration.test.ts
+ *   GOOGLE_OAUTH_TEST_TOKEN=ya29.xxx bunx vitest run eliza/plugins/app-lifeops/test/google-drive.integration.test.ts
  */
 import { describe, expect, it } from "vitest";
 import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
