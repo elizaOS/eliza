@@ -3,12 +3,24 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Eliza app integration for Defense of the Agents.",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./routes": "./src/routes.ts",
-    "./ui": "./src/ui/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./routes": {
+      "types": "./src/routes.ts",
+      "import": "./dist/routes.js",
+      "default": "./dist/routes.js"
+    },
+    "./ui": {
+      "types": "./src/ui/index.ts",
+      "import": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    }
   },
   "homepage": "https://www.defenseoftheagents.com/",
   "repository": {
@@ -16,7 +28,9 @@
     "url": "https://github.com/elizaos/eliza.git"
   },
   "scripts": {
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
   },
   "keywords": [
     "game",
@@ -63,5 +77,12 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

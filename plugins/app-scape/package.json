@@ -3,12 +3,24 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with TOON-encoded state, Scape Journal, and directed-prompt operator control.",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./routes": "./src/routes.ts",
-    "./ui": "./src/ui/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./routes": {
+      "types": "./src/routes.ts",
+      "import": "./dist/routes.js",
+      "default": "./dist/routes.js"
+    },
+    "./ui": {
+      "types": "./src/ui/index.ts",
+      "import": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    }
   },
   "keywords": [
     "game",
@@ -128,5 +140,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

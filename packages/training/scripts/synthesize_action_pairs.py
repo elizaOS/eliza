@@ -1955,19 +1955,27 @@ def gen_lifeops(encoder: ToonEncoder, rng: random.Random,
                                                  % len(LIFEOPS_PARAPHRASE_SUFFIXES)]
             paraphrased = f"{prefix}{base_msg}{suffix}".strip()
 
-            # expectedResponse — use TOON shape consistent with the lifeops eval
+            # Phase-2 planner envelope. The action-pair signal (acceptable /
+            # forbidden) rides under metadata so a downstream DPO/preference
+            # pipeline can recover it without polluting the SFT supervised
+            # target.
+            primary = expected_action or ACTION_REPLY
             expected = {
-                "expectedAction": expected_action,
-                "acceptableActions": acceptable,
-                "forbiddenActions": forbidden,
+                "thought": f"User wants {entry['task_id'].split('.', 2)[1].replace('-', ' ')}; pick action {primary}.",
+                "actions": [{"name": primary, "params": {}}],
+                "providers": [],
+                "text": "",
+                "simple": False,
             }
-            # The expected_action may be null (REPLY-only) → encode as empty
             available = [ACTION_TASK_CALL, ACTION_REPLY]
             if expected_action:
                 available.append(expected_action)
+            # task_type=agent_trace when there's a non-REPLY action to take;
+            # task_type=reply when the canonical action is REPLY only.
+            tt = "reply" if primary == ACTION_REPLY else "agent_trace"
 
             yield build_record(
-                encoder=encoder, task_id=entry["task_id"],
+                encoder=encoder, task_id=tt,
                 user_msg=paraphrased,
                 expected=expected,
                 available_actions=available,
@@ -1976,6 +1984,12 @@ def gen_lifeops(encoder: ToonEncoder, rng: random.Random,
                 extra_md={
                     "lifeops_scenario": entry["task_id"].split(".", 2)[1],
                     "lifeops_variant": entry["task_id"].rsplit(".", 1)[-1],
+                    "lifeops_task_id": entry["task_id"],
+                    # Preference-signal metadata — survives the SFT pack but
+                    # is invisible to the supervised target.
+                    "expected_action": expected_action,
+                    "acceptable_actions": acceptable,
+                    "forbidden_actions": forbidden,
                 },
             )
 
@@ -2398,7 +2412,7 @@ def gen_dataset_generator_should_respond(encoder: ToonEncoder, rng: random.Rando
             "evidenceTurnIds": "",
         }
         rec = build(
-            roomName=stable_id("synth-action-pairs", "dataset-generator.should_respond",
+            roomName=stable_id("synth-action-pairs", "should_respond",
                                msg, agent, action),
             agentId=agent.lower(),
             memoryEntries=[],
@@ -2406,10 +2420,11 @@ def gen_dataset_generator_should_respond(encoder: ToonEncoder, rng: random.Rando
                             "content": msg, "channel": "public"},
             expectedResponse=encoder.encode(expected),
             availableActions=[ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP],
-            task_type="dataset-generator.should_respond",
+            task_type="should_respond",
             source_dataset="synth-action-pairs-inline-actions",
             license="synthetic", split="train",
-            extra_metadata={"agent_name": agent, "synth_target_action": action},
+            extra_metadata={"agent_name": agent, "synth_target_action": action,
+                            "synth_origin": "dataset-generator.should_respond"},
         )
         yield rec.to_dict()
 

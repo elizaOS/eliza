@@ -3,21 +3,51 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./ui": "./src/ui.ts",
-    "./plugin": "./src/plugin.ts",
-    "./register": "./src/register.ts",
-    "./register-companion-page": "./src/register-companion-page.ts",
-    "./companion": "./src/companion/index.ts",
-    "./companion/services": "./src/companion/services/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./src/ui.ts",
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
+    "./plugin": {
+      "types": "./src/plugin.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./register": {
+      "types": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    },
+    "./register-companion-page": {
+      "types": "./src/register-companion-page.ts",
+      "import": "./dist/register-companion-page.js",
+      "default": "./dist/register-companion-page.js"
+    },
+    "./companion": {
+      "types": "./src/companion/index.ts",
+      "import": "./dist/companion/index.js",
+      "default": "./dist/companion/index.js"
+    },
+    "./companion/services": {
+      "types": "./src/companion/services/index.ts",
+      "import": "./dist/companion/services/index.js",
+      "default": "./dist/companion/services/index.js"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
-    "test": "bunx vitest run --config ./vitest.config.ts"
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@capacitor/barcode-scanner": "^3.0.0",
@@ -46,5 +76,12 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

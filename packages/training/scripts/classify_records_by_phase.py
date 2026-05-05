@@ -77,6 +77,30 @@ def iter_hf_stream(repo_id: str, split: str, limit: int | None) -> Iterator[dict
         yield row
 
 
+def iter_hf_raw(repo_id: str, filename: str, limit: int | None) -> Iterator[dict[str, Any]]:
+    """Stream a single JSONL file from an HF dataset repo line-by-line via the raw
+    `huggingface_hub.hf_hub_download` resolver — bypasses the `datasets` library's
+    schema enforcement. Use this when shards have inconsistent metadata schemas."""
+    try:
+        from huggingface_hub import hf_hub_url
+    except ImportError:
+        sys.exit("--hf-raw requires `huggingface_hub`. Install with `uv pip install huggingface_hub`.")
+    import urllib.request
+
+    url = hf_hub_url(repo_id, filename, repo_type="dataset")
+    log.info("streaming %s from %s", filename, url)
+    req = urllib.request.Request(url, headers={"User-Agent": "milady-classifier"})
+    with urllib.request.urlopen(req) as resp:
+        for i, raw in enumerate(resp):
+            if limit is not None and i >= limit:
+                break
+            try:
+                yield json.loads(raw.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                log.warning("malformed line at offset %d: %s — skipped", i, e)
+                continue
+
+
 # ───────────────────────────── classification ────────────────────────────────
 
 
@@ -203,7 +227,9 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Classify corpus records by runtime phase.")
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--input", type=Path, help="path to local JSONL corpus")
-    src.add_argument("--hf-stream", type=str, help="HF repo id to stream (e.g. eliza-labs/eliza-1-training)")
+    src.add_argument("--hf-stream", type=str, help="HF repo id to stream via `datasets` library (schema-strict)")
+    src.add_argument("--hf-raw", type=str, help="HF repo id to stream a single file raw via huggingface_hub (schema-permissive)")
+    p.add_argument("--hf-file", default="train.jsonl", help="filename to fetch when using --hf-raw (default: train.jsonl)")
     p.add_argument("--split", default="train", help="split name when streaming HF (default: train)")
     p.add_argument("--sample", type=int, default=None, help="cap rows examined (default: all)")
     p.add_argument("--out", type=Path, default=ROOT / "previews", help="output directory")
@@ -223,8 +249,10 @@ def main() -> int:
             log.error("input not found: %s", args.input)
             return 2
         rows = iter_jsonl(args.input)
-    else:
+    elif args.hf_stream:
         rows = iter_hf_stream(args.hf_stream, args.split, args.sample)
+    else:
+        rows = iter_hf_raw(args.hf_raw, args.hf_file, args.sample)
 
     report = classify_corpus(rows, sample=args.sample, oob_sample_per_source=args.oob_sample)
 
