@@ -252,6 +252,18 @@ function firstExistingPath(basePaths) {
   return null;
 }
 
+function docsAliasPaths(repoRoot, filePart) {
+  const parts = filePart.split(/[\\/]+/).filter(Boolean);
+  const docsIndex = parts.lastIndexOf("docs");
+  if (docsIndex === -1) {
+    return [];
+  }
+
+  return [
+    path.join(repoRoot, "packages", "docs", ...parts.slice(docsIndex + 1)),
+  ];
+}
+
 function resolveLinkedFile(repoRoot, fromFile, filePart) {
   if (!filePart) {
     return fromFile;
@@ -260,6 +272,8 @@ function resolveLinkedFile(repoRoot, fromFile, filePart) {
     const stripped = filePart.replace(/^\/+/, "");
     return (
       firstExistingPath([
+        path.join(repoRoot, "packages", "docs", stripped),
+        ...docsAliasPaths(repoRoot, stripped),
         path.join(repoRoot, "docs", stripped),
         path.join(repoRoot, stripped),
       ]) ?? path.join(repoRoot, "docs", stripped)
@@ -267,7 +281,10 @@ function resolveLinkedFile(repoRoot, fromFile, filePart) {
   }
 
   const basePath = path.resolve(path.dirname(fromFile), filePart);
-  return firstExistingPath([basePath]) ?? basePath;
+  return (
+    firstExistingPath([basePath, ...docsAliasPaths(repoRoot, filePart)]) ??
+    basePath
+  );
 }
 
 function resolveAnchorFile(filePath) {

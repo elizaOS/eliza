@@ -187,6 +187,11 @@ describe("Header", () => {
     expect(
       screen.getByTestId("desktop-window-titlebar-drag-zone"),
     ).toBeTruthy();
+    const paddedRow = titlebar.querySelector("[data-window-titlebar-padding]");
+    expect(paddedRow).toBeTruthy();
+    expect((paddedRow as HTMLElement).style.paddingInlineStart).toContain(
+      "--eliza-macos-frame-left-inset",
+    );
     expect(screen.queryByText("Eliza")).toBeNull();
   });
 

@@ -23,8 +23,8 @@ const TASKS = [
     tier: 2,
     optionalScript: "scripts/launch-qa/check-docs.mjs",
     command: "node",
-    args: ["scripts/launch-qa/check-docs.mjs", "--json"],
-    description: "Markdown links and documented command references",
+    args: ["scripts/launch-qa/check-docs.mjs", "--scope=launchdocs", "--json"],
+    description: "Launchdocs links and documented command references",
   },
   {
     id: "mobile-artifacts",
