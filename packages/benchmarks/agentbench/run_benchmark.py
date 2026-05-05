@@ -4,9 +4,9 @@ Run AgentBench benchmark and generate results report.
 
 Usage:
     python run_benchmark.py                  # Run with mock runtime
-    python run_benchmark.py --elizaos        # Run with ElizaOS runtime
+    python run_benchmark.py --runtime bridge # Run through the Eliza TS bridge
     python run_benchmark.py --env os db      # Run specific environments
-    python run_benchmark.py --trajectories   # Export trajectories for RL training
+    python run_benchmark.py --runtime bridge --trajectories
 """
 
 import asyncio
@@ -40,8 +40,7 @@ def _load_dotenv() -> None:
 
     candidates = [
         Path.cwd() / ".env",
-        # benchmarks/agentbench/run_benchmark.py -> repo root is parents[2]
-        Path(__file__).resolve().parents[2] / ".env",
+        Path(__file__).resolve().parents[3] / ".env",
     ]
 
     for path in candidates:
@@ -69,6 +68,17 @@ def _load_dotenv() -> None:
 async def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run AgentBench benchmark via the eliza TS bridge"
+    )
+    parser.add_argument(
+        "--runtime",
+        choices=["mock", "bridge", "elizaos"],
+        default="mock",
+        help="Runtime backend: mock for offline smoke tests, bridge/elizaos for the Eliza TS benchmark bridge",
+    )
+    parser.add_argument(
+        "--elizaos",
+        action="store_true",
+        help="Deprecated alias for --runtime bridge",
     )
     parser.add_argument(
         "--env",
@@ -103,7 +113,10 @@ async def main() -> int:
     args = parser.parse_args()
 
     print("=" * 60)
-    print("AgentBench Evaluation - ElizaOS Python")
+    if args.elizaos:
+        args.runtime = "bridge"
+
+    print("AgentBench Evaluation")
     print("=" * 60)
 
     # Create configuration
@@ -149,22 +162,26 @@ async def main() -> int:
         if env == AgentBenchEnvironment.OS:
             env_config.additional_settings["use_docker"] = False
 
-    # Initialize runtime: route every step through the eliza TS bridge.
+    # Initialize runtime.
     print("\n" + "=" * 60)
-    print("Using ELIZA TypeScript agent via benchmark server")
+    print(
+        "Using deterministic mock runtime"
+        if args.runtime == "mock"
+        else "Using ELIZA TypeScript agent via benchmark server"
+    )
     print("=" * 60)
-    from eliza_adapter import ElizaServerManager
-    from eliza_adapter.agentbench import ElizaAgentHarness
-
-    _load_dotenv()
-    eliza_server = ElizaServerManager()
-    eliza_server.start()
-    eliza_harness = ElizaAgentHarness(eliza_server.client)
-    # Use mock runtime for the runner scaffolding; the harness overrides the
-    # actual agent loop.
+    eliza_server = None
     runtime = SmartMockRuntime()
-    runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
-    print("✅ Eliza benchmark server connected")
+    if args.runtime != "mock":
+        from eliza_adapter import ElizaServerManager
+        from eliza_adapter.agentbench import ElizaAgentHarness
+
+        _load_dotenv()
+        eliza_server = ElizaServerManager()
+        eliza_server.start()
+        eliza_harness = ElizaAgentHarness(eliza_server.client)
+        runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
+        print("Eliza benchmark server connected")
 
     # Show enabled environments
     enabled = config.get_enabled_environments()
@@ -173,7 +190,11 @@ async def main() -> int:
     # Run benchmark
     print("\nStarting benchmark...")
     runner = AgentBenchRunner(config=config, runtime=runtime)
-    report = await runner.run_benchmarks()
+    try:
+        report = await runner.run_benchmarks()
+    finally:
+        if eliza_server is not None:
+            eliza_server.stop()
 
     # Print detailed results
     print("\n" + "=" * 60)
@@ -223,41 +244,11 @@ async def main() -> int:
     print("   - agentbench-report.md")
     print("   - agentbench-detailed.json")
 
-    # Export trajectories if enabled (using the trajectory logger service)
-    if args.trajectories and not isinstance(runtime, SmartMockRuntime):
-        try:
-            from typing import Protocol, runtime_checkable
-
-            from elizaos_plugin_trajectory_logger import (
-                TRAJECTORY_LOGGER_SERVICE_TYPE,
-                TrajectoryLoggerRuntimeService,
-            )
-            from elizaos_plugin_trajectory_logger.runtime_service import TrajectoryExportConfig
-
-            @runtime_checkable
-            class _ExportableTrajectoryService(Protocol):
-                def export(self, config: TrajectoryExportConfig): ...
-
-            svc = runtime.get_service(TRAJECTORY_LOGGER_SERVICE_TYPE)
-            if isinstance(svc, TrajectoryLoggerRuntimeService) or isinstance(
-                svc, _ExportableTrajectoryService
-            ):
-                print("\n🎯 Exporting trajectories for RL training...")
-                export_cfg = TrajectoryExportConfig(
-                    dataset_name="agentbench_trajectories",
-                    export_format=args.trajectory_format,
-                    output_dir=args.output,
-                )
-                export_result = svc.export(export_cfg)  # type: ignore[call-arg]
-                print(f"   ✅ Exported {export_result.trajectories_exported} trajectories")
-                print(f"   📄 Format: {args.trajectory_format.upper()}")
-                print(f"   📁 File: {export_result.dataset_url}")
-            else:
-                print("\n🎯 Trajectory export skipped (service not registered)")
-        except ImportError:
-            print("\n🎯 Trajectory export skipped (trajectory logger plugin not installed)")
-        except Exception as e:
-            print(f"\n🎯 Trajectory export failed: {e}")
+    if args.trajectories:
+        if args.runtime != "mock":
+            print("\nTrajectory export is handled by the TypeScript bridge; no local Python export is available.")
+        else:
+            print("\nTrajectory export skipped in mock mode.")
 
     print("\n" + "=" * 60)
 

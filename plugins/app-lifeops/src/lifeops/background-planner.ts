@@ -3,7 +3,7 @@
  *
  * Single shared LLM planner entry-point for every LifeOps background job.
  * Mirrors the chat planner pattern used in `actions/inbox.ts` (`resolveSubactionPlan`)
- * and `actions/life.ts`: structured JSON model output, no English keyword
+ * and `actions/life.ts`: structured TOON model output, no English keyword
  * routing, no regex, multilingual-safe.
  *
  * Every job calls `planJob({...})` to get a typed `{action, payload,
@@ -80,7 +80,12 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import type {
   ApprovalAction,
   ApprovalChannel,
@@ -219,6 +224,39 @@ function isApprovalChannel(value: unknown): value is ApprovalChannel {
   );
 }
 
+function formatPromptValue(value: unknown, depth = 0): string {
+  const indent = "  ".repeat(depth);
+  const childIndent = "  ".repeat(depth + 1);
+  if (value === null) return "null";
+  if (value === undefined) return "";
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "(none)";
+    return value
+      .map((entry) => `${childIndent}- ${formatPromptValue(entry, depth + 1)}`)
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return "(empty)";
+    return entries
+      .map(([key, entry]) => {
+        const formatted = formatPromptValue(entry, depth + 1);
+        return formatted.includes("\n")
+          ? `${indent}${key}:\n${formatted}`
+          : `${indent}${key}: ${formatted}`;
+      })
+      .join("\n");
+  }
+  return String(value);
+}
+
 function buildPrompt(jobContext: BackgroundJobContext): string {
   return [
     `Plan the BACKGROUND JOB action for job kind: ${jobContext.jobKind}.`,
@@ -229,12 +267,28 @@ function buildPrompt(jobContext: BackgroundJobContext): string {
     "calendar, books travel, makes a call, runs a workflow, or spends money",
     "returns requiresApproval=true so the user can confirm.",
     "",
-    "Return ONLY valid JSON with exactly these fields:",
-    `{"action":${ALL_ACTIONS.map((a) => `"${a}"`).join("|")},`,
-    `"channel":${ALL_CHANNELS.map((c) => `"${c}"`).join("|")},`,
-    `"requiresApproval":true|false,`,
-    `"reason":"short justification",`,
-    `"payload":{...action-specific fields, or empty object when action=noop}}`,
+    "Return ONLY TOON with exactly these top-level fields:",
+    `action: one of ${ALL_ACTIONS.join(", ")}`,
+    `channel: one of ${ALL_CHANNELS.join(", ")}`,
+    "requiresApproval: true or false",
+    "reason: short justification",
+    "payload: action-specific fields, or leave blank when action=noop",
+    "",
+    "TOON examples:",
+    "action: noop",
+    "channel: internal",
+    "requiresApproval: false",
+    "reason: Nothing is overdue on this tick.",
+    "payload:",
+    "",
+    "action: send_email",
+    "channel: email",
+    "requiresApproval: true",
+    "reason: The contact is overdue and email is the enabled channel.",
+    "payload:",
+    "  to[0]: person@example.com",
+    "  subject: Follow-up",
+    "  body: Short draft for user approval.",
     "",
     "Rules:",
     "- Choose action=noop when no action is warranted this tick (e.g. nothing overdue).",
@@ -244,8 +298,10 @@ function buildPrompt(jobContext: BackgroundJobContext): string {
     "",
     `Job trigger: ${jobContext.trigger}`,
     `Subject user: ${jobContext.subjectUserId}`,
-    `Available channels: ${JSON.stringify(jobContext.availableChannels)}`,
-    `Snapshot: ${JSON.stringify(jobContext.snapshot)}`,
+    "Available channels:",
+    formatPromptValue(jobContext.availableChannels),
+    "Snapshot:",
+    formatPromptValue(jobContext.snapshot),
   ].join("\n");
 }
 
@@ -415,6 +471,23 @@ function coercePayload(
   }
 }
 
+function parsePlannerOutput(raw: string): Record<string, unknown> | null {
+  return (
+    parseKeyValueXml<Record<string, unknown>>(raw) ??
+    (parseJSONObjectFromText(raw) as Record<string, unknown> | null)
+  );
+}
+
+function coerceBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "1"].includes(normalized)) return true;
+    if (["false", "no", "0"].includes(normalized)) return false;
+  }
+  return null;
+}
+
 /**
  * Plan a background-job action via the same LLM pipeline used by chat
  * actions. Returns a typed plan; throws `BackgroundPlannerError` on hard
@@ -436,7 +509,7 @@ export async function planJob(
   // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
   const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const raw = typeof result === "string" ? result : "";
-  const parsed = parseJSONObjectFromText(raw) as Record<string, unknown> | null;
+  const parsed = parsePlannerOutput(raw);
 
   if (!parsed) {
     throw new BackgroundPlannerError(
@@ -482,10 +555,9 @@ export async function planJob(
   }
 
   const payload = coercePayload(rawAction, parsed.payload);
+  const parsedRequiresApproval = coerceBoolean(parsed.requiresApproval);
   const requiresApproval =
-    parsed.requiresApproval === false
-      ? false
-      : SENSITIVE_ACTIONS.has(rawAction);
+    parsedRequiresApproval === false ? false : SENSITIVE_ACTIONS.has(rawAction);
 
   logger.info(
     `[BackgroundPlanner:${jobContext.jobKind}] action=${rawAction} channel=${channel} requiresApproval=${requiresApproval} — ${reason}`,

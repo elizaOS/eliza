@@ -20,9 +20,9 @@
       "default": "./dist/plugin.js"
     },
     "./register": {
-      "types": "./src/register-routes.ts",
-      "import": "./dist/register-routes.js",
-      "default": "./dist/register-routes.js"
+      "types": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
     },
     "./state/*": {
       "types": "./src/state/*.ts",

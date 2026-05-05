@@ -163,10 +163,10 @@ async function resolveGatewayPlan(args: {
   });
   const prompt = [
     "Plan the cross-platform gateway action for this owner request.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return TOON only with exactly these fields:",
     "  subaction: create_group_chat, escalate_to_user, or null",
     "  platform: connector name like discord, telegram, whatsapp, or signal",
-    "  participants: array of human participant names (do not include the owner or the assistant unless explicitly named as participants)",
+    "  participants: human participant names separated with || (do not include the owner or the assistant unless explicitly named as participants)",
     "  title: optional short group-chat title",
     "  reason: short summary of why the user needs to be brought back in",
     "  shouldAct: boolean",
@@ -176,12 +176,35 @@ async function resolveGatewayPlan(args: {
     "Use escalate_to_user when the owner is asking the assistant to do something that requires the owner's direct negotiation, signature, or personal intervention.",
     "",
     "Examples:",
-    '  "Create a group chat with the agent and Alice on Discord." -> {"subaction":"create_group_chat","platform":"discord","participants":["Alice"],"title":"Discord handoff with Alice","reason":null,"shouldAct":true,"response":null}',
-    '  "Negotiate my lease renewal with the landlord and sign it for me." -> {"subaction":"escalate_to_user","platform":null,"participants":[],"title":null,"reason":"Lease renewal requires the owner to negotiate and sign directly.","shouldAct":true,"response":null}',
-    '  "Help with cross-platform messaging." -> {"subaction":null,"platform":null,"participants":[],"title":null,"reason":null,"shouldAct":false,"response":"Do you want me to create a shared group chat handoff, or escalate something back to you for direct action?"}',
+    "request: Create a group chat with the agent and Alice on Discord.",
+    "subaction: create_group_chat",
+    "platform: discord",
+    "participants: Alice",
+    "title: Discord handoff with Alice",
+    "reason: null",
+    "shouldAct: true",
+    "response: null",
     "",
-    `Current request: ${JSON.stringify(currentText)}`,
-    `Recent conversation: ${JSON.stringify(recent.join("\n"))}`,
+    "request: Negotiate my lease renewal with the landlord and sign it for me.",
+    "subaction: escalate_to_user",
+    "platform: null",
+    "participants: null",
+    "title: null",
+    "reason: Lease renewal requires the owner to negotiate and sign directly.",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: Help with cross-platform messaging.",
+    "subaction: null",
+    "platform: null",
+    "participants: null",
+    "title: null",
+    "reason: null",
+    "shouldAct: false",
+    "response: Do you want me to create a shared group chat handoff, or escalate something back to you for direct action?",
+    "",
+    `Current request:\n${currentText}`,
+    `Recent conversation:\n${recent.join("\n")}`,
   ].join("\n");
 
   try {
@@ -265,10 +288,6 @@ async function ensureWorld(
 
   const existing = await runtime.getWorld?.(args.worldId);
   if (existing) {
-    const currentMetadata =
-      existing.metadata && typeof existing.metadata === "object"
-        ? existing.metadata
-        : {};
     await runtime.updateWorld?.({
       ...existing,
       id: args.worldId,

@@ -558,12 +558,19 @@ def _score_from_evm(path: Path) -> ScoreSummary:
 
 
 def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return ["python", "-m", "benchmarks.solana.eliza_agent"]
+    return [
+        "python",
+        "-m",
+        "benchmarks.solana.eliza_agent",
+        "--output-dir",
+        str(ctx.output_root),
+    ]
 
 
 def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     env: dict[str, str] = {
         "MODEL_NAME": ctx.request.model.strip(),
+        "OUTPUT_DIR": str(ctx.output_root),
         "USE_EXTERNAL_SURFPOOL": "true"
         if bool(ctx.request.extra_config.get("use_external_surfpool", False))
         else "false",
@@ -1159,6 +1166,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             command_builder=_command_solana,
             env_builder=_env_solana,
             result_patterns=[
+                "eliza_*_metrics.json",
                 "benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
                 "packages/benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
             ],

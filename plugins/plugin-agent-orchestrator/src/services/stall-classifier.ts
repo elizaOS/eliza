@@ -8,7 +8,7 @@
  * @module services/stall-classifier
  */
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseKeyValueXml, type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   buildTaskCompletionTimeline,
   extractTaskCompletionTraceRecords,
@@ -177,8 +177,10 @@ export function buildStallClassificationPrompt(
     `- "prompt": the text of what it's asking\n` +
     `- "suggestedResponse": what to type/send. Use "keys:enter" for TUI menu confirmation, ` +
     `"keys:down,enter" to select a non-default option, or plain text like "y" for text prompts.\n\n` +
-    `Respond with ONLY a JSON object:\n` +
-    `{"state": "...", "prompt": "...", "suggestedResponse": "..."}`
+    `Respond with TOON only:\n` +
+    `state: waiting_for_input\n` +
+    `prompt: The exact prompt text, or blank if none.\n` +
+    `suggestedResponse: y`
   );
 }
 
@@ -326,22 +328,9 @@ export async function classifyStallOutput(
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt: systemPrompt }),
     );
 
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      log(`Stall classification: no JSON in LLM response`);
-      return null;
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    const validStates: string[] = [
-      "waiting_for_input",
-      "still_working",
-      "task_complete",
-      "error",
-      "tool_running",
-    ];
-    if (!validStates.includes(parsed.state)) {
-      log(`Stall classification: invalid state "${parsed.state}"`);
+    const parsed = parseStallClassificationResponse(result);
+    if (!parsed) {
+      log(`Stall classification: no parseable TOON/JSON in LLM response`);
       return null;
     }
     // Map tool_running → still_working (StallClassification doesn't have tool_running).
@@ -369,7 +358,7 @@ export async function classifyStallOutput(
         );
       }
     } else {
-      mappedState = parsed.state;
+      mappedState = parsed.state as StallClassification["state"];
     }
     const classification: StallClassification = {
       state: mappedState,
@@ -401,6 +390,48 @@ export async function classifyStallOutput(
 export interface CoordinatorClassifyContext extends StallClassifierContext {
   taskContext: TaskContextSummary;
   decisionHistory?: DecisionHistoryEntry[];
+}
+
+const validStallStates = [
+  "waiting_for_input",
+  "still_working",
+  "task_complete",
+  "error",
+  "tool_running",
+];
+
+function normalizeNullableString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return undefined;
+  return value;
+}
+
+function parseStallClassificationResponse(
+  result: string,
+): { state: string; prompt?: string; suggestedResponse?: string } | null {
+  const parsedToon = parseKeyValueXml<Record<string, unknown>>(result);
+  if (parsedToon && validStallStates.includes(String(parsedToon.state))) {
+    return {
+      state: String(parsedToon.state),
+      prompt: normalizeNullableString(parsedToon.prompt),
+      suggestedResponse: normalizeNullableString(parsedToon.suggestedResponse),
+    };
+  }
+
+  const jsonMatch = result.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    if (!validStallStates.includes(String(parsed.state))) return null;
+    return {
+      state: String(parsed.state),
+      prompt: normalizeNullableString(parsed.prompt),
+      suggestedResponse: normalizeNullableString(parsed.suggestedResponse),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -461,8 +492,10 @@ export function buildCombinedClassifyDecidePrompt(
     `- If the prompt asks for information NOT in the original task, set suggestedResponse to null ` +
     `(this will escalate to the human).\n` +
     `- If a PR was just created, the task is likely done — classify as "task_complete".\n\n` +
-    `Respond with ONLY a JSON object:\n` +
-    `{"state": "...", "prompt": "...", "suggestedResponse": "..."}`
+    `Respond with TOON only:\n` +
+    `state: waiting_for_input\n` +
+    `prompt: The exact prompt text, or blank if none.\n` +
+    `suggestedResponse: y`
   );
 }
 
@@ -564,22 +597,9 @@ export async function classifyAndDecideForCoordinator(
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt: systemPrompt }),
     );
 
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      log(`Combined classify+decide: no JSON in LLM response`);
-      return null;
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    const validStates: string[] = [
-      "waiting_for_input",
-      "still_working",
-      "task_complete",
-      "error",
-      "tool_running",
-    ];
-    if (!validStates.includes(parsed.state)) {
-      log(`Combined classify+decide: invalid state "${parsed.state}"`);
+    const parsed = parseStallClassificationResponse(result);
+    if (!parsed) {
+      log(`Combined classify+decide: no parseable TOON/JSON in LLM response`);
       return null;
     }
 
@@ -596,7 +616,7 @@ export async function classifyAndDecideForCoordinator(
         );
       }
     } else {
-      mappedState = parsed.state;
+      mappedState = parsed.state as StallClassification["state"];
     }
 
     // Deterministic safety guard: if the LLM approved access to a path

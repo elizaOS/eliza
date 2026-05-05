@@ -5,7 +5,7 @@
  *  1. Cheap keyword/category match against installed skill metadata. Returns
  *     up to 10 candidate slugs sorted by overlap score.
  *  2. Optional LLM scoring pass over the surviving candidates that returns a
- *     small JSON array of {slug, score, reason}. Skipped when any keyword
+ *     small TOON scores table. Skipped when any keyword
  *     match already scores ≥ 0.9 (no need to spend a model call) or when the
  *     runtime model is unavailable.
  *
@@ -15,7 +15,12 @@
  * @module services/skill-recommender
  */
 
-import { type IAgentRuntime, type Logger, ModelType } from "@elizaos/core";
+import {
+  parseKeyValueXml,
+  type IAgentRuntime,
+  type Logger,
+  ModelType,
+} from "@elizaos/core";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
 const LOG_PREFIX = "[SkillRecommender]";
@@ -234,16 +239,51 @@ function buildLlmScoringPrompt(
     `You are scoring how relevant each candidate skill is for an upcoming agent task.\n` +
     `Task description: """${taskText}"""${kindLine}\n\n` +
     `Candidate skills:\n${skillBlock}\n\n` +
-    `For each candidate, return a JSON array of objects with this shape:\n` +
-    `  { "slug": "<slug>", "score": <0..1>, "reason": "<one short sentence>" }\n` +
+    `For each candidate, return a TOON scores table with this shape:\n` +
+    `scores[2]{slug,score,reason}:\n` +
+    `  first-skill,0.9,One short sentence.\n` +
+    `  second-skill,0.1,One short sentence.\n` +
     `Use 0 for irrelevant, 1 for a perfect fit. Reasons must be one short sentence.\n` +
-    `Respond with ONLY the JSON array — no preamble, no markdown fences.`
+    `Respond with TOON only — no preamble, no markdown fences.`
   );
+}
+
+function normalizeLlmScoreEntry(entry: unknown): LlmScoreEntry | null {
+  if (!entry || typeof entry !== "object") return null;
+  const record = entry as Record<string, unknown>;
+  const slug = typeof record.slug === "string" ? record.slug.trim() : "";
+  const rawScore = record.score;
+  const score =
+    typeof rawScore === "number"
+      ? rawScore
+      : typeof rawScore === "string"
+        ? Number.parseFloat(rawScore)
+        : Number.NaN;
+  const reason =
+    typeof record.reason === "string" && record.reason.trim()
+      ? record.reason.trim()
+      : "model-scored relevance";
+  if (!slug || !Number.isFinite(score)) return null;
+  return {
+    slug,
+    score: Math.max(0, Math.min(1, score)),
+    reason,
+  };
 }
 
 function parseLlmScores(raw: string): LlmScoreEntry[] {
   const trimmed = raw.trim();
   if (!trimmed) return [];
+
+  const parsedToon = parseKeyValueXml<Record<string, unknown>>(trimmed);
+  const toonScores = Array.isArray(parsedToon?.scores)
+    ? parsedToon.scores
+        .map(normalizeLlmScoreEntry)
+        .filter((entry): entry is LlmScoreEntry => Boolean(entry))
+    : [];
+  if (toonScores.length > 0) {
+    return toonScores;
+  }
 
   // Strip a leading code fence if the model added one despite instructions.
   const fenceStripped = trimmed
@@ -268,26 +308,8 @@ function parseLlmScores(raw: string): LlmScoreEntry[] {
 
   const out: LlmScoreEntry[] = [];
   for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
-    const record = entry as Record<string, unknown>;
-    const slug = typeof record.slug === "string" ? record.slug.trim() : "";
-    const rawScore = record.score;
-    const score =
-      typeof rawScore === "number"
-        ? rawScore
-        : typeof rawScore === "string"
-          ? Number.parseFloat(rawScore)
-          : Number.NaN;
-    const reason =
-      typeof record.reason === "string" && record.reason.trim()
-        ? record.reason.trim()
-        : "model-scored relevance";
-    if (!slug || !Number.isFinite(score)) continue;
-    out.push({
-      slug,
-      score: Math.max(0, Math.min(1, score)),
-      reason,
-    });
+    const normalized = normalizeLlmScoreEntry(entry);
+    if (normalized) out.push(normalized);
   }
   return out;
 }

@@ -10,7 +10,12 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
@@ -96,17 +101,17 @@ function inboxRecentConversation(
   return texts.slice(-limit);
 }
 
-function stringifyInboxDraftContext(draft: DeferredInboxDraft | null): string {
+function formatInboxDraftContext(draft: DeferredInboxDraft | null): string {
   if (!draft) {
-    return "null";
+    return "none";
   }
-  return JSON.stringify({
-    senderName: draft.senderName,
-    channelName: draft.channelName,
-    source: draft.source,
-    draftText: draft.draftText,
-    deepLink: draft.deepLink,
-  });
+  return [
+    `senderName: ${draft.senderName ?? ""}`,
+    `channelName: ${draft.channelName}`,
+    `source: ${draft.source}`,
+    `draftText: ${draft.draftText}`,
+    `deepLink: ${draft.deepLink ?? ""}`,
+  ].join("\n");
 }
 
 function buildInboxPolicyAcknowledgement(
@@ -215,8 +220,13 @@ async function resolveSubactionPlan(
     "Plan the INBOX action for this request.",
     "The user may speak in any language.",
     "Use the current request plus recent conversation context.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"triage"|"digest"|"respond"|null,"shouldAct":true|false,"response":"string|null","target":"string|null","entryId":"string|null","confirmed":true|false|null}',
+    "Return TOON only with exactly these fields:",
+    "subaction: triage, digest, respond, or null",
+    "shouldAct: true or false",
+    "response: short clarifying or acknowledgement text, or null",
+    "target: person, channel, or inbox item to respond to, or null",
+    "entryId: specific triage entry id, or null",
+    "confirmed: true, false, or null",
     "",
     "Choose triage for requests to scan new messages, unread items, or the current inbox.",
     "Choose digest for requests to summarize, brief, recap, review inbox activity, give a daily brief, rank urgent-vs-low items, surface drafts awaiting sign-off, or add a standing requirement to a recurring daily brief.",
@@ -230,23 +240,36 @@ async function resolveSubactionPlan(
     "When shouldAct=false, response must ask the minimum clarifying question in the user's language.",
     "For standing inbox policies that should be acknowledged now without triaging a live item, set shouldAct=true, choose the right subaction, and put the user-facing acknowledgement in response.",
     "Extract target when the user identifies a person, channel, or inbox item to respond to.",
-    'Example: {"currentRequest":"If direct relaying gets messy here, suggest making a group chat handoff instead.","subaction":"respond","shouldAct":true,"response":"If the relay gets messy, I will suggest moving everyone into a group-chat handoff instead of continuing one-off relays.","target":null,"entryId":null,"confirmed":null}',
-    'Example: {"currentRequest":"I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap.","subaction":"respond","shouldAct":true,"response":null,"target":"Frontier Tower guys","entryId":null,"confirmed":null}',
+    "Example:",
+    "currentRequest: If direct relaying gets messy here, suggest making a group chat handoff instead.",
+    "subaction: respond",
+    "shouldAct: true",
+    "response: If the relay gets messy, I will suggest moving everyone into a group-chat handoff instead of continuing one-off relays.",
+    "target: null",
+    "entryId: null",
+    "confirmed: null",
     "",
-    `Planner hint subaction (non-binding): ${JSON.stringify(params.subaction ?? null)}`,
-    `Current request: ${JSON.stringify(intent)}`,
-    `Pending draft: ${stringifyInboxDraftContext(pendingDraft)}`,
-    `Recent conversation: ${JSON.stringify(inboxRecentConversation(state).join("\n"))}`,
+    "Example:",
+    "currentRequest: I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap.",
+    "subaction: respond",
+    "shouldAct: true",
+    "response: null",
+    "target: Frontier Tower guys",
+    "entryId: null",
+    "confirmed: null",
+    "",
+    `Planner hint subaction (non-binding): ${params.subaction ?? "null"}`,
+    `Current request:\n${intent}`,
+    `Pending draft:\n${formatInboxDraftContext(pendingDraft)}`,
+    `Recent conversation:\n${inboxRecentConversation(state).join("\n")}`,
   ].join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const raw = typeof result === "string" ? result : "";
-    const parsed = parseJSONObjectFromText(raw) as Record<
-      string,
-      unknown
-    > | null;
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(raw) ??
+      (parseJSONObjectFromText(raw) as Record<string, unknown> | null);
     if (!parsed) {
       return {
         subaction: null,
@@ -1392,7 +1415,6 @@ async function draftResponse(
     .join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const text = typeof result === "string" ? result.trim() : "";
     return (

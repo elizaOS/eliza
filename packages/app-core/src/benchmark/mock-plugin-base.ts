@@ -15,6 +15,67 @@ function extractCode(prompt: string, label: string): string {
 }
 
 function createBenchmarkActionXml(prompt: string): string {
+  if (/Benchmark:\s*(rlm-bench|rlm_bench)/i.test(prompt)) {
+    const answer =
+      /authorization code is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
+      /encrypted key sequence is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
+      /vault combination is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
+      /project identifier is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
+      /access token is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
+      /critical finding reference number is ([A-Z0-9]{8})/i.exec(prompt)?.[1] ??
+      "UNKNOWN";
+    return [
+      "<response>",
+      "<thought>Answering the benchmark question directly.</thought>",
+      "<actions>REPLY</actions>",
+      `<text><answer>${answer}</answer></text>`,
+      "</response>",
+    ].join("\n");
+  }
+
+  if (/Benchmark:\s*gaia/i.test(prompt)) {
+    const arithmetic = /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(prompt);
+    let answer = "mock-answer";
+    if (arithmetic) {
+      const left = Number(arithmetic[1]);
+      const right = Number(arithmetic[3]);
+      const op = arithmetic[2].toLowerCase();
+      if (op === "+") answer = String(left + right);
+      if (op === "-") answer = String(left - right);
+      if (op === "*" || op === "x") answer = String(left * right);
+    }
+    return [
+      "<response>",
+      "<thought>Answering the GAIA question directly.</thought>",
+      "<actions>REPLY</actions>",
+      `<text>FINAL ANSWER: ${answer}</text>`,
+      "</response>",
+    ].join("\n");
+  }
+
+  if (/Benchmark:\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(prompt)) {
+    return [
+      "<response>",
+      "<thought>Returning a deterministic Hyperliquid plan.</thought>",
+      "<actions>REPLY</actions>",
+      '<text>{"steps":[{"perp_orders":{"orders":[{"coin":"ETH","side":"buy","tif":"ALO","sz":0.01,"reduceOnly":false,"px":"mid-1%"},{"coin":"BTC","side":"sell","tif":"IOC","sz":0.01,"reduceOnly":true,"px":"mid+1%"}]}},{"usd_class_transfer":{"toPerp":true,"usdc":5}},{"set_leverage":{"coin":"ETH","leverage":3,"cross":false}},{"cancel_all":{"coin":"BTC"}}]}</text>',
+      "</response>",
+    ].join("\n");
+  }
+
+  if (/Benchmark:\s*(vending-bench|vending_bench)/i.test(prompt)) {
+    const action = /pending orders/i.test(prompt) && !/no pending orders/i.test(prompt)
+      ? '{"action":"ADVANCE_DAY"}'
+      : '{"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}';
+    return [
+      "<response>",
+      "<thought>Returning a deterministic Vending-Bench action.</thought>",
+      "<actions>REPLY</actions>",
+      `<text>${action}</text>`,
+      "</response>",
+    ].join("\n");
+  }
+
   const oneInitialCode = extractCode(prompt, "initial code");
   const oneMiddleCode = extractCode(prompt, "middle code");
   const oneEndCode = extractCode(prompt, "end code");

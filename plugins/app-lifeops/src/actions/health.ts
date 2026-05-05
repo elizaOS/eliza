@@ -28,11 +28,11 @@ import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
 import type { HealthDataPoint } from "../lifeops/health-bridge.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "./lifeops-grounded-reply.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 
@@ -152,6 +152,9 @@ async function resolveHealthPlanWithLlm(args: {
     typeof args.message.content?.text === "string"
       ? args.message.content.text
       : "";
+  const paramsText = Object.entries(args.params ?? {})
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join("\n");
   const prompt = [
     "Plan the HEALTH action for this request.",
     "The user may speak in any language.",
@@ -178,10 +181,14 @@ async function resolveHealthPlanWithLlm(args: {
     '  "Is my health integration connected?" -> subaction: status; metric: null; days: null; shouldAct: true; response: null',
     '  "¿Cuántos pasos di hoy?" -> subaction: today; metric: null; days: null; shouldAct: true; response: null',
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Structured parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    "Current request:",
+    currentMessage || "(empty)",
+    "Resolved intent:",
+    args.intent || "(none)",
+    "Structured parameters:",
+    paramsText || "(none)",
+    "Recent conversation:",
+    recentConversation || "(none)",
   ].join("\n");
 
   try {

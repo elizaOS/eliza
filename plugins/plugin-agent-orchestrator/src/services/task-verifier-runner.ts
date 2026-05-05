@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { parseKeyValueXml, type IAgentRuntime, ModelType } from "@elizaos/core";
 import type {
   TaskNodeRecord,
   TaskRegistry,
@@ -39,49 +39,68 @@ function extractJsonBlock(raw: string): string {
   return (fenceMatch?.[1] ?? trimmed).trim();
 }
 
+function normalizeChecklistItem(
+  entry: unknown,
+): AcceptanceChecklistItem | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const record = entry as Record<string, unknown>;
+  const criterion =
+    typeof record.criterion === "string" ? record.criterion.trim() : "";
+  const rawStatus =
+    typeof record.status === "string" ? record.status.trim() : "";
+  const evidence =
+    typeof record.evidence === "string" ? record.evidence.trim() : "";
+  if (!criterion || !evidence) {
+    return null;
+  }
+  return {
+    criterion,
+    status:
+      rawStatus === "pass" || rawStatus === "fail" || rawStatus === "partial"
+        ? rawStatus
+        : "partial",
+    evidence,
+  };
+}
+
+function normalizeAcceptanceEvaluation(
+  parsed: unknown,
+): AcceptanceEvaluation | null {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (
+    (record.verdict !== "pass" && record.verdict !== "fail") ||
+    typeof record.summary !== "string" ||
+    record.summary.trim().length === 0
+  ) {
+    return null;
+  }
+  const rawChecklist = record.checklist;
+  const checklist = Array.isArray(rawChecklist)
+    ? rawChecklist
+        .map(normalizeChecklistItem)
+        .filter((entry): entry is AcceptanceChecklistItem => Boolean(entry))
+    : [];
+  return {
+    verdict: record.verdict,
+    summary: record.summary.trim(),
+    checklist,
+  };
+}
+
 function parseAcceptanceEvaluation(raw: string): AcceptanceEvaluation | null {
+  const parsedToonOrXml = parseKeyValueXml<Record<string, unknown>>(raw);
+  const normalizedToonOrXml = normalizeAcceptanceEvaluation(parsedToonOrXml);
+  if (normalizedToonOrXml) {
+    return normalizedToonOrXml;
+  }
+
   try {
-    const parsed = JSON.parse(
-      extractJsonBlock(raw),
-    ) as Partial<AcceptanceEvaluation>;
-    if (
-      (parsed.verdict !== "pass" && parsed.verdict !== "fail") ||
-      typeof parsed.summary !== "string" ||
-      parsed.summary.trim().length === 0
-    ) {
-      return null;
-    }
-    const checklist = Array.isArray(parsed.checklist)
-      ? parsed.checklist
-          .filter((entry): entry is AcceptanceChecklistItem =>
-            Boolean(
-              entry &&
-                typeof entry === "object" &&
-                typeof (entry as AcceptanceChecklistItem).criterion ===
-                  "string" &&
-                typeof (entry as AcceptanceChecklistItem).status === "string" &&
-                typeof (entry as AcceptanceChecklistItem).evidence === "string",
-            ),
-          )
-          .map((entry) => ({
-            criterion: entry.criterion.trim(),
-            status:
-              entry.status === "pass" ||
-              entry.status === "fail" ||
-              entry.status === "partial"
-                ? entry.status
-                : "partial",
-            evidence: entry.evidence.trim(),
-          }))
-          .filter(
-            (entry) => entry.criterion.length > 0 && entry.evidence.length > 0,
-          )
-      : [];
-    return {
-      verdict: parsed.verdict,
-      summary: parsed.summary.trim(),
-      checklist,
-    };
+    return normalizeAcceptanceEvaluation(JSON.parse(extractJsonBlock(raw)));
   } catch {
     return null;
   }
@@ -243,10 +262,16 @@ async function evaluateAcceptanceCriteria(
   const prompt = [
     "You are a strict task verifier for an agent coordinator.",
     "Decide whether the thread satisfies its acceptance criteria based only on the provided evidence.",
-    "Return JSON only with keys: verdict, summary, checklist.",
+    "Return TOON only with keys: verdict, summary, checklist.",
     'Set verdict to "pass" only if every criterion is satisfied by concrete evidence.',
     'Set verdict to "fail" if any criterion is missing, contradicted, or unsupported.',
     "Each checklist entry must contain criterion, status (pass|fail|partial), and evidence.",
+    "Use this TOON shape:",
+    "verdict: pass",
+    "summary: One sentence explaining the decision.",
+    "checklist[2]{criterion,status,evidence}:",
+    "  Acceptance criterion one,pass,Concrete evidence for criterion one",
+    "  Acceptance criterion two,fail,What evidence is missing or contradictory",
     "",
     `Thread title: ${thread.title}`,
     `Original request: ${thread.originalRequest}`,
@@ -282,7 +307,7 @@ async function evaluateAcceptanceCriteria(
     checklist: thread.acceptanceCriteria.map((criterion) => ({
       criterion,
       status: "partial",
-      evidence: "Verifier response was invalid JSON.",
+      evidence: "Verifier response was invalid TOON.",
     })),
   };
 }

@@ -21,6 +21,32 @@ from voyager.surfpool_env import SurfpoolEnv, _surfpool_validator
 
 load_dotenv()
 
+
+def _openai_compatible_provider() -> tuple[str, str]:
+    provider = os.getenv("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    if not provider:
+        if os.getenv("GROQ_API_KEY"):
+            provider = "groq"
+        elif os.getenv("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.getenv("OPENAI_API_KEY"):
+            provider = "openai"
+        else:
+            provider = "openrouter"
+    config = {
+        "groq": ("GROQ_API_KEY", "https://api.groq.com/openai/v1"),
+        "openrouter": ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1"),
+        "openai": ("OPENAI_API_KEY", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+    }
+    if provider not in config:
+        raise RuntimeError("Solana explorer supports provider=openai, groq, or openrouter")
+    key_var, base_url = config[provider]
+    api_key = os.getenv(key_var)
+    if not api_key:
+        raise RuntimeError(f"API key required: set {key_var} for provider={provider}")
+    return base_url, api_key
+
+
 class CodeLoopExplorer:
     """
     A simplified explorer that extracts TypeScript code blocks from agent responses
@@ -55,11 +81,12 @@ class CodeLoopExplorer:
         # Generate unique run ID
         self.run_id = f"code_loop_{datetime.now().strftime('%y-%m-%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         
-        # Initialize LangChain ChatOpenAI for OpenRouter
+        # Initialize LangChain ChatOpenAI for the selected OpenAI-compatible provider.
+        base_url, api_key = _openai_compatible_provider()
         self.llm = ChatOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=base_url,
             model=model_name,
-            api_key=os.getenv("OPENROUTER_API_KEY"),
+            api_key=api_key,
             temperature=0.7,
         )
         

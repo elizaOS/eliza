@@ -23,8 +23,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "elizaos>=0.1.0",
+    "eliza-adapter",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 dev = [
@@ -37,10 +40,8 @@ hf = [
     "datasets>=2.0",
 ]
 groq = [
-    "elizaos-plugin-groq>=1.0",
 ]
 openai = [
-    "elizaos-plugin-openai>=1.0",
 ]
 all = [
     "elizaos-mind2web[dev,hf,groq,openai]",

@@ -2,7 +2,7 @@
 """
 MINT Benchmark CLI Runner
 
-Run the MINT benchmark evaluation on ElizaOS Python runtime.
+Run the MINT benchmark evaluation with a local runner or the TypeScript bridge.
 
 Usage:
     python run_benchmark.py [options]
@@ -32,15 +32,7 @@ from pathlib import Path
 # Add paths for imports
 benchmark_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(benchmark_root))
-sys.path.insert(0, str(benchmark_root / "packages" / "python"))
 sys.path.insert(0, str(benchmark_root / "benchmarks" / "eliza-adapter"))
-# Add local plugin paths for optional runtime-backed runs
-sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-openai" / "python"))
-sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-vercel-ai-gateway" / "python"))
-sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-xai" / "python"))
-sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-eliza-classic" / "python"))
-sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-sql" / "python"))
-sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-trajectory-logger" / "python"))
 
 # Now we can import
 from benchmarks.mint.types import MINTCategory, MINTConfig
@@ -60,7 +52,7 @@ def setup_logging(verbose: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run MINT benchmark on ElizaOS Python runtime",
+        description="Run MINT benchmark with a local runner or the Eliza TypeScript bridge",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -163,7 +155,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-trajectory-logging",
         action="store_true",
-        help="Disable elizaOS trajectory logging export (enabled by default for runtime providers)",
+        help="Disable bridge-side trajectory logging export metadata",
     )
     parser.add_argument(
         "--trajectory-dataset",

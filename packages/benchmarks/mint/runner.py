@@ -75,7 +75,8 @@ class MINTRunner:
         if runtime is not None and isinstance(runtime, ModelRuntime):
             self._runtime = runtime
 
-        # Optional: elizaOS trajectory logger plugin service (Python)
+        # Optional bridge-side trajectory metadata. Python runtime trajectory
+        # instrumentation has been removed from the benchmark package.
         self._trajectory_logger_service: object | None = trajectory_logger_service
         self._trajectory_dataset: str = trajectory_dataset
         self._trajectory_ids: list[str] = []
@@ -245,43 +246,15 @@ class MINTRunner:
 
         await self._save_results(results)
 
-        # Export elizaOS trajectories (ART + GRPO) for training use.
+        # Python runtime trajectory export has been removed. When the bridge
+        # records trajectories, export happens on the TypeScript side.
         if self._trajectory_logger_service is not None and self._trajectory_ids:
-            try:
-                # Prefer the plugin service export API if available.
-                from elizaos_plugin_trajectory_logger.runtime_service import (
-                    TrajectoryExportConfig,
-                    TrajectoryLoggerRuntimeService,
-                )
-
-                out_dir = Path(self.config.output_dir) / "eliza_trajectories"
-                out_dir.mkdir(parents=True, exist_ok=True)
-
-                svc = self._trajectory_logger_service
-                if isinstance(svc, TrajectoryLoggerRuntimeService):
-                    # Export both formats for training pipelines.
-                    art_res = svc.export(
-                        TrajectoryExportConfig(
-                            dataset_name=self._trajectory_dataset,
-                            export_format="art",
-                            output_dir=str(out_dir),
-                            max_trajectories=len(self._trajectory_ids),
-                        )
-                    )
-                    grpo_res = svc.export(
-                        TrajectoryExportConfig(
-                            dataset_name=self._trajectory_dataset,
-                            export_format="grpo",
-                            output_dir=str(out_dir),
-                            max_trajectories=len(self._trajectory_ids),
-                        )
-                    )
-                    logger.info(
-                        f"[MINTRunner] Exported trajectories for training: "
-                        f"art={art_res.dataset_url} grpo={grpo_res.dataset_url}"
-                    )
-            except Exception as e:
-                logger.warning(f"[MINTRunner] Failed to export elizaOS trajectories: {e}")
+            logger.info(
+                "[MINTRunner] Skipping Python trajectory export; bridge-side "
+                "trajectory export owns dataset %s (%d ids)",
+                self._trajectory_dataset,
+                len(self._trajectory_ids),
+            )
 
         logger.info(
             f"[MINTRunner] Benchmark completed in {duration:.1f}s. "

@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { parseJSONObjectFromText, parseKeyValueXml } from "@elizaos/core";
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsGoalDefinition,
@@ -101,6 +101,35 @@ const EMPTY_GOAL_UPDATE_PLAN: ExtractedGoalUpdatePlan = {
   evaluationSummary: null,
   targetDomain: null,
 };
+
+function promptText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : "(empty)";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => promptText(entry)).join(", ")}]`;
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => `${key}: ${promptText(entry)}`)
+      .join("\n");
+  }
+  return String(value);
+}
+
+function parseStructuredRecord(raw: string): Record<string, unknown> | null {
+  return (
+    parseKeyValueXml<Record<string, unknown>>(raw) ??
+    parseJSONObjectFromText(raw)
+  );
+}
 
 function normalizeText(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -307,16 +336,16 @@ export function buildGoalCreateExtractionPrompt(
     "- the evidence signals or metrics that can show progress",
     "- a concrete support strategy",
     "",
-    "Return ONLY valid JSON with these fields:",
+    "Return ONLY valid TOON with these fields:",
     '- mode: "create" when the goal is grounded enough to save now, otherwise "respond"',
     "- response: one focused clarifying question when mode=respond, otherwise null",
     "- title: concise goal title",
     "- description: short human-readable description",
-    '- cadence: optional review cadence object, usually {"kind":"weekly"} or {"kind":"monthly"}',
-    "- successCriteria: object describing how progress or success will be judged",
-    "- supportStrategy: object describing how the goal should be supported",
+    "- cadence: optional review cadence record, usually kind: weekly or kind: monthly",
+    "- successCriteria: structured record describing how progress or success will be judged",
+    "- supportStrategy: structured record describing how the goal should be supported",
     '- groundingState: one of "grounded", "partial", "ungrounded"',
-    '- missingCriticalFields: array drawn only from ["title","target_state","success_metric","time_horizon","evidence_source","support_plan"]',
+    "- missingCriticalFields: list drawn only from title, target_state, success_metric, time_horizon, evidence_source, support_plan",
     "- confidence: number from 0 to 1",
     "- evaluationSummary: one sentence describing what would count as progress",
     "- targetDomain: short domain label like sleep, fitness, work, learning, finances, relationships, health, creativity",
@@ -326,27 +355,82 @@ export function buildGoalCreateExtractionPrompt(
     "- Any user-provided goal title or clear aspiration counts as partial grounding, not ungrounded.",
     "- Use groundingState=ungrounded only when the user has not provided a usable goal title, aspiration, or target at all.",
     "- Ask for the single most important missing piece, not a questionnaire.",
-    "- successCriteria and supportStrategy must be objects, not strings or arrays.",
+    "- successCriteria and supportStrategy must be structured records, not strings or lists.",
     "- Encode measurable or observable criteria whenever possible.",
     "- If sleep, routines, biometrics, calendar, or linked habits are relevant evidence, name them explicitly in successCriteria.",
     "",
     "Examples:",
     'Input: "I want a goal called Stabilize sleep schedule."',
-    'Output: {"mode":"respond","response":"What would a stabilized sleep schedule look like for you: target bedtime and wake time, or a consistency window?","title":"Stabilize sleep schedule","description":"Build a more consistent sleep schedule.","cadence":{"kind":"weekly"},"successCriteria":null,"supportStrategy":null,"groundingState":"partial","missingCriticalFields":["target_state","success_metric","time_horizon","evidence_source","support_plan"],"confidence":0.78,"evaluationSummary":null,"targetDomain":"sleep"}',
+    "mode: respond",
+    "response: What would a stabilized sleep schedule look like for you: target bedtime and wake time, or a consistency window?",
+    "title: Stabilize sleep schedule",
+    "description: Build a more consistent sleep schedule.",
+    "cadence:",
+    "  kind: weekly",
+    "successCriteria: null",
+    "supportStrategy: null",
+    "groundingState: partial",
+    "missingCriticalFields: [target_state, success_metric, time_horizon, evidence_source, support_plan]",
+    "confidence: 0.78",
+    "evaluationSummary: null",
+    "targetDomain: sleep",
     "",
     'Input: "I want to get better sleep."',
-    'Output: {"mode":"respond","response":"What would better sleep look like for you: target bedtime, wake time, sleep duration, or consistency?","title":"Improve sleep","description":"Sleep more consistently and wake up feeling rested.","cadence":{"kind":"weekly"},"successCriteria":null,"supportStrategy":null,"groundingState":"partial","missingCriticalFields":["target_state","success_metric","time_horizon","evidence_source","support_plan"],"confidence":0.74,"evaluationSummary":null,"targetDomain":"sleep"}',
+    "mode: respond",
+    "response: What would better sleep look like for you: target bedtime, wake time, sleep duration, or consistency?",
+    "title: Improve sleep",
+    "description: Sleep more consistently and wake up feeling rested.",
+    "cadence:",
+    "  kind: weekly",
+    "successCriteria: null",
+    "supportStrategy: null",
+    "groundingState: partial",
+    "missingCriticalFields: [target_state, success_metric, time_horizon, evidence_source, support_plan]",
+    "confidence: 0.74",
+    "evaluationSummary: null",
+    "targetDomain: sleep",
     "",
     'Input: "Can you help me make a goal?"',
-    'Output: {"mode":"respond","response":"What goal do you want to work on?","title":null,"description":null,"cadence":null,"successCriteria":null,"supportStrategy":null,"groundingState":"ungrounded","missingCriticalFields":["title","target_state","success_metric","time_horizon","evidence_source","support_plan"],"confidence":0.56,"evaluationSummary":null,"targetDomain":null}',
+    "mode: respond",
+    "response: What goal do you want to work on?",
+    "title: null",
+    "description: null",
+    "cadence: null",
+    "successCriteria: null",
+    "supportStrategy: null",
+    "groundingState: ungrounded",
+    "missingCriticalFields: [title, target_state, success_metric, time_horizon, evidence_source, support_plan]",
+    "confidence: 0.56",
+    "evaluationSummary: null",
+    "targetDomain: null",
     "",
     'Input: "I want to stabilize my sleep schedule by being asleep by 11:30 pm and up around 7:30 am on weekdays, within 45 minutes, for the next month."',
-    'Output: {"mode":"create","response":null,"title":"Stabilize sleep schedule","description":"Keep weekday sleep and wake times consistent for the next month.","cadence":{"kind":"weekly","reviewWindowDays":7},"successCriteria":{"summary":"For the next 30 days, be asleep by about 11:30 pm and awake by about 7:30 am on weekdays, staying within 45 minutes on at least 20 days.","metric":"weekday sleep schedule consistency","target":{"bedtime":"23:30","wakeTime":"07:30","allowedVarianceMinutes":45,"successDays":20,"windowDays":30},"evidenceSignals":["health.sleep","manual_checkin"]},"supportStrategy":{"summary":"Use a consistent wind-down and morning routine.","firstStep":"Pick a wind-down start time 45 to 60 minutes before bed.","suggestedSupport":["evening wind-down routine","morning wake routine","weekly sleep check-in"]},"groundingState":"grounded","missingCriticalFields":[],"confidence":0.9,"evaluationSummary":"Progress means weekday bed and wake times stay near 11:30 pm and 7:30 am over the next month.","targetDomain":"sleep"}',
+    "mode: create",
+    "response: null",
+    "title: Stabilize sleep schedule",
+    "description: Keep weekday sleep and wake times consistent for the next month.",
+    "cadence:",
+    "  kind: weekly",
+    "  reviewWindowDays: 7",
+    "successCriteria:",
+    "  summary: For the next 30 days, be asleep by about 11:30 pm and awake by about 7:30 am on weekdays, staying within 45 minutes on at least 20 days.",
+    "  metric: weekday sleep schedule consistency",
+    "  evidenceSignals: [health.sleep, manual_checkin]",
+    "supportStrategy:",
+    "  summary: Use a consistent wind-down and morning routine.",
+    "  firstStep: Pick a wind-down start time 45 to 60 minutes before bed.",
+    "  suggestedSupport: [evening wind-down routine, morning wake routine, weekly sleep check-in]",
+    "groundingState: grounded",
+    "missingCriticalFields: []",
+    "confidence: 0.9",
+    "evaluationSummary: Progress means weekday bed and wake times stay near 11:30 pm and 7:30 am over the next month.",
+    "targetDomain: sleep",
     "",
-    "Return ONLY valid JSON. No prose. No markdown.",
+    "Return ONLY valid TOON. No prose, markdown, code fences, or any other format.",
     "",
-    `User request: ${JSON.stringify(intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    `User request: ${promptText(intent)}`,
+    "Recent conversation:",
+    promptText(recentConversation),
   ].join("\n");
 }
 
@@ -357,17 +441,19 @@ function buildGoalCreateRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the goal-grounding extractor was invalid.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return ONLY valid TOON with exactly these fields:",
     "mode, response, title, description, cadence, successCriteria, supportStrategy, groundingState, missingCriticalFields, confidence, evaluationSummary, targetDomain",
     "",
     'mode must be "create" or "respond".',
     'groundingState must be "grounded", "partial", or "ungrounded".',
-    "successCriteria and supportStrategy must be objects or null.",
+    "successCriteria and supportStrategy must be structured records or null.",
     "missingCriticalFields must contain only valid enum values.",
     "",
-    `User request: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `User request: ${promptText(args.intent)}`,
+    "Recent conversation:",
+    promptText(args.recentConversation),
+    "Previous invalid output:",
+    promptText(args.rawResponse),
   ].join("\n");
 }
 
@@ -397,7 +483,7 @@ export async function extractGoalCreatePlanWithLlm(args: {
     runtime: args.runtime,
     prompt,
     parser: (raw) => {
-      const parsedObject = parseJSONObjectFromText(raw);
+      const parsedObject = parseStructuredRecord(raw);
       return parsedObject ? buildCreatePlan(parsedObject) : null;
     },
     buildRepairPrompt: (rawFirstPass) =>
@@ -424,27 +510,31 @@ export function buildGoalUpdateExtractionPrompt(args: {
     "If the user clarifies how the goal should be evaluated, update successCriteria and supportStrategy.",
     "If the request is too vague to apply safely, choose mode=respond and ask one focused question.",
     "",
-    "Return ONLY valid JSON with these fields:",
+    "Return ONLY valid TOON with these fields:",
     '- mode: "update" or "respond"',
     "- response: short clarifying response when mode=respond, otherwise null",
     "- title: new title or null",
     "- description: new description or null",
-    "- cadence: replacement review cadence object or null",
-    "- successCriteria: replacement success criteria object or null",
-    "- supportStrategy: replacement support strategy object or null",
+    "- cadence: replacement review cadence record or null",
+    "- successCriteria: replacement success criteria record or null",
+    "- supportStrategy: replacement support strategy record or null",
     '- groundingState: "grounded", "partial", "ungrounded", or null when unchanged',
-    '- missingCriticalFields: array drawn only from ["title","target_state","success_metric","time_horizon","evidence_source","support_plan"]',
+    "- missingCriticalFields: list drawn only from title, target_state, success_metric, time_horizon, evidence_source, support_plan",
     "- confidence: number from 0 to 1",
     "- evaluationSummary: one sentence describing the updated evaluation contract, or null",
     "- targetDomain: updated domain label or null",
     "",
-    `Current goal title: ${JSON.stringify(args.currentGoal.title)}`,
-    `Current goal description: ${JSON.stringify(args.currentGoal.description)}`,
-    `Current goal cadence: ${JSON.stringify(args.currentGoal.cadence)}`,
-    `Current success criteria: ${JSON.stringify(args.currentGoal.successCriteria)}`,
-    `Current support strategy: ${JSON.stringify(args.currentGoal.supportStrategy)}`,
-    `User request: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
+    `Current goal title: ${promptText(args.currentGoal.title)}`,
+    `Current goal description: ${promptText(args.currentGoal.description)}`,
+    "Current goal cadence:",
+    promptText(args.currentGoal.cadence),
+    "Current success criteria:",
+    promptText(args.currentGoal.successCriteria),
+    "Current support strategy:",
+    promptText(args.currentGoal.supportStrategy),
+    `User request: ${promptText(args.intent)}`,
+    "Recent conversation:",
+    promptText(args.recentConversation),
   ].join("\n");
 }
 
@@ -456,15 +546,17 @@ function buildGoalUpdateRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the goal-update extractor was invalid.",
-    "Return ONLY valid JSON with exactly these fields:",
+    "Return ONLY valid TOON with exactly these fields:",
     "mode, response, title, description, cadence, successCriteria, supportStrategy, groundingState, missingCriticalFields, confidence, evaluationSummary, targetDomain",
     "",
     'mode must be "update" or "respond".',
     "",
-    `Current goal title: ${JSON.stringify(args.currentGoal.title)}`,
-    `User request: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `Current goal title: ${promptText(args.currentGoal.title)}`,
+    `User request: ${promptText(args.intent)}`,
+    "Recent conversation:",
+    promptText(args.recentConversation),
+    "Previous invalid output:",
+    promptText(args.rawResponse),
   ].join("\n");
 }
 
@@ -496,7 +588,7 @@ export async function extractGoalUpdatePlanWithLlm(args: {
     runtime: args.runtime,
     prompt,
     parser: (raw) => {
-      const parsedObject = parseJSONObjectFromText(raw);
+      const parsedObject = parseStructuredRecord(raw);
       return parsedObject ? buildUpdatePlan(parsedObject) : null;
     },
     buildRepairPrompt: (rawFirstPass) =>

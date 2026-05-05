@@ -248,6 +248,14 @@ async function resolveCrossChannelSendPlanWithLlm(args: {
       limit: 8,
     })
   ).join("\n");
+  const pendingDraftText = args.pendingDraft
+    ? [
+        `channel: ${args.pendingDraft.channel}`,
+        `target: ${args.pendingDraft.target}`,
+        `message: ${args.pendingDraft.message}`,
+        `subject: ${args.pendingDraft.subject ?? "null"}`,
+      ].join("\n")
+    : "(none)";
   const prompt = [
     "Plan the CROSS_CHANNEL_SEND action for this request.",
     "Use the current request, recent conversation, and any pending draft.",
@@ -268,20 +276,22 @@ async function resolveCrossChannelSendPlanWithLlm(args: {
     "- Return only TOON.",
     "",
     "Examples:",
-    '  current request: "send it" with pending draft {"channel":"sms","target":"+15555550101","message":"Running 10 minutes late."}',
+    '  current request: "send it" with pending draft: channel=sms, target=+15555550101, message=Running 10 minutes late.',
     "  -> channel: sms; target: +15555550101; message: Running 10 minutes late.; subject: null; confirmed: true; shouldAct: true; response: null",
     '  current request: "Email alice@example.com the notes from today" with no pending draft',
     "  -> channel: email; target: alice@example.com; message: Here are the notes from today.; subject: Notes from today; confirmed: false; shouldAct: true; response: null",
     '  current request: "If direct relaying gets messy here, suggest making a group chat handoff instead."',
-    '  -> {"channel":null,"target":null,"message":null,"subject":null,"confirmed":null,"shouldAct":false,"response":"If relay coordination gets messy, I will suggest moving everyone into a group chat handoff instead of continuing one-off relays."}',
+    "  -> channel: null; target: null; message: null; subject: null; confirmed: null; shouldAct: false; response: If relay coordination gets messy, I will suggest moving everyone into a group chat handoff instead of continuing one-off relays.",
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Pending draft: ${JSON.stringify(args.pendingDraft)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    "Current request:",
+    currentMessage || "(empty)",
+    "Pending draft:",
+    pendingDraftText,
+    "Recent conversation:",
+    recentConversation || "(none)",
   ].join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });

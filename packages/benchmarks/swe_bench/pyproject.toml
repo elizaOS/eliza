@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "elizaos>=1.0.0",
+    "eliza-adapter",
     "datasets>=2.14.0",
     "gitpython>=3.1.0",
     "unidiff>=0.7.0",
@@ -31,6 +31,9 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "openai>=1.99.0",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 orchestrator = [

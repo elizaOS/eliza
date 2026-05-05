@@ -220,22 +220,14 @@ async def quick_test(llm_query_fn: LLMQueryFn) -> ContextBenchResults:
 
 
 async def run_eliza_benchmark(
-    runtime: object,
     config: ContextBenchConfig | None = None,
+    client: object | None = None,
 ) -> ContextBenchResults:
-    """Run ContextBench against a Python Eliza-style runtime.
+    """Run ContextBench through the eliza TypeScript benchmark bridge."""
+    from eliza_adapter.context_bench import make_eliza_llm_query
 
-    The runtime must expose an async ``query(context, question)`` method or an
-    async ``generate_response(prompt)`` method.
-    """
-
-    async def query(context: str, question: str) -> str:
-        if hasattr(runtime, "query"):
-            return str(await runtime.query(context, question))  # type: ignore[attr-defined]
-        if hasattr(runtime, "generate_response"):
-            prompt = f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
-            return str(await runtime.generate_response(prompt))  # type: ignore[attr-defined]
-        raise TypeError("runtime must expose query() or generate_response()")
-
-    runner = ContextBenchRunner(config=config, llm_query_fn=query)
+    runner = ContextBenchRunner(
+        config=config,
+        llm_query_fn=make_eliza_llm_query(client=client),  # type: ignore[arg-type]
+    )
     return await runner.run_full_benchmark()
