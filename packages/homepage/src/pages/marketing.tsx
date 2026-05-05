@@ -5,11 +5,13 @@ import {
   releaseData,
   type ReleaseDataDownload,
 } from "@/generated/release-data";
+import { getElizacloudUrl } from "@/lib/api/client";
 
 type OS = "macos-arm" | "macos-intel" | "windows" | "linux" | "unknown";
 
 const RELEASE_BASE =
   "https://github.com/elizaOS/eliza/releases/latest/download";
+const CLOUD_URL = getElizacloudUrl();
 
 type DownloadButton = {
   id:
@@ -245,6 +247,14 @@ export default function Marketing() {
             <ElizaLogo className="h-7 invert" />
           </div>
           <nav className="flex items-center gap-5 text-sm text-white/70">
+            <a
+              href={CLOUD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-[#FF5800]"
+            >
+              Cloud
+            </a>
             <Link
               to="/leaderboard"
               className="transition-colors hover:text-[#FF5800]"
@@ -278,9 +288,25 @@ export default function Marketing() {
             An open-source, local-first AI assistant. Runs on your machine,
             connects to the apps you already use, and keeps your data yours.
           </p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <a
+              href={CLOUD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center rounded-md bg-[#FF5800] px-5 text-sm font-semibold text-black transition-colors hover:bg-white"
+            >
+              Open in Cloud
+            </a>
+            <a
+              href="#download"
+              className="inline-flex min-h-11 items-center rounded-md border border-white/15 px-5 text-sm font-semibold text-white/85 transition-colors hover:border-white/40 hover:bg-white/10 hover:text-white"
+            >
+              Download
+            </a>
+          </div>
         </section>
 
-        <section className="mt-16">
+        <section id="download" className="mt-16 scroll-mt-8">
           <div className="mb-6 flex items-baseline justify-between">
             <div className="flex flex-col gap-1">
               <h2 className="text-2xl font-semibold">Download</h2>

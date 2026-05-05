@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyIosAppIdentity,
+  IOS_OFFICIAL_PODS,
   injectNoCompressTarGz,
   isCapacitorPlatformReady,
   resolveIosBuildTarget,
@@ -342,6 +343,72 @@ describe("run-mobile-build", () => {
         "utf8",
       ),
     ).toBe("android-capacitor\n");
+  });
+
+  it("applies app-specific native overrides after shared templates", () => {
+    const repoRoot = makeTempDir();
+    const appDir = path.join(repoRoot, "apps", "app");
+    const iconPath = path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "AppIcon.appiconset",
+      "Contents.json",
+    );
+    const splashPath = path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "Splash.imageset",
+      "Contents.json",
+    );
+
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        iconPath,
+      ),
+      "template-icon\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        splashPath,
+      ),
+      "template-splash\n",
+    );
+    writeFile(
+      path.join(appDir, "native-overrides", "ios", iconPath),
+      "milady-icon\n",
+    );
+    writeFile(
+      path.join(appDir, "native-overrides", "ios", splashPath),
+      "milady-splash\n",
+    );
+
+    const copied = syncPlatformTemplateFiles("ios", {
+      repoRootValue: repoRoot,
+      appDirValue: appDir,
+      log: () => {},
+    });
+
+    expect(copied).toEqual([iconPath, splashPath, iconPath, splashPath]);
+    expect(fs.readFileSync(path.join(appDir, "ios", iconPath), "utf8")).toBe(
+      "milady-icon\n",
+    );
+    expect(fs.readFileSync(path.join(appDir, "ios", splashPath), "utf8")).toBe(
+      "milady-splash\n",
+    );
   });
 
   it("does not copy generated platform artifacts from template directories", () => {
@@ -698,6 +765,31 @@ describe("run-mobile-build", () => {
     expect(androidSettings).not.toContain("capacitor-status-bar");
 
     expect(androidBuild).not.toContain("capacitor-status-bar");
+  });
+
+  it("keeps iOS official pods aligned with runtime imports", () => {
+    const pods = new Map(IOS_OFFICIAL_PODS);
+    expect(pods.get("CapacitorApp")).toBe("@capacitor/app");
+    expect(pods.get("CapacitorPreferences")).toBe("@capacitor/preferences");
+    expect(pods.get("CapacitorKeyboard")).toBe("@capacitor/keyboard");
+    expect(pods.get("CapacitorBrowser")).toBe("@capacitor/browser");
+
+    const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+    const iosTemplateRoot = resolvePlatformTemplateRoot("ios", {
+      repoRootValue: repoRoot,
+    });
+    if (!iosTemplateRoot) {
+      throw new Error("Expected iOS platform template to exist.");
+    }
+
+    const iosPodfile = fs.readFileSync(
+      path.join(iosTemplateRoot, "App", "Podfile"),
+      "utf8",
+    );
+    for (const [name, pkg] of IOS_OFFICIAL_PODS) {
+      expect(iosPodfile).toContain(`pod '${name}'`);
+      expect(iosPodfile).toContain(`node_package_path('${pkg}')`);
+    }
   });
 
   it("keeps llama.cpp Capacitor native wiring in shipped templates", () => {

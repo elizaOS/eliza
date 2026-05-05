@@ -5,14 +5,14 @@ import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 function createCorsTestApp() {
   const app = new Hono();
   app.use("*", corsMiddleware);
-  app.get("/api/v1/milady/agents", (c) => c.json({ agents: [] }));
+  app.get("/api/v1/eliza/agents", (c) => c.json({ agents: [] }));
   return app;
 }
 
 describe("Cloud API Hono CORS", () => {
   it("allows the Milady homepage to call Cloud APIs", async () => {
     const app = createCorsTestApp();
-    const response = await app.request("https://www.elizacloud.ai/api/v1/milady/agents", {
+    const response = await app.request("https://www.elizacloud.ai/api/v1/eliza/agents", {
       method: "OPTIONS",
       headers: {
         Origin: "https://milady.ai",
@@ -28,7 +28,7 @@ describe("Cloud API Hono CORS", () => {
 
   it("omits allow-origin for unknown browser origins", async () => {
     const app = createCorsTestApp();
-    const response = await app.request("https://www.elizacloud.ai/api/v1/milady/agents", {
+    const response = await app.request("https://www.elizacloud.ai/api/v1/eliza/agents", {
       method: "OPTIONS",
       headers: {
         Origin: "https://evil.example.com",

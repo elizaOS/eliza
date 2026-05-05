@@ -8,7 +8,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 |----------|---------|---------|
 | `ci.yaml` | Push/PR to main | Main CI - tests, lint, build |
 | `pr.yaml` | PR opened/edited | PR title validation |
-| `publish-alpha.yml` | Alpha version tag push | NPM alpha package releases |
 | `release.yaml` | Push to main, Release | NPM beta/production package releases |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
@@ -22,15 +21,10 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 
 ## Release Workflows
 
-### NPM Alpha Packages (`publish-alpha.yml`)
+### Alpha Tags
 
-Publishes TypeScript/JavaScript packages to NPM with the `@alpha` dist-tag.
-
-**Triggers:**
-
-- Tag push matching `v*-alpha*` → Alpha release (`@alpha` tag)
-
-**Packages:** All `@elizaos/*` packages in the monorepo
+Alpha version tags are tags only. They do not publish NPM packages, run packaging
+CI, or create GitHub Release entries.
 
 ### NPM Beta/Production Packages (`release.yaml`)
 

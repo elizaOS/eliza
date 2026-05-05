@@ -68,6 +68,7 @@
     "dev:cloud:web": "bun run --cwd cloud dev:web",
     "dev:cloud:full": "bun run --cwd cloud dev:full",
     "build:cloud": "bun run --cwd cloud build",
+    "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
     "test:cloud": "bun run --cwd cloud test",
     "typecheck:cloud": "bun run --cwd cloud typecheck",
     "verify:cloud": "bun run --cwd cloud verify",

@@ -25,9 +25,18 @@ vi.mock("@elizaos/app-core", async () => {
 });
 
 vi.mock("./config-page-sections", () => ({
-  BSC_RPC_OPTIONS: [{ id: "eliza-cloud", label: "Eliza Cloud" }],
-  EVM_RPC_OPTIONS: [{ id: "eliza-cloud", label: "Eliza Cloud" }],
-  SOLANA_RPC_OPTIONS: [{ id: "eliza-cloud", label: "Eliza Cloud" }],
+  BSC_RPC_OPTIONS: [
+    { id: "eliza-cloud", label: "Eliza Cloud" },
+    { id: "alchemy", label: "Alchemy" },
+  ],
+  EVM_RPC_OPTIONS: [
+    { id: "eliza-cloud", label: "Eliza Cloud" },
+    { id: "alchemy", label: "Alchemy" },
+  ],
+  SOLANA_RPC_OPTIONS: [
+    { id: "eliza-cloud", label: "Eliza Cloud" },
+    { id: "helius-birdeye", label: "Helius + Birdeye" },
+  ],
   CloudServicesSection: () => <div data-testid="cloud-services" />,
   RpcConfigSection: () => <div data-testid="rpc-config" />,
 }));
@@ -132,6 +141,29 @@ describe("ConfigPageView", () => {
 
     render(<ConfigPageView embedded />);
 
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
+
+    await waitFor(() => {
+      expect(handleWalletApiKeySave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selections: {
+            evm: "alchemy",
+            bsc: "alchemy",
+            solana: "helius-birdeye",
+          },
+          walletNetwork: "mainnet",
+        }),
+      );
+    });
+  });
+
+  it("switches cloud selections to concrete custom providers before saving", async () => {
+    const handleWalletApiKeySave = vi.fn().mockResolvedValue(true);
+    useAppMock.mockReturnValue(buildAppState(handleWalletApiKeySave));
+
+    render(<ConfigPageView embedded />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Custom RPC/i }));
     fireEvent.click(screen.getByRole("button", { name: "common.save" }));
 
     await waitFor(() => {

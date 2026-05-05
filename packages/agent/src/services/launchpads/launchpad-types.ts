@@ -12,9 +12,9 @@
  *     approval surface — no auto-sign anywhere in the engine.
  *   - The engine prefers realistic-* subactions so the cursor moves and
  *     pointer events fire faithfully. See BROWSER_TAB_PRELOAD_SCRIPT.
- *   - dryRun: "stop-before-tx" lets smoke tests exercise the entire
+ *   - dryRun: "stop-before-tx" lets smoke tests exercise the safe
  *     pre-launch flow (wallet connect + form fill + image upload + cursor
- *     overlay) without submitting a real transaction.
+ *     overlay) without clicking a transaction-submitting control.
  */
 
 export type LaunchpadChain = "evm" | "solana";
@@ -79,6 +79,8 @@ export type LaunchpadStep =
       kind: "click";
       selector?: string;
       text?: string;
+      /** True when this click can open a wallet transaction request. */
+      triggersTransaction?: boolean;
       narration?: string;
     }
   | {

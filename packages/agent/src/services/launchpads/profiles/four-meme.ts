@@ -52,6 +52,7 @@ export const fourMemeMainnetProfile: LaunchpadProfile = {
     {
       kind: "click",
       text: "Launch",
+      triggersTransaction: true,
       narration: "Submitting — please confirm in your wallet",
     },
     { kind: "confirmTx", chain: "evm" },

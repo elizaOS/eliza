@@ -10,7 +10,7 @@
  * The engine never auto-signs transactions. The `confirmTx` step pauses
  * for the user to approve the tx in the steward sheet (or the in-page
  * wallet popup) and then waits for confirmation evidence. In dryRun mode
- * the engine stops before clicking submit.
+ * the engine stops before any step marked as transaction-triggering.
  */
 
 import { executeBrowserWorkspaceCommand } from "./../browser-workspace.js";
@@ -95,7 +95,7 @@ function defaultNarration(step: LaunchpadStep, profileName: string): string {
 function commandForStep(
   step: LaunchpadStep,
   options: EngineOptions,
-): BrowserWorkspaceCommand | null {
+): BrowserWorkspaceCommand | BrowserWorkspaceCommand[] | null {
   const id = options.tabId;
   switch (step.kind) {
     case "navigate":
@@ -110,11 +110,22 @@ function commandForStep(
         state: "visible",
       };
     case "connectWallet":
-      return {
-        id,
-        subaction: "realistic-click",
-        selector: step.connectButton,
-      };
+      return [
+        {
+          id,
+          subaction: "realistic-click",
+          selector: step.connectButton,
+        },
+        ...(step.providerOption
+          ? [
+              {
+                id,
+                subaction: "realistic-click" as const,
+                selector: step.providerOption,
+              },
+            ]
+          : []),
+      ];
     case "fillField":
       return {
         id,
@@ -161,6 +172,13 @@ function isRecoverable(error: unknown): boolean {
   return /not found|timed out|navigation|not visible|stale/i.test(message);
 }
 
+function startsTransaction(step: LaunchpadStep): boolean {
+  return (
+    step.kind === "confirmTx" ||
+    (step.kind === "click" && Boolean(step.triggersTransaction))
+  );
+}
+
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -174,11 +192,19 @@ async function runStep(
   if (!command) {
     return null;
   }
+  const commands = Array.isArray(command) ? command : [command];
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   let lastError: unknown = null;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      return await executeBrowserWorkspaceCommand(command, options.env);
+      let result: BrowserWorkspaceCommandResult | null = null;
+      for (const browserCommand of commands) {
+        result = await executeBrowserWorkspaceCommand(
+          browserCommand,
+          options.env,
+        );
+      }
+      return result;
     } catch (error) {
       lastError = error;
       if (!isRecoverable(error) || attempt === maxRetries) {
@@ -206,7 +232,7 @@ export async function runLaunchpad(
     const narration =
       step.narration ?? defaultNarration(step, profile.displayName);
 
-    if (dryRun === "stop-before-tx" && step.kind === "confirmTx") {
+    if (dryRun === "stop-before-tx" && startsTransaction(step)) {
       await options.narrate(
         `[dry-run] Stopped before submitting on ${profile.displayName}.`,
       );

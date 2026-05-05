@@ -5,6 +5,7 @@ export {
   __resetFollowupTrackerForTests,
   type ContactInfo,
   computeOverdueFollowups,
+  ensureFollowupTrackerTask,
   executeFollowupTrackerTick,
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
   FOLLOWUP_MEMORY_TABLE,

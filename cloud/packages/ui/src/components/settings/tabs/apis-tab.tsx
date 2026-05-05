@@ -148,15 +148,6 @@ export function ApisTab({ user }: ApisTabProps) {
     updateOperation({ creating: false });
   };
 
-  const handleCopyKey = async (apiKey: string) => {
-    try {
-      await copyApiKeyToClipboard(apiKey);
-      toast.success("Full API key copied to clipboard");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to copy API key");
-    }
-  };
-
   const handleCopyFullKey = async () => {
     if (!modalState.newlyCreatedKey) return;
 
@@ -281,7 +272,7 @@ export function ApisTab({ user }: ApisTabProps) {
                         )}
                       </div>
 
-                      {/* Secret Key with Copy */}
+                      {/* Secret Key Prefix */}
                       <div className="space-y-2">
                         <p className="text-xs font-mono text-white/40 uppercase">Secret Key</p>
                         <div className="flex items-center gap-2">
@@ -290,13 +281,6 @@ export function ApisTab({ user }: ApisTabProps) {
                               {apiKey.key_prefix}...
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleCopyKey(apiKey.key)}
-                            className="px-3 py-2 border border-white/20 hover:bg-white/5 transition-colors flex-shrink-0"
-                          >
-                            <Copy className="h-4 w-4 text-white/60" />
-                          </button>
                         </div>
                       </div>
 
@@ -400,21 +384,13 @@ export function ApisTab({ user }: ApisTabProps) {
                             )}
                           </div>
 
-                          {/* API Key with Copy */}
+                          {/* API Key Prefix */}
                           <div className="flex items-center gap-2">
                             <div className="bg-[rgba(255,255,255,0.03)] border border-white/10 px-3 py-2 flex-1">
                               <p className="text-sm font-mono text-white/80">
                                 {apiKey.key_prefix}...
                               </p>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => void handleCopyKey(apiKey.key)}
-                              className="px-3 py-2 border border-white/20 hover:bg-white/5 transition-colors group"
-                              title="Copy API key"
-                            >
-                              <Copy className="h-4 w-4 text-white/60 group-hover:text-white transition-colors" />
-                            </button>
                           </div>
                         </div>
 

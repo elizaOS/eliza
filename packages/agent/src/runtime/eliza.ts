@@ -2952,6 +2952,14 @@ export async function startEliza(
       activeBackend: resolveServiceRoutingInConfig(
         config as Record<string, unknown>,
       )?.llmText?.backend,
+      accountStrategies: (
+        config as Record<string, unknown> & {
+          accountStrategies?: Record<string, unknown>;
+        }
+      ).accountStrategies,
+      serviceRouting: resolveServiceRoutingInConfig(
+        config as Record<string, unknown>,
+      ),
     });
     accountPool.startAccountPoolKeepAlive();
   } catch (err) {
@@ -3938,6 +3946,14 @@ export async function startEliza(
               activeBackend: resolveServiceRoutingInConfig(
                 freshConfig as Record<string, unknown>,
               )?.llmText?.backend,
+              accountStrategies: (
+                freshConfig as Record<string, unknown> & {
+                  accountStrategies?: Record<string, unknown>;
+                }
+              ).accountStrategies,
+              serviceRouting: resolveServiceRoutingInConfig(
+                freshConfig as Record<string, unknown>,
+              ),
             });
             accountPool.startAccountPoolKeepAlive();
           } catch (poolErr) {

@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import { listOverdueFollowupsAction } from "../src/followup/actions/listOverdueFollowups.js";
 import { markFollowupDoneAction } from "../src/followup/actions/markFollowupDone.js";
@@ -7,9 +7,12 @@ import {
   __resetFollowupTrackerForTests,
   type ContactInfo,
   computeOverdueFollowups,
+  ensureFollowupTrackerTask,
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
   FOLLOWUP_MEMORY_TABLE,
+  FOLLOWUP_TRACKER_INTERVAL_MS,
   FOLLOWUP_TRACKER_TASK_NAME,
+  FOLLOWUP_TRACKER_TASK_TAGS,
   type RelationshipsServiceLike,
   reconcileFollowupsOnce,
   registerFollowupTrackerWorker,
@@ -29,6 +32,7 @@ interface TestFixture {
   service: RelationshipsServiceLike;
   contacts: ContactInfo[];
   entities: Map<UUID, EntityLike>;
+  tasks: Task[];
   taskWorkers: Map<string, unknown>;
 }
 
@@ -51,6 +55,7 @@ function makeFixture(options: {
   const memories: Array<{ table: string; memory: Memory }> = [];
   const taskWorkers = new Map<string, unknown>();
   const entities = new Map<UUID, EntityLike>();
+  const tasks: Task[] = [];
 
   for (const contact of options.contacts) {
     const displayName =
@@ -110,13 +115,27 @@ function makeFixture(options: {
     },
     async createMemory(memory: Memory, table: string) {
       memories.push({ table, memory });
-      return memory.id ?? (("mem-" + memories.length) as UUID);
+      return memory.id ?? (`mem-${memories.length}` as UUID);
     },
     getTaskWorker(name: string) {
       return taskWorkers.get(name) ?? null;
     },
     registerTaskWorker(worker: { name: string }) {
       taskWorkers.set(worker.name, worker);
+    },
+    async getTasks() {
+      return tasks;
+    },
+    async createTask(task: Task) {
+      const id = task.id ?? ("00000000-0000-0000-0000-0000000000ff" as UUID);
+      tasks.push({ ...task, id });
+      return id;
+    },
+    async updateTask(taskId: UUID, update: Partial<Task>) {
+      const idx = tasks.findIndex((task) => task.id === taskId);
+      if (idx >= 0) {
+        tasks[idx] = { ...tasks[idx], ...update };
+      }
     },
   } as unknown as IAgentRuntime;
 
@@ -126,6 +145,7 @@ function makeFixture(options: {
     service,
     contacts: options.contacts,
     entities,
+    tasks,
     taskWorkers,
   };
 }
@@ -232,6 +252,22 @@ describe("FollowupTracker.reconcileFollowupsOnce", () => {
 });
 
 describe("FollowupTracker.registerFollowupTrackerWorker", () => {
+  test("ensures a scheduler task row for the follow-up tracker", async () => {
+    const fixture = makeFixture({ contacts: [] });
+    const taskId = await ensureFollowupTrackerTask(fixture.runtime);
+
+    expect(taskId).toBeDefined();
+    expect(fixture.tasks).toHaveLength(1);
+    expect(fixture.tasks[0].name).toBe(FOLLOWUP_TRACKER_TASK_NAME);
+    expect(fixture.tasks[0].tags).toEqual([...FOLLOWUP_TRACKER_TASK_TAGS]);
+    expect(fixture.tasks[0].metadata).toMatchObject({
+      updateInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
+    });
+
+    await ensureFollowupTrackerTask(fixture.runtime);
+    expect(fixture.tasks).toHaveLength(1);
+  });
+
   test("registers a task worker under FOLLOWUP_TRACKER_TASK_NAME exactly once", () => {
     const fixture = makeFixture({ contacts: [] });
     registerFollowupTrackerWorker(fixture.runtime);

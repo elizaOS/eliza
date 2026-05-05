@@ -93,8 +93,9 @@ function parseAndroidUserAgentMarkers(configSrc) {
   const markers = [];
   const entryRe =
     /\{\s*systemProp\s*:\s*["']([^"']+)["']\s*,\s*uaPrefix\s*:\s*["']([^"']+)["']\s*[,}]/g;
-  let m;
-  while ((m = entryRe.exec(body))) {
+  while (true) {
+    const m = entryRe.exec(body);
+    if (!m) break;
     markers.push({ systemProp: m[1], uaPrefix: m[2] });
   }
   return markers;
@@ -378,7 +379,7 @@ export function applyIosAppIdentity({
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
 async function buildWeb() {
-  await run("bun", ["scripts/build.mjs"], { cwd: appDir });
+  await run("bun", ["run", "build"], { cwd: appDir });
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
@@ -1329,7 +1330,11 @@ const IOS_PERMISSION_KEYS = [
   ],
 ];
 
-const IOS_OFFICIAL_COMPATIBLE_PODS = [
+export const IOS_OFFICIAL_PODS = [
+  ["CapacitorApp", "@capacitor/app"],
+  // Preferences is intentionally installed through CocoaPods on iOS because
+  // Capacitor's generated SPM package is stripped below for this plugin.
+  ["CapacitorPreferences", "@capacitor/preferences"],
   ["CapacitorKeyboard", "@capacitor/keyboard"],
   ["CapacitorBrowser", "@capacitor/browser"],
 ];
@@ -1444,17 +1449,11 @@ function generatePodfile() {
     ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
     ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
     ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
-    [
-      "ElizaosCapacitorMobileSignals",
-      "@elizaos/capacitor-mobile-signals",
-    ],
+    ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
     ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
-    [
-      "ElizaosCapacitorWebsiteblocker",
-      "@elizaos/capacitor-websiteblocker",
-    ],
+    ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
   ];
 
   const lines = [
@@ -1462,7 +1461,7 @@ function generatePodfile() {
     `  pod 'CapacitorCordova', :path => node_package_path('@capacitor/ios')`,
   ];
 
-  for (const [name, pkg] of IOS_OFFICIAL_COMPATIBLE_PODS) {
+  for (const [name, pkg] of IOS_OFFICIAL_PODS) {
     const p = resolvePackagePath(pkg, podfileDir);
     if (p) lines.push(`  pod '${name}', :path => node_package_path('${pkg}')`);
   }
