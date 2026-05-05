@@ -10,7 +10,7 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
-import { ModelType, type Plugin } from "@elizaos/core";
+import { ModelType, type IAgentRuntime, type Plugin } from "@elizaos/core";
 // Side-effect: register coding-agent HTTP routes with the runtime route registry.
 import "./register-routes.js";
 import { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
@@ -40,18 +40,39 @@ import {
   readCodexModelProviderPriority,
 } from "./services/codex-model-provider.js";
 
-const codexModelProviderEnabled = isCodexModelProviderEnabled();
+const codexModelProviderModels = {
+  [ModelType.TEXT_NANO]: codexCliTextModel,
+  [ModelType.TEXT_SMALL]: codexCliTextModel,
+  [ModelType.TEXT_MEDIUM]: codexCliTextModel,
+  [ModelType.TEXT_LARGE]: codexCliTextModel,
+  [ModelType.TEXT_MEGA]: codexCliTextModel,
+  [ModelType.IMAGE_DESCRIPTION]: codexCliImageDescriptionModel,
+  [ModelType.RESPONSE_HANDLER]: codexCliTextModel,
+  [ModelType.ACTION_PLANNER]: codexCliTextModel,
+  [ModelType.TEXT_COMPLETION]: codexCliTextModel,
+} satisfies Plugin["models"];
+
+function configureCodexModelProvider(runtime: IAgentRuntime): void {
+  if (!isCodexModelProviderEnabled(runtime)) {
+    delete taskAgentPlugin.priority;
+    delete taskAgentPlugin.models;
+    return;
+  }
+
+  taskAgentPlugin.priority = readCodexModelProviderPriority(runtime);
+  taskAgentPlugin.models = codexModelProviderModels;
+}
 
 export const taskAgentPlugin: Plugin = {
   name: "@elizaos/plugin-agent-orchestrator",
   description:
     "Orchestrate open-ended task agents (Claude Code, Codex, Gemini CLI, Aider, Pi, etc.) via PTY sessions, " +
     "manage workspaces, track current task status, and keep background work moving while the main agent stays in conversation",
-  ...(codexModelProviderEnabled
-    ? { priority: readCodexModelProviderPriority() }
-    : {}),
 
-  // NOTE: init() is NOT reliably called by ElizaOS for workspace plugins.
+  init(_config, runtime) {
+    configureCodexModelProvider(runtime);
+  },
+
   // SwarmCoordinator and auth callback wiring is done in PTYService.start()
   // which ElizaOS calls reliably via the services lifecycle.
 
@@ -85,22 +106,6 @@ export const taskAgentPlugin: Plugin = {
     activeWorkspaceContextProvider, // Live workspace/session state
     codingAgentExamplesProvider, // Structured action call examples
   ],
-
-  ...(codexModelProviderEnabled
-    ? {
-        models: {
-          [ModelType.TEXT_NANO]: codexCliTextModel,
-          [ModelType.TEXT_SMALL]: codexCliTextModel,
-          [ModelType.TEXT_MEDIUM]: codexCliTextModel,
-          [ModelType.TEXT_LARGE]: codexCliTextModel,
-          [ModelType.TEXT_MEGA]: codexCliTextModel,
-          [ModelType.IMAGE_DESCRIPTION]: codexCliImageDescriptionModel,
-          [ModelType.RESPONSE_HANDLER]: codexCliTextModel,
-          [ModelType.ACTION_PLANNER]: codexCliTextModel,
-          [ModelType.TEXT_COMPLETION]: codexCliTextModel,
-        },
-      }
-    : {}),
 };
 
 export const codingAgentPlugin = taskAgentPlugin;
