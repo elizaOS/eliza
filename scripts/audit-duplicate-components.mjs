@@ -31,12 +31,7 @@ const SOURCE_EXTENSIONS = new Set([
   ".cjs",
   ".cts",
 ]);
-const PROMPT_EXTENSIONS = new Set([
-  ...SOURCE_EXTENSIONS,
-  ".txt",
-  ".md",
-  ".mdx",
-]);
+const PROMPT_EXTENSIONS = new Set([...SOURCE_EXTENSIONS, ".txt"]);
 
 const SKIP_DIR_NAMES = new Set([
   ".cache",
@@ -142,10 +137,7 @@ const TRAJECTORY_WRAPPER_NAMES = new Set([
   "withProviderStep",
 ]);
 
-const RAW_GENERATION_CALLEE_NAMES = new Set([
-  "generateObject",
-  "generateText",
-]);
+const RAW_GENERATION_CALLEE_NAMES = new Set(["generateObject", "generateText"]);
 
 const FETCH_GENERATION_PATTERN =
   /(chat\/completions|\/responses|\/messages|generateContent|:generateContent|anthropic|openai|openrouter|ollama|groq|vertex|xai|completion|completions)/i;
@@ -390,13 +382,19 @@ function literalValue(expression, constants, options = {}) {
     return unwrapped.text;
   }
   if (ts.isIdentifier(unwrapped)) {
-    return constants.get(unwrapped.text) ?? (options.allowSymbolic ? unwrapped.text : null);
+    return (
+      constants.get(unwrapped.text) ??
+      (options.allowSymbolic ? unwrapped.text : null)
+    );
   }
   if (ts.isPropertyAccessExpression(unwrapped)) {
     const text = unwrapped.getText();
     return constants.get(text) ?? (options.allowSymbolic ? text : null);
   }
-  if (ts.isTemplateExpression(unwrapped) && unwrapped.templateSpans.length === 0) {
+  if (
+    ts.isTemplateExpression(unwrapped) &&
+    unwrapped.templateSpans.length === 0
+  ) {
     return unwrapped.head.text;
   }
   return null;
@@ -566,9 +564,7 @@ function getArrayPropertyContext(objectLiteral) {
       if (
         ts.isVariableDeclaration(arrayParent) &&
         arrayParent.type &&
-        /\b(Action|Provider|Evaluator)\s*\[\]/.test(
-          arrayParent.type.getText(),
-        )
+        /\b(Action|Provider|Evaluator)\s*\[\]/.test(arrayParent.type.getText())
       ) {
         const text = arrayParent.type.getText();
         if (/\bAction\s*\[\]/.test(text)) return "actions";
@@ -629,14 +625,18 @@ function hasActionParameters(objectLiteral) {
   if (!property || !ts.isPropertyAssignment(property)) return false;
   const initializer = unwrapExpression(property.initializer);
   if (initializer.kind === ts.SyntaxKind.UndefinedKeyword) return false;
-  if (ts.isArrayLiteralExpression(initializer)) return initializer.elements.length > 0;
+  if (ts.isArrayLiteralExpression(initializer))
+    return initializer.elements.length > 0;
   return true;
 }
 
 function staticStringText(node) {
   const values = [];
   function visit(child) {
-    if (ts.isStringLiteral(child) || ts.isNoSubstitutionTemplateLiteral(child)) {
+    if (
+      ts.isStringLiteral(child) ||
+      ts.isNoSubstitutionTemplateLiteral(child)
+    ) {
       values.push(child.text);
     }
     ts.forEachChild(child, visit);
@@ -681,7 +681,9 @@ function isInstructionOnlyProvider(provider, sourceFile) {
 }
 
 function isEmptyProvider(provider, sourceFile) {
-  const getSource = stripComments(getProviderGetSource(provider.node, sourceFile));
+  const getSource = stripComments(
+    getProviderGetSource(provider.node, sourceFile),
+  );
   if (!getSource) return false;
   const compact = getSource.replace(/\s+/g, " ");
   return (
@@ -709,6 +711,14 @@ function hasStaticModifier(node) {
     ts
       .getModifiers(node)
       ?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword),
+  );
+}
+
+function hasAbstractModifier(node) {
+  return Boolean(
+    ts
+      .getModifiers(node)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.AbstractKeyword),
   );
 }
 
@@ -846,7 +856,7 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
             node,
           );
         }
-      } else if (ts.isClassDeclaration(node)) {
+      } else if (ts.isClassDeclaration(node) && !hasAbstractModifier(node)) {
         for (const member of node.members) {
           if (
             ts.isPropertyDeclaration(member) &&
@@ -960,9 +970,7 @@ function addDuplicateIssues(issues, kind, records, valueField) {
     }));
     const first = group[0];
     const rule =
-      kind === "service"
-        ? "duplicate-service-type"
-        : DUPLICATE_RULES[kind];
+      kind === "service" ? "duplicate-service-type" : DUPLICATE_RULES[kind];
     issues.push(
       makeIssue({
         file: first.file,
@@ -1068,6 +1076,7 @@ function collectPromptIssues(repoRoot, promptFiles) {
     lines.forEach((lineText, index) => {
       const trimmed = lineText.trim();
       if (!trimmed) return;
+      if (trimmed.startsWith("//") || trimmed.startsWith("*")) return;
       if (NEGATED_STRUCTURED_PROMPT_PATTERN.test(trimmed)) return;
       if (NON_PROMPT_JSON_PATTERN.test(trimmed)) return;
 

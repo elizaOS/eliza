@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../src/accounts";
 import linePlugin, {
   buildLineDeepLink,
-  chatContextProvider,
   chunkLineText,
   extractCodeBlocks,
   extractLinks,
@@ -34,7 +33,6 @@ import linePlugin, {
   splitMessageForLine,
   stripMarkdown,
   truncateText,
-  userContextProvider,
 } from "../src/index";
 
 // ===========================================================================
@@ -52,9 +50,9 @@ describe("Plugin metadata", () => {
     expect(linePlugin.actions?.length).toBe(0);
   });
 
-  it("exports providers array", () => {
+  it("uses core platform context providers", () => {
     expect(Array.isArray(linePlugin.providers)).toBe(true);
-    expect(linePlugin.providers?.length).toBe(2);
+    expect(linePlugin.providers?.length).toBe(0);
   });
 
   it("exports services array", () => {
@@ -65,8 +63,6 @@ describe("Plugin metadata", () => {
     expect(sendMessage).toBeDefined();
     expect(sendFlexMessage).toBeDefined();
     expect(sendLocation).toBeDefined();
-    expect(chatContextProvider).toBeDefined();
-    expect(userContextProvider).toBeDefined();
     expect(LineService).toBeDefined();
   });
 });
@@ -552,24 +548,6 @@ describe("Action validation", () => {
     expect(sendLocation.description).toContain("LINE");
     expect(sendLocation.similes).toContain("LINE_LOCATION");
     expect(sendLocation.similes).toContain("LINE_MAP");
-  });
-});
-
-// ===========================================================================
-// Provider output
-// ===========================================================================
-
-describe("Provider output", () => {
-  it("userContextProvider has correct metadata", () => {
-    expect(userContextProvider.name).toBe("lineUserContext");
-    expect(userContextProvider.description).toContain("LINE user");
-    expect(typeof userContextProvider.get).toBe("function");
-  });
-
-  it("chatContextProvider has correct metadata", () => {
-    expect(chatContextProvider.name).toBe("lineChatContext");
-    expect(chatContextProvider.description).toContain("LINE chat");
-    expect(typeof chatContextProvider.get).toBe("function");
   });
 });
 

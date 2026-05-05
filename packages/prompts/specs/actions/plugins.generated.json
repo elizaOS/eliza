@@ -266,7 +266,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Chromium browser router: open/connect/navigate/click/type/read DOM/execute/wait/tabs; live state is provider-read-only.",
+      "descriptionCompressed": "Chromium browser control router: open/connect/navigate/click/type/read dom/clickables/execute/wait/tabs; provider passive state.",
       "similes": [
         "CONTROL_BROWSER",
         "WEB_BROWSER",
@@ -1678,7 +1678,7 @@
           "schema": {
             "type": "string"
           },
-          "descriptionCompressed": "Free-form user intent for inferring subaction when not explicitly set."
+          "descriptionCompressed": "Free-form user intent for inferring subaction."
         },
         {
           "name": "metric",
@@ -2071,7 +2071,7 @@
           }
         }
       ],
-      "descriptionCompressed": "manage LP positions with subaction chain dex pool position amount range token filters",
+      "descriptionCompressed": "Manage LP positions by subaction, chain, dex, pool, position, amount, range, token filters.",
       "similes": [
         "LP_MANAGEMENT",
         "LIQUIDITY_POOL_MANAGEMENT",
@@ -2844,7 +2844,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Suno music generation router; subaction generate, custom, or extend.",
+      "descriptionCompressed": "Suno music generation router subaction: generate, custom, extend.",
       "similes": [
         "GENERATE_MUSIC",
         "CREATE_MUSIC",
@@ -2891,7 +2891,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Music library router; subaction download into local library.",
+      "descriptionCompressed": "Library router subaction: download music into local library.",
       "similes": ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
       "exampleCalls": [
         {
@@ -2946,7 +2946,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Music metadata/search subactions: YouTube links, Wikipedia metadata, resolve and queue.",
+      "descriptionCompressed": "Music metadata/search subaction: YouTube links, Wikipedia metadata, resolve query and queue.",
       "similes": [
         "SEARCH_YOUTUBE",
         "FIND_YOUTUBE",
@@ -2993,7 +2993,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Playlist router; subaction save, load, list, delete, or add.",
+      "descriptionCompressed": "Playlist router subaction: save, load, list, delete, add.",
       "similes": [
         "SAVE_PLAYLIST",
         "LOAD_PLAYLIST",
@@ -3399,7 +3399,7 @@
       "name": "POLYMARKET_STATUS",
       "description": "Check Polymarket public-read and trading readiness for the local app.",
       "parameters": [],
-      "descriptionCompressed": "Check Polymarket public-read and trading readiness.",
+      "descriptionCompressed": "Read Polymarket public/trading readiness.",
       "similes": ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"]
     },
     {
@@ -4086,7 +4086,7 @@
       "name": "SEARCH_SKILLS",
       "description": "Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
       "parameters": [],
-      "descriptionCompressed": "Search skill registry by keyword or category; returns action chips.",
+      "descriptionCompressed": "Search skill registry by keyword/category; returns action chips.",
       "similes": ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"]
     },
     {
@@ -5313,7 +5313,7 @@
           "schema": {
             "type": "string"
           },
-          "descriptionCompressed": "Search text for finding the relevant thread."
+          "descriptionCompressed": "Search text for finding relevant thread."
         },
         {
           "name": "note",
@@ -5484,10 +5484,10 @@
           "schema": {
             "type": "string"
           },
-          "descriptionCompressed": "Search text for finding the task thread to share."
+          "descriptionCompressed": "Search text for finding task thread to share."
         }
       ],
-      "descriptionCompressed": "Find best task result share path: artifacts, live preview URLs, workspace paths.",
+      "descriptionCompressed": "Find best way to view/share live task result: artifacts, URLs, paths.",
       "similes": [
         "SHARE_TASK_RESULT",
         "SHOW_TASK_ARTIFACT",
@@ -5589,7 +5589,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Execute, read, type, clear, or close terminal sessions.",
+      "descriptionCompressed": "Execute/read terminal commands or manage sessions.",
       "similes": [
         "RUN_COMMAND",
         "EXECUTE_COMMAND",
@@ -6073,7 +6073,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Public X/Twitter post router; subaction post|reply, no DMs; use DM connector for direct messages.",
+      "descriptionCompressed": "public X/Twitter connector post router; subaction post|reply, no DMs",
       "similes": [
         "POST_TWEET",
         "SEND_X_POST",
