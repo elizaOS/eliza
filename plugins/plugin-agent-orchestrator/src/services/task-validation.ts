@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, parseKeyValueXml } from "@elizaos/core";
 import type {
   SwarmCoordinatorContext,
   TaskContext,
@@ -78,9 +78,8 @@ function extractJsonBlock(raw: string): string {
 
 function parseValidationResponse(raw: string): ValidationResponse | null {
   try {
-    const parsed = JSON.parse(
-      extractJsonBlock(raw),
-    ) as Partial<ValidationResponse>;
+    const parsed = (parseKeyValueXml<Record<string, unknown>>(raw) ??
+      JSON.parse(extractJsonBlock(raw))) as Partial<ValidationResponse>;
     const verdict = parsed.verdict;
     const summary = parsed.summary?.trim();
     if (
@@ -636,8 +635,11 @@ function buildValidationPrompt(
 
   return [
     "You are validating whether an orchestrated task is actually finished.",
-    "Return strict JSON only with this shape:",
-    '{"verdict":"pass|revise|escalate","summary":"short summary","followUpPrompt":"only if verdict=revise","checklist":["optional evidence notes"]}',
+    "Respond with TOON only:",
+    "verdict: pass|revise|escalate",
+    "summary: short summary",
+    "followUpPrompt: only if verdict=revise",
+    "checklist[0]: optional evidence note",
     "",
     `Task title: ${task.label}`,
     `Original request: ${task.originalTask}`,

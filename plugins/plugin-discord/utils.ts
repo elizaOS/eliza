@@ -3,6 +3,7 @@ import {
 	logger,
 	type Media,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type ReplyToMode,
 	trimTokens,
@@ -287,19 +288,16 @@ export async function generateSummary(
   ${text}
   """
 
-  Respond with a JSON object in the following format:
-  \`\`\`json
-  {
-    "title": "Generated Title",
-    "summary": "Generated summary and/or description of the text"
-  }
-  \`\`\``;
+  Respond with TOON only:
+  title: Generated Title
+  summary: Generated summary and/or description of the text`;
 
 	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 	});
 
-	const parsedResponse = parseJSONObjectFromText(response) as {
+	const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ??
+		parseJSONObjectFromText(response)) as {
 		title?: string;
 		summary?: string;
 	} | null;

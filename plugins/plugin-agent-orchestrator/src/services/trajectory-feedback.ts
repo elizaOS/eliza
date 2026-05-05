@@ -155,6 +155,10 @@ function extractInsights(response: string, purpose: string): string[] {
   while ((match = keyDecisionPattern.exec(response)) !== null) {
     insights.push(match[1].trim());
   }
+  const toonKeyDecisionPattern = /^keyDecision:\s*(.+)$/gim;
+  while ((match = toonKeyDecisionPattern.exec(response)) !== null) {
+    insights.push(match[1].trim());
+  }
 
   // For turn-complete and coordination decisions, extract the reasoning
   if (
@@ -162,7 +166,8 @@ function extractInsights(response: string, purpose: string): string[] {
     insights.length === 0
   ) {
     const reasoningPattern = /"reasoning"\s*:\s*"([^"]{20,200})"/;
-    const reasoningMatch = response.match(reasoningPattern);
+    const reasoningMatch =
+      response.match(reasoningPattern) ?? response.match(/^reasoning:\s*(.{20,200})$/im);
     if (reasoningMatch) {
       insights.push(reasoningMatch[1].trim());
     }

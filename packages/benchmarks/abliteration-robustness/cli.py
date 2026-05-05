@@ -90,7 +90,7 @@ def _load_prompts_from_hf(dataset: str, limit: int) -> list[str]:
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="abliteration-robustness")
-    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "anthropic"))
+    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "groq", "openrouter"))
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
@@ -111,9 +111,19 @@ def _make_client(args: argparse.Namespace):
     base_url = args.base_url
     if not base_url and args.provider == "openai":
         base_url = "https://api.openai.com/v1"
+    if not base_url and args.provider == "groq":
+        base_url = "https://api.groq.com/openai/v1"
+    if not base_url and args.provider == "openrouter":
+        base_url = "https://openrouter.ai/api/v1"
     if not base_url:
         raise SystemExit("--base-url required for vllm provider")
-    api_key = os.environ.get(args.api_key_env, "EMPTY")
+    api_key_env = args.api_key_env
+    if api_key_env == "OPENAI_API_KEY" and args.provider in {"groq", "openrouter"}:
+        api_key_env = {
+            "groq": "GROQ_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+        }[args.provider]
+    api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
     return OpenAI(base_url=base_url, api_key=api_key)
 
 

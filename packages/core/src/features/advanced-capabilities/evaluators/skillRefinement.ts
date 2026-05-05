@@ -28,6 +28,7 @@ import type {
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
+import { tryParseToonValue } from "../../../utils/toon";
 
 interface TrajectoryStep {
 	timestamp: number;
@@ -75,19 +76,16 @@ const MAX_AUTO_REFINEMENTS = 3;
 const REFINEMENT_PROMPT = `You are improving a SKILL.md file because the agent recently failed or
 retried while using it.
 
-Output a single fenced JSON block:
-\`\`\`json
-{
-  "refine": true,
-  "newBody": "<full replacement markdown body, no frontmatter>",
-  "reason": "<short reason>"
-}
-\`\`\`
+Output TOON only. Return exactly one TOON document, no prose or fences.
+
+If refinement is warranted:
+refine: true
+newBody: "full replacement markdown body with \\n escapes for line breaks, no frontmatter"
+reason: short reason
 
 If no refinement is warranted, return:
-\`\`\`json
-{ "refine": false, "reason": "<short reason>" }
-\`\`\`
+refine: false
+reason: short reason
 
 Rules:
 - newBody MUST be the complete replacement markdown body (the frontmatter is
@@ -111,6 +109,15 @@ function getProposedSkillsDir(): string {
 }
 
 function parseRefinementResponse(raw: string): RefinementDraft | null {
+	const toon = tryParseToonValue(raw);
+	if (toon && typeof toon === "object" && !Array.isArray(toon)) {
+		const obj = toon as Record<string, unknown>;
+		const draft: RefinementDraft = { refine: obj.refine === true };
+		if (typeof obj.reason === "string") draft.reason = obj.reason;
+		if (typeof obj.newBody === "string") draft.newBody = obj.newBody;
+		return draft;
+	}
+
 	const fenceMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
 	const jsonText = fenceMatch ? fenceMatch[1] : raw.trim();
 	if (!jsonText) return null;

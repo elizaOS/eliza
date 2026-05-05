@@ -17,14 +17,9 @@ import json
 import time
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Any, Literal
 
 from elizaos_tau_bench.types import TauBenchResult, TauBenchTask
-
-if TYPE_CHECKING:
-    from elizaos.runtime import AgentRuntime
-    from elizaos.types.model import ModelType
-
 
 # Optional dependency: trajectory logger plugin (Python)
 try:
@@ -69,7 +64,7 @@ class TauBenchTrajectoryIntegration:
         self._logger: TrajectoryLoggerService | None = None
         self._trajectories: list[Trajectory] = []
         self._current_trajectory_id: str | None = None
-        self._wrapped_runtime: AgentRuntime | None = None
+        self._wrapped_runtime: object | None = None
         self._original_use_model: object | None = None
         self._llm_call_buffer: list[dict[str, object]] = []
 
@@ -260,7 +255,7 @@ class TauBenchTrajectoryIntegration:
     # Runtime wrapping (LLM calls)
     # ----------------------------
 
-    def wrap_runtime(self, runtime: "AgentRuntime") -> None:
+    def wrap_runtime(self, runtime: object) -> None:
         """
         Wrap `runtime.use_model` to buffer model calls made by `handle_message()`.
 
@@ -273,12 +268,11 @@ class TauBenchTrajectoryIntegration:
             return
 
         self._wrapped_runtime = runtime
-        self._original_use_model = runtime.use_model  # type: ignore[assignment]
-
-        original_use_model = runtime.use_model
+        original_use_model = getattr(runtime, "use_model")
+        self._original_use_model = original_use_model
 
         async def wrapped_use_model(
-            model_type: str | "ModelType",
+            model_type: str | Any,
             params: dict[str, object] | None = None,
             provider: str | None = None,
             **kwargs: object,
@@ -304,7 +298,7 @@ class TauBenchTrajectoryIntegration:
             )
             return result
 
-        runtime.use_model = wrapped_use_model  # type: ignore[assignment]
+        setattr(runtime, "use_model", wrapped_use_model)
 
     def flush_llm_calls_to_step(
         self,
@@ -354,7 +348,7 @@ class TauBenchTrajectoryIntegration:
             return
         if self._original_use_model is not None:
             # Best-effort restore
-            self._wrapped_runtime.use_model = self._original_use_model  # type: ignore[assignment]
+            setattr(self._wrapped_runtime, "use_model", self._original_use_model)
         self._wrapped_runtime = None
         self._original_use_model = None
         self._llm_call_buffer.clear()
@@ -375,4 +369,3 @@ def _maybe_number(container: object, key: str, default: float) -> float:
     if isinstance(val, (int, float)):
         return float(val)
     return default
-

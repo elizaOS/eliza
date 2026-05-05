@@ -9,7 +9,10 @@ from datetime import datetime
 from typing import List
 
 from langchain_openai import ChatOpenAI
-from langchain.schema import SystemMessage, HumanMessage, AIMessage
+try:
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+except ImportError:  # pragma: no cover - compatibility with older LangChain
+    from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from solders.transaction import Transaction
 from dotenv import load_dotenv
 

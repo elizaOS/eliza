@@ -30,6 +30,9 @@ export const hasAdminAccess = async () => false;
 export const hasOwnerAccess = async () => false;
 export const hasPrivateAccess = async () => false;
 export const extractActionParamsViaLlm = async () => ({});
+export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
+export const readRequestBody = async () => null;
+export const readRequestBodyBuffer = async () => null;
 export const loadElizaConfig = () => ({
   agents: {},
   meta: {},

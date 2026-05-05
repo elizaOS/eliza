@@ -9,6 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -274,7 +275,9 @@ export const reactToMessage: Action = {
 					prompt,
 				});
 
-				const parsedResponse = parseJSONObjectFromText(response);
+				const parsedResponse =
+			parseKeyValueXml<Record<string, unknown>>(response) ??
+			parseJSONObjectFromText(response);
 				if (parsedResponse?.emoji) {
 					reactionInfo = {
 						messageRef: String(parsedResponse.messageRef || "last"),

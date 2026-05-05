@@ -27,12 +27,13 @@ User message: {{text}}
 Available clipboard entries:
 {{entries}}
 
-Respond with XML containing:
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+
+Fields:
 - id: The ID of the clipboard entry to delete (required)
 
-<response>
-<id>entry-id</id>
-</response>`;
+Example:
+id: entry-id`;
 
 async function extractDeleteInfo(
 	runtime: IAgentRuntime,

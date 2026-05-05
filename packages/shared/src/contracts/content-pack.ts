@@ -6,7 +6,7 @@
  * Packs are loaded from the splash page before onboarding begins.
  */
 
-import type { ThemeDefinition } from "./theme";
+import type { ThemeDefinition } from "./theme.js";
 
 // ── Manifest ────────────────────────────────────────────────────────
 

@@ -6,9 +6,9 @@
  */
 
 // Leaf modules (no internal collisions)
-export * from "./app-hero-art";
+export * from "./app-hero-art.js";
 // Awareness + themes barrels
-export * from "./awareness";
+export * from "./awareness/index.js";
 // Config barrel — collides with `contracts/inbox` on `InboxAutoReplyConfig`
 // and `InboxTriageRules`. Surface those config-level shapes under aliased
 // names; the canonical shapes remain in `./contracts`.
@@ -159,37 +159,37 @@ export type {
   WebConfig,
   WebReconnectConfig,
   X402Config,
-} from "./config/types";
-export * from "./connector-cred-types";
-export * from "./connectors";
+} from "./config/types.js";
+export * from "./connector-cred-types.js";
+export * from "./connectors.js";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
 // drop/inbox/onboarding/permissions/service-routing/verification/wallet.
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
-export * from "./contracts";
-export * from "./dev-settings-banner-style";
-export * from "./dev-settings-table";
+export * from "./contracts/index.js";
+export * from "./dev-settings-banner-style.js";
+export * from "./dev-settings-table.js";
 // `eliza-core-roles` is intentionally NOT re-exported from this barrel.
 // It pulls runtime imports (`logger`, `createUniqueUuid`) from `@elizaos/core`,
 // which would drag the entire `@elizaos/core` source graph (plugin-sql,
 // transformers, onnxruntime) into every consumer of `@elizaos/shared`.
 // Callers that need the vendored role helpers must import them through the
 // dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
-export * from "./env-utils";
-export * from "./format-error";
-export * from "./onboarding-presets";
-export * from "./onboarding-presets.characters";
-export * from "./recent-messages-state";
-export * from "./restart";
-export * from "./runtime-env";
-export * from "./self-edit";
+export * from "./env-utils.js";
+export * from "./format-error.js";
+export * from "./onboarding-presets.js";
+export * from "./onboarding-presets.characters.js";
+export * from "./recent-messages-state.js";
+export * from "./restart.js";
+export * from "./runtime-env.js";
+export * from "./self-edit.js";
 // Settings debug helpers
 export {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "./settings-debug";
-export * from "./spoken-text";
-export * from "./themes";
-export * from "./type-guards";
-export * from "./validation-keywords";
+} from "./settings-debug.js";
+export * from "./spoken-text.js";
+export * from "./themes/index.js";
+export * from "./type-guards.js";
+export * from "./validation-keywords.js";

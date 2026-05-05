@@ -9,6 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -42,7 +43,9 @@ const getPollInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response);
+		const parsedResponse =
+			parseKeyValueXml<Record<string, unknown>>(response) ??
+			parseJSONObjectFromText(response);
 		if (
 			parsedResponse?.question &&
 			Array.isArray(parsedResponse.options) &&
@@ -51,7 +54,9 @@ const getPollInfo = async (
 			return {
 				question: String(parsedResponse.question),
 				options: parsedResponse.options.slice(0, 10).map(String), // Max 10 options
-				useEmojis: parsedResponse.useEmojis !== false, // Default to true
+				useEmojis:
+					parsedResponse.useEmojis !== false &&
+					String(parsedResponse.useEmojis).toLowerCase() !== "false",
 			};
 		}
 	}

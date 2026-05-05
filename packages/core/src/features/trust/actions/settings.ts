@@ -20,6 +20,7 @@ import {
 	composePrompt,
 	composePromptFromState,
 	parseJSONObjectFromText,
+	parseKeyValueXml,
 } from "../../../utils.ts";
 
 interface SettingUpdate {
@@ -28,12 +29,16 @@ interface SettingUpdate {
 }
 
 const messageCompletionFooter = `\n# Instructions: Write the next message for {{agentName}}. Include the appropriate action from the list: {{actionNames}}
-Response format should be formatted in a valid JSON block like this:
-\`\`\`json
-{ "name": "{{agentName}}", "text": "<string>", "thought": "<string>", "actions": ["<string>", "<string>", "<string>"] }
-\`\`\`
-Do not including any thinking or internal reflection in the "text" field.
-"thought" should be a short description of what the agent is thinking about before responding, including a brief justification for the response.`;
+Respond with TOON only. Return exactly one TOON document, no prose or fences.
+
+Example:
+name: {{agentName}}
+text: Message to send
+thought: Short justification for the response
+actions: SETTING_UPDATED
+
+Do not include thinking or internal reflection in the text field.
+thought should be a short description of what the agent is thinking before responding, including a brief justification for the response.`;
 
 const successTemplate = `# Task: Generate a response for successful setting updates
 {{providers}}
@@ -133,17 +138,21 @@ Available Settings:
 User message: {{content}}
 
 For each setting mentioned in the user's input, extract the key and its new value.
-Format your response as a JSON array of objects, each with 'key' and 'value' properties.
+Return only the extracted settings as structured fields with key and value.
 
 Example response:
-\`\`\`json
-[
-  { "key": "SETTING_NAME", "value": "extracted value" },
-  { "key": "ANOTHER_SETTING", "value": "another value" }
-]
-\`\`\`
+updates[2]{key,value}:
+  SETTING_NAME,extracted value
+  ANOTHER_SETTING,another value
 
 IMPORTANT: Only include settings from the Available Settings list above. Ignore any other potential settings.`;
+
+function parseGeneratedContent(response: string): Content {
+	return (
+		(parseKeyValueXml<Content>(response) as Content | null) ??
+		(parseJSONObjectFromText(response) as Content)
+	);
+}
 
 export async function getWorldSettings(
 	runtime: IAgentRuntime,
@@ -407,7 +416,7 @@ async function handleOnboardingComplete(
 			prompt,
 		});
 
-		const responseContent = parseJSONObjectFromText(response) as Content;
+		const responseContent = parseGeneratedContent(response);
 
 		await callback({
 			text: responseContent.text,
@@ -456,7 +465,7 @@ async function generateSuccessResponse(
 			prompt,
 		});
 
-		const responseContent = parseJSONObjectFromText(response) as Content;
+		const responseContent = parseGeneratedContent(response);
 
 		await callback({
 			text: responseContent.text,
@@ -503,7 +512,7 @@ async function generateFailureResponse(
 			prompt,
 		});
 
-		const responseContent = parseJSONObjectFromText(response) as Content;
+		const responseContent = parseGeneratedContent(response);
 
 		await callback({
 			text: responseContent.text,
@@ -535,7 +544,7 @@ async function generateErrorResponse(
 			prompt,
 		});
 
-		const responseContent = parseJSONObjectFromText(response) as Content;
+		const responseContent = parseGeneratedContent(response);
 
 		await callback({
 			text: responseContent.text,

@@ -12,6 +12,7 @@ import type {
 import {
   composePromptFromState,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
 } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
@@ -28,12 +29,8 @@ Currently joined channels: {{joinedChannels}}
 
 Extract the channel name to leave (without the # prefix).
 
-Respond with a JSON object like:
-{
-  "channel": "channelname"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+channel: channelname`;
 
 export const leaveChannel: Action = {
   name: "TWITCH_LEAVE_CHANNEL",
@@ -140,7 +137,9 @@ export const leaveChannel: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(String(response));
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
+        parseJSONObjectFromText(String(response));
       if (parsed?.channel) {
         channelName = normalizeChannel(String(parsed.channel));
         break;

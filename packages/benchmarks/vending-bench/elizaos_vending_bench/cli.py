@@ -37,6 +37,17 @@ except ImportError:
     pass
 
 
+def _ensure_eliza_adapter_importable() -> None:
+    """Make the sibling eliza-adapter package importable for --provider eliza."""
+    benchmarks_root = Path(__file__).resolve().parents[2]
+    adapter_root = benchmarks_root / "eliza-adapter"
+    if not adapter_root.exists():
+        return
+    adapter_path = str(adapter_root)
+    if adapter_path not in sys.path:
+        sys.path.insert(0, adapter_path)
+
+
 def setup_logging(verbose: bool = False) -> None:
     """Configure logging."""
     level = logging.DEBUG if verbose else logging.INFO
@@ -180,6 +191,8 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     # When --provider eliza is used, spin up the elizaOS TS benchmark
     # bridge server (or honor an existing ELIZA_BENCH_URL).
     server_mgr = None
+    if args.provider == "eliza":
+        _ensure_eliza_adapter_importable()
     if args.provider == "eliza" and not __import__("os").environ.get("ELIZA_BENCH_URL"):
         from eliza_adapter.server_manager import ElizaServerManager
         import os as _os

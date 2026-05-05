@@ -95,7 +95,7 @@ export function preOpenWindow(): Window | null {
   // gesture-context dependency). Avoid window.open here because WKWebView's
   // delegate would route "about:blank" to UIApplication.shared.open and
   // briefly flash Safari before the real URL ever resolves.
-  if (getCapacitorBrowser()) return null;
+  if (Capacitor.isNativePlatform()) return null;
   if (typeof window === "undefined" || typeof window.open !== "function")
     return null;
   // Open a blank window synchronously (preserves user-gesture context).

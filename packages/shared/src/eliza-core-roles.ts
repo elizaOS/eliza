@@ -7,8 +7,8 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { formatError } from "./format-error";
-import { asRecordOrUndefined } from "./type-guards";
+import { formatError } from "./format-error.js";
+import { asRecordOrUndefined } from "./type-guards.js";
 
 // Vendored elizaOS roles helpers for published core builds that do not expose
 // the @elizaos/shared/eliza-core-roles subpath yet.

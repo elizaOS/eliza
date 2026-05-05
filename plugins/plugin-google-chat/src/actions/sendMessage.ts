@@ -11,6 +11,7 @@ import {
   logger,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
@@ -38,14 +39,10 @@ Extract the following:
 - space: The target space ID (or "current" for the current space)
 - thread: Optional thread name to reply in
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "text": "message content here",
-  "space": "spaces/xxx or current",
-  "thread": "optional thread name"
-}
-\`\`\``;
+Respond with TOON only:
+text: message content here
+space: spaces/xxx or current
+thread: optional thread name`;
 
 export const sendMessage: Action = {
   name: "GOOGLE_CHAT_SEND_MESSAGE",
@@ -100,7 +97,9 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response);
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response);
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

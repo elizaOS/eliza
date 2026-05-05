@@ -122,7 +122,8 @@ export {
 } from "../plugin-manager/index.ts";
 
 // ============================================================================
-// XML Response Interfaces
+// Structured response interfaces. parseKeyValueXml remains the TOON-first
+// compatibility parser despite the legacy name.
 // ============================================================================
 
 interface ImageDescriptionXml {
@@ -297,7 +298,6 @@ export async function processAttachments(
 			}
 
 			if (typeof response === "string") {
-				// Parse XML response
 				const parsedXml = parseKeyValueXml<ImageDescriptionXml>(response);
 
 				if (parsedXml && (parsedXml.description || parsedXml.text)) {
@@ -316,7 +316,7 @@ export async function processAttachments(
 						"Generated description",
 					);
 				} else {
-					// Fallback: Try simple regex parsing if parseKeyValueXml fails
+					// Legacy XML fallback for older image-description prompts.
 					const responseStr = response as string;
 					const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
 					const descMatch = responseStr.match(
@@ -337,12 +337,12 @@ export async function processAttachments(
 									processedAttachment.description?.substring(0, 100) ||
 									undefined,
 							},
-							"Used fallback XML parsing",
+							"Used legacy XML fallback parsing",
 						);
 					} else {
 						runtime.logger.warn(
 							{ src: "basic-capabilities", agentId: runtime.agentId },
-							"Failed to parse XML response for image description",
+							"Failed to parse structured response for image description",
 						);
 					}
 				}
@@ -738,18 +738,24 @@ const postGeneratedHandler = async ({
 			runtime.character.templates?.postCreationTemplate || postCreationTemplate,
 	});
 
-	const xmlResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
+	const structuredResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
 		prompt: postPrompt,
 	});
 
-	const parsedXmlResponse = parseKeyValueXml<PostCreationXml>(xmlResponseText);
+	const parsedXmlResponse = parseKeyValueXml<PostCreationXml>(
+		structuredResponseText,
+	);
 
 	if (!parsedXmlResponse) {
 		runtime.logger.error(
-			{ src: "basic-capabilities", agentId: runtime.agentId, xmlResponseText },
-			"Failed to parse XML response for post creation",
+			{
+				src: "basic-capabilities",
+				agentId: runtime.agentId,
+				structuredResponseText,
+			},
+			"Failed to parse structured response for post creation",
 		);
-		throw new Error("Failed to parse XML response for post creation");
+		throw new Error("Failed to parse structured response for post creation");
 	}
 
 	function cleanupPostText(text: string): string {

@@ -10,7 +10,7 @@ import tracemalloc
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from elizaos_tau_bench.types import (
     TauBenchConfig,
@@ -23,10 +23,7 @@ from elizaos_tau_bench.types import (
 from elizaos_tau_bench.dataset import TauBenchDataset
 from elizaos_tau_bench.evaluator import TauBenchEvaluator
 from elizaos_tau_bench.eliza_agent import (
-    ElizaOSTauAgent,
     MockTauAgent,
-    create_tau_agent,
-    ELIZAOS_AVAILABLE,
 )
 from elizaos_tau_bench.trajectory_integration import (
     TauBenchTrajectoryConfig,
@@ -40,8 +37,7 @@ from elizaos_tau_bench.constants import LEADERBOARD_SCORES
 
 logger = logging.getLogger(__name__)
 
-# Type alias for agent
-TauAgentType = Union[ElizaOSTauAgent, MockTauAgent]
+TauAgentType = Any
 
 
 class MemoryTracker:
@@ -98,10 +94,18 @@ class TauBenchRunner:
         self.evaluator = TauBenchEvaluator(use_llm_judge=config.use_llm_judge)
         self.memory_tracker = MemoryTracker(config.enable_memory_tracking)
         self._start_time = 0.0
-        self._elizaos_mode = not config.use_mock and ELIZAOS_AVAILABLE
+        self._bridge_mode = not config.use_mock
+        self._bridge_manager: Any | None = None
         self._trajectory: TauBenchTrajectoryIntegration | None = None
 
-        if self._elizaos_mode and config.enable_trajectory_logging:
+        if self._bridge_mode:
+            logger.info("[TauBenchRunner] Running with Eliza TypeScript bridge")
+            if config.enable_trajectory_logging:
+                logger.warning(
+                    "[TauBenchRunner] Local Python trajectory logging is not available in bridge mode; "
+                    "continuing without trajectory export"
+                )
+        elif config.enable_trajectory_logging:
             self._trajectory = TauBenchTrajectoryIntegration(
                 TauBenchTrajectoryConfig(
                     enabled=True,
@@ -112,10 +116,16 @@ class TauBenchRunner:
                 )
             )
 
-        if self._elizaos_mode:
-            logger.info("[TauBenchRunner] Running with ElizaOS integration (real LLM)")
-        else:
+        if not self._bridge_mode:
             logger.info("[TauBenchRunner] Running in mock mode (no LLM calls)")
+
+    def _ensure_bridge_manager(self) -> Any:
+        if self._bridge_manager is None:
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            self._bridge_manager = ElizaServerManager()
+            self._bridge_manager.start()
+        return self._bridge_manager
 
     async def run_benchmark(self) -> TauBenchReport:
         """Run the complete Tau-bench evaluation."""
@@ -187,6 +197,8 @@ class TauBenchRunner:
             raise
         finally:
             await self.memory_tracker.stop()
+            if self._bridge_manager is not None:
+                self._bridge_manager.stop()
 
     async def _run_task(self, task: TauBenchTask, trial_number: int = 1) -> TauBenchResult:
         """Run a single task."""
@@ -212,24 +224,22 @@ class TauBenchRunner:
             if not task.policy_constraints:
                 task.policy_constraints = environment.get_policy_constraints()
 
-            # Create agent (mock, real ElizaOS, or eliza TS agent)
-            if self.config.model_provider == "eliza":
-                from eliza_adapter.tau_bench import ElizaTauAgent
-
-                agent = ElizaTauAgent(
+            # Create agent: mock locally, or route through the eliza TS bridge.
+            if self.config.use_mock:
+                agent = MockTauAgent(
                     executor=executor,
                     max_turns=self.config.max_turns_per_task,
                 )
             else:
-                agent = create_tau_agent(
+                from eliza_adapter.tau_bench import ElizaTauAgent
+
+                bridge_manager = self._ensure_bridge_manager()
+                agent = ElizaTauAgent(
                     executor=executor,
                     max_turns=self.config.max_turns_per_task,
-                    use_mock=self.config.use_mock,
-                    model_provider=self.config.model_provider,
-                    temperature=self.config.temperature,
-                    trajectory=self._trajectory,
+                    client=bridge_manager.client,
                 )
-            
+
             # Initialize agent (connects to LLM if not mock)
             await agent.initialize()
 

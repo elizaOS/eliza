@@ -1,4 +1,10 @@
-import { type IAgentRuntime, logger, ModelType, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  parseKeyValueXml,
+  Service,
+} from "@elizaos/core";
 
 const MUSIC_ENTITY_DETECTION_SERVICE_NAME = "musicEntityDetection";
 
@@ -68,7 +74,7 @@ export class MusicEntityDetectionService extends Service {
 
 Text: "${text}"
 
-Return a JSON array of detected entities. Each entity should have:
+Return detected entities as TOON. Each entity should have:
 - type: "artist", "album", or "song"
 - name: the entity name (exact as mentioned)
 - confidence: a number between 0 and 1 indicating confidence
@@ -80,14 +86,13 @@ IMPORTANT RULES:
 - URLs should be completely ignored
 
 Example format:
-[
-  {"type": "artist", "name": "The Beatles", "confidence": 0.9, "context": "mentioned in conversation"},
-  {"type": "song", "name": "Bohemian Rhapsody", "confidence": 0.8}
-]
+entities[0]{type,name,confidence,context}: artist,The Beatles,0.9,mentioned in conversation
+entities[1]{type,name,confidence}: song,Bohemian Rhapsody,0.8
 
-If no music entities are found, return an empty array: [].
+If no music entities are found, return:
+entities:
 
-IMPORTANT: Only return valid JSON. Do not include any explanation or text outside the JSON array.`;
+IMPORTANT: Only return TOON. Do not include explanation or extra text.`;
 
       const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
@@ -99,13 +104,18 @@ IMPORTANT: Only return valid JSON. Do not include any explanation or text outsid
       try {
         const cleaned = String(response).trim();
         let parsedEntities: RawDetectedMusicEntity[] = [];
-        // Try to extract JSON array from response
-        const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          parsedEntities = JSON.parse(jsonMatch[0]) as RawDetectedMusicEntity[];
+        const parsedToon = parseKeyValueXml<{ entities?: RawDetectedMusicEntity[] }>(cleaned);
+        if (Array.isArray(parsedToon?.entities)) {
+          parsedEntities = parsedToon.entities;
         } else {
-          // Try parsing the whole response
-          parsedEntities = JSON.parse(cleaned) as RawDetectedMusicEntity[];
+          // Legacy fallback: try to extract JSON array from response
+          const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+          parsedEntities = JSON.parse(jsonMatch[0]) as RawDetectedMusicEntity[];
+          } else {
+            // Try parsing the whole response
+            parsedEntities = JSON.parse(cleaned) as RawDetectedMusicEntity[];
+          }
         }
 
         // Validate and filter entities

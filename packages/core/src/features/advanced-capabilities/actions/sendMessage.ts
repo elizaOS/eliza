@@ -21,7 +21,7 @@ import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
 // Get text content from centralized specs
 const spec = requireActionSpec("SEND_MESSAGE");
 
-/** Shape of the target extraction XML response */
+/** Shape of the target extraction structured response. */
 interface TargetExtractionResult {
 	targetType?: string;
 	source?: string;

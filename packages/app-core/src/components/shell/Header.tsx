@@ -187,20 +187,24 @@ export function Header({
       return;
     }
 
+    const rootClassList = document.documentElement.classList;
     if (showMacDesktopTitleBar) {
-      document.documentElement.classList.add(
+      rootClassList.add(
         "eliza-electrobun-custom-titlebar",
+        "eliza-electrobun-macos-titlebar",
       );
     } else {
-      document.documentElement.classList.remove(
+      rootClassList.remove(
         "eliza-electrobun-custom-titlebar",
+        "eliza-electrobun-macos-titlebar",
       );
     }
 
     return () => {
-      document.documentElement.classList.remove(
-        "eliza-electrobun-custom-titlebar",
-      );
+      rootClassList.remove("eliza-electrobun-custom-titlebar");
+      if (!rootClassList.contains("eliza-electrobun-frameless")) {
+        rootClassList.remove("eliza-electrobun-macos-titlebar");
+      }
     };
   }, [showMacDesktopTitleBar]);
 

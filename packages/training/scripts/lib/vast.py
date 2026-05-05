@@ -403,7 +403,7 @@ def main(argv: list[str] | None = None) -> int:
     p_alive = sub.add_parser("alive", help="exit 0 if instance is alive, 1 otherwise")
     p_alive.add_argument("instance_id", type=int)
 
-    p_targets = sub.add_parser("targets", help="list known GPU targets")
+    sub.add_parser("targets", help="list known GPU targets")
 
     args = parser.parse_args(argv)
 

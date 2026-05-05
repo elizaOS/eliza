@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../../types/index.ts";
+import { encodeToonValue } from "../../../../utils/toon";
 import { skillExtractionEvaluator } from "../skillExtraction.ts";
 
 interface StubTrajectoryServiceOptions {
@@ -19,6 +20,10 @@ interface StubTrajectoryServiceOptions {
 	stepCount?: number;
 	usedSkills?: string[];
 	status?: string;
+}
+
+function toon(value: unknown): string {
+	return encodeToonValue(value);
 }
 
 function makeStubRuntime(opts: {
@@ -76,7 +81,10 @@ function makeStubRuntime(opts: {
 		}) as any,
 		useModel: (async () =>
 			opts.llmResponse ??
-			'```json\n{ "extract": false, "reason": "no signal" }\n```') as IAgentRuntime["useModel"],
+			toon({
+				extract: false,
+				reason: "no signal",
+			})) as IAgentRuntime["useModel"],
 		createMemory: (async (memory: Memory) => {
 			memories.push(memory);
 			return "mem-001" as UUID;
@@ -148,8 +156,12 @@ describe("skillExtractionEvaluator", () => {
 	});
 
 	it("handler() stages a SKILL.md when the LLM extracts a skill", async () => {
-		const llmResponse =
-			'```json\n{ "extract": true, "name": "demo-skill", "description": "demo", "body": "## body\\n\\n1. step" }\n```';
+		const llmResponse = toon({
+			extract: true,
+			name: "demo-skill",
+			description: "demo",
+			body: "## body\n\n1. step",
+		});
 		const { runtime, memories } = makeStubRuntime({
 			stateDir,
 			llmResponse,
@@ -181,8 +193,12 @@ describe("skillExtractionEvaluator", () => {
 	});
 
 	it("handler() refuses to clobber an existing proposed skill", async () => {
-		const llmResponse =
-			'```json\n{ "extract": true, "name": "demo-skill", "description": "demo", "body": "## body" }\n```';
+		const llmResponse = toon({
+			extract: true,
+			name: "demo-skill",
+			description: "demo",
+			body: "## body",
+		});
 		const { runtime } = makeStubRuntime({ stateDir, llmResponse });
 
 		const first = await skillExtractionEvaluator.handler(
@@ -199,8 +215,12 @@ describe("skillExtractionEvaluator", () => {
 	});
 
 	it("handler() rejects invalid skill names", async () => {
-		const llmResponse =
-			'```json\n{ "extract": true, "name": "Bad Name!", "description": "demo", "body": "## body" }\n```';
+		const llmResponse = toon({
+			extract: true,
+			name: "Bad Name!",
+			description: "demo",
+			body: "## body",
+		});
 		const { runtime } = makeStubRuntime({ stateDir, llmResponse });
 
 		const result = await skillExtractionEvaluator.handler(

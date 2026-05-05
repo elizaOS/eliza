@@ -12,6 +12,7 @@ import {
 	truncateMiddle,
 } from "../../../utils/action-results.js";
 import { sliceToFitBudget } from "../../../utils/slice-to-fit-budget.js";
+import { encodeToonValue } from "../../../utils/toon";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -25,6 +26,14 @@ type WorkingMemoryEntry = {
 	result: ActionResult;
 	timestamp: number;
 };
+
+function formatDataForPrompt(data: unknown): string {
+	try {
+		return encodeToonValue(data);
+	} catch {
+		return String(data);
+	}
+}
 
 /**
  * Provider for sharing action execution state and plan between actions
@@ -126,7 +135,7 @@ export const actionStateProvider: Provider = {
 						typeof result.text === "string" && result.text.trim().length > 0
 							? truncateMiddle(result.text, MAX_ACTION_RESULT_TEXT_CHARS)
 							: result.data
-								? JSON.stringify(result.data)
+								? formatDataForPrompt(result.data)
 								: "(no output)";
 					return `**${entry.actionName || key}**: ${resultText}`;
 				})

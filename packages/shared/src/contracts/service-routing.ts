@@ -1,4 +1,4 @@
-import { asRecord } from "../type-guards";
+import { asRecord } from "../type-guards.js";
 
 export type LinkedAccountStatus = "linked" | "unlinked";
 

@@ -1,4 +1,7 @@
-import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import {
+	getProviderSpec,
+	requireProviderSpec,
+} from "../../../generated/spec-helpers.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -10,6 +13,7 @@ import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "../../../utils/context-routing.ts";
+import { compressPromptDescription } from "../../../utils/prompt-compression.ts";
 import { looksLikeNonActionableChatter } from "./non-actionable-chatter.ts";
 
 // Get text content from centralized specs
@@ -60,10 +64,18 @@ export const providersProvider: Provider = {
 			(provider) => provider.dynamic === true,
 		);
 
-		const renderDescription = (provider: Provider): string =>
-			provider.descriptionCompressed ||
-			provider.description ||
-			"No description available";
+		const renderDescription = (provider: Provider): string => {
+			const providerSpec = getProviderSpec(provider.name);
+			return (
+				provider.descriptionCompressed ??
+				provider.compressedDescription ??
+				providerSpec?.descriptionCompressed ??
+				providerSpec?.compressedDescription ??
+				(provider.description
+					? compressPromptDescription(provider.description)
+					: "No description available")
+			);
+		};
 
 		const formatProviders = (providers: typeof allProviders, title: string) =>
 			[

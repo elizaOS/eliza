@@ -170,7 +170,7 @@
           }
         ]
       ],
-      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, addressed to someone else in a group, or both sides said goodbye. Don't use if user engaged directly or needs error info."
+      "descriptionCompressed": "Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",

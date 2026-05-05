@@ -10,6 +10,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
@@ -33,14 +34,10 @@ Extract the following:
 - messageName: The message resource name to react to
 - remove: Whether to remove the reaction (true/false)
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "emoji": "👍",
-  "messageName": "spaces/xxx/messages/yyy",
-  "remove": false
-}
-\`\`\``;
+Respond with TOON only:
+emoji: 👍
+messageName: spaces/xxx/messages/yyy
+remove: false`;
 
 export const sendReaction: Action = {
   name: "GOOGLE_CHAT_SEND_REACTION",
@@ -99,12 +96,15 @@ export const sendReaction: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response);
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response);
       if (parsed?.emoji && parsed?.messageName) {
         reactionInfo = {
           emoji: String(parsed.emoji),
           messageName: String(parsed.messageName),
-          remove: parsed.remove === true,
+          remove:
+            parsed.remove === true || String(parsed.remove).toLowerCase() === "true",
         };
         break;
       }

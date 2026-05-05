@@ -35,10 +35,15 @@ import type {
 } from "../../../types/index.ts";
 import { MemoryType, ModelType } from "../../../types/index.ts";
 import { asUUID } from "../../../types/primitives.ts";
+import { encodeToonValue } from "../../../utils/toon";
 import { stringToUuid } from "../../../utils.ts";
 import { factExtractorEvaluator } from "./factExtractor.ts";
 
 const EMBED_DIM = 384;
+
+function toon(value: unknown): string {
+	return encodeToonValue(value);
+}
 
 /**
  * Pseudo-random but deterministic embedding seeded from the input text.
@@ -265,7 +270,7 @@ describe("factExtractorEvaluator", () => {
 	it("inserts a durable health fact with category + confidence + verification status", async () => {
 		fx = await setup({
 			modelResponses: [
-				JSON.stringify({
+				toon({
 					ops: [
 						{
 							op: "add_durable",
@@ -301,7 +306,7 @@ describe("factExtractorEvaluator", () => {
 		const validAt = "2026-04-25T10:00:00.000Z";
 		fx = await setup({
 			modelResponses: [
-				JSON.stringify({
+				toon({
 					ops: [
 						{
 							op: "add_current",
@@ -334,7 +339,7 @@ describe("factExtractorEvaluator", () => {
 	it("persists structured_fields on durable life_event inserts", async () => {
 		fx = await setup({
 			modelResponses: [
-				JSON.stringify({
+				toon({
 					ops: [
 						{
 							op: "add_durable",
@@ -370,7 +375,7 @@ describe("factExtractorEvaluator", () => {
 	it("applies multiple ops from one response in order", async () => {
 		fx = await setup({
 			modelResponses: [
-				JSON.stringify({
+				toon({
 					ops: [
 						{
 							op: "add_durable",
@@ -424,7 +429,7 @@ describe("factExtractorEvaluator", () => {
 		fx.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async () => {
-				return JSON.stringify({
+				return toon({
 					ops: [{ op: "strengthen", factId }],
 				});
 			},
@@ -462,7 +467,7 @@ describe("factExtractorEvaluator", () => {
 		fx.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async () => {
-				return JSON.stringify({
+				return toon({
 					ops: [{ op: "decay", factId }],
 				});
 			},
@@ -501,7 +506,7 @@ describe("factExtractorEvaluator", () => {
 		fx.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async () => {
-				return JSON.stringify({
+				return toon({
 					ops: [{ op: "decay", factId }],
 				});
 			},
@@ -534,7 +539,7 @@ describe("factExtractorEvaluator", () => {
 		fx.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async () => {
-				return JSON.stringify({
+				return toon({
 					ops: [
 						{
 							op: "contradict",
@@ -594,7 +599,7 @@ describe("factExtractorEvaluator", () => {
 		fx.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async () =>
-				JSON.stringify({
+				toon({
 					ops: [
 						{
 							op: "add_durable",
@@ -648,7 +653,7 @@ describe("factExtractorEvaluator", () => {
 		fx.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async () =>
-				JSON.stringify({
+				toon({
 					ops: [
 						{
 							op: "add_durable",
@@ -679,7 +684,7 @@ describe("factExtractorEvaluator", () => {
 
 	it("returns undefined and writes nothing when the LLM returns invalid output", async () => {
 		fx = await setup({
-			modelResponses: ["this is not JSON, sorry"],
+			modelResponses: ["this is not structured output, sorry"],
 		});
 
 		const result = await factExtractorEvaluator.handler(
@@ -695,7 +700,7 @@ describe("factExtractorEvaluator", () => {
 
 	it("validate(): same message processed twice → second validate returns false", async () => {
 		fx = await setup({
-			modelResponses: [JSON.stringify({ ops: [] })],
+			modelResponses: [toon({ ops: [] })],
 		});
 
 		const message = makeMessage(fx, "hello");

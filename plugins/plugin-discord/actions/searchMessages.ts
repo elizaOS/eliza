@@ -9,6 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -39,7 +40,9 @@ const getSearchParams = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response);
+		const parsedResponse =
+			parseKeyValueXml<Record<string, unknown>>(response) ??
+			parseJSONObjectFromText(response);
 		if (parsedResponse?.query) {
 			// Remove quotes from query if present
 			const cleanQuery = String(parsedResponse.query).replace(

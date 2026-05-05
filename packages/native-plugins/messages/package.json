@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-messages",
-  "version": "1.0.0",
+  "version": "1.0.1-alpha.0",
   "description": "Android SMS/MMS bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",

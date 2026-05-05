@@ -45,8 +45,8 @@ async function resolveItemId(
 			"Clipboard items:",
 			...items.map((item) => `- ${item.id}: ${item.title}`),
 			"",
-			"Respond with XML:",
-			"<response><itemId>sp-1234abcd</itemId></response>",
+			"Respond with TOON only. Return exactly one TOON document, no prose or fences.",
+			"itemId: sp-1234abcd",
 		].join("\n"),
 		stopSequences: [],
 	});

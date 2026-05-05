@@ -18,9 +18,11 @@ import {
 import type { UiLanguage } from "../i18n";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {
+  clearPersistedActiveServer,
   loadPersistedActiveServer,
   loadPersistedOnboardingComplete,
   type PersistedActiveServer,
+  savePersistedOnboardingComplete,
 } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
 
@@ -87,6 +89,23 @@ function activeServerToTarget(
   }
 }
 
+export function canRestoreActiveServer(args: {
+  server: PersistedActiveServer;
+  clientApiAvailable: boolean;
+  forceLocal: boolean;
+  isDesktop: boolean;
+}): boolean {
+  if (args.server.apiBase) {
+    return true;
+  }
+
+  if (args.server.kind === "local") {
+    return args.forceLocal || args.isDesktop || args.clientApiAvailable;
+  }
+
+  return args.clientApiAvailable;
+}
+
 /**
  * Runs the restoring-session phase.
  * Probes the local Eliza install and/or API to detect an existing connection,
@@ -110,8 +129,8 @@ export async function runRestoringSession(
 
   const forceLocal = deps.forceLocalBootstrapRef.current;
   deps.forceLocalBootstrapRef.current = false;
-  const persistedActiveServer = loadPersistedActiveServer();
-  const hadPrior = loadPersistedOnboardingComplete();
+  let persistedActiveServer = loadPersistedActiveServer();
+  let hadPrior = loadPersistedOnboardingComplete();
   if (cancelled.current) return;
 
   const desktopInstall =
@@ -136,8 +155,26 @@ export async function runRestoringSession(
     : null;
   if (cancelled.current) return;
 
-  const restoredActiveServer =
+  let restoredActiveServer =
     persistedActiveServer ?? (probed ? probed.activeServer : null);
+
+  if (
+    restoredActiveServer &&
+    !canRestoreActiveServer({
+      server: restoredActiveServer,
+      clientApiAvailable: client.apiAvailable,
+      forceLocal,
+      isDesktop,
+    })
+  ) {
+    clearPersistedActiveServer();
+    savePersistedOnboardingComplete(false);
+    persistedActiveServer = null;
+    restoredActiveServer = null;
+    hadPrior = false;
+    deps.onboardingCompletionCommittedRef.current = false;
+  }
+
   const preserveCompleted =
     hadPrior && !deps.onboardingCompletionCommittedRef.current;
 

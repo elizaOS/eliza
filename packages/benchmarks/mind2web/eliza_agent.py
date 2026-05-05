@@ -1,17 +1,19 @@
-"""
-Mind2Web agent and ElizaOS plugin shims.
+"""Mind2Web benchmark agents without the Python Eliza runtime.
 
-The benchmark can run fully offline in mock mode. When ElizaOS Python bindings
-are available, this module also exposes provider/action objects with the same
-shape used by the other benchmark integrations.
+Eliza-backed runs are handled by ``eliza_adapter.mind2web``. This module keeps
+the local mock and direct OpenAI-compatible provider paths used by the Python
+benchmark harness, but intentionally does not import ``elizaos``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,67 +26,14 @@ from benchmarks.mind2web.types import (
 
 logger = logging.getLogger(__name__)
 
-try:
-    from elizaos.runtime import AgentRuntime
-    from elizaos.types.agent import Character
-    from elizaos.types.components import (
-        Action,
-        ActionParameter,
-        ActionParameterSchema,
-        ActionResult,
-        HandlerOptions,
-        Provider,
-        ProviderResult,
-    )
-    from elizaos.types.memory import Memory
-    from elizaos.types.plugin import Plugin
-    from elizaos.types.primitives import Content
-    from elizaos.types.state import State
-
-    ELIZAOS_AVAILABLE = True
-except ImportError:
-    AgentRuntime = None  # type: ignore[assignment]
-    Character = None  # type: ignore[assignment]
-    Action = None  # type: ignore[assignment]
-    ActionParameter = None  # type: ignore[assignment]
-    ActionParameterSchema = None  # type: ignore[assignment]
-    ActionResult = None  # type: ignore[assignment]
-    HandlerOptions = None  # type: ignore[assignment]
-    Provider = None  # type: ignore[assignment]
-    Memory = None  # type: ignore[assignment]
-    Plugin = None  # type: ignore[assignment]
-    Content = None  # type: ignore[assignment]
-    State = None  # type: ignore[assignment]
-    ELIZAOS_AVAILABLE = False
-
-    @dataclass
-    class ProviderResult:  # type: ignore[no-redef]
-        text: str = ""
-        values: dict[str, Any] = field(default_factory=dict)
-        data: Any = None
-
-    @dataclass
-    class ActionResult:  # type: ignore[no-redef]
-        text: str = ""
-        values: dict[str, Any] = field(default_factory=dict)
-        data: Any = None
-        success: bool = True
-
-    @dataclass
-    class _FallbackSchema:
-        type: str
-
-    @dataclass
-    class _FallbackParameter:
-        name: str
-        description: str
-        required: bool
-        schema: _FallbackSchema
+# Kept for compatibility with older tests/imports. Python Eliza runtime support
+# has been removed from benchmarks; bridge-backed Eliza lives in eliza_adapter.
+ELIZAOS_AVAILABLE = False
 
 
 @dataclass
 class Mind2WebContext:
-    """Mutable per-run context used by the provider and action handler."""
+    """Mutable per-run context used by mock/direct benchmark agents."""
 
     task: Mind2WebTask | None = None
     current_step_index: int = 0
@@ -117,7 +66,7 @@ def _format_element(step_index: int, task: Mind2WebTask) -> str:
     if not candidates:
         return "No candidate elements are available for this step."
 
-    lines = []
+    lines: list[str] = []
     for idx, elem in enumerate(candidates[:20], start=1):
         attrs = " ".join(f'{k}="{v}"' for k, v in list(elem.attributes.items())[:6])
         text = f" text={elem.text_content!r}" if elem.text_content else ""
@@ -125,146 +74,6 @@ def _format_element(step_index: int, task: Mind2WebTask) -> str:
             f"{idx}. backend_node_id={elem.backend_node_id} tag={elem.tag} {attrs}{text}".strip()
         )
     return "\n".join(lines)
-
-
-async def get_mind2web_context_provider(
-    runtime: Any,
-    message: Any,
-    state: Any | None = None,
-) -> ProviderResult:
-    """Provider that injects the active Mind2Web task into agent context."""
-    _ = runtime, message, state
-    ctx = get_mind2web_context()
-    if ctx.task is None:
-        return ProviderResult(text="", values={}, data={})
-
-    task = ctx.task
-    step_count = len(task.actions)
-    sections = [
-        "# Mind2Web Task",
-        f"Instruction: {task.confirmed_task}",
-        f"Website: {task.website}",
-        f"Domain: {task.domain}",
-        f"Current Step: {ctx.current_step_index + 1}/{step_count}",
-    ]
-    if task.action_reprs:
-        sections.append("Action Plan:\n" + "\n".join(f"- {item}" for item in task.action_reprs))
-    sections.append("Available Elements:\n" + _format_element(ctx.current_step_index, task))
-    if ctx.executed_actions:
-        history = [
-            f"- {a.operation.value} element_id={a.element_id} value={a.value!r}"
-            for a in ctx.executed_actions
-        ]
-        sections.append("Executed Actions:\n" + "\n".join(history))
-
-    return ProviderResult(
-        text="\n\n".join(sections),
-        values={
-            "mind2web_task_id": task.annotation_id,
-            "mind2web_step": ctx.current_step_index,
-            "mind2web_done": ctx.done,
-        },
-        data={
-            "task_id": task.annotation_id,
-            "website": task.website,
-            "domain": task.domain,
-            "current_step_index": ctx.current_step_index,
-            "executed_actions": len(ctx.executed_actions),
-        },
-    )
-
-
-@dataclass
-class Mind2WebActionHandler:
-    """Action that records a browser operation predicted by an agent."""
-
-    name: str = "MIND2WEB_ACTION"
-    similes: list[str] = field(
-        default_factory=lambda: ["CLICK", "TYPE", "SELECT", "BROWSER_ACTION", "WEB_ACTION"]
-    )
-    description: str = (
-        "Execute one Mind2Web browser action. Parameters: operation (CLICK, TYPE, SELECT), "
-        "element_id (backend node id or selector), and value (text or selected option)."
-    )
-
-    async def validate(self, runtime: Any, message: Any, state: Any | None = None) -> bool:
-        _ = runtime, message, state
-        return get_mind2web_context().task is not None
-
-    async def handler(
-        self,
-        runtime: Any,
-        message: Any,
-        state: Any | None = None,
-        options: Any | None = None,
-        callback: Any | None = None,
-        responses: list[Any] | None = None,
-    ) -> ActionResult:
-        _ = runtime, message, state, responses
-        ctx = get_mind2web_context()
-        if ctx.task is None:
-            return ActionResult(text="No Mind2Web task context available", success=False)
-
-        params = getattr(options, "parameters", None) or {}
-        operation_raw = str(params.get("operation", "CLICK")).upper()
-        try:
-            operation = Mind2WebOperation(operation_raw)
-        except ValueError:
-            operation = Mind2WebOperation.CLICK
-
-        action = Mind2WebAction(
-            operation=operation,
-            element_id=str(params.get("element_id", "")),
-            value=str(params.get("value", "")),
-            reasoning=str(params.get("reasoning", "")),
-        )
-        ctx.executed_actions.append(action)
-        ctx.current_step_index += 1
-        ctx.done = ctx.current_step_index >= len(ctx.task.actions)
-
-        text = f"Recorded {action.operation.value} on {action.element_id}"
-        if callback is not None and Content is not None:
-            await callback(Content(text=text))
-
-        return ActionResult(
-            text=text,
-            values={"success": True, "mind2web_done": ctx.done},
-            data={
-                "operation": action.operation.value,
-                "element_id": action.element_id,
-                "value": action.value,
-            },
-            success=True,
-        )
-
-    @property
-    def parameters(self) -> list[Any]:
-        if ELIZAOS_AVAILABLE:
-            return [
-                ActionParameter(
-                    name="operation",
-                    description="Browser operation: CLICK, TYPE, or SELECT",
-                    required=True,
-                    schema=ActionParameterSchema(type="string"),
-                ),
-                ActionParameter(
-                    name="element_id",
-                    description="Target backend node id or selector",
-                    required=True,
-                    schema=ActionParameterSchema(type="string"),
-                ),
-                ActionParameter(
-                    name="value",
-                    description="Text to type or option to select",
-                    required=False,
-                    schema=ActionParameterSchema(type="string"),
-                ),
-            ]
-        return [
-            _FallbackParameter("operation", "Browser operation", True, _FallbackSchema("string")),
-            _FallbackParameter("element_id", "Target backend node id or selector", True, _FallbackSchema("string")),
-            _FallbackParameter("value", "Text or selected option", False, _FallbackSchema("string")),
-        ]
 
 
 class MockMind2WebAgent:
@@ -297,48 +106,222 @@ class MockMind2WebAgent:
         return None
 
 
-class ElizaOSMind2WebAgent:
-    """Small Python fallback agent for local smoke tests.
+class OpenAICompatibleMind2WebAgent:
+    """Local provider-backed agent used when the TS Eliza bridge is not selected."""
 
-    This starts the same interface as the real agent path. Without a configured
-    provider client in this package, it emits parseable heuristic actions rather
-    than opening a browser or making network calls.
-    """
+    _BASE_URLS = {
+        "openai": "https://api.openai.com/v1",
+        "groq": "https://api.groq.com/openai/v1",
+        "openrouter": "https://openrouter.ai/api/v1",
+    }
+    _KEY_VARS = {
+        "openai": "OPENAI_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+    }
 
     def __init__(self, config: Mind2WebConfig) -> None:
         self.config = config
+        self.provider: str | None = None
+        self.model_name: str | None = None
+        self.api_key: str | None = None
+        self.key_var: str | None = None
 
     async def initialize(self) -> None:
-        provider = (self.config.model_provider or "").lower()
-        if provider and provider != "auto":
-            env_name = f"{provider.upper()}_API_KEY"
-            if provider in {"groq", "openai", "anthropic"} and not os.environ.get(env_name):
-                logger.warning("%s is not set; Mind2Web will use heuristic actions", env_name)
+        provider = (self.config.model_provider or "").strip().lower()
+        if not provider or provider == "auto":
+            if os.environ.get("GROQ_API_KEY"):
+                provider = "groq"
+            elif os.environ.get("OPENROUTER_API_KEY"):
+                provider = "openrouter"
+            elif os.environ.get("OPENAI_API_KEY"):
+                provider = "openai"
+
+        if provider not in self._BASE_URLS:
+            if provider:
+                logger.warning(
+                    "Mind2Web provider %r is not OpenAI-compatible in the local runner; "
+                    "using heuristic actions",
+                    provider,
+                )
+            return None
+
+        key_var = self._KEY_VARS[provider]
+        api_key = os.environ.get(key_var)
+        if not api_key:
+            logger.warning("%s is not set; Mind2Web will use heuristic actions", key_var)
+            return None
+
+        self.provider = provider
+        self.key_var = key_var
+        self.api_key = api_key
+        self.model_name = self._select_model(provider)
+        logger.info("Using %s model provider for Mind2Web (%s)", provider, self.model_name)
 
     async def process_task(self, task: Mind2WebTask) -> list[Mind2WebAction]:
         set_mind2web_context(task)
         predictions: list[Mind2WebAction] = []
-        for step in task.actions[: self.config.max_steps_per_task]:
-            target = step.target_element or (step.pos_candidates[0] if step.pos_candidates else None)
-            predictions.append(
-                Mind2WebAction(
-                    operation=step.operation,
-                    element_id=target.backend_node_id if target else "",
-                    value=step.value,
-                    reasoning="Heuristic local Mind2Web action.",
-                )
-            )
+        for step_index, step in enumerate(task.actions[: self.config.max_steps_per_task]):
+            action: Mind2WebAction | None = None
+            if self.provider and self.model_name and self.api_key:
+                prompt = self._build_prompt(task, step_index, predictions)
+                try:
+                    response = await asyncio.to_thread(self._chat_completion, prompt)
+                    action = self._parse_provider_action(response)
+                except Exception as exc:
+                    logger.warning("Mind2Web provider call failed; using heuristic action: %s", exc)
+
+            if action is None:
+                action = self._heuristic_action(step, "Heuristic local Mind2Web action.")
+            else:
+                action = self._normalize_action(step, action)
+
+            predictions.append(action)
+            _global_context.executed_actions.append(action)
+            _global_context.current_step_index += 1
+        _global_context.done = _global_context.current_step_index >= len(task.actions)
         return predictions
 
     async def close(self) -> None:
         return None
 
+    def _select_model(self, provider: str) -> str:
+        model_name = (self.config.model_name or "").strip()
+        if not model_name and provider == "groq":
+            model_name = (
+                (self.config.groq_large_model or "").strip()
+                or (self.config.groq_small_model or "").strip()
+                or "openai/gpt-oss-120b"
+            )
+        if not model_name:
+            model_name = "gpt-4o-mini" if provider == "openai" else "openai/gpt-oss-120b"
+        provider_prefix = f"{provider}/"
+        if model_name.lower().startswith(provider_prefix):
+            return model_name[len(provider_prefix) :]
+        return model_name
 
-def create_mind2web_agent(config: Mind2WebConfig) -> MockMind2WebAgent | ElizaOSMind2WebAgent:
+    def _build_prompt(
+        self,
+        task: Mind2WebTask,
+        step_index: int,
+        previous_actions: list[Mind2WebAction],
+    ) -> str:
+        previous = "\n".join(
+            f"- {action.operation.value} element_id={action.element_id} value={action.value!r}"
+            for action in previous_actions
+        )
+        sections = [
+            "You are completing a Mind2Web browser task.",
+            f"Instruction: {task.confirmed_task}",
+            f"Website: {task.website}",
+            f"Domain: {task.domain}",
+            f"Current step: {step_index + 1} of {len(task.actions)}",
+            "Available elements:\n" + _format_element(step_index, task),
+        ]
+        if task.action_reprs:
+            sections.append("High-level task notes:\n" + "\n".join(f"- {x}" for x in task.action_reprs[:8]))
+        if previous:
+            sections.append("Previous actions:\n" + previous)
+        sections.append(
+            "Return one JSON object only with keys operation, element_id, value, reasoning. "
+            "operation must be CLICK, TYPE, SELECT, HOVER, or ENTER. element_id must be a listed "
+            "backend_node_id or the listed element number."
+        )
+        return "\n\n".join(sections)
+
+    def _chat_completion(self, prompt: str) -> str:
+        assert self.provider is not None
+        assert self.model_name is not None
+        assert self.api_key is not None
+        payload = {
+            "model": self.model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Predict the next browser action for a Mind2Web task. "
+                        "Respond with strict JSON and no markdown."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.config.temperature,
+            "max_tokens": 512,
+        }
+        request = urllib.request.Request(
+            f"{self._BASE_URLS[self.provider]}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+                "User-Agent": "eliza-mind2web-benchmark/1.0",
+            },
+            method="POST",
+        )
+        timeout = max(1.0, min(self.config.step_timeout_ms / 1000, 120.0))
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"{self.provider} chat completion failed: {body}") from exc
+        if isinstance(data, dict) and "error" in data:
+            raise RuntimeError(f"{self.provider} chat completion failed: {data['error']}")
+        return str(data.get("choices", [{}])[0].get("message", {}).get("content", ""))
+
+    def _parse_provider_action(self, text: str) -> Mind2WebAction | None:
+        cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+        action = parse_mind2web_action(cleaned)
+        if action is not None:
+            return action
+        match = re.search(r"\{[\s\S]*\}", cleaned)
+        if match:
+            return parse_mind2web_action(match.group(0))
+        return None
+
+    def _normalize_action(self, step: Any, action: Mind2WebAction) -> Mind2WebAction:
+        candidates = step.pos_candidates + step.neg_candidates
+        candidate_ids = {elem.backend_node_id for elem in candidates}
+        element_id = action.element_id.strip()
+        if element_id.isdigit():
+            index = int(element_id) - 1
+            if 0 <= index < len(candidates):
+                element_id = candidates[index].backend_node_id
+        if candidate_ids and element_id not in candidate_ids:
+            target = step.target_element or (step.pos_candidates[0] if step.pos_candidates else candidates[0])
+            element_id = target.backend_node_id
+        value = action.value
+        if not value and step.value and action.operation in {Mind2WebOperation.TYPE, Mind2WebOperation.SELECT}:
+            value = step.value
+        return Mind2WebAction(
+            operation=action.operation,
+            element_id=element_id,
+            value=value,
+            reasoning=action.reasoning or "Provider-generated Mind2Web action.",
+        )
+
+    def _heuristic_action(self, step: Any, reasoning: str) -> Mind2WebAction:
+        target = step.target_element or (step.pos_candidates[0] if step.pos_candidates else None)
+        return Mind2WebAction(
+            operation=step.operation,
+            element_id=target.backend_node_id if target else "",
+            value=step.value,
+            reasoning=reasoning,
+        )
+
+
+# Compatibility alias for callers that imported the old class name. This is not
+# a Python Eliza runtime; it is the direct OpenAI-compatible local agent above.
+ElizaOSMind2WebAgent = OpenAICompatibleMind2WebAgent
+
+
+def create_mind2web_agent(config: Mind2WebConfig) -> MockMind2WebAgent | OpenAICompatibleMind2WebAgent:
     """Create the local Mind2Web agent used by the runner."""
     if config.use_mock:
         return MockMind2WebAgent(config)
-    return ElizaOSMind2WebAgent(config)
+    return OpenAICompatibleMind2WebAgent(config)
 
 
 def parse_mind2web_action(text: str) -> Mind2WebAction | None:
@@ -384,29 +367,8 @@ def parse_mind2web_action(text: str) -> Mind2WebAction | None:
 
 
 def create_mind2web_plugin() -> Any:
-    """Create an ElizaOS plugin object when the Python bindings are installed."""
-    if not ELIZAOS_AVAILABLE:
-        raise RuntimeError("ElizaOS Python bindings are not installed")
-
-    handler = Mind2WebActionHandler()
-    action = Action(
-        name=handler.name,
-        similes=handler.similes,
-        description=handler.description,
-        validate=handler.validate,
-        handler=handler.handler,
-        examples=[],
-        parameters=handler.parameters,
-    )
-    provider = Provider(
-        name="MIND2WEB_CONTEXT",
-        description="Mind2Web task context and candidate elements",
-        position=5,
-        get=get_mind2web_context_provider,
-    )
-    return Plugin(
-        name="mind2web",
-        description="Mind2Web benchmark context provider and browser action",
-        actions=[action],
-        providers=[provider],
+    """Compatibility stub for the removed Python Eliza plugin."""
+    raise RuntimeError(
+        "The Python Eliza Mind2Web plugin was removed. Use eliza_adapter.mind2web "
+        "or run the benchmark with model_provider='eliza' to route through the TS bridge."
     )

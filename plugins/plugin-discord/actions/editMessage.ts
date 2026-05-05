@@ -8,6 +8,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -31,14 +32,10 @@ Extract the following:
 2. newText: The new text content for the message
 3. channelRef: The channel where the message is (default: "current")
 
-Respond with a JSON object like:
-{
-  "messageId": "123456789",
-  "newText": "The updated message text",
-  "channelRef": "current"
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+messageId: 123456789
+newText: The updated message text
+channelRef: current`;
 
 interface EditMessageParams {
 	messageId: string;
@@ -100,10 +97,9 @@ const editMessage: Action = {
 				prompt,
 			});
 
-			const parsedResponse = parseJSONObjectFromText(response) as Record<
-				string,
-				unknown
-			> | null;
+			const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(
+				response,
+			) ?? parseJSONObjectFromText(response)) as Record<string, unknown> | null;
 			if (
 				parsedResponse &&
 				typeof parsedResponse.messageId === "string" &&

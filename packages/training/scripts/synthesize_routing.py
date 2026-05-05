@@ -305,7 +305,7 @@ def synthesize_one(
             "ping": f"{agent} was directly @-mentioned.",
             "name_token": f"the latest message contains '{agent}' as a name token addressed to the agent.",
             "injected_name_prefix": f"the message opens with '{agent},' addressing the agent.",
-            "injected_name_suffix": f"the message ends with the agent's name as a question.",
+            "injected_name_suffix": "the message ends with the agent's name as a question.",
             "injected_name_midline": f"the message addresses {agent} mid-sentence.",
             "injected_name_at": f"the message begins with @{agent}.",
         }.get(clue, "the latest message is addressed to the agent."),

@@ -21,6 +21,7 @@ export type ActionDocParameter = {
 	name: string;
 	description: string;
 	descriptionCompressed?: string;
+	compressedDescription?: string;
 	required?: boolean;
 	schema: ActionDocParameterSchema;
 	examples?: readonly ActionDocParameterExampleValue[];
@@ -44,6 +45,7 @@ export type ActionDoc = {
 	name: string;
 	description: string;
 	descriptionCompressed?: string;
+	compressedDescription?: string;
 	similes?: readonly string[];
 	parameters?: readonly ActionDocParameter[];
 	examples?: readonly (readonly ActionDocExampleMessage[])[];
@@ -54,6 +56,7 @@ export type ProviderDoc = {
 	name: string;
 	description: string;
 	descriptionCompressed?: string;
+	compressedDescription?: string;
 	position?: number;
 	dynamic?: boolean;
 };
@@ -77,6 +80,8 @@ export type EvaluatorDocExample = {
 export type EvaluatorDoc = {
 	name: string;
 	description: string;
+	descriptionCompressed?: string;
+	compressedDescription?: string;
 	similes?: readonly string[];
 	alwaysRun?: boolean;
 	examples?: readonly EvaluatorDocExample[];
@@ -265,7 +270,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Ignore user. Use when aggressive, creepy, conversation ended, addressed to someone else in a group, or both sides said goodbye. Don't use if user engaged directly or needs error info.",
+				"Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info.",
 		},
 		{
 			name: "NONE",
@@ -1513,7 +1518,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Ignore user. Use when aggressive, creepy, conversation ended, addressed to someone else in a group, or both sides said goodbye. Don't use if user engaged directly or needs error info.",
+				"Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info.",
 		},
 		{
 			name: "NONE",
@@ -2618,7 +2623,7 @@ export const allActionsSpec = {
 				"ADD_TRACK_TO_PLAYLIST",
 			],
 			descriptionCompressed:
-				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates t...",
+				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates...",
 		},
 		{
 			name: "ASTROLOGY_READING",
@@ -2661,7 +2666,7 @@ export const allActionsSpec = {
 				"FOCUS_UNTIL_TASK_DONE",
 			],
 			descriptionCompressed:
-				"Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'bl...",
+				"Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like...",
 		},
 		{
 			name: "BLUEBUBBLES_SEND_REACTION",
@@ -2669,7 +2674,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"],
 			descriptionCompressed:
-				"Add or remove a reaction on a message via BlueBubbles",
+				"Add or remove a reaction on a msg via BlueBubbles",
 		},
 		{
 			name: "BROWSER_ACTION",
@@ -2703,7 +2708,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["PURCHASE_ITEM", "BUY_ITEM"],
 			descriptionCompressed:
-				"Buy an item from the currently open shop, optionally specifying a count (defaults to 1)",
+				"Buy an item from the open shop, optionally specifying a count (defaults to 1)",
 		},
 		{
 			name: "CALL_MCP_TOOL",
@@ -2763,7 +2768,7 @@ export const allActionsSpec = {
 				"HOLDINGS",
 			],
 			descriptionCompressed:
-				"Check wallet balances across chains. Use this when a user asks about",
+				"Check wallet balances across chains. Use when a user asks about",
 		},
 		{
 			name: "CHECK_CLOUD_CREDITS",
@@ -3054,8 +3059,7 @@ export const allActionsSpec = {
 				"CREATE_MUSIC",
 				"GENERATE_MUSIC",
 			],
-			descriptionCompressed:
-				"Generate music with custom parameters using Suno AI",
+			descriptionCompressed: "Generate music with custom params using Suno AI",
 		},
 		{
 			name: "DEACTIVATE_N8N_WORKFLOW",
@@ -3070,7 +3074,7 @@ export const allActionsSpec = {
 				"TURN_OFF_WORKFLOW",
 			],
 			descriptionCompressed:
-				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any la...",
+				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any...",
 		},
 		{
 			name: "DEEPEN_READING",
@@ -3133,7 +3137,7 @@ export const allActionsSpec = {
 			description: "Delete a message from a Discord channel",
 			parameters: [],
 			similes: ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"],
-			descriptionCompressed: "Delete a message from a Discord channel",
+			descriptionCompressed: "Delete a msg from a Discord channel",
 		},
 		{
 			name: "DELETE_N8N_WORKFLOW",
@@ -3231,7 +3235,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["token details", "token price", "get token", "check token"],
 			descriptionCompressed:
-				"Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
+				"Get detailed info about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
 		},
 		{
 			name: "DEXSCREENER_TOKEN_PROFILES",
@@ -3240,7 +3244,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["token profiles", "token details page"],
 			descriptionCompressed:
-				"Get latest token profiles from DexScreener including social links, descriptions, and project information",
+				"Get latest token profiles from DexScreener including social links, descriptions, and project info",
 		},
 		{
 			name: "DEXSCREENER_TRENDING",
@@ -3295,7 +3299,7 @@ export const allActionsSpec = {
 				"CHANGE_MESSAGE",
 				"EDIT_DISCORD_MESSAGE",
 			],
-			descriptionCompressed: "Edit an existing message in a Discord channel",
+			descriptionCompressed: "Edit an existing msg in a Discord channel",
 		},
 		{
 			name: "EQUIP_ITEM",
@@ -3311,7 +3315,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["BUY_TOKEN", "SELL_TOKEN", "SWAP", "TRADE", "BUY", "SELL"],
 			descriptionCompressed:
-				"Execute a BSC token trade (buy or sell). Use this when a user asks to",
+				"Execute a BSC token trade (buy or sell). Use when a user asks to",
 		},
 		{
 			name: "extend-audio",
@@ -3349,7 +3353,7 @@ export const allActionsSpec = {
 				"FILE_OPERATION",
 			],
 			descriptionCompressed:
-				"Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload...",
+				"Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory...",
 		},
 		{
 			name: "FINALIZE_WORKSPACE",
@@ -3507,7 +3511,7 @@ export const allActionsSpec = {
 				"APP_BLOCK_STATUS",
 			],
 			descriptionCompressed:
-				"Owner-only. Check whether an app block is currently active and when it ends.",
+				"Owner-only. Check whether an app block is active and when it ends.",
 		},
 		{
 			name: "GET_LINEAR_ACTIVITY",
@@ -3567,7 +3571,7 @@ export const allActionsSpec = {
 				"meeting status",
 				"meeting details",
 			],
-			descriptionCompressed: "Get information about a Google Meet meeting",
+			descriptionCompressed: "Get info about a Google Meet meeting",
 		},
 		{
 			name: "GET_N8N_EXECUTIONS",
@@ -3582,7 +3586,7 @@ export const allActionsSpec = {
 				"WORKFLOW_EXECUTIONS",
 			],
 			descriptionCompressed:
-				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in...",
+				"Get execution history for an n8n workflow. Shows status, start time, and error msgs if any. Identifies workflows by ID, name, or semantic description in any...",
 		},
 		{
 			name: "GET_PARTICIPANTS",
@@ -3610,7 +3614,7 @@ export const allActionsSpec = {
 				"SHOW_ADDRESS",
 			],
 			descriptionCompressed:
-				"Return wallet receive addresses by chain. Use this when a user asks",
+				"Return wallet receive addresses by chain. Use when a user asks",
 		},
 		{
 			name: "GET_SKILL_DETAILS",
@@ -3619,7 +3623,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["SKILL_INFO", "SKILL_DETAILS"],
 			descriptionCompressed:
-				"Get detailed information about a specific skill including version, owner, and stats.",
+				"Get detailed info about a specific skill including version, owner, and stats.",
 		},
 		{
 			name: "GET_TAILSCALE_STATUS",
@@ -3658,7 +3662,7 @@ export const allActionsSpec = {
 				"IS_BLOCK_RUNNING",
 			],
 			descriptionCompressed:
-				"Owner-only. Check whether a local hosts-file website block is currently active and when it ends.",
+				"Owner-only. Check whether a local hosts-file website block is active and when it ends.",
 		},
 		{
 			name: "GOOGLE_CHAT_LIST_SPACES",
@@ -3682,7 +3686,7 @@ export const allActionsSpec = {
 				"GCHAT_SEND",
 				"GOOGLE_CHAT_TEXT",
 			],
-			descriptionCompressed: "Send a message to a Google Chat space",
+			descriptionCompressed: "Send a msg to a Google Chat space",
 		},
 		{
 			name: "GOOGLE_CHAT_SEND_REACTION",
@@ -3695,7 +3699,7 @@ export const allActionsSpec = {
 				"ADD_GOOGLE_CHAT_REACTION",
 			],
 			descriptionCompressed:
-				"Add or remove an emoji reaction to a Google Chat message",
+				"Add or remove an emoji reaction to a Google Chat msg",
 		},
 		{
 			name: "HEALTH",
@@ -3723,7 +3727,7 @@ export const allActionsSpec = {
 				"ACTIVITY_METRICS",
 			],
 			descriptionCompressed:
-				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep",
+				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura - sleep",
 		},
 		{
 			name: "HELP_COMMAND",
@@ -3753,7 +3757,7 @@ export const allActionsSpec = {
 			description: "Send a text message via iMessage (macOS only)",
 			parameters: [],
 			similes: ["SEND_IMESSAGE", "IMESSAGE_TEXT", "TEXT_IMESSAGE", "SEND_IMSG"],
-			descriptionCompressed: "Send a text message via iMessage (macOS only)",
+			descriptionCompressed: "Send a text msg via iMessage (macOS only)",
 		},
 		{
 			name: "INBOX_TRIAGE_GMAIL",
@@ -3762,7 +3766,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["TRIAGE_GMAIL", "GMAIL_TRIAGE", "CHECK_GMAIL"],
 			descriptionCompressed:
-				"Compatibility-only Gmail triage shim. Delegates to the cross-platform TRIAGE_MESSAGES action with sources=['gmail']; new planner-facing inbox/email routing s...",
+				"Compatibility-only Gmail triage shim. Delegates to the cross-platform TRIAGE_MESSAGES action with sources=['gmail']. new planner-facing inbox/email routing...",
 		},
 		{
 			name: "INSTALL_SKILL",
@@ -3780,14 +3784,14 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["USE_OBJECT", "CLICK_OBJECT"],
 			descriptionCompressed:
-				"Interact with a world object by name, with an optional interaction option",
+				"Interact with a world object by name, with optional interaction option",
 		},
 		{
 			name: "LINE_SEND_FLEX_MESSAGE",
 			description: "Send a rich flex message/card via LINE",
 			parameters: [],
 			similes: ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"],
-			descriptionCompressed: "Send a rich flex message/card via LINE",
+			descriptionCompressed: "Send a rich flex msg/card via LINE",
 		},
 		{
 			name: "LINE_SEND_LOCATION",
@@ -3799,7 +3803,7 @@ export const allActionsSpec = {
 				"LINE_MAP",
 				"SHARE_LOCATION_LINE",
 			],
-			descriptionCompressed: "Send a location message via LINE",
+			descriptionCompressed: "Send a location msg via LINE",
 		},
 		{
 			name: "LINE_SEND_MESSAGE",
@@ -3811,7 +3815,7 @@ export const allActionsSpec = {
 				"LINE_TEXT",
 				"MESSAGE_LINE",
 			],
-			descriptionCompressed: "Send a text message via LINE",
+			descriptionCompressed: "Send a text msg via LINE",
 		},
 		{
 			name: "LIST_ACTIVE_BLOCKS",
@@ -3824,7 +3828,7 @@ export const allActionsSpec = {
 				"WEBSITE_BLOCKS_STATUS",
 			],
 			descriptionCompressed:
-				"List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blo...",
+				"List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app...",
 		},
 		{
 			name: "LIST_AGENTS",
@@ -3842,7 +3846,7 @@ export const allActionsSpec = {
 				"SHOW_TASK_STATUS",
 			],
 			descriptionCompressed:
-				"List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.",
+				"List active task agents together with current task progress so the main agent can keep user updated while work continues asynchronously.",
 		},
 		{
 			name: "LIST_AUTOFILL_WHITELIST",
@@ -3948,7 +3952,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"List all saved playlists for the user. Works best in DMs to avoid flooding group chats.",
+				"List all saved playlists for user. Works best in DMs to avoid flooding group chats.",
 		},
 		{
 			name: "LOAD_PLAYLIST",
@@ -3999,7 +4003,7 @@ export const allActionsSpec = {
 				"MANAGE_LIQUIDITY",
 			],
 			descriptionCompressed:
-				"Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, c...",
+				"Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions...",
 		},
 		{
 			name: "MANAGE_ISSUES",
@@ -4026,7 +4030,7 @@ export const allActionsSpec = {
 				"START_MANAGING_RAYDIUM_POSITIONS",
 			],
 			descriptionCompressed:
-				"Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
+				"Auto manage Raydium positions by rebalancing them when they drift too far from the pool price",
 		},
 		{
 			name: "MANAGE_SHOPIFY_CUSTOMERS",
@@ -4090,7 +4094,7 @@ export const allActionsSpec = {
 				"WINDOW_MANAGEMENT",
 			],
 			descriptionCompressed:
-				"Manage desktop windows — list all visible windows, bring a window to the front,",
+				"Manage desktop windows - list all visible windows, bring a window to the front,",
 		},
 		{
 			name: "MARK_FOLLOWUP_DONE",
@@ -4213,7 +4217,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send a message to a Matrix room",
+			descriptionCompressed: "Send a msg to a Matrix room",
 		},
 		{
 			name: "MATRIX_SEND_REACTION",
@@ -4242,7 +4246,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "React to a Matrix message with an emoji",
+			descriptionCompressed: "React to a Matrix msg with an emoji",
 		},
 		{
 			name: "MC_ATTACK",
@@ -4251,14 +4255,14 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_ATTACK", "HIT_ENTITY"],
 			descriptionCompressed:
-				"Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
+				"Attack an entity by numeric entityId (from MC_WORLD_STATE. nearbyEntities).",
 		},
 		{
 			name: "MC_CHAT",
 			description: "Send a chat message in Minecraft as the bot",
 			parameters: [],
 			similes: ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"],
-			descriptionCompressed: "Send a chat message in Minecraft as the bot",
+			descriptionCompressed: "Send a chat msg in Minecraft as the bot",
 		},
 		{
 			name: "MC_CONNECT",
@@ -4274,7 +4278,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"],
 			descriptionCompressed:
-				"Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
+				"Set a control state (e. g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control, state, durationMs?} or 'forward true 1000'.",
 		},
 		{
 			name: "MC_DIG",
@@ -4283,7 +4287,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_DIG", "MINE_BLOCK", "BREAK_BLOCK"],
 			descriptionCompressed:
-				'Dig/break the block at (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+				'Dig/break the block at (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10, "y":64, "z":-20}.',
 		},
 		{
 			name: "MC_DISCONNECT",
@@ -4300,7 +4304,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"],
 			descriptionCompressed:
-				'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+				'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10, "y":64, "z":-20}.',
 		},
 		{
 			name: "MC_LOOK",
@@ -4309,7 +4313,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_LOOK", "TURN_HEAD"],
 			descriptionCompressed:
-				"Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
+				"Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw, pitch}.",
 		},
 		{
 			name: "MC_PLACE",
@@ -4318,7 +4322,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_PLACE", "PLACE_BLOCK"],
 			descriptionCompressed:
-				"Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
+				"Place the -held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x, y, z, face}.",
 		},
 		{
 			name: "MC_SCAN",
@@ -4327,14 +4331,14 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"],
 			descriptionCompressed:
-				'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"],"radius":16,"maxResults":32}. If omitted, scans for any non-air blocks.',
+				'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"], "radius":16, "maxResults":32}. If omitted, scans for any non-air blocks.',
 		},
 		{
 			name: "MC_STOP",
 			description: "Stop pathfinding / movement goals.",
 			parameters: [],
 			similes: ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"],
-			descriptionCompressed: "Stop pathfinding / movement goals.",
+			descriptionCompressed: "Stop pathfinding/movement goals.",
 		},
 		{
 			name: "MC_WAYPOINT_DELETE",
@@ -4345,8 +4349,7 @@ export const allActionsSpec = {
 				"DELETE_WAYPOINT",
 				"REMOVE_WAYPOINT",
 			],
-			descriptionCompressed:
-				"Delete a named waypoint (message text is the name).",
+			descriptionCompressed: "Delete a named waypoint (msg text is the name).",
 		},
 		{
 			name: "MC_WAYPOINT_GOTO",
@@ -4358,7 +4361,7 @@ export const allActionsSpec = {
 				"NAVIGATE_WAYPOINT",
 			],
 			descriptionCompressed:
-				"Pathfind to a named waypoint (message text is the name).",
+				"Pathfind to a named waypoint (msg text is the name).",
 		},
 		{
 			name: "MC_WAYPOINT_LIST",
@@ -4374,7 +4377,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"],
 			descriptionCompressed:
-				"Save the bot's current position as a named waypoint (message text is the name).",
+				"Save the bot's current position as a named waypoint (msg text is the name).",
 		},
 		{
 			name: "MINE_ROCK",
@@ -4631,7 +4634,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["SELECT_DIALOG", "CHOOSE_OPTION", "DIALOG_OPTION"],
 			descriptionCompressed:
-				"Select a dialog option by number (1-based) during an NPC conversation",
+				"Select a dialog option by number (1-based) during an NPC convo",
 		},
 		{
 			name: "NOSTR_PUBLISH_PROFILE",
@@ -4647,8 +4650,7 @@ export const allActionsSpec = {
 			description: "Send an encrypted direct message via Nostr (NIP-04)",
 			parameters: [],
 			similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
-			descriptionCompressed:
-				"Send an encrypted direct message via Nostr (NIP-04)",
+			descriptionCompressed: "Send an encrypted direct msg via Nostr (NIP-04)",
 		},
 		{
 			name: "OPEN_BANK",
@@ -4694,7 +4696,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"],
 			descriptionCompressed:
-				"Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio.",
+				"Pause the playing track (hold playback). Use whenever user asks to pause music or audio.",
 		},
 		{
 			name: "PICKPOCKET_NPC",
@@ -4788,7 +4790,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["POLYMARKET_MARKETS", "SEARCH_POLYMARKET_MARKETS"],
 			descriptionCompressed:
-				"List active Polymarket markets. Supports limit and offset parameters.",
+				"List active Polymarket markets. Supports limit and offset params.",
 		},
 		{
 			name: "POLYMARKET_GET_ORDERBOOK",
@@ -4840,7 +4842,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["example"],
-					descriptionCompressed: "The response to use.",
+					descriptionCompressed: "The reply to use.",
 				},
 			],
 			similes: [
@@ -5072,7 +5074,7 @@ export const allActionsSpec = {
 			description: "List unread Twitter/X direct messages.",
 			parameters: [],
 			similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
-			descriptionCompressed: "List unread Twitter/X direct messages.",
+			descriptionCompressed: "List unread Twitter/X direct msgs.",
 		},
 		{
 			name: "READING_FOLLOWUP",
@@ -5122,7 +5124,7 @@ export const allActionsSpec = {
 				"VERIFY_TEE",
 			],
 			descriptionCompressed:
-				"Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
+				"Generate a remote attestation to prove that agent is running in a TEE (Trusted Execution Environment)",
 		},
 		{
 			name: "REPLY_X_DM",
@@ -5131,7 +5133,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
 			descriptionCompressed:
-				"Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is...",
+				"Reply to a Twitter/X direct msg. Two-stage: without `confirmed: true` this returns a preview and requires confirmation. with `confirmed: true` the DM is sent.",
 		},
 		{
 			name: "REQUEST_PAYMENT",
@@ -5140,7 +5142,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"],
 			descriptionCompressed:
-				"Request payment from the user for a reading service. Specify the amount to charge.",
+				"Request payment from user for a reading service. Specify the amount to charge.",
 		},
 		{
 			name: "REQUEST_WEBSITE_BLOCKING_PERMISSION",
@@ -5154,7 +5156,7 @@ export const allActionsSpec = {
 				"REQUEST_SELFCONTROL_PERMISSION",
 			],
 			descriptionCompressed:
-				"Owner-only. Prepare local website blocking by requesting administrator/root approval when the machine supports it, or explain the manual change needed when i...",
+				"Owner-only. Prepare local website blocking by requesting administrator/root approval when the machine supports it, or explain the manual change needed when...",
 		},
 		{
 			name: "RESUME_CLOUD_AGENT",
@@ -5184,7 +5186,7 @@ export const allActionsSpec = {
 				"CONTINUE_MUSIC",
 			],
 			descriptionCompressed:
-				"Resume music after a pause. Use when the user says resume, unpause, or continue.",
+				"Resume music after a pause. Use when user says resume, unpause, or continue.",
 		},
 		{
 			name: "SAVE_PLAYLIST",
@@ -5220,7 +5222,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Save the current music queue as a playlist for the user after confirmed:true. Works best in DMs to avoid flooding group chats.",
+				"Save the current music queue as a playlist for user after confirmed:true. Works best in DMs to avoid flooding group chats.",
 		},
 		{
 			name: "SCAN_WIFI",
@@ -5251,7 +5253,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["SCREENTIME", "APP_USAGE", "WEBSITE_USAGE", "DWELL_TIME"],
 			descriptionCompressed:
-				"Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break d...",
+				"Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break...",
 		},
 		{
 			name: "SEARCH_LINEAR_ISSUES",
@@ -5312,7 +5314,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
 			descriptionCompressed:
-				"Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
+				"Search X recent tweets using the v2 recent search endpoint. params: query (required), maxResults (optional, default 10).",
 		},
 		{
 			name: "SEARCH_YOUTUBE",
@@ -5328,7 +5330,7 @@ export const allActionsSpec = {
 				"LOOKUP_YOUTUBE",
 			],
 			descriptionCompressed:
-				"Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific...",
+				"Search YouTube for a song or video and return the link. Use when a user asks to find or search for a YouTube video or song without providing a specific URL.",
 		},
 		{
 			name: "SELECT_DIMENSION",
@@ -5398,7 +5400,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["SELL_ITEM"],
 			descriptionCompressed:
-				"Sell an item to the currently open shop, optionally specifying a count (defaults to 1)",
+				"Sell an item to the open shop, optionally specifying a count (defaults to 1)",
 		},
 		{
 			name: "SEND_BLUEBUBBLES_MESSAGE",
@@ -5411,7 +5413,7 @@ export const allActionsSpec = {
 				"BLUEBUBBLES_SEND",
 				"APPLE_MESSAGE",
 			],
-			descriptionCompressed: "Send a message via iMessage through BlueBubbles",
+			descriptionCompressed: "Send a msg via iMessage through BlueBubbles",
 		},
 		{
 			name: "SEND_INSTAGRAM_DM",
@@ -5425,7 +5427,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["example"],
-					descriptionCompressed: "The response to use.",
+					descriptionCompressed: "The reply to use.",
 				},
 			],
 			similes: [
@@ -5446,7 +5448,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send a direct message to an Instagram user",
+			descriptionCompressed: "Send direct msg to an Instagram user",
 		},
 		{
 			name: "SEND_TO_AGENT",
@@ -5494,7 +5496,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
 			descriptionCompressed:
-				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview. with `confirmed: true` the tweet is posted.",
 		},
 		{
 			name: "SET_ATTRIBUTE",
@@ -5556,7 +5558,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["DECLARE_GOAL", "NEW_GOAL", "PLAN"],
 			descriptionCompressed:
-				"Declare a new goal you want to pursue. Write a short title and optional notes; the goal goes into the Scape Journal and drives future steps until it's comple...",
+				"Declare a new goal you want to pursue. Write a short title and optional notes. the goal goes into the Scape Journal and drives future steps until it's...",
 		},
 		{
 			name: "SETUP_CREDENTIALS",
@@ -5593,7 +5595,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Guide the user through setting up API credentials for supported third-party services, validate them when possible, and store them securely.",
+				"Guide user through setting up API credentials for supported 3p services, validate them when possible, and store them securely.",
 		},
 		{
 			name: "SHOW_QUEUE",
@@ -5638,7 +5640,7 @@ export const allActionsSpec = {
 				"SIGNAL_INBOX",
 			],
 			descriptionCompressed:
-				"Read the most recent Signal messages across active conversations",
+				"Read the most recent Signal msgs across active convos",
 		},
 		{
 			name: "SIGNAL_SEND_MESSAGE",
@@ -5672,7 +5674,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send a message to a Signal contact or group",
+			descriptionCompressed: "Send a msg to a Signal contact or group",
 		},
 		{
 			name: "SIGNAL_SEND_REACTION",
@@ -5706,7 +5708,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "React to a Signal message with an emoji",
+			descriptionCompressed: "React to a Signal msg with an emoji",
 		},
 		{
 			name: "SKIP_TRACK",
@@ -5744,7 +5746,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Delete a Slack message",
+			descriptionCompressed: "Delete a Slack msg",
 		},
 		{
 			name: "SLACK_EDIT_MESSAGE",
@@ -5778,7 +5780,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Edit an existing Slack message",
+			descriptionCompressed: "Edit an existing Slack msg",
 		},
 		{
 			name: "SLACK_EMOJI_LIST",
@@ -5805,7 +5807,7 @@ export const allActionsSpec = {
 				"MEMBER_INFO",
 				"WHO_IS",
 			],
-			descriptionCompressed: "Get information about a Slack user",
+			descriptionCompressed: "Get info about a Slack user",
 		},
 		{
 			name: "SLACK_LIST_CHANNELS",
@@ -5851,7 +5853,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "List pinned messages in a Slack channel",
+			descriptionCompressed: "List pinned msgs in a Slack channel",
 		},
 		{
 			name: "SLACK_PIN_MESSAGE",
@@ -5885,7 +5887,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Pin a message in a Slack channel",
+			descriptionCompressed: "Pin a msg in a Slack channel",
 		},
 		{
 			name: "SLACK_REACT_TO_MESSAGE",
@@ -5920,8 +5922,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Add or remove an emoji reaction to a Slack message",
+			descriptionCompressed: "Add or remove an emoji reaction to a Slack msg",
 		},
 		{
 			name: "SLACK_READ_CHANNEL",
@@ -5956,7 +5957,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Read message history from a Slack channel",
+			descriptionCompressed: "Read msg history from a Slack channel",
 		},
 		{
 			name: "SLACK_SEND_MESSAGE",
@@ -5991,7 +5992,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send a message to a Slack channel or thread",
+			descriptionCompressed: "Send a msg to a Slack channel or thread",
 		},
 		{
 			name: "SLACK_UNPIN_MESSAGE",
@@ -6025,7 +6026,7 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Unpin a message from a Slack channel",
+			descriptionCompressed: "Unpin a msg from a Slack channel",
 		},
 		{
 			name: "SMITH_AT_ANVIL",
@@ -6155,7 +6156,7 @@ export const allActionsSpec = {
 				"SILENCE",
 			],
 			descriptionCompressed:
-				"Stop playback and clear the queue. Use when the user wants music off or the queue cleared.",
+				"Stop playback and clear the queue. Use when user wants music off or the queue cleared.",
 		},
 		{
 			name: "STOP_TAILSCALE",
@@ -6228,7 +6229,7 @@ export const allActionsSpec = {
 				"TASK_STATUS_HISTORY",
 			],
 			descriptionCompressed:
-				"Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, co...",
+				"Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search...",
 		},
 		{
 			name: "TASK_SHARE",
@@ -6258,7 +6259,7 @@ export const allActionsSpec = {
 				"RUN_SHELL",
 			],
 			descriptionCompressed:
-				"Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close...",
+				"Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear...",
 		},
 		{
 			name: "TOGGLE_SKILL",
@@ -6321,15 +6322,14 @@ export const allActionsSpec = {
 				"PAY",
 			],
 			descriptionCompressed:
-				"Transfer tokens or native BNB to another address. Use this when a user",
+				"Transfer tokens or native BNB to another address. Use when a user",
 		},
 		{
 			name: "TWITCH_JOIN_CHANNEL",
 			description: "Join a Twitch channel to listen and send messages",
 			parameters: [],
 			similes: ["JOIN_TWITCH_CHANNEL", "ENTER_CHANNEL", "CONNECT_CHANNEL"],
-			descriptionCompressed:
-				"Join a Twitch channel to listen and send messages",
+			descriptionCompressed: "Join a Twitch channel to listen and send msgs",
 		},
 		{
 			name: "TWITCH_LEAVE_CHANNEL",
@@ -6353,7 +6353,7 @@ export const allActionsSpec = {
 				"GET_CHANNELS",
 				"CURRENT_CHANNELS",
 			],
-			descriptionCompressed: "List all Twitch channels the bot is currently in",
+			descriptionCompressed: "List all Twitch channels the bot is in",
 		},
 		{
 			name: "TWITCH_SEND_MESSAGE",
@@ -6365,7 +6365,7 @@ export const allActionsSpec = {
 				"CHAT_TWITCH",
 				"SAY_IN_TWITCH",
 			],
-			descriptionCompressed: "Send a message to a Twitch channel",
+			descriptionCompressed: "Send a msg to a Twitch channel",
 		},
 		{
 			name: "UNBLOCK_APPS",
@@ -6435,7 +6435,7 @@ export const allActionsSpec = {
 				"SEE_SCREEN",
 			],
 			descriptionCompressed:
-				"Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It...",
+				"Control the local desktop. inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for...",
 		},
 		{
 			name: "USE_ITEM",
@@ -6450,7 +6450,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["COMBINE_ITEMS"],
 			descriptionCompressed:
-				"Use one inventory item on another (e.g. tinderbox on logs)",
+				"Use one inventory item on another (e. g. tinderbox on logs)",
 		},
 		{
 			name: "USE_ITEM_ON_OBJECT",
@@ -6459,7 +6459,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["ITEM_ON_OBJECT"],
 			descriptionCompressed:
-				"Use an inventory item on a world object (e.g. ore on furnace)",
+				"Use an inventory item on a world object (e. g. ore on furnace)",
 		},
 		{
 			name: "USE_SKILL",
@@ -6468,7 +6468,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
 			descriptionCompressed:
-				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the convo.",
 		},
 		{
 			name: "WALK_TO",
@@ -6477,7 +6477,7 @@ export const allActionsSpec = {
 			parameters: [],
 			similes: ["MOVE_TO", "GO_TO", "TRAVEL_TO"],
 			descriptionCompressed:
-				"Walk the player to a coordinate or named destination (e.g. bank, lumbridge)",
+				"Walk the player to a coordinate or named destination (e. g. bank, lumbridge)",
 		},
 		{
 			name: "WEB_SEARCH",
@@ -6496,7 +6496,7 @@ export const allActionsSpec = {
 				"FIND_INFORMATION",
 			],
 			descriptionCompressed:
-				"Perform a web search to find information related to the message.",
+				"Perform a web search to find info related to the msg.",
 		},
 		{
 			name: "WITHDRAW_ITEM",
@@ -6977,6 +6977,8 @@ export const coreEvaluatorsSpec = {
 						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
 				},
 			],
+			descriptionCompressed:
+				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
 		},
 		{
 			name: "RELATIONSHIP_EXTRACTION",
@@ -7004,6 +7006,8 @@ export const coreEvaluatorsSpec = {
 						"Extracts X handle and creates/updates the entity with a platform identity.",
 				},
 			],
+			descriptionCompressed:
+				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
 		},
 		{
 			name: "MEMORY_SUMMARIZATION",
@@ -7016,6 +7020,8 @@ export const coreEvaluatorsSpec = {
 			],
 			alwaysRun: true,
 			examples: [],
+			descriptionCompressed:
+				"Auto summarizes convos to optimize context usage. Compresses convo history while preserving important info.",
 		},
 		{
 			name: "LONG_TERM_MEMORY_EXTRACTION",
@@ -7024,6 +7030,8 @@ export const coreEvaluatorsSpec = {
 			similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
 			alwaysRun: true,
 			examples: [],
+			descriptionCompressed:
+				"Extract long-term facts about users from convos. Identifies and stores persistent info like preferences, interests, and personal details.",
 		},
 	],
 } as const satisfies {
@@ -7142,6 +7150,8 @@ export const allEvaluatorsSpec = {
 						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
 				},
 			],
+			descriptionCompressed:
+				"Generate a self-reflective thought on the convo, then extract facts and relationships between entities in the convo. Reflects on agent behavior and provides...",
 		},
 		{
 			name: "RELATIONSHIP_EXTRACTION",
@@ -7169,6 +7179,8 @@ export const allEvaluatorsSpec = {
 						"Extracts X handle and creates/updates the entity with a platform identity.",
 				},
 			],
+			descriptionCompressed:
+				"Passively extracts and updates relationship info from convos. Identifies platform identities, relationship indicators, and mentioned third parties.",
 		},
 		{
 			name: "MEMORY_SUMMARIZATION",
@@ -7181,6 +7193,8 @@ export const allEvaluatorsSpec = {
 			],
 			alwaysRun: true,
 			examples: [],
+			descriptionCompressed:
+				"Auto summarizes convos to optimize context usage. Compresses convo history while preserving important info.",
 		},
 		{
 			name: "LONG_TERM_MEMORY_EXTRACTION",
@@ -7189,6 +7203,8 @@ export const allEvaluatorsSpec = {
 			similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
 			alwaysRun: true,
 			examples: [],
+			descriptionCompressed:
+				"Extract long-term facts about users from convos. Identifies and stores persistent info like preferences, interests, and personal details.",
 		},
 	],
 } as const satisfies {

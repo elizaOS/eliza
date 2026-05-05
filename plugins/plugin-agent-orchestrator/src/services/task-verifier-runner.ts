@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, parseKeyValueXml } from "@elizaos/core";
 import type {
   TaskNodeRecord,
   TaskRegistry,
@@ -41,9 +41,8 @@ function extractJsonBlock(raw: string): string {
 
 function parseAcceptanceEvaluation(raw: string): AcceptanceEvaluation | null {
   try {
-    const parsed = JSON.parse(
-      extractJsonBlock(raw),
-    ) as Partial<AcceptanceEvaluation>;
+    const parsed = (parseKeyValueXml<Record<string, unknown>>(raw) ??
+      JSON.parse(extractJsonBlock(raw))) as Partial<AcceptanceEvaluation>;
     if (
       (parsed.verdict !== "pass" && parsed.verdict !== "fail") ||
       typeof parsed.summary !== "string" ||
@@ -243,10 +242,11 @@ async function evaluateAcceptanceCriteria(
   const prompt = [
     "You are a strict task verifier for an agent coordinator.",
     "Decide whether the thread satisfies its acceptance criteria based only on the provided evidence.",
-    "Return JSON only with keys: verdict, summary, checklist.",
+    "Respond with TOON only using keys: verdict, summary, checklist.",
     'Set verdict to "pass" only if every criterion is satisfied by concrete evidence.',
     'Set verdict to "fail" if any criterion is missing, contradicted, or unsupported.',
     "Each checklist entry must contain criterion, status (pass|fail|partial), and evidence.",
+    "Use checklist[0]{criterion,status,evidence}: criterion text,pass,evidence text",
     "",
     `Thread title: ${thread.title}`,
     `Original request: ${thread.originalRequest}`,

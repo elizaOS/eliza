@@ -12,7 +12,6 @@ def cuda_quantized_bmm_dynamic(group_size: int,
     B, nh, M, K = fA.shape
     feat_per_int = 32 // bits
     fA = fA.view(-1, M, K).contiguous()
-    N = qB.shape[-1] * feat_per_int
     qB = qB.reshape(-1, K, qB.shape[-1]).transpose(1, 2).contiguous()
     flatten_B = B * nh
     if mqa:

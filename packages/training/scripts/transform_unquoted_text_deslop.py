@@ -13,7 +13,6 @@ Operates in-place on data/final/train_final.jsonl.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re

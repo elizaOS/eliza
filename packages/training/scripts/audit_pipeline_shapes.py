@@ -31,7 +31,7 @@ from typing import Any, Iterator
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.toon import ToonDecoder
+from lib.toon import ToonDecoder  # noqa: E402
 
 log = logging.getLogger("audit")
 

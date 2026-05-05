@@ -14,6 +14,7 @@ import {
 	composePromptFromState,
 	logger,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
 import { BLUEBUBBLES_SERVICE_NAME } from "../constants.js";
@@ -31,14 +32,10 @@ Extract the following:
 2. messageId: The message ID to react to (or "last" for the last message)
 3. remove: true to remove the reaction, false to add it
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "emoji": "❤️",
-  "messageId": "last",
-  "remove": false
-}
-\`\`\`
+Respond with TOON only:
+emoji: ❤️
+messageId: last
+remove: false
 `;
 
 interface ReactionParams {
@@ -98,12 +95,16 @@ export const sendReactionAction: Action = {
 				prompt,
 			});
 
-			const parsed = parseJSONObjectFromText(response);
+			const parsed =
+				parseKeyValueXml<Record<string, unknown>>(response) ??
+				parseJSONObjectFromText(response);
 			if (parsed?.emoji) {
 				reactionInfo = {
 					emoji: String(parsed.emoji),
 					messageId: String(parsed.messageId || "last"),
-					remove: Boolean(parsed.remove),
+					remove:
+						parsed.remove === true ||
+						String(parsed.remove).toLowerCase() === "true",
 				};
 				break;
 			}

@@ -9,6 +9,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -37,11 +38,15 @@ const getUserIdentifier = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response);
+		const parsedResponse =
+			parseKeyValueXml<Record<string, unknown>>(response) ??
+			parseJSONObjectFromText(response);
 		if (parsedResponse?.userIdentifier) {
 			return {
 				userIdentifier: String(parsedResponse.userIdentifier),
-				detailed: parsedResponse.detailed === true,
+				detailed:
+					parsedResponse.detailed === true ||
+					String(parsedResponse.detailed).toLowerCase() === "true",
 			};
 		}
 	}

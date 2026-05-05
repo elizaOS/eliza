@@ -9,6 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
@@ -26,18 +27,15 @@ Extract the following:
 1. messageTs: The message timestamp to pin (format: 1234567890.123456)
 2. channelId: The channel ID (optional, defaults to current channel)
 
-Respond with a JSON object like:
-{
-  "messageTs": "1234567890.123456",
-  "channelId": null
-}
-
-Only respond with the JSON object, no other text.`;
+Respond with TOON only:
+messageTs: 1234567890.123456
+channelId:`;
 
 export const pinMessage: Action = {
   name: "SLACK_PIN_MESSAGE",
   similes: ["PIN_SLACK_MESSAGE", "PIN_MESSAGE", "SLACK_PIN", "SAVE_MESSAGE"],
   description: "Pin a message in a Slack channel",
+  descriptionCompressed: "Pin Slack message.",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -115,7 +113,9 @@ export const pinMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response);
+      const parsedResponse =
+        parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response);
       if (parsedResponse?.messageTs) {
         pinInfo = {
           messageTs: String(parsedResponse.messageTs),

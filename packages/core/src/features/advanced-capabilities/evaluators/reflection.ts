@@ -15,6 +15,7 @@ import type {
 } from "../../../types/index.ts";
 import { asUUID, ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
+import { encodeToonValue } from "../../../utils/toon";
 import {
 	composePrompt,
 	parseJSONObjectFromText,
@@ -29,7 +30,7 @@ import {
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("REFLECTION");
 
-/** Shape of a single fact in the XML response */
+/** Shape of a single fact in legacy structured responses. */
 interface FactXml {
 	claim?: string;
 	type?: string;
@@ -37,7 +38,7 @@ interface FactXml {
 	already_known?: string;
 }
 
-/** Shape of a single relationship in the XML response */
+/** Shape of a single relationship in structured responses. */
 interface RelationshipXml {
 	sourceEntityId?: string;
 	targetEntityId?: string;
@@ -45,7 +46,7 @@ interface RelationshipXml {
 	metadata?: Record<string, unknown>;
 }
 
-/** Shape of the reflection XML response */
+/** Shape of task completion in structured responses. */
 interface TaskCompletionXml {
 	completed?: string | boolean;
 	reason?: string;
@@ -78,6 +79,14 @@ const PLACEHOLDER_ENTITY_REFERENCE_PATTERN =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatPromptData(value: unknown): string {
+	try {
+		return encodeToonValue(value);
+	} catch {
+		return String(value);
+	}
 }
 
 function parseXmlItems<T>(xml: string, tag: string): T[] {
@@ -649,8 +658,10 @@ async function handler(
 			...(state?.values || {}),
 			actionResults: formatActionResults(actionResults),
 			roomType: message.content.channelType as string,
-			entitiesInRoom: JSON.stringify(entities),
-			existingRelationships: JSON.stringify(slimRelationships),
+			entitiesInRoom: formatPromptData({ entities }),
+			existingRelationships: formatPromptData({
+				relationships: slimRelationships,
+			}),
 			senderId: message.entityId,
 		},
 		template:

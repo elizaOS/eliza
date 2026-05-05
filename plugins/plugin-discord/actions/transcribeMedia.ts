@@ -12,6 +12,7 @@ import {
 	type Memory,
 	MemoryType,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	type State,
 } from "@elizaos/core";
@@ -41,7 +42,7 @@ const getMediaAttachmentId = async (
 			prompt,
 		});
 
-		const parsedResponse = parseJSONObjectFromText(response) as {
+		const parsedResponse = (parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response)) as {
 			attachmentId: string;
 		} | null;
 

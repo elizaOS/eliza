@@ -59,7 +59,7 @@ def _load_dotenv() -> None:
 def create_parser() -> argparse.ArgumentParser:
     """Create command-line argument parser."""
     parser = argparse.ArgumentParser(
-        description="AgentBench benchmark for ElizaOS Python",
+        description="AgentBench benchmark",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -101,9 +101,9 @@ def create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--runtime",
         type=str,
-        choices=["mock", "elizaos"],
+        choices=["mock", "bridge", "elizaos"],
         default="mock",
-        help="Runtime to use (mock for testing, elizaos for real evaluation)",
+        help="Runtime to use (mock for testing, bridge for Eliza TS evaluation; elizaos is a bridge alias)",
     )
 
     # Report command
@@ -176,43 +176,17 @@ async def run_benchmark(args: argparse.Namespace) -> int:
 
     # Create runtime
     runtime = None
-    if args.runtime == "elizaos":
-        try:
-            from elizaos.runtime import AgentRuntime
-            from elizaos.types.model import LLMMode, ModelType
+    bridge_manager = None
+    if args.runtime in {"bridge", "elizaos"}:
+        from eliza_adapter import ElizaServerManager
+        from eliza_adapter.agentbench import ElizaAgentHarness
 
-            _load_dotenv()
-
-            plugins = []
-            try:
-                from elizaos_plugin_openai import get_openai_plugin
-
-                if os.environ.get("OPENAI_API_KEY"):
-                    plugins = [get_openai_plugin()]
-                else:
-                    logger.warning("OPENAI_API_KEY not set; falling back to deterministic mock runtime")
-            except ImportError as e:
-                logger.warning(f"OpenAI plugin not available ({e}); falling back to deterministic mock runtime")
-            except Exception as e:
-                logger.warning(f"Failed to initialize OpenAI plugin ({e}); falling back to deterministic mock runtime")
-
-            if not plugins:
-                runtime = SmartMockRuntime()
-            else:
-                # AgentBench is iterative; default to SMALL to reduce latency/cost.
-                runtime = AgentRuntime(plugins=plugins, llm_mode=LLMMode.SMALL)
-                await runtime.initialize()
-                if not runtime.has_model(ModelType.TEXT_LARGE):
-                    logger.warning(
-                        "ElizaOS runtime has no TEXT_LARGE model handler; falling back to deterministic mock runtime"
-                    )
-                    await runtime.stop()
-                    runtime = SmartMockRuntime()
-                else:
-                    logger.info("Using ElizaOS runtime (OpenAI)")
-        except ImportError:
-            logger.warning("ElizaOS runtime not available, using deterministic mock")
-            runtime = SmartMockRuntime()
+        _load_dotenv()
+        bridge_manager = ElizaServerManager()
+        bridge_manager.start()
+        runtime = SmartMockRuntime()
+        runtime._app_harness = ElizaAgentHarness(bridge_manager.client)  # type: ignore[attr-defined]
+        logger.info("Using Eliza TypeScript bridge")
     else:
         logger.info("Using deterministic mock runtime (harness validation)")
         runtime = SmartMockRuntime()
@@ -255,6 +229,9 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     except Exception as e:
         logger.error(f"Benchmark failed: {e}")
         return 1
+    finally:
+        if bridge_manager is not None:
+            bridge_manager.stop()
 
 
 def list_environments() -> None:

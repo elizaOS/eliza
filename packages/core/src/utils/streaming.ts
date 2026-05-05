@@ -6,6 +6,7 @@
  * - XmlTagExtractor - Extract content from a specific XML tag
  * - ResponseStreamExtractor - Action-aware XML (for DefaultMessageService)
  * - ActionStreamFilter - Content-type aware filter (for action handlers)
+ * - ToonFieldStreamExtractor - Extract top-level TOON fields safely
  *
  * For the interface definition, see types/streaming.ts.
  * Implementations can use these or create their own extractors.
@@ -617,6 +618,28 @@ export interface ValidationStreamExtractorConfig {
 }
 
 /**
+ * Configuration for ToonFieldStreamExtractor.
+ */
+export interface ToonFieldStreamExtractorConfig {
+	/** Validation level (0-3). Level 2+ buffers until flush. */
+	level: 0 | 1 | 2 | 3;
+	/** Schema rows with field definitions */
+	schema: SchemaRow[];
+	/** Which top-level TOON fields to stream to the consumer */
+	streamFields: string[];
+	/**
+	 * Callback for streaming chunks.
+	 * Mirrors ValidationStreamExtractor so dynamicPromptExecFromState can swap
+	 * extractors without changing consumer behavior.
+	 */
+	onChunk: (chunk: string, field?: string, accumulated?: string) => void;
+	/** Rich event callback for sophisticated consumers */
+	onEvent?: (event: StreamEvent) => void;
+	/** Abort signal for cancellation */
+	abortSignal?: AbortSignal;
+}
+
+/**
  * Diagnosis result for error analysis.
  */
 export interface ValidationDiagnosis {
@@ -949,6 +972,305 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 
 		const newContent = content.substring(previouslyEmitted.length);
 
+		if (newContent) {
+			this.config.onChunk(newContent, field, content);
+			this.emitEvent({
+				eventType: "chunk",
+				field,
+				chunk: newContent,
+				timestamp: Date.now(),
+			});
+			this.emittedContent.set(field, content);
+		}
+	}
+
+	private emitEvent(event: StreamEvent): void {
+		if (this.config.onEvent) {
+			this.config.onEvent(event);
+		}
+	}
+}
+
+// ============================================================================
+// ToonFieldStreamExtractor - TOON top-level field extraction
+// ============================================================================
+
+const TOON_TOP_LEVEL_FIELD_RE =
+	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
+
+/**
+ * Extracts configured top-level scalar fields from TOON without streaming
+ * surrounding control fields such as thought/actions/providers.
+ *
+ * This intentionally avoids decoding partial TOON documents. It processes
+ * complete lines, tracks top-level field boundaries, and only emits values for
+ * fields explicitly listed in `streamFields`.
+ */
+export class ToonFieldStreamExtractor implements IStreamExtractor {
+	private lineBuffer = "";
+	private currentField: string | null = null;
+	private fieldContents: Map<string, string> = new Map();
+	private emittedContent: Map<string, string> = new Map();
+	private validatedFields: Set<string> = new Set();
+	private fieldStates: Map<string, FieldState> = new Map();
+	private state: ExtractorState = "streaming";
+	private readonly streamFieldSet: Set<string>;
+
+	constructor(private readonly config: ToonFieldStreamExtractorConfig) {
+		this.streamFieldSet = new Set(config.streamFields);
+		for (const row of config.schema) {
+			this.fieldStates.set(row.field, "pending");
+		}
+	}
+
+	get done(): boolean {
+		return this.state === "complete" || this.state === "failed";
+	}
+
+	push(chunk: string): string {
+		if (this.config.abortSignal?.aborted) {
+			if (this.state !== "complete" && this.state !== "failed") {
+				this.state = "failed";
+				this.emitEvent({
+					eventType: "error",
+					error: "Cancelled by user",
+					timestamp: Date.now(),
+				});
+			}
+			return "";
+		}
+
+		if (this.state !== "streaming") return "";
+
+		validateChunkSize(chunk);
+		this.lineBuffer += chunk;
+		this.processAvailableLines(false);
+		return "";
+	}
+
+	flush(): string {
+		if (this.state === "failed") {
+			return "";
+		}
+
+		this.processAvailableLines(true);
+		this.completeCurrentField();
+
+		if (this.config.level >= 2) {
+			for (const field of this.config.streamFields) {
+				const content = this.fieldContents.get(field) || "";
+				if (content) {
+					this.emitFieldContent(field, content);
+				}
+			}
+		}
+
+		this.state = "complete";
+		this.emitEvent({ eventType: "complete", timestamp: Date.now() });
+		return "";
+	}
+
+	reset(): void {
+		this.lineBuffer = "";
+		this.currentField = null;
+		this.fieldContents.clear();
+		this.emittedContent.clear();
+		this.validatedFields.clear();
+		for (const row of this.config.schema) {
+			this.fieldStates.set(row.field, "pending");
+		}
+		this.state = "streaming";
+	}
+
+	signalRetry(retryCount: number): { validatedFields: string[] } {
+		this.state = "retrying";
+		this.emitEvent({
+			eventType: "retry_start",
+			retryCount,
+			timestamp: Date.now(),
+		});
+		return { validatedFields: Array.from(this.validatedFields) };
+	}
+
+	signalError(message: string): void {
+		this.state = "failed";
+		this.emitEvent({
+			eventType: "error",
+			error: message,
+			timestamp: Date.now(),
+		});
+	}
+
+	getValidatedFields(): Map<string, string> {
+		const result = new Map<string, string>();
+		for (const field of this.validatedFields) {
+			const content = this.fieldContents.get(field);
+			if (content) {
+				result.set(field, content);
+			}
+		}
+		return result;
+	}
+
+	diagnose(): ValidationDiagnosis {
+		const missingFields: string[] = [];
+		const invalidFields: string[] = [];
+		const incompleteFields: string[] = [];
+
+		for (const row of this.config.schema) {
+			const state = this.fieldStates.get(row.field);
+			switch (state) {
+				case "pending":
+					missingFields.push(row.field);
+					break;
+				case "invalid":
+					invalidFields.push(row.field);
+					break;
+				case "partial":
+					incompleteFields.push(row.field);
+					break;
+			}
+		}
+
+		return { missingFields, invalidFields, incompleteFields };
+	}
+
+	getState(): ExtractorState {
+		return this.state;
+	}
+
+	private processAvailableLines(final: boolean): void {
+		let newlineIndex = this.lineBuffer.search(/\r?\n/);
+		while (newlineIndex !== -1) {
+			const newlineLength =
+				this.lineBuffer[newlineIndex] === "\r" &&
+				this.lineBuffer[newlineIndex + 1] === "\n"
+					? 2
+					: 1;
+			const line = this.lineBuffer.slice(0, newlineIndex);
+			this.lineBuffer = this.lineBuffer.slice(newlineIndex + newlineLength);
+			this.processLine(line);
+			newlineIndex = this.lineBuffer.search(/\r?\n/);
+		}
+
+		if (final && this.lineBuffer.length > 0) {
+			this.processLine(this.lineBuffer);
+			this.lineBuffer = "";
+		}
+	}
+
+	private processLine(line: string): void {
+		const isTopLevel = !/^[\t ]/.test(line);
+		const fieldMatch = isTopLevel ? line.match(TOON_TOP_LEVEL_FIELD_RE) : null;
+
+		if (fieldMatch) {
+			this.completeCurrentField();
+			const rawKey = fieldMatch[1] ?? "";
+			const field = this.baseToonFieldName(rawKey);
+			const rawValue = fieldMatch[2] ?? "";
+			this.fieldStates.set(field, "partial");
+
+			if (!this.streamFieldSet.has(field)) {
+				this.fieldStates.set(field, rawValue.trim() ? "complete" : "partial");
+				this.currentField = null;
+				return;
+			}
+
+			this.currentField = field;
+			if (rawValue.trim().length > 0) {
+				this.appendFieldContent(field, this.parseInlineValue(rawValue));
+				this.completeCurrentField();
+			}
+			return;
+		}
+
+		if (this.currentField && this.streamFieldSet.has(this.currentField)) {
+			this.appendFieldContent(
+				this.currentField,
+				this.normalizeContinuationLine(line),
+			);
+		}
+	}
+
+	private completeCurrentField(): void {
+		if (!this.currentField) {
+			return;
+		}
+
+		const field = this.currentField;
+		this.fieldStates.set(field, "complete");
+		this.validatedFields.add(field);
+		if (this.config.level <= 1) {
+			const content = this.fieldContents.get(field) || "";
+			if (content) {
+				this.emitFieldContent(field, content);
+			}
+		}
+		this.currentField = null;
+	}
+
+	private appendFieldContent(field: string, value: string): void {
+		const previous = this.fieldContents.get(field);
+		if (previous === undefined || previous.length === 0) {
+			this.fieldContents.set(field, value);
+			return;
+		}
+		this.fieldContents.set(field, `${previous}\n${value}`);
+	}
+
+	private parseInlineValue(rawValue: string): string {
+		const value = rawValue.trim();
+		if (value.length === 0) {
+			return "";
+		}
+
+		if (value.startsWith('"') && value.endsWith('"')) {
+			try {
+				return JSON.parse(value) as string;
+			} catch {
+				return value.slice(1, -1);
+			}
+		}
+
+		if (value.startsWith("'") && value.endsWith("'")) {
+			return value.slice(1, -1);
+		}
+
+		return value;
+	}
+
+	private normalizeContinuationLine(line: string): string {
+		if (line.startsWith("  ")) {
+			return line.slice(2);
+		}
+		if (line.startsWith("\t")) {
+			return line.slice(1);
+		}
+		return line;
+	}
+
+	private baseToonFieldName(rawKey: string): string {
+		return rawKey.split(/[\[{]/, 1)[0] ?? rawKey;
+	}
+
+	private emitFieldContent(field: string, content: string): void {
+		const previouslyEmitted = this.emittedContent.get(field) || "";
+
+		if (content.length < previouslyEmitted.length) {
+			this.emittedContent.set(field, content);
+			if (content) {
+				this.config.onChunk(content, field, content);
+				this.emitEvent({
+					eventType: "chunk",
+					field,
+					chunk: content,
+					timestamp: Date.now(),
+				});
+			}
+			return;
+		}
+
+		const newContent = content.substring(previouslyEmitted.length);
 		if (newContent) {
 			this.config.onChunk(newContent, field, content);
 			this.emitEvent({

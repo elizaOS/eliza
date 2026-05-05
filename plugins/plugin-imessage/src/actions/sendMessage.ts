@@ -10,7 +10,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  composePromptFromState,
+  logger,
+  ModelType,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+} from "@elizaos/core";
 import type { IMessageService } from "../service.js";
 import { IMESSAGE_SERVICE_NAME, isValidIMessageTarget, normalizeIMessageTarget } from "../types.js";
 
@@ -25,13 +31,9 @@ Extract the following:
 1. text: The message content to send
 2. to: The recipient (phone number, email, or "current" to reply)
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "text": "message to send",
-  "to": "phone/email or 'current'"
-}
-\`\`\`
+Respond with TOON only:
+text: message to send
+to: phone/email or current
 `;
 
 interface SendMessageParams {
@@ -136,7 +138,9 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response);
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response);
       if (parsed?.text) {
         msgInfo = {
           text: String(parsed.text),

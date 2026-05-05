@@ -175,6 +175,7 @@ import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
 import { resolveStateDir } from "./utils/state-dir";
 import {
 	ActionStreamFilter,
+	ToonFieldStreamExtractor,
 	ValidationStreamExtractor,
 } from "./utils/streaming";
 import { encodeToonValue } from "./utils/toon";
@@ -256,6 +257,10 @@ type StructuredResponseCandidate = {
 	formats: StructuredResponseFormat[];
 	source: string;
 };
+
+type DynamicPromptStreamExtractor =
+	| ValidationStreamExtractor
+	| ToonFieldStreamExtractor;
 
 function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
@@ -5527,7 +5532,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
 
 		// Extractor is created once and persists across retries
-		let extractor: ValidationStreamExtractor | undefined;
+		let extractor: DynamicPromptStreamExtractor | undefined;
 		let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
 		const perFieldCodes = new Map<string, string>();
 
@@ -5603,23 +5608,16 @@ export class AgentRuntime implements IAgentRuntime {
 			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
-			const hasNestedSchema = this.schemaHasNestedStructure(schema);
 			let format: "XML" | "JSON" | "TOON" = resolveDefaultOutputFormat(
 				this.getSetting("PROMPT_OUTPUT_FORMAT"),
 			);
 			if (options.forceFormat) {
-				if (options.forceFormat === "xml" && hasNestedSchema) {
-					this.logger.warn(
-						"dynamicPromptExecFromState: nested schema requires JSON; overriding forced XML format",
-					);
-					format = "JSON";
-				} else {
-					format = options.forceFormat.toUpperCase() as "XML" | "JSON" | "TOON";
-				}
-			} else if (options.preferredEncapsulation === "json" || hasNestedSchema) {
-				format = "JSON";
-			} else if (options.preferredEncapsulation === "xml") {
-				format = "XML";
+				format = options.forceFormat.toUpperCase() as "XML" | "JSON" | "TOON";
+			} else if (options.preferredEncapsulation) {
+				format = options.preferredEncapsulation.toUpperCase() as
+					| "XML"
+					| "JSON"
+					| "TOON";
 			}
 
 			/**
@@ -5811,10 +5809,15 @@ ${section_end}`;
 				`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`,
 			);
 
-			// Create ValidationStreamExtractor on first iteration if streaming
-			// Only use ValidationStreamExtractor for XML format - it parses XML tags
-			// JSON streaming should bypass this extractor (or use a JSON-specific one later)
-			if (currentRetry === 0 && options.onStreamChunk && !extractor && isXML) {
+			// Create a structured extractor on first iteration if streaming.
+			// XML and TOON both need field-aware extraction; raw structured tokens
+			// must not be forwarded to user-visible streaming callbacks.
+			if (
+				currentRetry === 0 &&
+				options.onStreamChunk &&
+				!extractor &&
+				(isXML || format === "TOON")
+			) {
 				const hasRichConsumer = !!options.onStreamEvent;
 
 				const streamFields = schema
@@ -5839,27 +5842,39 @@ ${section_end}`;
 
 				const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-				// WHY accumulated is forwarded: the VSE tracks the full extracted text
+				// WHY accumulated is forwarded: the extractor tracks the full extracted text
 				// per field internally (`content` in emitFieldContent). Surfacing it
 				// here means consumers like first-sentence voice detection or Eliza's
 				// streaming-text resolver can use the authoritative value instead of
 				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
 				// re-accumulating from deltas — which broke when two extractors ran
 				// concurrently (the dual-extractor garbling bug).
-				extractor = new ValidationStreamExtractor({
-					level: contextLevel,
-					schema,
-					streamFields: finalStreamFields,
-					expectedCodes: perFieldCodes,
-					onChunk: (chunk, _field, accumulated) => {
-						return options.onStreamChunk?.(chunk, streamMessageId, accumulated);
-					},
-					onEvent: options.onStreamEvent
-						? (event) => options.onStreamEvent?.(event, streamMessageId)
-						: undefined,
-					abortSignal: options.abortSignal,
-					hasRichConsumer,
-				});
+				const onChunk = (chunk: string, _field?: string, accumulated?: string) =>
+					options.onStreamChunk?.(chunk, streamMessageId, accumulated);
+				const onEvent = options.onStreamEvent
+					? (event: StreamEvent) =>
+							options.onStreamEvent?.(event, streamMessageId)
+					: undefined;
+
+				extractor = isXML
+					? new ValidationStreamExtractor({
+							level: contextLevel,
+							schema,
+							streamFields: finalStreamFields,
+							expectedCodes: perFieldCodes,
+							onChunk,
+							onEvent,
+							abortSignal: options.abortSignal,
+							hasRichConsumer,
+						})
+					: new ToonFieldStreamExtractor({
+							level: contextLevel,
+							schema,
+							streamFields: finalStreamFields,
+							onChunk,
+							onEvent,
+							abortSignal: options.abortSignal,
+						});
 			}
 
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
@@ -5876,9 +5891,7 @@ ${section_end}`;
 								extractor?.push(chunk);
 							},
 						}
-					: options.onStreamChunk
-						? { onStreamChunk: options.onStreamChunk }
-						: {}),
+					: {}),
 			};
 
 			// Check for cancellation before request
@@ -5891,10 +5904,8 @@ ${section_end}`;
 
 			let response: string;
 			try {
-				response = await this.useModel(
-					resolvedModelType,
-					modelParams,
-					options.model,
+				response = await runWithStreamingContext(undefined, () =>
+					this.useModel(resolvedModelType, modelParams, options.model),
 				);
 			} catch (modelError) {
 				const modelErrorMessage = getErrorMessage(modelError);
@@ -6489,18 +6500,6 @@ ${section_end}`;
 			}
 		}
 		return flattened;
-	}
-
-	private schemaHasNestedStructure(rows: SchemaRow[]): boolean {
-		return rows.some((row) => {
-			const effectiveType = this.getEffectiveSchemaValueType(row);
-			return (
-				effectiveType === "array" ||
-				effectiveType === "object" ||
-				(row.properties?.length ?? 0) > 0 ||
-				!!row.items
-			);
-		});
 	}
 
 	private renderXmlSchemaExample(rows: SchemaRow[]): string {

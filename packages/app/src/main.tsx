@@ -217,7 +217,10 @@ function shouldEnableElectrobunMacWindowDrag(): boolean {
 }
 
 if (shouldEnableElectrobunMacWindowDrag()) {
-  document.documentElement.classList.add("eliza-electrobun-frameless");
+  document.documentElement.classList.add(
+    "eliza-electrobun-frameless",
+    "eliza-electrobun-macos-titlebar",
+  );
 }
 
 // Dev escape hatch: ?reset forces a truly fresh onboarding session by clearing

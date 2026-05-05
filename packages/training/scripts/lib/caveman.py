@@ -170,7 +170,6 @@ def compression_ratio(original: str, compressed: str) -> float:
 
 
 if __name__ == "__main__":
-    import sys
     samples = [
         "I'll list the available time slots so the user can pick one.",
         "They want a quick fix; I'll show the one-line shell command first.",

@@ -207,6 +207,8 @@ async function main(): Promise<void> {
   if (elizaResult && elizaResult.securityScore < 100) {
     process.exit(1);
   }
+
+  process.exit(0);
 }
 
 main().catch((err) => {

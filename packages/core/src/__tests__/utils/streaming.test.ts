@@ -4,6 +4,7 @@ import {
 	type IStreamExtractor,
 	PassthroughExtractor,
 	ResponseStreamExtractor,
+	ToonFieldStreamExtractor,
 	XmlTagExtractor,
 } from "../../utils/streaming";
 
@@ -32,6 +33,17 @@ describe("IStreamExtractor interface", () => {
 
 	it("ActionStreamFilter implements IStreamExtractor", () => {
 		const extractor: IStreamExtractor = new ActionStreamFilter();
+		expect(extractor.done).toBe(false);
+		expect(typeof extractor.push).toBe("function");
+	});
+
+	it("ToonFieldStreamExtractor implements IStreamExtractor", () => {
+		const extractor: IStreamExtractor = new ToonFieldStreamExtractor({
+			level: 0,
+			schema: [{ field: "text", description: "Text" }],
+			streamFields: ["text"],
+			onChunk: () => {},
+		});
 		expect(extractor.done).toBe(false);
 		expect(typeof extractor.push).toBe("function");
 	});
@@ -567,5 +579,84 @@ describe("ActionStreamFilter", () => {
 
 			expect(result).toBe(""); // No text tag, nothing streamed
 		});
+	});
+});
+
+describe("ToonFieldStreamExtractor", () => {
+	const schema = [
+		{ field: "thought", description: "Thought" },
+		{ field: "actions", description: "Actions" },
+		{ field: "providers", description: "Providers" },
+		{ field: "text", description: "Text" },
+		{ field: "simple", description: "Simple" },
+	];
+
+	it("streams only the configured text field from TOON", () => {
+		const chunks: string[] = [];
+		const accumulated: string[] = [];
+		const extractor = new ToonFieldStreamExtractor({
+			level: 0,
+			schema,
+			streamFields: ["text"],
+			onChunk: (chunk, _field, fullText) => {
+				chunks.push(chunk);
+				accumulated.push(fullText ?? "");
+			},
+		});
+
+		extractor.push("thought: thinking\nactions[1]: RE");
+		extractor.push("PLY\nproviders[0]:\ntext: Hello ");
+		extractor.push("world\nsimple: true\n");
+
+		expect(chunks.join("")).toBe("Hello world");
+		expect(accumulated.at(-1)).toBe("Hello world");
+		expect(chunks.join("")).not.toContain("thought:");
+		expect(chunks.join("")).not.toContain("actions:");
+		expect(chunks.join("")).not.toContain("actions[1]:");
+	});
+
+	it("decodes quoted escaped inline text", () => {
+		const chunks: string[] = [];
+		const extractor = new ToonFieldStreamExtractor({
+			level: 0,
+			schema,
+			streamFields: ["text"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push('text: "Line 1\\nLine 2"\nsimple: true\n');
+
+		expect(chunks.join("")).toBe("Line 1\nLine 2");
+	});
+
+	it("streams indented text blocks without top-level control fields", () => {
+		const chunks: string[] = [];
+		const extractor = new ToonFieldStreamExtractor({
+			level: 0,
+			schema,
+			streamFields: ["text"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push("thought: block\ntext:\n  first line\n  second line\n");
+		extractor.push("actions[1]: REPLY\n");
+
+		expect(chunks.join("")).toBe("first line\nsecond line");
+	});
+
+	it("buffers text until flush at checkpoint validation levels", () => {
+		const chunks: string[] = [];
+		const extractor = new ToonFieldStreamExtractor({
+			level: 2,
+			schema,
+			streamFields: ["text"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push("thought: hold\ntext: Buffered reply\nsimple: true\n");
+		expect(chunks).toEqual([]);
+
+		extractor.flush();
+		expect(chunks.join("")).toBe("Buffered reply");
 	});
 });

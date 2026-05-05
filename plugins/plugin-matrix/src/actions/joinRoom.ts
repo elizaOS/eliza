@@ -11,7 +11,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  composePromptFromState,
+  ModelType,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+} from "@elizaos/core";
 import type { MatrixService } from "../service.js";
 import { isValidMatrixRoomAlias, isValidMatrixRoomId, MATRIX_SERVICE_NAME } from "../types.js";
 
@@ -24,18 +29,11 @@ Recent conversation:
 
 Extract the room ID (!room:server) or room alias (#alias:server) to join.
 
-Respond with a JSON object like:
-{
-  "room": "!room:matrix.org"
-}
+Respond with TOON only:
+room: !room:matrix.org
 
-or:
-
-{
-  "room": "#alias:matrix.org"
-}
-
-Only respond with the JSON object, no other text.`;
+Or:
+room: #alias:matrix.org`;
 
 export const joinRoom: Action = {
   name: "MATRIX_JOIN_ROOM",
@@ -84,7 +82,9 @@ export const joinRoom: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response as string);
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(String(response)) ??
+        parseJSONObjectFromText(String(response));
       if (parsed?.room) {
         const roomStr = String(parsed.room).trim();
         if (isValidMatrixRoomId(roomStr) || isValidMatrixRoomAlias(roomStr)) {

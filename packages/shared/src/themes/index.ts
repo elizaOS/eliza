@@ -7,7 +7,7 @@ export type {
   ThemeDefinition,
   ThemeFonts,
   ThemeValidationError,
-} from "../contracts/theme";
+} from "../contracts/theme.js";
 
 export {
   DEFAULT_THEME_ID,
@@ -16,7 +16,7 @@ export {
   THEME_FONT_CSS_VARS,
   THEME_FONT_LINK_ID,
   validateThemeDefinition,
-} from "../contracts/theme";
+} from "../contracts/theme.js";
 export {
   BSC_GOLD_THEME,
   BUILTIN_THEMES,
@@ -24,4 +24,4 @@ export {
   HACKER_TERMINAL_THEME,
   NEON_CYBER_THEME,
   RETRO_90S_THEME,
-} from "./presets";
+} from "./presets.js";

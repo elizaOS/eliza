@@ -131,8 +131,8 @@ export type ContradictOp = z.infer<typeof ContradictOpSchema>;
 export type ExtractorOp = z.infer<typeof OpSchema>;
 
 /**
- * Top-level shape the extractor LLM must return. Exactly one JSON object
- * with a single `ops` field.
+ * Top-level shape the extractor LLM must return: one structured object with
+ * a single `ops` field.
  */
 export const ExtractorOutputSchema = z.object({
 	ops: z.array(OpSchema),

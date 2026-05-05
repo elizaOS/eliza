@@ -10,7 +10,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  composePromptFromState,
+  logger,
+  ModelType,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+} from "@elizaos/core";
 import { isLineOutboundActionContext } from "../line-action-validate.js";
 import type { LineService } from "../service.js";
 import {
@@ -34,16 +40,12 @@ Extract the following:
 4. to: The target user/group/room ID (or "current" to reply to the current chat)
 5. cardType: Type of card (info, image, action, list)
 
-Respond with a JSON object:
-\`\`\`json
-{
-  "altText": "notification text",
-  "title": "Card Title",
-  "body": "Card body text",
-  "to": "target ID or 'current'",
-  "cardType": "info"
-}
-\`\`\`
+Respond with TOON only:
+altText: notification text
+title: Card Title
+body: Card body text
+to: target ID or current
+cardType: info
 `;
 
 interface FlexMessageParams {
@@ -125,7 +127,9 @@ export const sendFlexMessage: Action = {
         prompt,
       });
 
-      const parsed = parseJSONObjectFromText(response);
+      const parsed =
+        parseKeyValueXml<Record<string, unknown>>(response) ??
+        parseJSONObjectFromText(response);
       if (parsed?.title && parsed?.body) {
         flexInfo = {
           altText: String(parsed.altText || `${parsed.title}: ${parsed.body}`),
