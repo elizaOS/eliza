@@ -48,7 +48,8 @@ export const minecraftControlAction: Action = {
   similes: ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"],
   description:
     "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
-  descriptionCompressed: "set control state (e g forward/back/left/right/jump/sprint/sneak) provide JSON control, state, durationm forward true 1000",
+  descriptionCompressed:
+    "set control state (e g forward/back/left/right/jump/sprint/sneak) provide JSON control, state, durationm forward true 1000",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["control"],
