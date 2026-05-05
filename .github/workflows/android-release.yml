@@ -86,14 +86,57 @@ jobs:
             VERSION_NAME=$(node -p "require('./package.json').version")
           fi
 
-          # Generate version code from version string
-          # 2.0.0-beta.0 -> 2000000, 2.1.3 -> 2001003
-          MAJOR=$(echo "$VERSION_NAME" | cut -d. -f1)
-          MINOR=$(echo "$VERSION_NAME" | cut -d. -f2 | cut -d- -f1)
-          PATCH=$(echo "$VERSION_NAME" | cut -d. -f3 | cut -d- -f1)
-          PRE=$(echo "$VERSION_NAME" | grep -oP '(?<=\.)\d+$' || echo "0")
+          # Generate a monotonic Android version code from semver.
+          # 2.0.0-alpha.82 -> 200001082, 2.0.0-beta.0 -> 200003000,
+          # 2.0.0 -> 200009000, 2.1.3 -> 201039000.
+          VERSION_CODE=$(node - "$VERSION_NAME" <<'NODE'
+          const version = process.argv[2];
+          const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+)(?:\.(\d+))?)?$/);
+          if (!match) {
+            console.error(`Invalid semver version: ${version}`);
+            process.exit(1);
+          }
 
-          VERSION_CODE=$(( MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + PRE ))
+          const [, majorRaw, minorRaw, patchRaw, prerelease, prereleaseRaw = "0"] =
+            match;
+          const major = Number(majorRaw);
+          const minor = Number(minorRaw);
+          const patch = Number(patchRaw);
+          const prereleaseNumber = Number(prereleaseRaw);
+          if (
+            !Number.isInteger(major) ||
+            !Number.isInteger(minor) ||
+            !Number.isInteger(patch) ||
+            !Number.isInteger(prereleaseNumber) ||
+            prereleaseNumber < 0 ||
+            prereleaseNumber > 999
+          ) {
+            console.error(`Invalid Android version component in ${version}`);
+            process.exit(1);
+          }
+
+          const channelOffsets = {
+            alpha: 1000,
+            beta: 3000,
+            rc: 5000,
+            nightly: 7000,
+          };
+          const channelOffset = prerelease
+            ? (channelOffsets[prerelease] ?? 8000)
+            : 9000;
+          const code =
+            major * 100000000 +
+            minor * 1000000 +
+            patch * 10000 +
+            channelOffset +
+            prereleaseNumber;
+          if (code > 2100000000) {
+            console.error(`Android versionCode ${code} exceeds Play Store limit`);
+            process.exit(1);
+          }
+          console.log(code);
+          NODE
+          )
 
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
