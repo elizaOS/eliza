@@ -1,9 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import {
-  agentUrl as configuredAgentUrl,
-  logger,
-} from "../services";
+import { agentUrl as configuredAgentUrl, logger } from "../services";
 
 interface ChatProps {
   pairedAgentUrl: string | null;

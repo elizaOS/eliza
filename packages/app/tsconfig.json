@@ -37,6 +37,8 @@
       "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
+      "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
+      "@elizaos/app-phone/*": ["../../plugins/app-phone/src/*"],
       "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
       "@elizaos/app-shopify/*": ["../../plugins/app-shopify/src/*"],
       "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],

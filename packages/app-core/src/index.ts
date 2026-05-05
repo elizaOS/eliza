@@ -21,6 +21,11 @@ export * from "./api/index";
 export * from "./api/response";
 export * from "./api/server-cloud-tts";
 export * from "./app-shell/task-coordinator-slots";
+export {
+  type AppShellPageRegistration,
+  listAppShellPages,
+  registerAppShellPage,
+} from "./app-shell-components";
 export * from "./bridge/index";
 export * from "./chat/index";
 export * from "./components/index";
@@ -66,7 +71,6 @@ export * from "./security/agent-vault-id";
 export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
 
-export * from "./services/phone-companion";
 export * from "./shell/index";
 export * from "./state/index";
 export * from "./test-support/test-helpers";

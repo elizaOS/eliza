@@ -55,7 +55,6 @@ import {
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   normalizeMobileRuntimeMode,
-  PhoneCompanionApp,
   preSeedAndroidLocalRuntimeIfFresh,
   resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
@@ -66,6 +65,7 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
+import { PhoneCompanionApp } from "@elizaos/app-phone/ui";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
