@@ -36,6 +36,11 @@ from lib.adapters import (  # noqa: E402
     _IGNORE_THOUGHT_POOL,
     _AGENT_TRACE_THOUGHT_POOL,
 )
+from lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
+
+assert "Reply to the user." in DEFAULT_THOUGHT_LEAKS, (
+    "DEFAULT_THOUGHT_LEAKS lost its canonical entry — see lib/eliza_record.py"
+)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")

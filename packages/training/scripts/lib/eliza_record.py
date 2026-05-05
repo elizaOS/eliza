@@ -54,6 +54,46 @@ ROUTING_ACTIONS = [ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP]
 REPLY_ACTIONS = [ACTION_REPLY, ACTION_IGNORE]
 
 
+# Single source of truth for the literal default-thought strings the legacy
+# adapters injected into records that lacked a real reasoning trace. The
+# 7M-record corpus contained millions of copies of these phrases as the
+# supervised target, which trained the model to emit them verbatim instead
+# of producing a real chain-of-thought.
+#
+# All scrubbing tools (preflight gate, transform_fix_default_thoughts,
+# transform_purge_default_thoughts, scan_trivial_thoughts, repack_v9,
+# synthesize_reasoning_round3) MUST import this constant rather than
+# re-declare the list — otherwise the sets drift and the leak comes back.
+#
+# Order: the two literals from the original adapter defaults first, then the
+# seven trivial-thought placeholders the round-2/round-3 synth used as
+# stand-ins. Add new entries here and nowhere else.
+DEFAULT_THOUGHT_LEAKS: tuple[str, ...] = (
+    "Reply to the user.",
+    "Call the tool to satisfy the request.",
+    "Let me work through this step by step.",
+    "Let me handle this request.",
+    "Let me figure out the correct tool and parameters.",
+    "Processing the user's request now.",
+    "Got the data. Let me figure out how to proceed.",
+    "Information retrieved. Let me process this for the user.",
+    "The tool returned data. Let me review it.",
+)
+
+
+def is_default_thought_leak(thought: str | None) -> bool:
+    """Return True iff `thought` (after quote/whitespace strip) matches one
+    of the canonical leak literals. Empty / None thoughts are NOT leaks —
+    the runtime tolerates an empty `<thought></thought>`, only the literal
+    placeholders pollute training."""
+    if thought is None:
+        return False
+    s = thought.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+        s = s[1:-1].strip()
+    return s in DEFAULT_THOUGHT_LEAKS
+
+
 def stable_id(*parts: object) -> str:
     h = hashlib.sha256()
     for p in parts:

@@ -27,24 +27,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.toon import ToonEncoder, ToonDecoder  # noqa: E402
+from lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
 
 TRAIN_IN = ROOT / "data" / "final" / "train.jsonl"
 THOUGHTS = ROOT / "data" / "synthesized" / "manual_reasoning" / "thoughts.jsonl"
 TRAIN_OUT = ROOT / "data" / "final" / "train_v9.jsonl"
 MANIFEST_OUT = ROOT / "data" / "final" / "manifest_v9.json"
 
-# Same set used by scan_trivial_thoughts.py + synthesize_reasoning_round3.py.
-TRIVIAL_THOUGHTS = frozenset({
-    "Reply to the user.",
-    "Call the tool to satisfy the request.",
-    "Let me work through this step by step.",
-    "Let me handle this request.",
-    "Let me figure out the correct tool and parameters.",
-    "Processing the user's request now.",
-    "Got the data. Let me figure out how to proceed.",
-    "Information retrieved. Let me process this for the user.",
-    "The tool returned data. Let me review it.",
-})
+# Single source of truth for trivial / leaked default-thought literals lives
+# in lib/eliza_record.DEFAULT_THOUGHT_LEAKS.
+TRIVIAL_THOUGHTS = frozenset(DEFAULT_THOUGHT_LEAKS)
 
 _BAD_PATTERNS = [
     r'\bthe agent\b',
