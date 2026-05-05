@@ -122,10 +122,14 @@ function collectDocs(repoRoot, scope = "all") {
   const files = new Set();
   const dirs =
     scope === "launchdocs"
-      ? ["packages/docs/launchdocs", "launchdocs"]
+      ? [
+          "packages/docs/docs/launchdocs",
+          "packages/docs/launchdocs",
+          "launchdocs",
+        ]
       : scope === "docs"
-        ? ["packages/docs", "docs"]
-        : ["packages/docs", "docs", "launchdocs"];
+        ? ["packages/docs/docs", "packages/docs", "docs"]
+        : ["packages/docs/docs", "packages/docs", "docs", "launchdocs"];
 
   for (const dirName of dirs) {
     for (const filePath of walkMarkdownFiles(path.join(repoRoot, dirName))) {
@@ -259,8 +263,10 @@ function docsAliasPaths(repoRoot, filePart) {
     return [];
   }
 
+  const docsRelativeParts = parts.slice(docsIndex + 1);
   return [
-    path.join(repoRoot, "packages", "docs", ...parts.slice(docsIndex + 1)),
+    path.join(repoRoot, "packages", "docs", "docs", ...docsRelativeParts),
+    path.join(repoRoot, "packages", "docs", ...docsRelativeParts),
   ];
 }
 
@@ -272,6 +278,7 @@ function resolveLinkedFile(repoRoot, fromFile, filePart) {
     const stripped = filePart.replace(/^\/+/, "");
     return (
       firstExistingPath([
+        path.join(repoRoot, "packages", "docs", "docs", stripped),
         path.join(repoRoot, "packages", "docs", stripped),
         ...docsAliasPaths(repoRoot, stripped),
         path.join(repoRoot, "docs", stripped),
@@ -468,6 +475,13 @@ export function checkDocs(options = {}) {
     ...checkLinks({ repoRoot, docFiles, contentByFile }),
     ...checkCommands({ repoRoot, docFiles, contentByFile, scriptsByDir }),
   ];
+  if (docFiles.length === 0) {
+    errors.push({
+      type: "no-docs",
+      file: "",
+      message: `no markdown files found for docs scope "${options.scope ?? "all"}"`,
+    });
+  }
 
   return {
     ok: errors.length === 0,
