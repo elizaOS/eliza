@@ -43,9 +43,34 @@ export * from "./conversations/conversation-utils";
 export * from "./custom-actions/CustomActionEditor";
 export * from "./custom-actions/CustomActionsPanel";
 export * from "./custom-actions/CustomActionsView";
-export { ChainIcon } from "./inventory/ChainIcon";
-export * from "./inventory/chainConfig";
-export * from "./inventory/constants";
+// Inventory + wallet UI moved to @elizaos/app-wallet. These re-exports keep
+// existing consumers working while they migrate.
+// TODO: remove once consumers import directly from @elizaos/app-wallet.
+export { ChainIcon } from "@elizaos/app-wallet/inventory/ChainIcon";
+export {
+  CHAIN_CONFIGS,
+  type ChainConfig,
+  type ChainKey,
+  chainKeyToWalletRpcChain,
+  getChainConfig,
+  getContractLogoUrl,
+  getExplorerTokenUrl,
+  getExplorerTxUrl,
+  getNativeLogoUrl,
+  getStablecoinAddress,
+  PRIMARY_CHAIN_KEYS,
+  resolveChainKey,
+} from "@elizaos/app-wallet/inventory/chainConfig";
+export {
+  BSC_GAS_READY_THRESHOLD,
+  BSC_GAS_THRESHOLD,
+  HEX_ADDRESS_RE,
+  isAvaxChainName,
+  isBscChainName,
+  type NftItem,
+  type TokenRow,
+  toNormalizedAddress,
+} from "@elizaos/app-wallet/inventory/constants";
 export * from "./pages/AdvancedPageView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
@@ -59,7 +84,9 @@ export * from "./pages/DatabasePageView";
 export * from "./pages/DatabaseView";
 export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
-export * from "./pages/InventoryView";
+// InventoryView moved to @elizaos/app-wallet — re-exported for compatibility.
+// TODO: remove once consumers import from @elizaos/app-wallet/ui.
+export { InventoryView } from "@elizaos/app-wallet/ui";
 export * from "./pages/KnowledgeView";
 
 export * from "./pages/LogsPageView";

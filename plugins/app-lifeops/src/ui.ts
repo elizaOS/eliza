@@ -1,3 +1,5 @@
+import "./api/client-lifeops.js";
+
 export * from "./components/AppBlockerSettingsCard.tsx";
 export {
   BrowserBridgeSetupPanel,

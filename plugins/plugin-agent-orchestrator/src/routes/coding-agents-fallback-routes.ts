@@ -1,10 +1,10 @@
 /**
- * Fallback handler for /api/coding-agents/* routes when the plugin
- * doesn't export createCodingAgentRouteHandler.
- * Uses the orchestrator plugin's CODE_TASK compatibility service to
- * provide task data.
+ * Fallback handler for /api/coding-agents/* routes.
  *
- * Extracted from server.ts to reduce file size.
+ * Provides task/session/scratch/preflight/coordinator-status data using the
+ * orchestrator plugin's CODE_TASK compatibility service and PTYService.
+ *
+ * Migrated from `packages/agent/src/api/coding-agents-fallback-routes.ts`.
  */
 
 import type http from "node:http";
@@ -13,8 +13,8 @@ import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
-import type { PTYService } from "./parse-action-block.js";
+} from "@elizaos/agent/api/http-helpers";
+import type { PTYService } from "../services/pty-service.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -288,7 +288,7 @@ export async function handleCodingAgentsFallback(
       const session = Array.isArray(sessions)
         ? sessions.find((entry) => {
             if (!entry || typeof entry !== "object") return false;
-            const raw = entry as Record<string, unknown>;
+            const raw = entry as unknown as Record<string, unknown>;
             return (
               raw.id === sessionId ||
               raw.sessionId === sessionId ||
@@ -659,3 +659,25 @@ export async function handleCodingAgentsFallback(
   // Not handled by fallback
   return false;
 }
+
+/** Path table for the runtime route registry. Each entry mounts the same
+ * combined dispatcher; the handler branches on `req.url` like the original
+ * server.ts dispatch did. */
+export const CODING_AGENTS_FALLBACK_ROUTE_PATHS: Array<{
+  type: string;
+  path: string;
+}> = [
+  { type: "GET", path: "/api/coding-agents" },
+  { type: "GET", path: "/api/coding-agents/coordinator/status" },
+  { type: "GET", path: "/api/coding-agents/preflight" },
+  { type: "GET", path: "/api/coding-agents/tasks" },
+  { type: "GET", path: "/api/coding-agents/tasks/:taskId" },
+  { type: "GET", path: "/api/coding-agents/sessions" },
+  { type: "GET", path: "/api/coding-agents/sessions/:sessionId" },
+  { type: "GET", path: "/api/coding-agents/scratch" },
+  { type: "POST", path: "/api/coding-agents/auth/:agent" },
+  { type: "POST", path: "/api/coding-agents/:sessionId/stop" },
+  { type: "POST", path: "/api/coding-agents/:sessionId/scratch/keep" },
+  { type: "POST", path: "/api/coding-agents/:sessionId/scratch/delete" },
+  { type: "POST", path: "/api/coding-agents/:sessionId/scratch/promote" },
+];

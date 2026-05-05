@@ -3,8 +3,11 @@ import {
   type AgentRuntime,
   type actions,
   elizaLogger,
+  generateText,
   type HandlerCallback,
   type Memory,
+  ModelClass,
+  parseKeyValueXml,
   parseJSONObjectFromText,
   type State,
   settings,
@@ -58,11 +61,17 @@ function extractOrcaPositionsFromState(state: State): FetchedPosition[] {
     if (typeof entry !== "object" || entry === null || !("name" in entry)) continue;
     const name = (entry as { name?: string }).name;
     if (name !== ORCA_POSITION_PROVIDER) continue;
-    const data = (entry as { data?: string }).data;
-    if (typeof data !== "string") {
-      throw new Error("Orca provider data must be a JSON string");
+    const data = (entry as { data?: unknown }).data;
+    if (Array.isArray(data)) return data as FetchedPosition[];
+    if (
+      data &&
+      typeof data === "object" &&
+      Array.isArray((data as { positions?: unknown }).positions)
+    ) {
+      return (data as { positions: FetchedPosition[] }).positions;
     }
-    return JSON.parse(data) as FetchedPosition[];
+    if (typeof data === "string") return JSON.parse(data) as FetchedPosition[];
+    throw new Error("Orca provider data must include positions");
   }
   throw new Error("No Orca position data found");
 }
@@ -190,20 +199,26 @@ export const managePositions: typeof actions = {
 };
 
 function validateManagePositionsInput(obj: Record<string, unknown>): ManagePositionsInput {
-  const repositionThresholdBps = obj.repositionThresholdBps;
-  const intervalSeconds = obj.intervalSeconds;
-  const slippageToleranceBps = obj.slippageToleranceBps;
+  const repositionThresholdBps = readInteger(obj.repositionThresholdBps);
+  const intervalSeconds = readInteger(obj.intervalSeconds);
+  const slippageToleranceBps = readInteger(obj.slippageToleranceBps);
   if (
-    typeof repositionThresholdBps !== "number" ||
-    !Number.isInteger(repositionThresholdBps) ||
-    typeof intervalSeconds !== "number" ||
-    !Number.isInteger(intervalSeconds) ||
-    typeof slippageToleranceBps !== "number" ||
-    !Number.isInteger(slippageToleranceBps)
+    repositionThresholdBps === null ||
+    intervalSeconds === null ||
+    slippageToleranceBps === null
   ) {
     throw new Error("Invalid input: Object does not match the ManagePositionsInput type.");
   }
   return { repositionThresholdBps, intervalSeconds, slippageToleranceBps };
+}
+
+function readInteger(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return null;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 export async function extractAndValidateConfiguration(
@@ -214,25 +229,24 @@ export async function extractAndValidateConfiguration(
 
   const prompt = `Given this message: "${text}". Extract the reposition threshold value, time interval, and slippage tolerance.
         The threshold value and the slippage tolerance can be given in percentages or bps. You will always respond with the reposition threshold in bps.
-        Very important: Add null values for each field that is not present in the message.
-        Return the response as a JSON object with the following structure:
-        {
-            "repositionThresholdBps": number (integer value),
-            "intervalSeconds": number (integer value),
-            "slippageToleranceBps": number (integer value)
-        }
+        Very important: Use null for each field that is not present in the message.
+        Respond with TOON only using this shape:
+        repositionThresholdBps: 120
+        intervalSeconds: 300
+        slippageToleranceBps: 50
     `;
 
-  const content = await composeContext({
-    state: runtime.state,
-    template: prompt,
-    modelClass: ModelTypes.SMALL,
+  const content = await generateText({
+    runtime,
+    context: prompt,
+    modelClass: ModelClass.SMALL,
   });
 
   try {
-    const configuration = parseJSONObjectFromText(content);
+    const configuration =
+      parseKeyValueXml<Record<string, unknown>>(content) ?? parseJSONObjectFromText(content);
     if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
-      throw new Error("Configuration must be a JSON object");
+      throw new Error("Configuration must be a structured object");
     }
     return validateManagePositionsInput(configuration as Record<string, unknown>);
   } catch (error) {

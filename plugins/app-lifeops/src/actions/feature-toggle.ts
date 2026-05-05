@@ -9,7 +9,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,
@@ -83,8 +87,10 @@ async function extractToggleWithLlm(args: {
 
   const prompt = [
     "Decide which LifeOps feature flag the owner is asking to toggle, if any.",
-    "Return ONLY valid JSON with exactly these keys:",
-    '{"featureKey": string|null, "enabled": boolean|null, "reason": string|null}',
+    "Return TOON only with exactly these keys:",
+    "featureKey: string|null",
+    "enabled: boolean|null",
+    "reason: string|null",
     "",
     "Allowed featureKey values (use null when no good match):",
     buildFeatureCatalog(),
@@ -104,13 +110,19 @@ async function extractToggleWithLlm(args: {
   ].join("\n");
 
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-  const parsed = parseJSONObjectFromText(
-    typeof raw === "string" ? raw : "",
-  ) as Record<string, unknown> | null;
+  const rawText = typeof raw === "string" ? raw : "";
+  const parsed =
+    parseKeyValueXml<Record<string, unknown>>(rawText) ??
+    (parseJSONObjectFromText(rawText) as Record<string, unknown> | null);
 
   const featureKeyRaw = parsed?.featureKey;
   const featureKey = isLifeOpsFeatureKey(featureKeyRaw) ? featureKeyRaw : null;
-  const enabled = typeof parsed?.enabled === "boolean" ? parsed.enabled : null;
+  const enabled =
+    typeof parsed?.enabled === "boolean"
+      ? parsed.enabled
+      : typeof parsed?.enabled === "string"
+        ? parsed.enabled.toLowerCase() === "true"
+        : null;
 
   return {
     featureKey,

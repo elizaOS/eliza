@@ -20,7 +20,12 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
@@ -142,8 +147,14 @@ async function extractSearchPlan(
   const prompt = [
     "Plan a SEARCH_ACROSS_CHANNELS request.",
     "The user may speak in any language. Do NOT translate the search query — keep the user's wording.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"x"|"x-dm"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
+    "Return TOON only with exactly these fields:",
+    "query: string|null",
+    "person: string|null",
+    "startIso: ISO8601|null",
+    "endIso: ISO8601|null",
+    "channels[0]: gmail|telegram|discord|imessage|whatsapp|signal|x|x-dm|calendly|calendar|memory",
+    "shouldAct: true|false",
+    "clarification: string|null",
     "",
     "Rules:",
     "- query: the substantive search phrase (entity, topic, keywords). Strip filler like 'find', 'search for', 'show me'.",
@@ -161,10 +172,9 @@ async function extractSearchPlan(
 
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const text = typeof raw === "string" ? raw : "";
-  const parsed = parseJSONObjectFromText(text) as Record<
-    string,
-    unknown
-  > | null;
+  const parsed =
+    parseKeyValueXml<Record<string, unknown>>(text) ??
+    (parseJSONObjectFromText(text) as Record<string, unknown> | null);
 
   if (!parsed) {
     return {

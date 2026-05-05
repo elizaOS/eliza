@@ -55,60 +55,81 @@ class MINTAgent:
         start = time.time() * 1000
         trajectory = MINTTrajectory(task_id=task.id, start_time_ms=start)
 
-        response_text = await self._generate_response(task)
-        trajectory.turns.append(
-            Turn(
-                turn_type=TurnType.ASSISTANT,
-                content=response_text,
-                turn_number=1,
-                timestamp_ms=start,
-            )
-        )
+        current_prompt = task.initial_prompt
+        max_turns = max(1, task.max_turns)
 
-        code = self._extract_code(response_text) if enable_tools else None
-        if code and "python" in task.tools_allowed:
-            result = await self.tool_executor.execute(code)
+        for turn_num in range(max_turns):
+            response_text = await self._generate_response(task, current_prompt)
             trajectory.turns.append(
                 Turn(
-                    turn_type=TurnType.TOOL,
-                    content=result.output or result.error or "",
-                    turn_number=1,
-                    tool_call=code,
-                    tool_result=result.output,
-                    tool_success=result.success,
+                    turn_type=TurnType.ASSISTANT,
+                    content=response_text,
+                    turn_number=turn_num + 1,
                     timestamp_ms=time.time() * 1000,
                 )
             )
-            trajectory.num_tool_uses += 1
-            if result.success and result.output.strip():
-                response_text = f"Final answer: {result.output.strip().splitlines()[-1]}"
 
-        answer = self._extract_answer(response_text, task)
-        trajectory.final_answer = answer
-        trajectory.success = self._check_answer(answer or "", task)
-
-        if not trajectory.success and enable_feedback and task.max_turns > 1:
-            feedback = await self.feedback_generator.generate(task, answer or "", 0)
-            trajectory.turns.append(
-                Turn(
-                    turn_type=TurnType.FEEDBACK,
-                    content=feedback,
-                    turn_number=1,
-                    feedback=feedback,
-                    timestamp_ms=time.time() * 1000,
+            code = self._extract_code(response_text) if enable_tools else None
+            if code and "python" in task.tools_allowed:
+                result = await self.tool_executor.execute(code)
+                trajectory.turns.append(
+                    Turn(
+                        turn_type=TurnType.TOOL,
+                        content=result.output or result.error or "",
+                        turn_number=turn_num + 1,
+                        tool_call=code,
+                        tool_result=result.output,
+                        tool_success=result.success,
+                        timestamp_ms=time.time() * 1000,
+                    )
                 )
-            )
-            trajectory.num_feedback_turns += 1
+                trajectory.num_tool_uses += 1
+                if result.success and result.output.strip():
+                    response_text = f"Final answer: {result.output.strip().splitlines()[-1]}"
+                elif turn_num < max_turns - 1:
+                    current_prompt = (
+                        f"{task.initial_prompt}\n\n"
+                        f"Your previous code failed with:\n{result.error or 'unknown error'}\n"
+                        "Try again and end with: Final answer: <answer>."
+                    )
+                    continue
+
+            answer = self._extract_answer(response_text, task)
+            trajectory.final_answer = answer
+            trajectory.success = self._check_answer(answer or "", task)
+            if trajectory.success:
+                break
+
+            if enable_feedback and turn_num < max_turns - 1:
+                feedback = await self.feedback_generator.generate(task, answer or "", turn_num)
+                trajectory.turns.append(
+                    Turn(
+                        turn_type=TurnType.FEEDBACK,
+                        content=feedback,
+                        turn_number=turn_num + 1,
+                        feedback=feedback,
+                        timestamp_ms=time.time() * 1000,
+                    )
+                )
+                trajectory.num_feedback_turns += 1
+                current_prompt = (
+                    f"{task.initial_prompt}\n\n"
+                    f"Previous answer: {answer or '<none>'}\n"
+                    f"Feedback: {feedback}\n"
+                    "Try again and end with: Final answer: <answer>."
+                )
+            else:
+                break
 
         trajectory.end_time_ms = time.time() * 1000
         return trajectory
 
-    async def _generate_response(self, task: MINTTask) -> str:
+    async def _generate_response(self, task: MINTTask, prompt: str | None = None) -> str:
         if self.runtime is not None:
             response = await self.runtime.use_model(
                 "text",
                 {
-                    "prompt": self._build_system_prompt(task) + "\n\n" + task.initial_prompt,
+                    "prompt": self._build_system_prompt(task) + "\n\n" + (prompt or task.initial_prompt),
                     "temperature": self.temperature,
                 },
             )

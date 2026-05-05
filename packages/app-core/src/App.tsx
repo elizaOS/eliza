@@ -110,7 +110,7 @@ import {
 // route-level splitting back, lift `lazy()` to a single owning call site.
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DatabasePageView } from "./components/pages/DatabasePageView";
-import { InventoryView } from "./components/pages/InventoryView";
+import { InventoryView } from "@elizaos/app-wallet/ui";
 import { LogsPageView } from "./components/pages/LogsPageView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
