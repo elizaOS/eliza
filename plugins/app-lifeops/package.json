@@ -69,8 +69,6 @@
     "jsdom": "^29.0.0"
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "react": "*"
   },
   "agentConfig": {

@@ -53,8 +53,6 @@
     "@elizaos/ui": "workspace:*"
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "react": "*"
   },
   "agentConfig": {
