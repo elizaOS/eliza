@@ -1,5 +1,4 @@
 import {
-  Button,
   ChatAttachmentStrip,
   ChatComposer,
   ChatComposerShell,
@@ -134,7 +133,6 @@ export function ChatView({
     copyToClipboard,
     droppedFiles: rawDroppedFiles,
     analysisMode,
-    setAnalysisMode,
     shareIngestNotice: rawShareIngestNotice,
     chatAgentVoiceMuted: agentVoiceMuted,
     selectedVrmIndex,
@@ -591,16 +589,6 @@ export function ChatView({
               : t("chat.uncached", { defaultValue: "uncached" })}
         </div>
       ) : null}
-      <div className="flex justify-end pt-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-xs font-mono opacity-60 hover:opacity-100 transition-opacity"
-          onClick={() => setAnalysisMode(!analysisMode)}
-        >
-          [ {analysisMode ? "DISABLE" : "ENABLE"} ANALYSIS MODE ]
-        </Button>
-      </div>
       <input
         ref={fileInputRef}
         type="file"

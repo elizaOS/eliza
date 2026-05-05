@@ -555,6 +555,65 @@ export {
 const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
 const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
 
+type StreamRouteDestination = import("./stream-routes.js").StreamingDestination;
+
+interface StreamingPluginDestinationFactories {
+  createCustomRtmpDestination(config?: {
+    rtmpUrl?: string;
+    rtmpKey?: string;
+  }): StreamRouteDestination;
+  createNamedRtmpDestination(params: {
+    id: string;
+    name?: string;
+    rtmpUrl: string;
+    rtmpKey: string;
+  }): StreamRouteDestination;
+  createTwitchDestination(
+    runtime?: IAgentRuntime,
+    config?: { streamKey?: string },
+  ): StreamRouteDestination;
+  createYoutubeDestination(
+    runtime?: IAgentRuntime,
+    config?: { streamKey?: string; rtmpUrl?: string },
+  ): StreamRouteDestination;
+  createPumpfunDestination(
+    runtime?: IAgentRuntime,
+    config?: { streamKey?: string; rtmpUrl?: string },
+  ): StreamRouteDestination;
+  createXStreamDestination(
+    runtime?: IAgentRuntime,
+    config?: { streamKey?: string; rtmpUrl?: string },
+  ): StreamRouteDestination;
+}
+
+const STREAMING_PLUGIN_MODULE_ID = ["@elizaos", "plugin-streaming"].join("/");
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStreamingPluginDestinationFactories(
+  value: unknown,
+): value is StreamingPluginDestinationFactories {
+  return (
+    isObjectRecord(value) &&
+    typeof value.createCustomRtmpDestination === "function" &&
+    typeof value.createNamedRtmpDestination === "function" &&
+    typeof value.createTwitchDestination === "function" &&
+    typeof value.createYoutubeDestination === "function" &&
+    typeof value.createPumpfunDestination === "function" &&
+    typeof value.createXStreamDestination === "function"
+  );
+}
+
+async function loadStreamingPluginDestinationFactories(): Promise<StreamingPluginDestinationFactories> {
+  const moduleValue: unknown = await import(STREAMING_PLUGIN_MODULE_ID);
+  if (!isStreamingPluginDestinationFactories(moduleValue)) {
+    throw new Error("missing destination factory exports");
+  }
+  return moduleValue;
+}
+
 /**
  * Read and parse a JSON request body with size limits and error handling.
  * Returns null (and sends a 4xx response) if reading or parsing fails.
@@ -3522,13 +3581,10 @@ export async function startApiServer(opts?: {
         const streaming = (state.config as Record<string, unknown>).streaming as
           | Record<string, unknown>
           | undefined;
-        const destinations = new Map<
-          string,
-          import("./stream-routes.js").StreamingDestination
-        >();
+        const destinations = new Map<string, StreamRouteDestination>();
 
         try {
-          const streamMod = await import("@elizaos/plugin-streaming");
+          const streamMod = await loadStreamingPluginDestinationFactories();
 
           if (
             isStreamingDestinationConfigured(
