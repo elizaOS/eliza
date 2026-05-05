@@ -236,6 +236,7 @@ else
   node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
+node scripts/patch-tsup-dts.mjs || true
 
 # buf.gen.yaml outputs to packages/core (current name) or packages/typescript (legacy name)
 _proto_marker=""

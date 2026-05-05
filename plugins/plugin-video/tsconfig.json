@@ -2,12 +2,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "lib": [
-      "ESNext"
-    ],
-    "types": [
-      "node"
-    ],
+    "lib": ["ESNext"],
+    "types": ["node"],
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": false,
@@ -25,7 +21,5 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }
