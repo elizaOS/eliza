@@ -92,8 +92,10 @@ modules:
       env:
         npm_config_nodedir: /app
     build-commands:
-      # Install elizaos-app globally from npm
-      - /app/bin/npm install -g elizaos --prefix=/app
+      # Install elizaos-app globally from npm. Disable transitive npm scripts:
+      # optional plugins may run host installer hooks during postinstall, but
+      # Flatpak image assembly only needs the CLI files and wrapper smoke tests.
+      - /app/bin/npm install -g elizaos --prefix=/app --ignore-scripts
 
       # Install wrapper script from source
       - install -Dm755 elizaos-app-wrapper.sh /app/bin/elizaos-app
