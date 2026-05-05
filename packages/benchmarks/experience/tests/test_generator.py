@@ -58,6 +58,15 @@ def test_generate_retrieval_queries():
         assert all(0 <= idx < len(exps) for idx in q.relevant_indices)
 
 
+def test_generate_retrieval_queries_tiny_sample():
+    gen = ExperienceGenerator(seed=42)
+    exps = gen.generate_experiences(count=3)
+    queries = gen.generate_retrieval_queries(exps, num_queries=1)
+
+    assert len(queries) == 1
+    assert len(queries[0].relevant_indices) == 1
+
+
 def test_generate_learning_scenarios():
     gen = ExperienceGenerator(seed=42)
     scenarios = gen.generate_learning_scenarios(num_scenarios=10)

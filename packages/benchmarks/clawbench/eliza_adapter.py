@@ -65,6 +65,8 @@ def load_scenario(name: str) -> dict | None:
 def load_fixture(scenario: str, fixture_name: str) -> dict | list | None:
     """Load a fixture file for a scenario."""
     path = FIXTURES_DIR / scenario / fixture_name
+    if not path.exists() and fixture_name == "tasks.json":
+        path = FIXTURES_DIR / scenario / "tasks_fixture.json"
     if not path.exists():
         return None
     with open(path) as f:

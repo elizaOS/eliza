@@ -4,6 +4,7 @@ from pathlib import Path
 
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import _score_from_app_eval, discover_adapters
+from benchmarks.orchestrator.types import ExecutionContext, RunRequest
 from benchmarks.registry import get_benchmark_registry
 
 
@@ -44,6 +45,52 @@ def test_openclaw_registry_command_and_result_locator(tmp_path: Path) -> None:
     score = entry.extract_score({"score": {"score": 0.5}})
     assert score.score == 0.5
     assert score.metrics["tasks_completed"] == 1
+
+
+def test_configbench_registry_command_forwards_limit(tmp_path: Path) -> None:
+    registry = {entry.id: entry for entry in get_benchmark_registry(_workspace_root())}
+    entry = registry["configbench"]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="groq", model="kimi-k2"),
+        {"limit": 1, "verbose": True},
+    )
+
+    assert command[:3] == ["bun", "run", "src/index.ts"]
+    assert command[command.index("--output") + 1] == str(tmp_path)
+    assert command[command.index("--limit") + 1] == "1"
+    assert "--verbose" in command
+    assert "--eliza" not in command
+
+
+def test_configbench_adapter_command_forwards_limit(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["configbench"]
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("configbench",),
+            agent="mock",
+            provider="groq",
+            model="kimi-k2",
+            extra_config={"limit": 1, "verbose": True},
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[:3] == ["bun", "run", "src/index.ts"]
+    assert command[command.index("--output") + 1] == str(tmp_path / "out")
+    assert command[command.index("--limit") + 1] == "1"
+    assert "--verbose" in command
+    assert "--eliza" not in command
 
 
 def test_app_eval_score_normalizes_ten_point_summary(tmp_path: Path) -> None:

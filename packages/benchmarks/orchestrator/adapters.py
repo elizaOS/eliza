@@ -181,6 +181,18 @@ def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
         levels = [str(int(x)) for x in ctx.request.extra_config["levels"]]
         if levels:
             args.extend(["--levels", *levels])
+    if "ids" in ctx.request.extra_config and isinstance(ctx.request.extra_config["ids"], list):
+        ids = [str(x) for x in ctx.request.extra_config["ids"] if str(x)]
+        if ids:
+            args.extend(["--ids", *ids])
+    if "tags" in ctx.request.extra_config and isinstance(ctx.request.extra_config["tags"], list):
+        tags = [str(x) for x in ctx.request.extra_config["tags"] if str(x)]
+        if tags:
+            args.extend(["--tags", *tags])
+    if ctx.request.extra_config.get("basic_only"):
+        args.append("--basic-only")
+    if ctx.request.extra_config.get("full_only"):
+        args.append("--full-only")
     return args
 
 
@@ -188,6 +200,11 @@ def _command_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
     args = ["bun", "run", "src/index.ts", "--output", str(ctx.output_root)]
     if ctx.request.agent.lower() == "eliza":
         args.append("--eliza")
+    limit = ctx.request.extra_config.get("limit")
+    if isinstance(limit, int) and limit > 0:
+        args.extend(["--limit", str(limit)])
+    if ctx.request.extra_config.get("verbose") is True:
+        args.append("--verbose")
     return args
 
 
@@ -369,17 +386,64 @@ def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -
 
 
 def _command_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return ["python", "-m", "benchmarks.evm.eliza_agent"]
+    return ["python", "-m", "benchmarks.evm.eliza_explorer"]
 
 
 def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    env: dict[str, str] = {}
     model = ctx.request.model.strip()
     provider = ctx.request.provider.strip().lower()
-    model_name = model if "/" in model else f"{provider}/{model}"
-    return {
+    model_name = model if "/" in model or not provider else f"{provider}/{model}"
+    env.update({
         "MODEL_NAME": model_name,
         "MAX_MESSAGES": str(int(ctx.request.extra_config.get("max_messages", 50))),
+    })
+
+    passthrough = {
+        "chain": "CHAIN",
+        "environment_config": "ENVIRONMENT_CONFIG",
+        "rpc_url": "RPC_URL",
+        "chain_id": "CHAIN_ID",
+        "fork_url": "FORK_URL",
+        "agent_private_key": "AGENT_PRIVATE_KEY",
+        "code_file": "CODE_FILE",
+        "run_index": "RUN_INDEX",
     }
+    for config_key, env_key in passthrough.items():
+        value = ctx.request.extra_config.get(config_key)
+        if value is not None and str(value).strip():
+            env[env_key] = str(value).strip()
+
+    if "use_external_node" in ctx.request.extra_config:
+        env["USE_EXTERNAL_NODE"] = (
+            "true" if bool(ctx.request.extra_config["use_external_node"]) else "false"
+        )
+
+    return env
+
+
+def _score_from_evm(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw = data.get("final_reward")
+    if not isinstance(raw, (int, float)):
+        raise ValueError("evm result is incomplete: missing numeric final_reward")
+    score = float(raw) if isinstance(raw, (int, float)) else None
+    return ScoreSummary(
+        score=score,
+        unit="unique_selectors",
+        higher_is_better=True,
+        metrics={
+            "final_reward": raw,
+            "final_contracts": data.get("final_contracts", 0),
+            "model": data.get("model", ""),
+            "run_id": data.get("run_id", ""),
+            "chain": data.get("chain", ""),
+        },
+    )
 
 
 def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -458,6 +522,9 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     headless = ctx.request.extra_config.get("headless")
     if headless is not False:
         args.append("--headless")
+    dry_run = ctx.request.extra_config.get("dry_run")
+    if dry_run is True:
+        args.append("--dry_run")
     return args
 
 
@@ -764,7 +831,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             adapter_id="hyperliquidbench",
             directory="HyperliquidBench",
             description="HyperliquidBench Eliza coverage benchmark",
-            cwd=str((benchmarks_root / "HyperliquidBench").resolve()),
+            cwd=str(workspace_root.resolve()),
             command_builder=_command_hyperliquid,
             result_patterns=["hyperliquid_bench-*.json", "runs/hyperliquid_bench-*.json"],
             env_builder=_command_hyperliquid_env,
@@ -878,6 +945,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             command_builder=_command_evm,
             env_builder=_env_evm,
             result_patterns=["metrics/evm_*_metrics.json"],
+            score_extractor=_score_from_evm,
         ),
         _make_extra_adapter(
             adapter_id="solana",

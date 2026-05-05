@@ -269,6 +269,23 @@ def extract_score(result_path: str) -> dict[str, Any]:
             },
         }
     elif isinstance(data, dict):
+        if isinstance(data.get("overall_score"), (int, float)):
+            raw_score = float(data["overall_score"])
+            score = max(0.0, min(raw_score / 10.0, 1.0))
+            return {
+                "score": score,
+                "unit": "ratio",
+                "higher_is_better": True,
+                "metrics": {
+                    "overall_score": raw_score,
+                    "total_tasks": data.get("total_tasks", 0),
+                    "completed": data.get("completed", 0),
+                    "failed": data.get("failed", 0),
+                    "timed_out": data.get("timed_out", 0),
+                    "avg_duration_ms": data.get("avg_duration_ms", 0),
+                },
+            }
+
         return {
             "score": 1.0 if data.get("success") else 0.0,
             "unit": "ratio",

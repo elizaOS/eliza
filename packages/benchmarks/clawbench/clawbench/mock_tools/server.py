@@ -113,6 +113,8 @@ state = ScenarioState(os.getenv("SCENARIO", "inbox_triage"))
 def load_fixture(scenario: str, filename: str) -> Any | None:
     """Load a fixture file, returning None if it doesn't exist."""
     path = FIXTURES_PATH / scenario / filename
+    if not path.exists() and filename == "tasks.json":
+        path = FIXTURES_PATH / scenario / "tasks_fixture.json"
     if not path.exists():
         return None
     with open(path) as f:
@@ -290,6 +292,10 @@ def handle_exec(data: dict, scenario: str) -> dict:
         tasks = load_fixture(scenario, "tasks.json") or []
         return _exec_success(json.dumps({"results": tasks}, indent=2))
 
+    # Update a page (PATCH)
+    if re.search(r"curl.*-X\s*PATCH.*notion\.so/v1/pages", cmd, re.IGNORECASE):
+        return _exec_success(json.dumps({"status": "updated"}, indent=2))
+
     # Get a page (task/doc detail)
     m2 = re.search(r"curl.*notion\.so/v1/pages/([A-Za-z0-9_-]+)", cmd, re.IGNORECASE)
     if m2:
@@ -308,10 +314,6 @@ def handle_exec(data: dict, scenario: str) -> dict:
     if re.search(r"curl.*-X\s*POST.*notion\.so/v1/pages", cmd, re.IGNORECASE):
         ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         return _exec_success(json.dumps({"id": f"page_{ts}", "status": "created"}, indent=2))
-
-    # Update a page (PATCH)
-    if re.search(r"curl.*-X\s*PATCH.*notion\.so/v1/pages", cmd, re.IGNORECASE):
-        return _exec_success(json.dumps({"status": "updated"}, indent=2))
 
     # Query databases list
     if re.search(r"curl.*notion\.so/v1/databases\b", cmd, re.IGNORECASE):
