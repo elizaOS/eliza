@@ -38,6 +38,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.4.0",
     "@napi-rs/keyring": "^1.1.6"
   },
   "devDependencies": {
