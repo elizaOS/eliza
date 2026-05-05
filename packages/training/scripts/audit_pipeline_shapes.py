@@ -573,12 +573,18 @@ def validate_action_specific(task_type: str, decoded: Any) -> list[str]:
     if task_type == "remove_contact":
         # removeContactTemplate (prompts.ts:892): required `contactName`,
         # `confirmed: yes|no`. Accept either `contactName` or `name`.
+        # Empty/null contactName is acceptable IFF `confirmed` is no/null/false
+        # — that's the canonical "no removal requested" no-op response.
+        reasons: list[str] = []
         if "contactName" not in keys and "name" not in keys:
             return ["missing_contactName"]
         primary = decoded.get("contactName", decoded.get("name"))
+        confirmed = str(decoded.get("confirmed") or "").lower().strip()
+        is_negative = confirmed in ("no", "false", "") or decoded.get("confirmed") is False
         if not isinstance(primary, str) or not primary.strip():
-            return ["contactName_wrong_type_or_empty"]
-        return []
+            if not is_negative:
+                reasons.append("contactName_empty_with_positive_confirm")
+        return reasons
 
     if task_type == "choose_option":
         # chooseOptionTemplate (prompts.ts:133) emits `thought` + `selected_id`.
