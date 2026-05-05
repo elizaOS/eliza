@@ -443,10 +443,19 @@ Analyze the agent's recent behavior and interactions. Consider:
 
 Respond using TOON like this:
 thought: Your detailed analysis
-quality_score: Score 0-100 for overall quality
-strengths: What went well
-improvements: What could be improved
-learnings: Key takeaways for future interactions
+quality_score: <integer 0-100, e.g. 78 — NEVER spell the number out as "seventy-eight">
+strengths[N]:
+  - first strength
+  - second strength
+improvements[N]:
+  - first improvement
+learnings[N]:
+  - first takeaway
+
+`quality_score` MUST be a bare integer. Do NOT write "78/100", "78%",
+"seventy-eight", or wrap it in quotes. Strengths/improvements/learnings
+MUST be a TOON array of one-line strings — never markdown bullets,
+never sub-keyed objects.
 
 IMPORTANT: Your response must ONLY contain the TOON document above."""
 
