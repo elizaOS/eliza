@@ -71,6 +71,14 @@ const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
   "tests",
   "__tests__",
 ]);
+const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
+  ".html",
+  ".map",
+  ".md",
+  ".markdown",
+  ".tsbuildinfo",
+  ".txt",
+]);
 const PLATFORM_ALIASES = new Map<string, string>([
   ["android", "android"],
   ["aix", "aix"],
@@ -553,7 +561,7 @@ export function shouldCopyPackageEntry(entry: string): boolean {
   ) {
     return false;
   }
-  if (entry.endsWith(".map")) {
+  if (RUNTIME_COPY_PRUNED_FILE_EXTENSIONS.has(path.extname(entry))) {
     return false;
   }
 

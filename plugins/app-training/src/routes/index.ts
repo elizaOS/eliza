@@ -1,4 +1,9 @@
 export {
+  EXPERIENCE_ROUTE_PATHS,
+  type ExperienceRouteContext,
+  handleExperienceRoutes,
+} from "./experience-routes.js";
+export {
   handleTrainingRoutes,
   type TrainingRouteHelpers,
 } from "./training-routes.js";

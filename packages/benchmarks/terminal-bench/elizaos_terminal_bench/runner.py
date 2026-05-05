@@ -215,6 +215,16 @@ class TerminalBenchRunner:
             raise ValueError(f"Task not found: {task_id}")
 
         logger.info(f"Running single task: {task_id}")
+        if self.config.dry_run:
+            return TerminalBenchResult(
+                task_id=task.task_id,
+                success=False,
+                commands_executed=0,
+                total_execution_time_ms=0,
+                test_output="Dry run - not executed",
+                category=task.category,
+                difficulty=task.difficulty,
+            )
         result = await self._run_single_task(task)
 
         status = "PASS" if result.success else "FAIL"

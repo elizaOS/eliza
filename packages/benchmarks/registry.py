@@ -978,6 +978,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
+        if extra.get("dry_run") is True:
+            args.append("--dry-run")
+        if extra.get("oracle") is True:
+            args.append("--oracle")
+        if extra.get("no_markdown") is True:
+            args.append("--no-markdown")
+        if extra.get("no_sessions") is True:
+            args.append("--no-sessions")
+        if extra.get("no_leaderboard") is True:
+            args.append("--no-leaderboard")
         return args
 
     def _terminalbench_result(output_dir: Path) -> Path:
@@ -2087,9 +2097,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             description="Terminal proficiency benchmark",
             cwd_rel="benchmarks/terminal-bench",
             requirements=BenchmarkRequirements(
-                env_vars=("OPENAI_API_KEY",),
+                env_vars=(),
                 paths=(),
-                notes="Can run with sample tasks; full runs require dataset and typically an API key.",
+                notes=(
+                    "Can run sample dry-runs without credentials; bridge/full runs "
+                    "require dataset/runtime setup and typically a provider API key."
+                ),
             ),
             build_command=_terminalbench_cmd,
             locate_result=_terminalbench_result,
