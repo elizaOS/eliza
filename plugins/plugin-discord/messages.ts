@@ -1,9 +1,12 @@
 import {
 	ChannelType,
 	type Content,
+	ContentType,
 	checkPairingAllowed,
 	createUniqueUuid,
 	EventType,
+	type FetchedKnowledgeUrl,
+	fetchKnowledgeFromUrl,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
@@ -15,6 +18,7 @@ import {
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
+import { createHash } from "node:crypto";
 import {
 	AttachmentBuilder,
 	type Channel,
@@ -84,6 +88,25 @@ function normalizeReplyToMode(
 	}
 
 	return "first";
+}
+
+function fetchedUrlToAttachment(
+	url: string,
+	fetched: FetchedKnowledgeUrl,
+): Media {
+	const hasReadableText = fetched.contentType !== "binary";
+	return {
+		id: webpageAttachmentId(url),
+		url,
+		title: fetched.filename || "Web Page",
+		source: fetched.contentType === "transcript" ? "YouTube" : "Web",
+		text: hasReadableText ? fetched.content : "",
+		contentType: ContentType.LINK,
+	};
+}
+
+function webpageAttachmentId(url: string): string {
+	return `webpage-${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
 /**
@@ -1091,8 +1114,10 @@ export class MessageManager {
 		}
 
 		if (message.attachments.size > 0) {
-			attachments = await this.attachmentManager.processAttachments(
-				message.attachments,
+			attachments.push(
+				...(await this.attachmentManager.processAttachments(
+					message.attachments,
+				)),
 			);
 		}
 
@@ -1135,7 +1160,24 @@ export class MessageManager {
 					);
 				}
 			} else {
-				// Use string literal type for getService, assume methods exist at runtime
+				try {
+					const fetched = await fetchKnowledgeFromUrl(url);
+					attachments.push(fetchedUrlToAttachment(url, fetched));
+					continue;
+				} catch (error) {
+					const errorMsg =
+						error instanceof Error ? error.message : String(error);
+					this.runtime.logger.debug(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							url,
+							error: errorMsg,
+						},
+						"Direct URL enrichment failed; trying browser service fallback",
+					);
+				}
+
 				const browserService = this.runtime.getService(ServiceType.BROWSER) as
 					| ({
 							getPageContent?: (
@@ -1160,12 +1202,13 @@ export class MessageManager {
 						await browserService.getPageContent(url, this.runtime);
 
 					attachments.push({
-						id: `webpage-${Date.now()}`,
+						id: webpageAttachmentId(url),
 						url,
 						title: title || "Web Page",
 						source: "Web",
 						description: summary,
 						text: summary,
+						contentType: ContentType.LINK,
 					});
 				} catch (error) {
 					// Silently handle browser errors (certificate issues, timeouts, dead sites, etc.)
