@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import z from "zod";
 import {
 	formatActionNames,
 	formatActions,
@@ -550,6 +551,15 @@ function extractStructuredProviderList(rawProviders: string): string[] {
 	return tokens;
 }
 
+// Schemas for LLM-emitted provider lists embedded as JSON strings inside the
+// planner TOON output. The planner sometimes returns providers as a JSON array
+// of strings or as a `{ providers: string[] }` object instead of a TOON list.
+// We coerce non-string entries to string and validate downstream.
+const ProviderJsonArraySchema = z.array(z.unknown());
+const ProviderJsonEnvelopeSchema = z.object({
+	providers: z.array(z.unknown()),
+});
+
 export function extractPlannerProviderNames(
 	parsedToon: Record<string, unknown>,
 ): string[] {
@@ -564,9 +574,10 @@ export function extractPlannerProviderNames(
 			(trimmedProviders.startsWith("{") && trimmedProviders.endsWith("}"))
 		) {
 			try {
-				const parsedJson = JSON.parse(trimmedProviders) as unknown;
-				if (Array.isArray(parsedJson)) {
-					return parsedJson
+				const parsedJson: unknown = JSON.parse(trimmedProviders);
+				const arrayResult = ProviderJsonArraySchema.safeParse(parsedJson);
+				if (arrayResult.success) {
+					return arrayResult.data
 						.map((providerName) => String(providerName).trim())
 						.filter(
 							(providerName): providerName is string =>
@@ -574,12 +585,9 @@ export function extractPlannerProviderNames(
 								isStructuredPlannerIdentifier(providerName),
 						);
 				}
-				if (
-					typeof parsedJson === "object" &&
-					parsedJson !== null &&
-					Array.isArray((parsedJson as { providers?: unknown }).providers)
-				) {
-					return (parsedJson as { providers: unknown[] }).providers
+				const envelopeResult = ProviderJsonEnvelopeSchema.safeParse(parsedJson);
+				if (envelopeResult.success) {
+					return envelopeResult.data.providers
 						.map((providerName) => String(providerName).trim())
 						.filter(
 							(providerName): providerName is string =>
@@ -587,8 +595,19 @@ export function extractPlannerProviderNames(
 								isStructuredPlannerIdentifier(providerName),
 						);
 				}
-			} catch {
-				// Fall through to delimiter parsing below.
+				logger.warn(
+					{
+						raw: trimmedProviders,
+						arrayErr: arrayResult.error.issues,
+						envelopeErr: envelopeResult.error.issues,
+					},
+					"[message] LLM response failed schema validation",
+				);
+			} catch (err) {
+				logger.warn(
+					{ raw: trimmedProviders, err },
+					"[message] LLM response failed schema validation",
+				);
 			}
 		}
 
@@ -614,17 +633,25 @@ export function extractPlannerProviderNames(
 				(trimmedProvider.startsWith("{") && trimmedProvider.endsWith("}"))
 			) {
 				try {
-					const parsedJson = JSON.parse(trimmedProvider) as unknown;
-					if (Array.isArray(parsedJson)) {
-						return parsedJson
+					const parsedJson: unknown = JSON.parse(trimmedProvider);
+					const arrayResult = ProviderJsonArraySchema.safeParse(parsedJson);
+					if (arrayResult.success) {
+						return arrayResult.data
 							.map((entry) => String(entry).trim())
 							.filter(
 								(entry): entry is string =>
 									entry.length > 0 && isStructuredPlannerIdentifier(entry),
 							);
 					}
-				} catch {
-					// Fall through to structured token parsing below.
+					logger.warn(
+						{ raw: trimmedProvider, err: arrayResult.error.issues },
+						"[message] LLM response failed schema validation",
+					);
+				} catch (err) {
+					logger.warn(
+						{ raw: trimmedProvider, err },
+						"[message] LLM response failed schema validation",
+					);
 				}
 			}
 
@@ -1089,42 +1116,6 @@ function unwrapPlannerIdentifier(value: string): string {
 	if (!trimmed) {
 		return "";
 	}
-
-	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
-	if (nameMatch) {
-		return nameMatch[1].trim();
-	}
-
-	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
-	if (actionMatch) {
-		const inner = actionMatch[1].trim();
-		if (!inner) {
-			return "";
-		}
-
-		const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-		if (nestedNameMatch) {
-			return nestedNameMatch[1].trim();
-		}
-
-		return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
-	}
-
-	// Tolerate malformed planner output where the closing </action> is missing
-	// or extra content trails the action body. Symptom in prod logs:
-	//   "Dropping unknown planner action (actionName=<action><name>REPLY</name>)"
-	// The planner LLM occasionally emits an unclosed <action> wrapper around a
-	// well-formed <name>X</name>. Falling through to "return trimmed" treats
-	// the whole XML chunk as the action identifier, which then fails to match
-	// any registered action and the bot goes silent. If the input begins with
-	// <action> and contains a <name>X</name>, prefer that name.
-	if (/^<action\b[^>]*>/i.test(trimmed)) {
-		const looseNameMatch = trimmed.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-		if (looseNameMatch) {
-			return looseNameMatch[1].trim();
-		}
-	}
-
 	return trimmed;
 }
 
@@ -3668,9 +3659,7 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespondToMessage = true;
 			} else if (responseDecision.skipEvaluation) {
 				routedDecision = withInferredContextRoutingFallback(
-					parseContextRoutingMetadata(
-						responseDecision as unknown as Record<string, unknown>,
-					),
+					parseContextRoutingMetadata(responseDecision),
 					message,
 				);
 				setContextRoutingMetadata(message, routedDecision);
@@ -4445,9 +4434,7 @@ export class DefaultMessageService implements IMessageService {
 				"Skipping LLM evaluation",
 			);
 			routedDecision = withInferredContextRoutingFallback(
-				parseContextRoutingMetadata(
-					responseDecision as unknown as Record<string, unknown>,
-				),
+				parseContextRoutingMetadata(responseDecision),
 				message,
 			);
 			setContextRoutingMetadata(message, routedDecision);

@@ -3,6 +3,7 @@ import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
 } from "@elizaos/agent/api/conversation-metadata";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -47,21 +48,36 @@ import {
 } from "../lifeops/time.js";
 import { gmailAction } from "./gmail.js";
 import {
-  type ExtractedLifeMissingField,
-  type ExtractedLifeOperation,
-  extractLifeOperationWithLlm,
-} from "./life.extractor.js";
-import {
   extractGoalCreatePlanWithLlm,
   extractGoalUpdatePlanWithLlm,
   mergeGoalMetadataWithGrounding,
-} from "./life-goal-extractor.js";
+} from "./lib/extract-goal-plan.js";
+import {
+  type ExtractedLifeMissingField,
+  type ExtractedLifeOperation,
+  extractLifeOperationWithLlm,
+} from "./lib/extract-life-operation.js";
 import {
   extractReminderIntensityWithLlm,
   extractTaskCreatePlanWithLlm,
-} from "./life-param-extractor.js";
-import { recentConversationTexts } from "./life-recent-context.js";
-import { extractUpdateFieldsWithLlm } from "./life-update-extractor.js";
+} from "./lib/extract-task-plan.js";
+import { extractUpdateFieldsWithLlm } from "./lib/extract-update-fields.js";
+import {
+  countTurnsSinceLatestDeferredLifeDraft,
+  type DeferredLifeDefinitionDraft,
+  type DeferredLifeDraft,
+  type DeferredLifeDraftFollowupMode,
+  type DeferredLifeDraftReuseMode,
+  type DeferredLifeGoalDraft,
+  deferredLifeDraftExpiryReason,
+  extractDeferredLifeDraftFollowupWithLlm,
+  latestDeferredLifeDraft,
+} from "./lib/lifeops-deferred-draft.js";
+import { recentConversationTexts } from "./lib/recent-context.js";
+import {
+  resolveActionArgs,
+  type SubactionsMap,
+} from "./lib/resolve-action-args.js";
 import {
   calendarReadUnavailableMessage,
   dayRange,
@@ -74,7 +90,6 @@ import {
   formatNextEventContext,
   formatOverviewForQuery,
   getGoogleCapabilityStatus,
-  hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
   toActionData,
@@ -93,108 +108,140 @@ type ResolvedLifeOperationPlan = {
   shouldAct: boolean;
 };
 
-type LifeAction =
-  | "create"
-  | "create_goal"
-  | "update"
-  | "update_goal"
-  | "delete"
-  | "delete_goal"
-  | "complete"
-  | "skip"
-  | "snooze"
-  | "review"
-  | "phone"
-  | "escalation"
-  | "reminder_preference"
-  | "calendar"
-  | "next_event"
-  | "email"
-  | "overview";
-
-const ACTION_TO_OPERATION: Record<LifeAction, LifeOperation> = {
-  create: "create_definition",
-  create_goal: "create_goal",
-  update: "update_definition",
-  update_goal: "update_goal",
-  delete: "delete_definition",
-  delete_goal: "delete_goal",
-  complete: "complete_occurrence",
-  skip: "skip_occurrence",
-  snooze: "snooze_occurrence",
-  review: "review_goal",
-  phone: "capture_phone",
-  escalation: "configure_escalation",
-  reminder_preference: "set_reminder_preference",
-  calendar: "query_calendar_today",
-  next_event: "query_calendar_next",
-  email: "query_email",
-  overview: "query_overview",
-};
-
 type LifeParams = {
-  action?: LifeAction;
+  subaction?: LifeOperation;
   intent?: string;
   title?: string;
   target?: string;
   details?: Record<string, unknown>;
 };
 
+const SUBACTIONS = {
+  create_definition: {
+    description:
+      "Create a new habit, routine, task, one-off alarm, or reminder.",
+    descriptionCompressed:
+      "create habit routine task alarm reminder definition",
+    required: ["intent"],
+    optional: ["title", "details"],
+  },
+  create_goal: {
+    description:
+      "Create a new aspirational goal with a success criterion and horizon.",
+    descriptionCompressed: "create goal aspiration success-criterion horizon",
+    required: ["intent"],
+    optional: ["title", "details"],
+  },
+  update_definition: {
+    description:
+      "Edit, rename, reschedule, or modify an existing task/habit/routine.",
+    descriptionCompressed: "update edit rename reschedule habit routine task",
+    required: ["target"],
+    optional: ["intent", "title", "details"],
+  },
+  update_goal: {
+    description: "Edit or modify an existing goal.",
+    descriptionCompressed: "update edit modify goal",
+    required: ["target"],
+    optional: ["intent", "title", "details"],
+  },
+  delete_definition: {
+    description:
+      "Delete, remove, cancel, or stop tracking a task/habit/routine.",
+    descriptionCompressed: "delete remove cancel stop task habit routine",
+    required: ["target"],
+    optional: ["intent"],
+  },
+  delete_goal: {
+    description: "Delete or remove a goal.",
+    descriptionCompressed: "delete remove goal",
+    required: ["target"],
+    optional: ["intent"],
+  },
+  complete_occurrence: {
+    description: "Mark an item as done (also: reminder_complete).",
+    descriptionCompressed: "complete done finished marked-done item reminder",
+    required: ["target"],
+    optional: ["intent", "details"],
+  },
+  skip_occurrence: {
+    description: "Skip an item for today.",
+    descriptionCompressed: "skip pass-on item today",
+    required: ["target"],
+    optional: ["intent"],
+  },
+  snooze_occurrence: {
+    description: "Postpone or defer an item (also: reminder_snooze).",
+    descriptionCompressed: "snooze postpone defer remind-later item reminder",
+    required: ["target"],
+    optional: ["intent", "details"],
+  },
+  review_goal: {
+    description:
+      "Check progress on a goal, or run weekly goal review when no target supplied.",
+    descriptionCompressed: "review progress weekly goal-review",
+    required: [],
+    optional: ["target", "intent"],
+  },
+  set_reminder_preference: {
+    description:
+      "Adjust reminder frequency or intensity (minimal, normal, persistent, high-priority-only).",
+    descriptionCompressed:
+      "reminder intensity frequency minimal persistent high-priority",
+    required: ["intent"],
+    optional: ["target", "details"],
+  },
+  capture_phone: {
+    description:
+      "Save or confirm a phone number for SMS / voice escalation.",
+    descriptionCompressed: "phone number sms voice escalation capture",
+    required: ["details"],
+    optional: ["intent", "title"],
+  },
+  configure_escalation: {
+    description:
+      "Set up SMS/voice/call escalation steps for a definition.",
+    descriptionCompressed: "escalation sms voice call steps definition",
+    required: ["target"],
+    optional: ["intent", "details"],
+  },
+  query_calendar_today: {
+    description:
+      "Today's, tomorrow's, or this week's calendar feed.",
+    descriptionCompressed: "calendar today tomorrow week feed",
+    required: [],
+    optional: ["intent", "details"],
+  },
+  query_calendar_next: {
+    description: "Next upcoming calendar event.",
+    descriptionCompressed: "calendar next upcoming event",
+    required: [],
+    optional: ["intent"],
+  },
+  query_email: {
+    description: "Inbox / email triage status (delegates to gmail).",
+    descriptionCompressed: "email inbox triage status",
+    required: [],
+    optional: ["intent", "details"],
+  },
+  query_overview: {
+    description:
+      "Broad LifeOps status summary or remaining items today.",
+    descriptionCompressed:
+      "overview status remaining active items today",
+    required: [],
+    optional: ["intent"],
+  },
+} as const satisfies SubactionsMap<LifeOperation>;
+
 const GENERIC_DERIVED_TITLE_RE =
   /^(?:new\s+)?(?:habit|routine|task|goal|life goal|thing|item|something|anything|stuff|plan|reminder|todo|to do|achieve|achieve a|achieve an)$/i;
-/** Maximum age (ms) for a deferred draft before it expires. */
-const DRAFT_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
-/** Maximum conversation turns before a deferred draft expires. */
-const DRAFT_MAX_TURNS = 3;
-
-type DeferredLifeDefinitionDraft = {
-  intent: string;
-  operation: "create_definition";
-  /** Epoch ms when the draft was created. Used for expiry. */
-  createdAt?: number;
-  request: {
-    cadence: LifeOpsCadence;
-    description?: string;
-    goalRef?: string;
-    kind: CreateLifeOpsDefinitionRequest["kind"];
-    priority?: number;
-    progressionRule?: CreateLifeOpsDefinitionRequest["progressionRule"];
-    reminderPlan?: CreateLifeOpsDefinitionRequest["reminderPlan"];
-    timezone?: string;
-    title: string;
-    metadata?: CreateLifeOpsDefinitionRequest["metadata"];
-    windowPolicy?: CreateLifeOpsDefinitionRequest["windowPolicy"];
-    websiteAccess?: CreateLifeOpsDefinitionRequest["websiteAccess"];
-  };
-};
 
 function normalizeLifeTimeZoneToken(
   value: string | null | undefined,
 ): string | null {
   return normalizeExplicitTimeZoneToken(value);
 }
-
-type DeferredLifeGoalDraft = {
-  intent: string;
-  operation: "create_goal";
-  /** Epoch ms when the draft was created. Used for expiry. */
-  createdAt?: number;
-  request: {
-    cadence?: CreateLifeOpsGoalRequest["cadence"];
-    description?: string;
-    metadata?: CreateLifeOpsGoalRequest["metadata"];
-    successCriteria?: CreateLifeOpsGoalRequest["successCriteria"];
-    supportStrategy?: CreateLifeOpsGoalRequest["supportStrategy"];
-    title: string;
-  };
-};
-
-type DeferredLifeDraft = DeferredLifeDefinitionDraft | DeferredLifeGoalDraft;
-type DeferredLifeDraftReuseMode = "confirm" | "edit";
-type DeferredLifeDraftFollowupMode =
-  | DeferredLifeDraftReuseMode
-  | "cancel"
-  | null;
 
 async function resolveLifeOperationPlan(args: {
   runtime: IAgentRuntime;
@@ -233,6 +280,85 @@ async function resolveLifeOperationPlan(args: {
     missing: extracted.missing,
     shouldAct: true,
   };
+}
+
+/**
+ * Pre-routing pick of the OWNER_LIFE subaction.
+ *
+ * Tries the shared `resolveActionArgs` substrate first (planner-trust path
+ * + single LLM pass). Falls back to the LifeOps-specific extractor when
+ * `resolveActionArgs` cannot pick a subaction confidently — that extractor
+ * carries richer "missing field" diagnostics (`title`, `schedule`, etc.)
+ * that downstream clarification messaging depends on.
+ */
+async function routeLifeSubaction(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  options: HandlerOptions | undefined;
+  intent: string;
+  explicitSubaction: LifeOperation | undefined;
+}): Promise<ResolvedLifeOperationPlan> {
+  const { runtime, message, state, options, intent, explicitSubaction } = args;
+  const resolved = await resolveActionArgs<LifeOperation, LifeParams>({
+    runtime,
+    message,
+    state,
+    options,
+    actionName: "OWNER_LIFE",
+    subactions: SUBACTIONS,
+    intentHint: intent,
+  });
+
+  if (resolved.ok) {
+    return {
+      operation: resolved.subaction,
+      confidence: 1,
+      missing: [],
+      shouldAct: true,
+    };
+  }
+
+  return resolveLifeOperationPlan({
+    runtime,
+    message,
+    state,
+    intent,
+    explicitOperation: explicitSubaction,
+  });
+}
+
+function resolveDeferredLifeDraftReuseMode(args: {
+  details: Record<string, unknown> | undefined;
+  draft: DeferredLifeDraft | null;
+  explicitOperation: LifeOperation | undefined;
+  llmMode?: DeferredLifeDraftFollowupMode;
+  /** Number of messages since the draft was stored. */
+  turnsSinceDraft?: number;
+}): DeferredLifeDraftReuseMode | null {
+  if (!args.draft) {
+    return null;
+  }
+
+  if (deferredLifeDraftExpiryReason(args)) {
+    return null;
+  }
+
+  if (detailBoolean(args.details, "confirmed") === true) {
+    return "confirm";
+  }
+
+  if (
+    args.explicitOperation &&
+    args.explicitOperation !== args.draft.operation
+  ) {
+    return null;
+  }
+
+  if (args.llmMode === "confirm" || args.llmMode === "edit") {
+    return args.llmMode;
+  }
+  return null;
 }
 
 function shouldForceLifeCreateExecution(args: {
@@ -306,473 +432,6 @@ function matchByTitle<
   );
 }
 
-function coerceDeferredLifeDraft(value: unknown): DeferredLifeDraft | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
-  const operation = record.operation;
-  const intent = typeof record.intent === "string" ? record.intent.trim() : "";
-  const request =
-    record.request && typeof record.request === "object"
-      ? (record.request as Record<string, unknown>)
-      : null;
-  const createdAt =
-    typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
-      ? record.createdAt
-      : undefined;
-
-  if (!request || !intent) {
-    return null;
-  }
-
-  const title = typeof request.title === "string" ? request.title.trim() : "";
-  if (!title) {
-    return null;
-  }
-
-  if (operation === "create_definition") {
-    const kind =
-      typeof request.kind === "string"
-        ? (request.kind as CreateLifeOpsDefinitionRequest["kind"])
-        : null;
-    const cadence = request.cadence as LifeOpsCadence | undefined;
-    if (!kind || !cadence) {
-      return null;
-    }
-    return {
-      createdAt,
-      intent,
-      operation,
-      request: {
-        cadence,
-        description:
-          typeof request.description === "string"
-            ? request.description
-            : undefined,
-        goalRef:
-          typeof request.goalRef === "string" ? request.goalRef : undefined,
-        kind,
-        priority:
-          typeof request.priority === "number" ? request.priority : undefined,
-        progressionRule:
-          request.progressionRule as CreateLifeOpsDefinitionRequest["progressionRule"],
-        reminderPlan:
-          request.reminderPlan as CreateLifeOpsDefinitionRequest["reminderPlan"],
-        timezone:
-          typeof request.timezone === "string" ? request.timezone : undefined,
-        title,
-        metadata:
-          request.metadata && typeof request.metadata === "object"
-            ? (request.metadata as CreateLifeOpsDefinitionRequest["metadata"])
-            : undefined,
-        windowPolicy:
-          request.windowPolicy as CreateLifeOpsDefinitionRequest["windowPolicy"],
-        websiteAccess:
-          request.websiteAccess as CreateLifeOpsDefinitionRequest["websiteAccess"],
-      },
-    };
-  }
-
-  if (operation === "create_goal") {
-    return {
-      createdAt,
-      intent,
-      operation,
-      request: {
-        cadence: request.cadence as CreateLifeOpsGoalRequest["cadence"],
-        description:
-          typeof request.description === "string"
-            ? request.description
-            : undefined,
-        metadata:
-          request.metadata && typeof request.metadata === "object"
-            ? (request.metadata as CreateLifeOpsGoalRequest["metadata"])
-            : undefined,
-        successCriteria:
-          request.successCriteria as CreateLifeOpsGoalRequest["successCriteria"],
-        supportStrategy:
-          request.supportStrategy as CreateLifeOpsGoalRequest["supportStrategy"],
-        title,
-      },
-    };
-  }
-
-  return null;
-}
-
-function stateActionResults(state: State | undefined): ActionResult[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-  const stateRecord = state as Record<string, unknown>;
-  const data =
-    stateRecord.data && typeof stateRecord.data === "object"
-      ? (stateRecord.data as Record<string, unknown>)
-      : undefined;
-  const providerResults =
-    data?.providers && typeof data.providers === "object"
-      ? (data.providers as Record<string, unknown>)
-      : undefined;
-  const providerActionState =
-    providerResults?.ACTION_STATE &&
-    typeof providerResults.ACTION_STATE === "object"
-      ? (providerResults.ACTION_STATE as Record<string, unknown>)
-      : undefined;
-  const providerActionStateData =
-    providerActionState?.data && typeof providerActionState.data === "object"
-      ? (providerActionState.data as Record<string, unknown>)
-      : undefined;
-  const providerRecentMessages =
-    providerResults?.RECENT_MESSAGES &&
-    typeof providerResults.RECENT_MESSAGES === "object"
-      ? (providerResults.RECENT_MESSAGES as Record<string, unknown>)
-      : undefined;
-  const providerRecentMessagesData =
-    providerRecentMessages?.data &&
-    typeof providerRecentMessages.data === "object"
-      ? (providerRecentMessages.data as Record<string, unknown>)
-      : undefined;
-
-  const candidates = [
-    data?.actionResults,
-    providerActionStateData?.actionResults,
-    providerActionStateData?.recentActionMemories,
-    providerRecentMessagesData?.actionResults,
-  ].filter(Array.isArray) as unknown[][];
-
-  if (candidates.length === 0) {
-    return [];
-  }
-
-  return candidates.flatMap((entries) =>
-    entries.flatMap((entry): ActionResult[] => {
-      if (!entry || typeof entry !== "object") {
-        return [];
-      }
-
-      if ("content" in entry) {
-        const content =
-          (entry as { content?: unknown }).content &&
-          typeof (entry as { content?: unknown }).content === "object"
-            ? ((entry as { content: Record<string, unknown> })
-                .content as Record<string, unknown>)
-            : null;
-        if (!content) {
-          return [];
-        }
-
-        const contentData =
-          content.data && typeof content.data === "object"
-            ? ({ ...(content.data as Record<string, unknown>) } as Record<
-                string,
-                unknown
-              >)
-            : {};
-        if (
-          typeof content.actionName === "string" &&
-          typeof contentData.actionName !== "string"
-        ) {
-          contentData.actionName = content.actionName;
-        }
-
-        return [
-          {
-            success: content.actionStatus !== "failed",
-            text: typeof content.text === "string" ? content.text : undefined,
-            data: contentData as import("@elizaos/core").ProviderDataRecord,
-            error:
-              typeof content.error === "string" ? content.error : undefined,
-          },
-        ];
-      }
-
-      return [entry as ActionResult];
-    }),
-  );
-}
-
-function stateMessageDrafts(state: State | undefined): DeferredLifeDraft[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  const drafts: DeferredLifeDraft[] = [];
-  for (const item of getRecentMessagesData(state)) {
-    const content = item.content;
-    if (!content || typeof content !== "object") {
-      continue;
-    }
-    const contentRecord = content as Record<string, unknown>;
-    const candidate =
-      coerceDeferredLifeDraft(contentRecord.lifeDraft) ??
-      coerceDeferredLifeDraft(
-        contentRecord.data && typeof contentRecord.data === "object"
-          ? (contentRecord.data as Record<string, unknown>).lifeDraft
-          : undefined,
-      );
-    if (candidate) {
-      drafts.push(candidate);
-    }
-  }
-
-  return drafts;
-}
-
-function stateRecentMessageEntries(state: State | undefined): Memory[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  return getRecentMessagesData(state);
-}
-
-function isDeferredLifeDraftMessageEntry(item: Memory): boolean {
-  const content =
-    item.content && typeof item.content === "object"
-      ? (item.content as Record<string, unknown>)
-      : null;
-  if (!content) {
-    return false;
-  }
-  return Boolean(
-    coerceDeferredLifeDraft(content.lifeDraft) ??
-      coerceDeferredLifeDraft(
-        content.data && typeof content.data === "object"
-          ? (content.data as Record<string, unknown>).lifeDraft
-          : undefined,
-      ),
-  );
-}
-
-function countTurnsSinceLatestDeferredLifeDraft(
-  state: State | undefined,
-): number | undefined {
-  const entries = stateRecentMessageEntries(state);
-  if (entries.length === 0) {
-    return undefined;
-  }
-
-  let latestDraftIndex = -1;
-  for (let index = entries.length - 1; index >= 0; index--) {
-    const entry = entries[index];
-    if (entry && isDeferredLifeDraftMessageEntry(entry)) {
-      latestDraftIndex = index;
-      break;
-    }
-  }
-  if (latestDraftIndex < 0) {
-    return undefined;
-  }
-
-  let turns = 0;
-  for (const entry of entries.slice(latestDraftIndex + 1)) {
-    const content =
-      entry.content && typeof entry.content === "object"
-        ? (entry.content as Record<string, unknown>)
-        : null;
-    if (!content || isDeferredLifeDraftMessageEntry(entry)) {
-      continue;
-    }
-    if (typeof content.text === "string" && content.text.trim().length > 0) {
-      turns++;
-    }
-  }
-  return turns;
-}
-
-function latestDeferredLifeDraft(
-  state: State | undefined,
-): DeferredLifeDraft | null {
-  for (const result of [...stateActionResults(state)].reverse()) {
-    const resultData =
-      result.data && typeof result.data === "object"
-        ? (result.data as Record<string, unknown>)
-        : null;
-    const completedCreate =
-      result.success &&
-      resultData &&
-      !coerceDeferredLifeDraft(resultData.lifeDraft) &&
-      ((resultData.definition && typeof resultData.definition === "object") ||
-        (resultData.goal && typeof resultData.goal === "object"));
-    if (completedCreate) {
-      return null;
-    }
-
-    const candidate = coerceDeferredLifeDraft(result.data?.lifeDraft);
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  const messageDrafts = stateMessageDrafts(state);
-  return messageDrafts.at(-1) ?? null;
-}
-
-function deferredLifeDraftExpiryReason(args: {
-  draft: DeferredLifeDraft | null;
-  turnsSinceDraft?: number;
-}): "age" | "turns" | null {
-  if (!args.draft) {
-    return null;
-  }
-
-  if (args.draft.createdAt) {
-    const ageMs = Date.now() - args.draft.createdAt;
-    if (ageMs >= DRAFT_EXPIRY_MS) {
-      return "age";
-    }
-  }
-  if (
-    typeof args.turnsSinceDraft === "number" &&
-    args.turnsSinceDraft >= DRAFT_MAX_TURNS
-  ) {
-    return "turns";
-  }
-  return null;
-}
-
-async function extractDeferredLifeDraftFollowupWithLlm(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  state: State | undefined;
-  currentText: string;
-  draft: DeferredLifeDraft;
-}): Promise<DeferredLifeDraftFollowupMode> {
-  if (typeof args.runtime.useModel !== "function") {
-    return null;
-  }
-
-  const recentConversation = await recentConversationTexts({
-    runtime: args.runtime,
-    message: args.message,
-    state: args.state,
-    limit: 12,
-  });
-  const prompt = [
-    "Decide how the assistant should interpret the user's follow-up to a previewed LifeOps draft that has not been saved yet.",
-    "Use the current message, the draft summary, and recent conversation.",
-    "The user may speak in any language.",
-    "",
-    "Return ONLY a TOON record with exactly this field:",
-    "mode: confirm | edit | cancel | none",
-    "",
-    "Choose confirm when the user clearly approves saving the current draft now.",
-    "Choose edit when the user wants to change the draft or continue specifying it before saving.",
-    "Choose cancel when the user says not to save it, never mind, not yet, hold off, or equivalent.",
-    "Choose none when the follow-up is unrelated or too ambiguous to attach to the draft.",
-    "",
-    "Previewed draft:",
-    stringifyDeferredLifeDraftForPrompt(args.draft),
-    "",
-    `Current user message: ${args.currentText.trim() || "(empty)"}`,
-    "Recent conversation:",
-    recentConversation.join("\n").trim() || "(empty)",
-  ].join("\n");
-
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(raw);
-    const mode =
-      parsed && typeof parsed.mode === "string"
-        ? parsed.mode.trim().toLowerCase()
-        : "";
-    switch (mode) {
-      case "confirm":
-      case "edit":
-      case "cancel":
-        return mode;
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-function stringifyDeferredLifeDraftForPrompt(draft: DeferredLifeDraft): string {
-  if (draft.operation === "create_definition") {
-    return [
-      `operation: ${draft.operation}`,
-      `title: ${draft.request.title}`,
-      `kind: ${draft.request.kind}`,
-      "cadence:",
-      formatPromptRecord(draft.request.cadence),
-      `timezone: ${draft.request.timezone ?? "null"}`,
-      `description: ${draft.request.description ?? "null"}`,
-    ].join("\n");
-  }
-
-  return [
-    `operation: ${draft.operation}`,
-    `title: ${draft.request.title}`,
-    "cadence:",
-    formatPromptRecord(draft.request.cadence ?? null),
-    `description: ${draft.request.description ?? "null"}`,
-  ].join("\n");
-}
-
-function formatPromptRecord(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "  null";
-  }
-  if (typeof value !== "object" || Array.isArray(value)) {
-    return `  ${String(value)}`;
-  }
-  const lines = Object.entries(value as Record<string, unknown>).map(
-    ([key, entry]) => {
-      if (entry === null || entry === undefined) {
-        return `  ${key}: null`;
-      }
-      if (Array.isArray(entry)) {
-        return `  ${key}: [${entry.map((item) => String(item)).join(", ")}]`;
-      }
-      if (typeof entry === "object") {
-        return `  ${key}: ${formatPromptRecord(entry).trim()}`;
-      }
-      return `  ${key}: ${String(entry)}`;
-    },
-  );
-  return lines.length > 0 ? lines.join("\n") : "  null";
-}
-
-function resolveDeferredLifeDraftReuseMode(args: {
-  details: Record<string, unknown> | undefined;
-  draft: DeferredLifeDraft | null;
-  explicitAction: LifeAction | undefined;
-  llmMode?: DeferredLifeDraftFollowupMode;
-  /** Number of messages since the draft was stored. */
-  turnsSinceDraft?: number;
-}): DeferredLifeDraftReuseMode | null {
-  if (!args.draft) {
-    return null;
-  }
-
-  if (deferredLifeDraftExpiryReason(args)) {
-    return null;
-  }
-
-  if (detailBoolean(args.details, "confirmed") === true) {
-    return "confirm";
-  }
-
-  if (
-    args.explicitAction &&
-    ACTION_TO_OPERATION[args.explicitAction] !== args.draft.operation
-  ) {
-    return null;
-  }
-
-  if (args.llmMode === "confirm" || args.llmMode === "edit") {
-    return args.llmMode;
-  }
-  return null;
-}
 
 async function resolveGoal(
   service: LifeOpsService,
@@ -2318,66 +1977,40 @@ async function isForeignPageScope(
 export const lifeAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "LIFE",
-  // CREATE_TASK and COMPLETE_TASK must NOT appear in similes: they are
-  // the orchestrator's primary aliases, and the collision routes coding
-  // prompts ("fix this bug") here by name match. LifeOps intent is still
-  // covered by the todo/habit/goal/reminder similes plus description.
+  name: "OWNER_LIFE",
   similes: [
-    "MANAGE_LIFEOPS",
-    "QUERY_LIFEOPS",
-    "CREATE_TODO",
-    "ADD_TODO",
-    "LIST_TODOS",
-    "TODO_LIST",
-    "COMPLETE_TODO",
-    "CREATE_HABIT",
-    "CREATE_GOAL",
-    "LIFE_CREATE_DEFINITION",
+    "TODO",
+    "TODOS",
+    "HABIT",
+    "HABITS",
+    "GOAL",
+    "GOALS",
+    "REMINDER",
+    "REMINDERS",
+    "ALARM",
+    "ROUTINE",
+    "TASK",
+    "ESCALATION",
     "TRACK_HABIT",
-    "SET_ALARM",
+    "MARK_DONE",
+    "SNOOZE",
     "SET_REMINDER",
-    "SNOOZE_REMINDER",
-    "SET_REMINDER_INTENSITY",
+    "NEW_HABIT",
+    "NEW_GOAL",
   ],
   description:
-    "Manage the user's personal routines, habits, goals, reminders, alarms, and escalation settings through LifeOps. " +
-    "USE this action for: creating, editing, or deleting tasks, habits, routines, and goals; " +
-    "todo and goal requests like 'add a todo: pick up dry cleaning tomorrow', 'remember to call mom on Sunday', 'what's on my todo list today?', or 'set a goal to save $5,000 by the end of the year'; " +
-    "setting one-off alarms or wake-up reminders like 'set an alarm for 7am' or 'wake me up at 7'; " +
-    "helping the user actually set up follow-through when they say things like 'help me brush my teeth every day', 'i keep forgetting x', or 'help me actually do it'; " +
-    "using LifeOps defaults for common routines when the user gives a natural window instead of an exact clock, like water reminders, stretch breaks, weekday-after-lunch Invisalign checks, twice-weekly shave reminders, or brushing when they wake up and before bed; " +
-    "marking items as complete, skipping, or snoozing them; reviewing goal progress, weekly goal review, and carry-forward lessons from similar completed goals; " +
-    "setting up phone/SMS escalation channels; adjusting reminder frequency or intensity; " +
-    "querying an overview of active LifeOps items. " +
-    "These are executable LifeOps items, not profile facts or bio updates. " +
-    "ALWAYS use LIFE for dynamic status questions like 'what's still left for today', 'what do i still need to do today', or 'anything else in my LifeOps list', even when the conversation already mentioned tasks, because their status may have changed after a completion, snooze, or reminder. " +
-    "Use LIFE for reminder/escalation policies about the owner's own follow-through, such as 'if I still haven't answered about those three events, bump me again with context instead of starting over,' when the request is about reminding the owner rather than modifying the calendar itself. " +
-    "Do not fall back to REPLY, UPDATE_ENTITY, or UPDATE_OWNER_PROFILE when the user is asking to create or inspect a todo, habit, goal, reminder, or alarm. " +
-    "DO NOT use this action for generic coaching or advice questions like 'any tips on setting better goals?' unless the user is also asking you to create, update, review, or track a concrete goal, task, reminder, or routine. " +
-    "DO NOT use this action for opinion / discussion questions like 'what do you think about <topic>', 'how do you feel about <topic>', 'what's your take on <topic>'. Those are conversation, not LifeOps actions — emit no action and let REPLY handle them. The presence of a topic that COULD relate to routines (remote work, health, productivity, etc.) does not make an opinion question a LIFE request. " +
-    "DO NOT use this action for person-specific follow-ups like 'remind me to follow up with David next week about the project' — use OWNER_RELATIONSHIP instead. " +
-    "DO NOT use this action for Gmail inbox triage, email search, drafting or sending emails — use OWNER_INBOX with channel=gmail instead. " +
-    "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use OWNER_INBOX instead. " +
-    "DO NOT use this action for calendar lookups, scheduling meetings, availability, Calendly, or travel itineraries — use OWNER_CALENDAR instead. " +
-    "DO NOT use this action for multi-device push ladders or device-wide reminder delivery — use INTENT_SYNC instead. " +
-    "DO NOT use this action for pre-event asset checklists, questions like 'what slides, bio, title, or portal assets do I still owe before the event', document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use OWNER_INBOX, INTENT_SYNC, OWNER_CALENDAR, or LIFEOPS_COMPUTER_USE instead. " +
-    "DO NOT use this action for browser/portal/file workflows on the owner's machine — use LIFEOPS_COMPUTER_USE instead. " +
-    "This action provides the final grounded reply; do not pair it with a speculative REPLY action or fall back to advice-only chat when the user wants real LifeOps follow-through.",
+    "Owner-only. Manage personal routines, habits, goals, todos, reminders, alarms, escalation settings, calendar/email queries about life state, and reminder mutations. The single LifeOps action for: creating/editing/deleting/completing items; logging progress; setting reminders or alarms; capturing the owner's phone number; configuring escalation; querying today's calendar, the next event, recent email, or a high-level overview.",
   descriptionCompressed:
-    "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",
+    "life: definitions(create update delete) goals(create update delete review) occurrences(complete skip snooze) prefs(reminder-intensity capture-phone configure-escalation) queries(calendar-today calendar-next email overview) owner",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    // Coding prompts share LifeOps verbs ("make", "create", "add") so
-    // the action selector can still pick LIFE. Decline here to let
-    // plugin-agent-orchestrator's CREATE_TASK take the route.
     if (looksLikeCodingTaskRequest(messageText(message))) {
       return false;
     }
     if (await isForeignPageScope(runtime, message)) {
       return false;
     }
-    return hasLifeOpsAccess(runtime, message);
+    return hasOwnerAccess(runtime, message);
   },
   handler: async (runtime, message, state, options) => {
     // Defense-in-depth at dispatch time: validate() above excludes LIFE
@@ -2392,7 +2025,7 @@ export const lifeAction: Action & {
     if (await isForeignPageScope(runtime, message)) {
       return { success: false, text: "" };
     }
-    if (!(await hasLifeOpsAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       const fallback =
         "Life management is restricted to the owner and the agent.";
       return {
@@ -2475,15 +2108,20 @@ export const lifeAction: Action & {
           },
         }),
         data: {
-          actionName: "LIFE",
+          actionName: "OWNER_LIFE",
           noop: true,
         },
       };
     }
+    const explicitSubaction =
+      typeof params.subaction === "string" &&
+      Object.prototype.hasOwnProperty.call(SUBACTIONS, params.subaction)
+        ? (params.subaction as LifeOperation)
+        : undefined;
     const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
       details,
       draft: deferredDraft,
-      explicitAction: params.action,
+      explicitOperation: explicitSubaction,
       llmMode: deferredDraftFollowupMode,
       turnsSinceDraft,
     });
@@ -2511,23 +2149,26 @@ export const lifeAction: Action & {
       };
     }
 
-    const explicitOperation = params.action
-      ? ACTION_TO_OPERATION[params.action]
-      : undefined;
+    // Pre-routing: pick the subaction. When reusing a deferred draft we
+    // inherit its operation. When the planner supplied an explicit subaction
+    // we trust it. Otherwise dispatch through resolveActionArgs (the
+    // shared LLM pre-routing substrate). The legacy extractLifeOperationWithLlm
+    // stays available as a fallback for richer "missing field" diagnostics.
     const operationPlan =
       reuseDeferredDraft && deferredDraft
-        ? {
+        ? ({
             confidence: 1,
             missing: [] as ExtractedLifeMissingField[],
             operation: deferredDraft.operation,
             shouldAct: true,
-          }
-        : await resolveLifeOperationPlan({
+          } satisfies ResolvedLifeOperationPlan)
+        : await routeLifeSubaction({
             runtime,
             message,
             state,
+            options,
             intent,
-            explicitOperation,
+            explicitSubaction,
           });
     const forceCreateExecution = shouldForceLifeCreateExecution({
       intent,
@@ -2559,7 +2200,7 @@ export const lifeAction: Action & {
           },
         }),
         data: {
-          actionName: "LIFE",
+          actionName: "OWNER_LIFE",
           noop: true,
           suggestedOperation: operationPlan.operation,
         },
@@ -2584,7 +2225,7 @@ export const lifeAction: Action & {
           },
         }),
         data: {
-          actionName: "LIFE",
+          actionName: "OWNER_LIFE",
           noop: true,
         },
       };
@@ -2774,7 +2415,7 @@ export const lifeAction: Action & {
               requiresConfirmation: true,
             },
             data: {
-              actionName: "LIFE",
+              actionName: "OWNER_LIFE",
               missingField: "title",
               requiresConfirmation: true,
             },
@@ -2803,7 +2444,7 @@ export const lifeAction: Action & {
               requiresConfirmation: true,
             },
             data: {
-              actionName: "LIFE",
+              actionName: "OWNER_LIFE",
               missingField: "schedule",
               requiresConfirmation: true,
             },
@@ -2898,7 +2539,7 @@ export const lifeAction: Action & {
               },
             }),
             data: {
-              actionName: "LIFE",
+              actionName: "OWNER_LIFE",
               deferred: true,
               lifeDraft: definitionDraft,
               preview: {
@@ -3182,7 +2823,7 @@ export const lifeAction: Action & {
                 suggestedOperation: "create_goal",
               },
               data: {
-                actionName: "LIFE",
+                actionName: "OWNER_LIFE",
                 noop: true,
                 error: "NOOP_GOAL_UNGROUNDED",
                 suggestedOperation: "create_goal",
@@ -3263,7 +2904,7 @@ export const lifeAction: Action & {
               },
             }),
             data: {
-              actionName: "LIFE",
+              actionName: "OWNER_LIFE",
               deferred: true,
               lifeDraft: goalDraft,
               experienceLoop,
@@ -3456,7 +3097,7 @@ export const lifeAction: Action & {
                 llmPlan.response ??
                 `Tell me what to change about "${target.goal.title}" and I'll update it.`,
               data: {
-                actionName: "LIFE",
+                actionName: "OWNER_LIFE",
                 noop: true,
                 suggestedOperation: "update_goal",
               },
@@ -3576,27 +3217,37 @@ export const lifeAction: Action & {
       }
 
       if (operation === "complete_occurrence") {
-        const { match: target, ambiguousCandidates } =
-          await resolveOccurrenceWithIntentFallback({
-            service,
-            target: targetName,
-            domain,
-            intent,
-            operation,
-          });
-        if (!target) {
-          if (ambiguousCandidates.length > 0) {
+        // Direct occurrenceId path absorbed from former LIFEOPS_MUTATE
+        // reminder_complete subaction. When the planner already knows the
+        // occurrence id we skip title/intent matching.
+        const directOccurrenceId = detailString(details, "occurrenceId");
+        let resolvedTargetId: string;
+        if (directOccurrenceId) {
+          resolvedTargetId = directOccurrenceId;
+        } else {
+          const { match: target, ambiguousCandidates } =
+            await resolveOccurrenceWithIntentFallback({
+              service,
+              target: targetName,
+              domain,
+              intent,
+              operation,
+            });
+          if (!target) {
+            if (ambiguousCandidates.length > 0) {
+              return {
+                success: false,
+                text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
+              };
+            }
             return {
               success: false,
-              text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
+              text: "I could not find that active item to complete.",
             };
           }
-          return {
-            success: false,
-            text: "I could not find that active item to complete.",
-          };
+          resolvedTargetId = target.id;
         }
-        const completed = await service.completeOccurrence(target.id, {
+        const completed = await service.completeOccurrence(resolvedTargetId, {
           note: detailString(details, "note"),
         });
         const fallback = `Marked "${completed.title}" done.`;
@@ -3663,25 +3314,34 @@ export const lifeAction: Action & {
       }
 
       if (operation === "snooze_occurrence") {
-        const { match: target, ambiguousCandidates } =
-          await resolveOccurrenceWithIntentFallback({
-            service,
-            target: targetName,
-            domain,
-            intent,
-            operation,
-          });
-        if (!target) {
-          if (ambiguousCandidates.length > 0) {
+        // Direct occurrenceId path absorbed from former LIFEOPS_MUTATE
+        // reminder_snooze subaction.
+        const directOccurrenceId = detailString(details, "occurrenceId");
+        let resolvedTargetId: string;
+        if (directOccurrenceId) {
+          resolvedTargetId = directOccurrenceId;
+        } else {
+          const { match: target, ambiguousCandidates } =
+            await resolveOccurrenceWithIntentFallback({
+              service,
+              target: targetName,
+              domain,
+              intent,
+              operation,
+            });
+          if (!target) {
+            if (ambiguousCandidates.length > 0) {
+              return {
+                success: false,
+                text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
+              };
+            }
             return {
               success: false,
-              text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
+              text: "I could not find that active item to snooze.",
             };
           }
-          return {
-            success: false,
-            text: "I could not find that active item to snooze.",
-          };
+          resolvedTargetId = target.id;
         }
         const preset = detailString(details, "preset") as
           | "15m"
@@ -3691,7 +3351,7 @@ export const lifeAction: Action & {
           | "tomorrow_morning"
           | undefined;
         const minutes = detailNumber(details, "minutes");
-        const snoozed = await service.snoozeOccurrence(target.id, {
+        const snoozed = await service.snoozeOccurrence(resolvedTargetId, {
           preset,
           minutes,
         });
@@ -3973,29 +3633,29 @@ export const lifeAction: Action & {
   },
   parameters: [
     {
-      name: "action",
-      description: "What kind of life operation to perform.",
+      name: "subaction",
+      description: "Which life operation to perform.",
       required: false,
       schema: {
         type: "string" as const,
         enum: [
-          "create",
+          "create_definition",
           "create_goal",
-          "update",
+          "update_definition",
           "update_goal",
-          "delete",
+          "delete_definition",
           "delete_goal",
-          "complete",
-          "skip",
-          "snooze",
-          "review",
-          "phone",
-          "escalation",
-          "reminder_preference",
-          "calendar",
-          "next_event",
-          "email",
-          "overview",
+          "complete_occurrence",
+          "skip_occurrence",
+          "snooze_occurrence",
+          "review_goal",
+          "set_reminder_preference",
+          "capture_phone",
+          "configure_escalation",
+          "query_calendar_today",
+          "query_calendar_next",
+          "query_email",
+          "query_overview",
         ],
       },
     },
@@ -4023,7 +3683,7 @@ export const lifeAction: Action & {
     {
       name: "details",
       description:
-        "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), minutes (snooze minutes), phoneNumber, allowSms, allowVoice, steps escalation list, goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops), or reminder preference targeting.",
+        "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), minutes (snooze minutes), occurrenceId (target an existing occurrence directly for snooze/complete reminder mutations), phoneNumber, allowSms, allowVoice, steps escalation list, goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops), or reminder preference targeting.",
       required: false,
       schema: { type: "object" as const },
     },
@@ -4040,7 +3700,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'I can save "Pick up dry cleaning" for tomorrow. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4055,7 +3715,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 2 LifeOps items due today: pick up dry cleaning and call mom.",
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4070,7 +3730,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'I can save this goal as "Save $5,000 by the end of the year". Confirm and I\'ll save it, or tell me what to change.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4085,7 +3745,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'I can set up a "Drink water" habit with a reasonable daytime default cadence. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4100,7 +3760,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'I can set up a "Stretch" habit with daytime stretch-break defaults. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4115,7 +3775,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "I can set up a weekday-after-lunch Invisalign habit. Confirm and I'll save it.",
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4130,7 +3790,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Puedo guardar el hábito "Brush teeth" para la mañana y la noche. Confirma y lo guardo.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4145,7 +3805,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'I can set up a habit named "Brush teeth" for 8 am and 9 pm daily. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4160,7 +3820,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'I can set up a "Shave" habit with a twice-weekly default cadence. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4175,7 +3835,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 2 LifeOps tasks left for today: call mom and pay rent.",
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
       {
@@ -4188,7 +3848,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "You have 1 LifeOps task left for today: pay rent.",
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],
@@ -4203,7 +3863,7 @@ export const lifeAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Reminder intensity for "Brush teeth" is now minimal.',
-          actions: ["LIFE"],
+          actions: ["OWNER_LIFE"],
         },
       },
     ],

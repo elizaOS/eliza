@@ -29,22 +29,46 @@ function normalizeParams(params: ParamsRecord, dispatch: string): ParamsRecord {
     normalized.itemName = normalized.item;
   if (normalized.object && !normalized.objectName)
     normalized.objectName = normalized.object;
-  if (normalized.tree && !normalized.treeName)
-    normalized.treeName = normalized.tree;
-  if (normalized.rock && !normalized.rockName)
-    normalized.rockName = normalized.rock;
-  if (normalized.spot && !normalized.spotName)
-    normalized.spotName = normalized.spot;
-  if (normalized.food && !normalized.rawFoodName)
-    normalized.rawFoodName = normalized.food;
   if (normalized.spell && !normalized.spellId)
     normalized.spellId = normalized.spell;
-  if (normalized.target && !normalized.targetNid)
-    normalized.targetNid = normalized.target;
   if (normalized.item1 && !normalized.itemName1)
     normalized.itemName1 = normalized.item1;
   if (normalized.item2 && !normalized.itemName2)
     normalized.itemName2 = normalized.item2;
+
+  // Per-dispatch target shape — `target` is a generic field on the new
+  // *_OP routers, but the underlying actions take typed names.
+  if (normalized.target != null) {
+    switch (dispatch) {
+      case "chopTree":
+        normalized.treeName ??= normalized.target;
+        break;
+      case "mineRock":
+        normalized.rockName ??= normalized.target;
+        break;
+      case "fish":
+        normalized.spotName ??= normalized.target;
+        break;
+      case "cookFood":
+        normalized.rawFoodName ??= normalized.target;
+        break;
+      case "smithAtAnvil":
+        normalized.itemName ??= normalized.target;
+        break;
+      case "attackNpc":
+        normalized.npcName ??= normalized.target;
+        break;
+      case "castSpell":
+        normalized.targetNid ??= normalized.target;
+        break;
+      case "useItemOnItem":
+        normalized.itemName2 ??= normalized.target;
+        break;
+      case "useItemOnObject":
+        normalized.objectName ??= normalized.target;
+        break;
+    }
+  }
 
   if (dispatch === "depositItem" && normalized.count == null) {
     normalized.count = -1;
@@ -92,16 +116,40 @@ function resolveActionText(message: Memory | undefined | null): string {
   return getCurrentLlmResponse();
 }
 
+const SKILL_TO_SUBACTION: Record<string, string> = {
+  chop: "chop",
+  mine: "mine",
+  fish: "fish",
+  burn: "burn",
+  cook: "cook",
+  fletch: "fletch",
+  craft: "craft",
+  smith: "smith",
+};
+
+function pickSubactionFromParams(
+  routerName: string,
+  params: ParamsRecord,
+): unknown {
+  if (params.subaction != null) return params.subaction;
+  if (routerName === "SKILL_OP" && params.skill != null) {
+    const key = String(params.skill).trim().toLowerCase();
+    return SKILL_TO_SUBACTION[key] ?? params.skill;
+  }
+  if (params.op != null) return params.op;
+  return params.actionType ?? params.type;
+}
+
 function createRouterAction(definition: Rs2004RouterDefinition): Action {
   return {
     name: definition.name,
-    description: `${definition.description} Return TOON: action: ${definition.name}, subaction: one of ${definition.subactions.map((s) => s.name).join("|")}.`,
+    description: `${definition.description} Return TOON: action: ${definition.name}, op: one of ${definition.subactions.map((s) => s.name).join("|")}.`,
     descriptionCompressed: definition.descriptionCompressed,
     similes: definition.subactions.map((subaction) => subaction.description),
     examples: [],
     parameters: [
       {
-        name: "subaction",
+        name: "op",
         description: "Router operation to run.",
         descriptionCompressed: "Router operation.",
         required: true,
@@ -113,8 +161,8 @@ function createRouterAction(definition: Rs2004RouterDefinition): Action {
       {
         name: "params",
         description:
-          "Optional TOON object containing the fields required by the chosen subaction.",
-        descriptionCompressed: "Subaction fields.",
+          "Optional TOON object containing the fields required by the chosen op.",
+        descriptionCompressed: "Op fields.",
         required: false,
         schema: { type: "object" },
       },
@@ -140,13 +188,13 @@ function createRouterAction(definition: Rs2004RouterDefinition): Action {
       };
       const resolved = resolveRs2004RouterAction(
         definition.name,
-        params.subaction ?? params.actionType ?? params.type,
+        pickSubactionFromParams(definition.name, params),
       );
 
       if (!resolved) {
-        const message = `${definition.name} requires a valid subaction.`;
-        callback?.({ text: message, action: definition.name });
-        return { success: false, message };
+        const errMessage = `${definition.name} requires a valid op.`;
+        callback?.({ text: errMessage, action: definition.name });
+        return { success: false, message: errMessage };
       }
 
       const result = await service.executeAction(
@@ -159,16 +207,84 @@ function createRouterAction(definition: Rs2004RouterDefinition): Action {
   };
 }
 
+const WALK_TO_DESCRIPTION_COMPRESSED =
+  "Walk to coordinate or named destination.";
+
+export const rs2004WalkToAction: Action = {
+  name: "WALK_TO",
+  description:
+    "Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
+  descriptionCompressed: WALK_TO_DESCRIPTION_COMPRESSED,
+  similes: ["MOVE_TO", "GOTO"],
+  examples: [],
+  parameters: [
+    {
+      name: "destination",
+      description: "Optional named destination (overrides x/z).",
+      descriptionCompressed: "Named destination.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "x",
+      description: "Target world X coordinate.",
+      descriptionCompressed: "Target x.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "z",
+      description: "Target world Z coordinate.",
+      descriptionCompressed: "Target z.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "reason",
+      description: "Optional reason logged with the walk.",
+      descriptionCompressed: "Walk reason.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+    return runtime.getService("rs_2004scape") != null;
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State | undefined,
+    options: HandlerOptions | ParamsRecord | undefined,
+    callback?: HandlerCallback,
+  ): Promise<unknown> => {
+    const service = getRsSdkGameService(runtime);
+    if (!service) {
+      return { success: false, message: "Game service not available." };
+    }
+
+    const params = {
+      ...paramsFromText(resolveActionText(message)),
+      ...paramsFromOptions(options),
+    };
+    const result = await service.executeAction("walkTo", params);
+    callback?.({ text: result.message, action: "WALK_TO" });
+    return result;
+  },
+};
+
 export const rs2004RouterActions: Action[] =
   RS_2004_ACTION_ROUTER_DEFINITIONS.map(createRouterAction);
 
 export const [
-  rs2004MovementAction,
-  rs2004InteractionAction,
-  rs2004CombatAction,
-  rs2004InventoryAction,
-  rs2004BankingAction,
-  rs2004ShopAction,
-  rs2004SkillingAction,
-  rs2004DialogueAction,
+  rs2004SkillOpAction,
+  rs2004InventoryOpAction,
+  rs2004BankOpAction,
+  rs2004ShopOpAction,
+  rs2004CombatOpAction,
+  rs2004InteractOpAction,
 ] = rs2004RouterActions;
+
+export const rs2004AllActions: Action[] = [
+  rs2004WalkToAction,
+  ...rs2004RouterActions,
+];

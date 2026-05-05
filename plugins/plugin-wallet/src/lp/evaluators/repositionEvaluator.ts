@@ -55,7 +55,10 @@ export function createLpRepositionEvaluator(
     alwaysRun: true,
     description: config.description,
 
-    validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => true,
+    validate: async (
+      _runtime: IAgentRuntime,
+      _message: Memory,
+    ): Promise<boolean> => true,
 
     handler: async (
       runtime: IAgentRuntime,

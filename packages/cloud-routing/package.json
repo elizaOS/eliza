@@ -53,6 +53,6 @@
     "vitest": "^4.0.0"
   },
   "peerDependencies": {
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   }
 }

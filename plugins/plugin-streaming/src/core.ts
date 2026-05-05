@@ -5,15 +5,21 @@
 
 import type {
   Action,
-  ActionExample,
+  ActionParameter,
+  ActionResult,
   Content,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
+  JsonValue,
   Memory,
   Plugin,
+  Provider,
+  ProviderResult,
   State,
 } from "@elizaos/core";
 import { isCloudConnected } from "@elizaos/cloud-routing";
+import { encode as toonEncode } from "@toon-format/toon";
 
 // ── Overlay layout data (JSON-serializable, no React refs) ──────────────────
 
@@ -419,219 +425,320 @@ export function streamingPipelineLocalPort(): number {
   return Number(process.env.SERVER_PORT || process.env.PORT || "2138");
 }
 
-export interface BuildStreamingPipelineActionsParams {
-  upperToken: string;
-  displayName: string;
-  validate: () => Promise<boolean>;
-  extraStartSimiles?: string[];
-  extraStopSimiles?: string[];
-  extraStatusSimiles?: string[];
+// ── Unified STREAM_OP router action + streamStatus provider ────────────────
+
+export const STREAMING_PLATFORMS = [
+  "twitch",
+  "youtube",
+  "x",
+  "pumpfun",
+] as const;
+
+export type StreamingPlatform = (typeof STREAMING_PLATFORMS)[number];
+
+export type StreamingOp = "start" | "stop" | "status";
+
+const PLATFORM_LABELS: Record<StreamingPlatform, string> = {
+  twitch: "Twitch",
+  youtube: "YouTube",
+  x: "X (Twitter)",
+  pumpfun: "pump.fun",
+};
+
+interface StreamStatusSnapshot {
+  platform: StreamingPlatform;
+  running: boolean;
+  uptimeSeconds: number | null;
+  frames: number | null;
+  destination: string;
 }
 
-export function buildStreamingPipelineActions(
-  params: BuildStreamingPipelineActionsParams,
-): Action[] {
-  const {
-    upperToken: UPPER,
-    displayName: NAME,
-    validate,
-    extraStartSimiles = [],
-    extraStopSimiles = [],
-    extraStatusSimiles = [],
-  } = params;
+function isStreamingPlatform(value: unknown): value is StreamingPlatform {
+  return (
+    typeof value === "string" &&
+    (STREAMING_PLATFORMS as readonly string[]).includes(value)
+  );
+}
 
-  const startAction: Action = {
-    name: `START_${UPPER}_STREAM`,
-    description: `Start streaming to ${NAME}. Initiates the RTMP pipeline with browser capture.`,
+function isStreamingOp(value: unknown): value is StreamingOp {
+  return value === "start" || value === "stop" || value === "status";
+}
+
+function readParam(
+  options: unknown,
+  key: string,
+): string | number | boolean | null | undefined {
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    return undefined;
+  }
+  const handler = options as HandlerOptions;
+  const params = handler.parameters as Record<string, JsonValue> | undefined;
+  if (params && key in params) {
+    const v = params[key];
+    if (
+      typeof v === "string" ||
+      typeof v === "number" ||
+      typeof v === "boolean" ||
+      v === null
+    ) {
+      return v;
+    }
+  }
+  const flat = options as Record<string, unknown>;
+  const v = flat[key];
+  if (
+    typeof v === "string" ||
+    typeof v === "number" ||
+    typeof v === "boolean" ||
+    v === null
+  ) {
+    return v;
+  }
+  return undefined;
+}
+
+async function fetchStreamStatus(
+  platform: StreamingPlatform,
+): Promise<StreamStatusSnapshot> {
+  const port = streamingPipelineLocalPort();
+  const res = await fetch(`http://127.0.0.1:${port}/api/stream/status`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  const uptime = typeof data.uptime === "number" ? Number(data.uptime) : null;
+  const frames = typeof data.frames === "number" ? Number(data.frames) : null;
+  return {
+    platform,
+    running: !!data.running,
+    uptimeSeconds: uptime,
+    frames,
+    destination: PLATFORM_LABELS[platform],
+  };
+}
+
+export interface BuildStreamOpActionParams {
+  validate?: () => Promise<boolean>;
+}
+
+export function buildStreamOpAction(
+  params: BuildStreamOpActionParams = {},
+): Action {
+  const validate = params.validate ?? (async () => true);
+
+  const platformParam: ActionParameter = {
+    name: "platform",
+    description:
+      "Streaming destination platform: twitch, youtube, x, or pumpfun.",
+    descriptionCompressed: "Platform: twitch|youtube|x|pumpfun.",
+    required: true,
+    schema: {
+      type: "string",
+      enum: [...STREAMING_PLATFORMS],
+    },
+  };
+
+  const opParam: ActionParameter = {
+    name: "op",
+    description:
+      "Operation to perform: start (go live), stop (go offline), or status.",
+    descriptionCompressed: "Op: start|stop|status.",
+    required: true,
+    schema: {
+      type: "string",
+      enum: ["start", "stop", "status"],
+    },
+  };
+
+  return {
+    name: "STREAM_OP",
+    description:
+      "Control the local RTMP streaming pipeline for a target platform. Dispatches start, stop, and status calls to the dashboard stream API for twitch, youtube, x, or pumpfun.",
+    descriptionCompressed:
+      "Stream ops: start, stop, status; platforms: twitch, youtube, x, pumpfun.",
     similes: [
-      ...extraStartSimiles,
-      `GO_LIVE_${UPPER}`,
-      `START_${UPPER}`,
-      `BEGIN_${UPPER}_STREAM`,
-      `${UPPER}_GO_LIVE`,
+      "START_STREAM",
+      "STOP_STREAM",
+      "GET_STREAM_STATUS",
+      "GO_LIVE",
+      "GO_OFFLINE",
+      "STREAM_STATUS",
+      "IS_LIVE",
     ],
-    parameters: [],
+    parameters: [platformParam, opParam],
     validate,
     handler: async (
       _runtime: IAgentRuntime,
       _message: Memory,
       _state: State | undefined,
-      _options: Record<string, unknown> | undefined,
+      options:
+        | HandlerOptions
+        | Record<string, JsonValue | undefined>
+        | undefined,
       callback?: HandlerCallback,
-    ) => {
+    ): Promise<ActionResult> => {
+      const platformRaw = readParam(options, "platform");
+      const opRaw = readParam(options, "op");
+      if (!isStreamingPlatform(platformRaw)) {
+        const text = `STREAM_OP requires platform in {${STREAMING_PLATFORMS.join(", ")}}, got ${String(platformRaw)}`;
+        if (callback) await callback({ text, actions: [] } as Content);
+        return { success: false, error: text };
+      }
+      if (!isStreamingOp(opRaw)) {
+        const text = `STREAM_OP requires op in {start, stop, status}, got ${String(opRaw)}`;
+        if (callback) await callback({ text, actions: [] } as Content);
+        return { success: false, error: text };
+      }
+
+      const platform: StreamingPlatform = platformRaw;
+      const op: StreamingOp = opRaw;
+      const label = PLATFORM_LABELS[platform];
       const port = streamingPipelineLocalPort();
+
       try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/stream/live`, {
-          method: "POST",
-          signal: AbortSignal.timeout(30_000),
-        });
-        const data = (await res.json()) as Record<string, unknown>;
-        if (callback) {
-          await callback({
-            text: data.ok
-              ? `${NAME} stream started successfully! We're live.`
-              : `Failed to start ${NAME} stream: ${data.error ?? "unknown error"}`,
-            actions: [],
-          } as Content);
+        if (op === "start") {
+          const res = await fetch(`http://127.0.0.1:${port}/api/stream/live`, {
+            method: "POST",
+            signal: AbortSignal.timeout(30_000),
+          });
+          const data = (await res.json()) as Record<string, unknown>;
+          const ok = !!data.ok;
+          const text = ok
+            ? `${label} stream started successfully! We're live.`
+            : `Failed to start ${label} stream: ${data.error ?? "unknown error"}`;
+          if (callback) await callback({ text, actions: [] } as Content);
+          return { success: ok, text };
         }
-        return { success: !!data.ok };
+
+        if (op === "stop") {
+          const res = await fetch(
+            `http://127.0.0.1:${port}/api/stream/offline`,
+            {
+              method: "POST",
+              signal: AbortSignal.timeout(15_000),
+            },
+          );
+          const data = (await res.json()) as Record<string, unknown>;
+          const ok = !!data.ok;
+          const text = ok
+            ? `${label} stream stopped. We're offline now.`
+            : `Failed to stop ${label} stream: ${data.error ?? "unknown error"}`;
+          if (callback) await callback({ text, actions: [] } as Content);
+          return { success: ok, text };
+        }
+
+        const snapshot = await fetchStreamStatus(platform);
+        const status = snapshot.running ? "LIVE" : "OFFLINE";
+        const uptime =
+          snapshot.uptimeSeconds === null
+            ? "n/a"
+            : `${Math.floor(snapshot.uptimeSeconds / 60)}m`;
+        const text = `${label} stream status: ${status} | Uptime: ${uptime} | Destination: ${label}`;
+        if (callback) await callback({ text, actions: [] } as Content);
+        return { success: true, text, data: { snapshot } };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (callback) {
-          await callback({
-            text: `Error starting ${NAME} stream: ${msg}`,
-            actions: [],
-          } as Content);
-        }
-        return { success: false };
+        const text = `Error running STREAM_OP ${op} for ${label}: ${msg}`;
+        if (callback) await callback({ text, actions: [] } as Content);
+        return { success: false, error: msg, text };
       }
     },
     examples: [
       [
         {
           name: "{{user1}}",
-          content: { text: `Go live on ${NAME}` },
-        } as ActionExample,
+          content: { text: "Go live on Twitch" },
+        },
         {
           name: "{{agent}}",
           content: {
-            text: `Starting the ${NAME} stream now.`,
-            actions: [`START_${UPPER}_STREAM`],
+            text: "Starting the Twitch stream now.",
+            actions: ["STREAM_OP"],
           },
-        } as ActionExample,
+        },
       ],
-    ],
-  };
-
-  const stopAction: Action = {
-    name: `STOP_${UPPER}_STREAM`,
-    description: `Stop the active ${NAME} stream. Shuts down the FFmpeg pipeline.`,
-    similes: [
-      ...extraStopSimiles,
-      `GO_OFFLINE_${UPPER}`,
-      `STOP_${UPPER}`,
-      `END_${UPPER}_STREAM`,
-      `${UPPER}_GO_OFFLINE`,
-    ],
-    parameters: [],
-    validate,
-    handler: async (
-      _runtime: IAgentRuntime,
-      _message: Memory,
-      _state: State | undefined,
-      _options: Record<string, unknown> | undefined,
-      callback?: HandlerCallback,
-    ) => {
-      const port = streamingPipelineLocalPort();
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/stream/offline`, {
-          method: "POST",
-          signal: AbortSignal.timeout(15_000),
-        });
-        const data = (await res.json()) as Record<string, unknown>;
-        if (callback) {
-          await callback({
-            text: data.ok
-              ? `${NAME} stream stopped. We're offline now.`
-              : `Failed to stop ${NAME} stream: ${data.error ?? "unknown error"}`,
-            actions: [],
-          } as Content);
-        }
-        return { success: !!data.ok };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (callback) {
-          await callback({
-            text: `Error stopping ${NAME} stream: ${msg}`,
-            actions: [],
-          } as Content);
-        }
-        return { success: false };
-      }
-    },
-    examples: [
       [
         {
           name: "{{user1}}",
-          content: { text: `Stop the ${NAME} stream` },
-        } as ActionExample,
+          content: { text: "Stop the YouTube stream" },
+        },
         {
           name: "{{agent}}",
           content: {
             text: "Stopping the stream now.",
-            actions: [`STOP_${UPPER}_STREAM`],
+            actions: ["STREAM_OP"],
           },
-        } as ActionExample,
+        },
       ],
-    ],
-  };
-
-  const statusAction: Action = {
-    name: `GET_${UPPER}_STREAM_STATUS`,
-    description: `Check the current status of the ${NAME} stream (running, uptime, frame count, etc).`,
-    similes: [
-      ...extraStatusSimiles,
-      `${UPPER}_STATUS`,
-      `${UPPER}_STREAM_STATUS`,
-      `IS_${UPPER}_LIVE`,
-      `CHECK_${UPPER}_STREAM`,
-    ],
-    parameters: [],
-    validate,
-    handler: async (
-      _runtime: IAgentRuntime,
-      _message: Memory,
-      _state: State | undefined,
-      _options: Record<string, unknown> | undefined,
-      callback?: HandlerCallback,
-    ) => {
-      const port = streamingPipelineLocalPort();
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/stream/status`, {
-          signal: AbortSignal.timeout(10_000),
-        });
-        const data = (await res.json()) as Record<string, unknown>;
-        const status = data.running ? "LIVE" : "OFFLINE";
-        const uptime = data.uptime
-          ? `${Math.floor(Number(data.uptime) / 60)}m`
-          : "n/a";
-        if (callback) {
-          await callback({
-            text: `${NAME} stream status: ${status} | Uptime: ${uptime} | Destination: ${NAME}`,
-            actions: [],
-          } as Content);
-        }
-        return { success: true };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (callback) {
-          await callback({
-            text: `Error checking ${NAME} stream status: ${msg}`,
-            actions: [],
-          } as Content);
-        }
-        return { success: false };
-      }
-    },
-    examples: [
       [
         {
           name: "{{user1}}",
-          content: { text: `Is the ${NAME} stream live?` },
-        } as ActionExample,
+          content: { text: "Is the X stream live?" },
+        },
         {
           name: "{{agent}}",
           content: {
             text: "Let me check the stream status.",
-            actions: [`GET_${UPPER}_STREAM_STATUS`],
+            actions: ["STREAM_OP"],
           },
-        } as ActionExample,
+        },
       ],
     ],
   };
-
-  return [startAction, stopAction, statusAction];
 }
+
+/**
+ * Provider that renders the live status of every supported streaming platform
+ * as a TOON document. The pipeline currently exposes a single shared
+ * `/api/stream/status` endpoint, so each platform row reflects that same
+ * snapshot tagged with its destination label.
+ */
+export const streamStatusProvider: Provider = {
+  name: "streamStatus",
+  description:
+    "Live RTMP pipeline status per supported platform (twitch, youtube, x, pumpfun) rendered as TOON.",
+  descriptionCompressed: "RTMP status per platform.",
+  dynamic: true,
+  get: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
+    const rows = await Promise.all(
+      STREAMING_PLATFORMS.map(async (platform) => {
+        try {
+          const snap = await fetchStreamStatus(platform);
+          return {
+            platform: snap.platform,
+            running: snap.running,
+            uptimeSeconds: snap.uptimeSeconds ?? 0,
+            frames: snap.frames ?? 0,
+            destination: snap.destination,
+            error: null,
+          };
+        } catch (err) {
+          return {
+            platform,
+            running: false,
+            uptimeSeconds: 0,
+            frames: 0,
+            destination: PLATFORM_LABELS[platform],
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }),
+    );
+
+    return {
+      text: toonEncode({
+        stream_status: {
+          count: rows.length,
+          platforms: rows,
+        },
+      }),
+      data: { stream_status: rows },
+    };
+  },
+};
 
 /**
  * Build a complete elizaOS Plugin for a streaming destination.
@@ -652,19 +759,7 @@ export interface CreatedStreamingPlugin {
 export function createStreamingPlugin(
   cfg: StreamingPluginConfig,
 ): CreatedStreamingPlugin {
-  const UPPER = cfg.platformName.toUpperCase();
   const NAME = cfg.platformName;
-
-  const validate = async (): Promise<boolean> => {
-    const key = (process.env[cfg.streamKeyEnvVar] ?? "").trim();
-    return !!key;
-  };
-
-  const actions = buildStreamingPipelineActions({
-    upperToken: UPPER,
-    displayName: NAME,
-    validate,
-  });
 
   const configEntries: Record<string, string | null> = {
     [cfg.streamKeyEnvVar]: process.env[cfg.streamKeyEnvVar] ?? null,
@@ -675,11 +770,11 @@ export function createStreamingPlugin(
 
   const plugin: Plugin = {
     name: cfg.pluginName ?? `${cfg.platformId}-streaming`,
-    description: `${NAME} RTMP streaming destination with agent stream control actions`,
+    description: `${NAME} RTMP streaming destination — credentials and overlay layout. Stream control actions live on the unified streaming plugin.`,
     get config() {
       return configEntries;
     },
-    actions,
+    actions: [],
     async init(_config: Record<string, string>, _runtime: IAgentRuntime) {
       const streamKey = (
         _config[cfg.streamKeyEnvVar] ??

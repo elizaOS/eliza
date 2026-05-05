@@ -15,22 +15,22 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "../contracts/index.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
-import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+} from "../../contracts/index.js";
+import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
+import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getWeekdayForLocalDate,
   getZonedDateParts,
-} from "../lifeops/time.js";
+} from "../../lifeops/time.js";
 import {
   type CreateEventTravelIntent,
   computeCreateEventTravelBuffer,
   resolveCreateEventTravelIntent,
-} from "../travel-time/calendar-create.js";
-import { TravelTimeUnavailableError } from "../travel-time/service.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+} from "../../travel-time/calendar-create.js";
+import { TravelTimeUnavailableError } from "../../travel-time/service.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 import {
   calendarReadUnavailableMessage,
   calendarWriteUnavailableMessage,
@@ -49,7 +49,7 @@ import {
   runLifeOpsTextModel,
   runLifeOpsToonModel,
   toActionData,
-} from "./lifeops-google-helpers.js";
+} from "../lifeops-google-helpers.js";
 
 type CalendarSubaction =
   | "feed"

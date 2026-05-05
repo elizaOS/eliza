@@ -8,6 +8,7 @@ import {
   type BrowserWorkspaceSubaction,
   type BrowserWorkspaceWaitState,
   executeBrowserWorkspaceCommand,
+  getBrowserWorkspaceMode,
 } from "@elizaos/agent";
 import type {
   Action,
@@ -16,7 +17,11 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { encodeToonValue } from "@elizaos/core";
+import {
+  encodeToonValue,
+  getTrajectoryContext,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 
 type BrowserWorkspaceActionRequest = BrowserWorkspaceCommand;
 
@@ -85,170 +90,11 @@ const EXPLICIT_SUBACTIONS: readonly BrowserWorkspaceSubaction[] = [
   "window",
 ];
 const EXPLICIT_SUBACTION_SET = new Set<string>(EXPLICIT_SUBACTIONS);
-const READ_ONLY_PROVIDER_REQUEST_RE = /\b(list|tabs?|state|info|context)\b/;
-
-type BrowserInferenceContext = {
-  lower: string;
-  url?: string;
-  steps?: BrowserWorkspaceCommand[];
-  params: Record<string, unknown>;
-};
-
-type BrowserInferenceRule = {
-  subaction: BrowserWorkspaceSubaction;
-  when: (context: BrowserInferenceContext) => boolean;
-};
-
-const BROWSER_INFERENCE_RULES: readonly BrowserInferenceRule[] = [
-  {
-    subaction: "find",
-    when: ({ params }) => typeof params.findBy === "string",
-  },
-  {
-    subaction: "batch",
-    when: ({ steps }) => Boolean(steps?.length),
-  },
-  {
-    subaction: "screenshot",
-    when: ({ lower }) => /\bscreenshot\b/.test(lower),
-  },
-  {
-    subaction: "snapshot",
-    when: ({ lower }) => /\bsnapshot\b/.test(lower),
-  },
-  {
-    subaction: "open",
-    when: ({ lower, url }) => /\b(open|new tab|browse)\b/.test(lower) && !!url,
-  },
-  {
-    subaction: "navigate",
-    when: ({ lower, url }) => /\bnavigate\b/.test(lower) && !!url,
-  },
-  { subaction: "show", when: ({ lower }) => /\bshow\b/.test(lower) },
-  {
-    subaction: "hide",
-    when: ({ lower }) => /\bhide\b|\bbackground\b/.test(lower),
-  },
-  { subaction: "close", when: ({ lower }) => /\bclose\b/.test(lower) },
-  {
-    subaction: "inspect",
-    when: ({ lower }) => /\binspect\b|\bscan page\b|\bwhat.*page\b/.test(lower),
-  },
-  {
-    subaction: "dblclick",
-    when: ({ lower }) => /\bdouble click\b|\bdblclick\b/.test(lower),
-  },
-  { subaction: "hover", when: ({ lower }) => /\bhover\b/.test(lower) },
-  { subaction: "focus", when: ({ lower }) => /\bfocus\b/.test(lower) },
-  { subaction: "select", when: ({ lower }) => /\bselect\b/.test(lower) },
-  { subaction: "check", when: ({ lower }) => /\bcheck\b/.test(lower) },
-  { subaction: "uncheck", when: ({ lower }) => /\buncheck\b/.test(lower) },
-  {
-    subaction: "scrollinto",
-    when: ({ lower }) => /\bscroll into\b/.test(lower),
-  },
-  { subaction: "scroll", when: ({ lower }) => /\bscroll\b/.test(lower) },
-  { subaction: "keydown", when: ({ lower }) => /\bkey down\b/.test(lower) },
-  { subaction: "keyup", when: ({ lower }) => /\bkey up\b/.test(lower) },
-  {
-    subaction: "keyboardtype",
-    when: ({ lower }) => /\bkeyboard type\b/.test(lower),
-  },
-  {
-    subaction: "keyboardinserttext",
-    when: ({ lower }) => /\binsert text\b/.test(lower),
-  },
-  {
-    subaction: "click",
-    when: ({ lower, params }) =>
-      /\bclick\b/.test(lower) &&
-      (typeof params.selector === "string" || typeof params.text === "string"),
-  },
-  {
-    subaction: "fill",
-    when: ({ lower, params }) =>
-      /\bfill\b|\benter\b|\btype into\b/.test(lower) &&
-      (typeof params.selector === "string" || typeof params.text === "string"),
-  },
-  { subaction: "wait", when: ({ lower }) => /\bwait\b/.test(lower) },
-  {
-    subaction: "get",
-    when: ({ lower }) => /\bget\b|\bread\b|\bextract\b/.test(lower),
-  },
-  {
-    subaction: "clipboard",
-    when: ({ lower }) => /\bclipboard\b|\bcopy\b|\bpaste\b/.test(lower),
-  },
-  {
-    subaction: "mouse",
-    when: ({ lower }) => /\bmouse\b|\bwheel\b/.test(lower),
-  },
-  { subaction: "drag", when: ({ lower }) => /\bdrag\b/.test(lower) },
-  {
-    subaction: "upload",
-    when: ({ lower }) => /\bupload\b|\bfile input\b/.test(lower),
-  },
-  {
-    subaction: "set",
-    when: ({ lower }) =>
-      /\bviewport\b|\boffline\b|\bheaders\b|\bcredentials\b|\buser agent\b|\bmedia\b/.test(
-        lower,
-      ),
-  },
-  { subaction: "cookies", when: ({ lower }) => /\bcookies?\b/.test(lower) },
-  {
-    subaction: "storage",
-    when: ({ lower }) =>
-      /\bstorage\b|\blocalstorage\b|\bsessionstorage\b/.test(lower),
-  },
-  {
-    subaction: "network",
-    when: ({ lower }) => /\bnetwork\b|\broute\b|\bhar\b/.test(lower),
-  },
-  {
-    subaction: "dialog",
-    when: ({ lower }) =>
-      /\bdialog\b|\bconfirm\b|\bprompt\b|\balert\b/.test(lower),
-  },
-  { subaction: "console", when: ({ lower }) => /\bconsole\b/.test(lower) },
-  { subaction: "errors", when: ({ lower }) => /\berrors?\b/.test(lower) },
-  { subaction: "highlight", when: ({ lower }) => /\bhighlight\b/.test(lower) },
-  { subaction: "diff", when: ({ lower }) => /\bdiff\b/.test(lower) },
-  { subaction: "trace", when: ({ lower }) => /\btrace\b/.test(lower) },
-  {
-    subaction: "profiler",
-    when: ({ lower }) => /\bprofile\b|\bprofiler\b/.test(lower),
-  },
-  {
-    subaction: "frame",
-    when: ({ lower }) => /\bframe\b|\biframe\b/.test(lower),
-  },
-  { subaction: "window", when: ({ lower }) => /\bwindow\b/.test(lower) },
-  { subaction: "pdf", when: ({ lower }) => /\bpdf\b/.test(lower) },
-  {
-    subaction: "tab",
-    when: ({ lower }) =>
-      /\btab\b/.test(lower) && /\b(new|switch|close)\b/.test(lower),
-  },
-  {
-    subaction: "eval",
-    when: ({ lower }) => /\beval\b|\bexecute js\b|\brun script\b/.test(lower),
-  },
-];
 
 function isWriteSubaction(
   subaction: BrowserWorkspaceSubaction | null | undefined,
 ): boolean {
   return Boolean(subaction && WRITE_SUBACTIONS.includes(subaction));
-}
-
-function inferSubaction(
-  context: BrowserInferenceContext,
-): BrowserWorkspaceSubaction | null {
-  return (
-    BROWSER_INFERENCE_RULES.find((rule) => rule.when(context))?.subaction ??
-    null
-  );
 }
 
 function getMessageText(message: Memory): string {
@@ -270,6 +116,17 @@ function normalizeSubaction(
         ? (normalized as BrowserWorkspaceSubaction)
         : null;
   }
+}
+
+function inferSubactionFromMessage(
+  messageText: string,
+  url: string | undefined,
+): BrowserWorkspaceSubaction | null {
+  if (!url) return null;
+  const lower = messageText.toLowerCase();
+  if (/\b(open|launch|new tab)\b/.test(lower)) return "open";
+  if (/\b(navigate|go to|visit|load)\b/.test(lower)) return "navigate";
+  return null;
 }
 
 function normalizeGetMode(
@@ -668,6 +525,8 @@ export function parseBrowserWorkspaceActionRequest(
       : (messageText.match(TAB_ID_RE)?.[1] ?? undefined);
   const steps =
     parseStepsParam(params.steps) ?? parseStepsParam(params.stepsJson);
+  const subaction =
+    fromParams ?? (steps ? "batch" : inferSubactionFromMessage(messageText, url));
   const resolvedFindBy =
     normalizeFindBy(
       typeof params.findBy === "string"
@@ -696,23 +555,21 @@ export function parseBrowserWorkspaceActionRequest(
     rawTargetText ??
     (usesByLocatorValue &&
     rawValueValue &&
-    (rawTextValue || rawOptionValue || !isWriteSubaction(fromParams))
+    (rawTextValue || rawOptionValue || !isWriteSubaction(subaction))
       ? rawValueValue
       : rawTextValue);
-  const lower = messageText.toLowerCase();
-  const inferred = fromParams ?? inferSubaction({ lower, url, steps, params });
 
-  if (!inferred) return null;
+  if (!subaction) return null;
 
   const inferredWriteValue =
     typeof rawText === "string" &&
-    isWriteSubaction(inferred) &&
+    isWriteSubaction(subaction) &&
     (typeof params.selector === "string" || typeof params.findBy === "string")
       ? rawText
       : undefined;
   const parsedValue =
     rawOptionValue ??
-    (isWriteSubaction(inferred) &&
+    (isWriteSubaction(subaction) &&
     usesByLocatorValue &&
     rawValueValue &&
     rawTextValue
@@ -726,7 +583,7 @@ export function parseBrowserWorkspaceActionRequest(
       normalizeFindAction(
         typeof params.action === "string" ? params.action : undefined,
       ) ?? undefined,
-    subaction: inferred,
+    subaction,
     baselinePath:
       typeof params.baselinePath === "string" ? params.baselinePath : undefined,
     button: typeof params.button === "string" ? params.button : undefined,
@@ -1481,24 +1338,12 @@ export const manageElizaBrowserWorkspaceAction: Action = {
       schema: { type: "string", enum: ["list", "new", "switch", "close"] },
     },
   ],
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state) => {
-    const request = parseBrowserWorkspaceActionRequest(message);
-    if (request) {
-      return true;
-    }
-    const lower = getMessageText(message).toLowerCase();
-    if (
-      /\b(browser|tab|tabs|webpage|website|iframe|page)\b/i.test(
-        getMessageText(message),
-      ) &&
-      READ_ONLY_PROVIDER_REQUEST_RE.test(lower)
-    ) {
-      return false;
-    }
-    return /\b(browser|tab|tabs|webpage|website|iframe|page)\b/i.test(
-      getMessageText(message),
-    );
-  },
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+    _state,
+    options?: HandlerOptions,
+  ) => parseBrowserWorkspaceActionRequest(message, options) !== null,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
@@ -1509,30 +1354,47 @@ export const manageElizaBrowserWorkspaceAction: Action = {
     const request = parseBrowserWorkspaceActionRequest(message, options);
     if (!request) {
       const text =
-        "Could not determine the browser subaction. Pass subaction plus selector/url/value explicitly, or use batch with stepsJson.";
+        "subaction is required. Pass an explicit subaction (and any needed selector/url/value), or use batch with stepsJson.";
       await callback?.({ text });
       return { success: false, text };
     }
 
-    if (
-      request.subaction === "eval" &&
-      !(
-        (options?.parameters as Record<string, unknown> | undefined)
-          ?.subaction ??
-        (options?.parameters as Record<string, unknown> | undefined)?.operation
-      )
-    ) {
-      const text =
-        "For safety, JavaScript evaluation must be requested with explicit parameters (subaction: 'eval', id if needed, script). Natural-language eval inference is disabled.";
-      await callback?.({ text });
-      return { success: false, text };
-    }
+    if (request.subaction === "batch") {
+      const steps = request.steps ?? [];
+      if (steps.length === 0) {
+        const text =
+          "Browser batch mode requires stepsJson with at least one subaction step.";
+        await callback?.({ text });
+        return { success: false, text };
+      }
 
-    if (request.subaction === "batch" && request.steps.length === 0) {
-      const text =
-        "Browser batch mode requires stepsJson with at least one subaction step.";
-      await callback?.({ text });
-      return { success: false, text };
+      try {
+        const parentCtx = getTrajectoryContext();
+        const stepResults: BrowserWorkspaceCommandResult[] = [];
+        for (const step of steps) {
+          const stepResult = await runWithTrajectoryContext(
+            {
+              ...(parentCtx ?? {}),
+              purpose: "browser-batch-step",
+            },
+            () => executeBrowserWorkspaceCommand(step),
+          );
+          stepResults.push(stepResult);
+        }
+        const result: BrowserWorkspaceCommandResult = {
+          mode: getBrowserWorkspaceMode(),
+          subaction: "batch",
+          steps: stepResults,
+          value: stepResults.at(-1)?.value,
+        };
+        const text = formatBrowserWorkspaceCommandResult(result);
+        await callback?.({ text });
+        return { success: true, text, data: result };
+      } catch (error) {
+        const text = error instanceof Error ? error.message : String(error);
+        await callback?.({ text });
+        return { success: false, text };
+      }
     }
 
     try {

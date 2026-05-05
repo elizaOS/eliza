@@ -2,8 +2,8 @@
 import {
   type IAgentRuntime,
   ILpService,
-  logger,
   type LpPositionDetails,
+  logger,
   type PoolInfo,
   type TokenBalance,
   type TransactionResult,
@@ -87,10 +87,10 @@ export interface LpProtocolProvider {
   getPosition?(
     params: LpPositionOperationParams,
   ): Promise<LpPositionDetails | null>;
-  listPositions?(params: LpPositionOperationParams): Promise<LpPositionDetails[]>;
-  getMarketData?(
-    poolIds: string[],
-  ): Promise<Record<string, Partial<PoolInfo>>>;
+  listPositions?(
+    params: LpPositionOperationParams,
+  ): Promise<LpPositionDetails[]>;
+  getMarketData?(poolIds: string[]): Promise<Record<string, Partial<PoolInfo>>>;
 }
 
 export class NoMatchingLpProtocolError extends Error {
@@ -137,7 +137,10 @@ function amountValue(
   fallback = "0",
 ): string {
   const amount = params.amount;
-  if (key === "value" && ["string", "number", "bigint"].includes(typeof amount)) {
+  if (
+    key === "value" &&
+    ["string", "number", "bigint"].includes(typeof amount)
+  ) {
     return String(amount);
   }
   if (amount && typeof amount === "object" && key in amount) {
@@ -160,7 +163,10 @@ function bigintAmount(value: unknown, fallback = 0n): bigint {
   return fallback;
 }
 
-function unsupported(protocol: LpProtocolProvider, operation: string): TransactionResult {
+function unsupported(
+  protocol: LpProtocolProvider,
+  operation: string,
+): TransactionResult {
   return {
     success: false,
     error: `${operation} is not implemented for ${protocol.dex} on ${protocol.chain}`,
@@ -173,10 +179,6 @@ export class LpManagementService extends ILpService {
     "Aggregates registered DEX liquidity pool protocol providers across chains.";
 
   private protocols = new Map<string, LpProtocolProvider>();
-
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
 
   static async start(runtime: IAgentRuntime): Promise<LpManagementService> {
     const service = new LpManagementService(runtime);
@@ -202,7 +204,9 @@ export class LpManagementService extends ILpService {
       dex: normalizeDex(provider.dex),
     };
     if (this.protocols.has(key)) {
-      logger.warn(`[LpManagementService] Replacing LP protocol provider ${key}`);
+      logger.warn(
+        `[LpManagementService] Replacing LP protocol provider ${key}`,
+      );
     }
     this.protocols.set(key, normalizedProvider);
   }
@@ -445,7 +449,11 @@ export function createSolanaLpProtocolProvider({
       return service.addLiquidity({
         userVault: params.userVault,
         poolId: id,
-        tokenAAmountLamports: amountValue(params, "tokenA", amountValue(params, "value")),
+        tokenAAmountLamports: amountValue(
+          params,
+          "tokenA",
+          amountValue(params, "value"),
+        ),
         tokenBAmountLamports: amountValue(params, "tokenB", undefined),
         slippageBps: params.slippageBps ?? 50,
         tickLowerIndex: params.range?.tickLowerIndex ?? params.range?.tickLower,
@@ -461,7 +469,11 @@ export function createSolanaLpProtocolProvider({
       return service.removeLiquidity({
         userVault: params.userVault,
         poolId: id,
-        lpTokenAmountLamports: amountValue(params, "lpToken", amountValue(params, "value")),
+        lpTokenAmountLamports: amountValue(
+          params,
+          "lpToken",
+          amountValue(params, "value"),
+        ),
         slippageBps: params.slippageBps ?? 50,
       });
     },
@@ -478,7 +490,8 @@ export function createSolanaLpProtocolProvider({
   };
 
   if (typeof service.repositionPosition === "function") {
-    provider.repositionPosition = (params) => service.repositionPosition(params);
+    provider.repositionPosition = (params) =>
+      service.repositionPosition(params);
   }
 
   return provider;
@@ -531,16 +544,23 @@ export function createEvmLpProtocolProvider({
       return pools.flat();
     },
     openPosition: async (params) => {
-      if (!params.wallet) return { success: false, error: "EVM wallet is required" };
-      if (!params.chainId) return { success: false, error: "EVM chainId is required" };
+      if (!params.wallet)
+        return { success: false, error: "EVM wallet is required" };
+      if (!params.chainId)
+        return { success: false, error: "EVM chainId is required" };
       const id = poolId(params.pool);
       if (!id) return { success: false, error: "Pool address is required" };
       const evmParams: EvmAddLiquidityParams = {
         wallet: params.wallet,
         chainId: params.chainId,
         poolAddress: id as Address,
-        tokenAAmount: bigintAmount(amountValue(params, "tokenA", amountValue(params, "value"))),
-        tokenBAmount: bigintAmount(amountValue(params, "tokenB", undefined), undefined),
+        tokenAAmount: bigintAmount(
+          amountValue(params, "tokenA", amountValue(params, "value")),
+        ),
+        tokenBAmount: bigintAmount(
+          amountValue(params, "tokenB", undefined),
+          undefined,
+        ),
         slippageBps: params.slippageBps ?? 50,
         tickLower: params.range?.tickLower ?? params.range?.tickLowerIndex,
         tickUpper: params.range?.tickUpper ?? params.range?.tickUpperIndex,
@@ -549,8 +569,10 @@ export function createEvmLpProtocolProvider({
       return service.addLiquidity(evmParams);
     },
     closePosition: async (params) => {
-      if (!params.wallet) return { success: false, error: "EVM wallet is required" };
-      if (!params.chainId) return { success: false, error: "EVM chainId is required" };
+      if (!params.wallet)
+        return { success: false, error: "EVM wallet is required" };
+      if (!params.chainId)
+        return { success: false, error: "EVM chainId is required" };
       const id = poolId(params.pool);
       if (!id) return { success: false, error: "Pool address is required" };
       const evmParams: EvmRemoveLiquidityParams = {
@@ -568,7 +590,9 @@ export function createEvmLpProtocolProvider({
           undefined,
         ),
         percentageToRemove:
-          typeof params.amount === "object" ? params.amount?.percentage : undefined,
+          typeof params.amount === "object"
+            ? params.amount?.percentage
+            : undefined,
         slippageBps: params.slippageBps ?? 50,
         deadline: params.deadline,
       };

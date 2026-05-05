@@ -18,9 +18,9 @@ export * from "./constants.js";
 // Re-export types and service
 export * from "./types.js";
 export {
-	bluebubblesMessageOp,
 	BlueBubblesService,
 	blueBubblesSetupRoutes,
+	bluebubblesMessageOp,
 	resolveBlueBubblesWebhookPath,
 };
 

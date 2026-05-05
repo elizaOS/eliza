@@ -61,12 +61,9 @@ function splitThoughtAndSpeech(message?: string): {
   if (!message) {
     return {};
   }
-  const thoughtMatch = message.match(/<thought>([\s\S]*?)<\/thought>/i);
-  const thoughtText = thoughtMatch?.[1]?.trim();
-  const speechText = message
-    .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
-    .replace(/<\/?response>/gi, "")
-    .trim();
+  const fields = parseThoughtSpeechToon(message);
+  const thoughtText = fields.thought?.trim();
+  const speechText = (fields.text ?? message).trim();
   if (thoughtText && speechText) {
     return { thoughtText, speechText };
   }
@@ -77,4 +74,24 @@ function splitThoughtAndSpeech(message?: string): {
     return { speechText };
   }
   return {};
+}
+
+function parseThoughtSpeechToon(message: string): {
+  thought?: string;
+  text?: string;
+} {
+  const fields: { thought?: string; text?: string } = {};
+  let currentKey: "thought" | "text" | undefined;
+  for (const line of message.split(/\r?\n/)) {
+    const fieldMatch = line.match(/^(thought|text):\s*(.*)$/i);
+    if (fieldMatch) {
+      currentKey = fieldMatch[1].toLowerCase() as "thought" | "text";
+      fields[currentKey] = fieldMatch[2];
+      continue;
+    }
+    if (currentKey) {
+      fields[currentKey] = `${fields[currentKey] ?? ""}\n${line}`;
+    }
+  }
+  return fields;
 }

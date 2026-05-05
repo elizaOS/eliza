@@ -6,5 +6,6 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
+    passWithNoTests: true,
   },
 });

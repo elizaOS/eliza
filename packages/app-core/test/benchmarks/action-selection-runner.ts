@@ -14,6 +14,7 @@ import {
   type AgentRuntime,
   ChannelType,
   type Memory,
+  parseToonKeyValue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -421,10 +422,27 @@ function parseAvailableActionsFromPrompt(prompt: string): string[] {
 }
 
 function parsePlannedActionsFromResponse(response: string): string[] {
-  const names = Array.from(
-    response.matchAll(/<name>\s*([^<]+?)\s*<\/name>/gi),
-    (match) => normalizeActionName(match[1]),
-  ).filter((name): name is string => name !== null);
+  const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+  if (!parsed) {
+    return [];
+  }
+  const rawActions =
+    parsed.actions ?? parsed.action ?? parsed.name ?? parsed.actionName;
+  const actionValues = Array.isArray(rawActions) ? rawActions : [rawActions];
+  const names = actionValues
+    .flatMap((action) => {
+      if (typeof action === "string") {
+        return action.split(",");
+      }
+      if (action && typeof action === "object") {
+        const record = action as Record<string, unknown>;
+        const rawName = record.name ?? record.action ?? record.actionName;
+        return typeof rawName === "string" ? [rawName] : [];
+      }
+      return [];
+    })
+    .map((name) => normalizeActionName(name))
+    .filter((name): name is string => name !== null);
   return [...new Set(names)];
 }
 

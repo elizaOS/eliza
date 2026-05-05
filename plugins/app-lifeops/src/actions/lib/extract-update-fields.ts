@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseToonKeyValue } from "@elizaos/core";
-import { runExtractorPipeline } from "./extractor-pipeline.js";
+import { runExtractorPipeline } from "../extractor-pipeline.js";
 
 const VALID_CADENCE_KINDS = new Set([
   "once",

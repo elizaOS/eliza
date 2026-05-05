@@ -2,8 +2,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   LpManagementService,
-  NoMatchingLpProtocolError,
   type LpProtocolProvider,
+  NoMatchingLpProtocolError,
 } from "./LpManagementService.ts";
 
 function createPool(dex: string) {

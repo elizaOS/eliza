@@ -25,7 +25,7 @@ export const raydiumPlugin: Plugin = {
         dex: "raydium",
         label: "Raydium",
         service,
-      }),
+      })
     );
 
     // Try to register with Solana service if available

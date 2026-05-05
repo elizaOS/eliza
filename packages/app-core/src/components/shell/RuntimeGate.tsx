@@ -192,9 +192,7 @@ export function resolveRuntimeChoices(args: {
   localProbePending: boolean;
 }): RuntimeChoice[] {
   if (args.isAndroid) {
-    return args.showLocalOption
-      ? ["cloud", "local", "remote"]
-      : ["cloud", "remote"];
+    return ["cloud", "local", "remote"];
   }
   if (args.isIOS) return ["cloud", "remote"];
   if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
@@ -686,9 +684,44 @@ export function RuntimeGate() {
         return;
       }
 
-      pollTimerRef.current = setInterval(async () => {
-        const jobRes = await client.getCloudCompatJobStatus(jobId);
-        if (!jobRes.success) return;
+      let consecutivePollFailures = 0;
+      const stopPollingWithError = (message: string) => {
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+        setError(message);
+        setCloudStage("agent-list");
+      };
+      const pollProvisionJob = async () => {
+        let jobRes: Awaited<ReturnType<typeof client.getCloudCompatJobStatus>>;
+        try {
+          jobRes = await client.getCloudCompatJobStatus(jobId);
+        } catch (err) {
+          consecutivePollFailures += 1;
+          if (consecutivePollFailures >= 3) {
+            stopPollingWithError(
+              err instanceof Error
+                ? err.message
+                : t("runtimegate.provisioningStatusFailed", {
+                    defaultValue: "Provisioning status check failed",
+                  }),
+            );
+          }
+          return;
+        }
+
+        if (!jobRes.success) {
+          consecutivePollFailures += 1;
+          if (consecutivePollFailures >= 3) {
+            stopPollingWithError(
+              t("runtimegate.provisioningStatusUnavailable", {
+                defaultValue: "Provisioning status unavailable",
+              }),
+            );
+          }
+          return;
+        }
+
+        consecutivePollFailures = 0;
 
         const job: CloudCompatJob = jobRes.data;
         if (job.status === "completed") {
@@ -712,7 +745,12 @@ export function RuntimeGate() {
         } else {
           setProvisionStatus(`Provisioning (${job.status})...`);
         }
-      }, 2500);
+      };
+
+      void pollProvisionJob();
+      pollTimerRef.current = setInterval(() => {
+        void pollProvisionJob();
+      }, provRes.polling?.intervalMs ?? 2500);
     },
     [finishAsCloud, t],
   );

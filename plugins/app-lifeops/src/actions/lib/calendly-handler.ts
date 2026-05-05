@@ -19,7 +19,7 @@ import {
   listCalendlyEventTypes,
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
-} from "../lifeops/calendly-client.js";
+} from "../../lifeops/calendly-client.js";
 
 const ACTION_NAME = "CALENDLY";
 

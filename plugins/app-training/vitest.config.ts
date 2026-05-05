@@ -18,6 +18,7 @@ export default defineConfig({
     include: ["test/**/*.test.ts", "src/**/*.test.ts"],
     exclude: unitExcludes,
     globals: false,
+    passWithNoTests: true,
     testTimeout: 30000,
   },
 });

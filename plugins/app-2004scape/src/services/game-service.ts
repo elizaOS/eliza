@@ -208,13 +208,16 @@ export class RsSdkGameService extends Service {
         return;
       }
 
+      const turn = this.stepNumber + 1;
+      const agentId = this.runtime.agentId;
+
       await withStandaloneTrajectory(
         this.runtime,
         {
-          source: "app-2004scape.autonomous-loop",
+          source: "2004scape-autonomous-loop",
           metadata: {
-            game: "2004scape",
-            stepNumber: this.stepNumber + 1,
+            turn,
+            agentId,
             modelSize: this.modelSize,
           },
         },
@@ -372,18 +375,23 @@ Your choice:`;
   ): { actionType: string; params: Record<string, unknown> } | null {
     const toonParsed = parseToonKeyValue<Record<string, unknown>>(response);
     const toonAction = this.extractActionName(toonParsed);
-    if (toonAction) {
-      const resolved = resolveRs2004RouterAction(
-        toonAction,
-        this.extractSubactionName(toonParsed),
-      );
-      if (!resolved) return null;
+    if (!toonAction) return null;
+
+    // Solo WALK_TO action: not a router, dispatched directly.
+    if (toonAction === "WALK_TO") {
       const params = this.extractParamsFromParsedResponse(toonParsed);
-      this.mapParamAliases(resolved.dispatch, params);
-      return { actionType: resolved.dispatch, params };
+      this.mapParamAliases("walkTo", params);
+      return { actionType: "walkTo", params };
     }
 
-    return null;
+    const resolved = resolveRs2004RouterAction(
+      toonAction,
+      this.extractSubactionName(toonParsed),
+    );
+    if (!resolved) return null;
+    const params = this.extractParamsFromParsedResponse(toonParsed);
+    this.mapParamAliases(resolved.dispatch, params);
+    return { actionType: resolved.dispatch, params };
   }
 
   private extractActionName(
@@ -403,14 +411,14 @@ Your choice:`;
   private extractSubactionName(
     parsed: Record<string, unknown> | null,
   ): string | null {
-    const raw = parsed?.subaction ?? parsed?.operation ?? parsed?.intent;
+    const raw =
+      parsed?.subaction ??
+      parsed?.op ??
+      parsed?.skill ??
+      parsed?.operation ??
+      parsed?.intent;
     if (typeof raw !== "string") return null;
-    return (
-      raw
-        .trim()
-        .replace(/[\s-]+/g, "_")
-        .toLowerCase() || null
-    );
+    return raw.trim().toLowerCase() || null;
   }
 
   private extractParamsFromParsedResponse(
@@ -427,7 +435,20 @@ Your choice:`;
     const source = nestedParams ?? parsed;
 
     for (const [key, value] of Object.entries(source)) {
-      if (["action", "actionName", "name", "type", "params"].includes(key)) {
+      if (
+        [
+          "action",
+          "actionName",
+          "name",
+          "type",
+          "params",
+          "subaction",
+          "op",
+          "skill",
+          "operation",
+          "intent",
+        ].includes(key)
+      ) {
         continue;
       }
       params[key] = this.coerceParamValue(value);
@@ -450,28 +471,51 @@ Your choice:`;
     actionType: string,
     params: Record<string, unknown>,
   ): void {
-    // npc → npcName
+    // Bare aliases — generic name used by the *_OP routers.
     if (params.npc && !params.npcName) params.npcName = params.npc;
-    // item → itemName
     if (params.item && !params.itemName) params.itemName = params.item;
-    // object → objectName
     if (params.object && !params.objectName) params.objectName = params.object;
-    // tree → treeName
     if (params.tree && !params.treeName) params.treeName = params.tree;
-    // rock → rockName
     if (params.rock && !params.rockName) params.rockName = params.rock;
-    // spot → spotName
     if (params.spot && !params.spotName) params.spotName = params.spot;
-    // food → rawFoodName
     if (params.food && !params.rawFoodName) params.rawFoodName = params.food;
-    // spell → spellId
     if (params.spell && !params.spellId) params.spellId = params.spell;
-    // target → targetNid
-    if (params.target && !params.targetNid) params.targetNid = params.target;
-    // item1/item2 → itemName1/itemName2
     if (params.item1 && !params.itemName1) params.itemName1 = params.item1;
     if (params.item2 && !params.itemName2) params.itemName2 = params.item2;
-    // count defaults
+
+    // Generic `target` field — meaning depends on the dispatched action.
+    if (params.target != null) {
+      switch (actionType) {
+        case "chopTree":
+          params.treeName ??= params.target;
+          break;
+        case "mineRock":
+          params.rockName ??= params.target;
+          break;
+        case "fish":
+          params.spotName ??= params.target;
+          break;
+        case "cookFood":
+          params.rawFoodName ??= params.target;
+          break;
+        case "smithAtAnvil":
+          params.itemName ??= params.target;
+          break;
+        case "attackNpc":
+          params.npcName ??= params.target;
+          break;
+        case "castSpell":
+          params.targetNid ??= params.target;
+          break;
+        case "useItemOnItem":
+          params.itemName2 ??= params.target;
+          break;
+        case "useItemOnObject":
+          params.objectName ??= params.target;
+          break;
+      }
+    }
+
     if (actionType === "depositItem" && params.count == null) params.count = -1;
     if (actionType === "withdrawItem" && params.count == null) params.count = 1;
   }

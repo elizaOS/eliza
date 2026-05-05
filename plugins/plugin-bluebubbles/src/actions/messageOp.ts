@@ -1,9 +1,7 @@
 /**
  * BlueBubbles message operation router.
  *
- * Replaces the standalone `SEND_BLUEBUBBLES_MESSAGE` and
- * `BLUEBUBBLES_SEND_REACTION` actions with a single router action that takes
- * `op: "send" | "react"` and dispatches to the appropriate flow.
+ * Single planner-facing router for BlueBubbles send/react operations.
  */
 
 import type {
@@ -128,7 +126,7 @@ async function handleSend(
 	message: Memory,
 	chatGuid: string,
 	preExtractedText: string | undefined,
-	callback: HandlerCallback | undefined,
+	_callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
 	let responseText = preExtractedText?.trim() ?? "";
 
@@ -145,7 +143,9 @@ async function handleSend(
 	}
 
 	if (!responseText) {
-		logger.warn("[BLUEBUBBLES_MESSAGE_OP] Generated empty response, skipping send");
+		logger.warn(
+			"[BLUEBUBBLES_MESSAGE_OP] Generated empty response, skipping send",
+		);
 		return { success: false, error: "Empty response generated" };
 	}
 
@@ -206,7 +206,11 @@ async function handleReact(
 	}
 
 	const reactionValue = info.remove ? `-${info.emoji}` : info.emoji;
-	const result = await service.sendReaction(chatGuid, messageGuid, reactionValue);
+	const result = await service.sendReaction(
+		chatGuid,
+		messageGuid,
+		reactionValue,
+	);
 
 	if (!result.success) {
 		if (callback) {
@@ -239,13 +243,11 @@ async function handleReact(
 export const bluebubblesMessageOp: Action = {
 	name: "BLUEBUBBLES_MESSAGE_OP",
 	similes: [
-		"SEND_BLUEBUBBLES_MESSAGE",
 		"SEND_IMESSAGE",
 		"TEXT_MESSAGE",
 		"IMESSAGE_REPLY",
 		"BLUEBUBBLES_SEND",
 		"APPLE_MESSAGE",
-		"BLUEBUBBLES_SEND_REACTION",
 		"BLUEBUBBLES_REACT",
 		"BB_REACTION",
 		"IMESSAGE_REACT",
@@ -279,7 +281,9 @@ export const bluebubblesMessageOp: Action = {
 		const currentState = state ?? (await runtime.composeState(message));
 
 		if (!service?.isConnected()) {
-			logger.error("[BLUEBUBBLES_MESSAGE_OP] BlueBubbles service is not available");
+			logger.error(
+				"[BLUEBUBBLES_MESSAGE_OP] BlueBubbles service is not available",
+			);
 			if (callback) {
 				await callback({
 					text: "Sorry, the iMessage service is currently unavailable.",
@@ -314,16 +318,16 @@ export const bluebubblesMessageOp: Action = {
 		let info: MessageOpInfo | null = null;
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-			info = parseInfo(typeof response === "string" ? response : String(response));
+			info = parseInfo(
+				typeof response === "string" ? response : String(response),
+			);
 			if (info) {
 				break;
 			}
 		}
 
 		if (!info) {
-			logger.debug(
-				"[BLUEBUBBLES_MESSAGE_OP] Could not extract operation info",
-			);
+			logger.debug("[BLUEBUBBLES_MESSAGE_OP] Could not extract operation info");
 			if (callback) {
 				await callback({
 					text: "I couldn't determine which iMessage operation to perform.",

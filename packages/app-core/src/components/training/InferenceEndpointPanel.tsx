@@ -1,13 +1,13 @@
 import { Button, Input } from "@elizaos/ui";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { InferenceEndpoint } from "./types";
 import {
   useCreateInferenceEndpoint,
   useDeleteInferenceEndpoint,
   useInferenceEndpoints,
   useInferenceStats,
 } from "./hooks/useTrainingApi";
+import type { InferenceEndpoint } from "./types";
 
 function StatsCard({
   label,
@@ -59,11 +59,7 @@ function EndpointStats({ label }: { label: string }) {
 
 export function InferenceEndpointPanel() {
   const { data: endpoints, loading, error, refetch } = useInferenceEndpoints();
-  const {
-    create,
-    loading: createLoading,
-    error: createError,
-  } = useCreateInferenceEndpoint();
+  const { create, loading: createLoading } = useCreateInferenceEndpoint();
   const { delete: deleteEndpoint, loading: deleteLoading } =
     useDeleteInferenceEndpoint();
 

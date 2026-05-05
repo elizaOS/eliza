@@ -1,3 +1,16 @@
+/**
+ * Router definitions for `@elizaos/app-scape`.
+ *
+ * Two compressed routers reduce planner-context cost by collapsing
+ * journal and inventory verbs that share the same shape:
+ *
+ *   - JOURNAL_OP: set-goal, complete-goal, remember
+ *   - INVENTORY_OP: eat, drop
+ *
+ * The remaining verbs (WALK_TO, ATTACK_NPC, CHAT_PUBLIC) stay as
+ * standalone actions because their parameter shapes do not overlap.
+ */
+
 export interface ScapeSubactionDefinition {
   name: string;
   legacyAction: string;
@@ -14,66 +27,48 @@ export interface ScapeRouterDefinition {
 
 export const SCAPE_ACTION_ROUTER_DEFINITIONS = [
   {
-    name: "SCAPE_GAME",
+    name: "JOURNAL_OP",
     description:
-      "Route xRSPS game actions for movement, chat, combat, inventory, and healing.",
-    descriptionCompressed: "xRSPS game action router.",
+      "Route Scape Journal operations for goals and durable agent notes.",
+    descriptionCompressed: "Journal ops: set-goal, complete-goal, remember.",
     subactions: [
       {
-        name: "walk_to",
-        legacyAction: "WALK_TO",
-        params: "x: N, z: N, run: true|false",
-        description: "Walk to an absolute world tile.",
-      },
-      {
-        name: "chat_public",
-        legacyAction: "CHAT_PUBLIC",
-        params: "message: text max 80 chars",
-        description: "Say something in public chat.",
-      },
-      {
-        name: "attack_npc",
-        legacyAction: "ATTACK_NPC",
-        params: "npcId: N",
-        description: "Attack a nearby NPC by instance id.",
-      },
-      {
-        name: "drop_item",
-        legacyAction: "DROP_ITEM",
-        params: "slot: 0-27",
-        description: "Drop the item in an inventory slot.",
-      },
-      {
-        name: "eat_food",
-        legacyAction: "EAT_FOOD",
-        params: "slot: 0-27 optional",
-        description: "Eat food from an inventory slot or first edible item.",
-      },
-    ],
-  },
-  {
-    name: "SCAPE_JOURNAL",
-    description:
-      "Route Scape Journal actions for goals and durable agent notes.",
-    descriptionCompressed: "xRSPS journal action router.",
-    subactions: [
-      {
-        name: "set_goal",
+        name: "set-goal",
         legacyAction: "SET_GOAL",
         params: "title: text, notes: text optional",
         description: "Declare or update the active goal.",
       },
       {
-        name: "complete_goal",
+        name: "complete-goal",
         legacyAction: "COMPLETE_GOAL",
-        params: "status: completed|abandoned, notes: text optional",
+        params: "status: completed|abandoned, goalId: text optional, notes: text optional",
         description: "Close the active goal.",
       },
       {
         name: "remember",
         legacyAction: "REMEMBER",
-        params: "kind: note|lesson|landmark, text: note text, weight: 1-5",
+        params: "kind: note|lesson|landmark, notes: note text, weight: 1-5",
         description: "Record a durable journal memory.",
+      },
+    ],
+  },
+  {
+    name: "INVENTORY_OP",
+    description:
+      "Route inventory operations for eating food and dropping items.",
+    descriptionCompressed: "Inventory ops: eat, drop.",
+    subactions: [
+      {
+        name: "eat",
+        legacyAction: "EAT_FOOD",
+        params: "item: 0-27 optional",
+        description: "Eat food from an inventory slot or first edible item.",
+      },
+      {
+        name: "drop",
+        legacyAction: "DROP_ITEM",
+        params: "item: 0-27",
+        description: "Drop the item in an inventory slot.",
       },
     ],
   },
@@ -98,7 +93,7 @@ function normalizeActionName(value: unknown): string {
 function normalizeSubactionName(value: unknown): string {
   return String(value ?? "")
     .trim()
-    .replace(/[\s-]+/g, "_")
+    .replace(/[\s_]+/g, "-")
     .toLowerCase();
 }
 
@@ -152,6 +147,6 @@ export function formatScapeRouterPrompt(): string {
           `    - ${subaction.name}: ${subaction.params}; ${subaction.description}`,
       )
       .join("\n");
-    return `  ${router.name}: choose subaction\n${subactions}`;
+    return `  ${router.name}: choose op\n${subactions}`;
   }).join("\n");
 }

@@ -7,6 +7,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { privateKeyToAccount } from "viem/accounts";
+import {
+  getLpManagementService,
+  type LpManagementService,
+  NoMatchingLpProtocolError,
+} from "../services/LpManagementService.ts";
 import type {
   IUserLpProfileService,
   IVaultService,
@@ -18,11 +23,6 @@ import type {
   UserLpProfile,
 } from "../types.ts";
 import { getChainConfig } from "../types.ts";
-import {
-  getLpManagementService,
-  type LpManagementService,
-  NoMatchingLpProtocolError,
-} from "../services/LpManagementService.ts";
 
 const SOLANA_DEXES = new Set(["raydium", "orca", "meteora"]);
 const EVM_DEXES = new Set(["uniswap", "aerodrome", "pancakeswap"]);
@@ -56,8 +56,16 @@ const formatPools = (pools: PoolInfo[]): string => {
 
   let response = "LP pools:\n";
   pools.slice(0, 10).forEach((pool, index) => {
-    const tokenA = pool.tokenA?.symbol || pool.tokenA?.mint || pool.tokenA?.address || "tokenA";
-    const tokenB = pool.tokenB?.symbol || pool.tokenB?.mint || pool.tokenB?.address || "tokenB";
+    const tokenA =
+      pool.tokenA?.symbol ||
+      pool.tokenA?.mint ||
+      pool.tokenA?.address ||
+      "tokenA";
+    const tokenB =
+      pool.tokenB?.symbol ||
+      pool.tokenB?.mint ||
+      pool.tokenB?.address ||
+      "tokenB";
     response +=
       `\n${index + 1}. ${pool.displayName || pool.id} on ${pool.dex}\n` +
       `   Pair: ${tokenA}/${tokenB}\n` +
@@ -140,7 +148,9 @@ const parseIntentFromMessage = (text: string): LpActionParams | null => {
   return null;
 };
 
-function subactionFromLegacyIntent(intent?: LpActionParams["intent"]): LpManagementSubaction | undefined {
+function subactionFromLegacyIntent(
+  intent?: LpActionParams["intent"],
+): LpManagementSubaction | undefined {
   switch (intent) {
     case "onboard_lp":
       return "onboard";
@@ -161,7 +171,10 @@ function subactionFromLegacyIntent(intent?: LpActionParams["intent"]): LpManagem
   }
 }
 
-function normalizeParams(message: Memory, handlerParams?: Record<string, unknown>): LpActionParams | null {
+function normalizeParams(
+  message: Memory,
+  handlerParams?: Record<string, unknown>,
+): LpActionParams | null {
   const contentParams = (message?.content || {}) as Record<string, unknown>;
   const params = {
     ...contentParams,
@@ -295,7 +308,10 @@ async function operationAuth(
     return { chain, chainId, wallet, owner: wallet.address };
   }
 
-  const { vault, profile, profileService } = await requireProfile(runtime, userId);
+  const { vault, profile, profileService } = await requireProfile(
+    runtime,
+    userId,
+  );
   const userVault = await vault.getVaultKeypair(
     userId,
     profile.encryptedSecretKey,
@@ -364,7 +380,9 @@ async function handlePreferences(
 
   return {
     success: true,
-    text: updates.length ? `LP preferences updated: ${updates.join(", ")}` : "No LP preference changes were provided.",
+    text: updates.length
+      ? `LP preferences updated: ${updates.join(", ")}`
+      : "No LP preference changes were provided.",
   };
 }
 
@@ -404,7 +422,11 @@ async function handleLpOperation(
         chainId: route.chainId || auth.chainId,
         owner: auth.owner,
       });
-      if (positions.length === 0 && auth.chain === "solana" && auth.profileService) {
+      if (
+        positions.length === 0 &&
+        auth.chain === "solana" &&
+        auth.profileService
+      ) {
         const trackedPositions =
           await auth.profileService.getTrackedPositions(userId);
         positions = (
@@ -442,7 +464,9 @@ async function handleLpOperation(
       });
       return {
         success: true,
-        text: position ? formatPositions([position]) : "No matching LP position found.",
+        text: position
+          ? formatPositions([position])
+          : "No matching LP position found.",
         data: { position },
       };
     }

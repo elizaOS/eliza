@@ -1,41 +1,28 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import deleteMessage from "./actions/deleteMessage";
-import editMessage from "./actions/editMessage";
-import emojiList from "./actions/emojiList";
 import getUserInfo from "./actions/getUserInfo";
-import listChannels from "./actions/listChannels";
-import listPins from "./actions/listPins";
-import pinMessage from "./actions/pinMessage";
-import reactToMessage from "./actions/reactToMessage";
+import messageOp from "./actions/messageOp";
 import readChannel from "./actions/readChannel";
-// Actions
-import sendMessage from "./actions/sendMessage";
-import unpinMessage from "./actions/unpinMessage";
 
 import { memberListProvider } from "./providers/memberList";
+import { slackChannelsProvider } from "./providers/slackChannels";
+import { slackEmojisProvider } from "./providers/slackEmojis";
+import { slackPinsProvider } from "./providers/slackPins";
 import { workspaceInfoProvider } from "./providers/workspaceInfo";
 
-// Service
 import { SlackService } from "./service";
 
 const slackPlugin: Plugin = {
   name: "slack",
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
   services: [SlackService],
-  actions: [
-    sendMessage,
-    reactToMessage,
-    readChannel,
-    editMessage,
-    deleteMessage,
-    pinMessage,
-    unpinMessage,
-    listChannels,
-    getUserInfo,
-    listPins,
-    emojiList,
+  actions: [messageOp, readChannel, getUserInfo],
+  providers: [
+    workspaceInfoProvider,
+    memberListProvider,
+    slackChannelsProvider,
+    slackPinsProvider,
+    slackEmojisProvider,
   ],
-  providers: [workspaceInfoProvider, memberListProvider],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN") as string;
     const appToken = runtime.getSetting("SLACK_APP_TOKEN") as string;
@@ -151,18 +138,9 @@ export {
   type SlackSlashCommandConfig,
   type SlackTokenSource,
 } from "./accounts";
-export { deleteMessage } from "./actions/deleteMessage";
-export { editMessage } from "./actions/editMessage";
-export { emojiList } from "./actions/emojiList";
 export { getUserInfo } from "./actions/getUserInfo";
-export { listChannels } from "./actions/listChannels";
-export { listPins } from "./actions/listPins";
-export { pinMessage } from "./actions/pinMessage";
-export { reactToMessage } from "./actions/reactToMessage";
+export { messageOp } from "./actions/messageOp";
 export { readChannel } from "./actions/readChannel";
-// Export actions
-export { sendMessage } from "./actions/sendMessage";
-export { unpinMessage } from "./actions/unpinMessage";
 // Channel configuration types
 export type {
   SlackConfig,
@@ -197,6 +175,9 @@ export {
   truncateText,
 } from "./formatting";
 export { memberListProvider } from "./providers/memberList";
+export { slackChannelsProvider } from "./providers/slackChannels";
+export { slackEmojisProvider } from "./providers/slackEmojis";
+export { slackPinsProvider } from "./providers/slackPins";
 export { workspaceInfoProvider } from "./providers/workspaceInfo";
 // Export service for direct access
 export { SlackService } from "./service";

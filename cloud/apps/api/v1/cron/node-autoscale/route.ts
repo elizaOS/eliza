@@ -24,6 +24,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { verifyCronSecret } from "@/lib/api/cron-auth";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { isHetznerCloudConfigured } from "@/lib/services/containers/hetzner-cloud-api";
 import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
 import { logger } from "@/lib/utils/logger";
@@ -53,7 +54,8 @@ async function handleAutoscale(request: Request, env?: AppEnv["Bindings"]) {
         reason: "HCLOUD_TOKEN not configured",
       });
     } else {
-      const publicKey = process.env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY;
+      const runtimeEnv = getCloudAwareEnv();
+      const publicKey = runtimeEnv.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY;
       if (!publicKey || publicKey.trim().length === 0) {
         logger.warn(
           "[Node Autoscale] would scale up but CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY is not set",
@@ -68,8 +70,8 @@ async function handleAutoscale(request: Request, env?: AppEnv["Bindings"]) {
             {},
             {
               controlPlanePublicKey: publicKey,
-              registrationUrl: process.env.CONTAINERS_BOOTSTRAP_CALLBACK_URL,
-              registrationSecret: process.env.CONTAINERS_BOOTSTRAP_SECRET,
+              registrationUrl: runtimeEnv.CONTAINERS_BOOTSTRAP_CALLBACK_URL,
+              registrationSecret: runtimeEnv.CONTAINERS_BOOTSTRAP_SECRET,
             },
           );
           (result.actions as unknown[]).push({

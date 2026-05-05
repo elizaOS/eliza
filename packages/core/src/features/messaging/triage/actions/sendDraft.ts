@@ -9,7 +9,9 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
+import type { DraftRequest } from "../types.ts";
 import { parseSendDraftParams } from "./_shared.ts";
 
 /**
@@ -77,6 +79,51 @@ export const sendDraftAction: Action = {
 					source: existing.source,
 				},
 			};
+		}
+
+		// Owner-policy gate (separate from the user-confirmation gate above):
+		// hosts can register a SendPolicy that defers any outbound send until
+		// owner approval. When the policy enqueues, we report pending and
+		// hand the executor (sendDraft) over for later replay.
+		const policy = getSendPolicy(runtime);
+		if (policy) {
+			const draftReq: DraftRequest = {
+				source: existing.source,
+				inReplyToId: existing.inReplyToId,
+				threadId: existing.threadId,
+				to: existing.to,
+				subject: existing.subject,
+				body: existing.body,
+				worldId: existing.worldId,
+				channelId: existing.channelId,
+				metadata: existing.metadata,
+			};
+			const required = await policy.shouldRequireApproval(runtime, draftReq);
+			if (required) {
+				const enq = await policy.enqueueApproval(runtime, draftReq, () =>
+					service.sendDraft(runtime, parsed.draftId).then((rec) => ({
+						externalId: rec.sentExternalId ?? `pending:${rec.draftId}`,
+					})),
+				);
+				const text = `Draft ${parsed.draftId} pending owner approval (request ${enq.requestId}).`;
+				logger.info(
+					`[SendDraft] policy hold: draftId=${parsed.draftId} requestId=${enq.requestId}`,
+				);
+				if (callback) {
+					await callback({ text, action: "SEND_DRAFT" });
+				}
+				return {
+					success: false,
+					text,
+					data: {
+						pending: true,
+						requestId: enq.requestId,
+						preview: enq.preview,
+						draftId: existing.draftId,
+						source: existing.source,
+					},
+				};
+			}
 		}
 
 		const sent = await service.sendDraft(runtime, parsed.draftId);

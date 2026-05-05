@@ -11,7 +11,7 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "hono": "4.12.16",
     "mcp-handler": "^1.0.7",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",

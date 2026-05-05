@@ -15,164 +15,157 @@ export interface Rs2004RouterDefinition {
 
 export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
   {
-    name: "RS_2004_MOVEMENT",
+    name: "SKILL_OP",
     description:
-      "Route 2004scape movement actions. Use subaction to walk or handle path blockers.",
-    descriptionCompressed: "2004scape movement router.",
+      "Route 2004scape skilling actions: chop, mine, fish, burn, cook, fletch, craft, smith.",
+    descriptionCompressed:
+      "Skill ops: chop, mine, fish, burn, cook, fletch, craft, smith.",
     subactions: [
       {
-        name: "walk_to",
-        dispatch: "walkTo",
-        legacyAction: "WALK_TO",
-        params: "destination: name OR x: N, z: N",
-        description: "Walk to a coordinate or named destination.",
+        name: "chop",
+        dispatch: "chopTree",
+        legacyAction: "CHOP_TREE",
+        params: "target: tree type optional",
+        description: "Chop a nearby tree.",
       },
       {
-        name: "open_door",
-        dispatch: "openDoor",
-        legacyAction: "OPEN_DOOR",
+        name: "mine",
+        dispatch: "mineRock",
+        legacyAction: "MINE_ROCK",
+        params: "target: rock type optional",
+        description: "Mine a nearby rock.",
+      },
+      {
+        name: "fish",
+        dispatch: "fish",
+        legacyAction: "FISH",
+        params: "target: spot type optional",
+        description: "Fish at a nearby fishing spot.",
+      },
+      {
+        name: "burn",
+        dispatch: "burnLogs",
+        legacyAction: "BURN_LOGS",
         params: "no params",
-        description: "Open the nearest door or gate.",
-      },
-    ],
-  },
-  {
-    name: "RS_2004_INTERACTION",
-    description:
-      "Route 2004scape object, ground-item, and general world interactions.",
-    descriptionCompressed: "2004scape world interaction router.",
-    subactions: [
-      {
-        name: "interact_object",
-        dispatch: "interactObject",
-        legacyAction: "INTERACT_OBJECT",
-        params: "object: name, option: action",
-        description: "Interact with a nearby object.",
+        description: "Use a tinderbox on logs.",
       },
       {
-        name: "pickup_item",
-        dispatch: "pickupItem",
-        legacyAction: "PICKUP_ITEM",
-        params: "item: name",
-        description: "Pick up a nearby ground item.",
+        name: "cook",
+        dispatch: "cookFood",
+        legacyAction: "COOK_FOOD",
+        params: "target: raw food name optional",
+        description: "Cook raw food.",
       },
       {
-        name: "use_item_on_object",
-        dispatch: "useItemOnObject",
-        legacyAction: "USE_ITEM_ON_OBJECT",
-        params: "item: name, object: name",
-        description: "Use an inventory item on a world object.",
-      },
-    ],
-  },
-  {
-    name: "RS_2004_COMBAT",
-    description:
-      "Route 2004scape combat actions, including attacks, healing, style, and spells.",
-    descriptionCompressed: "2004scape combat router.",
-    subactions: [
-      {
-        name: "attack_npc",
-        dispatch: "attackNpc",
-        legacyAction: "ATTACK_NPC",
-        params: "npc: name",
-        description: "Attack a nearby NPC by name.",
-      },
-      {
-        name: "eat_food",
-        dispatch: "eatFood",
-        legacyAction: "EAT_FOOD",
+        name: "fletch",
+        dispatch: "fletchLogs",
+        legacyAction: "FLETCH_LOGS",
         params: "no params",
-        description: "Eat the first food found.",
+        description: "Fletch logs.",
       },
       {
-        name: "set_combat_style",
-        dispatch: "setCombatStyle",
-        legacyAction: "SET_COMBAT_STYLE",
-        params: "style: 0=Atk 1=Str 2=Def 3=Ctrl",
-        description: "Set the active combat style.",
+        name: "craft",
+        dispatch: "craftLeather",
+        legacyAction: "CRAFT_LEATHER",
+        params: "no params",
+        description: "Craft leather.",
       },
       {
-        name: "cast_spell",
-        dispatch: "castSpell",
-        legacyAction: "CAST_SPELL",
-        params: "spell: spellId, target: npcNid optional",
-        description: "Cast a spell, optionally at an NPC.",
+        name: "smith",
+        dispatch: "smithAtAnvil",
+        legacyAction: "SMITH_AT_ANVIL",
+        params: "target: item to smith optional",
+        description: "Smith an item at an anvil.",
       },
     ],
   },
   {
-    name: "RS_2004_INVENTORY",
+    name: "INVENTORY_OP",
     description:
-      "Route 2004scape inventory item actions for dropping, using, wearing, and combining items.",
-    descriptionCompressed: "2004scape inventory router.",
+      "Route 2004scape inventory operations: drop, pickup, equip, unequip, use, use-on-item, use-on-object.",
+    descriptionCompressed:
+      "Inventory ops: drop, pickup, equip, unequip, use, use-on-item, use-on-object.",
     subactions: [
       {
-        name: "drop_item",
+        name: "drop",
         dispatch: "dropItem",
         legacyAction: "DROP_ITEM",
         params: "item: name",
         description: "Drop an inventory item by name.",
       },
       {
-        name: "use_item",
-        dispatch: "useItem",
-        legacyAction: "USE_ITEM",
+        name: "pickup",
+        dispatch: "pickupItem",
+        legacyAction: "PICKUP_ITEM",
         params: "item: name",
-        description: "Use an inventory item by name.",
+        description: "Pick up a nearby ground item.",
       },
       {
-        name: "equip_item",
+        name: "equip",
         dispatch: "equipItem",
         legacyAction: "EQUIP_ITEM",
         params: "item: name",
         description: "Equip an inventory item by name.",
       },
       {
-        name: "unequip_item",
+        name: "unequip",
         dispatch: "unequipItem",
         legacyAction: "UNEQUIP_ITEM",
         params: "item: name",
         description: "Unequip a worn item by name.",
       },
       {
-        name: "use_item_on_item",
+        name: "use",
+        dispatch: "useItem",
+        legacyAction: "USE_ITEM",
+        params: "item: name",
+        description: "Use an inventory item by name.",
+      },
+      {
+        name: "use-on-item",
         dispatch: "useItemOnItem",
         legacyAction: "USE_ITEM_ON_ITEM",
-        params: "item1: name, item2: name",
+        params: "item: name, target: other item name",
         description: "Use one inventory item on another.",
+      },
+      {
+        name: "use-on-object",
+        dispatch: "useItemOnObject",
+        legacyAction: "USE_ITEM_ON_OBJECT",
+        params: "item: name, target: object name",
+        description: "Use an inventory item on a world object.",
       },
     ],
   },
   {
-    name: "RS_2004_BANKING",
+    name: "BANK_OP",
     description:
-      "Route 2004scape banking actions for opening, closing, depositing, and withdrawing.",
-    descriptionCompressed: "2004scape banking router.",
+      "Route 2004scape banking operations: open, close, deposit, withdraw.",
+    descriptionCompressed: "Bank ops: open, close, deposit, withdraw.",
     subactions: [
       {
-        name: "open_bank",
+        name: "open",
         dispatch: "openBank",
         legacyAction: "OPEN_BANK",
         params: "no params",
         description: "Find and open the nearest bank.",
       },
       {
-        name: "close_bank",
+        name: "close",
         dispatch: "closeBank",
         legacyAction: "CLOSE_BANK",
         params: "no params",
         description: "Close the active bank interface.",
       },
       {
-        name: "deposit_item",
+        name: "deposit",
         dispatch: "depositItem",
         legacyAction: "DEPOSIT_ITEM",
         params: "item: name, count: N optional",
         description: "Deposit an item into the bank.",
       },
       {
-        name: "withdraw_item",
+        name: "withdraw",
         dispatch: "withdrawItem",
         legacyAction: "WITHDRAW_ITEM",
         params: "item: name, count: N optional",
@@ -181,34 +174,34 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "RS_2004_SHOP",
+    name: "SHOP_OP",
     description:
-      "Route 2004scape shop actions for opening, closing, buying, and selling.",
-    descriptionCompressed: "2004scape shop router.",
+      "Route 2004scape shop operations: open, close, buy, sell.",
+    descriptionCompressed: "Shop ops: open, close, buy, sell.",
     subactions: [
       {
-        name: "open_shop",
+        name: "open",
         dispatch: "openShop",
         legacyAction: "OPEN_SHOP",
         params: "npc: shopkeeper name",
         description: "Open a shop by talking to a shopkeeper.",
       },
       {
-        name: "close_shop",
+        name: "close",
         dispatch: "closeShop",
         legacyAction: "CLOSE_SHOP",
         params: "no params",
         description: "Close the active shop interface.",
       },
       {
-        name: "buy_from_shop",
+        name: "buy",
         dispatch: "buyFromShop",
         legacyAction: "BUY_FROM_SHOP",
         params: "item: name, count: N",
         description: "Buy an item from the active shop.",
       },
       {
-        name: "sell_to_shop",
+        name: "sell",
         dispatch: "sellToShop",
         legacyAction: "SELL_TO_SHOP",
         params: "item: name, count: N",
@@ -217,95 +210,83 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     ],
   },
   {
-    name: "RS_2004_SKILLING",
+    name: "COMBAT_OP",
     description:
-      "Route 2004scape skilling actions for gathering, production, and thieving.",
-    descriptionCompressed: "2004scape skilling router.",
+      "Route 2004scape combat operations: attack, cast-spell, set-style, eat.",
+    descriptionCompressed:
+      "Combat ops: attack, cast-spell, set-style, eat.",
     subactions: [
       {
-        name: "chop_tree",
-        dispatch: "chopTree",
-        legacyAction: "CHOP_TREE",
-        params: "tree: type optional",
-        description: "Chop a nearby tree.",
+        name: "attack",
+        dispatch: "attackNpc",
+        legacyAction: "ATTACK_NPC",
+        params: "target: npc name",
+        description: "Attack a nearby NPC by name.",
       },
       {
-        name: "mine_rock",
-        dispatch: "mineRock",
-        legacyAction: "MINE_ROCK",
-        params: "rock: type optional",
-        description: "Mine a nearby rock.",
+        name: "cast-spell",
+        dispatch: "castSpell",
+        legacyAction: "CAST_SPELL",
+        params: "spell: spellId, target: npcNid optional",
+        description: "Cast a spell, optionally at an NPC.",
       },
       {
-        name: "fish",
-        dispatch: "fish",
-        legacyAction: "FISH",
-        params: "spot: type optional",
-        description: "Fish at a nearby fishing spot.",
+        name: "set-style",
+        dispatch: "setCombatStyle",
+        legacyAction: "SET_COMBAT_STYLE",
+        params: "style: 0=Atk 1=Str 2=Def 3=Ctrl",
+        description: "Set the active combat style.",
       },
       {
-        name: "burn_logs",
-        dispatch: "burnLogs",
-        legacyAction: "BURN_LOGS",
+        name: "eat",
+        dispatch: "eatFood",
+        legacyAction: "EAT_FOOD",
         params: "no params",
-        description: "Use a tinderbox on logs.",
-      },
-      {
-        name: "cook_food",
-        dispatch: "cookFood",
-        legacyAction: "COOK_FOOD",
-        params: "food: raw food name optional",
-        description: "Cook raw food.",
-      },
-      {
-        name: "fletch_logs",
-        dispatch: "fletchLogs",
-        legacyAction: "FLETCH_LOGS",
-        params: "no params",
-        description: "Fletch logs.",
-      },
-      {
-        name: "craft_leather",
-        dispatch: "craftLeather",
-        legacyAction: "CRAFT_LEATHER",
-        params: "no params",
-        description: "Craft leather.",
-      },
-      {
-        name: "smith_at_anvil",
-        dispatch: "smithAtAnvil",
-        legacyAction: "SMITH_AT_ANVIL",
-        params: "item: item to smith optional",
-        description: "Smith an item at an anvil.",
-      },
-      {
-        name: "pickpocket_npc",
-        dispatch: "pickpocketNpc",
-        legacyAction: "PICKPOCKET_NPC",
-        params: "npc: name",
-        description: "Pickpocket a nearby NPC.",
+        description: "Eat the first food found.",
       },
     ],
   },
   {
-    name: "RS_2004_DIALOGUE",
+    name: "INTERACT_OP",
     description:
-      "Route 2004scape NPC conversation and dialog-option actions.",
-    descriptionCompressed: "2004scape dialogue router.",
+      "Route 2004scape world interactions: talk, navigate-dialog, interact-object, open-door, pickpocket.",
+    descriptionCompressed:
+      "Interact ops: talk, navigate-dialog, interact-object, open-door, pickpocket.",
     subactions: [
       {
-        name: "talk_to_npc",
+        name: "talk",
         dispatch: "talkToNpc",
         legacyAction: "TALK_TO_NPC",
         params: "npc: name",
         description: "Talk to a nearby NPC by name.",
       },
       {
-        name: "navigate_dialog",
+        name: "navigate-dialog",
         dispatch: "navigateDialog",
         legacyAction: "NAVIGATE_DIALOG",
         params: "option: 1-based index",
         description: "Choose a dialog option.",
+      },
+      {
+        name: "interact-object",
+        dispatch: "interactObject",
+        legacyAction: "INTERACT_OBJECT",
+        params: "object: name, option: action optional",
+        description: "Interact with a nearby object.",
+      },
+      {
+        name: "open-door",
+        dispatch: "openDoor",
+        legacyAction: "OPEN_DOOR",
+        params: "no params",
+        description: "Open the nearest door or gate.",
+      },
+      {
+        name: "pickpocket",
+        dispatch: "pickpocketNpc",
+        legacyAction: "PICKPOCKET_NPC",
+        params: "npc: name",
+        description: "Pickpocket a nearby NPC.",
       },
     ],
   },
@@ -331,7 +312,7 @@ function normalizeActionName(value: unknown): string {
 function normalizeSubactionName(value: unknown): string {
   return String(value ?? "")
     .trim()
-    .replace(/[\s-]+/g, "_")
+    .replace(/[_\s]+/g, "-")
     .toLowerCase();
 }
 
@@ -382,7 +363,9 @@ export function resolveRs2004RouterAction(
 }
 
 export function formatRs2004RouterPrompt(): string {
-  return RS_2004_ACTION_ROUTER_DEFINITIONS.map((router) => {
+  const walkTo =
+    "  WALK_TO: walk to a coordinate or named destination\n    params: destination: name OR x: N, z: N";
+  const routers = RS_2004_ACTION_ROUTER_DEFINITIONS.map((router) => {
     const subactions = router.subactions
       .map(
         (subaction) =>
@@ -391,4 +374,5 @@ export function formatRs2004RouterPrompt(): string {
       .join("\n");
     return `  ${router.name}: choose subaction\n${subactions}`;
   }).join("\n");
+  return `${walkTo}\n${routers}`;
 }
