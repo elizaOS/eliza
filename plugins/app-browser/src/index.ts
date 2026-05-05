@@ -4,22 +4,12 @@ import { manageElizaBrowserWorkspaceAction } from "./action";
 import { appBrowserWorkspaceProvider } from "./provider";
 import { browserWorkspaceRoutes } from "./setup-routes";
 import { AppBrowserWorkspaceService } from "./service";
-import {
-  approveElizaWalletRequestAction,
-  rejectElizaWalletRequestAction,
-  signWithElizaWalletAction,
-} from "./wallet-action";
 
 const rawAppBrowserPlugin: Plugin = {
   name: "@elizaos/app-browser",
   description:
-    "Controls Eliza browser workspace tabs and Steward wallet signing requests across the desktop bridge and web iframe workspace.",
-  actions: [
-    manageElizaBrowserWorkspaceAction,
-    signWithElizaWalletAction,
-    approveElizaWalletRequestAction,
-    rejectElizaWalletRequestAction,
-  ],
+    "Controls Eliza browser workspace tabs across the desktop bridge and web iframe workspace.",
+  actions: [manageElizaBrowserWorkspaceAction],
   providers: [appBrowserWorkspaceProvider],
   services: [AppBrowserWorkspaceService],
   routes: browserWorkspaceRoutes,
@@ -33,10 +23,7 @@ export const appBrowserPlugin: Plugin = gatePluginSessionForHostedApp(
 export {
   AppBrowserWorkspaceService,
   appBrowserWorkspaceProvider,
-  approveElizaWalletRequestAction,
   manageElizaBrowserWorkspaceAction,
-  rejectElizaWalletRequestAction,
-  signWithElizaWalletAction,
 };
 
 export default appBrowserPlugin;
