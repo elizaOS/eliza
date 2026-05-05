@@ -1,3 +1,18 @@
+/**
+ * Computer-use compat HTTP routes — moved out of
+ * `packages/app-core/src/api/computer-use-compat-routes.ts`.
+ *
+ * Exposes:
+ *   GET  /api/computer-use/approvals          (auth)
+ *   GET  /api/computer-use/approvals/stream   (token-or-header auth, SSE)
+ *   POST /api/computer-use/approval-mode      (sensitive auth)
+ *   POST /api/computer-use/approvals/:id      (sensitive auth)
+ *
+ * Service injection: pulls the running ComputerUseService off the agent
+ * runtime via `runtime.getService("computeruse")`. Uses a structural
+ * `ComputerUseServiceLike` interface so the runtime type stays loose.
+ */
+
 import type http from "node:http";
 import {
   ensureCompatSensitiveRouteAuthorized,
@@ -5,15 +20,15 @@ import {
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "./auth";
+} from "@elizaos/app-core/api/auth";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
-} from "./compat-route-shared";
+} from "@elizaos/app-core/api/compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "./response";
+} from "@elizaos/app-core/api/response";
 
 type ComputerUseApprovalMode =
   | "full_control"
@@ -294,4 +309,22 @@ export async function handleComputerUseCompatRoutes(
 
   sendJsonErrorResponse(res, 404, "Not found");
   return true;
+}
+
+/**
+ * Runtime plugin route adapter. The runtime plugin route bridge passes
+ * `(req, res, runtime)` — wrap into a CompatRuntimeState stub for the
+ * shared dispatcher.
+ */
+export function computerUseRouteHandler() {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const state = { current: runtime } as CompatRuntimeState;
+    await handleComputerUseCompatRoutes(httpReq, httpRes, state);
+  };
 }

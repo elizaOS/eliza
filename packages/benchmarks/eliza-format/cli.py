@@ -9,6 +9,8 @@ Two execution modes:
 2. **API** — when ``--provider {vllm,openai,anthropic}`` plus ``--base-url``,
    stream prompts through the OpenAI Python SDK and score with the same
    bucket scorers vendored from ``eliza_bench.py``.
+3. **Mock** — when ``--provider mock``, replay expected answers from a JSONL
+   fixture so orchestrator wiring can be smoke-tested without credentials.
 
 Both modes write the same ``summary.json`` shape so the registry score
 extractor (`_score_from_eliza_format_json`) doesn't care which path produced
@@ -31,8 +33,8 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("eliza-format")
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-TRAINING_ROOT = REPO_ROOT / "training"
+PACKAGES_ROOT = Path(__file__).resolve().parents[2]
+TRAINING_ROOT = PACKAGES_ROOT / "training"
 DEFAULT_TEST = TRAINING_ROOT / "data" / "final" / "test.jsonl"
 
 
@@ -57,7 +59,7 @@ def _import_bench_helpers():
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="eliza-format benchmark")
-    p.add_argument("--provider", default="hf", choices=("hf", "vllm", "openai", "anthropic"))
+    p.add_argument("--provider", default="hf", choices=("hf", "vllm", "openai", "anthropic", "mock"))
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None, help="OpenAI-compat base URL (vllm/openai)")
     p.add_argument("--api-key-env", default="OPENAI_API_KEY", help="Env var holding the API key")
@@ -111,19 +113,49 @@ def _api_call(client, model: str, messages: list[dict], max_tokens: int, tempera
     return choice.message.content or ""
 
 
-def _run_api(args: argparse.Namespace) -> int:
-    from openai import OpenAI  # noqa: WPS433
+def _score_text(gen_text: str, expected_text: str, bucket_name: str, rec: dict, bucket, mod, toon_parser) -> None:
+    if bucket_name == "claude_distill":
+        ok_fmt, ok_content, fields = mod.score_claude_distill(gen_text, expected_text)
+        parse_err = False
+    else:
+        pred = toon_parser.parse(gen_text)
+        exp = toon_parser.parse(expected_text)
+        scorer = mod.SCORERS[bucket_name]
+        ok_fmt, ok_content, fields = scorer(pred.document, exp.document)
+        parse_err = bool(pred.errors)
 
+    failed = None
+    if not ok_content:
+        failed = {
+            "task_type": (rec.get("metadata") or {}).get("task_type"),
+            "expected": expected_text[:600],
+            "predicted": gen_text[:600],
+            "fields": fields,
+        }
+    bucket.record(
+        ok_format=ok_fmt,
+        ok_content=ok_content,
+        parse_err=parse_err,
+        fields=fields,
+        failed_example=failed,
+    )
+
+
+def _run_api(args: argparse.Namespace) -> int:
     mod, toon_parser = _import_bench_helpers()
 
-    api_key = os.environ.get(args.api_key_env, "EMPTY")
-    base_url = args.base_url
-    if not base_url:
-        if args.provider == "openai":
-            base_url = "https://api.openai.com/v1"
-        else:
-            raise SystemExit("--base-url is required for vllm provider")
-    client = OpenAI(base_url=base_url, api_key=api_key)
+    client = None
+    if args.provider != "mock":
+        from openai import OpenAI  # noqa: WPS433
+
+        api_key = os.environ.get(args.api_key_env, "EMPTY")
+        base_url = args.base_url
+        if not base_url:
+            if args.provider == "openai":
+                base_url = "https://api.openai.com/v1"
+            else:
+                raise SystemExit("--base-url is required for vllm provider")
+        client = OpenAI(base_url=base_url, api_key=api_key)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -141,38 +173,17 @@ def _run_api(args: argparse.Namespace) -> int:
             messages, expected_text = _render_prompt_with_chat_format(rec, mod)
             if not messages or not expected_text:
                 continue
-            try:
-                gen_text = _api_call(client, args.model, messages, args.max_new_tokens, args.temperature)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("api call failed: %s", exc)
-                continue
+            if args.provider == "mock":
+                gen_text = expected_text
+            else:
+                try:
+                    gen_text = _api_call(client, args.model, messages, args.max_new_tokens, args.temperature)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("api call failed: %s", exc)
+                    continue
             total_emitted += 1
 
-            if bucket_name == "claude_distill":
-                ok_fmt, ok_content, fields = mod.score_claude_distill(gen_text, expected_text)
-                parse_err = False
-            else:
-                pred = toon_parser.parse(gen_text)
-                exp = toon_parser.parse(expected_text)
-                scorer = mod.SCORERS[bucket_name]
-                ok_fmt, ok_content, fields = scorer(pred.document, exp.document)
-                parse_err = bool(pred.errors)
-
-            failed = None
-            if not ok_content:
-                failed = {
-                    "task_type": (rec.get("metadata") or {}).get("task_type"),
-                    "expected": expected_text[:600],
-                    "predicted": gen_text[:600],
-                    "fields": fields,
-                }
-            bucket.record(
-                ok_format=ok_fmt,
-                ok_content=ok_content,
-                parse_err=parse_err,
-                fields=fields,
-                failed_example=failed,
-            )
+            _score_text(gen_text, expected_text, bucket_name, rec, bucket, mod, toon_parser)
             if (i + 1) % 25 == 0:
                 log.info("  %s %d/%d", bucket_name, i + 1, len(recs))
 

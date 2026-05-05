@@ -28,13 +28,19 @@ async function build() {
       (async () => {
         console.log("Bundling with Bun...");
         const result = await Bun.build({
-          entrypoints: ["./src/index.ts"],
+          entrypoints: ["./src/index.ts", "./src/register-routes.ts"],
           outdir: "./dist",
           target: "node",
           format: "esm",
           sourcemap: "linked",
           minify: false,
-          external: ["node:*", "@elizaos/core", "puppeteer-core"],
+          external: [
+            "node:*",
+            "@elizaos/core",
+            "@elizaos/app-core",
+            "@elizaos/app-core/*",
+            "puppeteer-core",
+          ],
           naming: {
             entry: "[dir]/[name].[ext]",
           },

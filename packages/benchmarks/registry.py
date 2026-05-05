@@ -1850,8 +1850,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="woobench_*.json")
 
     # eliza-format — wraps training/scripts/benchmark/eliza_bench.py.
-    # Default cwd is `training/` (resolved from workspace_root via cwd_rel),
-    # so test-file path is relative to that root.
+    # Default cwd is `packages/training` (resolved from workspace_root via
+    # cwd_rel), so test-file path is relative to that root.
     def _eliza_format_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         provider = (model.provider or "").strip().lower() or "hf"
         args = [
@@ -1944,6 +1944,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if model.model:
             args.extend(["--model", model.model])
         base_url = extra.get("base_url")
+        if not base_url and provider == "vllm":
+            base_url = extra.get("vllm_base_url") or "http://127.0.0.1:8001/v1"
         if isinstance(base_url, str) and base_url.strip():
             args.extend(["--base-url", base_url.strip()])
         api_key_env = extra.get("api_key_env")
@@ -1958,6 +1960,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_examples = extra.get("max_examples")
         if isinstance(max_examples, int) and max_examples > 0:
             args.extend(["--max-examples", str(max_examples)])
+        max_new_tokens = extra.get("max_new_tokens")
+        if isinstance(max_new_tokens, int) and max_new_tokens > 0:
+            args.extend(["--max-new-tokens", str(max_new_tokens)])
+        temperature = extra.get("temperature")
+        if isinstance(temperature, int | float) and temperature >= 0:
+            args.extend(["--temperature", str(float(temperature))])
         return args
 
     def _abliteration_robustness_result(output_dir: Path) -> Path:
@@ -2446,14 +2454,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="eliza-format",
             display_name="Eliza-Format",
             description="Strict TOON format + content scoring against held-out eliza-1 test set",
-            cwd_rel="../../training",
+            cwd_rel="training",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("../../training/scripts/benchmark/eliza_bench.py", "../../training/data/final/test.jsonl"),
+                paths=("training/scripts/benchmark/eliza_bench.py", "training/data/final/test.jsonl"),
                 notes=(
                     "Wraps training/scripts/benchmark/eliza_bench.py in place. "
                     "Provider hf loads the model via transformers; provider vllm/openai/anthropic "
-                    "routes through the OpenAI Python SDK against --base-url. "
+                    "routes through the OpenAI Python SDK against --base-url; provider mock "
+                    "replays a fixture for no-credential smoke tests. "
                     "Score = 0.5 * format_ok + 0.5 * content_ok averaged across buckets."
                 ),
             ),
