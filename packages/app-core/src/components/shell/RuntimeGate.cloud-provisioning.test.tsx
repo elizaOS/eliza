@@ -33,7 +33,6 @@ const {
     createCloudCompatAgent: vi.fn(),
     provisionCloudCompatAgent: vi.fn(),
     getCloudCompatJobStatus: vi.fn(),
-    getCloudCompatAgentStatus: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
     switchProvider: vi.fn(),
     setBaseUrl: vi.fn(),
@@ -324,14 +323,6 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
         state: "completed",
         created_on: "2026-01-01T00:00:00.000Z",
         completed_on: "2026-01-01T00:00:02.000Z",
-      },
-    });
-    clientMock.getCloudCompatAgentStatus.mockResolvedValue({
-      success: true,
-      data: {
-        status: "running",
-        bridgeUrl: "https://agent-1.elizacloud.ai",
-        webUiUrl: null,
       },
     });
     clientMock.switchProvider.mockResolvedValue({

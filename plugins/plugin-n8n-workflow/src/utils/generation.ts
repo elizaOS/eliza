@@ -606,12 +606,8 @@ export async function formatActionResponse(
 }
 
 function formatActionDataForPrompt(value: unknown, indent = 0): string {
-  if (value === undefined || value === null) {
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value.trim();
-  }
+  if (value === undefined || value === null) {return '';}
+  if (typeof value === 'string') {return value.trim();}
   if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }

@@ -32,16 +32,18 @@ function buildState(runtime: unknown): N8nCompatState {
 }
 
 function makeN8nHandler() {
-  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const url = new URL(httpReq.url ?? '/', 'http://localhost');
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
 
-    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) {
-      return;
-    }
+    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) {return;}
 
     await handleN8nRoutes({
       req: httpReq,
