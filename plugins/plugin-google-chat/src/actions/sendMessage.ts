@@ -98,8 +98,7 @@ export const sendMessage: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response);
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),
