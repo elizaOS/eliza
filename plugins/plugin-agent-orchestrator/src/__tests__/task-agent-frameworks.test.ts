@@ -173,7 +173,7 @@ describe("task-agent model preferences", () => {
     });
     expect(getTaskAgentModelPrefs(createRuntime(), "codex")).toEqual({
       powerful: "gpt-5.5",
-      fast: "gpt-5.5-mini",
+      fast: "gpt-5.4-mini",
     });
   });
 
@@ -203,7 +203,7 @@ describe("task-agent model preferences", () => {
 
     expect(getTaskAgentModelPrefs(createRuntime(), "codex")).toEqual({
       powerful: "gpt-config-power",
-      fast: "gpt-5.5-mini",
+      fast: "gpt-5.4-mini",
     });
   });
 });
