@@ -69,11 +69,23 @@ function parseXmlField(prompt: string, tagName: string): string {
   return match?.[1]?.trim() ?? "";
 }
 
+function parseNextLineField(prompt: string, label: string): string {
+  const lines = prompt.split("\n");
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (lines[i].trim() === `${label}:`) {
+      return lines[i + 1].trim();
+    }
+  }
+  return "";
+}
+
 function currentRequest(prompt: string): string {
   return (
     parseXmlField(prompt, "current_request") ||
     parseJsonLineField(prompt, "Current request") ||
+    parseNextLineField(prompt, "Current request") ||
     parseJsonLineField(prompt, "User request") ||
+    parseNextLineField(prompt, "User request") ||
     parseJsonLineField(prompt, "User said")
   );
 }
