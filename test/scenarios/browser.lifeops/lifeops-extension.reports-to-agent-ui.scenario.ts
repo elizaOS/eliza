@@ -96,6 +96,8 @@ export default scenario({
         if (!payload.includes("browser-ui-primary")) {
           return "expected seeded browser device id in extension activity payload";
         }
+        // These are test-assertion substring checks on a JSON serialization, not URL sanitization.
+        // lgtm[js/incomplete-url-sanitization]
         if (!payload.includes("github.com")) {
           return "expected github.com in extension activity payload";
         }

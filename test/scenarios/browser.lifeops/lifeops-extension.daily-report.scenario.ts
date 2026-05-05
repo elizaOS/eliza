@@ -96,6 +96,8 @@ export default scenario({
           return "expected screen-time action result";
         }
         const payload = JSON.stringify(hit.result?.data ?? {}).toLowerCase();
+        // These are test-assertion substring checks on a JSON serialization, not URL sanitization.
+        // lgtm[js/incomplete-url-sanitization]
         if (
           !payload.includes("safari") ||
           !payload.includes("github.com") ||
