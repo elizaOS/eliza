@@ -185,7 +185,7 @@ async function probeCloudAgentReachable(
 ): Promise<boolean> {
   try {
     const res = await fetchWithTimeout(
-      `${apiBase.replace(/\/$/, "")}/api/status`,
+      `${apiBase.replace(/\/$/, "")}/api/health`,
       { method: "GET" },
       timeoutMs,
     );
@@ -982,6 +982,10 @@ export function RuntimeGate() {
         setCloudStage("agent-list");
         return;
       }
+      // MUST stay below the createCloudCompatAgent await — setting cloudStage
+      // earlier fires this effect's cleanup (cloudStage is in deps), flips
+      // cancelled=true, and the post-await guard then bails before
+      // provisionAndConnect runs.
       setCloudStage("auto-creating");
 
       await provisionAndConnect(createRes.data.agentId);
