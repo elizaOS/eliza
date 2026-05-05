@@ -457,6 +457,54 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/trajectories**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    if (url.pathname === "/api/trajectories/stats") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          totalTrajectories: 0,
+          totalLlmCalls: 0,
+          totalProviderAccesses: 0,
+          totalPromptTokens: 0,
+          totalCompletionTokens: 0,
+          averageDurationMs: 0,
+          bySource: {},
+          byModel: {},
+        }),
+      });
+      return;
+    }
+    if (url.pathname === "/api/trajectories/config") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false }),
+      });
+      return;
+    }
+    if (url.pathname === "/api/trajectories") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          trajectories: [],
+          total: 0,
+          offset: Number(url.searchParams.get("offset") ?? 0),
+          limit: Number(url.searchParams.get("limit") ?? 50),
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
   await page.route(
     "**/api/lifeops/connectors/google/status**",
     async (route) => {
