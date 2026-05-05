@@ -8,7 +8,7 @@ import {
   parseParamPath,
   pruneResolvedClarifications,
   setByDotPath,
-} from "./n8n-clarification";
+} from "../../src/lib/n8n-clarification";
 
 describe("coerceClarifications", () => {
   it("returns [] for null/undefined/non-array input", () => {

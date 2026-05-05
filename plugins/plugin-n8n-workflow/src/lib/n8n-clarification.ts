@@ -15,7 +15,7 @@ import type {
   N8nClarificationRequest,
   N8nClarificationResolution,
   N8nClarificationTargetGroup,
-} from "./client-types-chat";
+} from "@elizaos/app-core/api/client-types-chat";
 
 const VALID_KINDS: ReadonlySet<N8nClarificationRequest["kind"]> = new Set([
   "target_channel",

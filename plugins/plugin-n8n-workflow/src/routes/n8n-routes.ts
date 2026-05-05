@@ -27,22 +27,31 @@
  * services/n8n-sidecar.ts rather than being threaded through state.
  */
 
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent";
+import type {
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/agent/api/route-helpers";
+import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
+import { isNativeServerPlatform } from "@elizaos/app-core/platform/is-native-server";
+import {
+  type N8nMode,
+  resolveN8nMode,
+} from "@elizaos/app-core/services/n8n-mode";
+import type {
+  N8nSidecar,
+  N8nSidecarStatus,
+} from "@elizaos/app-core/services/n8n-sidecar";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isNativeServerPlatform } from "../platform/is-native-server";
-import { type N8nMode, resolveN8nMode } from "../services/n8n-mode";
-import type { N8nSidecar, N8nSidecarStatus } from "../services/n8n-sidecar";
-import { readCompatJsonBody } from "./compat-route-shared";
 import {
   applyResolutions,
   buildCatalogSnapshot,
   type CatalogLike,
   coerceClarifications,
   pruneResolvedClarifications,
-} from "./n8n-clarification";
+} from "../lib/n8n-clarification";
 
-export type { N8nMode } from "../services/n8n-mode";
+export type { N8nMode } from "@elizaos/app-core/services/n8n-mode";
 
 /**
  * Host platform for the n8n status surface. On mobile (iOS / Android) the
@@ -262,10 +271,10 @@ async function getCloudHealth(
  * is never reached.
  */
 async function loadSidecarModule(): Promise<
-  typeof import("../services/n8n-sidecar") | null
+  typeof import("@elizaos/app-core/services/n8n-sidecar") | null
 > {
   if (isNativeServerPlatform()) return null;
-  return await import("../services/n8n-sidecar");
+  return await import("@elizaos/app-core/services/n8n-sidecar");
 }
 
 // Cloud base URL default — mirrors `resolveCloudApiBaseUrl()` without
