@@ -142,7 +142,8 @@ export const socialAlphaProvider: Provider = {
 	description:
 		"Provides trust scores, win rates, and performance rankings for token recommenders (shill/FUD trackers). " +
 		"Shows whether a person's past calls would have made or lost money.",
-	descriptionCompressed: "provide trust score, win rate, performance ranking token recommender (shill/fud tracker) show whether person past call make lost money",
+	descriptionCompressed:
+		"provide trust score, win rate, performance ranking token recommender (shill/fud tracker) show whether person past call make lost money",
 
 	dynamic: true,
 	relevanceKeywords: [

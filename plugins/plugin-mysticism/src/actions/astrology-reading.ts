@@ -142,7 +142,8 @@ export const astrologyReadingAction: Action = {
   similes: ["BIRTH_CHART", "NATAL_CHART", "HOROSCOPE_READING", "ZODIAC_READING"],
   description:
     "Perform an astrological natal chart reading, progressively revealing planetary placements.",
-  descriptionCompressed: "perform astrological natal chart read, progressively reveal planetary placement",
+  descriptionCompressed:
+    "perform astrological natal chart read, progressively reveal planetary placement",
 
   validate: async (
     runtime: IAgentRuntime,

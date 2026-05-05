@@ -5,7 +5,7 @@ import type { CustomGenerateParams } from '../types';
 const customGenerateMusic: Action = {
     name: 'custom-generate-music',
     description: 'Generate music with custom parameters using Suno AI',
-    descriptionCompressed: "generate music w/ custom parameter use Suno AI",
+    descriptionCompressed: 'generate music w/ custom parameter use Suno AI',
     similes: [
         'CREATE_CUSTOM_MUSIC',
         'GENERATE_CUSTOM_AUDIO',
