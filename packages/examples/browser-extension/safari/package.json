@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-browser-extension-safari",
-  "version": "1.0.0",
+  "version": "2.0.0-beta.0",
   "description": "Safari extension wrapper for Chat with Webpage - see README.md for build instructions",
   "scripts": {
     "convert": "xcrun safari-web-extension-converter ../chrome --project-location . --app-name 'Chat with Webpage' --bundle-identifier com.elizaos.chatwithwebpage --swift --force",
