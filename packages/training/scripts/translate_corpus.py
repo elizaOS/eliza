@@ -164,8 +164,8 @@ class Translator:
     def __init__(self, target: str):
         self.target = target
         langs = argostranslate.translate.get_installed_languages()
-        en = next((l for l in langs if l.code == "en"), None)
-        tgt = next((l for l in langs if l.code == target), None)
+        en = next((lang for lang in langs if lang.code == "en"), None)
+        tgt = next((lang for lang in langs if lang.code == target), None)
         if en is None or tgt is None:
             raise RuntimeError(f"argos pack en->{target} not installed")
         self._tr = en.get_translation(tgt)

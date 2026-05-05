@@ -1283,12 +1283,12 @@ def gen_for_action(encoder: ToonEncoder, rng: random.Random,
 
     phrase_table = LANG_PHRASE_TABLE.get(action, {})
     en_pool = phrase_table.get("en") or [f"please run {action.lower().replace('_', ' ')}"]
-    nonen_pools = {l: phrase_table.get(l, []) for l in NON_EN_LANGS}
+    nonen_pools = {lang: phrase_table.get(lang, []) for lang in NON_EN_LANGS}
 
     # Lang plan: 70 en + 5 each of zh/es/fr/ja/de/pt = 100.
     lang_plan: list[str] = ["en"] * 70
-    for l in NON_EN_LANGS:
-        lang_plan.extend([l] * 5)
+    for lang in NON_EN_LANGS:
+        lang_plan.extend([lang] * 5)
     rng.shuffle(lang_plan)
 
     # Memory plan: 30 empty, 50 with 1-2 turns, 20 with 3 turns.
