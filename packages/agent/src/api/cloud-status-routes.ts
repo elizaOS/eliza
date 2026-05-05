@@ -7,7 +7,7 @@ import {
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
-import { resolveCloudApiKey } from "./wallet-rpc.js";
+import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 
 const DEFAULT_CLOUD_API_BASE_URL = "https://www.elizacloud.ai/api/v1";
 const CLOUD_BILLING_URL =
