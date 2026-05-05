@@ -97,14 +97,12 @@ export const sendReaction: Action = {
       });
 
       const parsed =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response);
       if (parsed?.emoji && parsed?.messageName) {
         reactionInfo = {
           emoji: String(parsed.emoji),
           messageName: String(parsed.messageName),
-          remove:
-            parsed.remove === true || String(parsed.remove).toLowerCase() === "true",
+          remove: parsed.remove === true || String(parsed.remove).toLowerCase() === "true",
         };
         break;
       }

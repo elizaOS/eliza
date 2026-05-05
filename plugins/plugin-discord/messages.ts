@@ -18,6 +18,7 @@ import {
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
+import { createHash } from "node:crypto";
 import {
 	AttachmentBuilder,
 	type Channel,
@@ -95,13 +96,17 @@ function fetchedUrlToAttachment(
 ): Media {
 	const hasReadableText = fetched.contentType !== "binary";
 	return {
-		id: `webpage-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+		id: webpageAttachmentId(url),
 		url,
 		title: fetched.filename || "Web Page",
 		source: fetched.contentType === "transcript" ? "YouTube" : "Web",
 		text: hasReadableText ? fetched.content : "",
 		contentType: ContentType.LINK,
 	};
+}
+
+function webpageAttachmentId(url: string): string {
+	return `webpage-${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
 /**
@@ -1197,7 +1202,7 @@ export class MessageManager {
 						await browserService.getPageContent(url, this.runtime);
 
 					attachments.push({
-						id: `webpage-${Date.now()}`,
+						id: webpageAttachmentId(url),
 						url,
 						title: title || "Web Page",
 						source: "Web",

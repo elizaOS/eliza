@@ -72,10 +72,29 @@ describe("MessageManager URL enrichment", () => {
 
 		expect(result.attachments).toHaveLength(1);
 		expect(result.attachments[0]).toMatchObject({
+			id: expect.stringMatching(/^webpage-[a-f0-9]{24}$/),
 			url: "http://203.0.113.10/proof",
 			source: "Web",
 			contentType: ContentType.LINK,
 			text: html,
 		});
+	});
+
+	it("uses a stable attachment id for the same direct URL", async () => {
+		__setKnowledgeUrlFetchImplForTests(async () => {
+			return new Response("same page", {
+				headers: { "content-type": "text/plain; charset=utf-8" },
+			});
+		});
+
+		const manager = managerFor(runtime());
+		const first = await manager.processMessage(
+			discordMessage("read http://203.0.113.10/repeated"),
+		);
+		const second = await manager.processMessage(
+			discordMessage("read http://203.0.113.10/repeated"),
+		);
+
+		expect(first.attachments[0]?.id).toBe(second.attachments[0]?.id);
 	});
 });
