@@ -213,12 +213,18 @@ export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status?: number;
   readonly path: string;
+  /** Application error code from the JSON body (e.g. "rate_limit_exceeded"). */
+  readonly code?: string;
+  /** Seconds until the caller should retry, from the JSON body or Retry-After header. */
+  readonly retryAfter?: number;
 
   constructor(options: {
     kind: ApiErrorKind;
     path: string;
     message: string;
     status?: number;
+    code?: string;
+    retryAfter?: number;
     cause?: unknown;
   }) {
     super(options.message);
@@ -226,6 +232,8 @@ export class ApiError extends Error {
     this.kind = options.kind;
     this.path = options.path;
     this.status = options.status;
+    this.code = options.code;
+    this.retryAfter = options.retryAfter;
     if (options.cause !== undefined) {
       (
         this as Error & {
@@ -238,6 +246,13 @@ export class ApiError extends Error {
 
 export function isApiError(value: unknown): value is ApiError {
   return value instanceof ApiError;
+}
+
+export function isRateLimitedError(value: unknown): value is ApiError {
+  return (
+    value instanceof ApiError &&
+    (value.status === 429 || value.code === "rate_limit_exceeded")
+  );
 }
 
 export interface RuntimeOrderItem {
