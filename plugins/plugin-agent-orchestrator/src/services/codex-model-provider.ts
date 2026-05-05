@@ -232,6 +232,11 @@ function appendCapture(current: string, chunk: Buffer): string {
   return next.slice(next.length - MAX_CAPTURE_CHARS);
 }
 
+function errorCode(error: unknown): string | undefined {
+  const code = (error as { code?: unknown })?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
 function codexSupportsOutputLastMessage(binary: string): Promise<boolean> {
   const cached = outputLastMessageSupportCache.get(binary);
   if (cached) return cached;
@@ -335,6 +340,14 @@ export async function runCodexExec(
       child.stderr.on("data", (chunk: Buffer) => {
         stderr = appendCapture(stderr, chunk);
       });
+      child.stdin.on("error", (error) => {
+        if (settled) return;
+        if (errorCode(error) === "EPIPE") {
+          stderr = appendCapture(stderr, Buffer.from(error.message));
+          return;
+        }
+        settle(() => reject(error));
+      });
       child.on("error", (error) => {
         cleanupTimers();
         if (settled) return;
@@ -411,25 +424,54 @@ const nodeLookup: LookupFn = async (hostname, options) => {
   }));
 };
 
+function decodePercentEncodedBytes(value: string): Buffer {
+  const bytes: number[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === "%") {
+      const hex = value.slice(index + 1, index + 3);
+      if (!/^[0-9a-f]{2}$/i.test(hex)) {
+        throw new Error("IMAGE_DESCRIPTION data URL has invalid percent encoding");
+      }
+      bytes.push(Number.parseInt(hex, 16));
+      index += 2;
+      continue;
+    }
+    const code = char.charCodeAt(0);
+    if (code > 0x7f) {
+      throw new Error(
+        "IMAGE_DESCRIPTION non-base64 data URLs must use percent-encoded bytes",
+      );
+    }
+    bytes.push(code);
+  }
+  return Buffer.from(bytes);
+}
+
 async function writeDataUrlImage(
   imageUrl: string,
   tempDir: string,
 ): Promise<string> {
-  const match = imageUrl.match(/^data:([^;,]+)(;base64)?,(.*)$/s);
+  const match = imageUrl.match(/^data:([^,]*),(.*)$/s);
   if (!match) {
     throw new Error(
       "IMAGE_DESCRIPTION requires an http(s) URL or image data URL",
     );
   }
-  const mime = match[1]?.toLowerCase();
+  const metadata = (match[1] ?? "").split(";").filter(Boolean);
+  const mime = metadata[0]?.toLowerCase() || "text/plain";
+  const isBase64 = metadata
+    .slice(1)
+    .some((part) => part.toLowerCase() === "base64");
   if (!mime?.startsWith("image/")) {
     throw new Error(
       `IMAGE_DESCRIPTION data URL is not an image: ${mime ?? "unknown"}`,
     );
   }
-  const buffer = match[2]
-    ? Buffer.from(match[3] ?? "", "base64")
-    : Buffer.from(decodeURIComponent(match[3] ?? ""), "utf8");
+  const payload = match[2] ?? "";
+  const buffer = isBase64
+    ? Buffer.from(payload, "base64")
+    : decodePercentEncodedBytes(payload);
   if (buffer.byteLength > MAX_IMAGE_BYTES) {
     throw new Error(`IMAGE_DESCRIPTION image exceeds ${MAX_IMAGE_BYTES} bytes`);
   }

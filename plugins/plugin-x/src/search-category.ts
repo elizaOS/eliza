@@ -1,4 +1,7 @@
-import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  SearchCategoryRegistration,
+} from "@elizaos/core";
 
 export const X_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "x",

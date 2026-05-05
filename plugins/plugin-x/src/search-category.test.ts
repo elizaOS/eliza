@@ -1,4 +1,7 @@
-import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  SearchCategoryRegistration,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { registerXSearchCategory, X_SEARCH_CATEGORY } from "./search-category";
 
@@ -18,10 +21,8 @@ function createRuntime() {
   return {
     categories,
     registerSearchCategory,
-    runtime: {
-      getSearchCategory,
-      registerSearchCategory,
-    } as unknown as IAgentRuntime,
+    runtime: { getSearchCategory, registerSearchCategory } as unknown as
+      IAgentRuntime,
   };
 }
 
