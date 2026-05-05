@@ -74,10 +74,14 @@ public class MainActivity extends BridgeActivity {
             applyBrandUserAgentMarkers(settings);
         }
 
-        // The local Eliza agent runtime ships only in the AOSP/local-agent
-        // APK shape. Store/Capacitor builds strip assets/agent/, so starting
-        // the service there would fail during asset extraction.
-        if (BuildConfig.AOSP_BUILD) {
+        // Auto-start the local Eliza agent runtime as a foreground service.
+        // shouldAutoStart() returns true on branded devices (AOSP/MiladyOS —
+        // the device IS the agent) and on stock Android only when the user
+        // picked Local mode in onboarding. Cloud/Remote modes skip this so
+        // we don't burn battery on a service they never call. The boot
+        // receiver covers the cold-boot path; this is the fast path when
+        // the user opens the app.
+        if (ElizaAgentService.shouldAutoStart(this)) {
             ElizaAgentService.start(this);
         }
     }
@@ -90,6 +94,11 @@ public class MainActivity extends BridgeActivity {
             // gateway alive after the UI leaves the foreground. Starting it
             // during first render can trip Android's service-execution ANR on
             // slower emulator boots.
+            //
+            // Declared `public` (not `protected`) to match Capacitor's
+            // BridgeActivity.onStop, which widens visibility from the
+            // android.app.Activity superclass — overriding with weaker
+            // access would be a Java compile error.
             GatewayConnectionService.start(this);
         }
     }

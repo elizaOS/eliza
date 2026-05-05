@@ -573,12 +573,18 @@ def validate_action_specific(task_type: str, decoded: Any) -> list[str]:
     if task_type == "remove_contact":
         # removeContactTemplate (prompts.ts:892): required `contactName`,
         # `confirmed: yes|no`. Accept either `contactName` or `name`.
+        # Empty/null contactName is acceptable IFF `confirmed` is no/null/false
+        # — that's the canonical "no removal requested" no-op response.
+        reasons: list[str] = []
         if "contactName" not in keys and "name" not in keys:
             return ["missing_contactName"]
         primary = decoded.get("contactName", decoded.get("name"))
+        confirmed = str(decoded.get("confirmed") or "").lower().strip()
+        is_negative = confirmed in ("no", "false", "") or decoded.get("confirmed") is False
         if not isinstance(primary, str) or not primary.strip():
-            return ["contactName_wrong_type_or_empty"]
-        return []
+            if not is_negative:
+                reasons.append("contactName_empty_with_positive_confirm")
+        return reasons
 
     if task_type == "choose_option":
         # chooseOptionTemplate (prompts.ts:133) emits `thought` + `selected_id`.
@@ -603,16 +609,22 @@ def validate_action_specific(task_type: str, decoded: Any) -> list[str]:
         return ["missing_option_or_selected_id"]
 
     if task_type == "extract_option":
-        # TODO(audit): refine extract_option validator from prompts.ts (no
-        # canonical extractOptionTemplate found in core/src/prompts.ts; the
-        # SCHEMA.md row asks for `option` plus one of `confidence`/`reasoning`).
-        if "option" not in keys:
-            return ["missing_option"]
-        if not isinstance(decoded.get("option"), str):
-            return ["option_wrong_type"]
-        if "confidence" not in keys and "reasoning" not in keys:
-            return ["missing_confidence_or_reasoning"]
-        return []
+        # optionExtractionTemplate (prompts.ts:611) — output is
+        # `taskId` + `selectedOption`, both nullable strings.
+        # The earlier audit validator targeted a stale schema asking for
+        # `option` + `confidence`; corrected here so the synth's
+        # `{taskId, selectedOption}` records audit cleanly.
+        reasons = []
+        if "taskId" not in keys:
+            reasons.append("missing_taskId")
+        elif decoded.get("taskId") is not None and not isinstance(decoded.get("taskId"), str):
+            reasons.append("taskId_wrong_type")
+        if "selectedOption" not in keys:
+            reasons.append("missing_selectedOption")
+        elif decoded.get("selectedOption") is not None \
+                and not isinstance(decoded.get("selectedOption"), str):
+            reasons.append("selectedOption_wrong_type")
+        return reasons
 
     if task_type == "extract_secrets":
         # extractSecretsTemplate (prompts.ts:194) — output is

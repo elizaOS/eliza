@@ -35,6 +35,51 @@ import {
 } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
 
+// Direct elizaCloud API base used to backfill a missing apiBase on a
+// persisted cloud active-server. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL
+// in api/client-cloud.ts; kept inline because that constant is module-private.
+const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
+
+/**
+ * If the restored cloud active-server has no apiBase (a broken state from
+ * earlier builds where finishAsCloud silently completed onboarding before
+ * the cloud surface attached a web_ui_url), look the agent up against the
+ * direct cloud API and persist the resolved URL. Returns the up-to-date
+ * active server (with apiBase populated when resolution succeeds) or the
+ * input unchanged when backfill isn't possible.
+ */
+async function backfillCloudApiBase(
+  active: PersistedActiveServer,
+): Promise<PersistedActiveServer> {
+  if (active.kind !== "cloud" || active.apiBase) return active;
+  const agentId = active.id?.startsWith("cloud:")
+    ? active.id.slice("cloud:".length)
+    : null;
+  if (!agentId) return active;
+
+  const priorBaseUrl = client.getBaseUrl();
+  const priorToken = client.hasToken();
+  client.setBaseUrl(DIRECT_CLOUD_API_BASE);
+  try {
+    if (active.accessToken) client.setToken(active.accessToken);
+    const res = await client.getCloudCompatAgent(agentId);
+    if (!res.success) return active;
+    const data = res.data;
+    const apiBase = data.web_ui_url ?? data.webUiUrl ?? data.bridge_url ?? null;
+    if (!apiBase) return active;
+    const updated: PersistedActiveServer = { ...active, apiBase };
+    savePersistedActiveServer(updated);
+    return updated;
+  } catch {
+    return active;
+  } finally {
+    // Restore prior client state — applyRestoredConnection sets the final
+    // baseUrl below based on the (possibly backfilled) active server.
+    client.setBaseUrl(priorBaseUrl || null);
+    if (!priorToken) client.setToken(null);
+  }
+}
+
 export interface RestoringSessionDeps {
   setStartupError: (v: null) => void;
   setAuthRequired: (v: boolean) => void;
@@ -105,8 +150,9 @@ export async function applyRestoredConnection(args: {
   }
 
   if (restoredActiveServer.kind === "cloud") {
-    clientRef.setBaseUrl(restoredActiveServer.apiBase ?? null);
-    clientRef.setToken(restoredActiveServer.accessToken ?? null);
+    const resolved = await backfillCloudApiBase(restoredActiveServer);
+    clientRef.setBaseUrl(resolved.apiBase ?? null);
+    clientRef.setToken(resolved.accessToken ?? null);
     return;
   }
 

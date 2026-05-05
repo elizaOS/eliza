@@ -58,7 +58,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.eliza_record import build, stable_id  # noqa: E402
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.toon import ToonDecoder, ToonEncoder  # noqa: E402
 
 OUT_DIR = ROOT / "data" / "synthesized" / "phase3"
 
@@ -73,7 +73,7 @@ log = logging.getLogger("synth-phase3")
 class TeacherCfg:
     provider: str
     model: str
-    max_tokens: int = 2048
+    max_tokens: int = 4096
     temperature: float = 0.7
 
 
@@ -196,7 +196,117 @@ def strip_fences(s: str) -> str:
     s = s.strip()
     if s.startswith("```"):
         s = re.sub(r"^```(?:toon|json)?\s*\n?|\n?```$", "", s, flags=re.S)
-    return s.strip()
+    s = s.strip()
+    # gpt-oss-120b loves to prefix the output with a bare `TOON`/`JSON`
+    # header line. Drop those (they're never valid keys).
+    lines = s.splitlines()
+    while lines and lines[0].strip().lower() in (
+        "toon", "toon:", "json", "json:", "output", "output:",
+    ):
+        lines.pop(0)
+    return "\n".join(lines).strip()
+
+
+def _json_to_toon(obj) -> str | None:
+    """Encode a Python primitive/dict/list as TOON. Returns None if the
+    shape can't be represented (e.g. nested arrays of nested objects of
+    arrays — TOON has no representation for that)."""
+    try:
+        from lib.toon import ToonEncoder as _Enc
+        return _Enc().encode(obj)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _maybe_json_payload(s: str) -> str:
+    """If `s` looks like a JSON object (model returned JSON instead of
+    TOON), parse it and re-encode as TOON. Otherwise return `s` unchanged.
+
+    The teacher sometimes emits `{ "key": "v", ... }` even when the prompt
+    asks for TOON. We recover by transcoding."""
+    t = s.strip()
+    if not (t.startswith("{") and t.endswith("}")):
+        return s
+    try:
+        obj = json.loads(t)
+    except json.JSONDecodeError:
+        return s
+    encoded = _json_to_toon(obj)
+    return encoded if encoded is not None else s
+
+
+_INDEXED_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*)\[(\d+)\]\s*:\s*(.+)$")
+
+
+def repair_toon_bullets(s: str) -> str:
+    """Two repair passes for common gpt-oss-120b TOON deviations.
+
+    Pass 1: collapse `key[0]: a / key[1]: b / ...` into `key[N]:\n  - a\n  - b`.
+    Pass 2: convert markdown bullets (`key:\n- a\n- b`) into TOON array form.
+    Idempotent on already-valid TOON. Mirrors transform_repair_toon_bullets.py."""
+    lines = s.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m_idx = _INDEXED_RE.match(line)
+        if m_idx and m_idx.group(2) == "0":
+            key = m_idx.group(1)
+            items = [m_idx.group(3).strip()]
+            k = i + 1
+            expected = 1
+            while k < len(lines):
+                m2 = _INDEXED_RE.match(lines[k])
+                if not m2 or m2.group(1) != key or m2.group(2) != str(expected):
+                    break
+                items.append(m2.group(3).strip())
+                expected += 1
+                k += 1
+            if len(items) >= 2:
+                out.append(f"{key}[{len(items)}]:")
+                for v in items:
+                    out.append(f"  - {v}")
+                i = k
+                continue
+        m_bare = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*$", line)
+        if m_bare:
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == "":
+                j += 1
+            bullets: list[str] = []
+            k = j
+            while k < len(lines) and lines[k].lstrip().startswith("- "):
+                bullets.append(lines[k].lstrip()[2:].strip())
+                k += 1
+            if bullets:
+                key = m_bare.group(1)
+                out.append(f"{key}[{len(bullets)}]:")
+                for b in bullets:
+                    out.append(f"  - {b}")
+                i = k
+                continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
+def normalize_teacher_output(s: str) -> str:
+    """Strip fences, transcode JSON→TOON if needed, apply repair passes,
+    then round-trip through TOON decoder/encoder to canonicalize.
+    One-stop normaliser for every teacher-call site so a single fix
+    lands everywhere."""
+    cleaned = repair_toon_bullets(_maybe_json_payload(strip_fences(s)))
+    # Round-trip: if it decodes, re-encode canonically. This collapses
+    # quoted keys, mixed-style lines, and other parser-tolerated noise
+    # into the form our regex validators expect.
+    try:
+        from lib.toon import ToonDecoder as _Dec, ToonEncoder as _Enc
+        decoded = _Dec().decode(cleaned)
+        if isinstance(decoded, (dict, list)):
+            return _Enc().encode(decoded)
+    except Exception:  # noqa: BLE001
+        pass
+    return cleaned
 
 
 # ───────────────────────── shared diversity pools ─────────────────────────
@@ -709,8 +819,15 @@ def _build_post_action_decision(rng: random.Random, idx: int) -> dict[str, Any]:
             f"recent conversation:\n"
             f"{render_recent(memory, speaker, agent)}\n\n"
             f"recent action results:\n{results}\n\n"
-            "output:\nTOON only.\n"
-            "thought: ...\nactions[1]: ACTION\nproviders[0]:\ntext: ...\n"
+            "Emit ONE TOON document — no `TOON` header, no fences, no prose. "
+            "Use exactly this layout (replace placeholders, keep the array "
+            "form for actions and providers):\n\n"
+            "thought: <one or two sentences explaining the next step>\n"
+            "actions[1]:\n"
+            "  - name: REPLY\n"
+            "    params:\n"
+            "providers[0]:\n"
+            "text: <user-facing reply, may be empty for IGNORE/STOP>\n"
             "simple: true"
         ),
     }
@@ -727,6 +844,15 @@ class TaskSpec:
     teacher_system: str
 
 
+_TOON_PREAMBLE = (
+    "Output format: TOON, NOT JSON. Do NOT wrap output in `{` and `}`. "
+    "Do NOT quote keys with double quotes (use bare `key:`). Do NOT emit "
+    "a `TOON` or `JSON` header line. Do NOT use markdown bullets — use "
+    "TOON array form (`key[N]:` followed by `  - item` lines). Emit "
+    "exactly one TOON document, nothing before or after.\n\n"
+)
+
+
 TASKS: dict[str, TaskSpec] = {
     "reply": TaskSpec(
         name="reply",
@@ -734,8 +860,15 @@ TASKS: dict[str, TaskSpec] = {
         stub=stub_reply,
         validator=validate_reply,
         teacher_system=(
+            _TOON_PREAMBLE +
             "You are the elizaOS REPLY action handler. Emit ONE TOON "
-            "document with `thought` and `text`. Nothing else."
+            "document with `thought` and `text`. Both values must be "
+            "ONE LINE — no embedded newlines, no code blocks, no "
+            "markdown lists. Use `\\n` literal escapes if you must "
+            "indicate a newline in `text`. Wrap any multiline content "
+            "in JSON-style double quotes. Example shape:\n\n"
+            "thought: short reason for the reply\n"
+            "text: \"the user-facing reply, one line, may contain \\n escapes\""
         ),
     ),
     "remove_contact": TaskSpec(
@@ -744,6 +877,7 @@ TASKS: dict[str, TaskSpec] = {
         stub=stub_remove_contact,
         validator=validate_remove_contact,
         teacher_system=(
+            _TOON_PREAMBLE +
             "You are the elizaOS REMOVE_CONTACT action handler. Emit ONE "
             "TOON document with `contactName` and `confirmed` "
             "(yes / no). Nothing else."
@@ -755,9 +889,13 @@ TASKS: dict[str, TaskSpec] = {
         stub=stub_extract_option,
         validator=validate_extract_option,
         teacher_system=(
+            _TOON_PREAMBLE +
             "You are the elizaOS EXTRACT_OPTION action handler. Emit ONE "
-            "TOON document with `taskId` and `selectedOption`. Use null "
-            "where the user didn't supply a value."
+            "TOON document with scalar `taskId` and `selectedOption`. "
+            "Use null where the user didn't supply a value. DO NOT use "
+            "array form. Example shape:\n\n"
+            "taskId: deploy-task-91ab\n"
+            "selectedOption: A"
         ),
     ),
     "extract_secret_operation": TaskSpec(
@@ -766,9 +904,15 @@ TASKS: dict[str, TaskSpec] = {
         stub=stub_extract_secret_operation,
         validator=validate_extract_secret_operation,
         teacher_system=(
+            _TOON_PREAMBLE +
             "You are the elizaOS EXTRACT_SECRET_OPERATION action handler. "
             "Determine the get/set/delete/list/check operation, the key, "
-            "and value if present. Emit ONE TOON document."
+            "and value if present. All four fields are scalars — DO NOT "
+            "use array form. Example shape:\n\n"
+            "operation: get\n"
+            "key: openai_key\n"
+            "value: null\n"
+            "level: null"
         ),
     ),
     "extract_secret_request": TaskSpec(
@@ -777,9 +921,13 @@ TASKS: dict[str, TaskSpec] = {
         stub=stub_extract_secret_request,
         validator=validate_extract_secret_request,
         teacher_system=(
+            _TOON_PREAMBLE +
             "You are the elizaOS EXTRACT_SECRET_REQUEST action handler. "
             "Identify the secret the agent needs and a short reason. "
-            "Emit ONE TOON document with `key` and `reason`."
+            "Both `key` and `reason` are scalars (one string each). DO "
+            "NOT use array form (`key[N]:`). Example shape:\n\n"
+            "key: OPENAI_API_KEY\n"
+            "reason: Needed to call OpenAI API"
         ),
     ),
     "post_creation": TaskSpec(
@@ -788,6 +936,7 @@ TASKS: dict[str, TaskSpec] = {
         stub=stub_post_creation,
         validator=validate_post_creation,
         teacher_system=(
+            _TOON_PREAMBLE +
             "You are the elizaOS POST_CREATION action handler. Emit ONE "
             "TOON document with `thought`, `post`, and an optional "
             "`imagePrompt`. Post must be < 280 chars."
@@ -799,6 +948,7 @@ TASKS: dict[str, TaskSpec] = {
         stub=stub_post_action_decision,
         validator=validate_post_action_decision,
         teacher_system=(
+            _TOON_PREAMBLE +
             "You are the elizaOS POST_ACTION_DECISION handler. Decide "
             "whether to REPLY, IGNORE, or STOP given the latest action "
             "results. Emit ONE TOON document with the planner-envelope "
@@ -820,10 +970,18 @@ def _generate_one(
     if dry_run:
         target_text = task.stub(encoder, rng, idx)
     else:
-        target_text = strip_fences(call_teacher(
+        target_text = normalize_teacher_output(call_teacher(
             teacher, task.teacher_system, scenario["rendered"],
         ))
     if not task.validator(target_text):
+        return None
+    # Reject anything we can't actually TOON-decode — synth-time validators
+    # are regex-only and will pass nested objects / mid-line bullets that
+    # the runtime decoder rejects. Better to drop now than discover at
+    # train time.
+    try:
+        ToonDecoder().decode(target_text)
+    except (ValueError, RuntimeError):
         return None
     memory_entries = to_memory_entries(
         scenario["speaker"], scenario["agent"], scenario["memory"],
