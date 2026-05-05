@@ -359,7 +359,7 @@ parts:
       SNAP_BUILD_TYPES_DIR=".snap-build-types"
       rm -rf "$SNAP_BUILD_TYPES_DIR"
       mkdir -p "$SNAP_BUILD_TYPES_DIR/@types"
-      for type_pkg in node bun fs-extra fast-redact markdown-it jsonfile linkify-it mdurl; do
+      for type_pkg in node bun fs-extra fast-redact markdown-it jsonfile linkify-it mdurl react react-dom; do
         type_target=""
         if [ -d "node_modules/@types/$type_pkg" ]; then
           type_target="node_modules/@types/$type_pkg"
@@ -384,7 +384,7 @@ parts:
       # needs for the build, then remove them again before copying node_modules
       # into the snap runtime payload.
       mkdir -p node_modules/@types
-      for type_pkg in node bun fs-extra fast-redact markdown-it jsonfile linkify-it mdurl; do
+      for type_pkg in node bun fs-extra fast-redact markdown-it jsonfile linkify-it mdurl react react-dom; do
         type_target="$SNAP_BUILD_TYPES_DIR/@types/$type_pkg"
         if [ ! -d "$type_target" ]; then
           echo "Failed to restore @types/$type_pkg after patch-deps" >&2
@@ -392,6 +392,11 @@ parts:
         fi
         rm -rf "node_modules/@types/$type_pkg"
         cp -aL "$type_target" "node_modules/@types/$type_pkg"
+      done
+      mkdir -p "$APP_CORE_DIR/node_modules/@types"
+      for type_pkg in react react-dom; do
+        rm -rf "$APP_CORE_DIR/node_modules/@types/$type_pkg"
+        cp -aL "$SNAP_BUILD_TYPES_DIR/@types/$type_pkg" "$APP_CORE_DIR/node_modules/@types/$type_pkg"
       done
 
       # The snap rewrite removes non-runtime plugin/native workspaces from disk. Turbo
