@@ -399,6 +399,39 @@ jobs:
           flatpak install -y --user flathub org.freedesktop.Platform//24.08
           flatpak install -y --user flathub org.freedesktop.Sdk//24.08
 
+      - name: Wait for npm package version
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.npm_version }}"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "https://registry.npmjs.org/elizaos/${VERSION}" >/dev/null; then
+              echo "Found elizaos@${VERSION} on npm"
+              exit 0
+            fi
+            echo "elizaos@${VERSION} is not visible on npm yet (attempt ${attempt}/30); waiting..."
+            sleep 20
+          done
+          echo "::error::elizaos@${VERSION} was not visible on npm before Flatpak build"
+          exit 1
+
+      - name: Prepare Flatpak release manifest
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.npm_version }}"
+          TODAY="$(date -u +%F)"
+          MANIFEST="packages/app-core/packaging/flatpak/ai.elizaos.App.yml"
+          METAINFO="packages/app-core/packaging/flatpak/ai.elizaos.App.metainfo.xml"
+
+          sed -i -E \
+            "s#npm install -g elizaos(@[^[:space:]]+)? --prefix=/app --ignore-scripts#npm install -g elizaos@${VERSION} --prefix=/app --ignore-scripts#" \
+            "$MANIFEST"
+          sed -i -E \
+            "s#<release version=\"[^\"]+\" date=\"[^\"]+\">#<release version=\"${VERSION}\" date=\"${TODAY}\">#" \
+            "$METAINFO"
+
+          grep -n "npm install -g elizaos" "$MANIFEST"
+          grep -n "<release version" "$METAINFO" | head -1
+
       - name: Build Flatpak
         working-directory: packages/app-core/packaging/flatpak
         run: |
