@@ -10,7 +10,6 @@ def cuda_quantized_bmm_dynamic(group_size: int,
                                mqa: bool = False) -> torch.FloatTensor:
     assert len(fA.shape) == 4 and len(qB.shape) == 4
     B, nh, M, K = fA.shape
-    feat_per_int = 32 // bits
     fA = fA.view(-1, M, K).contiguous()
     qB = qB.reshape(-1, K, qB.shape[-1]).transpose(1, 2).contiguous()
     flatten_B = B * nh

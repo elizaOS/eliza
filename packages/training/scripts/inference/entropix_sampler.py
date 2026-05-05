@@ -52,7 +52,8 @@ def entropix_step(logits: torch.Tensor, th: EntropixThresholds) -> torch.Tensor:
         elif e > th.low_varent and v > th.high_varent:
             t = torch.distributions.Categorical(                  # HEHV mask + resample
                 logits=row / th.hehv_temp).sample()
-            row2 = row.clone(); row2[t] = float("-inf")
+            row2 = row.clone()
+            row2[t] = float("-inf")
             out[i] = torch.distributions.Categorical(logits=row2 / th.hehv_temp).sample()
         else:
             out[i] = torch.distributions.Categorical(logits=row).sample()

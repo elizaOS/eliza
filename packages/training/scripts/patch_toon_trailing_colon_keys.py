@@ -73,14 +73,17 @@ def main() -> int:
             for raw in f:
                 n_records += 1
                 if not raw.strip():
-                    out_lines.append(raw); continue
+                    out_lines.append(raw)
+                    continue
                 try:
                     rec = json.loads(raw)
                 except Exception:
-                    out_lines.append(raw); continue
+                    out_lines.append(raw)
+                    continue
                 er = rec.get("expectedResponse")
                 if not isinstance(er, str):
-                    out_lines.append(raw); continue
+                    out_lines.append(raw)
+                    continue
                 new_er, n = patch_text(er)
                 if n:
                     rec["expectedResponse"] = new_er

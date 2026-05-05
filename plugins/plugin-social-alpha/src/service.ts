@@ -8,6 +8,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
+	parseKeyValueXml,
 	parseJSONObjectFromText,
 	Service,
 	type Task,
@@ -59,6 +60,44 @@ import {
 	type TrustMarketplaceComponentData,
 	type UserTrustProfile,
 } from "./types";
+
+type ExtractedSignal = {
+	messageIndex: number | string;
+	isCall: boolean | string;
+	tokenMentioned?: string;
+	nameMentioned?: string;
+	caMentioned?: string;
+	chain?: string;
+	sentiment?: string;
+	conviction?: string;
+	llmReasoning?: string;
+};
+
+function parseRecommendationExtraction(response: string): {
+	recommendations: ExtractedSignal[];
+} | null {
+	const parsed =
+		parseKeyValueXml<{ recommendations?: ExtractedSignal[] }>(response) ??
+		(parseJSONObjectFromText(response) as {
+			recommendations?: ExtractedSignal[];
+		} | null);
+
+	if (!parsed?.recommendations || !Array.isArray(parsed.recommendations)) {
+		return null;
+	}
+
+	return {
+		recommendations: parsed.recommendations.map((rec) => ({
+			...rec,
+			messageIndex:
+				typeof rec.messageIndex === "number"
+					? rec.messageIndex
+					: Number.parseInt(String(rec.messageIndex ?? "0"), 10),
+			isCall:
+				rec.isCall === true || String(rec.isCall).toLowerCase() === "true",
+		})),
+	};
+}
 
 // Event types
 /**
