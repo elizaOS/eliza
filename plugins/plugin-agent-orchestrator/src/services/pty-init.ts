@@ -8,15 +8,16 @@
  */
 
 import { existsSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { createAllAdapters } from "coding-agent-adapters";
+import { fileURLToPath } from "node:url";
 import type {
   AuthRequiredInfo,
   BunCompatiblePTYManager as BunCompatiblePTYManagerType,
-  PTYManager as PTYManagerType,
   PTYManagerConfig,
+  PTYManager as PTYManagerType,
   SessionHandle,
   SessionMessage,
   StallClassification,
@@ -24,7 +25,7 @@ import type {
   WorkerSessionHandle,
 } from "pty-manager";
 import type { CompletionMethod } from "./agent-metrics.js";
-import { captureTaskResponse } from "./ansi-utils.js";
+import { captureTaskResponse, cleanForChat } from "./ansi-utils.js";
 import type { PTYServiceConfig } from "./pty-types.js";
 
 // Stall detector silence threshold. 60s — long enough that a bash, git,
@@ -48,6 +49,19 @@ try {
 } catch {
   // Fallback to bare specifier if resolve fails (shouldn't happen)
 }
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+for (const candidate of [
+  path.resolve(moduleDir, "../scripts/codex-exec-adapters.cjs"),
+  path.resolve(moduleDir, "../../scripts/codex-exec-adapters.cjs"),
+]) {
+  if (existsSync(candidate)) {
+    resolvedAdapterModule = candidate;
+    break;
+  }
+}
+const { createAllAdapters } = _require(
+  resolvedAdapterModule,
+) as typeof import("coding-agent-adapters");
 let resolvedPtyWorkerPath: string | undefined;
 try {
   resolvedPtyWorkerPath = _require.resolve("pty-manager/worker");
@@ -102,6 +116,7 @@ export interface InitContext {
   ) => Promise<StallClassification | null>;
   emitEvent: (sessionId: string, event: string, data: unknown) => void;
   handleGeminiAuth: (sessionId: string) => void;
+  sessionMetadata: Map<string, Record<string, unknown>>;
   sessionOutputBuffers: Map<string, string[]>;
   taskResponseMarkers: Map<string, number>;
   metricsTracker: {
@@ -124,6 +139,40 @@ export interface InitContext {
   hasTaskActivity?: (sessionId: string) => boolean;
   /** Mark a session's task as delivered (initial ready event processed). */
   markTaskDelivered?: (sessionId: string) => void;
+}
+
+async function captureFastPathTaskResponse(
+  ctx: InitContext,
+  sessionId: string,
+): Promise<string> {
+  const buffered = captureTaskResponse(
+    sessionId,
+    ctx.sessionOutputBuffers,
+    ctx.taskResponseMarkers,
+  );
+  const outputFile = ctx.sessionMetadata.get(sessionId)?.codexExecOutputFile;
+  if (typeof outputFile !== "string" || !outputFile.trim()) {
+    return buffered;
+  }
+
+  try {
+    const fromFile = cleanForChat(await readFile(outputFile, "utf8"));
+    if (fromFile.trim()) {
+      return fromFile.trim();
+    }
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "";
+    if (code !== "ENOENT") {
+      ctx.log(
+        `Failed to read Codex exec output file for ${sessionId}: ${error}`,
+      );
+    }
+  }
+
+  return buffered;
 }
 
 // NOTE: A previous implementation defined `forwardReadyAsTaskComplete` here,
@@ -222,11 +271,70 @@ export async function initializePTYManager(
       ctx.markTaskDelivered?.(session.id);
     });
 
-    bunManager.on("session_exit", (id: string, code: number) => {
+    const handleWorkerStopped = async (
+      sessionOrId: WorkerSessionHandle | string,
+      reasonOrCode?: string | number,
+      signal?: string | number,
+    ): Promise<void> => {
+      const session =
+        typeof sessionOrId === "string"
+          ? ({
+              id: sessionOrId,
+              type: "codex",
+              status: "stopped",
+            } as WorkerSessionHandle)
+          : sessionOrId;
+      const id = session.id;
+      const code =
+        typeof reasonOrCode === "number"
+          ? reasonOrCode
+          : typeof session.exitCode === "number"
+            ? session.exitCode
+            : undefined;
+      const reason =
+        typeof reasonOrCode === "string"
+          ? reasonOrCode
+          : typeof code === "number"
+            ? `exit code ${code}`
+            : signal
+              ? `signal ${String(signal)}`
+              : "session stopped";
+      const cleanExit = code === 0 || /\bexit code 0\b/i.test(reason);
+
+      if (cleanExit && ctx.sessionMetadata.get(id)?.codexExecMode === true) {
+        const response = await captureFastPathTaskResponse(ctx, id);
+        ctx.metricsTracker.recordCompletion("codex", "fast-path", 0);
+        ctx.log(
+          `Task complete for ${id} (codex exec exit), response: ${response.length} chars`,
+        );
+        ctx.emitEvent(id, "task_complete", {
+          session,
+          response,
+          source: "adapter_fast_path",
+        });
+        return;
+      }
+
       ctx.emitEvent(id, "stopped", {
-        reason: `exit code ${code}`,
+        reason,
         source: "pty_manager",
       });
+    };
+
+    bunManager.on(
+      "session_stopped",
+      (
+        session: WorkerSessionHandle,
+        reasonOrCode?: string | number,
+        signal?: string | number,
+      ) => {
+        void handleWorkerStopped(session, reasonOrCode, signal);
+      },
+    );
+
+    // Older pty-manager builds exposed this event name.
+    bunManager.on("session_exit", (id: string, code: number) => {
+      void handleWorkerStopped(id, code);
     });
 
     bunManager.on("session_error", (id: string, error: string) => {
@@ -279,12 +387,8 @@ export async function initializePTYManager(
       },
     );
 
-    bunManager.on("task_complete", (session: WorkerSessionHandle) => {
-      const response = captureTaskResponse(
-        session.id,
-        ctx.sessionOutputBuffers,
-        ctx.taskResponseMarkers,
-      );
+    bunManager.on("task_complete", async (session: WorkerSessionHandle) => {
+      const response = await captureFastPathTaskResponse(ctx, session.id);
       const durationMs = session.startedAt
         ? Date.now() - new Date(session.startedAt).getTime()
         : 0;
@@ -449,12 +553,8 @@ export async function initializePTYManager(
     },
   );
 
-  nodeManager.on("task_complete", (session: SessionHandle) => {
-    const response = captureTaskResponse(
-      session.id,
-      ctx.sessionOutputBuffers,
-      ctx.taskResponseMarkers,
-    );
+  nodeManager.on("task_complete", async (session: SessionHandle) => {
+    const response = await captureFastPathTaskResponse(ctx, session.id);
     const durationMs = session.startedAt
       ? Date.now() - new Date(session.startedAt).getTime()
       : 0;
@@ -485,7 +585,30 @@ export async function initializePTYManager(
 
   nodeManager.on(
     "session_stopped",
-    (session: SessionHandle, reason: string) => {
+    async (session: SessionHandle, reason: string) => {
+      const stoppedCleanly =
+        (session as { exitCode?: number }).exitCode === 0 ||
+        /exit code 0/i.test(reason);
+      if (
+        session.type === "codex" &&
+        ctx.sessionMetadata.get(session.id)?.codexExecMode === true &&
+        stoppedCleanly
+      ) {
+        const response = await captureFastPathTaskResponse(ctx, session.id);
+        const durationMs = session.startedAt
+          ? Date.now() - new Date(session.startedAt).getTime()
+          : 0;
+        ctx.metricsTracker.recordCompletion("codex", "fast-path", durationMs);
+        ctx.log(
+          `Task complete for ${session.id} (codex exec stopped), response: ${response.length} chars`,
+        );
+        ctx.emitEvent(session.id, "task_complete", {
+          session,
+          response,
+          source: "adapter_fast_path",
+        });
+        return;
+      }
       ctx.emitEvent(session.id, "stopped", { reason, source: "pty_manager" });
     },
   );

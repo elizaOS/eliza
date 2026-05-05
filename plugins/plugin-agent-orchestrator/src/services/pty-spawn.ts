@@ -145,6 +145,22 @@ const ENV_ALLOWLIST = [
   // GitHub connection card (or set it explicitly via shell), so passthrough
   // here matches an explicit user grant rather than blanket leakage.
   "GITHUB_TOKEN",
+  "GH_TOKEN",
+  // Container app builds may need opt-in registry credentials/config before
+  // Cloud can pull an image. These are forwarded only when the parent runtime
+  // explicitly provides them.
+  "GHCR_TOKEN",
+  "CR_PAT",
+  "ELIZA_APP_IMAGE_REGISTRY",
+  "ELIZA_APP_IMAGE_NAMESPACE",
+  "ELIZA_APP_IMAGE_REPOSITORY",
+  // Cloud app builds need the parent-provided Cloud endpoint and API key to
+  // register apps, enable monetization, and prepare domain offers.
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZA_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_PUBLIC_URL",
+  "ELIZA_CLOUD_URL",
+  "ELIZA_AFFILIATE_CODE",
 ];
 
 /**
@@ -274,6 +290,13 @@ export interface SpawnContext {
   log: (msg: string) => void;
   /** Mark a session's task as delivered in the coordinator. */
   markTaskDelivered: (sessionId: string) => void;
+}
+
+export function shouldUseCodexExecMode(options: {
+  agentType: string;
+  initialTask?: string;
+}): boolean {
+  return options.agentType === "codex" && Boolean(options.initialTask?.trim());
 }
 
 const CURSOR_POSITION_QUERY = "\x1b[6n";
@@ -490,6 +513,13 @@ export function buildSpawnConfig(
   options: SpawnSessionOptions,
   workdir: string,
 ): SpawnConfig & { id: string } {
+  const codexExecMode = shouldUseCodexExecMode(options);
+  const codexExecOutputFile =
+    typeof options.metadata?.codexExecOutputFile === "string" &&
+    options.metadata.codexExecOutputFile.trim()
+      ? options.metadata.codexExecOutputFile.trim()
+      : undefined;
+
   // Map model preferences to adapter-specific env vars
   const modelPrefs = readTaskAgentModelPrefs(options.metadata?.modelPrefs);
   let modelEnv: Record<string, string> | undefined;
@@ -527,9 +557,20 @@ export function buildSpawnConfig(
       ...(options.customCredentials
         ? { custom: options.customCredentials }
         : {}),
-      interactive: true,
+      interactive: !codexExecMode,
+      ...(codexExecMode
+        ? {
+            initialPrompt: options.initialTask?.trim(),
+            skipGitRepoCheck: true,
+            ...(codexExecOutputFile
+              ? { outputLastMessage: codexExecOutputFile }
+              : {}),
+          }
+        : {}),
       approvalPreset:
-        options.agentType === "codex" ? undefined : options.approvalPreset,
+        options.agentType === "codex" && !codexExecMode
+          ? undefined
+          : options.approvalPreset,
       // Forward adapter-relevant metadata (e.g. provider preference for Aider)
       ...(options.metadata?.provider
         ? { provider: options.metadata.provider }

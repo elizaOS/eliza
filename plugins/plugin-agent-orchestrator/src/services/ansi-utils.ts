@@ -197,6 +197,7 @@ export function cleanForFailoverContext(raw: string, workdir?: string): string {
  */
 export function extractCompletionSummary(raw: string): string {
   const stripped = applyAnsiStrip(raw);
+  const strippedLines = stripped.split("\n").map((line) => line.trim());
   const lines: string[] = [];
 
   // PR / issue URLs
@@ -227,6 +228,24 @@ export function extractCompletionSummary(raw: string): string {
   );
   if (diffStat) {
     for (const m of diffStat) lines.push(m.trim());
+  }
+
+  // Hosted app build results. Preserve the user-facing lines the task agent
+  // reports after Cloud registration and domain search.
+  const appResultLines = strippedLines.filter((line) =>
+    /^(?:URL:\s*https?:\/\/|appId:\s*|monetization:\s*|auth:\s*|custom domain options\b|- .+\.(?:com|io|dev|app)\b.*\$|Want me to buy one of these for you\?)/i.test(
+      line,
+    ),
+  );
+  if (appResultLines.length > 0) {
+    for (const line of [...new Set(appResultLines)]) lines.push(line);
+  }
+
+  const domainStatusLines = strippedLines.filter((line) =>
+    /^(?:domain|app|status|verified|zoneId|expires|result):\s*\S/i.test(line),
+  );
+  if (domainStatusLines.length > 0) {
+    for (const line of [...new Set(domainStatusLines)]) lines.push(line);
   }
 
   return lines.join("\n");
