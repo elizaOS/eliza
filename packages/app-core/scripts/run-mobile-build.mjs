@@ -27,6 +27,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  loadAospVariantConfig,
+  resolveAppConfigPath,
+} from "./aosp/lib/load-variant-config.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import {
   isCapacitorPlatformReady as isCapacitorPlatformReadyImpl,
@@ -47,15 +51,55 @@ const packagesRoot = path.resolve(appCoreRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
-const elizaOsVendorDir = path.join(
-  repoRoot,
-  "packages",
-  "os",
-  "android",
-  "vendor",
-  "eliza",
-);
-const elizaOsApkDir = path.join(elizaOsVendorDir, "apps", "Eliza");
+
+// AOSP system APK staging path. Brand-aware: forks declare their vendor
+// dir + APK name in `app.config.ts > aosp:`. When that block is present
+// (Milady, etc.), stage to `<repoRoot>/os/android/vendor/<vendorDir>/
+// apps/<appName>/<appName>.apk`. When absent, fall back to the upstream
+// elizaOS path under packages/os/.
+function resolveSystemApkStagingDir() {
+  let variant = null;
+  try {
+    variant = loadAospVariantConfig({
+      appConfigPath: resolveAppConfigPath({ repoRoot, flagValue: null }),
+    });
+  } catch {
+    // app.config.ts missing or malformed — fall through to the elizaOS
+    // default. The upstream layout is the right answer for forks that
+    // never set up an aosp: block.
+  }
+  if (variant) {
+    const vendorDir = path.join(
+      repoRoot,
+      "os",
+      "android",
+      "vendor",
+      variant.vendorDir,
+    );
+    return {
+      vendorDir,
+      apkDir: path.join(vendorDir, "apps", variant.appName),
+      apkName: `${variant.appName}.apk`,
+    };
+  }
+  const elizaOsVendorDir = path.join(
+    repoRoot,
+    "packages",
+    "os",
+    "android",
+    "vendor",
+    "eliza",
+  );
+  return {
+    vendorDir: elizaOsVendorDir,
+    apkDir: path.join(elizaOsVendorDir, "apps", "Eliza"),
+    apkName: "Eliza.apk",
+  };
+}
+const systemApkStaging = resolveSystemApkStagingDir();
+const elizaOsVendorDir = systemApkStaging.vendorDir;
+const elizaOsApkDir = systemApkStaging.apkDir;
+const elizaOsApkName = systemApkStaging.apkName;
 const platformsDir = path.join(appCoreRoot, "platforms");
 const nativePluginsDir = path.join(packagesRoot, "native-plugins");
 const androidAgentSpikeDir = path.join(
@@ -454,10 +498,15 @@ const ANDROID_PERMISSIONS = [
 ];
 
 function replaceOrInsertGradleString(content, key, value) {
-  const quoted = `${key} "${value}"`;
-  const assignmentRe = new RegExp(`${key}\\s*(?:=\\s*)?["'][^"']+["']`);
-  if (assignmentRe.test(content)) {
-    return content.replace(assignmentRe, quoted);
+  // AGP-modern uses `key = "value"`, AGP-legacy uses `key "value"`. Match
+  // either and preserve the existing assignment shape so we don't flip
+  // styles unnecessarily. The namespace declaration ships in the modern
+  // form on Android Gradle Plugin 8+ generated projects, while
+  // applicationId is still emitted in the legacy form by Capacitor's
+  // template — both must be patchable.
+  const re = new RegExp(`(${key}\\s*=?\\s*)["'][^"']+["']`);
+  if (re.test(content)) {
+    return content.replace(re, `$1"${value}"`);
   }
   return content;
 }
@@ -1610,7 +1659,10 @@ end
 
 // ── Phase 5: Platform patches ───────────────────────────────────────────
 
-function stripSpmPlugins(pluginNames, { reason = "incompatible SPM plugin" } = {}) {
+function stripSpmPlugins(
+  pluginNames,
+  { reason = "incompatible SPM plugin" } = {},
+) {
   const pkgPath = path.join(
     appDir,
     "ios",
@@ -2011,6 +2063,7 @@ async function generateIosBrandAssets() {
         if (!Number.isFinite(pixels) || pixels <= 0) continue;
         await sharp(iconSource)
           .resize(pixels, pixels, { fit: "cover" })
+          .flatten({ background: "#000000" })
           .png()
           .toFile(path.join(iconSetDir, image.filename));
       }
@@ -2077,9 +2130,7 @@ async function generateAndroidBrandAssets() {
   }
 
   if (splashSource) {
-    for (const [dir, [width, height]] of Object.entries(
-      ANDROID_SPLASH_SIZES,
-    )) {
+    for (const [dir, [width, height]] of Object.entries(ANDROID_SPLASH_SIZES)) {
       const out = path.join(resDir, dir);
       fs.mkdirSync(out, { recursive: true });
       await sharp(splashSource)
@@ -2089,7 +2140,9 @@ async function generateAndroidBrandAssets() {
     }
   }
 
-  console.log(`[mobile-build] Generated Android brand assets for ${APP.appName}.`);
+  console.log(
+    `[mobile-build] Generated Android brand assets for ${APP.appName}.`,
+  );
 }
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
@@ -2242,9 +2295,9 @@ function stageAndroidSystemApk() {
     );
   }
   fs.mkdirSync(elizaOsApkDir, { recursive: true });
-  const target = path.join(elizaOsApkDir, "Eliza.apk");
+  const target = path.join(elizaOsApkDir, elizaOsApkName);
   fs.copyFileSync(apk, target);
-  console.log(`[mobile-build] Staged ElizaOS APK at ${target}.`);
+  console.log(`[mobile-build] Staged ${elizaOsApkName} at ${target}.`);
 }
 
 async function buildAndroidSystem() {

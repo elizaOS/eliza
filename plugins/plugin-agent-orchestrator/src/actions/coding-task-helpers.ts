@@ -164,7 +164,7 @@ export function registerSessionEvents(
     // "Agent X completed the task" messages here produced noisy duplicate
     // chatter and a leak of raw subagent output before the synthesis ran,
     // most visibly when SPAWN_AGENT redirected a multi-intent prompt
-    // through CREATE_TASK and the first finished sub-agent fired its own
+    // through START_CODING_TASK and the first finished sub-agent fired its own
     // "completed" callback ahead of the combined synthesis.
     //
     // task_complete intentionally does NOT force-kill the session here:

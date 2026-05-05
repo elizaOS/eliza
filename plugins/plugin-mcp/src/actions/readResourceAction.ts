@@ -60,6 +60,30 @@ function createResourceSelectionPrompt(composedState: State, userMessage: string
   });
 }
 
+function readOptions(options?: Record<string, unknown> | unknown): Record<string, unknown> {
+  const direct = options && typeof options === "object" ? (options as Record<string, unknown>) : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function getDirectResourceSelection(options?: unknown): ResourceSelection | null {
+  const params = readOptions(options);
+  const serverName = typeof params.serverName === "string" ? params.serverName.trim() : "";
+  const uri = typeof params.uri === "string" ? params.uri.trim() : "";
+  if (!serverName || !uri) return null;
+  return {
+    serverName,
+    uri,
+    reasoning:
+      typeof params.reasoning === "string" && params.reasoning.trim()
+        ? params.reasoning.trim()
+        : "Selected from structured READ_MCP_RESOURCE parameters.",
+  };
+}
+
 export const readResourceAction: Action = {
   name: "READ_MCP_RESOURCE",
   similes: [
@@ -74,15 +98,37 @@ export const readResourceAction: Action = {
   ],
   description: "Reads a resource from an MCP server",
   descriptionCompressed: "read resource MCP server",
+  parameters: [
+    {
+      name: "serverName",
+      description: "MCP server name that exposes the resource.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "uri",
+      description: "Exact MCP resource URI to read.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: unknown
+  ): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
+    const __avStructuredSelection = getDirectResourceSelection(options);
     const __avKeywords = ["read", "mcp", "resource"];
     const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
+      Boolean(__avStructuredSelection) ||
+      (__avKeywords.length > 0 &&
+        __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)));
     const __avRegex = /\b(?:read|mcp|resource)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
+    const __avRegexOk = Boolean(__avStructuredSelection) || __avRegex.test(__avText);
     const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
@@ -139,34 +185,38 @@ export const readResourceAction: Action = {
     try {
       await sendInitialResponse(callback);
 
-      const resourceSelectionPrompt = createResourceSelectionPrompt(
-        composedState,
-        message.content.text ?? ""
-      );
+      const parsedSelection =
+        getDirectResourceSelection(_options) ??
+        (await (async () => {
+          const resourceSelectionPrompt = createResourceSelectionPrompt(
+            composedState,
+            message.content.text ?? ""
+          );
 
-      const resourceSelection = (await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: resourceSelectionPrompt,
-      })) as string;
+          const resourceSelection = (await runtime.useModel(ModelType.TEXT_SMALL, {
+            prompt: resourceSelectionPrompt,
+          })) as string;
 
-      const parsedSelection = await withModelRetry<ResourceSelection>({
-        runtime,
-        state: composedState,
-        message,
-        callback,
-        input: resourceSelection,
-        validationFn: (data) => validateResourceSelection(data),
-        createFeedbackPromptFn: (originalResponse, errorMessage, state, userMessage) =>
-          createResourceSelectionFeedbackPrompt(
-            typeof originalResponse === "string"
-              ? originalResponse
-              : JSON.stringify(originalResponse),
-            errorMessage,
-            state,
-            userMessage
-          ),
-        failureMsg: `I'm having trouble finding the resource you're looking for. Could you provide more details about what you need?`,
-        retryCount: 0,
-      });
+          return withModelRetry<ResourceSelection>({
+            runtime,
+            state: composedState,
+            message,
+            callback,
+            input: resourceSelection,
+            validationFn: (data) => validateResourceSelection(data),
+            createFeedbackPromptFn: (originalResponse, errorMessage, state, userMessage) =>
+              createResourceSelectionFeedbackPrompt(
+                typeof originalResponse === "string"
+                  ? originalResponse
+                  : JSON.stringify(originalResponse),
+                errorMessage,
+                state,
+                userMessage
+              ),
+            failureMsg: `I'm having trouble finding the resource you're looking for. Could you provide more details about what you need?`,
+            retryCount: 0,
+          });
+        })());
 
       if (!parsedSelection || parsedSelection.noResourceAvailable) {
         const responseText =

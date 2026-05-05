@@ -32,6 +32,28 @@ Extract the following:
 Respond with TOON only:
 userId: U0123456789`;
 
+function readParams(
+  options?: HandlerOptions | unknown,
+): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function readUserId(options?: HandlerOptions | unknown): string | null {
+  const params = readParams(options);
+  const value = params.userId ?? params.user;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
 export const getUserInfo: Action = {
   name: "SLACK_GET_USER_INFO",
   similes: [
@@ -43,6 +65,14 @@ export const getUserInfo: Action = {
   ],
   description: "Get information about a Slack user",
   descriptionCompressed: "Get Slack user info.",
+  parameters: [
+    {
+      name: "userId",
+      description: "Slack user ID to look up, such as U0123456789.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -52,12 +82,15 @@ export const getUserInfo: Action = {
     const __avTextRaw =
       typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
+    const __avStructuredUserId = readUserId(options);
     const __avKeywords = ["slack", "get", "user", "info"];
     const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
+      Boolean(__avStructuredUserId) ||
+      (__avKeywords.length > 0 &&
+        __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw)));
     const __avRegex = /\b(?:slack|get|user|info)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
+    const __avRegexOk =
+      Boolean(__avStructuredUserId) || __avRegex.test(__avText);
     const __avSource = String(
       message?.content?.source ?? message?.metadata?.source ?? "",
     );
@@ -105,25 +138,30 @@ export const getUserInfo: Action = {
       return { success: false, error: "Slack service not available" };
     }
 
-    const prompt = composePromptFromState({
-      state,
-      template: getUserInfoTemplate,
-    });
+    const directUserId = readUserId(_options);
+    let userInfo: { userId: string } | null = directUserId
+      ? { userId: directUserId }
+      : null;
 
-    let userInfo: { userId: string } | null = null;
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt,
+    if (!userInfo) {
+      const prompt = composePromptFromState({
+        state,
+        template: getUserInfoTemplate,
       });
 
-      const parsedResponse =
-        parseToonKeyValue<Record<string, unknown>>(response);
-      if (parsedResponse?.userId) {
-        userInfo = {
-          userId: String(parsedResponse.userId),
-        };
-        break;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        });
+
+        const parsedResponse =
+          parseToonKeyValue<Record<string, unknown>>(response);
+        if (parsedResponse?.userId) {
+          userInfo = {
+            userId: String(parsedResponse.userId),
+          };
+          break;
+        }
       }
     }
 

@@ -132,7 +132,7 @@ export async function loadMixamoAnimation(
       );
     }
     const mixamoRigNode = rigNodeCache.get(mixamoRigName);
-    if (!mixamoRigNode || !mixamoRigNode.parent) continue;
+    if (!mixamoRigNode?.parent) continue;
 
     mixamoRigNode.getWorldQuaternion(restRotationInverse).invert();
     mixamoRigNode.parent.getWorldQuaternion(parentRestWorldRotation);

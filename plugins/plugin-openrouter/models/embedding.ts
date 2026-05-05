@@ -68,6 +68,7 @@ export async function handleTextEmbedding(
   const baseURL = getBaseURL(runtime);
 
   try {
+    // @trajectory-allow Embeddings return numeric retrieval vectors, not generative LLM text.
     const response = await fetch(`${baseURL}/embeddings`, {
       method: "POST",
       headers: {

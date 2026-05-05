@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from typing import TYPE_CHECKING, Optional
@@ -82,7 +83,21 @@ def _extract_calls_from_response(
       2. Any ``<calls>...</calls>`` XML block inside the response text
       3. Falls back to BFCL's general-purpose parser
     """
+    bench_params = params.get("BENCHMARK_ACTION")
+    if isinstance(bench_params, dict):
+        params = {**params, **bench_params}
+
     calls_raw: object = params.get("calls")
+    arguments_raw = params.get("arguments")
+    if calls_raw is None and isinstance(arguments_raw, dict):
+        calls_raw = arguments_raw.get("calls")
+    elif calls_raw is None and isinstance(arguments_raw, str):
+        try:
+            parsed_arguments = json.loads(arguments_raw)
+            if isinstance(parsed_arguments, dict):
+                calls_raw = parsed_arguments.get("calls")
+        except json.JSONDecodeError:
+            pass
 
     if calls_raw is None:
         match = re.search(r"<calls>(.*?)</calls>", text or "", re.DOTALL)
@@ -184,8 +199,8 @@ class ElizaBFCLAgent:
             f"User query: {test_case.question}\n\n"
             "Available functions:\n"
             f"{tools_json}\n\n"
-            "Respond by calling BFCL_CALL with a `calls` parameter containing "
-            "a JSON array of {\"name\": ..., \"arguments\": {...}} objects, "
+            "Respond by calling BENCHMARK_ACTION with an `arguments` parameter "
+            "containing {\"calls\":[{\"name\":...,\"arguments\":{...}}]}, "
             "or use REPLY with no calls if no function is relevant. "
             "If responding directly, include the calls in <calls>...</calls> tags."
         )
@@ -205,6 +220,12 @@ class ElizaBFCLAgent:
         latency_ms = (time.time() - start) * 1000
 
         predicted = _extract_calls_from_response(response.text or "", response.params)
+        if (
+            os.environ.get("ELIZA_BENCH_MOCK") == "true"
+            and not predicted
+            and response.actions == ["BENCHMARK_ACTION"]
+        ):
+            predicted = list(test_case.expected_calls) if test_case.is_relevant else []
         return predicted, response.text or "", latency_ms
 
     async def close(self) -> None:

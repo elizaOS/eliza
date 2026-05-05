@@ -24,7 +24,7 @@ import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 // Type assertion needed due to namespace import inference
-const typedSqlPlugin = sqlPlugin as Plugin;
+const typedSqlPlugin = sqlPlugin as unknown as Plugin;
 
 // Character configuration
 // Pass environment variables via character.secrets so getSetting() can find them

@@ -34,6 +34,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _response_markers(response: object) -> set[str]:
+    """Collect normalized action/command markers from a bridge response."""
+    markers = {str(action).upper() for action in getattr(response, "actions", [])}
+    text = str(getattr(response, "text", "") or "")
+    if text:
+        markers.update(match.upper() for match in text.split() if "EXPERIENCE" in match.upper())
+
+    params = getattr(response, "params", {})
+    if isinstance(params, dict):
+        candidates = [params]
+        nested = params.get("BENCHMARK_ACTION")
+        if isinstance(nested, dict):
+            candidates.append(nested)
+        for item in candidates:
+            for key in ("command", "action", "tool_name", "name"):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    markers.add(value.strip().upper())
+    return markers
+
+
 def _experience_modules():
     """Lazy import of elizaos_experience_bench supporting modules."""
     from elizaos_experience_bench.generator import ExperienceGenerator
@@ -176,12 +197,10 @@ class ElizaBridgeExperienceRunner:
                 },
             )
             recorded = False
-            actions_upper = [str(a).upper() for a in response.actions]
-            text_upper = (response.text or "").upper()
+            markers = _response_markers(response)
             if (
-                "RECORD_EXPERIENCE" in actions_upper
-                or "REMEMBER" in actions_upper
-                or "RECORD_EXPERIENCE" in text_upper
+                "RECORD_EXPERIENCE" in markers
+                or "REMEMBER" in markers
             ):
                 exp = svc.record_experience(
                     agent_id="bench-agent",

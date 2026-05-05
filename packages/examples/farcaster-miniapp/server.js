@@ -1,6 +1,6 @@
-import express from "express";
-import cors from "cors";
 import { randomBytes } from "node:crypto";
+import cors from "cors";
+import express from "express";
 
 const app = express();
 
@@ -73,7 +73,7 @@ function buildReply(message, session) {
 // ==================== API ROUTES ====================
 
 // Health check
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 

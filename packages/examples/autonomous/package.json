@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "start": "bun run autonomous.ts",
-    "dev": "bun --watch run autonomous.ts"
+    "dev": "bun --watch run autonomous.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "beta",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-inmemorydb": "workspace:*",
     "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",

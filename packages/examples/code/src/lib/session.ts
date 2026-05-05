@@ -335,11 +335,11 @@ export async function clearSession(): Promise<void> {
 // ============================================================================
 
 export {
-  toEpoch,
-  toDate,
+  deserializeRoom,
+  getSessionPath,
+  isValidSessionData,
   sanitizeRole,
   serializeRoom,
-  deserializeRoom,
-  isValidSessionData,
-  getSessionPath,
+  toDate,
+  toEpoch,
 };

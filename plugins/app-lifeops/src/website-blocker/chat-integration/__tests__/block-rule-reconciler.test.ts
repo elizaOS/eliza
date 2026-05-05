@@ -1,7 +1,7 @@
 import type { UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../actions/website-blocker.js", () => ({
+vi.mock("../../../actions/owner-website-block.js", () => ({
   blockWebsitesAction: {
     handler: vi.fn(async () => ({
       success: true,

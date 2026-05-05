@@ -11,6 +11,11 @@ import type {
 
 import type { MysticismService } from "../services/mysticism-service";
 
+type CheckPaymentParams = {
+  entityId?: unknown;
+  roomId?: unknown;
+};
+
 export const checkPaymentAction: Action = {
   name: "CHECK_PAYMENT",
   similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
@@ -70,7 +75,7 @@ export const checkPaymentAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: HandlerOptions | Record<string, JsonValue | undefined>,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>,
     _callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     const service = runtime.getService<MysticismService>("MYSTICISM");
@@ -78,7 +83,12 @@ export const checkPaymentAction: Action = {
       return { success: false, text: "Mysticism service not available." };
     }
 
-    const session = service.getSession(message.entityId, message.roomId);
+    const params = (
+      "parameters" in (options ?? {}) ? (options as HandlerOptions).parameters : options
+    ) as CheckPaymentParams | undefined;
+    const entityId = typeof params?.entityId === "string" ? params.entityId : message.entityId;
+    const roomId = typeof params?.roomId === "string" ? params.roomId : message.roomId;
+    const session = service.getSession(entityId, roomId);
     if (!session) {
       return { success: false, text: "No active session." };
     }
@@ -94,6 +104,23 @@ export const checkPaymentAction: Action = {
       },
     };
   },
+
+  parameters: [
+    {
+      name: "entityId",
+      description:
+        "Optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "roomId",
+      description:
+        "Optional room id whose active reading payment should be checked. Defaults to the current room.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
 
   examples: [
     [

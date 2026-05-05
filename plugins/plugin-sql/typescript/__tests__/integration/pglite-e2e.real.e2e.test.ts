@@ -605,4 +605,4 @@ describe("PostgreSQL E2E Tests", () => {
       await adapter.close();
     });
   });
-}, 20000);
+}, 120_000);

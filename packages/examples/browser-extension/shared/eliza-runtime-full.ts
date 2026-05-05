@@ -433,7 +433,7 @@ function buildMessageWithContext(userText: string): string {
   // Build context prefix
   let contextPrefix = "";
 
-  if (cachedPageContent && cachedPageContent.content) {
+  if (cachedPageContent?.content) {
     contextPrefix += `[PAGE CONTEXT]\n`;
     contextPrefix += `Title: ${cachedPageContent.title}\n`;
     contextPrefix += `URL: ${cachedPageContent.url}\n`;
@@ -460,7 +460,7 @@ function buildMessageWithContext(userText: string): string {
     console.warn("[ElizaOS Runtime] No page content available!");
   }
 
-  const result = contextPrefix + `User message: ${userText}`;
+  const result = `${contextPrefix}User message: ${userText}`;
   console.log(
     "[ElizaOS Runtime] Final message length:",
     result.length,

@@ -25,6 +25,30 @@ export const fetchFeedTopAction: Action = {
     "Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
   descriptionCompressed:
     "fetch home timeline x return top-n tweet rank engagement (like + retweet 2)",
+  parameters: [
+    {
+      name: "limit",
+      description: "Maximum ranked tweets to return.",
+      required: false,
+      schema: {
+        type: "number",
+        minimum: 1,
+        maximum: 50,
+        default: DEFAULT_LIMIT,
+      },
+    },
+    {
+      name: "fetchCount",
+      description: "Number of home timeline tweets to fetch before ranking.",
+      required: false,
+      schema: {
+        type: "number",
+        minimum: 1,
+        maximum: 100,
+        default: DEFAULT_FETCH_COUNT,
+      },
+    },
+  ],
   examples: [
     [
       {

@@ -577,7 +577,20 @@ function getArrayPropertyContext(objectLiteral) {
       parent.elements.includes(current)
     ) {
       const arrayNode = parent;
-      const arrayParent = arrayNode.parent;
+      let arrayCurrent = arrayNode;
+      let arrayParent = arrayNode.parent;
+      while (
+        arrayParent &&
+        (ts.isAsExpression(arrayParent) ||
+          ts.isSatisfiesExpression(arrayParent) ||
+          ts.isTypeAssertionExpression(arrayParent) ||
+          ts.isParenthesizedExpression(arrayParent) ||
+          ts.isNonNullExpression(arrayParent)) &&
+        arrayParent.expression === arrayCurrent
+      ) {
+        arrayCurrent = arrayParent;
+        arrayParent = arrayParent.parent;
+      }
       if (ts.isPropertyAssignment(arrayParent)) {
         return propertyNameText(arrayParent.name);
       }
@@ -677,6 +690,14 @@ function getProviderGetSource(providerObject, sourceFile) {
   return property.getText(sourceFile);
 }
 
+function getProviderGetImplementation(providerObject) {
+  const property = getObjectProperty(providerObject, "get");
+  if (!property) return null;
+  if (ts.isMethodDeclaration(property)) return property;
+  if (!ts.isPropertyAssignment(property)) return null;
+  return unwrapExpression(property.initializer);
+}
+
 function isInstructionOnlyProvider(provider, sourceFile) {
   const source = provider.node.getText(sourceFile);
   const getSource = getProviderGetSource(provider.node, sourceFile);
@@ -693,27 +714,99 @@ function isInstructionOnlyProvider(provider, sourceFile) {
   if (!hasInstructionSignal) return false;
 
   const dataSignalSource = getSource || source;
+  if (
+    /\b(?:data|values)\s*:/.test(dataSignalSource) &&
+    !/\b(?:data|values)\s*:\s*\{\s*\}/.test(dataSignalSource)
+  ) {
+    return false;
+  }
   const hasDataSignal =
-    /\b(runtime|state|message)\s*\.|getService|getMemory|getMemories|fetch\s*\(|client\s*\.|service\s*\.|database|db\s*\./i.test(
+    /\b(?:runtime|state|message|_runtime|_state|_message)\s*\.|getService|getMemory|getMemories|fetch\s*\(|client\s*\.|service\s*\.|database|db\s*\./i.test(
       dataSignalSource,
     );
   return !hasDataSignal;
 }
 
+function isEmptyProviderReturnExpression(expression) {
+  if (!expression) return true;
+  const unwrapped = unwrapExpression(expression);
+  if (
+    unwrapped.kind === ts.SyntaxKind.NullKeyword ||
+    unwrapped.kind === ts.SyntaxKind.UndefinedKeyword
+  ) {
+    return true;
+  }
+  if (
+    (ts.isStringLiteral(unwrapped) ||
+      ts.isNoSubstitutionTemplateLiteral(unwrapped)) &&
+    unwrapped.text.trim() === ""
+  ) {
+    return true;
+  }
+  if (!ts.isObjectLiteralExpression(unwrapped)) return false;
+
+  const meaningfulProperties = unwrapped.properties.filter((property) => {
+    if (!ts.isPropertyAssignment(property)) return true;
+    const name = propertyNameText(property.name);
+    if (!["data", "text", "values"].includes(name)) return true;
+    const value = unwrapExpression(property.initializer);
+    if (name === "text") {
+      return !(
+        (ts.isStringLiteral(value) ||
+          ts.isNoSubstitutionTemplateLiteral(value)) &&
+        value.text.trim() === ""
+      );
+    }
+    return !(
+      ts.isObjectLiteralExpression(value) && value.properties.length === 0
+    );
+  });
+
+  return meaningfulProperties.length === 0;
+}
+
+function collectReturnExpressions(node) {
+  const returns = [];
+  function visit(child) {
+    if (
+      child !== node &&
+      (ts.isFunctionDeclaration(child) ||
+        ts.isFunctionExpression(child) ||
+        ts.isArrowFunction(child) ||
+        ts.isMethodDeclaration(child) ||
+        ts.isClassDeclaration(child) ||
+        ts.isClassExpression(child))
+    ) {
+      return;
+    }
+    if (ts.isReturnStatement(child)) {
+      returns.push(child.expression ?? null);
+      return;
+    }
+    ts.forEachChild(child, visit);
+  }
+  visit(node);
+  return returns;
+}
+
 function isEmptyProvider(provider, sourceFile) {
-  const getSource = stripComments(
-    getProviderGetSource(provider.node, sourceFile),
-  );
-  if (!getSource) return false;
-  const compact = getSource.replace(/\s+/g, " ");
+  const implementation = getProviderGetImplementation(provider.node);
+  if (!implementation) return false;
+
+  if (ts.isArrowFunction(implementation) && !ts.isBlock(implementation.body)) {
+    return isEmptyProviderReturnExpression(implementation.body);
+  }
+
+  const body =
+    ts.isMethodDeclaration(implementation) ||
+    ts.isFunctionExpression(implementation) ||
+    ts.isArrowFunction(implementation)
+      ? implementation.body
+      : null;
+  if (!body) return false;
+  const returns = collectReturnExpressions(body);
   return (
-    /\breturn\s+(?:null|undefined|["'`]\s*["'`])\s*;?/.test(compact) ||
-    /\breturn\s*\(?\s*\{\s*(?:text\s*:\s*["'`]\s*["'`]\s*,?\s*)?(?:values\s*:\s*\{\s*\}\s*,?\s*)?(?:data\s*:\s*\{\s*\}\s*,?\s*)?\}\s*\)?\s*;?/.test(
-      compact,
-    ) ||
-    /=>\s*\(?\s*\{\s*(?:text\s*:\s*["'`]\s*["'`]\s*,?\s*)?(?:values\s*:\s*\{\s*\}\s*,?\s*)?(?:data\s*:\s*\{\s*\}\s*,?\s*)?\}\s*\)?/.test(
-      compact,
-    )
+    returns.length > 0 && returns.every(isEmptyProviderReturnExpression)
   );
 }
 
@@ -739,6 +832,18 @@ function hasAbstractModifier(node) {
     ts
       .getModifiers(node)
       ?.some((modifier) => modifier.kind === ts.SyntaxKind.AbstractKeyword),
+  );
+}
+
+function classExtendsRuntimeService(classNode) {
+  return Boolean(
+    classNode.heritageClauses?.some((clause) => {
+      if (clause.token !== ts.SyntaxKind.ExtendsKeyword) return false;
+      return clause.types.some((type) => {
+        const baseName = type.expression.getText();
+        return baseName === "Service" || baseName.endsWith(".Service");
+      });
+    }),
   );
 }
 
@@ -816,6 +921,13 @@ function isDelegatingWrapperObject(objectLiteral, sourceFile) {
     return false;
   }
   const text = objectLiteral.getText(sourceFile);
+  if (arrayContext === "services") {
+    const startProperty = getObjectProperty(objectLiteral, "start");
+    if (!startProperty) return false;
+    return /\b[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\.start\s*\(/.test(
+      startProperty.getText(sourceFile),
+    );
+  }
   return (
     /\bimport\s*\(/.test(text) &&
     /\b(?:handler|validate|get|start)\s*:/.test(text)
@@ -901,7 +1013,11 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
             node,
           );
         }
-      } else if (ts.isClassDeclaration(node) && !hasAbstractModifier(node)) {
+      } else if (
+        ts.isClassDeclaration(node) &&
+        !hasAbstractModifier(node) &&
+        classExtendsRuntimeService(node)
+      ) {
         for (const member of node.members) {
           if (
             ts.isPropertyDeclaration(member) &&
@@ -1032,7 +1148,7 @@ function addDuplicateIssues(issues, kind, records, valueField) {
         kind,
         line: first.line,
         locations,
-        message: `${kind} value "${value}" appears ${group.length} times`,
+        message: `${kind} value "${value}" appears ${filteredGroup.length} times`,
         name: kind === "service" ? undefined : value,
         rule,
         serviceType: kind === "service" ? value : undefined,
@@ -1247,11 +1363,43 @@ function loadAllowlist(allowlistPath) {
     return { entries: [] };
   }
   const parsed = JSON.parse(readText(allowlistPath));
-  if (Array.isArray(parsed)) return { entries: parsed };
+  if (Array.isArray(parsed)) {
+    validateAllowlistEntries(parsed, allowlistPath);
+    return { entries: parsed };
+  }
   if (!parsed || typeof parsed !== "object") {
     throw new Error(`Allowlist must be an object or array: ${allowlistPath}`);
   }
-  return { entries: Array.isArray(parsed.entries) ? parsed.entries : [] };
+  const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
+  validateAllowlistEntries(entries, allowlistPath);
+  return { entries };
+}
+
+function validateAllowlistEntries(entries, allowlistPath) {
+  entries.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(
+        `Allowlist entry ${index + 1} must be an object: ${allowlistPath}`,
+      );
+    }
+    if (typeof entry.reason !== "string" || entry.reason.trim() === "") {
+      throw new Error(
+        `Allowlist entry ${index + 1} must include a non-empty reason: ${allowlistPath}`,
+      );
+    }
+    if (
+      !entry.key &&
+      !entry.name &&
+      !entry.serviceType &&
+      !entry.file &&
+      !(Array.isArray(entry.files) && entry.files.length > 0) &&
+      !entry.match
+    ) {
+      throw new Error(
+        `Allowlist entry ${index + 1} must include a precise selector: ${allowlistPath}`,
+      );
+    }
+  });
 }
 
 function applyAllowlist(issues, allowlist) {
@@ -1298,6 +1446,13 @@ function shouldFail(issues, failOn) {
   if (failOn === "none") return false;
   const threshold = failOn === "warning" ? 1 : 2;
   return issues.some((issue) => severityRank(issue.severity) >= threshold);
+}
+
+function shouldFailAudit(result, failOn) {
+  return (
+    shouldFail(result.unsuppressedIssues, failOn) ||
+    (failOn !== "none" && result.unusedAllowlistEntries.length > 0)
+  );
 }
 
 function buildResult({
@@ -1584,6 +1739,39 @@ function runSelfCheck() {
       ),
       "allowlist should suppress duplicate action",
     );
+    fs.writeFileSync(
+      allowlistPath,
+      JSON.stringify(
+        {
+          version: 1,
+          entries: [
+            {
+              rule: "duplicate-action-name",
+              name: "DUPLICATE_ACTION",
+              reason: "self-check intentional duplicate",
+            },
+            {
+              rule: "duplicate-service-type",
+              serviceType: "unused-service",
+              reason: "self-check unused entry",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    const withUnusedAllowlist = runAudit({
+      allowlistPath,
+      failOn: "error",
+      includeTests: false,
+      repoRoot: root,
+      roots: ["packages", "plugins"],
+    });
+    assertSelfCheck(
+      shouldFailAudit(withUnusedAllowlist, "error"),
+      "unused allowlist entries should fail",
+    );
     console.log("[duplicate-component-audit] self-check ok");
   } finally {
     fs.rmSync(root, { force: true, recursive: true });
@@ -1603,7 +1791,7 @@ function main() {
       console.log(
         JSON.stringify(
           {
-            ok: !shouldFail(result.unsuppressedIssues, options.failOn),
+            ok: !shouldFailAudit(result, options.failOn),
             ...result,
           },
           null,
@@ -1613,7 +1801,7 @@ function main() {
     } else {
       printTextResult(result, options.maxIssues);
     }
-    if (shouldFail(result.unsuppressedIssues, options.failOn)) {
+    if (shouldFailAudit(result, options.failOn)) {
       process.exit(1);
     }
   } catch (error) {

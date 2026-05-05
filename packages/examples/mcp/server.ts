@@ -21,10 +21,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema,
-  type Tool,
-  type ListToolsResult,
   type CallToolResult,
+  ListToolsRequestSchema,
+  type ListToolsResult,
+  type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -144,7 +144,7 @@ async function handleChat(message: string, userId?: string): Promise<string> {
   // Process message and collect response
   let response = "";
 
-  await rt.messageService!.handleMessage(rt, messageMemory, async (content) => {
+  await rt.messageService?.handleMessage(rt, messageMemory, async (content) => {
     if (content?.text) {
       response += content.text;
     }
@@ -160,7 +160,7 @@ function getAgentInfo(): { name: string; bio: string; capabilities: string[] } {
     ? bio.join(" ")
     : (bio ?? "An AI assistant");
   return {
-    name: CHARACTER.name,
+    name: CHARACTER.name ?? "Eliza",
     bio: bioStr,
     capabilities: [
       "Natural language conversation",

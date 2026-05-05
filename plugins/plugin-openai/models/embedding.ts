@@ -71,6 +71,7 @@ export async function handleTextEmbedding(
 
   logger.debug(`[OpenAI] Generating embedding with model: ${embeddingModel}`);
 
+  // @trajectory-allow Embeddings return numeric retrieval vectors, not generative LLM text.
   const response = await fetch(url, {
     method: "POST",
     headers: {

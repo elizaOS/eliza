@@ -14,6 +14,42 @@ import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
 
 const SEARCH_EXPERIENCES = "SEARCH_EXPERIENCES";
 
+function getActionParams(
+	options: HandlerOptions | undefined,
+): Record<string, unknown> {
+	const direct =
+		options && typeof options === "object"
+			? (options as Record<string, unknown>)
+			: {};
+	const parameters =
+		direct.parameters && typeof direct.parameters === "object"
+			? (direct.parameters as Record<string, unknown>)
+			: {};
+	return { ...direct, ...parameters };
+}
+
+function readStringParam(
+	params: Record<string, unknown>,
+	...keys: string[]
+): string | undefined {
+	for (const key of keys) {
+		const value = params[key];
+		if (typeof value === "string" && value.trim()) {
+			return value.trim();
+		}
+	}
+	return undefined;
+}
+
+function readNumberParam(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return undefined;
+}
+
 export const searchExperiencesAction: Action = {
 	name: SEARCH_EXPERIENCES,
 	similes: [
@@ -24,6 +60,26 @@ export const searchExperiencesAction: Action = {
 	],
 	description:
 		"Search the agent's experience graph, return compact learnings, and provide follow-up actions for copying or chaining results.",
+	parameters: [
+		{
+			name: "query",
+			description: "Experience graph search query.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "limit",
+			description: "Maximum matching experiences to return.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1, maximum: 20, default: 7 },
+		},
+		{
+			name: "minConfidence",
+			description: "Minimum confidence threshold from 0 to 1.",
+			required: false,
+			schema: { type: "number" as const, minimum: 0, maximum: 1, default: 0.3 },
+		},
+	],
 	examples: [
 		[
 			{
@@ -55,6 +111,10 @@ export const searchExperiencesAction: Action = {
 		if (!runtime.getService("EXPERIENCE")) {
 			return false;
 		}
+		const params = getActionParams(_options);
+		if (readStringParam(params, "query", "q")) {
+			return true;
+		}
 		return (
 			/\b(experience|experiences|learned|learning|memory graph)\b/.test(text) &&
 			/\b(search|find|explore|what|show|recall|know)\b/.test(text)
@@ -78,17 +138,28 @@ export const searchExperiencesAction: Action = {
 			};
 		}
 
-		const query = extractExperienceSearchQuery(message);
+		const params = getActionParams(_options);
+		const query =
+			readStringParam(params, "query", "q") ??
+			extractExperienceSearchQuery(message);
+		const limit = Math.min(
+			20,
+			Math.max(1, Math.floor(readNumberParam(params.limit) ?? 7)),
+		);
+		const minConfidence = Math.min(
+			1,
+			Math.max(0, readNumberParam(params.minConfidence) ?? 0.3),
+		);
 		const experiences = await experienceService.queryExperiences({
 			query,
-			limit: 7,
-			minConfidence: 0.3,
+			limit,
+			minConfidence,
 			includeRelated: true,
 		});
 		const graph = await experienceService.getExperienceGraph({
 			query,
-			limit: 20,
-			minConfidence: 0.3,
+			limit: Math.max(20, limit),
+			minConfidence,
 			includeRelated: true,
 		});
 

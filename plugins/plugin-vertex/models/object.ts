@@ -1,5 +1,5 @@
 import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, recordLlmCall } from "@elizaos/core";
 import { generateObject, jsonSchema } from "ai";
 import { createModelForName, detectProvider } from "../providers";
 import { getSmallModel, getLargeModel } from "../utils/config";
@@ -23,21 +23,35 @@ async function generateObjectWithModel(
     `[Vertex:${provider}] Object generation using ${modelType}: ${modelName}`,
   );
 
-  const { object, usage } = await executeWithRetry(
-    `${modelType} object request`,
+  const temperature = params.temperature ?? 0.7;
+  const maxTokens = params.maxTokens ?? 8192;
+
+  const { object, usage } = await recordLlmCall(
+    runtime,
+    {
+      model: modelName,
+      systemPrompt: runtime.character.system ?? "",
+      userPrompt: params.prompt,
+      temperature,
+      maxTokens,
+      purpose: "external_llm",
+      actionType: "ai.generateObject",
+    },
     () =>
-      generateObject({
-        model,
-        messages: [{ role: "user" as const, content: params.prompt }],
-        system: runtime.character.system ?? undefined,
-        schema: jsonSchema(
-          (params.schema ?? { type: "object" }) as Parameters<
-            typeof jsonSchema
-          >[0],
-        ),
-        temperature: params.temperature ?? 0.7,
-        maxOutputTokens: params.maxTokens ?? 8192,
-      }),
+      executeWithRetry(`${modelType} object request`, () =>
+        generateObject({
+          model,
+          messages: [{ role: "user" as const, content: params.prompt }],
+          system: runtime.character.system ?? undefined,
+          schema: jsonSchema(
+            (params.schema ?? { type: "object" }) as Parameters<
+              typeof jsonSchema
+            >[0],
+          ),
+          temperature,
+          maxOutputTokens: maxTokens,
+        }),
+      ),
   );
   emitModelUsed(
     runtime,

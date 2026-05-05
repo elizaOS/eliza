@@ -209,6 +209,7 @@ registerPreset({
 	helpText: "Create an API key in the Anthropic console.",
 	async validate(credentials) {
 		try {
+			// @duplicate-component-audit-allow: credential probe validates the key; response content is ignored.
 			const response = await fetch("https://api.anthropic.com/v1/messages", {
 				method: "POST",
 				headers: {

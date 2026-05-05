@@ -1,9 +1,9 @@
-import { initializeAgent } from "./src/lib/agent.js";
-import { v4 } from "uuid";
+import fs from "node:fs";
+import path from "node:path";
 import { createMessageMemory } from "@elizaos/core";
-import fs from "fs";
-import path from "path";
 import dotenv from "dotenv";
+import { v4 } from "uuid";
+import { initializeAgent } from "./src/lib/agent.js";
 
 // Load environment variables from eliza/.env
 dotenv.config({ path: "../../eliza/.env" });

@@ -248,6 +248,7 @@ class ElizaBridgeSolanaExplorer:
         return reward, True, info
 
     async def run(self, env: "SurfpoolEnv") -> dict:
+        self._ensure_ready()
         logger.info(
             "[eliza-solana] explorer model=%s max=%d id=%s",
             self.model_name,

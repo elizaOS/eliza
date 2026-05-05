@@ -3,12 +3,12 @@ export function formatNumber(
   decimals: number = 2,
 ): string {
   const num = typeof value === "string" ? parseFloat(value) : value;
-  if (isNaN(num)) return "0";
+  if (Number.isNaN(num)) return "0";
 
   if (num >= 1_000_000) {
-    return (num / 1_000_000).toFixed(decimals) + "M";
+    return `${(num / 1_000_000).toFixed(decimals)}M`;
   } else if (num >= 1_000) {
-    return (num / 1_000).toFixed(decimals) + "K";
+    return `${(num / 1_000).toFixed(decimals)}K`;
   }
 
   return num.toFixed(decimals);
@@ -19,7 +19,7 @@ export function formatCurrency(
   currency: string = "USD",
 ): string {
   const num = typeof value === "string" ? parseFloat(value) : value;
-  if (isNaN(num)) return "$0.00";
+  if (Number.isNaN(num)) return "$0.00";
 
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -53,9 +53,9 @@ export function formatTimeAgo(timestamp: string | number): string {
 export function parseTokenAmount(amount: string, decimals: number): string {
   try {
     const num = parseFloat(amount);
-    if (isNaN(num)) return "0";
+    if (Number.isNaN(num)) return "0";
 
-    return (num * Math.pow(10, decimals)).toString();
+    return (num * 10 ** decimals).toString();
   } catch {
     return "0";
   }
@@ -64,9 +64,9 @@ export function parseTokenAmount(amount: string, decimals: number): string {
 export function formatTokenAmount(amount: string, decimals: number): string {
   try {
     const num = parseFloat(amount);
-    if (isNaN(num)) return "0";
+    if (Number.isNaN(num)) return "0";
 
-    return (num / Math.pow(10, decimals)).toFixed(decimals > 6 ? 6 : decimals);
+    return (num / 10 ** decimals).toFixed(decimals > 6 ? 6 : decimals);
   } catch {
     return "0";
   }
@@ -82,7 +82,12 @@ export function calculatePriceImpact(
     const output = parseFloat(outputAmount);
     const expected = parseFloat(expectedOutput);
 
-    if (isNaN(input) || isNaN(output) || isNaN(expected) || expected === 0) {
+    if (
+      Number.isNaN(input) ||
+      Number.isNaN(output) ||
+      Number.isNaN(expected) ||
+      expected === 0
+    ) {
       return "0";
     }
 

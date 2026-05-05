@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/plugin-localdb",
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "main": "./index.ts",
+  "module": "./index.ts",
+  "types": "./index.ts",
+  "browser": "./index.browser.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./index.ts",
+      "browser": {
+        "types": "./index.browser.ts",
+        "import": "./index.browser.ts",
+        "default": "./index.browser.ts"
+      },
+      "import": "./index.ts",
+      "default": "./index.ts"
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*"
+  }
+}

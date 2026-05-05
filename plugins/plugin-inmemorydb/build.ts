@@ -60,24 +60,18 @@ async function buildAll() {
 
     const rootIndexDtsPath = join(distDir, "index.d.ts");
     const rootAlias = [
-      'export * from "./node/index";',
-      'export { default } from "./node/index";',
+      'export * from "./browser/index";',
+      'export { default } from "./browser/index";',
       "",
     ].join("\n");
     await writeFile(rootIndexDtsPath, rootAlias, "utf8");
 
-    const browserIndexDtsPath = join(browserDir, "index.d.ts");
-    const browserAlias = [
-      'export * from "./index";',
-      'export { default } from "./index";',
+    const nodeIndexDtsPath = join(nodeDir, "index.d.ts");
+    const nodeAlias = [
+      'export * from "../browser/index";',
+      'export { default } from "../browser/index";',
       "",
     ].join("\n");
-    await writeFile(browserIndexDtsPath, browserAlias, "utf8");
-
-    const nodeIndexDtsPath = join(nodeDir, "index.d.ts");
-    const nodeAlias = ['export * from "./index";', 'export { default } from "./index";', ""].join(
-      "\n"
-    );
     await writeFile(nodeIndexDtsPath, nodeAlias, "utf8");
 
     return true;

@@ -1,6 +1,8 @@
 import type { AgentRuntime } from "@elizaos/core";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CodeTaskService = any;
+
 import {
   type AutocompleteItem,
   CombinedAutocompleteProvider,
@@ -14,6 +16,7 @@ import { TaskPane } from "./components/TaskPane.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { useStore } from "./lib/store.js";
+
 // handleTaskSlashCommand was removed with the legacy orchestrator service.
 // The /task slash command handler below is a stub until task management is rewired.
 async function handleTaskSlashCommand(
@@ -22,6 +25,7 @@ async function handleTaskSlashCommand(
 ): Promise<boolean> {
   return false;
 }
+
 import type { SubAgentType, TaskEvent } from "./types.js";
 
 function parseYesNo(text: string): "yes" | "no" | null {

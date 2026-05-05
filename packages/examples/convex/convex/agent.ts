@@ -9,21 +9,21 @@
  * user message and the agent response to Convex, and returns the result.
  */
 
-import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
-import { internal } from "./_generated/api";
 import {
   AgentRuntime,
   ChannelType,
+  type Character,
   createCharacter,
   createMessageMemory,
-  stringToUuid,
-  type Character,
   type Plugin,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
+import { v } from "convex/values";
 import { v4 as uuidv4 } from "uuid";
+import { internal } from "./_generated/api";
+import { internalAction } from "./_generated/server";
 
 // ============================================================================
 // LLM Provider Detection
@@ -86,9 +86,7 @@ async function loadLLMPlugin(): Promise<{
         if (plugin) {
           return { plugin, providerName: provider.name };
         }
-      } catch {
-        continue;
-      }
+      } catch {}
     }
   }
   return null;

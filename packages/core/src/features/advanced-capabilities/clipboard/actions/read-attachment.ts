@@ -157,6 +157,25 @@ async function answerAttachmentRequest(params: {
 	return text || params.content;
 }
 
+function getActionParams(
+	options: HandlerOptions | undefined,
+): Record<string, unknown> {
+	const direct =
+		options && typeof options === "object"
+			? (options as Record<string, unknown>)
+			: {};
+	const parameters =
+		direct.parameters && typeof direct.parameters === "object"
+			? (direct.parameters as Record<string, unknown>)
+			: {};
+	return { ...direct, ...parameters };
+}
+
+function readAttachmentId(params: Record<string, unknown>): string | null {
+	const value = params.attachmentId ?? params.id;
+	return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export const readAttachmentAction: Action = {
 	name: "READ_ATTACHMENT",
 	similes: [
@@ -170,7 +189,9 @@ export const readAttachmentAction: Action = {
 		"Read current or recent attachments and link previews using extracted text, transcripts, page content, or media descriptions. Set addToClipboard=true to keep the result in bounded task clipboard state.",
 	suppressPostActionContinuation: true,
 	validate: async (runtime, message) => {
+		const params = message.content as Record<string, unknown>;
 		const isAttachmentRequest =
+			readAttachmentId(params) !== null ||
 			typeof message.content.attachmentId === "string" ||
 			(message.content.attachments?.length ?? 0) > 0 ||
 			ATTACHMENT_REQUEST_PATTERN.test(String(message.content.text ?? ""));
@@ -189,13 +210,29 @@ export const readAttachmentAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		try {
+			const params = getActionParams(_options);
+			const messageWithParams: Memory = {
+				...message,
+				content: {
+					...message.content,
+					...params,
+				} as Memory["content"],
+			};
 			const explicitId =
-				typeof message.content.attachmentId === "string"
+				readAttachmentId(params) ??
+				(typeof message.content.attachmentId === "string"
 					? message.content.attachmentId.trim()
-					: null;
-			const records = await readAttachmentRecords(runtime, message, explicitId);
+					: null);
+			const records = await readAttachmentRecords(
+				runtime,
+				messageWithParams,
+				explicitId,
+			);
 			if (records.length === 0) {
-				const attachments = await listConversationAttachments(runtime, message);
+				const attachments = await listConversationAttachments(
+					runtime,
+					messageWithParams,
+				);
 				const fallback = attachments.length
 					? `Available attachments:\n${attachments.map(summarizeAttachment).join("\n\n")}`
 					: "No attachments are available in the current conversation window.";
@@ -217,7 +254,7 @@ export const readAttachmentAction: Action = {
 			const storedContent = hasContent ? contentForRecords(records) : "";
 			const clipboardResult = await maybeStoreTaskClipboardItem(
 				runtime,
-				message,
+				messageWithParams,
 				{
 					fallbackTitle:
 						records.length === 1
@@ -248,8 +285,8 @@ export const readAttachmentAction: Action = {
 				storedContent,
 			});
 			const messageText =
-				typeof message.content.text === "string"
-					? message.content.text.trim()
+				typeof messageWithParams.content.text === "string"
+					? messageWithParams.content.text.trim()
 					: "";
 			const visibleText =
 				hasContent &&
@@ -257,7 +294,7 @@ export const readAttachmentAction: Action = {
 				!shouldShowAttachmentRecord(messageText)
 					? await answerAttachmentRequest({
 							runtime,
-							message,
+							message: messageWithParams,
 							content: storedContent,
 						})
 					: !hasContent &&
@@ -270,7 +307,7 @@ export const readAttachmentAction: Action = {
 				await callback({
 					text: visibleText,
 					actions: ["READ_ATTACHMENT_SUCCESS"],
-					source: message.content.source,
+					source: messageWithParams.content.source,
 				});
 			}
 
@@ -308,6 +345,22 @@ export const readAttachmentAction: Action = {
 			};
 		}
 	},
+	parameters: [
+		{
+			name: "attachmentId",
+			description:
+				"Optional attachment ID to read. Omit to read current or recent attachments.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "addToClipboard",
+			description:
+				"When true, store the attachment content in bounded task clipboard state.",
+			required: false,
+			schema: { type: "boolean" as const, default: false },
+		},
+	],
 	examples: [],
 };
 

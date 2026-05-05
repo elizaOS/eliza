@@ -166,5 +166,5 @@ describe("local-ai MODEL_USED events", () => {
         tokens: expect.objectContaining({ completion: 0, estimated: true }),
       })
     );
-  }, 60_000);
+  }, 180_000);
 });

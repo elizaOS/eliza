@@ -98,11 +98,10 @@ export const pluginConfigScenarios: Scenario[] = [
         severity: "major",
         evaluate: (r: ScenarioOutcome): CheckVerdict => ({
           passed:
-            r.secretsInStorage["TWITTER_API_KEY"] === "tw-complete004-key" &&
-            r.secretsInStorage["TWITTER_API_SECRET"] ===
-              "tw-complete004-secret",
+            r.secretsInStorage.TWITTER_API_KEY === "tw-complete004-key" &&
+            r.secretsInStorage.TWITTER_API_SECRET === "tw-complete004-secret",
           expected: "Both TWITTER_API_KEY and TWITTER_API_SECRET stored",
-          actual: `KEY=${r.secretsInStorage["TWITTER_API_KEY"] ?? "missing"}, SECRET=${r.secretsInStorage["TWITTER_API_SECRET"] ?? "missing"}`,
+          actual: `KEY=${r.secretsInStorage.TWITTER_API_KEY ?? "missing"}, SECRET=${r.secretsInStorage.TWITTER_API_SECRET ?? "missing"}`,
         }),
       },
       checkPluginActivated("mock-social"),

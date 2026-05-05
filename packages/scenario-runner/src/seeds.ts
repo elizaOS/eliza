@@ -452,6 +452,7 @@ async function requireMockGmailMessage(
   baseUrl: string,
   messageId: string,
 ): Promise<string | undefined> {
+  // @duplicate-component-audit-allow: Gmail mock `/messages` fixture lookup, not model generation.
   const response = await fetch(
     `${baseUrl}/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
   );

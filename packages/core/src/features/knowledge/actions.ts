@@ -308,6 +308,20 @@ export const searchKnowledgeAction: Action = {
 	name: "SEARCH_KNOWLEDGE",
 	description: "Search the knowledge base for specific information",
 	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "query",
+			description: "Knowledge base search query.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "limit",
+			description: "Maximum number of matching knowledge items to include.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1, maximum: 20, default: 3 },
+		},
+	],
 
 	similes: [
 		"search knowledge",
@@ -348,6 +362,15 @@ export const searchKnowledgeAction: Action = {
 			_state?: State,
 			_options?: unknown,
 		) => {
+			const params =
+				_options && typeof _options === "object"
+					? ((_options as Record<string, unknown>).parameters as
+							| Record<string, unknown>
+							| undefined)
+					: undefined;
+			if (typeof params?.query === "string" && params.query.trim()) {
+				return Boolean(runtime.getService(KnowledgeService.serviceType));
+			}
 			const text = message.content.text ?? "";
 			const hasSearchKeyword =
 				findKeywordTermMatch(text, SEARCH_KNOWLEDGE_TERMS) !== undefined;

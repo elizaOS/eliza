@@ -2,7 +2,7 @@
 //  SafariWebExtensionHandler.swift
 //  Shared (Extension)
 //
-//  Created by Shaw Walters on 2/6/26.
+//  Created by Shaw Walters on 5/5/26.
 //
 
 import SafariServices

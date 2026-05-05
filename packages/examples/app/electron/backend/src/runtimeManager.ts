@@ -256,7 +256,7 @@ export async function resetConversation(
   dataDir: string,
 ): Promise<void> {
   const bundle = await getOrCreateRuntime(config, dataDir);
-  await bundle.runtime.deleteAllMemories(bundle.roomId, "messages");
+  await bundle.runtime.deleteAllMemories([bundle.roomId], "messages");
 }
 
 export async function sendMessage(

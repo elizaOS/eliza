@@ -80,7 +80,7 @@ export function retargetMixamoGltfToVrm(
       rawRigName,
       normalizedRigName,
     );
-    if (!mixamoRigNode || !mixamoRigNode.parent) continue;
+    if (!mixamoRigNode?.parent) continue;
 
     mixamoRigNode.getWorldQuaternion(restRotationInverse).invert();
     mixamoRigNode.parent.getWorldQuaternion(parentRestWorldRotation);

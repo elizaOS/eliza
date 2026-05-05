@@ -134,7 +134,7 @@ async function saveConfig(): Promise<void> {
 // UI Updates
 // ============================================
 
-function updateStatus(mode: ProviderMode, ready: boolean): void {
+function updateStatus(_mode: ProviderMode, ready: boolean): void {
   const effectiveMode = getEffectiveMode(config);
   const label = getModeLabel(effectiveMode);
 

@@ -13,8 +13,9 @@ export type ChannelExecutionProfile =
   | "group_compact"
   | "default_full";
 
-function resolveChannelProfile(message: Memory): ChannelExecutionProfile {
-  const content = message.content as Record<string, unknown> | undefined;
+function resolveChannelProfile(
+  content: Record<string, unknown> | undefined,
+): ChannelExecutionProfile {
   const channelType = content?.channelType;
   const conversationMode =
     typeof content?.conversationMode === "string"
@@ -35,76 +36,33 @@ function resolveChannelProfile(message: Memory): ChannelExecutionProfile {
   return "default_full";
 }
 
+function compactContextForProfile(profile: ChannelExecutionProfile): boolean {
+  return profile !== "default_full";
+}
+
 export function createChannelProfileProvider(): Provider {
   return {
     name: "elizaChannelProfile",
-    description:
-      "Injects channel-derived execution profile guidance (voice/group/default).",
+    description: "Reports channel-derived execution profile state.",
     position: -50,
     async get(
       _runtime: IAgentRuntime,
       message: Memory,
       _state: State,
     ): Promise<ProviderResult> {
-      const profile = resolveChannelProfile(message);
-
-      if (profile === "voice_fast") {
-        return {
-          text: [
-            "Execution profile: VOICE_FAST.",
-            "Prioritize low latency and conversational flow.",
-            "Keep tool/provider usage minimal and avoid unnecessary context expansion.",
-          ].join(" "),
-          values: {
-            executionProfile: "voice_fast",
-            compactContext: true,
-          },
-          data: {
-            profile: "voice_fast",
-          },
-        };
-      }
-
-      if (profile === "text_fast") {
-        return {
-          text: [
-            "Execution profile: TEXT_FAST.",
-            "Prioritize low latency for the current chat turn.",
-            "Keep tool/provider usage minimal and avoid unnecessary context expansion.",
-          ].join(" "),
-          values: {
-            executionProfile: "text_fast",
-            compactContext: true,
-          },
-          data: {
-            profile: "text_fast",
-          },
-        };
-      }
-
-      if (profile === "group_compact") {
-        return {
-          text: [
-            "Execution profile: GROUP_COMPACT.",
-            "Keep responses concise and context usage focused on the active group thread.",
-          ].join(" "),
-          values: {
-            executionProfile: "group_compact",
-            compactContext: true,
-          },
-          data: {
-            profile: "group_compact",
-          },
-        };
-      }
+      const content = message.content as Record<string, unknown> | undefined;
+      const profile = resolveChannelProfile(content);
+      const compactContext = compactContextForProfile(profile);
 
       return {
+        text: `channel_profile: profile=${profile} compact_context=${compactContext}`,
         values: {
-          executionProfile: "default_full",
-          compactContext: false,
+          executionProfile: profile,
+          compactContext,
         },
         data: {
-          profile: "default_full",
+          profile,
+          compactContext,
         },
       };
     },

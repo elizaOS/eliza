@@ -5,7 +5,6 @@ import { loadConfig, saveConfig } from "./storage";
 import {
   type AppConfig,
   type ChatMessage,
-  DEFAULT_CONFIG,
   getModeLabel,
   type ProviderMode,
 } from "./types";

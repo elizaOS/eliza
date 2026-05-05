@@ -13,8 +13,15 @@
     "noEmit": true,
     "declaration": false,
     "outDir": "./dist",
+    "rootDir": "../../../../",
     "paths": {
-      "@elizaos/*": ["../../../packages/*", "../../../plugins/*"]
+      "@elizaos/plugin-inmemorydb": [
+        "../../../../plugins/plugin-inmemorydb/dist/browser/index.d.ts"
+      ],
+      "@elizaos/plugin-localdb": [
+        "../../../../plugins/plugin-localdb/index.browser.ts"
+      ],
+      "@elizaos/*": ["../../../../packages/*", "../../../../plugins/*"]
     },
     "types": ["chrome"]
   },

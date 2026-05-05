@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { ChatMessage } from "../types";
 
@@ -30,17 +31,16 @@ export function ElizaChat() {
     ]);
   }, []);
 
-  useEffect(() => {
-    // Scroll to bottom when new messages arrive
-    scrollToBottom();
-  }, [messages]);
-
-  function scrollToBottom() {
+  const scrollToBottom = useCallback(() => {
     const el = messagesEndRef.current;
     if (el && typeof el.scrollIntoView === "function") {
       el.scrollIntoView({ behavior: "smooth" });
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   async function handleSend() {
     if (!inputMessage.trim() || loading) return;
@@ -136,11 +136,12 @@ export function ElizaChat() {
               {message.suggestions && message.suggestions.length > 0 && (
                 <div className="message-suggestions">
                   <div className="suggestions-label">Suggested actions:</div>
-                  {message.suggestions.map((suggestion, idx) => (
+                  {message.suggestions.map((suggestion) => (
                     <button
-                      key={idx}
+                      key={`${message.id}-${suggestion}`}
                       className="suggestion-chip"
                       onClick={() => handleSuggestionClick(suggestion)}
+                      type="button"
                     >
                       {suggestion}
                     </button>
@@ -180,6 +181,7 @@ export function ElizaChat() {
           className="btn-send"
           onClick={handleSend}
           disabled={!inputMessage.trim() || loading}
+          type="button"
         >
           {loading ? "⏳" : "➤"}
         </button>

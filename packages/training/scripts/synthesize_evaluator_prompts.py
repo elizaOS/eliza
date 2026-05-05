@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.eliza_record import build, stable_id  # noqa: E402
-from lib.toon import ToonEncoder  # noqa: E402
+from lib.toon import ToonDecoder, ToonEncoder  # noqa: E402
 
 OUT_DIR = ROOT / "data" / "synthesized" / "evaluators"
 
@@ -206,37 +206,67 @@ def strip_fences(s: str) -> str:
     s = s.strip()
     if s.startswith("```"):
         s = re.sub(r"^```(?:toon|json)?\s*\n?|\n?```$", "", s, flags=re.S)
-    return s.strip()
+    s = s.strip()
+    lines = s.splitlines()
+    while lines and lines[0].strip().lower() in (
+        "toon", "toon:", "json", "json:", "output", "output:",
+    ):
+        lines.pop(0)
+    return "\n".join(lines).strip()
+
+
+def _maybe_json_payload(s: str) -> str:
+    """Parse `s` as JSON and re-encode as TOON if it looks like JSON.
+    fact_extractor speaks JSON natively so we leave it alone there;
+    callers must opt out by skipping this helper for JSON-output tasks."""
+    t = s.strip()
+    if not (t.startswith("{") and t.endswith("}")):
+        return s
+    try:
+        obj = json.loads(t)
+    except json.JSONDecodeError:
+        return s
+    try:
+        return ToonEncoder().encode(obj)
+    except Exception:  # noqa: BLE001
+        return s
+
+
+_INDEXED_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*)\[(\d+)\]\s*:\s*(.+)$")
 
 
 def repair_toon_bullets(s: str) -> str:
-    """Convert markdown-bullet style values into TOON-array form.
+    """Two repair passes for common gpt-oss-120b TOON deviations.
 
-    gpt-oss-120b (and other instruction-tuned models) often emit:
-
-        strengths:
-        - Clear tone.
-        - Prompt response.
-
-    Which TOON cannot parse — `strengths:` has no value and the bullets
-    look like new keys. Convert into TOON array form:
-
-        strengths[2]:
-          - Clear tone.
-          - Prompt response.
-
-    Idempotent on already-TOON output. Conservative: only transforms a
-    `key:` line followed by ≥1 line starting with `- ` (after the
-    bullets, the value resumes once we hit a non-bullet line)."""
+    Pass 1: collapse `key[0]: a / key[1]: b / ...` into `key[N]:\n  - a\n  - b`.
+    Pass 2: convert markdown bullets (`key:\n- a\n- b`) into TOON array form.
+    Idempotent on already-valid TOON."""
     lines = s.splitlines()
     out: list[str] = []
     i = 0
     while i < len(lines):
         line = lines[i]
-        m = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*$", line)
-        if m:
-            # Look ahead for one or more `- item` lines (allow a blank line
-            # between the key and the bullets).
+        m_idx = _INDEXED_RE.match(line)
+        if m_idx and m_idx.group(2) == "0":
+            key = m_idx.group(1)
+            items = [m_idx.group(3).strip()]
+            k = i + 1
+            expected = 1
+            while k < len(lines):
+                m2 = _INDEXED_RE.match(lines[k])
+                if not m2 or m2.group(1) != key or m2.group(2) != str(expected):
+                    break
+                items.append(m2.group(3).strip())
+                expected += 1
+                k += 1
+            if len(items) >= 2:
+                out.append(f"{key}[{len(items)}]:")
+                for v in items:
+                    out.append(f"  - {v}")
+                i = k
+                continue
+        m_bare = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*$", line)
+        if m_bare:
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
@@ -246,7 +276,7 @@ def repair_toon_bullets(s: str) -> str:
                 bullets.append(lines[k].lstrip()[2:].strip())
                 k += 1
             if bullets:
-                key = m.group(1)
+                key = m_bare.group(1)
                 out.append(f"{key}[{len(bullets)}]:")
                 for b in bullets:
                     out.append(f"  - {b}")
@@ -257,10 +287,23 @@ def repair_toon_bullets(s: str) -> str:
     return "\n".join(out)
 
 
-def normalize_teacher_output(s: str) -> str:
-    """Strip fences + apply known repair passes. Used by every evaluator
-    branch in synthesize() so a single fix lands everywhere."""
-    return repair_toon_bullets(strip_fences(s))
+def normalize_teacher_output(s: str, *, allow_json: bool = False) -> str:
+    """Strip fences + transcode JSON→TOON (unless `allow_json`) + repair
+    passes + round-trip canonicalize through the TOON decoder/encoder.
+
+    `allow_json=True` is for fact_extractor whose canonical output is
+    JSON, not TOON — we only want fence-stripping there."""
+    cleaned = strip_fences(s)
+    if allow_json:
+        return cleaned
+    cleaned = repair_toon_bullets(_maybe_json_payload(cleaned))
+    try:
+        decoded = ToonDecoder().decode(cleaned)
+        if isinstance(decoded, (dict, list)):
+            return ToonEncoder().encode(decoded)
+    except Exception:  # noqa: BLE001
+        pass
+    return cleaned
 
 
 # ───────────────────────── shared diversity pools ─────────────────────────
@@ -400,10 +443,19 @@ Analyze the agent's recent behavior and interactions. Consider:
 
 Respond using TOON like this:
 thought: Your detailed analysis
-quality_score: Score 0-100 for overall quality
-strengths: What went well
-improvements: What could be improved
-learnings: Key takeaways for future interactions
+quality_score: <integer 0-100, e.g. 78 — NEVER spell the number out as "seventy-eight">
+strengths[N]:
+  - first strength
+  - second strength
+improvements[N]:
+  - first improvement
+learnings[N]:
+  - first takeaway
+
+`quality_score` MUST be a bare integer. Do NOT write "78/100", "78%",
+"seventy-eight", or wrap it in quotes. Strengths/improvements/learnings
+MUST be a TOON array of one-line strings — never markdown bullets,
+never sub-keyed objects.
 
 IMPORTANT: Your response must ONLY contain the TOON document above."""
 
@@ -457,15 +509,36 @@ You maintain a two-store fact memory for an AI assistant. For each message you d
 
 ## STRICT op vocabulary (these are the ONLY accepted op values)
 
-- `add_durable`     — for stable identity-level claims (where someone lives, allergies, founded a company, life events)
-- `add_current`     — for time-bound state (anxious today, debugging X, working on Y, traveling next week)
-- `strengthen`      — when a known fact is restated; include `factId`
+- `add_durable`     — for stable identity-level claims. ALWAYS include
+                      `claim`, `category`, AND `structured_fields` (object).
+                      Optional: `verification_status`, `reason`.
+- `add_current`     — for time-bound state. ALWAYS include `claim`,
+                      `category`, AND `structured_fields` (object).
+                      Optional: `valid_at` (ISO timestamp), `reason`.
+- `strengthen`      — when a known fact is restated; include `factId` and
+                      `reason`.
 - `decay`           — when a current fact looks resolved; include `factId`
-- `contradict`      — when a fact is directly contradicted; include `factId` and `proposedText`
+                      and `reason`.
+- `contradict`      — when a fact is directly contradicted; include
+                      `factId`, `proposedText`, `reason`.
 
 DO NOT emit `op: insert`, `op: add`, `op: update`, or any value not in the
 list above. Use `add_durable` for durable claims and `add_current` for
-time-bound state — never the bare `add` or `insert`.
+time-bound state — never the bare `add` or `insert`. Every `add_*` op
+MUST include `structured_fields` even when sparse — `{}` is not valid;
+include at least one structured key the claim is about.
+
+WRONG (rejected):
+  {"ops":[{"op":"insert","category":"current.feeling","claim":"anxious"}]}
+  {"ops":[{"op":"add_current","category":"feeling","claim":"anxious"}]}   ← missing structured_fields
+  {"ops":[{"insert":{"category":"current.task","value":"debugging"}}]}
+
+RIGHT:
+  {"ops":[{"op":"add_current","claim":"anxious this morning","category":"feeling","structured_fields":{"emotion":"anxious","window":"morning"}}]}
+  {"ops":[{"op":"add_durable","claim":"peanut allergy","category":"allergy","structured_fields":{"allergen":"peanuts"}}]}
+  {"ops":[{"op":"add_durable","claim":"founded Acme Corp in 2024","category":"life_event","structured_fields":{"event":"founded company","company":"Acme Corp","year":2024}}]}
+  {"ops":[{"op":"strengthen","factId":"fact_xyz","reason":"user reaffirmed in this message"}]}
+  {"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"moved from Berlin"}]}
 
 (see eliza/packages/core/src/prompts.ts:752 for the full description; the
 inputs below replicate the runtime substitution.)
@@ -518,7 +591,19 @@ Also extract:
 ## STRICT TOON output
 
 Each `topics[N]` and `keyPoints[N]` entry MUST be a single flat string —
-never an indented sub-object with sub-keys. Do not use markdown bullets.
+NEVER an indented sub-object with sub-keys. Do not use markdown bullets.
+
+Wrong (rejected — keyPoints item with sub-keys):
+  keyPoints[2]:
+    - topic: career
+      detail: promoted to manager
+    - topic: family
+      detail: peanut allergy
+
+Right (one flat string per item):
+  keyPoints[2]:
+    - Promoted to engineering manager at Stripe.
+    - Peanut allergy and long-term vegan diet.
 
 Use the EXACT layout below (replace placeholders, keep the array form):
 
@@ -988,7 +1073,7 @@ def _generate_one(
                 "object `{\"ops\":[...]}`. Empty `{\"ops\":[]}` is a "
                 "valid (and common) answer when there are no new facts.",
                 rendered,
-            ))
+            ), allow_json=True)
         if not validate_fact_extractor(target_text):
             return None
         if force_empty and not is_empty_fact_extractor(target_text):
@@ -1037,6 +1122,15 @@ def _generate_one(
             return None
     else:
         raise ValueError(f"unknown evaluator: {name}")
+
+    # fact_extractor speaks JSON, not TOON. Everything else must round-trip
+    # through the TOON decoder — drop now if it doesn't, since synth-time
+    # validators are regex-only and let nested objects through.
+    if name != "fact_extractor":
+        try:
+            ToonDecoder().decode(target_text)
+        except (ValueError, RuntimeError):
+            return None
 
     memory = to_memory_entries(speaker, agent, seeds[:-1] if seeds else [])
     current = (

@@ -17,6 +17,8 @@ import {
   createMockService,
   createMockState,
   createTestMemory,
+  type DexScreenerFullMockMethods,
+  type DexScreenerFullMockService,
   describe,
   expect,
   it,
@@ -25,11 +27,11 @@ import {
 
 describe("DexScreener Actions - Full Coverage", () => {
   let mockRuntime: IAgentRuntime;
-  let mockService: any;
+  let mockService: DexScreenerFullMockService;
 
   beforeEach(() => {
     // Create mock service with all methods
-    mockService = createMockService({
+    mockService = createMockService<DexScreenerFullMockMethods>({
       search: mock(),
       getTokenPairs: mock(),
       getTrending: mock(),
@@ -620,9 +622,10 @@ describe("DexScreener Actions - Full Coverage", () => {
       actions.forEach((action) => {
         expect(action.examples).toBeDefined();
         expect(action.examples.length).toBeGreaterThan(0);
-        action.examples.forEach((example: any) => {
+        action.examples.forEach((example: unknown) => {
           expect(Array.isArray(example)).toBe(true);
-          example.forEach((item: any) => {
+          if (!Array.isArray(example)) return;
+          example.forEach((item: unknown) => {
             expect(item).toHaveProperty("name");
             expect(item).toHaveProperty("content");
           });

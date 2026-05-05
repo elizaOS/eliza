@@ -1,9 +1,8 @@
-import {
-  type AgentResponse,
-  type GauntletAgent,
-  type ScenarioContext,
-  type Task,
-  TaskType,
+import type {
+  AgentResponse,
+  GauntletAgent,
+  ScenarioContext,
+  Task,
 } from "../src";
 
 /**

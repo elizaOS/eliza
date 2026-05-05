@@ -46,10 +46,10 @@ export type MockRuntime = Partial<IAgentRuntime> & {
   setParticipantUserState: Mock;
   emitEvent: Mock;
   getTasks: Mock;
-  providers: any[];
-  actions: any[];
-  evaluators: any[];
-  services: any[];
+  providers: unknown[];
+  actions: unknown[];
+  evaluators: unknown[];
+  services: unknown[];
   getService: Mock;
 };
 
@@ -106,7 +106,13 @@ export function createMockRuntime(
     emitEvent: mock().mockResolvedValue(undefined),
     getTasks: mock().mockResolvedValue([]),
     getService: mock().mockImplementation((name: string) =>
-      overrides.services?.find((s: any) => s.serviceType === name),
+      overrides.services?.find(
+        (s: unknown) =>
+          typeof s === "object" &&
+          s !== null &&
+          "serviceType" in s &&
+          (s as { serviceType?: string }).serviceType === name,
+      ),
     ),
     providers: [],
     actions: [],
@@ -155,11 +161,11 @@ export function createMockState(overrides: Partial<State> = {}): State {
 // Create Mock Handler Callback
 export function createMockCallback(): HandlerCallback {
   const fn = mock();
-  fn.mockImplementation((response: any) => {
+  fn.mockImplementation((response: unknown) => {
     // Log for debugging
     console.log("Mock callback called with:", response);
   });
-  return fn as any;
+  return fn as HandlerCallback;
 }
 
 // Helper to wait for async operations
@@ -167,9 +173,55 @@ export async function waitForAsync(ms: number = 0): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Method bundle for trading/search DexScreener action tests */
+export type DexScreenerTradeMockMethods = {
+  search: Mock;
+  getTokenPairs: Mock;
+  getTrending: Mock;
+  getNewPairs: Mock;
+  getPairsByChain: Mock;
+  formatPrice: (price: string) => string;
+  formatPriceChange: (change: number) => string;
+  formatUsdValue: (value: number) => string;
+};
+
+/** Method bundle for boosted-token / profile coverage tests */
+export type DexScreenerBoostMockMethods = {
+  getTopBoostedTokens: Mock;
+  getLatestBoostedTokens: Mock;
+  getLatestTokenProfiles: Mock;
+  formatPrice: (price: string) => string;
+  formatPriceChange: (change: number) => string;
+  formatUsdValue: (value: number) => string;
+};
+
+export type DexScreenerTradeMockService = {
+  serviceType: string;
+  capabilityDescription: string;
+} & DexScreenerTradeMockMethods;
+
+export type DexScreenerBoostMockService = {
+  serviceType: string;
+  capabilityDescription: string;
+} & DexScreenerBoostMockMethods;
+
+/** Trading + boosted-token mocks used by full-coverage tests */
+export type DexScreenerFullMockMethods = DexScreenerTradeMockMethods & {
+  getTopBoostedTokens: Mock;
+  getLatestBoostedTokens: Mock;
+  getLatestTokenProfiles: Mock;
+};
+
+export type DexScreenerFullMockService = {
+  serviceType: string;
+  capabilityDescription: string;
+} & DexScreenerFullMockMethods;
+
 // Mock Service Helper
-export function createMockService(serviceMethods: Record<string, any>): any {
-  const service: any = {
+export function createMockService<M extends Record<string, unknown>>(
+  serviceMethods: M,
+): { serviceType: string; capabilityDescription: string } & M {
+  const service: Record<string, unknown> = {
     serviceType: "dexscreener",
     capabilityDescription: "Mock DexScreener service",
   };
@@ -181,7 +233,7 @@ export function createMockService(serviceMethods: Record<string, any>): any {
         : mock().mockResolvedValue(implementation);
   });
 
-  return service;
+  return service as { serviceType: string; capabilityDescription: string } & M;
 }
 
 // Cleanup Helper

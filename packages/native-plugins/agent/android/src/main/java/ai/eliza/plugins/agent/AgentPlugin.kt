@@ -25,6 +25,50 @@ private const val MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024
 @CapacitorPlugin(name = "Agent")
 class AgentPlugin : Plugin() {
     @PluginMethod
+    fun start(call: PluginCall) {
+        try {
+            invokeAgentService("start")
+            call.resolve(agentStatus("starting", null))
+        } catch (error: Exception) {
+            call.reject(error.message ?: "Failed to start local agent")
+        }
+    }
+
+    @PluginMethod
+    fun stop(call: PluginCall) {
+        try {
+            invokeAgentService("stop")
+            call.resolve(JSObject().apply {
+                put("ok", true)
+            })
+        } catch (error: Exception) {
+            call.reject(error.message ?: "Failed to stop local agent")
+        }
+    }
+
+    @PluginMethod
+    fun getStatus(call: PluginCall) {
+        val token = readLocalAgentToken()
+        if (token == null) {
+            call.resolve(agentStatus("not_started", null))
+            return
+        }
+
+        Thread {
+            try {
+                val result = forwardLocalRequest("/api/status", "GET", JSObject(), null, 1_500, token)
+                val json = JSONObject(result.getString("body") ?: "{}")
+                call.resolve(agentStatus(
+                    json.optString("state", "running"),
+                    json.optString("error").takeIf { it.isNotBlank() },
+                ))
+            } catch (error: Exception) {
+                call.resolve(agentStatus("error", error.message ?: "Local agent status unavailable"))
+            }
+        }.start()
+    }
+
+    @PluginMethod
     fun getLocalAgentToken(call: PluginCall) {
         val token = readLocalAgentToken()
         call.resolve(JSObject().apply {
@@ -60,6 +104,22 @@ class AgentPlugin : Plugin() {
                 call.reject(error.message ?: "Local agent request failed")
             }
         }.start()
+    }
+
+    private fun agentStatus(state: String, error: String?): JSObject {
+        return JSObject().apply {
+            put("state", state)
+            put("agentName", JSONObject.NULL)
+            put("port", if (state == "not_started") JSONObject.NULL else 31337)
+            put("startedAt", JSONObject.NULL)
+            put("error", error ?: JSONObject.NULL)
+        }
+    }
+
+    private fun invokeAgentService(methodName: String) {
+        val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
+        val method = serviceClass.getMethod(methodName, android.content.Context::class.java)
+        method.invoke(null, context)
     }
 
     private fun readLocalAgentToken(): String? {

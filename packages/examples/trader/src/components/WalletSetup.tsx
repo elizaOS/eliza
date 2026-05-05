@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 
 interface WalletSetupProps {
   walletAddress: string | null;
@@ -43,6 +44,7 @@ export function WalletSetup({
           <button
             className="btn btn-secondary"
             onClick={() => setShowForm(!showForm)}
+            type="button"
           >
             {showForm ? "Cancel" : "Edit"}
           </button>
@@ -52,7 +54,7 @@ export function WalletSetup({
       {isConfigured && !showForm && walletAddress && (
         <div>
           <div className="form-group">
-            <label className="form-label">Connected Wallet</label>
+            <div className="form-label">Connected Wallet</div>
             <div className="wallet-address">{walletAddress}</div>
           </div>
           <div className="stats-grid">
@@ -78,8 +80,11 @@ export function WalletSetup({
           </div>
 
           <div className="form-group">
-            <label className="form-label">Solana Private Key (Base58)</label>
+            <label className="form-label" htmlFor="solana-private-key">
+              Solana Private Key (Base58)
+            </label>
             <input
+              id="solana-private-key"
               type="password"
               className="form-input"
               placeholder="Enter your private key..."
@@ -90,8 +95,11 @@ export function WalletSetup({
           </div>
 
           <div className="form-group">
-            <label className="form-label">RPC URL</label>
+            <label className="form-label" htmlFor="solana-rpc-url">
+              RPC URL
+            </label>
             <input
+              id="solana-rpc-url"
               type="url"
               className="form-input"
               placeholder="https://api.mainnet-beta.solana.com"
@@ -101,8 +109,11 @@ export function WalletSetup({
           </div>
 
           <div className="form-group">
-            <label className="form-label">Birdeye API Key</label>
+            <label className="form-label" htmlFor="birdeye-api-key">
+              Birdeye API Key
+            </label>
             <input
+              id="birdeye-api-key"
               type="password"
               className="form-input"
               placeholder="Enter Birdeye API key..."
@@ -113,10 +124,11 @@ export function WalletSetup({
           </div>
 
           <div className="form-group">
-            <label className="form-label">
+            <label className="form-label" htmlFor="anthropic-api-key">
               Anthropic API Key (for LLM strategy)
             </label>
             <input
+              id="anthropic-api-key"
               type="password"
               className="form-input"
               placeholder="Enter Anthropic API key..."

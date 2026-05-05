@@ -7,11 +7,14 @@
     "start": "bun run game.ts",
     "dev": "bun run game.ts --fast --stats",
     "fast": "bun run game.ts --fast",
-    "stats": "bun run game.ts --stats"
+    "stats": "bun run game.ts --stats",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "beta",
-    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
     "@clack/prompts": "^0.11.0"
   },
   "devDependencies": {

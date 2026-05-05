@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
 	type Action,
+	type ContentValue,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -54,6 +55,69 @@ function resolveFilePath(
 
 function hasReadFilePath(obj: Record<string, unknown>): boolean {
 	return typeof obj.filePath === "string" && obj.filePath.trim().length > 0;
+}
+
+function getActionParams(
+	options: HandlerOptions | undefined,
+): Record<string, unknown> {
+	const direct =
+		options && typeof options === "object"
+			? (options as Record<string, unknown>)
+			: {};
+	const parameters =
+		direct.parameters && typeof direct.parameters === "object"
+			? (direct.parameters as Record<string, unknown>)
+			: {};
+	return { ...direct, ...parameters };
+}
+
+function readNumberParam(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return undefined;
+}
+
+function explicitReadFileInput(
+	params: Record<string, unknown>,
+): Partial<ReadFileInput> | undefined {
+	const filePath =
+		typeof params.filePath === "string" && params.filePath.trim()
+			? params.filePath.trim()
+			: typeof params.path === "string" && params.path.trim()
+				? params.path.trim()
+				: "";
+	if (!filePath) return undefined;
+	return {
+		filePath,
+		from: readNumberParam(params.from),
+		lines: readNumberParam(params.lines),
+	};
+}
+
+function readClipboardContentOverrides(
+	params: Record<string, unknown>,
+): Partial<Memory["content"]> {
+	const overrides: Record<string, ContentValue> = {};
+	for (const key of [
+		"addToClipboard",
+		"persistToClipboard",
+		"saveToClipboard",
+		"clipboardTitle",
+		"title",
+	]) {
+		const value = params[key];
+		if (
+			typeof value === "string" ||
+			typeof value === "boolean" ||
+			typeof value === "number"
+		) {
+			overrides[key] = value;
+		}
+	}
+	return overrides as Partial<Memory["content"]>;
 }
 
 async function extractReadFileInput(
@@ -185,7 +249,15 @@ export const readFileAction: Action = {
 	description:
 		"Read a local text file for the current task. Returns the file content so the agent can reference it. Set addToClipboard=true to keep the read result in bounded task clipboard state.",
 	suppressPostActionContinuation: true,
-	validate: async (_runtime, message) => {
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		_state?: State,
+	): Promise<boolean> => {
+		const params = message.content as Record<string, unknown>;
+		if (explicitReadFileInput(params)) {
+			return true;
+		}
 		if (
 			typeof message.content.filePath === "string" ||
 			typeof message.content.path === "string"
@@ -205,10 +277,23 @@ export const readFileAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		try {
-			const result = await readFileFromActionInput(runtime, message, state);
+			const params = getActionParams(_options);
+			const messageWithParams: Memory = {
+				...message,
+				content: {
+					...message.content,
+					...readClipboardContentOverrides(params),
+				},
+			};
+			const result = await readFileFromActionInput(
+				runtime,
+				messageWithParams,
+				state,
+				explicitReadFileInput(params),
+			);
 			const clipboardResult = await maybeStoreTaskClipboardItem(
 				runtime,
-				message,
+				messageWithParams,
 				{
 					fallbackTitle: path.basename(result.filePath),
 					content: result.content,
@@ -279,6 +364,34 @@ export const readFileAction: Action = {
 			};
 		}
 	},
+	parameters: [
+		{
+			name: "filePath",
+			description:
+				"Absolute or workspace-relative path to the text file to read.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "from",
+			description: "1-based starting line number.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1 },
+		},
+		{
+			name: "lines",
+			description: "Maximum number of lines to read.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1 },
+		},
+		{
+			name: "addToClipboard",
+			description:
+				"When true, store the read content in bounded task clipboard state.",
+			required: false,
+			schema: { type: "boolean" as const, default: false },
+		},
+	],
 	examples: [],
 };
 

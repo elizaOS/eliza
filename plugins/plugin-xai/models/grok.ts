@@ -8,6 +8,7 @@ import {
   ModelType,
   type TextEmbeddingParams,
   type TextStreamResult,
+  recordLlmCall,
 } from "@elizaos/core";
 
 const XAI_API_BASE = "https://api.x.ai/v1";
@@ -253,91 +254,120 @@ async function generateText(
 
   if (params.stream && params.onStreamChunk) {
     body.stream = true;
+    const onStreamChunk = params.onStreamChunk;
 
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: getAuthHeader(config),
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Grok API error (${response.status}): ${error}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error("No response body");
-    }
-
-    const decoder = new TextDecoder();
-    let fullText = "";
-    let usage: NormalizedUsage | null = null;
-    let responseModel = model;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split("\n");
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6);
-        if (data === "[DONE]") continue;
-
-        const parsed = JSON.parse(data) as StreamCompletionChunk;
-        const chunkUsage = normalizeTokenUsage(parsed.usage);
-        if (chunkUsage) {
-          usage = chunkUsage;
-        }
-        if (typeof parsed.model === "string" && parsed.model.length > 0) {
-          responseModel = parsed.model;
-        }
-
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) {
-          fullText += content;
-          params.onStreamChunk(content);
-        }
-      }
-    }
-
-    emitModelUsed(
+    return recordLlmCall(
       runtime,
-      modelType,
-      responseModel,
-      usage ?? estimateUsage(params.prompt, fullText),
+      {
+        model,
+        systemPrompt: "",
+        userPrompt: params.prompt,
+        temperature: params.temperature ?? 0,
+        maxTokens: params.maxTokens ?? 0,
+        purpose: "external_llm",
+        actionType: "xai.chat.completions.stream",
+      },
+      async () => {
+        const response = await fetch(`${config.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: getAuthHeader(config),
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Grok API error (${response.status}): ${error}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("No response body");
+        }
+
+        const decoder = new TextDecoder();
+        let fullText = "";
+        let usage: NormalizedUsage | null = null;
+        let responseModel = model;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+
+            const parsed = JSON.parse(data) as StreamCompletionChunk;
+            const chunkUsage = normalizeTokenUsage(parsed.usage);
+            if (chunkUsage) {
+              usage = chunkUsage;
+            }
+            if (typeof parsed.model === "string" && parsed.model.length > 0) {
+              responseModel = parsed.model;
+            }
+
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullText += content;
+              onStreamChunk(content);
+            }
+          }
+        }
+
+        emitModelUsed(
+          runtime,
+          modelType,
+          responseModel,
+          usage ?? estimateUsage(params.prompt, fullText),
+        );
+        return fullText;
+      },
     );
-    return fullText;
   }
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: getAuthHeader(config),
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Grok API error (${response.status}): ${error}`);
-  }
-
-  const data = (await response.json()) as ChatCompletionResponse;
-
-  if (!data.choices?.[0]?.message?.content) {
-    throw new Error("No content in Grok response");
-  }
-
-  const text = data.choices[0].message.content;
-  emitModelUsed(
+  return recordLlmCall(
     runtime,
-    modelType,
-    data.model || model,
-    normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt, text),
+    {
+      model,
+      systemPrompt: "",
+      userPrompt: params.prompt,
+      temperature: params.temperature ?? 0,
+      maxTokens: params.maxTokens ?? 0,
+      purpose: "external_llm",
+      actionType: "xai.chat.completions.create",
+    },
+    async () => {
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: getAuthHeader(config),
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok API error (${response.status}): ${error}`);
+      }
+
+      const data = (await response.json()) as ChatCompletionResponse;
+
+      if (!data.choices?.[0]?.message?.content) {
+        throw new Error("No content in Grok response");
+      }
+
+      const text = data.choices[0].message.content;
+      emitModelUsed(
+        runtime,
+        modelType,
+        data.model || model,
+        normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt, text),
+      );
+      return text;
+    },
   );
-  return text;
 }
 
 async function createEmbedding(

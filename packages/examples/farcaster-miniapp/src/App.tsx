@@ -1,20 +1,17 @@
-import { useState, useEffect } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
+import { useCallback, useEffect, useState } from "react";
+import { ElizaChat } from "./components/ElizaChat";
 import { Header } from "./components/Header";
 import { LoadingScreen } from "./components/LoadingScreen";
-import { ElizaChat } from "./components/ElizaChat";
 import "./App.css";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    initialize();
-  }, []);
-
-  async function initialize() {
+  const initialize = useCallback(async () => {
     try {
+      setIsLoading(true);
       setError(null);
 
       // Tell Farcaster the app is ready to display
@@ -27,7 +24,11 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -39,7 +40,7 @@ function App() {
         <div className="error-card">
           <h1>🤖 Eliza</h1>
           <p className="error-message">⚠️ {error}</p>
-          <button onClick={initialize} className="btn-retry">
+          <button onClick={initialize} className="btn-retry" type="button">
             Retry
           </button>
         </div>

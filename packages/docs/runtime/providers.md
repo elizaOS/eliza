@@ -110,7 +110,7 @@ Status: active
 
 ### Session Key Provider
 
-**Name:** from `createSessionKeyProvider()`
+**Name:** `elizaSessionBridge` from `createSessionKeyProvider()`
 
 Injects the cryptographic session key for the current session, enabling authenticated inter-session communication.
 

@@ -1,11 +1,4 @@
-import type {
-  Content,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
-} from "@elizaos/core";
+import type { Content, HandlerCallback, IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { starterPlugin } from "../index";
 import { cleanupTestRuntime, createTestRuntime, setupLoggerSpies } from "./test-utils";

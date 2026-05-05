@@ -153,7 +153,7 @@ Two plugins are pre-registered before `runtime.initialize()` to prevent race con
 After initialization:
 
 - Trajectory logger is located and enabled
-- Action aliases are installed (e.g., `CODE_TASK` → `CREATE_TASK`)
+- Action aliases are installed (e.g., `CODE_TASK` → `START_CODING_TASK`)
 - Skills service is warmed up asynchronously
 - Sandbox manager is started if configured
 - Hooks are loaded

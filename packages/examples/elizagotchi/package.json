@@ -11,12 +11,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "beta",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-localdb": "workspace:*",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@types/node": "^25.0.3",
     "@types/react": "19.2.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.0.0",

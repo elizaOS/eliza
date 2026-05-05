@@ -156,7 +156,7 @@ async function loadChatHistory(): Promise<StoredMessage[]> {
     const allHistory = result[CHAT_HISTORY_KEY] as
       | Record<string, StoredMessage[]>
       | undefined;
-    if (allHistory && allHistory[currentPageUrl]) {
+    if (allHistory?.[currentPageUrl]) {
       console.log(
         "[Popup] Loaded chat history for",
         currentPageUrl,

@@ -342,7 +342,7 @@ export class VrmEngine {
 
     // Compute bounds in current pose.
     const box = new THREE.Box3().setFromObject(vrm.scene);
-    const size = box.getSize(new THREE.Vector3());
+    const _size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
     // Move VRM so its bounding box center is at origin.

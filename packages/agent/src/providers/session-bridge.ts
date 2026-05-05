@@ -92,7 +92,7 @@ export function createSessionKeyProvider(options?: {
   const agentId = options?.defaultAgentId ?? "main";
 
   return {
-    name: "elizaSessionKey",
+    name: "elizaSessionBridge",
     description: "Eliza session key (DM/group/thread isolation)",
     dynamic: true,
     position: 5,

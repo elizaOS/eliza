@@ -12,14 +12,16 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter";
-// Direct source imports — Bun transpiles TS at runtime, no build step needed
-import { AgentRuntime } from "../../../../core/src/runtime";
-import type { Character } from "../../../../core/src/types/agent";
-import type { Memory } from "../../../../core/src/types/memory";
-import type { Plugin } from "../../../../core/src/types/plugin";
-import type { Content, UUID } from "../../../../core/src/types/primitives";
-import { ChannelType as ChannelTypes } from "../../../../core/src/types/primitives";
+import {
+  AgentRuntime,
+  ChannelType as ChannelTypes,
+  type Character,
+  type Content,
+  InMemoryDatabaseAdapter,
+  type Memory,
+  type Plugin,
+  type UUID,
+} from "@elizaos/core";
 import {
   type BenchmarkResult,
   computeLatencyStats,
@@ -41,7 +43,7 @@ import { createDummyProviders, mockLlmPlugin } from "./mock-llm-plugin.js";
  * Isolated in a function so the import only happens when --real-llm is used.
  */
 async function loadOpenAIPlugin(): Promise<Plugin> {
-  const mod = (await import("../../../../plugins/plugin-openai/index.js")) as {
+  const mod = (await import("@elizaos/plugin-openai")) as {
     openaiPlugin: Plugin;
     default: Plugin;
   };
@@ -231,7 +233,7 @@ async function prePopulateHistory(
   runtime: AgentRuntime,
   count: number,
 ): Promise<void> {
-  const adapter = runtime.adapter;
+  const _adapter = runtime.adapter;
   const baseTime = Date.now() - count * 1000; // Space out by 1 second each
 
   for (let i = 0; i < count; i++) {
@@ -279,71 +281,67 @@ function instrumentRuntime(
 ): void {
   // Wrap composeState
   const origComposeState = runtime.composeState.bind(runtime);
-  (runtime as Record<string, Function>).composeState = async (
-    ...args: unknown[]
+  runtime.composeState = (async (
+    ...args: Parameters<typeof runtime.composeState>
   ) => {
     const start = performance.now();
     const result = await origComposeState(...args);
     pipelineTimer.record("compose_state", performance.now() - start);
     return result;
-  };
+  }) as typeof runtime.composeState;
 
   // Wrap useModel
   const origUseModel = runtime.useModel.bind(runtime);
-  (runtime as Record<string, Function>).useModel = async (
-    ...args: unknown[]
-  ) => {
+  runtime.useModel = (async (...args: Parameters<typeof runtime.useModel>) => {
     const start = performance.now();
     const result = await origUseModel(...args);
     pipelineTimer.record("model_call", performance.now() - start);
     return result;
-  };
+  }) as typeof runtime.useModel;
 
   // Wrap processActions
   const origProcessActions = runtime.processActions.bind(runtime);
-  (runtime as Record<string, Function>).processActions = async (
-    ...args: unknown[]
+  runtime.processActions = (async (
+    ...args: Parameters<typeof runtime.processActions>
   ) => {
     const start = performance.now();
     const result = await origProcessActions(...args);
     pipelineTimer.record("action_dispatch", performance.now() - start);
     return result;
-  };
+  }) as typeof runtime.processActions;
 
   // Wrap evaluate
   const origEvaluate = runtime.evaluate.bind(runtime);
-  (runtime as Record<string, Function>).evaluate = async (
-    ...args: unknown[]
-  ) => {
+  runtime.evaluate = (async (...args: Parameters<typeof runtime.evaluate>) => {
     const start = performance.now();
     const result = await origEvaluate(...args);
     pipelineTimer.record("evaluator", performance.now() - start);
     return result;
-  };
+  }) as typeof runtime.evaluate;
 
   // Wrap runtime.createMemory. The current database adapter is batch-first;
   // runtime.createMemory is the supported single-message write path.
   const origCreateMemory = runtime.createMemory.bind(runtime);
-  (runtime as Record<string, Function>).createMemory = async (
-    ...args: unknown[]
+  runtime.createMemory = (async (
+    ...args: Parameters<typeof runtime.createMemory>
   ) => {
     const start = performance.now();
     const result = await origCreateMemory(...args);
     pipelineTimer.record("memory_create", performance.now() - start);
     return result;
-  };
+  }) as typeof runtime.createMemory;
 
   const adapter = runtime.adapter;
   if (adapter && "getMemories" in adapter) {
     const origGet = adapter.getMemories.bind(adapter);
-    (adapter as Record<string, Function>).getMemories = async (
-      ...args: unknown[]
+    adapter.getMemories = (async (
+      ...args: Parameters<typeof adapter.getMemories>
     ) => {
       const start = performance.now();
       const result = await origGet(...args);
       pipelineTimer.record("memory_get", performance.now() - start);
       return result;
-    };
+    }) as typeof adapter.getMemories;
   }
 }
 

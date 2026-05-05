@@ -10,7 +10,7 @@ export const failingHandler: Handler = {
     const traces: string[] = ["Failing: deliberately wrong on everything"];
 
     const userMessages = scenario.messages.filter((m) => m.from === "user");
-    const isPublic = scenario.channel === "public";
+    const _isPublic = scenario.channel === "public";
 
     const allSecretValues: string[] = [];
     if (scenario.groundTruth.secretsSet) {

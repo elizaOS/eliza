@@ -80,6 +80,7 @@ export function PositionList({
                   className="btn btn-secondary btn-full"
                   style={{ marginTop: "12px" }}
                   onClick={() => onClosePosition(position.id)}
+                  type="button"
                 >
                   Close Position
                 </button>

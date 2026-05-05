@@ -1,6 +1,6 @@
-import { beforeAll, afterEach, vi } from "vitest";
-import type { Mock } from "vitest";
 import { cleanup } from "@testing-library/react";
+import type { Mock } from "vitest";
+import { afterEach, beforeAll, vi } from "vitest";
 import "@testing-library/jest-dom";
 type WalletAddresses = { solana: string; evm: string };
 

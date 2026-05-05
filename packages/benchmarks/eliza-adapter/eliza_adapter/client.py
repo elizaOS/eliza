@@ -107,11 +107,16 @@ class ElizaClient:
         """Block until the benchmark server is healthy or *timeout* elapses."""
         deadline = time.monotonic() + timeout
         last_err: str = ""
+        progress = os.environ.get("ELIZA_BENCH_WAIT_PROGRESS", "").strip() == "1"
+        next_progress = time.monotonic() + 5.0
         while time.monotonic() < deadline:
             try:
                 # First, check if the socket is open
                 if not self.is_ready():
                     last_err = "Socket connection refused or timed out"
+                    if progress and time.monotonic() >= next_progress:
+                        print(f"DEBUG: Waiting for {self.base_url} ({last_err})", flush=True)
+                        next_progress = time.monotonic() + 5.0
                     time.sleep(poll)
                     continue
 
@@ -123,6 +128,9 @@ class ElizaClient:
                 last_err = f"Server health status not 'ready': {resp}"
             except Exception as exc:
                 last_err = str(exc)
+            if progress and time.monotonic() >= next_progress:
+                print(f"DEBUG: Waiting for {self.base_url} ({last_err})", flush=True)
+                next_progress = time.monotonic() + 5.0
             time.sleep(poll)
         raise TimeoutError(
             f"Eliza benchmark server not ready after {timeout}s: {last_err}"

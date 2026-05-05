@@ -333,7 +333,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // Message Handlers
 // ============================================
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   (async () => {
     try {
       // Stream events coming from offscreen -> persist + forward
