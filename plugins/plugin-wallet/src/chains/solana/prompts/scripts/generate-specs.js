@@ -11,7 +11,7 @@
  */
 
 import fs from "node:fs";
-import path from "path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,7 +32,7 @@ function readJson(filePath) {
   return JSON.parse(raw);
 }
 
-function listJsonFiles(rootDir) {
+function _listJsonFiles(rootDir) {
   const out = [];
   if (!fs.existsSync(rootDir)) {
     return out;

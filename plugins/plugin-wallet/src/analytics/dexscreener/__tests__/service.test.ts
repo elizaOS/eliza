@@ -1,9 +1,9 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DexScreenerService } from "../service";
 import { createMockRuntime } from "./test-utils";
-import type { IAgentRuntime } from "@elizaos/core";
 
 const mockFetch = vi.fn();
 
@@ -16,7 +16,9 @@ describe("DexScreenerService", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     mockRuntime = createMockRuntime() as IAgentRuntime;
-    service = (await DexScreenerService.start(mockRuntime)) as DexScreenerService;
+    service = (await DexScreenerService.start(
+      mockRuntime,
+    )) as DexScreenerService;
   });
 
   afterEach(() => {
@@ -44,7 +46,9 @@ describe("DexScreenerService", () => {
         }),
       }) as IAgentRuntime;
 
-      const customService = (await DexScreenerService.start(customRuntime)) as DexScreenerService;
+      const customService = (await DexScreenerService.start(
+        customRuntime,
+      )) as DexScreenerService;
 
       expect(customService.baseUrl).toBe("https://custom.api.com");
     });
@@ -113,7 +117,9 @@ describe("DexScreenerService", () => {
 
   describe("getTrending", () => {
     it("should get trending tokens with default parameters", async () => {
-      const boostedTokens = [{ baseToken: { symbol: "HOT" }, priceChange: { h24: 100 } }];
+      const boostedTokens = [
+        { baseToken: { symbol: "HOT" }, priceChange: { h24: 100 } },
+      ];
       mockFetch.mockReturnValue(okJson(boostedTokens));
 
       const result = await service.getTrending();
@@ -126,7 +132,9 @@ describe("DexScreenerService", () => {
     });
 
     it("should get trending tokens with custom parameters", async () => {
-      const boostedTokens = [{ baseToken: { symbol: "HOT" }, priceChange: { h6: 50 } }];
+      const boostedTokens = [
+        { baseToken: { symbol: "HOT" }, priceChange: { h6: 50 } },
+      ];
       mockFetch.mockReturnValue(okJson(boostedTokens));
 
       const result = await service.getTrending({ timeframe: "6h", limit: 5 });
@@ -141,7 +149,13 @@ describe("DexScreenerService", () => {
 
   describe("getNewPairs", () => {
     it("should get new pairs from token profiles", async () => {
-      const profiles = [{ tokenAddress: "0x123", chainId: "ethereum", description: "New token" }];
+      const profiles = [
+        {
+          tokenAddress: "0x123",
+          chainId: "ethereum",
+          description: "New token",
+        },
+      ];
       mockFetch.mockReturnValue(okJson(profiles));
 
       const result = await service.getNewPairs();
@@ -175,12 +189,26 @@ describe("DexScreenerService", () => {
   describe("getPairsByChain", () => {
     it("should get pairs by chain using search API", async () => {
       const pairs = [
-        { baseToken: { address: "0x123" }, chainId: "ethereum", volume: { h24: 1000000 }, liquidity: { usd: 5000000 } },
-        { baseToken: { address: "0x456" }, chainId: "bsc", volume: { h24: 500000 }, liquidity: { usd: 2500000 } },
+        {
+          baseToken: { address: "0x123" },
+          chainId: "ethereum",
+          volume: { h24: 1000000 },
+          liquidity: { usd: 5000000 },
+        },
+        {
+          baseToken: { address: "0x456" },
+          chainId: "bsc",
+          volume: { h24: 500000 },
+          liquidity: { usd: 2500000 },
+        },
       ];
       mockFetch.mockReturnValue(okJson({ pairs }));
 
-      const result = await service.getPairsByChain({ chain: "ethereum", sortBy: "volume", limit: 10 });
+      const result = await service.getPairsByChain({
+        chain: "ethereum",
+        sortBy: "volume",
+        limit: 10,
+      });
 
       expect(result.success).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(
@@ -194,7 +222,9 @@ describe("DexScreenerService", () => {
 
   describe("getTopBoostedTokens", () => {
     it("should get top boosted tokens", async () => {
-      const tokens = [{ tokenAddress: "0x123", amount: 100, totalAmount: 1000 }];
+      const tokens = [
+        { tokenAddress: "0x123", amount: 100, totalAmount: 1000 },
+      ];
       mockFetch.mockReturnValue(okJson(tokens));
 
       const result = await service.getTopBoostedTokens();
@@ -225,7 +255,12 @@ describe("DexScreenerService", () => {
   describe("getLatestTokenProfiles", () => {
     it("should get latest token profiles", async () => {
       const profiles = [
-        { tokenAddress: "0x789", chainId: "polygon", description: "New DeFi token", links: [{ label: "Website", url: "https://example.com" }] },
+        {
+          tokenAddress: "0x789",
+          chainId: "polygon",
+          description: "New DeFi token",
+          links: [{ label: "Website", url: "https://example.com" }],
+        },
       ];
       mockFetch.mockReturnValue(okJson(profiles));
 

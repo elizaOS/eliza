@@ -14,12 +14,12 @@
  * @module identity/uaid
  */
 
+import type { Address } from "viem";
 import type {
   AgentIdentity,
   AgentRegistrationFile,
   SupportedChain,
 } from "./erc8004.js";
-import type { Address } from "viem";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -474,7 +474,7 @@ export class UAIDResolver {
       "User-Agent": "agentwallet-sdk/uaid-resolver",
     };
     if (this.apiKey) {
-      headers["Authorization"] = `Bearer ${this.apiKey}`;
+      headers.Authorization = `Bearer ${this.apiKey}`;
     }
     if (body) {
       headers["Content-Type"] = "application/json";

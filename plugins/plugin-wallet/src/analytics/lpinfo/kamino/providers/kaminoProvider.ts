@@ -1,7 +1,7 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { KaminoService } from "../services/kaminoService";
+import type { KaminoService } from "../services/kaminoService";
 
 // Kamino Lend Program constants
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
@@ -15,7 +15,7 @@ export const kaminoProvider: Provider = {
   description:
     "Provides information about Kamino lending protocol positions, market data, and available lending/borrowing opportunities",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_LENDING provider called");
 
     let kaminoInfo = "";
@@ -91,7 +91,7 @@ export const kaminoProvider: Provider = {
       kaminoLending: kaminoInfo,
     };
 
-    const text = kaminoInfo + "\n";
+    const text = `${kaminoInfo}\n`;
 
     return {
       data,

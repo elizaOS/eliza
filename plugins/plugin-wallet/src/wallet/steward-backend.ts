@@ -1,9 +1,8 @@
-import { PublicKey } from "@solana/web3.js";
-import type { Account } from "viem";
-import { hexToBytes } from "viem";
-import type { Hex, TypedDataDefinition } from "viem";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { WalletBackend, WalletAddresses } from "./backend.js";
+import { PublicKey } from "@solana/web3.js";
+import type { Account, Hex, TypedDataDefinition } from "viem";
+import { hexToBytes } from "viem";
+import type { WalletAddresses, WalletBackend } from "./backend.js";
 import { StewardUnavailableError } from "./errors.js";
 import type { SignResult, SignScope } from "./pending.js";
 

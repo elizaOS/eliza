@@ -1,6 +1,6 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { SteerLiquidityService } from "../services/steerLiquidityService";
+import type { SteerLiquidityService } from "../services/steerLiquidityService";
 
 /**
  * Steer Finance Liquidity Protocol Provider
@@ -11,7 +11,7 @@ export const steerLiquidityProvider: Provider = {
   description:
     "Provides information about Steer Finance vaults, staking pools, and token-specific liquidity data across multiple chains",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("🚀 STEER_LIQUIDITY provider called");
     console.log("📝 Message content:", message.content.text);
     console.log("📺 Channel type:", message.content.channelType);
@@ -163,7 +163,7 @@ export const steerLiquidityProvider: Provider = {
       steerLiquidity: liquidityInfo,
     };
 
-    const text = liquidityInfo + "\n";
+    const text = `${liquidityInfo}\n`;
 
     return {
       data,
@@ -401,7 +401,7 @@ async function getSteerProtocolInfo(
 /**
  * Get general Steer Finance overview
  */
-async function getSteerGeneralOverview(
+async function _getSteerGeneralOverview(
   steerLiquidityService: SteerLiquidityService,
 ): Promise<string> {
   let overview = "📊 STEER FINANCE OVERVIEW:\n\n";

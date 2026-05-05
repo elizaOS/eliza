@@ -1,54 +1,51 @@
-export {
-  ERC8004Client,
-  ERC8004IdentityRegistryAbi,
-  METADATA_KEYS,
-  REGISTRATION_FILE_TYPE,
-  KNOWN_REGISTRY_ADDRESSES,
-  buildDataURI,
-  parseDataURI,
-  resolveAgentURI,
-  validateRegistrationFile,
-  formatAgentRegistry,
-} from "./erc8004.js";
 export type {
-  AgentServiceEndpoint,
-  SupportedTrustMechanism,
-  AgentRegistrationRef,
-  AgentRegistrationFile,
-  AgentModelMetadata,
   AgentIdentity,
-  MetadataEntry,
+  AgentModelMetadata,
+  AgentRegistrationFile,
+  AgentRegistrationRef,
+  AgentServiceEndpoint,
   ERC8004ClientConfig,
+  MetadataEntry,
   RegistrationResult,
   SupportedChain,
+  SupportedTrustMechanism,
 } from "./erc8004.js";
-
-export { ReputationClient, ReputationRegistryAbi } from "./reputation.js";
+export {
+  buildDataURI,
+  ERC8004Client,
+  ERC8004IdentityRegistryAbi,
+  formatAgentRegistry,
+  KNOWN_REGISTRY_ADDRESSES,
+  METADATA_KEYS,
+  parseDataURI,
+  REGISTRATION_FILE_TYPE,
+  resolveAgentURI,
+  validateRegistrationFile,
+} from "./erc8004.js";
 export type {
-  ReputationClientConfig,
-  GiveFeedbackParams,
-  FeedbackEntry,
   AgentReputationSummary,
+  FeedbackEntry,
   FeedbackFilters,
+  GiveFeedbackParams,
+  ReputationClientConfig,
   RespondToFeedbackParams,
 } from "./reputation.js";
-
-export { ValidationClient, ValidationRegistryAbi } from "./validation.js";
+export { ReputationClient, ReputationRegistryAbi } from "./reputation.js";
 export type {
-  ValidationClientConfig,
-  RequestValidationParams,
-  RespondToValidationParams,
-  ValidationStatus,
-  ValidationSummary,
-} from "./validation.js";
-
+  ParsedUAID,
+  RegisterUAIDParams,
+  UAIDProtocol,
+  UAIDResolution,
+  UAIDResolverConfig,
+  UniversalAgentIdentity,
+} from "./uaid.js";
 // ─── UAID: Cross-Chain Identity Resolution ─────────────────────────────────
 export { UAIDResolver } from "./uaid.js";
 export type {
-  UAIDProtocol,
-  ParsedUAID,
-  UAIDResolution,
-  UniversalAgentIdentity,
-  UAIDResolverConfig,
-  RegisterUAIDParams,
-} from "./uaid.js";
+  RequestValidationParams,
+  RespondToValidationParams,
+  ValidationClientConfig,
+  ValidationStatus,
+  ValidationSummary,
+} from "./validation.js";
+export { ValidationClient, ValidationRegistryAbi } from "./validation.js";

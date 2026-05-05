@@ -1,7 +1,7 @@
 import {
   type Address,
-  type Hex,
   encodeAbiParameters,
+  type Hex,
   parseAbiParameters,
 } from "viem";
 import type { VerifierType } from "./types.js";

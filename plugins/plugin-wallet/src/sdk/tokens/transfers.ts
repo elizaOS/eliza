@@ -11,16 +11,16 @@
  */
 
 import {
-  encodeFunctionData,
-  parseAbi,
   type Address,
+  encodeFunctionData,
   type Hash,
   type PublicClient,
+  parseAbi,
   type WalletClient,
   zeroAddress,
 } from "viem";
+import { formatBalance, parseAmount, toHuman } from "./decimals.js";
 import { getGlobalRegistry } from "./registry.js";
-import { parseAmount, toHuman, formatBalance } from "./decimals.js";
 
 // ─── ERC20 ABI (minimal) ─────────────────────────────────────────────────────
 

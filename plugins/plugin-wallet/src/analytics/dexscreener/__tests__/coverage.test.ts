@@ -1,18 +1,19 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import {
-  describe,
-  it,
-  expect,
-  mock,
-  beforeEach,
-  createTestMemory,
-  createMockRuntime,
-  createMockCallback,
-  createMockState,
-  createMockService,
-} from "./test-utils";
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { getBoostedTokensAction, getTokenProfilesAction } from "../actions";
+import {
+  beforeEach,
+  createMockCallback,
+  createMockRuntime,
+  createMockService,
+  createMockState,
+  createTestMemory,
+  describe,
+  expect,
+  it,
+  mock,
+} from "./test-utils";
 
 describe("DexScreener Actions - Additional Coverage", () => {
   let mockRuntime: IAgentRuntime;

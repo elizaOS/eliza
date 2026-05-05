@@ -7,49 +7,50 @@
  * EVM↔EVM: use BridgeModule or createBridge()
  * EVM↔Solana: use bridgeEVMToSolana() and receiveFromSolanaOnEVM()
  */
+
 export {
-  BridgeModule,
-  BridgeError,
-  createBridge,
-  CCTP_DOMAIN_IDS,
+  ERC20BridgeAbi,
+  MessageTransmitterV2Abi,
+  TokenMessengerV2Abi,
+} from "./abis.js";
+export {
   BRIDGE_CHAIN_IDS,
-  USDC_CONTRACT,
-  TOKEN_MESSENGER_V2,
-  MESSAGE_TRANSMITTER_V2,
+  BridgeError,
+  BridgeModule,
+  CCTP_DOMAIN_IDS,
+  createBridge,
   FINALITY_THRESHOLD,
+  MESSAGE_TRANSMITTER_V2,
+  TOKEN_MESSENGER_V2,
+  USDC_CONTRACT,
 } from "./client.js";
 export type {
-  BridgeChain,
-  EVMBridgeChain,
-  BridgeOptions,
-  BurnResult,
-  BridgeResult,
-  AttestationResponse,
-  AttestationStatus,
-} from "./types.js";
-export {
-  TokenMessengerV2Abi,
-  MessageTransmitterV2Abi,
-  ERC20BridgeAbi,
-} from "./abis.js";
+  EVMToSolanaOptions,
+  EVMToSolanaResult,
+  SolanaBridgeErrorCode,
+  SolanaToEVMBurnParams,
+  SolanaToEVMOptions,
+  SolanaToEVMResult,
+} from "./solana.js";
 
 // ─── Solana Bridge (optional — requires @solana/web3.js for full Solana-side execution) ───
 export {
   bridgeEVMToSolana,
-  receiveFromSolanaOnEVM,
   bytes32ToSolanaPubkey,
-  SolanaBridgeError,
+  receiveFromSolanaOnEVM,
   SOLANA_CCTP_DOMAIN,
-  SOLANA_USDC_MINT,
-  SOLANA_TOKEN_MESSENGER,
-  SOLANA_MESSAGE_TRANSMITTER,
   SOLANA_DEFAULT_RPC,
+  SOLANA_MESSAGE_TRANSMITTER,
+  SOLANA_TOKEN_MESSENGER,
+  SOLANA_USDC_MINT,
+  SolanaBridgeError,
 } from "./solana.js";
 export type {
-  EVMToSolanaOptions,
-  EVMToSolanaResult,
-  SolanaToEVMOptions,
-  SolanaToEVMBurnParams,
-  SolanaToEVMResult,
-  SolanaBridgeErrorCode,
-} from "./solana.js";
+  AttestationResponse,
+  AttestationStatus,
+  BridgeChain,
+  BridgeOptions,
+  BridgeResult,
+  BurnResult,
+  EVMBridgeChain,
+} from "./types.js";

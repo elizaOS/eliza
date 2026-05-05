@@ -1,7 +1,7 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { Plugin, IAgentRuntime } from "@elizaos/core";
-import { DexScreenerService } from "./service";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { dexscreenerActions } from "./actions";
+import { DexScreenerService } from "./service";
 
 export const dexscreenerPlugin: Plugin = {
   name: "dexscreener-analytics-plugin",
@@ -10,13 +10,13 @@ export const dexscreenerPlugin: Plugin = {
   evaluators: [],
   providers: [],
   services: [DexScreenerService],
-  init: async (_: Record<string, string>, runtime: IAgentRuntime) => {
+  init: async (_: Record<string, string>, _runtime: IAgentRuntime) => {
     console.log("DexScreener plugin initialized");
   },
 };
 
 export default dexscreenerPlugin;
 
-export * from "./types";
-export { DexScreenerService } from "./service";
 export * from "./actions";
+export { DexScreenerService } from "./service";
+export * from "./types";

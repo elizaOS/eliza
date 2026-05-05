@@ -1,13 +1,7 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type {
-  AgentRuntime,
-  Memory,
-  Provider,
-  State,
-  IAgentRuntime,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { KaminoLiquidityService } from "../services/kaminoLiquidityService";
+import type { KaminoLiquidityService } from "../services/kaminoLiquidityService";
 
 // Import the KaminoStrategy type from the service
 interface KaminoStrategy {
@@ -36,7 +30,7 @@ export const kaminoLiquidityProvider: Provider = {
   description:
     "Provides information about Kamino liquidity pools, strategies, and token-specific liquidity data",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_LIQUIDITY provider called");
 
     let liquidityInfo = "";
@@ -131,7 +125,7 @@ export const kaminoLiquidityProvider: Provider = {
       kaminoLiquidity: liquidityInfo,
     };
 
-    const text = liquidityInfo + "\n";
+    const text = `${liquidityInfo}\n`;
 
     return {
       data,
@@ -171,7 +165,7 @@ async function getKaminoLiquidityStats(
         if (!strategyTypes.has(type)) {
           strategyTypes.set(type, []);
         }
-        strategyTypes.get(type)!.push(strategy);
+        strategyTypes.get(type)?.push(strategy);
       });
 
       for (const [type, strategies] of strategyTypes) {

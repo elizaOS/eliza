@@ -1,13 +1,11 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import {
+import type {
   Action,
-  ActionExample,
+  HandlerCallback,
   IAgentRuntime,
   Memory,
-  Content,
-  HandlerCallback,
 } from "@elizaos/core";
-import { DexScreenerService } from "./service";
+import type { DexScreenerService } from "./service";
 
 // Search Action
 export const searchTokensAction: Action = {
@@ -16,7 +14,7 @@ export const searchTokensAction: Action = {
     "Search for tokens or trading pairs on DexScreener by name, symbol, or contract address",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
     const content =
@@ -125,7 +123,7 @@ export const getTokenInfoAction: Action = {
     "Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
     const content =
@@ -247,7 +245,7 @@ export const getTrendingAction: Action = {
     "Get trending tokens from DexScreener based on volume, price changes, and trading activity",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
     const content =
@@ -286,7 +284,7 @@ export const getTrendingAction: Action = {
 
     const result = await service.getTrending({
       timeframe: (timeframeMatch?.[1] as "1h" | "6h" | "24h") || "24h",
-      limit: limitMatch ? parseInt(limitMatch[1]) : 10,
+      limit: limitMatch ? parseInt(limitMatch[1], 10) : 10,
     });
 
     if (!result.success || !result.data) {
@@ -342,7 +340,7 @@ export const getNewPairsAction: Action = {
     "Get newly created trading pairs from DexScreener, showing recently launched tokens and their initial liquidity",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
     const content =
@@ -381,7 +379,7 @@ export const getNewPairsAction: Action = {
 
     const result = await service.getNewPairs({
       chain: chainMatch?.[1],
-      limit: limitMatch ? parseInt(limitMatch[1]) : 10,
+      limit: limitMatch ? parseInt(limitMatch[1], 10) : 10,
     });
 
     if (!result.success || !result.data) {
@@ -439,7 +437,7 @@ export const getPairsByChainAction: Action = {
     "Get top trading pairs from a specific blockchain sorted by volume, liquidity, price change, or transaction count",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
     const content =
@@ -578,7 +576,7 @@ export const getBoostedTokensAction: Action = {
     "Get boosted (promoted/sponsored) tokens from DexScreener, showing tokens with paid promotional boosts",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
     const content =
@@ -677,7 +675,7 @@ export const getTokenProfilesAction: Action = {
     "Get latest token profiles from DexScreener including social links, descriptions, and project information",
 
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
     const content =
@@ -692,7 +690,7 @@ export const getTokenProfilesAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     _: any,
     __: any,
     callback?: HandlerCallback,

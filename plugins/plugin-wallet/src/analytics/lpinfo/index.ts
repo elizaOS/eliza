@@ -1,11 +1,9 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { Plugin } from "@elizaos/core";
-
-// Steer Finance Plugin
-import { steerPlugin } from "./steer";
-
 // Kamino Protocol Plugin
 import { kaminoPlugin } from "./kamino";
+// Steer Finance Plugin
+import { steerPlugin } from "./steer";
 
 /**
  * Liquidity Pool Information Plugin
@@ -41,17 +39,15 @@ export const lpinfoPlugin: Plugin = {
 
 export default lpinfoPlugin;
 
+export { kaminoPlugin } from "./kamino";
+export * from "./kamino/providers/kaminoLiquidityProvider";
+export * from "./kamino/providers/kaminoPoolProvider";
+// Export Kamino components
+export * from "./kamino/providers/kaminoProvider";
+export * from "./kamino/services/kaminoLiquidityService";
+export * from "./kamino/services/kaminoService";
 // Re-export sub-plugins for granular control if needed
 export { steerPlugin } from "./steer";
-export { kaminoPlugin } from "./kamino";
-
 // Export Steer components
 export * from "./steer/providers/steerLiquidityProvider";
 export * from "./steer/services/steerLiquidityService";
-
-// Export Kamino components
-export * from "./kamino/providers/kaminoProvider";
-export * from "./kamino/providers/kaminoLiquidityProvider";
-export * from "./kamino/providers/kaminoPoolProvider";
-export * from "./kamino/services/kaminoService";
-export * from "./kamino/services/kaminoLiquidityService";

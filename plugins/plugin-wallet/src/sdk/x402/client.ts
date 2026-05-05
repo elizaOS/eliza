@@ -13,17 +13,17 @@
  */
 // x402 Client — automatic 402 payment handling for AgentWallet (v6: multi-asset)
 import type { Address, Hash } from "viem";
+import { agentTransferToken, checkBudget } from "../index.js";
+import { X402BudgetTracker } from "./budget.js";
+import { resolveAssetAddress } from "./multi-asset.js";
 import type {
+  X402ClientConfig,
+  X402PaymentPayload,
   X402PaymentRequired,
   X402PaymentRequirements,
-  X402PaymentPayload,
-  X402ClientConfig,
   X402TransactionLog,
 } from "./types.js";
 import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
-import { X402BudgetTracker } from "./budget.js";
-import { agentTransferToken, checkBudget } from "../index.js";
-import { resolveAssetAddress } from "./multi-asset.js";
 
 /**
  * [MAX-ADDED] x402 Payment Client for AgentWallet.

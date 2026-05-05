@@ -1,6 +1,6 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { AgentRuntime } from "@elizaos/core";
-import { Service, logger } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 
 // Kamino API constants
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
@@ -762,7 +762,7 @@ export class KaminoLiquidityService extends Service {
 
       const variation = (Math.random() - 0.5) * 4;
       return Math.max(2, Math.min(25, baseApy + variation));
-    } catch (error) {
+    } catch (_error) {
       return 8; // Default fallback
     }
   }
@@ -810,7 +810,7 @@ export class KaminoLiquidityService extends Service {
       if (sizeUsd > 1000) return "0.1%"; // Medium trades
       if (tipAmount > 0.1) return "0.15%"; // High tip trades
       return "0.2%"; // Default fee tier
-    } catch (error) {
+    } catch (_error) {
       return "0.15%"; // Default fallback
     }
   }
@@ -866,7 +866,7 @@ export class KaminoLiquidityService extends Service {
       if (hoursSinceUpdate < 1) return "High Frequency";
       if (hoursSinceUpdate < 24) return "Daily";
       return "Weekly";
-    } catch (error) {
+    } catch (_error) {
       return "Dynamic"; // Default fallback
     }
   }
@@ -884,7 +884,7 @@ export class KaminoLiquidityService extends Service {
       if (sizeUsd > 1000) return "Medium Range (0.7x - 1.4x)";
       if (tipAmount > 0.05) return "Narrow Range (0.9x - 1.1x)";
       return "Market Range (0.8x - 1.2x)";
-    } catch (error) {
+    } catch (_error) {
       return "Market Range (0.8x - 1.2x)"; // Default fallback
     }
   }

@@ -30,25 +30,26 @@
  * | X402_GLOBAL_DAILY_LIMIT | no     | —              | Global daily x402 USDC limit (decimal)           |
  * | X402_PER_REQUEST_MAX  | no       | —              | Per-request max USDC spend (decimal)             |
  */
-import {
-  createWallet,
-  setSpendPolicy,
-  createX402Client,
-  NATIVE_TOKEN,
-  USDC_ADDRESSES,
-  DEFAULT_SUPPORTED_NETWORKS,
-} from "./index.js";
+
+import type { Address, Hex } from "viem";
 import { createWalletClient, http, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
-  base,
-  mainnet,
   arbitrum,
+  base,
+  baseSepolia,
+  mainnet,
   optimism,
   polygon,
-  baseSepolia,
 } from "viem/chains";
-import type { Address, Hex } from "viem";
+import {
+  createWallet,
+  createX402Client,
+  DEFAULT_SUPPORTED_NETWORKS,
+  NATIVE_TOKEN,
+  setSpendPolicy,
+  USDC_ADDRESSES,
+} from "./index.js";
 
 // ─── Chain registry ────────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ export function walletFromEnv(options?: {
     options?.rpcUrl ??
     process.env.RPC_URL ??
     DEFAULT_RPC[chain.name.toLowerCase()] ??
-    DEFAULT_RPC["base"];
+    DEFAULT_RPC.base;
 
   // ── Build viem walletClient ──────────────────────────────────────────────
   const account = privateKeyToAccount(privateKey);

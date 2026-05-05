@@ -1,18 +1,17 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime } from "@elizaos/core";
-import { Service, logger } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 
 // Import Steer Protocol SDK
 import {
+  AMMType,
+  StakingClient,
   SteerClient,
   VaultClient,
-  StakingClient,
-  AMMType,
 } from "@steerprotocol/sdk";
-
-// Import Viem for proper chain and transport configuration
-import { mainnet, polygon, arbitrum, optimism, base } from "viem/chains";
 import { createPublicClient, http } from "viem";
+// Import Viem for proper chain and transport configuration
+import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 
 // Supported chain IDs
 const SUPPORTED_CHAIN_IDS = [1, 137, 42161, 10, 8453]; // mainnet, polygon, arbitrum, optimism, base
@@ -89,7 +88,6 @@ interface GraphQLResponse {
 export class SteerLiquidityService extends Service {
   private isRunning = false;
   private supportedChains: number[];
-  private steerClient: SteerClient;
   private vaultClients: Map<number, VaultClient> = new Map();
   private stakingClients: Map<number, StakingClient> = new Map();
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
@@ -672,7 +670,7 @@ export class SteerLiquidityService extends Service {
             error,
           );
         }
-      } catch (error) {
+      } catch (_error) {
         logger.log(
           `Could not fetch additional data for vault ${vaultAddress}, using basic info`,
         );
@@ -722,7 +720,7 @@ export class SteerLiquidityService extends Service {
           token0Balance: graphqlData.token0Balance,
           token1Balance: graphqlData.token1Balance,
           totalLPTokensIssued: graphqlData.totalLPTokensIssued,
-          feeTier: parseInt(graphqlData.feeTier) || 3000,
+          feeTier: parseInt(graphqlData.feeTier, 10) || 3000,
           fees0: graphqlData.fees0,
           fees1: graphqlData.fees1,
           strategyToken: graphqlData.strategyToken,
@@ -733,8 +731,8 @@ export class SteerLiquidityService extends Service {
           tvl: this.calculateTvlFromBalances(
             graphqlData.token0Balance,
             graphqlData.token1Balance,
-            parseInt(graphqlData.token0Decimals) || 18,
-            parseInt(graphqlData.token1Decimals) || 18,
+            parseInt(graphqlData.token0Decimals, 10) || 18,
+            parseInt(graphqlData.token1Decimals, 10) || 18,
           ),
           apy: parseFloat(graphqlData.weeklyFeeAPR) * 52 || 0, // Convert weekly to annual
           isActive: true,
@@ -793,7 +791,7 @@ export class SteerLiquidityService extends Service {
    * Get token prices for TVL calculation
    */
   async getTokenPrices(
-    tokenAddresses: string[],
+    _tokenAddresses: string[],
     chainId: number,
   ): Promise<{ [address: string]: number } | null> {
     try {
@@ -944,7 +942,7 @@ export class SteerLiquidityService extends Service {
 
       const result = await response.json();
 
-      if (result.data && result.data._meta) {
+      if (result.data?._meta) {
         logger.log("GraphQL connection test successful");
         return { success: true };
       } else {
@@ -1087,7 +1085,7 @@ export class SteerLiquidityService extends Service {
    */
   private normalizeTokenIdentifier(tokenIdentifier: string): string {
     // Remove common prefixes and normalize
-    let normalized = tokenIdentifier.trim();
+    const normalized = tokenIdentifier.trim();
 
     // Handle Solana-style addresses (base58)
     if (
@@ -1134,24 +1132,6 @@ export class SteerLiquidityService extends Service {
       8453: "Base",
     };
     return chainNames[chainId] || `Chain ${chainId}`;
-  }
-
-  /**
-   * Get data from cache if it's still valid
-   */
-  private getFromCache(key: string): any | null {
-    const cached = this.cache.get(key);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      return cached.data;
-    }
-    return null;
-  }
-
-  /**
-   * Set data in cache with timestamp
-   */
-  private setCache(key: string, data: any): void {
-    this.cache.set(key, { data, timestamp: Date.now() });
   }
 
   /**
@@ -1477,7 +1457,7 @@ export class SteerLiquidityService extends Service {
 
       const result: GraphQLResponse = await response.json();
 
-      if (result.data && result.data.vault) {
+      if (result.data?.vault) {
         logger.log(
           `Successfully fetched GraphQL data for vault ${vaultAddress}`,
         );
@@ -1509,7 +1489,7 @@ export class SteerLiquidityService extends Service {
   /**
    * Enrich vault data with GraphQL information
    */
-  async enrichVaultWithGraphQLData(vault: any, chainId: number): Promise<any> {
+  async enrichVaultWithGraphQLData(vault: any, _chainId: number): Promise<any> {
     try {
       if (!vault.address && !vault.vaultAddress) {
         logger.warn("Vault missing address, cannot fetch GraphQL data");
@@ -1530,13 +1510,13 @@ export class SteerLiquidityService extends Service {
           graphqlData: {
             weeklyFeeAPR: parseFloat(graphqlData.weeklyFeeAPR) || 0,
             token0Symbol: graphqlData.token0Symbol,
-            token0Decimals: parseInt(graphqlData.token0Decimals) || 18,
+            token0Decimals: parseInt(graphqlData.token0Decimals, 10) || 18,
             token1Symbol: graphqlData.token1Symbol,
-            token1Decimals: parseInt(graphqlData.token1Decimals) || 18,
+            token1Decimals: parseInt(graphqlData.token1Decimals, 10) || 18,
             token0Balance: graphqlData.token0Balance,
             token1Balance: graphqlData.token1Balance,
             totalLPTokensIssued: graphqlData.totalLPTokensIssued,
-            feeTier: parseInt(graphqlData.feeTier) || 3000,
+            feeTier: parseInt(graphqlData.feeTier, 10) || 3000,
             fees0: graphqlData.fees0,
             fees1: graphqlData.fees1,
             strategyToken: graphqlData.strategyToken,
@@ -1555,15 +1535,15 @@ export class SteerLiquidityService extends Service {
             this.calculateTvlFromBalances(
               graphqlData.token0Balance,
               graphqlData.token1Balance,
-              parseInt(graphqlData.token0Decimals) || 18,
-              parseInt(graphqlData.token1Decimals) || 18,
+              parseInt(graphqlData.token0Decimals, 10) || 18,
+              parseInt(graphqlData.token1Decimals, 10) || 18,
             ),
           // Calculate TVL from token balances if not available
           calculatedTvl: this.calculateTvlFromBalances(
             graphqlData.token0Balance,
             graphqlData.token1Balance,
-            parseInt(graphqlData.token0Decimals) || 18,
-            parseInt(graphqlData.token1Decimals) || 18,
+            parseInt(graphqlData.token0Decimals, 10) || 18,
+            parseInt(graphqlData.token1Decimals, 10) || 18,
           ),
         };
 
@@ -1594,10 +1574,8 @@ export class SteerLiquidityService extends Service {
   ): number {
     try {
       // Convert string balances to numbers with proper decimals
-      const token0Amount =
-        parseFloat(token0Balance) / Math.pow(10, token0Decimals);
-      const token1Amount =
-        parseFloat(token1Balance) / Math.pow(10, token1Decimals);
+      const token0Amount = parseFloat(token0Balance) / 10 ** token0Decimals;
+      const token1Amount = parseFloat(token1Balance) / 10 ** token1Decimals;
 
       logger.log(
         `Token balances - Token0: ${token0Amount}, Token1: ${token1Amount}`,

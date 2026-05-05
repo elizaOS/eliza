@@ -1,11 +1,9 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { Plugin } from "@elizaos/core";
-
-// Services
-import { NewsDataService } from "./services/newsDataService";
-
 // Providers
 import { defiNewsProvider } from "./providers/defiNewsProvider";
+// Services
+import { NewsDataService } from "./services/newsDataService";
 
 /**
  * DeFi News Plugin
@@ -46,12 +44,10 @@ export default defiNewsPlugin;
 
 // Export types for external use
 export * from "./interfaces/types";
-
-// Export services for direct access if needed
-export { NewsDataService } from "./services/newsDataService";
-
 // Export providers
 export { defiNewsProvider } from "./providers/defiNewsProvider";
+// Export services for direct access if needed
+export { NewsDataService } from "./services/newsDataService";
 
 // Export utilities
 export * from "./utils/formatters";

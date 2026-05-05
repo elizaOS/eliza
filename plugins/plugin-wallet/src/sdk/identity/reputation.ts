@@ -7,22 +7,22 @@
  * Spec: https://eips.ethereum.org/EIPS/eip-8004
  */
 import {
+  type Address,
+  type Chain,
   createPublicClient,
   getContract,
-  http,
-  type Address,
   type Hash,
   type Hex,
+  http,
   type PublicClient,
   type WalletClient,
-  type Chain,
 } from "viem";
 import {
+  arbitrum,
+  arbitrumSepolia,
   base,
   baseSepolia,
   mainnet,
-  arbitrum,
-  arbitrumSepolia,
   polygon,
 } from "viem/chains";
 import { KNOWN_REGISTRY_ADDRESSES, type SupportedChain } from "./erc8004.js";

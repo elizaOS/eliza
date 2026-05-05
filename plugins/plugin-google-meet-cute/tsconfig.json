@@ -1,9 +1,11 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "rootDir": "src",
     "outDir": "dist",
-    "lib": ["ES2022", "dom"],
+    "lib": [
+      "ES2022",
+      "dom"
+    ],
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "node",
@@ -16,6 +18,13 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

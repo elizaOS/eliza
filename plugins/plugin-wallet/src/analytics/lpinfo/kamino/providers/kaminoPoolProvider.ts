@@ -1,13 +1,7 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type {
-  AgentRuntime,
-  Memory,
-  Provider,
-  State,
-  IAgentRuntime,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { KaminoLiquidityService } from "../services/kaminoLiquidityService";
+import type { KaminoLiquidityService } from "../services/kaminoLiquidityService";
 
 /**
  * Kamino Pool-Specific Provider
@@ -18,7 +12,7 @@ export const kaminoPoolProvider: Provider = {
   description:
     "Provides detailed information about specific Kamino liquidity pools by pool address",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_POOL provider called");
 
     let poolInfo = "";
@@ -100,7 +94,7 @@ export const kaminoPoolProvider: Provider = {
       kaminoPool: poolInfo,
     };
 
-    const text = poolInfo + "\n";
+    const text = `${poolInfo}\n`;
 
     return {
       data,
@@ -116,7 +110,7 @@ export const kaminoPoolProvider: Provider = {
 async function generatePoolReport(
   runtime: IAgentRuntime,
   poolData: any,
-  kaminoLiquidityService: KaminoLiquidityService,
+  _kaminoLiquidityService: KaminoLiquidityService,
 ): Promise<string> {
   let report = "";
 

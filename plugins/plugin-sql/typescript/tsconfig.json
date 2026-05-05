@@ -2,14 +2,16 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ESNext", "dom"],
+    "lib": [
+      "ESNext",
+      "dom"
+    ],
     "moduleResolution": "bundler",
     "outDir": "../dist",
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": false,
-    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "declaration": false,
@@ -23,8 +25,17 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowUnusedLabels": true,
-    "types": ["node", "bun-types"]
+    "types": [
+      "node",
+      "bun-types"
+    ]
   },
-  "include": ["**/*.ts"],
-  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }
