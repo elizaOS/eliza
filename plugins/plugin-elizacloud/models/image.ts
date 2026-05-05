@@ -47,6 +47,29 @@ export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
 ): Promise<{ title: string; description: string }> {
+  // Honour `DISABLE_IMAGE_DESCRIPTION` (set by the runtime when
+  // `features.vision === false`). The runtime exposes it via getSetting; some
+  // hosts only set it in process.env. Check both before burning a quota slot.
+  // The docs (`docs/runtime/core.md`) already promise this behaviour, but
+  // historically only `plugin-discord` honoured it at the call site, leaving
+  // every other caller (agent-orchestrator's task validator, vision, lifeops,
+  // farcaster, telegram) free to spend the rate-limit budget.
+  const disableSetting = getSetting(runtime, "DISABLE_IMAGE_DESCRIPTION", "");
+  const disabled =
+    disableSetting === "true" ||
+    disableSetting === "1" ||
+    process.env.DISABLE_IMAGE_DESCRIPTION === "true" ||
+    process.env.DISABLE_IMAGE_DESCRIPTION === "1";
+  if (disabled) {
+    logger.debug(
+      "[ELIZAOS_CLOUD] IMAGE_DESCRIPTION skipped — DISABLE_IMAGE_DESCRIPTION is set"
+    );
+    return {
+      title: "Image description disabled",
+      description: "Image description is disabled by configuration.",
+    };
+  }
+
   let imageUrl: string;
   let promptText: string | undefined;
   const modelName = getImageDescriptionModel(runtime);
