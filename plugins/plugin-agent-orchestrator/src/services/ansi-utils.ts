@@ -219,7 +219,7 @@ export function extractCompletionSummary(raw: string): string {
   // Commit hashes
   const commits = stripped.match(/(?:committed|commit)\s+[a-f0-9]{7,40}/gi);
   if (commits) {
-    for (const m of [...new Set(commits)]) lines.push(m.trim());
+    for (const m of new Set(commits)) lines.push(m.trim());
   }
 
   // Files changed summary (e.g. "2 files changed, 15 insertions(+), 3 deletions(-)")
@@ -238,14 +238,14 @@ export function extractCompletionSummary(raw: string): string {
     ),
   );
   if (appResultLines.length > 0) {
-    for (const line of [...new Set(appResultLines)]) lines.push(line);
+    for (const line of new Set(appResultLines)) lines.push(line);
   }
 
   const domainStatusLines = strippedLines.filter((line) =>
     /^(?:domain|app|status|verified|zoneId|expires|result):\s*\S/i.test(line),
   );
   if (domainStatusLines.length > 0) {
-    for (const line of [...new Set(domainStatusLines)]) lines.push(line);
+    for (const line of new Set(domainStatusLines)) lines.push(line);
   }
 
   return lines.join("\n");
