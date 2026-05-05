@@ -63,12 +63,18 @@ function readNumberParam(
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-async function fetchPolymarketJson<T>(path: string): Promise<T> {
+async function fetchPolymarketJson<T>(
+  path: string,
+  options: { allowErrorStatus?: boolean } = {},
+): Promise<T> {
   const response = await fetch(`${getApiBase()}${path}`, {
     headers: { accept: "application/json", ...buildAuthHeaders() },
     signal: AbortSignal.timeout(ACTION_TIMEOUT_MS),
   });
   const payload = (await response.json().catch(() => null)) as T;
+  if (options.allowErrorStatus && payload !== null) {
+    return payload;
+  }
   if (!response.ok) {
     const message =
       payload && typeof payload === "object" && "error" in payload
@@ -291,7 +297,8 @@ export const polymarketGetOrderbookAction: Action = {
   validate: async () => true,
   handler: async (_runtime, _message, _state, options, callback) => {
     const tokenId =
-      readStringParam(options, "tokenId") ?? readStringParam(options, "token_id");
+      readStringParam(options, "tokenId") ??
+      readStringParam(options, "token_id");
     if (!tokenId) {
       const text = "Provide a Polymarket CLOB token id.";
       if (callback) {
@@ -386,6 +393,7 @@ export const polymarketOrdersDisabledAction: Action = {
   handler: async (_runtime, _message, _state, _options, callback) => {
     const response = await fetchPolymarketJson<PolymarketDisabledResponse>(
       "/api/polymarket/orders",
+      { allowErrorStatus: true },
     ).catch((error) => ({
       enabled: false,
       reason: error instanceof Error ? error.message : String(error),

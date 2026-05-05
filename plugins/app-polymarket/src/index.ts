@@ -1,10 +1,10 @@
-export * from "./client";
 export * from "./actions";
+export * from "./client";
 export * from "./orderbook";
+export * from "./PolymarketAppView";
 export { polymarketPlugin } from "./plugin";
-export { polymarketStatusProvider } from "./provider";
-export * from "./polymarket-contracts";
 export { POLYMARKET_APP_NAME, polymarketApp } from "./polymarket-app";
+export * from "./polymarket-contracts";
+export { polymarketStatusProvider } from "./provider";
 export * from "./routes";
 export * from "./usePolymarketState";
-export * from "./PolymarketAppView";

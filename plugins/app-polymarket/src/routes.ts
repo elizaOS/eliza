@@ -2,6 +2,10 @@ import type http from "node:http";
 import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 import { logger } from "@elizaos/core";
 import {
+  derivePolymarketTopOfBook,
+  type PolymarketOrderbookLevel,
+} from "./orderbook";
+import {
   POLYMARKET_CLOB_API_BASE,
   POLYMARKET_DATA_API_BASE,
   POLYMARKET_GAMMA_API_BASE,
@@ -17,10 +21,6 @@ import {
   type PolymarketStatusResponse,
   type PolymarketTradingEnvVar,
 } from "./polymarket-contracts";
-import {
-  derivePolymarketTopOfBook,
-  type PolymarketOrderbookLevel,
-} from "./orderbook";
 
 export interface PolymarketRouteState {
   fetchImpl?: typeof fetch;

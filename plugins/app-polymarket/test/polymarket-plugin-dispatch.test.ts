@@ -40,9 +40,9 @@ describe("Polymarket plugin route dispatch matching", () => {
   });
 
   it("exposes Polymarket agent actions and provider when the app plugin is loaded", () => {
-    expect((polymarketPlugin.providers ?? []).map((item) => item.name)).toContain(
-      "POLYMARKET_STATUS",
-    );
+    expect(
+      (polymarketPlugin.providers ?? []).map((item) => item.name),
+    ).toContain("POLYMARKET_STATUS");
     expect((polymarketPlugin.actions ?? []).map((item) => item.name)).toEqual([
       "POLYMARKET_STATUS",
       "POLYMARKET_GET_MARKETS",
