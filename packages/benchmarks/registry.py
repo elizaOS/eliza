@@ -1690,6 +1690,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_gaia_json,
         ),
         BenchmarkDefinition(
+            id="gaia_orchestrated",
+            display_name="GAIA (Orchestrated)",
+            description="GAIA sample-backed orchestrated benchmark track",
+            cwd_rel="benchmarks/gaia",
+            requirements=BenchmarkRequirements(
+                env_vars=("GROQ_API_KEY",),
+                paths=(),
+                notes="Uses the GAIA runner with orchestrator profile defaults; safe sample runs avoid gated HF access.",
+            ),
+            build_command=_gaia_cmd,
+            locate_result=_gaia_result,
+            extract_score=_score_from_gaia_json,
+        ),
+        BenchmarkDefinition(
             id="tau_bench",
             display_name="Tau-bench",
             description="Tool-Agent-User Interaction benchmark",

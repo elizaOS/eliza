@@ -6,12 +6,12 @@
  * overhead from LLM latency for accurate performance measurement.
  */
 
-import type { Provider } from "../../../../packages/core/src/types/components";
-import type { Memory } from "../../../../packages/core/src/types/memory";
-import { ModelType } from "../../../../packages/core/src/types/model";
-import type { Plugin } from "../../../../packages/core/src/types/plugin";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime";
-import type { State } from "../../../../packages/core/src/types/state";
+import type { Provider } from "../../../../core/src/types/components";
+import type { Memory } from "../../../../core/src/types/memory";
+import { ModelType } from "../../../../core/src/types/model";
+import type { Plugin } from "../../../../core/src/types/plugin";
+import type { IAgentRuntime } from "../../../../core/src/types/runtime";
+import type { State } from "../../../../core/src/types/state";
 
 // ─── Mock response constants ───────────────────────────────────────────────
 

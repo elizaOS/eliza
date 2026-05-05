@@ -12,7 +12,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
-TIMESTAMP=$(date +%s%3N 2>/dev/null || date +%s000)
+
+timestamp_ms() {
+  local ts
+  ts="$(date +%s%3N 2>/dev/null || true)"
+  if [[ "${ts}" =~ ^[0-9]+$ ]]; then
+    echo "${ts}"
+  else
+    date +%s000
+  fi
+}
+
+TIMESTAMP="$(timestamp_ms)"
 
 # ─── Color output ────────────────────────────────────────────────────────────
 
@@ -53,17 +64,18 @@ if ! $COMPARE_ONLY; then
 
   TS_DIR="${SCRIPT_DIR}/typescript"
   TS_OUTPUT="${RESULTS_DIR}/typescript-${TIMESTAMP}.json"
-  REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+  PACKAGES_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
   # Ensure root workspace deps are installed (required for workspace:* resolution)
-  if ! bun run -e "require('@elizaos/core')" 2>/dev/null; then
+  if ! (cd "${REPO_ROOT}" && bun -e "require('@elizaos/core')" 2>/dev/null); then
     info "Installing root workspace dependencies (required for @elizaos/core)..."
     cd "${REPO_ROOT}" && bun install
     cd "${SCRIPT_DIR}"
   fi
 
   # Ensure core is built
-  if [ ! -f "${REPO_ROOT}/packages/core/dist/node/index.node.js" ]; then
+  if [ ! -f "${PACKAGES_ROOT}/core/dist/node/index.node.js" ]; then
     info "Building @elizaos/core..."
     cd "${REPO_ROOT}" && bun run build:core
     cd "${SCRIPT_DIR}"

@@ -136,7 +136,13 @@ export class DatabaseMigrationService {
       logger.error({ src: "plugin:sql", failureCount, successCount }, "Some migrations failed");
 
       const errorSummary = errors.map((e) => `${e.pluginName}: ${e.error.message}`).join("\n  ");
-      throw new Error(`${failureCount} migration(s) failed:\n  ${errorSummary}`);
+      const aggregateError = new Error(`${failureCount} migration(s) failed:\n  ${errorSummary}`, {
+        cause: errors[0]?.error,
+      }) as Error & {
+        migrationErrors?: Array<{ pluginName: string; error: Error }>;
+      };
+      aggregateError.migrationErrors = errors;
+      throw aggregateError;
     }
   }
 
