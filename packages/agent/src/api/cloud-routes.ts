@@ -738,8 +738,33 @@ export async function handleCloudRoute(
       // Without this, every cloud op falls back to the proxy compat path,
       // which creates agents in a namespace whose queue never drains
       // (agents stay `status: "queued"` forever — onboarding hangs).
-      // Loopback-only HTTP on the user's machine; the key IS the user's
-      // own secret, not a server-owned credential.
+      //
+      // ## Security trade-off — token in HTTP response body
+      //
+      // Sending an API key in the response body is a deliberate choice
+      // for our architecture, NOT an oversight:
+      //   - The agent process and the renderer (Electrobun WebView) live
+      //     on the same machine.  They communicate over loopback HTTP
+      //     (`127.0.0.1`).  Any process that can sniff the loopback
+      //     interface (tcpdump, attached debugger) already has the
+      //     ambient privilege to read the renderer's memory or the
+      //     vault directly — the HTTP body is not the weakest link.
+      //   - The key IS the user's own secret (not server-owned), and
+      //     the response only goes to the renderer the user is
+      //     actively using.
+      //   - Returning a short-lived "handle" that the renderer
+      //     exchanges for the real token would just shift the same
+      //     cleartext transit one hop, not eliminate it.
+      //
+      // The principled fix is to push the token over an Electrobun RPC
+      // channel (the same IPC the api-base-owner module uses for
+      // `pushApiBaseToRenderer`).  That requires routing the cloud
+      // login outcome from the agent process to the Electrobun main
+      // process and back to the renderer — three-process choreography
+      // that doesn't fit this PR.  Tracked as a follow-up.
+      logger.info(
+        `[cloud-login] sending API key to loopback renderer (single-user desktop trust model)`,
+      );
       sendJson(res, {
         status: "authenticated",
         token: data.apiKey,

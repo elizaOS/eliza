@@ -313,12 +313,30 @@ const CHAIN_TO_ENV_KEY: Record<WalletChain, string> = {
  * a bridge the UI shows "No EVM/Solana address" even though the agent
  * has a perfectly good wallet sitting in the vault.
  *
- * Single-user assistant case: the agent IS the user's wallet. Bridge
- * the per-agent private key into the process env so consumers find it.
+ * ## Security trade-off — this is OPT-IN by default
  *
- * Skipped for any chain where the user has already set their own env
- * var explicitly (so an imported personal key wins over the auto-bridged
- * agent key). Skipped entirely via `ELIZA_DISABLE_AGENT_WALLET_AS_USER=1`.
+ * Writing a private key to `process.env` exposes it via:
+ *   - `/proc/self/environ` (readable by the same UID; some sandboxes leak more)
+ *   - crash dumps + core files
+ *   - any `JSON.stringify(process.env)` in error reports or telemetry
+ *   - inheritance into every spawned child process (default `env` for spawn)
+ *
+ * For most users on a single-user machine that's an acceptable trade —
+ * the agent IS the wallet, the box is the user's, and the convenience
+ * (wallet UI just works) outweighs the leak surface. But for shared
+ * machines, server deployments, or anyone with strict secrets hygiene,
+ * the leak surface is real.
+ *
+ * Default behavior: bridge is OFF. The wallet UI shows "No address"
+ * for the chain unless the user explicitly opts in. Opt-in flag:
+ * `ELIZA_AGENT_WALLET_AS_USER=1`. The proper fix is for consumer
+ * plugins to read from the vault directly via `getAgentWallet(agentId,
+ * chain)` instead of `process.env.*_PRIVATE_KEY` — when that
+ * migration lands, this whole bridge can be deleted.
+ *
+ * Legacy env: `ELIZA_DISABLE_AGENT_WALLET_AS_USER=1` (the previous
+ * opt-out) is still respected — if set, the bridge is forced off
+ * regardless of `ELIZA_AGENT_WALLET_AS_USER`.
  */
 export async function bridgeAgentWalletsToProcessEnv(
   vault: Vault,
@@ -326,7 +344,10 @@ export async function bridgeAgentWalletsToProcessEnv(
   descriptors: readonly AgentWalletDescriptor[],
   caller?: string,
 ): Promise<void> {
+  // Hard opt-out wins over opt-in — preserves the legacy disable flag.
   if (process.env.ELIZA_DISABLE_AGENT_WALLET_AS_USER === "1") return;
+  // Default off. Skipping bridge unless explicitly opted in.
+  if (process.env.ELIZA_AGENT_WALLET_AS_USER !== "1") return;
   for (const d of descriptors) {
     const envKey = CHAIN_TO_ENV_KEY[d.chain];
     if (process.env[envKey]?.trim()) continue; // user-set wins
