@@ -177,7 +177,7 @@ function resolveRootPackageDir(packageName) {
   const bunStoreDir = path.join(repoRoot, "node_modules", ".bun");
   if (pathExists(bunStoreDir)) {
     const packageSegments = packageName.split("/");
-    for (const entry of fs.readdirSync(bunStoreDir).sort()) {
+    for (const entry of fs.readdirSync(bunStoreDir).sort().reverse()) {
       const candidate = path.join(
         bunStoreDir,
         entry,
@@ -279,6 +279,7 @@ for (const packagePath of localPackages) {
     const pluginSqlRootDeps = [
       "@electric-sql/pglite",
       "@neondatabase/serverless",
+      "dotenv",
       "drizzle-orm",
       "pg",
       "uuid",
