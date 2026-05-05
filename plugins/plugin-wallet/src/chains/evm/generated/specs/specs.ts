@@ -33,35 +33,46 @@ export const coreActionsSpec = {
   version: "1.0.0",
   actions: [
     {
-      name: "TRANSFER",
-      description: "Transfer tokens from the agent's wallet to another address",
-      similes: ["SEND_TOKENS", "SEND_TOKEN", "TRANSFER_TOKEN", "TRANSFER_TOKENS"],
+      name: "EVM_TRANSFER",
+      description: "Transfer tokens from the agent's EVM wallet to another address",
+      descriptionCompressed: "EVM transfer: send native or ERC-20 tokens to another address.",
+      similes: [
+        "TRANSFER",
+        "SEND_TOKENS",
+        "SEND_TOKEN",
+        "TRANSFER_TOKEN",
+        "TRANSFER_TOKENS",
+        "EVM_SEND_TOKENS",
+      ],
     },
     {
       name: "SWAP",
       description: "Swap tokens on a decentralized exchange",
+      descriptionCompressed: "EVM token swap on a DEX (Lifi/Bebop routing).",
       similes: ["SWAP_TOKENS", "SWAP_TOKEN"],
     },
     {
       name: "CROSS_CHAIN_TRANSFER",
       description: "Bridge tokens to another chain",
+      descriptionCompressed: "Bridge ERC-20 tokens between EVM chains via Lifi.",
       similes: ["BRIDGE", "BRIDGE_TOKENS"],
     },
     {
-      name: "GOV_PROPOSE",
-      description: "Create a governance proposal",
-    },
-    {
-      name: "GOV_VOTE",
-      description: "Vote on a governance proposal",
-    },
-    {
-      name: "GOV_QUEUE",
-      description: "Queue a governance proposal",
-    },
-    {
-      name: "GOV_EXECUTE",
-      description: "Execute a governance proposal",
+      name: "WALLET_GOV_OP",
+      description:
+        "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
+      descriptionCompressed:
+        "OZ-Governor op: propose, vote, queue, or execute (op switch).",
+      similes: [
+        "GOV_PROPOSE",
+        "GOV_VOTE",
+        "GOV_QUEUE",
+        "GOV_EXECUTE",
+        "GOVERNANCE_VOTE",
+        "QUEUE_PROPOSAL",
+        "EXECUTE_PROPOSAL",
+        "PROPOSE",
+      ],
     },
   ],
 } as const;
@@ -69,35 +80,46 @@ export const allActionsSpec = {
   version: "1.0.0",
   actions: [
     {
-      name: "TRANSFER",
-      description: "Transfer tokens from the agent's wallet to another address",
-      similes: ["SEND_TOKENS", "SEND_TOKEN", "TRANSFER_TOKEN", "TRANSFER_TOKENS"],
+      name: "EVM_TRANSFER",
+      description: "Transfer tokens from the agent's EVM wallet to another address",
+      descriptionCompressed: "EVM transfer: send native or ERC-20 tokens to another address.",
+      similes: [
+        "TRANSFER",
+        "SEND_TOKENS",
+        "SEND_TOKEN",
+        "TRANSFER_TOKEN",
+        "TRANSFER_TOKENS",
+        "EVM_SEND_TOKENS",
+      ],
     },
     {
       name: "SWAP",
       description: "Swap tokens on a decentralized exchange",
+      descriptionCompressed: "EVM token swap on a DEX (Lifi/Bebop routing).",
       similes: ["SWAP_TOKENS", "SWAP_TOKEN"],
     },
     {
       name: "CROSS_CHAIN_TRANSFER",
       description: "Bridge tokens to another chain",
+      descriptionCompressed: "Bridge ERC-20 tokens between EVM chains via Lifi.",
       similes: ["BRIDGE", "BRIDGE_TOKENS"],
     },
     {
-      name: "GOV_PROPOSE",
-      description: "Create a governance proposal",
-    },
-    {
-      name: "GOV_VOTE",
-      description: "Vote on a governance proposal",
-    },
-    {
-      name: "GOV_QUEUE",
-      description: "Queue a governance proposal",
-    },
-    {
-      name: "GOV_EXECUTE",
-      description: "Execute a governance proposal",
+      name: "WALLET_GOV_OP",
+      description:
+        "OZ-Governor governance op: { op: 'propose' | 'vote' | 'queue' | 'execute' }",
+      descriptionCompressed:
+        "OZ-Governor op: propose, vote, queue, or execute (op switch).",
+      similes: [
+        "GOV_PROPOSE",
+        "GOV_VOTE",
+        "GOV_QUEUE",
+        "GOV_EXECUTE",
+        "GOVERNANCE_VOTE",
+        "QUEUE_PROPOSAL",
+        "EXECUTE_PROPOSAL",
+        "PROPOSE",
+      ],
     },
   ],
 } as const;
@@ -107,11 +129,13 @@ export const coreProvidersSpec = {
     {
       name: "wallet",
       description: "EVM wallet address and balances",
+      descriptionCompressed: "EVM wallet address and balances.",
       dynamic: true,
     },
     {
       name: "get-balance",
       description: "Token balance for ERC20 tokens when onchain actions are requested",
+      descriptionCompressed: "ERC20 token balance for onchain actions.",
       dynamic: true,
     },
   ],
@@ -122,11 +146,13 @@ export const allProvidersSpec = {
     {
       name: "wallet",
       description: "EVM wallet address and balances",
+      descriptionCompressed: "EVM wallet address and balances.",
       dynamic: true,
     },
     {
       name: "get-balance",
       description: "Token balance for ERC20 tokens when onchain actions are requested",
+      descriptionCompressed: "ERC20 token balance for onchain actions.",
       dynamic: true,
     },
   ],
