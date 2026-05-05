@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // eliza/packages/app-core/scripts/aosp/smoke-cuttlefish.mjs —
 // end-to-end smoke test for the on-device agent. Confirms: cvd is up,
 // APK is installed, service starts, /api/health responds, bearer
@@ -27,8 +28,8 @@
 // the local-inference active-model state as the signal; that endpoint
 // is only populated when a local libllama-backed model is loaded.
 
-import fs from "node:fs";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";

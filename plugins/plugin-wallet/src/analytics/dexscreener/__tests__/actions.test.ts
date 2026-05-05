@@ -15,6 +15,8 @@ import {
   createMockService,
   createMockState,
   createTestMemory,
+  type DexScreenerTradeMockMethods,
+  type DexScreenerTradeMockService,
   describe,
   expect,
   it,
@@ -23,11 +25,11 @@ import {
 
 describe("DexScreener Actions", () => {
   let mockRuntime: IAgentRuntime;
-  let mockService: any;
+  let mockService: DexScreenerTradeMockService;
 
   beforeEach(() => {
     // Create mock service
-    mockService = createMockService({
+    mockService = createMockService<DexScreenerTradeMockMethods>({
       search: mock(),
       getTokenPairs: mock(),
       getTrending: mock(),

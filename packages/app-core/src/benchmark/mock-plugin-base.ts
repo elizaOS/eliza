@@ -160,7 +160,8 @@ function createBenchmarkActionToon(prompt: string): string {
       thought: "Searching for the requested product.",
       actions: "BENCHMARK_ACTION",
       text: "Searching WebShop.",
-      params: "BENCHMARK_ACTION:\n  command: search[wireless bluetooth headphones]",
+      params:
+        "BENCHMARK_ACTION:\n  command: search[wireless bluetooth headphones]",
     });
   }
 
@@ -309,8 +310,9 @@ function createBenchmarkActionToon(prompt: string): string {
       /ignore|disregard|previous instructions|new instructions|system override|system command|dan|bypass|jailbreak/.test(
         lower,
       );
-    const privilege =
-      /admin|owner|root|privilege|permissions|elevate/.test(lower);
+    const privilege = /admin|owner|root|privilege|permissions|elevate/.test(
+      lower,
+    );
     return buildToonResponse({
       thought: "Returning deterministic Trust benchmark analysis.",
       actions: "REPLY",

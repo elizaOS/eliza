@@ -1,6 +1,6 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 
-import type { IAgentRuntime } from "@elizaos/core";
+import type { Content, IAgentRuntime } from "@elizaos/core";
 import {
   getNewPairsAction,
   getPairsByChainAction,
@@ -15,6 +15,8 @@ import {
   createMockService,
   createMockState,
   createTestMemory,
+  type DexScreenerTradeMockMethods,
+  type DexScreenerTradeMockService,
   describe,
   expect,
   it,
@@ -23,11 +25,11 @@ import {
 
 describe("DexScreener Actions - Edge Cases", () => {
   let mockRuntime: IAgentRuntime;
-  let mockService: any;
+  let mockService: DexScreenerTradeMockService;
 
   beforeEach(() => {
     // Create mock service
-    mockService = createMockService({
+    mockService = createMockService<DexScreenerTradeMockMethods>({
       search: mock(),
       getTokenPairs: mock(),
       getTrending: mock(),
@@ -439,7 +441,9 @@ describe("DexScreener Actions - Edge Cases", () => {
     });
 
     it("should handle content with undefined text property", async () => {
-      const message = createTestMemory({ someOtherProp: "value" } as any);
+      const message = createTestMemory({
+        someOtherProp: "value",
+      } as Content);
 
       const isValid = await searchTokensAction.validate(mockRuntime, message);
       expect(isValid).toBe(false);

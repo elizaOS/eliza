@@ -307,8 +307,7 @@ function cropToTokenLimit(
   content: ExtractedContent,
   maxChars = 400000,
 ): string {
-  const { fullText, visibleText, viewportStart, viewportEnd, totalLength } =
-    content;
+  const { fullText, visibleText } = content;
 
   if (fullText.length <= maxChars) {
     // Add viewport markers if content fits

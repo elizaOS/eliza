@@ -217,6 +217,6 @@ export interface ActionRequest {
 export interface ActionResponse {
   success: boolean;
   text: string;
-  data?: any;
+  data?: Record<string, unknown>;
   error?: string;
 }
