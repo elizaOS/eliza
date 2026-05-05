@@ -109,6 +109,27 @@ describe("optional core plugins (require explicit opt-in)", () => {
     }
   });
 
+  it("resolves Polymarket short ids to the native app runtime plugin", () => {
+    const allowNames = collectPluginNames({
+      cloud: { enabled: false },
+      plugins: {
+        allow: ["polymarket", "app-polymarket"],
+      },
+    } as ElizaConfig);
+    expect(allowNames.has("@elizaos/app-polymarket")).toBe(true);
+    expect(allowNames.has("@elizaos/plugin-polymarket")).toBe(false);
+    expect(allowNames.has("@elizaos/plugin-app-polymarket")).toBe(false);
+
+    const featureNames = collectPluginNames({
+      cloud: { enabled: false },
+      features: {
+        polymarket: true,
+      },
+      plugins: {},
+    } as ElizaConfig);
+    expect(featureNames.has("@elizaos/app-polymarket")).toBe(true);
+  });
+
   it("loads optional plugins only when plugins.entries has enabled: true", () => {
     const names = collectPluginNames({
       cloud: { enabled: false },

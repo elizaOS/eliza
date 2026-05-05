@@ -3,6 +3,7 @@ import type {
   PolymarketDisabledResponse,
   PolymarketMarketResponse,
   PolymarketMarketsResponse,
+  PolymarketOrderbookResponse,
   PolymarketPositionsResponse,
   PolymarketStatusResponse,
 } from "./polymarket-contracts";
@@ -25,6 +26,7 @@ declare module "@elizaos/app-core/api/client-base" {
     ): Promise<PolymarketMarketsResponse>;
     polymarketMarketById(id: string): Promise<PolymarketMarketResponse>;
     polymarketMarketBySlug(slug: string): Promise<PolymarketMarketResponse>;
+    polymarketOrderbook(tokenId: string): Promise<PolymarketOrderbookResponse>;
     polymarketOrders(): Promise<PolymarketDisabledResponse>;
     polymarketPositions(user: string): Promise<PolymarketPositionsResponse>;
   }
@@ -57,6 +59,11 @@ ElizaClient.prototype.polymarketMarketById = async function (id: string) {
 ElizaClient.prototype.polymarketMarketBySlug = async function (slug: string) {
   const params = new URLSearchParams({ slug });
   return this.fetch(`/api/polymarket/market?${params.toString()}`);
+};
+
+ElizaClient.prototype.polymarketOrderbook = async function (tokenId: string) {
+  const params = new URLSearchParams({ token_id: tokenId });
+  return this.fetch(`/api/polymarket/orderbook?${params.toString()}`);
 };
 
 ElizaClient.prototype.polymarketOrders = async function () {

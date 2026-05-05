@@ -168,6 +168,10 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   appBrowser: "@elizaos/app-browser",
   "eliza-browser": "@elizaos/app-browser",
   elizaBrowser: "@elizaos/app-browser",
+  /** Native Polymarket app runtime plugin. */
+  polymarket: "@elizaos/app-polymarket",
+  "app-polymarket": "@elizaos/app-polymarket",
+  appPolymarket: "@elizaos/app-polymarket",
   /** Agent Browser Bridge: Chrome/Safari companion + packaging. Core plugin; aliased here so short IDs resolve in plugins.allow and config.features. */
   "browser-bridge": "@elizaos/plugin-browser-bridge",
   browserBridge: "@elizaos/plugin-browser-bridge",

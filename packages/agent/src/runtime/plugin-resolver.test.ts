@@ -17,6 +17,9 @@ describe("resolveRuntimePluginImportSpecifier", () => {
     expect(resolveRuntimePluginImportSpecifier("@elizaos/app-lifeops")).toBe(
       "@elizaos/app-lifeops/plugin",
     );
+    expect(resolveRuntimePluginImportSpecifier("@elizaos/app-polymarket")).toBe(
+      "@elizaos/app-polymarket/plugin",
+    );
     expect(resolveRuntimePluginImportSpecifier("@elizaos/app-shopify")).toBe(
       "@elizaos/app-shopify/plugin",
     );
