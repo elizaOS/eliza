@@ -13,15 +13,36 @@ type AttachmentWithInlineData = Media & {
 	_createdAt?: number;
 };
 
+type ReadAttachmentResult = {
+	attachment: AttachmentWithInlineData;
+	content: string;
+	autoSelected: boolean;
+};
+
 function attachmentLocator(attachment: Media): string {
 	return attachment.title?.trim() || attachment.url || attachment.id;
+}
+
+function isUnreadableFallbackDescription(value: string): boolean {
+	return [
+		"An image attachment (recognition failed)",
+		"An audio/video attachment (transcription failed)",
+		"User-uploaded audio/video attachment (no transcription available)",
+		"Could not process video attachment because the required service is not available.",
+		"A PDF document that could not be converted to text",
+		"A plaintext document that could not be retrieved",
+		"A generic attachment",
+		"A video attachment",
+	].includes(value.trim());
 }
 
 function attachmentStoredContent(attachment: Media): string {
 	return [attachment.text, attachment.description]
 		.filter(
 			(value): value is string =>
-				typeof value === "string" && value.trim().length > 0,
+				typeof value === "string" &&
+				value.trim().length > 0 &&
+				!isUnreadableFallbackDescription(value),
 		)
 		.join("\n\n")
 		.trim();
@@ -63,10 +84,23 @@ async function describeImageAttachment(
 	if (!imageUrl) {
 		return "";
 	}
-	const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-		prompt: "Describe this attachment so an agent can reference it later.",
-		imageUrl,
-	});
+	let response: unknown;
+	try {
+		response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+			prompt: "Describe this attachment so an agent can reference it later.",
+			imageUrl,
+		});
+	} catch (error) {
+		runtime.logger?.warn?.(
+			{
+				src: "core:clipboard:attachment-context",
+				attachmentId: attachment.id,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Image attachment description failed",
+		);
+		return "";
+	}
 	if (typeof response === "string") {
 		const parsed = parseKeyValueXml(response) as Record<string, unknown> | null;
 		if (parsed) {
@@ -86,6 +120,17 @@ async function describeImageAttachment(
 		return response.description.trim();
 	}
 	return "";
+}
+
+async function readableAttachmentContent(
+	runtime: IAgentRuntime,
+	attachment: AttachmentWithInlineData,
+): Promise<string> {
+	let content = attachmentStoredContent(attachment);
+	if (!content && attachment.contentType === ContentType.IMAGE) {
+		content = await describeImageAttachment(runtime, attachment);
+	}
+	return content;
 }
 
 export async function listConversationAttachments(
@@ -188,11 +233,7 @@ export async function readAttachmentRecord(
 	runtime: IAgentRuntime,
 	message: Memory,
 	attachmentId?: string | null,
-): Promise<{
-	attachment: AttachmentWithInlineData;
-	content: string;
-	autoSelected: boolean;
-} | null> {
+): Promise<ReadAttachmentResult | null> {
 	const attachments = await listConversationAttachments(runtime, message);
 	if (attachments.length === 0) {
 		return null;
@@ -207,15 +248,38 @@ export async function readAttachmentRecord(
 	if (!attachment) {
 		return null;
 	}
-	let content = attachmentStoredContent(attachment);
-	if (!content && attachment.contentType === ContentType.IMAGE) {
-		content = await describeImageAttachment(runtime, attachment);
-	}
 	return {
 		attachment,
-		content,
+		content: await readableAttachmentContent(runtime, attachment),
 		autoSelected: !attachmentId?.trim(),
 	};
+}
+
+export async function readAttachmentRecords(
+	runtime: IAgentRuntime,
+	message: Memory,
+	attachmentId?: string | null,
+): Promise<ReadAttachmentResult[]> {
+	if (attachmentId?.trim()) {
+		const record = await readAttachmentRecord(runtime, message, attachmentId);
+		return record ? [record] : [];
+	}
+
+	const currentAttachments = (message.content.attachments ??
+		[]) as AttachmentWithInlineData[];
+	if (currentAttachments.length > 0) {
+		const createdAt = message.createdAt ?? Date.now();
+		return Promise.all(
+			currentAttachments.map(async (attachment) => ({
+				attachment: { ...attachment, _createdAt: createdAt },
+				content: await readableAttachmentContent(runtime, attachment),
+				autoSelected: true,
+			})),
+		);
+	}
+
+	const record = await readAttachmentRecord(runtime, message);
+	return record ? [record] : [];
 }
 
 export function summarizeAttachment(attachment: Media): string {

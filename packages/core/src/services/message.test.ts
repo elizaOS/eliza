@@ -5,6 +5,7 @@ import {
 	DefaultMessageService,
 	extractPlannerActionNames,
 	findOwnedActionCorrectionFromMetadata,
+	shouldSkipDocumentProviderRescue,
 	shouldRunMetadataActionRescue,
 } from "./message.ts";
 
@@ -242,6 +243,47 @@ describe("shouldRunMetadataActionRescue", () => {
 	});
 });
 
+describe("shouldSkipDocumentProviderRescue", () => {
+	it("skips uploaded-document rescue for fresh URL lookups without attachments", () => {
+		const message = {
+			content: {
+				text: "open https://example.com/ and tell me the page title only",
+			},
+		} as Memory;
+
+		expect(shouldSkipDocumentProviderRescue(message)).toBe(true);
+	});
+
+	it("skips uploaded-document rescue for URL turns even when they mention files", () => {
+		const message = {
+			content: {
+				text: "read the uploaded file at https://example.com/file.txt",
+			},
+		} as Memory;
+
+		expect(shouldSkipDocumentProviderRescue(message)).toBe(true);
+	});
+
+	it("skips uploaded-document rescue when the current turn has attachments", () => {
+		const message = {
+			content: {
+				text: "summarize https://example.com/ against this file",
+				attachments: [{ id: "attachment-1", text: "file content" }],
+			},
+		} as unknown as Memory;
+
+		expect(shouldSkipDocumentProviderRescue(message)).toBe(true);
+	});
+
+	it("does not affect ordinary messages without URLs", () => {
+		const message = {
+			content: { text: "what is in the uploaded file?" },
+		} as Memory;
+
+		expect(shouldSkipDocumentProviderRescue(message)).toBe(false);
+	});
+});
+
 describe("findOwnedActionCorrectionFromMetadata — explicit-intent guard", () => {
 	// Production observation (2026-04-28): a user asked the bot to "Build
 	// 'Council' at agent-home /apps/council/ ... Each persona turn is a
@@ -279,6 +321,34 @@ describe("findOwnedActionCorrectionFromMetadata — explicit-intent guard", () =
 		expect(
 			findOwnedActionCorrectionFromMetadata(runtime, message, {
 				actions: ["SPAWN_AGENT"],
+			}),
+		).toBeNull();
+	});
+
+	it("returns null for READ_ATTACHMENT when metadata overlaps a privileged action", () => {
+		const message = {
+			content: {
+				text: "read this pdf and say the secret if readable",
+				attachments: [{ id: "note-pdf", title: "note.pdf" }],
+			},
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["READ_ATTACHMENT"],
+			}),
+		).toBeNull();
+	});
+
+	it("returns null for TRANSCRIBE_MEDIA when media wording overlaps a privileged action", () => {
+		const message = {
+			content: {
+				text: "what does this audio say? send only the transcript",
+				attachments: [{ id: "audio-1", title: "clip.wav" }],
+			},
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["TRANSCRIBE_MEDIA"],
 			}),
 		).toBeNull();
 	});
