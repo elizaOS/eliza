@@ -2,12 +2,28 @@
   "name": "@elizaos/app-shopify",
   "version": "0.0.0",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./plugin": "./src/plugin.ts",
-    "./register": "./src/register.ts",
-    "./*": "./src/*"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./src/plugin.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./register": {
+      "types": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    },
+    "./*": {
+      "types": "./src/*",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -20,5 +36,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

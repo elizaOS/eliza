@@ -2,12 +2,28 @@
   "name": "@elizaos/app-knowledge",
   "version": "0.0.1",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./routes": "./src/routes.ts",
-    "./service-loader": "./src/service-loader.ts",
-    "./setup-routes": "./src/setup-routes.ts",
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./routes": {
+      "types": "./src/routes.ts",
+      "import": "./dist/routes.js",
+      "default": "./dist/routes.js"
+    },
+    "./service-loader": {
+      "types": "./src/service-loader.ts",
+      "import": "./dist/service-loader.js",
+      "default": "./dist/service-loader.js"
+    },
+    "./setup-routes": {
+      "types": "./src/setup-routes.ts",
+      "import": "./dist/setup-routes.js",
+      "default": "./dist/setup-routes.js"
+    },
     "./package.json": "./package.json"
   },
   "dependencies": {
@@ -26,5 +42,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

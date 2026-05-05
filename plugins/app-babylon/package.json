@@ -3,13 +3,29 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Eliza app integration for Babylon prediction market game.",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./routes": "./src/routes.ts",
-    "./ui": "./src/ui/index.ts",
-    "./ui/babylon-data": "./src/ui/babylon-data.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./routes": {
+      "types": "./src/routes.ts",
+      "import": "./dist/routes.js",
+      "default": "./dist/routes.js"
+    },
+    "./ui": {
+      "types": "./src/ui/index.ts",
+      "import": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    },
+    "./ui/babylon-data": {
+      "types": "./src/ui/babylon-data.ts",
+      "import": "./dist/ui/babylon-data.js",
+      "default": "./dist/ui/babylon-data.js"
+    }
   },
   "repository": {
     "type": "git",
@@ -66,5 +82,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

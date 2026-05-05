@@ -2,15 +2,26 @@
   "name": "@elizaos/app-workflow-builder",
   "version": "0.0.0",
   "type": "module",
+  "main": "./dist/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
   },
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./register": "./src/register.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./register": {
+      "types": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    }
   },
   "elizaos": {
     "app": {
@@ -24,6 +35,11 @@
   },
   "devDependencies": {
     "typescript": "^6.0.0",
-    "vitest": "^2.1.9"
-  }
+    "vitest": "^2.1.9",
+    "tsup": "^8.5.1"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist"
+  ]
 }

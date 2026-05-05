@@ -3,13 +3,29 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Eliza app-browser: desktop browser workspace control, Steward wallet actions, and (eventually) browser UI exported for the dashboard.",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./register-routes": "./src/register-routes.ts",
-    "./setup-routes": "./src/setup-routes.ts",
-    "./routes/browser-workspace-routes": "./src/routes/browser-workspace-routes.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./register-routes": {
+      "types": "./src/register-routes.ts",
+      "import": "./dist/register-routes.js",
+      "default": "./dist/register-routes.js"
+    },
+    "./setup-routes": {
+      "types": "./src/setup-routes.ts",
+      "import": "./dist/setup-routes.js",
+      "default": "./dist/setup-routes.js"
+    },
+    "./routes/browser-workspace-routes": {
+      "types": "./src/routes/browser-workspace-routes.ts",
+      "import": "./dist/routes/browser-workspace-routes.js",
+      "default": "./dist/routes/browser-workspace-routes.js"
+    }
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -72,5 +88,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }
