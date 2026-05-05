@@ -152,7 +152,7 @@ export const polymarketStatusAction: Action = {
   similes: ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"],
   description:
     "Check Polymarket public-read and trading readiness for the local app.",
-  descriptionCompressed: "Check Polymarket readiness.",
+  descriptionCompressed: "Read Polymarket public/trading readiness.",
   validate: async () => true,
   handler: async (_runtime, _message, _state, _options, callback) => {
     try {

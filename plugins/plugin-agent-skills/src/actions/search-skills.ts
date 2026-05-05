@@ -186,7 +186,7 @@ export const searchSkillsAction: Action = {
 	description:
 		"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
 	descriptionCompressed:
-		"Search skill registry; returns action chips per result.",
+		"Search skill registry by keyword/category; returns action chips.",
 	validate: createAgentSkillsActionValidator({
 		keywords: ["search", "find", "browse", "list", "skill"],
 		regex:

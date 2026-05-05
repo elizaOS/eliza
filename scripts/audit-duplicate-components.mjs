@@ -121,7 +121,7 @@ const STRUCTURED_PROMPT_PATTERNS = [
   {
     kind: "xml-contract",
     pattern:
-      /<\/?(?:response|thought|action|actions|params|param|message|messages|result)(?:\s|>|\/)/i,
+      /<\/?(?:response|thought|action|actions|params|param|message|messages|result)(?:\s|>|\/)/,
   },
 ];
 
@@ -129,7 +129,7 @@ const NEGATED_STRUCTURED_PROMPT_PATTERN =
   /\b(?:do not|don't|no|never|without)\b[^\n]*(?:JSON|XML)|(?:JSON|XML)[^\n]*\b(?:not allowed|forbidden|instead of|avoid)\b/i;
 
 const NON_PROMPT_JSON_PATTERN =
-  /\b(?:JSON\.parse|JSON\.stringify|response\.json|application\/json|Content-Type|schema|z\.object|type:\s*["']object["'])\b/i;
+  /\b(?:JSON\.parse|JSON\.stringify|fenceMatch|raw\.match|response\.json|application\/json|Content-Type|schema|z\.object|type:\s*["']object["'])\b/i;
 
 const PROMPT_LIKE_PATH_PATTERN =
   /(^|\/)(actions?|evaluators?|providers?|prompts?|templates?|planner|routers?|message|messages|services)(\/|$)|(?:prompt|template|planner|router|evaluator|provider|message)[^/]*\.[cm]?[jt]sx?$/i;
@@ -380,7 +380,7 @@ function unwrapExpression(node) {
   return current;
 }
 
-function literalValue(expression, constants) {
+function literalValue(expression, constants, options = {}) {
   if (!expression) return null;
   const unwrapped = unwrapExpression(expression);
   if (
@@ -394,7 +394,7 @@ function literalValue(expression, constants) {
   }
   if (ts.isPropertyAccessExpression(unwrapped)) {
     const text = unwrapped.getText();
-    return constants.get(text) ?? text;
+    return constants.get(text) ?? (options.allowSymbolic ? text : null);
   }
   if (ts.isTemplateExpression(unwrapped) && unwrapped.templateSpans.length === 0) {
     return unwrapped.head.text;
@@ -613,10 +613,10 @@ function inferComponentKind(objectLiteral, relativeFile) {
   return null;
 }
 
-function getPropertyValue(property, constants) {
+function getPropertyValue(property, constants, options = {}) {
   if (!property) return null;
   if (ts.isPropertyAssignment(property)) {
-    return literalValue(property.initializer, constants);
+    return literalValue(property.initializer, constants, options);
   }
   if (ts.isShorthandPropertyAssignment(property)) {
     return constants.get(property.name.text) ?? property.name.text;
@@ -839,7 +839,12 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
             getObjectProperty(node, "stop") ||
             getArrayPropertyContext(node) === "services")
         ) {
-          addService(getPropertyValue(serviceTypeProperty, constants), node);
+          addService(
+            getPropertyValue(serviceTypeProperty, constants, {
+              allowSymbolic: true,
+            }),
+            node,
+          );
         }
       } else if (ts.isClassDeclaration(node)) {
         for (const member of node.members) {
@@ -849,7 +854,9 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
             propertyNameText(member.name) === "serviceType"
           ) {
             addService(
-              literalValue(member.initializer, constants),
+              literalValue(member.initializer, constants, {
+                allowSymbolic: true,
+              }),
               member,
               node.name?.text ?? "",
             );
@@ -864,9 +871,17 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
         ) {
           const definition = unwrapExpression(node.arguments[0]);
           const property = getObjectProperty(definition, "serviceType");
-          addService(getPropertyValue(property, constants), node);
+          addService(
+            getPropertyValue(property, constants, { allowSymbolic: true }),
+            node,
+          );
         } else if (callName === "createService" && node.arguments[0]) {
-          addService(literalValue(node.arguments[0], constants), node);
+          addService(
+            literalValue(node.arguments[0], constants, {
+              allowSymbolic: true,
+            }),
+            node,
+          );
         }
 
         const rawCall = isRawGenerationCall(node, sourceFile, text);
@@ -1061,7 +1076,7 @@ function collectPromptIssues(repoRoot, promptFiles) {
         if (
           kind === "xml-contract" &&
           !/[`"']/.test(trimmed) &&
-          path.extname(relativeFile) === ".tsx"
+          SOURCE_EXTENSIONS.has(path.extname(relativeFile))
         ) {
           continue;
         }
