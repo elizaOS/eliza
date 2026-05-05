@@ -9,7 +9,7 @@ requires-python = ">=3.10"
 dependencies = [
     "atroposlib>=0.1.0",
     "asyncpg>=0.29.0",
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.13.4",
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
@@ -20,9 +20,9 @@ dependencies = [
     "tenacity>=8.2.0",
     "tabulate>=0.9.0",
     "tinker>=0.1.0",
-    "vllm>=0.4.0",
+    "vllm>=0.20.1",
     "wandb>=0.16.0",
-    "transformers>=4.40.0",
+    "transformers>=5.7.0",
     "kondo-gate>=0.1.0",
     "torch>=2.1.0",
     "apollo-torch>=1.0.3",
@@ -32,7 +32,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
