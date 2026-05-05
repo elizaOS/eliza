@@ -2,15 +2,39 @@
   "name": "@elizaos/app-task-coordinator",
   "version": "0.0.0",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./pty-status-dots": "./src/pty-status-dots.ts",
-    "./register-slots": "./src/register-slots.ts",
-    "./api/*": "./src/api/*.ts",
-    "./evals/*": "./src/evals/*.ts",
-    "./*": "./src/*"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./pty-status-dots": {
+      "types": "./src/pty-status-dots.ts",
+      "import": "./dist/pty-status-dots.js",
+      "default": "./dist/pty-status-dots.js"
+    },
+    "./register-slots": {
+      "types": "./src/register-slots.ts",
+      "import": "./dist/register-slots.js",
+      "default": "./dist/register-slots.js"
+    },
+    "./api/*": {
+      "types": "./src/api/*.ts",
+      "import": "./dist/api/*.js",
+      "default": "./dist/api/*.js"
+    },
+    "./evals/*": {
+      "types": "./src/evals/*.ts",
+      "import": "./dist/evals/*.js",
+      "default": "./dist/evals/*.js"
+    },
+    "./*": {
+      "types": "./src/*",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -26,5 +50,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }
