@@ -73,6 +73,7 @@ export const deleteWorkflowAction: Action = {
   similes: ['DELETE_WORKFLOW', 'REMOVE_WORKFLOW', 'DESTROY_WORKFLOW'],
   description:
     'Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.',
+  descriptionCompressed: "delete n8n workflow permanently action cannot undone identify workflow ID, name, semantic description language",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);

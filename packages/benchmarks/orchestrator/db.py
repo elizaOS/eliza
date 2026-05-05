@@ -21,6 +21,22 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row[1] == column for row in rows)
+
+
+def ensure_comparison_id_column(conn: sqlite3.Connection) -> None:
+    """Idempotently add ``comparison_id`` to ``benchmark_runs`` for old DBs."""
+    if not _column_exists(conn, "benchmark_runs", "comparison_id"):
+        conn.execute("ALTER TABLE benchmark_runs ADD COLUMN comparison_id TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_benchmark_runs_comparison "
+        "ON benchmark_runs(comparison_id)"
+    )
+    conn.commit()
+
+
 def initialize_database(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -70,6 +86,7 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             eliza_commit TEXT,
             eliza_version TEXT,
             created_at TEXT NOT NULL,
+            comparison_id TEXT,
             FOREIGN KEY(run_group_id) REFERENCES run_groups(run_group_id)
         );
 
@@ -84,6 +101,7 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+    ensure_comparison_id_column(conn)
 
 
 def create_run_group(
@@ -324,6 +342,52 @@ def update_run_result(
         ),
     )
     conn.commit()
+
+
+def tag_run_with_comparison(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    comparison_id: str,
+) -> None:
+    conn.execute(
+        "UPDATE benchmark_runs SET comparison_id = ? WHERE run_id = ?",
+        (comparison_id, run_id),
+    )
+    conn.commit()
+
+
+def list_runs_for_comparison(
+    conn: sqlite3.Connection,
+    *,
+    comparison_id: str,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT run_id, run_group_id, benchmark_id, status, agent, provider, model,
+               score, unit, higher_is_better, metrics_json, started_at, ended_at,
+               duration_seconds, error
+        FROM benchmark_runs
+        WHERE comparison_id = ?
+        ORDER BY started_at ASC, run_id ASC
+        """,
+        (comparison_id,),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        record = dict(row)
+        raw_metrics = record.pop("metrics_json", None)
+        if isinstance(raw_metrics, str):
+            try:
+                record["metrics"] = json.loads(raw_metrics)
+            except json.JSONDecodeError:
+                record["metrics"] = {}
+        else:
+            record["metrics"] = {}
+        hib = record.get("higher_is_better")
+        record["higher_is_better"] = None if hib is None else bool(hib)
+        out.append(record)
+    return out
 
 
 def list_runs(

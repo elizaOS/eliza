@@ -134,6 +134,7 @@ export const updateIdentityAction: Action = {
     "Basics section of the Settings page. At least one of `name` or " +
     "`system` must be provided. The change is persisted to runtime " +
     "character, agent metadata, and the on-disk config.",
+  descriptionCompressed: "update agent display name and/or system prompt mirror Basics section Settings page least one name system provide change persist runtime character, agent metadata, on-disk config",
 
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
 
@@ -272,6 +273,7 @@ export const updateAiProviderAction: Action = {
     "openrouter, gemini, groq, ollama, elizacloud). Mirrors the Providers " +
     "section of the Settings page. Optionally accepts an API key and " +
     "model overrides. The runtime restarts to pick up the new provider.",
+  descriptionCompressed: "switch active AI/LLM provider (e g anthropic, openai, openrouter, gemini, groq, ollama, elizacloud) mirror Providers section Settings page optionally accept API key model override runtime restart pick up new provider",
 
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
 
@@ -468,6 +470,7 @@ export const toggleCapabilityAction: Action = {
     "computerUse). Mirrors the Capabilities section of the Settings page. " +
     "Persists to `config.ui.capabilities.{capability}` so the preference " +
     "survives restarts.",
+  descriptionCompressed: "enable disable high-level capability surface (wallet, browser, computeruse) mirror Capabilities section Settings page persist config ui capability capability preference survive restart",
 
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
 
@@ -611,6 +614,7 @@ export const toggleAutoTrainingAction: Action = {
     "Enable or disable auto-training, and optionally tune the trigger " +
     "threshold (trajectories per task) and cooldown (hours). Mirrors the " +
     "Capabilities → Auto-training row in the Settings page.",
+  descriptionCompressed: "enable disable auto-train, optionally tune trigger threshold (trajectory per task) cooldown (hour) mirror Capabilities Auto-training row Settings page",
 
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
 

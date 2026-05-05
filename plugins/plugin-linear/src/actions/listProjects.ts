@@ -17,6 +17,7 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 export const listProjectsAction: Action = {
   name: "LIST_LINEAR_PROJECTS",
   description: "List projects in Linear with optional filters",
+  descriptionCompressed: "list project Linear w/ optional filter",
   similes: [
     "list-linear-projects",
     "show-linear-projects",

@@ -21,8 +21,10 @@ import {
 } from "@elizaos/agent/api/http-helpers";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import { handleTrainingRoutes } from "./routes/training-routes.js";
+import { handleVastTrainingRoutes } from "./routes/training-vast-routes.js";
 import { handleTrajectoryRoute } from "./routes/trajectory-routes.js";
 import { getActiveTrainingService } from "./services/training-service-registry.js";
+import { VastTrainingService } from "./services/training-vast-service.js";
 
 const LOOPBACK_HOSTS = new Set([
   "localhost",
@@ -106,6 +108,31 @@ function trainingRouteHandler(): PluginRouteHandler {
   };
 }
 
+let cachedVastService: VastTrainingService | null = null;
+function getVastService(): VastTrainingService {
+  if (!cachedVastService) cachedVastService = new VastTrainingService();
+  return cachedVastService;
+}
+
+function vastTrainingRouteHandler(): PluginRouteHandler {
+  return async (req: unknown, res: unknown): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
+    await handleVastTrainingRoutes({
+      req: httpReq,
+      res: httpRes,
+      method,
+      pathname: url.pathname,
+      service: getVastService(),
+      readJsonBody: httpReadJsonBody,
+      json,
+      error,
+    });
+  };
+}
+
 function trajectoryRouteHandler(): PluginRouteHandler {
   return async (
     req: unknown,
@@ -166,6 +193,21 @@ const TRAINING_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/training/vertex/jobs" },
 ];
 
+const VAST_ROUTES: Array<{ type: string; path: string }> = [
+  { type: "POST", path: "/api/training/vast/jobs" },
+  { type: "GET", path: "/api/training/vast/jobs" },
+  { type: "GET", path: "/api/training/vast/jobs/:id" },
+  { type: "POST", path: "/api/training/vast/jobs/:id/cancel" },
+  { type: "POST", path: "/api/training/vast/jobs/:id/eval" },
+  { type: "GET", path: "/api/training/vast/jobs/:id/logs" },
+  { type: "GET", path: "/api/training/vast/models" },
+  { type: "GET", path: "/api/training/vast/models/:short_name/checkpoints" },
+  { type: "GET", path: "/api/training/vast/inference/endpoints" },
+  { type: "POST", path: "/api/training/vast/inference/endpoints" },
+  { type: "DELETE", path: "/api/training/vast/inference/endpoints/:id" },
+  { type: "GET", path: "/api/training/vast/inference/stats" },
+];
+
 const TRAJECTORY_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/trajectories" },
   { type: "DELETE", path: "/api/trajectories" },
@@ -184,6 +226,15 @@ export const trainingRoutes: Route[] = [
         path: r.path,
         rawPath: true as const,
         handler: trainingRouteHandler(),
+      }) as Route,
+  ),
+  ...VAST_ROUTES.map(
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: vastTrainingRouteHandler(),
       }) as Route,
   ),
   ...TRAJECTORY_ROUTES.map(

@@ -83,6 +83,7 @@ export const bookSlotAction: Action = {
   similes: ["BOOK_CALENDLY", "CALENDLY_BOOK_SLOT", "SCHEDULE_CALENDLY"],
   description:
     "Books a Calendly slot. If the message contains a third-party Calendly URL, the URL is echoed back for handoff. Otherwise resolves a booking link for one of the connected user's event types.",
+  descriptionCompressed: "book Calendly slot message contain third-party Calendly URL, URL echo back handoff otherwise resolve book link one connect user event type",
 
   validate: async (
     _runtime: IAgentRuntime,

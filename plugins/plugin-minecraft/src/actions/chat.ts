@@ -15,6 +15,7 @@ export const minecraftChatAction: Action = {
   name: "MC_CHAT",
   similes: ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"],
   description: "Send a chat message in Minecraft as the bot",
+  descriptionCompressed: "send chat message Minecraft bot",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["chat"],

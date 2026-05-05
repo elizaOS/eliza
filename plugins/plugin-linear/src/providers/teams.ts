@@ -5,6 +5,7 @@ import type { LinearService } from "../services/linear";
 export const linearTeamsProvider: Provider = {
   name: "LINEAR_TEAMS",
   description: "Provides context about Linear teams",
+  descriptionCompressed: "provide context Linear team",
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {

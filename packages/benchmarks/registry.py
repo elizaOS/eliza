@@ -637,6 +637,124 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_eliza_format_json(data: JSONValue) -> ScoreExtraction:
+    """Extract score from training/scripts/benchmark/eliza_bench.py summary.json.
+
+    The script writes a per-bucket dict with ``format_pct`` and ``content_pct``
+    (both 0..100). The wrapper CLI's API path also writes a top-level
+    ``metrics.score`` field. We prefer the explicit metrics block when present
+    and otherwise compute ``0.5 * format_ok + 0.5 * content_ok`` averaged across
+    buckets that recorded at least one example.
+    """
+    root = expect_dict(data, ctx="eliza_format:root")
+    metrics_obj = get_optional(root, "metrics")
+    if isinstance(metrics_obj, dict):
+        score = expect_float(
+            get_required(metrics_obj, "score", ctx="eliza_format:metrics"),
+            ctx="eliza_format:metrics.score",
+        )
+        return ScoreExtraction(
+            score=score,
+            unit="ratio",
+            higher_is_better=True,
+            metrics={
+                "score": score,
+                "format_ok": metrics_obj.get("format_ok") or 0,
+                "content_ok": metrics_obj.get("content_ok") or 0,
+                "examples": root.get("examples") or 0,
+            },
+        )
+    buckets = expect_dict(get_required(root, "buckets", ctx="eliza_format:root"), ctx="eliza_format:buckets")
+    fmt_pcts: list[float] = []
+    content_pcts: list[float] = []
+    for name, raw in buckets.items():
+        if not isinstance(raw, dict):
+            continue
+        n = raw.get("n")
+        if not isinstance(n, int) or n <= 0:
+            continue
+        fmt = raw.get("format_pct")
+        content = raw.get("content_pct")
+        if isinstance(fmt, (int, float)):
+            fmt_pcts.append(float(fmt) / 100.0)
+        if isinstance(content, (int, float)):
+            content_pcts.append(float(content) / 100.0)
+    fmt_avg = sum(fmt_pcts) / len(fmt_pcts) if fmt_pcts else 0.0
+    content_avg = sum(content_pcts) / len(content_pcts) if content_pcts else 0.0
+    score = 0.5 * fmt_avg + 0.5 * content_avg
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "score": score,
+            "format_ok": fmt_avg,
+            "content_ok": content_avg,
+            "buckets_scored": len(fmt_pcts),
+        },
+    )
+
+
+def _score_from_scambench_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="scambench:root")
+    metrics = expect_dict(get_required(root, "metrics", ctx="scambench:root"), ctx="scambench:metrics")
+    score = expect_float(get_required(metrics, "score", ctx="scambench:metrics"), ctx="scambench:metrics.score")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "score": score,
+            "scam_refuse_rate": metrics.get("scam_refuse_rate") or 0,
+            "legit_help_rate": metrics.get("legit_help_rate") or 0,
+            "n_scam": metrics.get("n_scam") or 0,
+            "n_legit": metrics.get("n_legit") or 0,
+        },
+    )
+
+
+def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="abliteration_robustness:root")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="abliteration_robustness:root"),
+        ctx="abliteration_robustness:metrics",
+    )
+    score = expect_float(
+        get_required(metrics, "score", ctx="abliteration_robustness:metrics"),
+        ctx="abliteration_robustness:metrics.score",
+    )
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "score": score,
+            "refusal_rate": metrics.get("refusal_rate") or 0,
+            "n": metrics.get("n") or 0,
+            "n_refused": metrics.get("n_refused") or 0,
+        },
+    )
+
+
+def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="action_calling:root")
+    metrics = expect_dict(get_required(root, "metrics", ctx="action_calling:root"), ctx="action_calling:metrics")
+    score = expect_float(get_required(metrics, "score", ctx="action_calling:metrics"), ctx="action_calling:metrics.score")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "score": score,
+            "format_ok": metrics.get("format_ok") or 0,
+            "action_name_match": metrics.get("action_name_match") or 0,
+            "args_parse_ok": metrics.get("args_parse_ok") or 0,
+            "required_keys_ok": metrics.get("required_keys_ok") or 0,
+            "n": root.get("n") or 0,
+        },
+    )
+
+
 def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     python = sys.executable
 
@@ -767,6 +885,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "openai": "eliza-openai",
                 "groq": "eliza-openai",
                 "openrouter": "eliza-openai",
+                "vllm": "eliza-openai",
                 "anthropic": "anthropic",
             }
             provider_str = provider_map.get(provider_name, "mock")
@@ -894,7 +1013,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [python, "-m", "elizaos_vending_bench.cli", "run", "--output-dir", str(output_dir)]
         if model.model:
             args.extend(["--model", model.model])
-        if model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza"}:
+        if model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza", "vllm"}:
             args.extend(["--provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
@@ -1572,6 +1691,145 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _webshop_result(output_dir: Path) -> Path:
         return output_dir / "webshop-results.json"
 
+    # eliza-format — wraps training/scripts/benchmark/eliza_bench.py.
+    # Default cwd is `training/` (resolved from workspace_root via cwd_rel),
+    # so test-file path is relative to that root.
+    def _eliza_format_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        provider = (model.provider or "").strip().lower() or "hf"
+        args = [
+            python,
+            "-m",
+            "benchmarks.eliza-format.cli",
+            "--provider",
+            provider,
+            "--out",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+        base_url = extra.get("base_url")
+        if isinstance(base_url, str) and base_url.strip():
+            args.extend(["--base-url", base_url.strip()])
+        api_key_env = extra.get("api_key_env")
+        if isinstance(api_key_env, str) and api_key_env.strip():
+            args.extend(["--api-key-env", api_key_env.strip()])
+        test_file = extra.get("test_file")
+        if isinstance(test_file, str) and test_file.strip():
+            args.extend(["--test-file", test_file.strip()])
+        max_per_bucket = extra.get("max_per_bucket") or extra.get("max_examples")
+        if isinstance(max_per_bucket, int) and max_per_bucket > 0:
+            args.extend(["--max-per-bucket", str(max_per_bucket)])
+        else:
+            args.extend(["--max-per-bucket", "200"])
+        return args
+
+    def _eliza_format_result(output_dir: Path) -> Path:
+        return output_dir / "summary.json"
+
+    # scambench
+    def _scambench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        provider = (model.provider or "").strip().lower() or "vllm"
+        args = [
+            python,
+            "-m",
+            "benchmarks.scambench.cli",
+            "--provider",
+            provider,
+            "--out",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+        base_url = extra.get("base_url")
+        if isinstance(base_url, str) and base_url.strip():
+            args.extend(["--base-url", base_url.strip()])
+        api_key_env = extra.get("api_key_env")
+        if isinstance(api_key_env, str) and api_key_env.strip():
+            args.extend(["--api-key-env", api_key_env.strip()])
+        datasets = extra.get("dataset")
+        if isinstance(datasets, list):
+            for d in datasets:
+                if isinstance(d, str) and d.strip():
+                    args.extend(["--dataset", d.strip()])
+        elif isinstance(datasets, str) and datasets.strip():
+            args.extend(["--dataset", datasets.strip()])
+        max_examples = extra.get("max_examples")
+        if isinstance(max_examples, int) and max_examples > 0:
+            args.extend(["--max-examples", str(max_examples)])
+        return args
+
+    def _scambench_result(output_dir: Path) -> Path:
+        return output_dir / "scambench-results.json"
+
+    # abliteration-robustness
+    def _abliteration_robustness_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        provider = (model.provider or "").strip().lower() or "vllm"
+        args = [
+            python,
+            "-m",
+            "benchmarks.abliteration-robustness.cli",
+            "--provider",
+            provider,
+            "--out",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+        base_url = extra.get("base_url")
+        if isinstance(base_url, str) and base_url.strip():
+            args.extend(["--base-url", base_url.strip()])
+        api_key_env = extra.get("api_key_env")
+        if isinstance(api_key_env, str) and api_key_env.strip():
+            args.extend(["--api-key-env", api_key_env.strip()])
+        dataset = extra.get("dataset")
+        if isinstance(dataset, str) and dataset.strip():
+            args.extend(["--dataset", dataset.strip()])
+        dataset_path = extra.get("dataset_path")
+        if isinstance(dataset_path, str) and dataset_path.strip():
+            args.extend(["--dataset-path", dataset_path.strip()])
+        max_examples = extra.get("max_examples")
+        if isinstance(max_examples, int) and max_examples > 0:
+            args.extend(["--max-examples", str(max_examples)])
+        return args
+
+    def _abliteration_robustness_result(output_dir: Path) -> Path:
+        return output_dir / "abliteration-robustness-results.json"
+
+    # action-calling
+    def _action_calling_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        provider = (model.provider or "").strip().lower() or "vllm"
+        args = [
+            python,
+            "-m",
+            "benchmarks.action-calling.cli",
+            "--provider",
+            provider,
+            "--out",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+        base_url = extra.get("base_url")
+        if isinstance(base_url, str) and base_url.strip():
+            args.extend(["--base-url", base_url.strip()])
+        api_key_env = extra.get("api_key_env")
+        if isinstance(api_key_env, str) and api_key_env.strip():
+            args.extend(["--api-key-env", api_key_env.strip()])
+        test_file = extra.get("test_file")
+        if isinstance(test_file, str) and test_file.strip():
+            args.extend(["--test-file", test_file.strip()])
+        max_examples = extra.get("max_examples")
+        if isinstance(max_examples, int) and max_examples > 0:
+            args.extend(["--max-examples", str(max_examples)])
+        else:
+            args.extend(["--max-examples", "100"])
+        return args
+
+    def _action_calling_result(output_dir: Path) -> Path:
+        return output_dir / "action-calling-results.json"
+
     return [
         BenchmarkDefinition(
             id="solana",
@@ -1971,6 +2229,82 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_webshop_cmd,
             locate_result=_webshop_result,
             extract_score=_score_from_webshop_json,
+        ),
+        BenchmarkDefinition(
+            id="eliza-format",
+            display_name="Eliza-Format",
+            description="Strict TOON format + content scoring against held-out eliza-1 test set",
+            cwd_rel="../../training",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("../../training/scripts/benchmark/eliza_bench.py", "../../training/data/final/test.jsonl"),
+                notes=(
+                    "Wraps training/scripts/benchmark/eliza_bench.py in place. "
+                    "Provider hf loads the model via transformers; provider vllm/openai/anthropic "
+                    "routes through the OpenAI Python SDK against --base-url. "
+                    "Score = 0.5 * format_ok + 0.5 * content_ok averaged across buckets."
+                ),
+            ),
+            build_command=_eliza_format_cmd,
+            locate_result=_eliza_format_result,
+            extract_score=_score_from_eliza_format_json,
+        ),
+        BenchmarkDefinition(
+            id="scambench",
+            display_name="ScamBench",
+            description="Adversarial scam-detection benchmark (refusal vs helpfulness)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(
+                    "../../training/data/normalized/scambench.jsonl",
+                    "../../training/data/synthesized/scambench/scambench.jsonl",
+                ),
+                notes=(
+                    "Reads the normalized + Claude-teacher-labeled scambench dataset. "
+                    "Score is the equally-weighted mean of refusal-correctness on scam prompts "
+                    "and helpfulness on legit prompts. Higher better."
+                ),
+            ),
+            build_command=_scambench_cmd,
+            locate_result=_scambench_result,
+            extract_score=_score_from_scambench_json,
+        ),
+        BenchmarkDefinition(
+            id="abliteration-robustness",
+            display_name="Abliteration Robustness",
+            description="Over-refusal benchmark for abliterated model variants on benign prompts",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes=(
+                    "Loads the harmless prompt set used by training/scripts/training/abliterate.py "
+                    "(default HF dataset mlabonne/harmless_alpaca). Score = 1 - refusal_rate. "
+                    "Pair with the abliterated variant to assert it still helps on benign requests."
+                ),
+            ),
+            build_command=_abliteration_robustness_cmd,
+            locate_result=_abliteration_robustness_result,
+            extract_score=_score_from_abliteration_robustness_json,
+        ),
+        BenchmarkDefinition(
+            id="action-calling",
+            display_name="Action Calling",
+            description="Strict TOON action emission against held-out planner-style records",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("../../training/data/final/test.jsonl",),
+                notes=(
+                    "Samples planner-style records (message_handler/agent_trace/tool_call/mcp_tool_call). "
+                    "Asserts TOON parse, action-name match, args JSON parse, and required-arg presence. "
+                    "Score = geometric mean of the four sub-rates."
+                ),
+            ),
+            build_command=_action_calling_cmd,
+            locate_result=_action_calling_result,
+            extract_score=_score_from_action_calling_json,
         ),
     ]
 

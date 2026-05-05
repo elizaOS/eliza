@@ -14,6 +14,7 @@ export const userStateProvider: Provider = {
   name: "instagram_user_state",
   description:
     "Provides Instagram user context state including user ID, thread ID, and interaction type",
+  descriptionCompressed: "provide Instagram user context state includ user ID, thread ID, interaction type",
 
   dynamic: true,
   async get(_runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> {

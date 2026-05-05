@@ -39,7 +39,7 @@ export const sendReactionAction: Action = {
   name: WHATSAPP_SEND_REACTION_ACTION,
   similes: ["WHATSAPP_REACT", "REACT_WHATSAPP", "WHATSAPP_EMOJI"],
   description: "Send a reaction emoji to a WhatsApp message",
-  descriptionCompressed: "React to WhatsApp message with emoji.",
+  descriptionCompressed: "send reaction emoji WhatsApp message",
   suppressPostActionContinuation: true,
 
   validate: async (

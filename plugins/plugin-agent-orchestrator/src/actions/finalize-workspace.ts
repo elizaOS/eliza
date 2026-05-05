@@ -27,6 +27,7 @@ export const finalizeWorkspaceAction: Action = {
   description:
     "Finalize workspace changes by committing, pushing, and optionally creating a pull request. " +
     "Use after a task agent completes its task.",
+  descriptionCompressed: "finalize workspace change commit, push, optionally create pull request use after task agent complete task",
 
   examples: [
     [

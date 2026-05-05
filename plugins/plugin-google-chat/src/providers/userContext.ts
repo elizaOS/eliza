@@ -14,6 +14,7 @@ import {
 export const userContextProvider: Provider = {
   name: "googleChatUserContext",
   description: "Provides information about the Google Chat user in the current conversation",
+  descriptionCompressed: "provide information Google Chat user current conversation",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {

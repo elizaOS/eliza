@@ -73,6 +73,7 @@ export const readResourceAction: Action = {
     "ACCESS_MCP_RESOURCE",
   ],
   description: "Reads a resource from an MCP server",
+  descriptionCompressed: "read resource MCP server",
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";

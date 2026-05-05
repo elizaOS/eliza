@@ -71,6 +71,7 @@ export const deactivateWorkflowAction: Action = {
   ],
   description:
     'Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.',
+  descriptionCompressed: "deactivate n8n workflow stop process trigger run automatically identify workflow ID, name, semantic description language",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);

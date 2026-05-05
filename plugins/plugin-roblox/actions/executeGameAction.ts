@@ -148,6 +148,7 @@ const executeGameAction: Action = {
   name: actionName,
   similes: [],
   description: "Execute an action in the connected Roblox game.",
+  descriptionCompressed: "execute action connect Roblox game",
   examples: executeGameActionExamples,
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {

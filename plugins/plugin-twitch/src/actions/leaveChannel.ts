@@ -44,6 +44,7 @@ export const leaveChannel: Action = {
     "DISCONNECT_CHANNEL",
   ],
   description: "Leave a Twitch channel",
+  descriptionCompressed: "leave Twitch channel",
 
   validate: async (
     runtime: any,

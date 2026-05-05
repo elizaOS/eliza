@@ -21,6 +21,7 @@ export const syncPluginAction: Action = {
 
   description:
     "Sync an ejected plugin with upstream by fetching and merging new commits.",
+  descriptionCompressed: "sync eject plugin w/ upstream fetch merge new commit",
 
   validate: async () => true,
 

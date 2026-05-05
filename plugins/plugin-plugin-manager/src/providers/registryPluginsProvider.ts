@@ -37,6 +37,7 @@ export const registryPluginsProvider: Provider & {
   name: "registryPlugins",
   description:
     "Provides available plugins from the ElizaOS registry (next branch), installed plugin status, and searchable plugin knowledge",
+  descriptionCompressed: "provide available plugin ElizaOS registry (next branch), install plugin status, searchable plugin knowledge",
 
   dynamic: true,
   relevanceKeywords: REGISTRY_PROVIDER_KEYWORDS,

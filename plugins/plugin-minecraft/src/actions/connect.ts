@@ -44,6 +44,7 @@ export const minecraftConnectAction: Action = {
   name: "MC_CONNECT",
   similes: ["MINECRAFT_CONNECT", "JOIN_SERVER", "CONNECT_TO_MINECRAFT"],
   description: "Connect the Mineflayer bot to a Minecraft server",
+  descriptionCompressed: "connect Mineflayer bot Minecraft server",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["connect"],

@@ -46,6 +46,7 @@ export const sendReaction: Action = {
   name: "GOOGLE_CHAT_SEND_REACTION",
   similes: ["REACT_GOOGLE_CHAT", "GCHAT_REACT", "GOOGLE_CHAT_EMOJI", "ADD_GOOGLE_CHAT_REACTION"],
   description: "Add or remove an emoji reaction to a Google Chat message",
+  descriptionCompressed: "add remove emoji reaction Google Chat message",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const textRaw = typeof message.content?.text === "string" ? message.content.text : "";

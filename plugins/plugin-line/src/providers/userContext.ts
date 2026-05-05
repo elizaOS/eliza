@@ -9,6 +9,7 @@ import { LINE_SERVICE_NAME } from "../types.js";
 export const userContextProvider: Provider = {
   name: "lineUserContext",
   description: "Provides information about the LINE user in the current conversation",
+  descriptionCompressed: "provide information LINE user current conversation",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {

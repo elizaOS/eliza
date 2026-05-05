@@ -22,6 +22,7 @@ export const minecraftAttackAction: Action = {
   name: "MC_ATTACK",
   similes: ["MINECRAFT_ATTACK", "HIT_ENTITY"],
   description: "Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
+  descriptionCompressed: "attack entity numeric entityid (MC_WORLD_STATE nearbyentity)",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["attack"],

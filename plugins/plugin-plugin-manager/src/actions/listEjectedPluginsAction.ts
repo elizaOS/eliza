@@ -5,6 +5,7 @@ import type { EjectedPluginInfo } from "../types";
 export const listEjectedPluginsAction: Action = {
   name: "LIST_EJECTED_PLUGINS",
   description: "List all ejected plugins currently being managed locally",
+  descriptionCompressed: "list eject plugin be manage locally",
   similes: [
     "list ejected",
     "show ejected plugins",

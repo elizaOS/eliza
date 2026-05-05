@@ -185,6 +185,7 @@ export function createEscalationTriggerProvider(): Provider {
     name: "escalationTrigger",
     description:
       "Monitors conditions that may warrant escalating to the owner. Injects escalation context when triggers are detected.",
+    descriptionCompressed: "monitor condition warrant escalat owner inject escalation context trigger detect",
     dynamic: true,
     position: 15,
 

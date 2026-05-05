@@ -14,6 +14,7 @@ export const CHAT_STATE_PROVIDER = "FEISHU_CHAT_STATE";
 export const chatStateProvider: Provider = {
 	name: CHAT_STATE_PROVIDER,
 	description: "Provides Feishu chat context and state information",
+	descriptionCompressed: "provide Feishu chat context state information",
 
 	dynamic: true,
 	get: async (

@@ -9,6 +9,7 @@ export const economicContextProvider: Provider = {
   name: "ECONOMIC_CONTEXT",
   description:
     "Provides economic facts: payment history, revenue, and current session payment status",
+  descriptionCompressed: "provide economic fact: payment history, revenue, current session payment status",
 
   dynamic: true,
   relevanceKeywords: [

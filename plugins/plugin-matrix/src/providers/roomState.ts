@@ -12,6 +12,7 @@ import { getMatrixLocalpart, MATRIX_SERVICE_NAME } from "../types.js";
 export const roomStateProvider: Provider = {
   name: "matrixRoomState",
   description: "Provides information about the current Matrix room context",
+  descriptionCompressed: "provide information current Matrix room context",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {

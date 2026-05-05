@@ -144,6 +144,7 @@ export const scratchpadAddAction: Action = {
   similes: ["ADD_TO_SCRATCHPAD", "CREATE_SCRATCHPAD_TOPIC"],
   description:
     "Create a scratchpad topic with a title and text body. The server validates title, text, topic cap, and token limit.",
+  descriptionCompressed: "create scratchpad topic w/ title text body server validate title, text, topic cap, token limit",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -280,6 +281,7 @@ export const scratchpadSearchAction: Action = {
   similes: ["SEARCH_SCRATCHPAD", "FIND_SCRATCHPAD_TOPICS"],
   description:
     "Search scratchpad topics using the knowledge-backed search route.",
+  descriptionCompressed: "search scratchpad topic use knowledge-back search route",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -352,6 +354,7 @@ export const scratchpadReplaceAction: Action = {
   similes: ["REPLACE_SCRATCHPAD", "UPDATE_SCRATCHPAD_TOPIC"],
   description:
     "Replace an existing scratchpad topic by id. Requires confirm:true because it overwrites the topic body.",
+  descriptionCompressed: "replace exist scratchpad topic id require confirm: true bc overwrite topic body",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -429,6 +432,7 @@ export const scratchpadDeleteAction: Action = {
   similes: ["DELETE_SCRATCHPAD_TOPIC", "REMOVE_SCRATCHPAD_TOPIC"],
   description:
     "Delete a scratchpad topic by id. Requires confirm:true because it removes the topic and its fragments.",
+  descriptionCompressed: "delete scratchpad topic id require confirm: true bc remove topic fragment",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

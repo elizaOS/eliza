@@ -15,6 +15,7 @@ export const minecraftDisconnectAction: Action = {
   name: "MC_DISCONNECT",
   similes: ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"],
   description: "Disconnect the Mineflayer bot from the Minecraft server",
+  descriptionCompressed: "disconnect Mineflayer bot Minecraft server",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["disconnect"],

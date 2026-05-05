@@ -17,6 +17,7 @@ export const minecraftDigAction: Action = {
   similes: ["MINECRAFT_DIG", "MINE_BLOCK", "BREAK_BLOCK"],
   description:
     'Dig/break the block at (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+  descriptionCompressed: "dig/break block (x y z) provide coordinate like 10 64 - 20 JSON x: 10, y: 64, z: - 20",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["dig"],

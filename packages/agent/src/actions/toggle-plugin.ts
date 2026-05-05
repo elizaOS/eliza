@@ -40,6 +40,7 @@ export const togglePluginAction: Action = {
     "Enable or disable an already-installed plugin. Use this when the user " +
     "asks to turn a plugin on or off without uninstalling it. Pass " +
     "enabled=true to enable, enabled=false to disable.",
+  descriptionCompressed: "enable disable already-install plugin use user ask turn plugin off wo/ uninstall pass enabl true enable, enabl false disable",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

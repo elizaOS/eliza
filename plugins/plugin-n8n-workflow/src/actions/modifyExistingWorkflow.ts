@@ -90,6 +90,7 @@ export const modifyExistingWorkflowAction: Action = {
     'Identifies workflows by name or semantic description and loads them into the draft editor. ' +
     'After loading, use CREATE_N8N_WORKFLOW to make changes, preview, and redeploy. ' +
     'Use this when the user wants to modify a workflow that is already deployed.',
+  descriptionCompressed: "load exist deploy n8n workflow modification identify workflow name semantic description load draft editor after load, use CREATE_N8N_WORKFLOW make change, preview, redeploy use user want modify workflow already deploy",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);

@@ -98,6 +98,7 @@ export const promoteTaskToWorkflowAction: Action = {
   ],
   description:
     "Promote an existing task or trigger into a full n8n workflow. Builds a compilation prompt from the task's instructions and schedule, then generates a new workflow.",
+  descriptionCompressed: "promote exist task trigger full n8n workflow build compilation prompt task instruction schedule, generate new workflow",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

@@ -52,6 +52,7 @@ export const getSelfStatusAction: Action = {
   description:
     "Get detailed self-status about a specific module (wallet, permissions, plugins, etc.) or all modules. " +
     "Use this when you need more detail than the always-on summary provides.",
+  descriptionCompressed: "get detail self-status specific module (wallet, permission, plugin, etc) module use need detail always-on summary provide",
 
   validate: async () => true,
 

@@ -18,6 +18,7 @@ export const listRooms: Action = {
   name: "MATRIX_LIST_ROOMS",
   similes: ["LIST_MATRIX_ROOMS", "SHOW_ROOMS", "GET_ROOMS", "MY_ROOMS"],
   description: "List all Matrix rooms the bot has joined",
+  descriptionCompressed: "list Matrix room bot join",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "matrix";

@@ -12,6 +12,7 @@ export const unifiedWalletProvider: Provider = {
   name: "wallet",
   description:
     "Unified non-custodial wallet — EVM + Solana addresses (@elizaos/plugin-wallet).",
+  descriptionCompressed: "unifi non-custodial wallet EVM + Solana address (elizaos/plugin-wallet)",
   position: -5,
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {

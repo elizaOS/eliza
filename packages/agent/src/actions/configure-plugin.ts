@@ -55,6 +55,7 @@ export const configurePluginAction: Action = {
     "Save configuration values (e.g. API keys, endpoints, secrets) for an " +
     "installed plugin. Use when the user provides credentials or settings " +
     "that the plugin needs.",
+  descriptionCompressed: "save configuration value (e g API key, endpoint, secret) install plugin use user provide credential setting plugin need",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

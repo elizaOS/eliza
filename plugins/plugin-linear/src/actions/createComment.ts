@@ -17,6 +17,7 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 export const createCommentAction: Action = {
   name: "CREATE_LINEAR_COMMENT",
   description: "Add a comment to a Linear issue",
+  descriptionCompressed: "add comment Linear issue",
   similes: [
     "create-linear-comment",
     "add-linear-comment",

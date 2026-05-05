@@ -245,6 +245,52 @@ export const MODEL_CATALOG: CatalogModel[] = [
     blurb:
       "R1 reasoning distilled into Qwen-32B. 128k context, strong math/code.",
   },
+
+  // ─── eliza-1 series (Milady fine-tunes of Qwen3.5/3.6) ──────────────
+  // Published from training/scripts/push_model_to_hf.py — quant lineage
+  // is per-K-quant (one HF repo per Q4_K_M / Q5_K_M / Q6_K).
+  {
+    id: "eliza-1-2b",
+    displayName: "Eliza-1 2B (Qwen3.5)",
+    hfRepo: "elizaos/eliza-1-2b-gguf-q4_k_m",
+    ggufFile: "eliza-1-2b-Q4_K_M.gguf",
+    params: "2B",
+    quant: "Q4_K_M",
+    sizeGb: 1.3,
+    minRamGb: 4,
+    category: "chat",
+    bucket: "small",
+    blurb:
+      "Milady's smallest fine-tune. 16GB-VRAM-friendly daily driver tuned for the elizaOS prompt + TOON output format.",
+  },
+  {
+    id: "eliza-1-9b",
+    displayName: "Eliza-1 9B (Qwen3.5)",
+    hfRepo: "elizaos/eliza-1-9b-gguf-q4_k_m",
+    ggufFile: "eliza-1-9b-Q4_K_M.gguf",
+    params: "9B",
+    quant: "Q4_K_M",
+    sizeGb: 5.4,
+    minRamGb: 12,
+    category: "chat",
+    bucket: "mid",
+    blurb:
+      "Workstation-class Milady tune with 128k context, agentic tool calling, and TOON-native output.",
+  },
+  {
+    id: "eliza-1-27b",
+    displayName: "Eliza-1 27B (Qwen3.6)",
+    hfRepo: "elizaos/eliza-1-27b-gguf-q4_k_m",
+    ggufFile: "eliza-1-27b-Q4_K_M.gguf",
+    params: "27B",
+    quant: "Q4_K_M",
+    sizeGb: 16.8,
+    minRamGb: 32,
+    category: "chat",
+    bucket: "large",
+    blurb:
+      "Cloud-tier Milady tune. Best agentic + tool-calling quality in the eliza-1 series; 128k context, 256k native window.",
+  },
 ];
 
 export function findCatalogModel(id: string): CatalogModel | undefined {

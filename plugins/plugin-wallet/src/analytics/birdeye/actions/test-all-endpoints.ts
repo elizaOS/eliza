@@ -16,6 +16,7 @@ export const testAllEndpointsAction = {
   name: "BIRDEYE_TEST_ALL_ENDPOINTS",
   similes: [],
   description: "Test all Birdeye endpoints with sample data",
+  descriptionCompressed: "test Birdeye endpoint w/ sample data",
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,

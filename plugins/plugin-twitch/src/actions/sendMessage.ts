@@ -50,6 +50,7 @@ export const sendMessage: Action = {
     "SAY_IN_TWITCH",
   ],
   description: "Send a message to a Twitch channel",
+  descriptionCompressed: "send message Twitch channel",
 
   validate: async (
     runtime: any,
