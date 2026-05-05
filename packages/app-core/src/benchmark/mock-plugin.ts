@@ -22,9 +22,14 @@ function extractPrompt(
   if (input && typeof input === "object" && typeof input.prompt === "string") {
     return input.prompt;
   }
-  if (input && typeof input === "object" && Array.isArray(input.messages)) {
+  if (
+    input &&
+    typeof input === "object" &&
+    "messages" in input &&
+    Array.isArray(input.messages)
+  ) {
     return input.messages
-      .map((message) => {
+      .map((message: unknown) => {
         if (typeof message === "string") return message;
         if (message && typeof message === "object" && "content" in message) {
           const content = (message as { content?: unknown }).content;
