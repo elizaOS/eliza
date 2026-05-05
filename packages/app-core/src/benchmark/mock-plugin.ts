@@ -79,12 +79,12 @@ function extractArithmeticAnswer(prompt: string): string | null {
 }
 
 function buildReplyToon(answer: string): string {
-  return `<response>
-<thought>Answering the benchmark question directly.</thought>
-<actions>REPLY</actions>
-<providers></providers>
-<text>${answer}</text>
-</response>`;
+  return buildToonResponse("", {
+    thought: "Answering the benchmark question directly.",
+    actions: "REPLY",
+    providers: "",
+    text: answer,
+  });
 }
 
 function buildHyperliquidPlanToon(): string {
@@ -177,32 +177,27 @@ function buildAdhdBenchToon(prompt: string): string {
   const action = extractAdhdAction(prompt);
   const text = action === "REPLY" ? "Replying directly with the requested information." : `Selected ${action}`;
   if (["REPLY", "IGNORE", "NONE"].includes(action)) {
-    return `<response>
-<thought>Selecting ${action} for this ADHDBench turn.</thought>
-<actions>${action}</actions>
-<providers>RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES</providers>
-<text>${text}</text>
-</response>`;
+    return buildToonResponse(prompt, {
+      thought: `Selecting ${action} for this ADHDBench turn.`,
+      actions: action,
+      providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
+      text,
+    });
   }
-  return `<response>
-<thought>Selecting ${action} for this ADHDBench turn.</thought>
-<actions>BENCHMARK_ACTION</actions>
-<providers>RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES</providers>
-<text>${text}</text>
-<params>
-<BENCHMARK_ACTION>
-<command>${action}</command>
-</BENCHMARK_ACTION>
-</params>
-</response>`;
+  return buildToonResponse(prompt, {
+    thought: `Selecting ${action} for this ADHDBench turn.`,
+    actions: "BENCHMARK_ACTION",
+    providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
+    text,
+    params: `BENCHMARK_ACTION:\n  command: ${action}`,
+  });
 }
 
 function extractValidationFields(prompt: string): Record<string, string> {
   const tags: Record<string, string> = {};
 
-  // Per-field validation tags (context check levels 0/1)
   const matches = prompt.matchAll(
-    /<(code_[A-Za-z0-9_-]+_(?:start|end)|one_(?:initial|middle|end)_code|two_(?:initial|middle|end)_code)>([\s\S]*?)<\/\1>/g,
+    /"(code_[A-Za-z0-9_-]+_(?:start|end)|one_(?:initial|middle|end)_code|two_(?:initial|middle|end)_code)"\s*:\s*"([^"]+)"/g,
   );
   for (const [, key, value] of matches) {
     tags[key] = value.trim();
@@ -212,7 +207,7 @@ function extractValidationFields(prompt: string): Record<string, string> {
   // "initial code: ...", "middle code: ...", "end code: ..."
   // and optionally "second initial code: ..." for the second checkpoint set.
   const checkpointMatches = prompt.matchAll(
-    /(second\s+)?(initial|middle|end)\s+code:\s*([a-f0-9-]{16,})/gi,
+    /(second\s+)?(initial|middle|end)\s+code:\s*([a-f0-9-]{8,})/gi,
   );
   for (const [, second, stage, value] of checkpointMatches) {
     const prefix = second ? "two" : "one";
@@ -231,10 +226,17 @@ function buildToonResponse(
     (entry): entry is [string, string] =>
       typeof entry[1] === "string" && entry[1].length > 0,
   );
-  const body = entries
-    .map(([key, value]) => `<${key}>${value}</${key}>`)
-    .join("\n");
-  return `<response>\n${body}\n</response>`;
+  return entries.map(([key, value]) => renderToonField(key, value)).join("\n");
+}
+
+function renderToonField(key: string, value: string): string {
+  if (value.includes("\n")) {
+    return `${key}:\n${value
+      .split(/\r?\n/)
+      .map((line) => `  ${line}`)
+      .join("\n")}`;
+  }
+  return `${key}: ${value}`;
 }
 
 function buildCompletion(prompt: string): string {
@@ -252,7 +254,7 @@ function buildCompletion(prompt: string): string {
   // multiStepDecisionTemplate
   if (
     prompt.includes("Determine the next step") &&
-    prompt.includes("<isFinish>")
+    prompt.includes("isFinish")
   ) {
     return buildToonResponse(prompt, {
       thought: "The benchmark task can be completed in this step.",
@@ -295,24 +297,13 @@ function buildCompletion(prompt: string): string {
     return buildAdhdBenchToon(prompt);
   }
 
-  // Default message handler path (single-shot core)
-  const validationTags = extractValidationFields(prompt);
-  const validationToon = Object.entries(validationTags)
-    .map(([key, value]) => `<${key}>${value}</${key}>`)
-    .join("\n");
-
-  return `<response>
-<thought>Execute deterministic benchmark action using ${command}.</thought>
-<actions>BENCHMARK_ACTION</actions>
-<providers></providers>
-<text>Executed ${command}</text>
-<params>
-<BENCHMARK_ACTION>
-<command>${command}</command>
-</BENCHMARK_ACTION>
-</params>
-${validationToon}
-</response>`;
+  return buildToonResponse(prompt, {
+    thought: `Execute deterministic benchmark action using ${command}.`,
+    actions: "BENCHMARK_ACTION",
+    providers: "",
+    text: `Executed ${command}`,
+    params: `BENCHMARK_ACTION:\n  command: ${command}`,
+  });
 }
 
 function mockTextModel(

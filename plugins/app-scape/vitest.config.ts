@@ -6,6 +6,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 
 export default defineConfig({
+  root: here,
   resolve: {
     alias: {
       "@elizaos/core": path.join(repoRoot, "packages/core/src/index.ts"),
