@@ -33,6 +33,7 @@ const SYSTEM_LABELS: Record<ReadingSystem, string> = {
 export const readingContextProvider: Provider = {
   name: "READING_CONTEXT",
   description: "Provides context about the active mystical reading session",
+  descriptionCompressed: "provide context active mystical read session",
 
   dynamic: true,
   relevanceKeywords: [

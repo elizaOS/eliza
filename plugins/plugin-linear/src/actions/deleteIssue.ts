@@ -17,6 +17,7 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 export const deleteIssueAction: Action = {
   name: "DELETE_LINEAR_ISSUE",
   description: "Delete (archive) an issue in Linear",
+  descriptionCompressed: "delete (archive) issue Linear",
   similes: [
     "delete-linear-issue",
     "archive-linear-issue",

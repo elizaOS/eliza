@@ -53,6 +53,7 @@ export const startTailscaleAction: Action = {
   similes: ['START_TUNNEL', 'OPEN_TUNNEL', 'CREATE_TUNNEL', 'TAILSCALE_UP'],
   description:
     'Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)',
+  descriptionCompressed: "start Tailscale tunnel expose local port tailnet (public internet via Funnel)",
   validate: async (runtime: IAgentRuntime) => {
     const tunnelService = getTunnelService(runtime);
     if (!tunnelService) return false;

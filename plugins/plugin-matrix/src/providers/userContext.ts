@@ -17,6 +17,7 @@ import {
 export const userContextProvider: Provider = {
   name: "matrixUserContext",
   description: "Provides information about the Matrix user in the current conversation",
+  descriptionCompressed: "provide information Matrix user current conversation",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {

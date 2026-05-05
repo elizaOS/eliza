@@ -23,6 +23,7 @@ export interface MeteoraPositionStatistics {
 export const meteoraPositionProvider: Provider = {
   name: "degen-lp-meteora-position-provider",
   description: "Provides Meteora LP position information for the current wallet",
+  descriptionCompressed: "provide Meteora LP position information current wallet",
   dynamic: true,
   relevanceKeywords: [
     "degen",

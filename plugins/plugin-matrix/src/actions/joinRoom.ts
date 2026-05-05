@@ -41,6 +41,7 @@ export const joinRoom: Action = {
   name: "MATRIX_JOIN_ROOM",
   similes: ["JOIN_MATRIX_ROOM", "ENTER_ROOM"],
   description: "Join a Matrix room by ID or alias",
+  descriptionCompressed: "join Matrix room ID alia",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "matrix";

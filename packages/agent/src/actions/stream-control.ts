@@ -46,6 +46,7 @@ export const goLiveAction: Action = {
   ],
   description:
     "Start the live stream, broadcasting to the active destination (Twitch, YouTube, etc.).",
+  descriptionCompressed: "start live stream, broadcast active destination (Twitch, YouTube, etc)",
   validate: async (runtime, message, state) => {
     if (!(await hasOwnerAccess(runtime, message))) return false;
     return hasContextSignalSyncForKey(message, state, "stream_control");
@@ -133,6 +134,7 @@ export const goOfflineAction: Action = {
     "owner says 'go offline', 'end the stream', 'stop streaming', or 'shut down " +
     "the broadcast'. The paired action GO_LIVE starts a new stream; this one " +
     "tears it down and releases the capture and RTMP resources.",
+  descriptionCompressed: "stop active live stream take agent offline use owner say go offline, end stream, stop stream, shut down broadcast pair action GO_LIVE start new stream; one tear down release capture RTMP resource",
   validate: async (runtime, message, state) => {
     if (!(await hasOwnerAccess(runtime, message))) return false;
     return hasContextSignalSyncForKey(message, state, "stream_control");

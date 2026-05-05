@@ -50,6 +50,7 @@ export const listDatabaseTablesAction: Action = {
   similes: ["LIST_TABLES", "SHOW_TABLES", "DB_TABLES"],
   description:
     "List all tables in the agent's database, with row counts and column metadata when available.",
+  descriptionCompressed: "list table agent database, w/ row count column metadata available",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -125,6 +126,7 @@ export const getTableDataAction: Action = {
   similes: ["READ_TABLE", "SELECT_TABLE", "BROWSE_TABLE"],
   description:
     "Fetch a page of rows from a database table. Supports limit, offset, sortBy, and sortDir.",
+  descriptionCompressed: "fetch page row database table support limit, offset, sortby, sortdir",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -309,6 +311,7 @@ export const executeDatabaseQueryAction: Action = {
   similes: ["RUN_QUERY", "SQL_QUERY", "DB_QUERY"],
   description:
     "Execute a SQL query against the agent's database. Read-only by default — pass allowWrites:true to permit mutations.",
+  descriptionCompressed: "execute SQL query against agent database read-only default pass allowwrite: true permit mutation",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -443,6 +446,7 @@ export const searchVectorsAction: Action = {
   similes: ["VECTOR_SEARCH", "EMBEDDING_SEARCH", "SIMILARITY_SEARCH"],
   description:
     "Search the agent's vector store for semantically similar items via /api/database/vectors/search. Embeds the query with the runtime's TEXT_EMBEDDING model and returns top-k matches with similarity scores.",
+  descriptionCompressed: "search agent vector store semantically similar item via / api/database/vectors/search embed query w/ runtime TEXT_EMBEDDING model return top-k match w/ similarity score",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

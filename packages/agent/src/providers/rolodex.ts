@@ -43,6 +43,7 @@ export const rolodexProvider: Provider = {
   name: "rolodex",
   description:
     "Known contacts and relationships across all connected platforms (the Rolodex).",
+  descriptionCompressed: "known contact relationship across connect platform (Rolodex)",
   dynamic: true,
   position: 7,
   relevanceKeywords: getValidationKeywordTerms("provider.rolodex.relevance", {

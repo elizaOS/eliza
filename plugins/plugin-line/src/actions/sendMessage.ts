@@ -44,6 +44,7 @@ export const sendMessage: Action = {
   name: "LINE_SEND_MESSAGE",
   similes: ["SEND_LINE_MESSAGE", "LINE_MESSAGE", "LINE_TEXT", "MESSAGE_LINE"],
   description: "Send a text message via LINE",
+  descriptionCompressed: "send text message via LINE",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> =>
     isLineOutboundActionContext(message, ["line", "send", "message"], /\b(?:line|send|message)\b/i),

@@ -22,6 +22,7 @@ export function createUserNameProvider(): Provider {
     name: "userName",
     description:
       "Injects the app user's display name into context (app chat only).",
+    descriptionCompressed: "inject app user display name context (app chat)",
     position: 10,
     dynamic: true,
 

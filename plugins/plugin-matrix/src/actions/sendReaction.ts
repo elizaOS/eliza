@@ -38,6 +38,7 @@ export const sendReaction: Action = {
   name: "MATRIX_SEND_REACTION",
   similes: ["REACT_MATRIX", "MATRIX_REACT", "ADD_MATRIX_REACTION"],
   description: "React to a Matrix message with an emoji",
+  descriptionCompressed: "react Matrix message w/ emoji",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "matrix";

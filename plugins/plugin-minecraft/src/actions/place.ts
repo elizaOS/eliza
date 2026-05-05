@@ -53,6 +53,7 @@ export const minecraftPlaceAction: Action = {
   similes: ["MINECRAFT_PLACE", "PLACE_BLOCK"],
   description:
     "Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
+  descriptionCompressed: "place currently-held block reference block face provide x y z face (face up/down/north/south/east/west) JSON x, y, z, face",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["place"],

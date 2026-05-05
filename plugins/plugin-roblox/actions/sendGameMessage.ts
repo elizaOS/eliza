@@ -51,6 +51,7 @@ const sendGameMessage: Action = {
   name: actionName,
   similes: [],
   description: "Send a message to players in the Roblox game.",
+  descriptionCompressed: "send message player Roblox game",
   examples: sendGameMessageExamples,
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {

@@ -44,6 +44,7 @@ export const updatePluginAction: Action = {
   description:
     "Update an installed plugin to the latest available version. Pass " +
     "stream='alpha' to take the alpha release instead of the stable one.",
+  descriptionCompressed: "update install plugin latest available version pass stream alpha take alpha release instead stable one",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

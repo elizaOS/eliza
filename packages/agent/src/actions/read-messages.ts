@@ -58,6 +58,7 @@ export const readMessagesAction: Action = {
     "the agent has interacted with them. Use for conversation context before sending a reply, " +
     "or to review what was discussed on different platforms. " +
     "Results can be saved to clipboard with CLIPBOARD_WRITE.",
+  descriptionCompressed: "read recent messages/conversation w/ specific person across connect platform resolve person via Rolodex show conversation every platform agent interact w/ use conversation context before send reply, review what discuss different platform result save clipboard w/ CLIPBOARD_WRITE",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;

@@ -9,6 +9,7 @@ import { LINE_SERVICE_NAME, type LineChatType } from "../types.js";
 export const chatContextProvider: Provider = {
   name: "lineChatContext",
   description: "Provides information about the current LINE chat context",
+  descriptionCompressed: "provide information current LINE chat context",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {

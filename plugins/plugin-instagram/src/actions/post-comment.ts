@@ -20,6 +20,7 @@ import type { InstagramService } from "../service";
 export const postCommentAction: Action = {
   name: "POST_INSTAGRAM_COMMENT",
   description: "Post a comment on an Instagram post or media",
+  descriptionCompressed: "post comment Instagram post media",
   similes: ["instagram_comment", "comment_instagram", "reply_instagram", "post_comment_instagram"],
   examples: [
     [

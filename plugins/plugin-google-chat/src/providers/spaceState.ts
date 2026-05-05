@@ -9,6 +9,7 @@ import { GOOGLE_CHAT_SERVICE_NAME } from "../types.js";
 export const spaceStateProvider: Provider = {
   name: "googleChatSpaceState",
   description: "Provides information about the current Google Chat space context",
+  descriptionCompressed: "provide information current Google Chat space context",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {

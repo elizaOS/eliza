@@ -69,6 +69,7 @@ export const activateWorkflowAction: Action = {
   similes: ['ACTIVATE_WORKFLOW', 'ENABLE_WORKFLOW', 'START_WORKFLOW', 'TURN_ON_WORKFLOW'],
   description:
     'Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.',
+  descriptionCompressed: "activate n8n workflow start process trigger run automatically identify workflow ID, name, semantic description language",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);

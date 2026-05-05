@@ -12,6 +12,7 @@ import { GetMeetingInfoParams } from "../types";
 export const getMeetingInfoAction: Action = {
   name: "GET_MEETING_INFO",
   description: "Get information about a Google Meet meeting",
+  descriptionCompressed: "get information Google Meet meet",
   similes: [
     "meeting info",
     "check meeting",

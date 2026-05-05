@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# Stage-2 GRPO training with ByteDance verl.
+#
+# Per RL_STRATEGY.md: input = SFT-then-DPO checkpoint, output = -rl-v1
+# checkpoint, reward = scripts/eliza_reward_fn.py:compute_score (verl's
+# `reward_score.compute_score` registry signature).
+#
+# Hardware budgets (from RL_STRATEGY.md "Hardware + cost"):
+#   2b   → 2× H200 (1 train + 1 rollout)            ~24h
+#   9b   → 4× H200 (1 train + 3 rollout shards)     ~24-48h
+#   27b  → 8× H200 (4 train + 4 rollout)            ~48h
+#
+# Usage:
+#   bash scripts/train_grpo_verl.sh \
+#       --registry-key qwen3.5-9b \
+#       --dpo-checkpoint checkpoints/eliza-1-9b-dpo/final \
+#       --output-dir checkpoints/eliza-1-9b-grpo \
+#       --rollouts 64 --rollout-batch 8 --epochs 1
+#
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: train_grpo_verl.sh [options]
+
+Required:
+  --registry-key KEY        e.g. qwen3.5-2b, qwen3.5-9b, qwen3.6-27b
+  --dpo-checkpoint DIR      Path to SFT+DPO checkpoint (the `final/` subdir)
+  --output-dir DIR          Where to write the GRPO checkpoint + JSONL traces
+
+Optional:
+  --rollouts N              Group size K per prompt (default 8 — DeepSeek's GRPO default)
+  --rollout-batch N         Prompts per rollout step (default 8)
+  --epochs F                PPO/GRPO epochs over the rollout buffer (default 1)
+  --train-file PATH         Prompt JSONL for rollouts (default: data/final/test.jsonl)
+  --kl-coef F               KL penalty vs ref policy (default 0.001 — verl default)
+  --max-response-len N      Max generated tokens per rollout (default 1024)
+  --gpus N                  Total GPUs available on this node (default: nvidia-smi count)
+  --help                    Show this message
+EOF
+}
+
+REGISTRY_KEY=""
+DPO_CKPT=""
+OUTPUT_DIR=""
+ROLLOUTS=8
+ROLLOUT_BATCH=8
+EPOCHS=1
+TRAIN_FILE=""
+KL_COEF=0.001
+MAX_RESPONSE_LEN=1024
+GPUS=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --registry-key) REGISTRY_KEY="$2"; shift 2;;
+    --dpo-checkpoint) DPO_CKPT="$2"; shift 2;;
+    --output-dir) OUTPUT_DIR="$2"; shift 2;;
+    --rollouts) ROLLOUTS="$2"; shift 2;;
+    --rollout-batch) ROLLOUT_BATCH="$2"; shift 2;;
+    --epochs) EPOCHS="$2"; shift 2;;
+    --train-file) TRAIN_FILE="$2"; shift 2;;
+    --kl-coef) KL_COEF="$2"; shift 2;;
+    --max-response-len) MAX_RESPONSE_LEN="$2"; shift 2;;
+    --gpus) GPUS="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) echo "Unknown arg: $1" >&2; usage >&2; exit 2;;
+  esac
+done
+
+if [[ -z "$REGISTRY_KEY" || -z "$DPO_CKPT" || -z "$OUTPUT_DIR" ]]; then
+  echo "ERROR: --registry-key, --dpo-checkpoint, --output-dir are required" >&2
+  usage >&2
+  exit 2
+fi
+
+THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRAIN_ROOT="$(cd "$THIS_DIR/.." && pwd)"
+
+if [[ -z "$TRAIN_FILE" ]]; then
+  TRAIN_FILE="$TRAIN_ROOT/data/final/test.jsonl"
+fi
+
+if [[ ! -d "$DPO_CKPT" ]]; then
+  echo "ERROR: dpo-checkpoint not found: $DPO_CKPT" >&2
+  exit 1
+fi
+if [[ ! -f "$TRAIN_FILE" ]]; then
+  echo "ERROR: train-file not found: $TRAIN_FILE" >&2
+  exit 1
+fi
+
+if [[ -z "$GPUS" ]]; then
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    GPUS="$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)"
+  else
+    GPUS=1
+  fi
+fi
+
+mkdir -p "$OUTPUT_DIR"
+CFG_PATH="$OUTPUT_DIR/verl_config.yaml"
+INSTR_PATH="$OUTPUT_DIR/instrumentation.jsonl"
+
+# Dump environment record matching the SFT/DPO instrumentation schema so the
+# UI's plot pipeline consumes all three stages uniformly.
+python3 - <<PY > /dev/null
+import json, os, platform, time
+from pathlib import Path
+out = Path("$OUTPUT_DIR")
+out.mkdir(parents=True, exist_ok=True)
+(out / "environment.json").write_text(json.dumps({
+    "platform": platform.platform(),
+    "python": platform.python_version(),
+    "cwd": os.getcwd(),
+    "run_meta": {
+        "stage": "grpo",
+        "registry_key": "$REGISTRY_KEY",
+        "dpo_checkpoint": "$DPO_CKPT",
+        "rollouts": $ROLLOUTS,
+        "rollout_batch": $ROLLOUT_BATCH,
+        "epochs": $EPOCHS,
+        "kl_coef": $KL_COEF,
+        "max_response_len": $MAX_RESPONSE_LEN,
+        "gpus": $GPUS,
+    },
+    "timestamp": time.time(),
+}, indent=2))
+# Seed the JSONL trace with a train_begin event so downstream readers don't
+# choke on an empty file before verl's first reward log lands.
+with (out / "instrumentation.jsonl").open("a") as f:
+    f.write(json.dumps({
+        "event": "train_begin",
+        "stage": "grpo",
+        "config": {"registry_key": "$REGISTRY_KEY", "rollouts": $ROLLOUTS,
+                   "rollout_batch": $ROLLOUT_BATCH, "epochs": $EPOCHS,
+                   "kl_coef": $KL_COEF, "gpus": $GPUS},
+    }) + "\n")
+PY
+
+# Write the verl Hydra YAML. We hand-roll the minimum subset of verl's
+# GRPO config — the upstream defaults under `verl/trainer/config/ppo_trainer.yaml`
+# fill in the rest. The reward function is registered via the python-callable
+# path: verl imports `scripts.eliza_reward_fn:compute_score` per rollout.
+cat > "$CFG_PATH" <<YAML
+# verl GRPO config for $REGISTRY_KEY
+# Auto-generated by train_grpo_verl.sh
+algorithm:
+  adv_estimator: grpo
+  kl_ctrl:
+    kl_coef: $KL_COEF
+
+data:
+  train_files: ["$TRAIN_FILE"]
+  prompt_key: prompt
+  max_prompt_length: 2048
+  max_response_length: $MAX_RESPONSE_LEN
+  train_batch_size: $ROLLOUT_BATCH
+
+actor_rollout_ref:
+  model:
+    path: "$DPO_CKPT"
+    use_remove_padding: true
+  actor:
+    optim:
+      lr: 1e-6
+    ppo_mini_batch_size: $ROLLOUT_BATCH
+    ppo_micro_batch_size_per_gpu: 1
+    use_dynamic_bsz: true
+    fsdp_config:
+      param_offload: false
+      optimizer_offload: false
+  rollout:
+    name: vllm
+    n: $ROLLOUTS
+    gpu_memory_utilization: 0.6
+    tensor_model_parallel_size: 1
+    response_length: $MAX_RESPONSE_LEN
+  ref:
+    fsdp_config:
+      param_offload: true
+
+reward_model:
+  enable: false
+
+custom_reward_function:
+  path: "$TRAIN_ROOT/scripts/eliza_reward_fn.py"
+  name: compute_score
+
+trainer:
+  total_epochs: $EPOCHS
+  project_name: eliza-1-grpo
+  experiment_name: $(basename "$OUTPUT_DIR")
+  default_local_dir: "$OUTPUT_DIR"
+  n_gpus_per_node: $GPUS
+  nnodes: 1
+  save_freq: 100
+  test_freq: 50
+  logger: ["console"]
+YAML
+
+echo "verl config written: $CFG_PATH"
+echo "instrumentation jsonl: $INSTR_PATH"
+echo "GPUs detected/used: $GPUS"
+
+# Make eliza_reward_fn importable as a top-level module path. verl resolves
+# `custom_reward_function.path` directly so this is mostly belt-and-braces
+# for the data-loader workers.
+export PYTHONPATH="$TRAIN_ROOT/scripts:${PYTHONPATH:-}"
+
+if ! python3 -c "import verl" 2>/dev/null; then
+  echo ""
+  echo "WARN: verl not installed in the active environment."
+  echo "      Install with:  uv sync --extra rl"
+  echo "      (rl conflicts with train/serve on torch ABI — pick one per stage)"
+  echo "      (or pip install 'verl>=0.5.0,<0.8.0')"
+  echo ""
+  echo "Config written. Re-run after install:"
+  echo "  python3 -m verl.trainer.main_ppo --config-path $(dirname "$CFG_PATH") --config-name $(basename "$CFG_PATH" .yaml)"
+  exit 0
+fi
+
+exec python3 -m verl.trainer.main_ppo \
+  --config-path "$(dirname "$CFG_PATH")" \
+  --config-name "$(basename "$CFG_PATH" .yaml)"

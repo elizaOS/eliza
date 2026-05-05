@@ -15,6 +15,7 @@ export const minecraftStopAction: Action = {
   name: "MC_STOP",
   similes: ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"],
   description: "Stop pathfinding / movement goals.",
+  descriptionCompressed: "stop pathfind / movement goal",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["stop"],

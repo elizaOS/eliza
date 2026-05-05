@@ -51,6 +51,7 @@ export const sendMessage: Action = {
   name: "GOOGLE_CHAT_SEND_MESSAGE",
   similes: ["SEND_GOOGLE_CHAT_MESSAGE", "MESSAGE_GOOGLE_CHAT", "GCHAT_SEND", "GOOGLE_CHAT_TEXT"],
   description: "Send a message to a Google Chat space",
+  descriptionCompressed: "send message Google Chat space",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const textRaw = typeof message.content?.text === "string" ? message.content.text : "";

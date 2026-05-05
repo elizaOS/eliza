@@ -36,6 +36,7 @@ export const minecraftLookAction: Action = {
   name: "MC_LOOK",
   similes: ["MINECRAFT_LOOK", "TURN_HEAD"],
   description: "Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
+  descriptionCompressed: "look yaw/pitch (radian) provide yaw pitch JSON yaw, pitch",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["look"],

@@ -5,6 +5,7 @@ import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minec
 export const minecraftWorldStateProvider: Provider = {
   name: "MC_WORLD_STATE",
   description: "Minecraft world state: position, health, inventory, nearby entities",
+  descriptionCompressed: "minecraft world state: position, health, inventory, nearby entity",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,

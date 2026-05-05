@@ -151,6 +151,7 @@ export const webSearchAction: Action = {
   description:
     "Search the web for current information using Eliza Cloud hosted Google search when available, with Brave Search as a local fallback. " +
     "Use when you need real-time or recent information that may not be in your training data.",
+  descriptionCompressed: "search web current information use Eliza Cloud host Google search available, w/ Brave search local fallback use need real-time recent information train data",
 
   validate: async (runtime, message, state) => {
     if (!(await hasOwnerAccess(runtime, message))) return false;

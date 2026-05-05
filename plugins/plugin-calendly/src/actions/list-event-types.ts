@@ -30,6 +30,7 @@ export const listEventTypesAction: Action = {
   similes: ["SHOW_CALENDLY_EVENT_TYPES", "CALENDLY_EVENT_TYPES"],
   description:
     "Lists the connected Calendly user's active event types with their scheduling URLs and durations.",
+  descriptionCompressed: "list connect Calendly user active event type w/ schedule URLs duration",
 
   validate: async (
     runtime: IAgentRuntime,

@@ -157,6 +157,7 @@ export const browserAutofillLoginAction: Action = {
   ],
   description:
     "Autofill saved credentials into an open Eliza browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow = 1`).",
+  descriptionCompressed: "autofill save credential open Eliza browser tab request domain require user pre-authorize agent autofill domain via Settings - Vault - Logins (cred domain: autoallow 1)",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

@@ -173,6 +173,7 @@ export const LpManagementAgentAction: Action = {
   name: "lp_management",
   description:
     "Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, concentrated liquidity positions with custom price ranges, checking APR/yield, setting auto-rebalance preferences, and finding best pools. Use this action when users mention: liquidity, LP, pools, APR, yield, deposit, withdraw, concentrated, price range, narrow range, degenai, ai16z, SOL pairs, or want help getting started with LP management.",
+  descriptionCompressed: "manage Liquidity Pool (LP) operation includ: onboard LP management, deposit token pool, withdraw pool, show LP position, concentrat liquidity position w/ custom price range, check APR/yield, set auto-rebalance preference, find best pool use action user mention: liquidity, LP, pool, APR, yield, deposit, withdraw, concentrat, price range, narrow range, degenai, ai16z, SOL pair, want help get start w/ LP management",
 
   similes: [
     "LP_MANAGEMENT",

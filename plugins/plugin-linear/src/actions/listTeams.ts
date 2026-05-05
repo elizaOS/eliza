@@ -23,6 +23,7 @@ interface TeamWithDetails extends Team {
 export const listTeamsAction: Action = {
   name: "LIST_LINEAR_TEAMS",
   description: "List teams in Linear with optional filters",
+  descriptionCompressed: "list team Linear w/ optional filter",
   similes: ["list-linear-teams", "show-linear-teams", "get-linear-teams", "view-linear-teams"],
 
   examples: [

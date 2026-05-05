@@ -58,6 +58,7 @@ export const sendLocation: Action = {
   name: "LINE_SEND_LOCATION",
   similes: ["SEND_LINE_LOCATION", "LINE_LOCATION", "LINE_MAP", "SHARE_LOCATION_LINE"],
   description: "Send a location message via LINE",
+  descriptionCompressed: "send location message via LINE",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> =>
     isLineOutboundActionContext(

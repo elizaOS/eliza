@@ -21,7 +21,7 @@ export const listGroups: Action = {
   name: "SIGNAL_LIST_GROUPS",
   similes: ["LIST_SIGNAL_GROUPS", "SHOW_GROUPS", "GET_GROUPS", "SIGNAL_GROUPS"],
   description: "List Signal groups",
-  descriptionCompressed: "List Signal groups.",
+  descriptionCompressed: "list Signal group",
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;

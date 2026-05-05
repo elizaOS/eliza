@@ -32,6 +32,7 @@ export const assignIssueAction: Action = {
   similes: ["ASSIGN_GITHUB_ISSUE", "ADD_ASSIGNEE"],
   description:
     "Assigns one or more users to a GitHub issue or PR. Requires confirmed:true.",
+  descriptionCompressed: "assign one user GitHub issue PR require confirm: true",
 
   validate: async (
     runtime: IAgentRuntime,

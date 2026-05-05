@@ -5,6 +5,7 @@ import type { GenerateParams } from '../types';
 const generateMusic: Action = {
     name: 'generate-music',
     description: 'Generate music using Suno AI',
+    descriptionCompressed: "generate music use Suno AI",
     similes: [
         'CREATE_MUSIC',
         'MAKE_MUSIC',

@@ -53,7 +53,7 @@ export const manageRouting = {
     "stop routing",
   ],
   description: "Manage audio routing modes and assignments",
-  descriptionCompressed: "Manage audio routing modes/assignments.",
+  descriptionCompressed: "manage audio rout mode assignment",
 
   validate: async (
     _runtime: IAgentRuntime,

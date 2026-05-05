@@ -20,6 +20,7 @@ export const sendXPostAction: Action = {
   similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
   description:
     "Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+  descriptionCompressed: "publish tweet Twitter/X w/ confirmation gate two-stage: wo/ confirm: true return preview; w/ confirm: true tweet post",
   suppressPostActionContinuation: true,
   parameters: [
     {

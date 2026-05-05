@@ -312,6 +312,45 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     type: "language",
     tags: ["self-hosted", "llama.cpp", "gguf"],
   },
+  // ─── eliza-1 series — Milady's own fine-tunes of Qwen3.5/3.6 ───────
+  // Self-hosted on Vast.ai. Manifests live in
+  // training/cloud/vast-pyworker/eliza-1-{2b,9b,27b}.json.
+  {
+    id: "vast/eliza-1-2b",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Eliza-1 2B (Qwen3.5)",
+    description:
+      "Milady's smallest fine-tune (Q4_K_M GGUF, llama-server). Single GPU debug / latency-tolerant agent loops. HF: elizaos/eliza-1-2b-gguf-q4_k_m",
+    type: "language",
+    context_window: 32768,
+    tags: ["self-hosted", "llama.cpp", "gguf", "milady-eliza-1"],
+  },
+  {
+    id: "vast/eliza-1-9b",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Eliza-1 9B (Qwen3.5)",
+    description:
+      "Workstation-tier Milady fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1-9b-polarquant",
+    type: "language",
+    context_window: 131072,
+    tags: ["self-hosted", "vllm", "polarquant", "milady-eliza-1"],
+  },
+  {
+    id: "vast/eliza-1-27b",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Eliza-1 27B (Qwen3.6)",
+    description:
+      "Cloud-tier Milady flagship. Served via vLLM with FP8 weights + TurboQuant 4-bit KV on 2× H200 SXM. HF: elizaos/eliza-1-27b-fp8",
+    type: "language",
+    context_window: 131072,
+    tags: ["self-hosted", "vllm", "fp8", "turboquant", "milady-eliza-1"],
+  },
 ] as const;
 
 // llama-server's `--alias` flag makes the upstream model id match the catalog id,
