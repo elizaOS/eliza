@@ -109,7 +109,10 @@ function escapePythonTripleQuoted(content) {
 }
 
 function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
-	const outDir = path.join(PLUGIN_ROOT, "typescript", "generated", "specs");
+	const tsRoot = fs.existsSync(path.join(PLUGIN_ROOT, "typescript"))
+		? path.join(PLUGIN_ROOT, "typescript")
+		: PLUGIN_ROOT;
+	const outDir = path.join(tsRoot, "generated", "specs");
 	ensureDir(outDir);
 
 	const actionsJson = JSON.stringify(
@@ -160,6 +163,7 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
 export type ActionDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   similes?: readonly string[];
   parameters?: readonly unknown[];
   examples?: readonly (readonly unknown[])[];
@@ -168,6 +172,7 @@ export type ActionDoc = {
 export type ProviderDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   position?: number;
   dynamic?: boolean;
 };
@@ -175,6 +180,7 @@ export type ProviderDoc = {
 export type EvaluatorDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   similes?: readonly string[];
   alwaysRun?: boolean;
   examples?: readonly unknown[];
@@ -315,6 +321,9 @@ export type { ActionDoc, ProviderDoc, EvaluatorDoc };
 }
 
 function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
+	if (!fs.existsSync(path.join(PLUGIN_ROOT, "python"))) {
+		return;
+	}
 	const outDir = path.join(
 		PLUGIN_ROOT,
 		"python",
@@ -382,6 +391,7 @@ from typing import TypedDict
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     similes: list[str]
     parameters: list[object]
     examples: list[list[object]]
@@ -389,12 +399,14 @@ class ActionDoc(TypedDict, total=False):
 class ProviderDoc(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     position: int
     dynamic: bool
 
 class EvaluatorDoc(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     similes: list[str]
     alwaysRun: bool
     examples: list[object]
@@ -430,6 +442,9 @@ __all__ = [
 }
 
 function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
+	if (!fs.existsSync(path.join(PLUGIN_ROOT, "rust"))) {
+		return;
+	}
 	const outDir = path.join(PLUGIN_ROOT, "rust", "src", "generated", "specs");
 	ensureDir(outDir);
 

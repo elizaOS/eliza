@@ -57,7 +57,8 @@ afterEach(() => {
 
 describe("MessageManager URL enrichment", () => {
 	it("turns direct webpage URLs into readable link attachments without a browser service", async () => {
-		const html = "<html><body>secret phrase: velvet-lantern-7419</body></html>";
+		const html =
+			"<html><head><style>.hidden{display:none}</style><script>window.secret='wrong'</script></head><body><p>secret phrase: velvet-lantern-7419</p></body></html>";
 		__setKnowledgeUrlFetchImplForTests(async () => {
 			return new Response(html, {
 				headers: { "content-type": "text/html; charset=utf-8" },
@@ -76,7 +77,7 @@ describe("MessageManager URL enrichment", () => {
 			url: "http://203.0.113.10/proof",
 			source: "Web",
 			contentType: ContentType.LINK,
-			text: html,
+			text: "secret phrase: velvet-lantern-7419",
 		});
 	});
 

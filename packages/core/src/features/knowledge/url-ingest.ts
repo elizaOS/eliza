@@ -481,15 +481,7 @@ async function fetchYouTubeTranscript(videoId: string): Promise<string | null> {
 	const segments: string[] = [];
 
 	for (const match of textMatches) {
-		// Decode HTML entities
-		const text = match[1]
-			.replace(/&amp;/g, "&")
-			.replace(/&lt;/g, "<")
-			.replace(/&gt;/g, ">")
-			.replace(/&quot;/g, '"')
-			.replace(/&#39;/g, "'")
-			.replace(/&nbsp;/g, " ")
-			.trim();
+		const text = decodeBasicHtmlEntities(match[1]).trim();
 
 		if (text) {
 			segments.push(text);
@@ -533,6 +525,33 @@ function classifyMimeType(mimeType: string): FetchedKnowledgeUrlKind {
 	}
 	if (normalized.startsWith("text/html")) return "html";
 	return "text";
+}
+
+function decodeBasicHtmlEntities(value: string): string {
+	return value
+		.replace(/&nbsp;/gi, " ")
+		.replace(/&lt;/gi, "<")
+		.replace(/&gt;/gi, ">")
+		.replace(/&quot;/gi, '"')
+		.replace(/&#39;/gi, "'")
+		.replace(/&amp;/gi, "&");
+}
+
+function htmlToPlainText(value: string): string {
+	return decodeBasicHtmlEntities(
+		value
+			.replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
+			.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+			.replace(/<br\s*\/?>/gi, "\n")
+			.replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
+			.replace(/<li\b[^>]*>/gi, "- ")
+			.replace(/<[^>]+>/g, " "),
+	)
+		.replace(/\r/g, "")
+		.replace(/[ \t]+\n/g, "\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.replace(/[ \t]{2,}/g, " ")
+		.trim();
 }
 
 /**
@@ -614,7 +633,7 @@ export async function fetchKnowledgeFromUrl(
 	const text = new TextDecoder().decode(buffer);
 	return {
 		filename,
-		content: text,
+		content: kind === "html" ? htmlToPlainText(text) : text,
 		contentType: kind,
 		mimeType,
 	};
