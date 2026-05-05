@@ -68,7 +68,10 @@ async function describeImageAttachment(
 		imageUrl,
 	});
 	if (typeof response === "string") {
-		const parsed = parseToonKeyValue(response) as Record<string, unknown> | null;
+		const parsed = parseToonKeyValue(response) as Record<
+			string,
+			unknown
+		> | null;
 		if (parsed) {
 			const value =
 				(typeof parsed.text === "string" ? parsed.text : "") ||

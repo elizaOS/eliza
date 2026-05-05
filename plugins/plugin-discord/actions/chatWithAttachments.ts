@@ -46,7 +46,9 @@ const getAttachmentIds = async (
 			prompt,
 		});
 		// Try parsing the TOON response.
-		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			objective: string;
 			attachmentIds: string[];
 		} | null;

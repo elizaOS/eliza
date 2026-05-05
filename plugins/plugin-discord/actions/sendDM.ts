@@ -45,7 +45,9 @@ const getDMInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			recipientIdentifier: string;
 			messageContent: string;
 		} | null;

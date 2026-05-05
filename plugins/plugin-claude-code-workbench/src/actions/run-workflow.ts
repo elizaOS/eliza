@@ -5,6 +5,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  spawnWithTrajectoryLink,
   type State,
 } from "@elizaos/core";
 import type {
@@ -79,6 +80,17 @@ function summarizeResult(result: WorkbenchRunResult): string {
   return `${status}\n\n${preview}${suffix}`;
 }
 
+function buildWorkbenchChildStepId(workflow: string): string {
+  const safeWorkflow = workflow
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `workbench-${safeWorkflow || "workflow"}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
 export const claudeCodeWorkbenchRunAction: Action = {
   name: "CLAUDE_CODE_WORKBENCH_RUN",
   similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
@@ -130,7 +142,29 @@ export const claudeCodeWorkbenchRunAction: Action = {
     }
 
     try {
-      const result = await service.run(runInput);
+      const result = await spawnWithTrajectoryLink(
+        runtime,
+        {
+          source: "plugin-claude-code-workbench:run",
+          metadata: { workflow: runInput.workflow, cwd: runInput.cwd },
+        },
+        async (trajectory) => {
+          const trajectoryChildStepId = trajectory.parentStepId
+            ? buildWorkbenchChildStepId(runInput.workflow)
+            : undefined;
+          const workbenchResult = await service.run({
+            ...runInput,
+            ...(trajectory.parentStepId
+              ? { trajectoryParentStepId: trajectory.parentStepId }
+              : {}),
+            ...(trajectoryChildStepId ? { trajectoryChildStepId } : {}),
+          });
+          if (trajectoryChildStepId) {
+            await trajectory.linkChild(trajectoryChildStepId);
+          }
+          return workbenchResult;
+        },
+      );
       const text = summarizeResult(result);
 
       if (callback) {

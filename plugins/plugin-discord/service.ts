@@ -8,11 +8,11 @@ import {
 	type IAgentRuntime,
 	type Media,
 	type Memory,
+	MemoryType,
 	type MessageConnectorChatContext,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
 	type MessageConnectorUserContext,
-	MemoryType,
 	Service,
 	setConnectorAdminWhitelist,
 	stringToUuid,
@@ -1052,7 +1052,9 @@ export class DiscordService extends Service implements IDiscordService {
 			} as TargetInfo,
 			label: `@${label}`,
 			kind: "user",
-			description: guild?.name ? `Discord user in ${guild.name}` : "Discord user",
+			description: guild?.name
+				? `Discord user in ${guild.name}`
+				: "Discord user",
 			score,
 			contexts: ["social", "connectors"],
 			metadata: {
@@ -1105,11 +1107,9 @@ export class DiscordService extends Service implements IDiscordService {
 					continue;
 				}
 				const channelRecord = channel as Channel & { name?: string };
-				const score = scoreDiscordConnectorMatch(
-					normalizedQuery,
-					channel.id,
-					[channelRecord.name],
-				);
+				const score = scoreDiscordConnectorMatch(normalizedQuery, channel.id, [
+					channelRecord.name,
+				]);
 				if (score <= 0) {
 					continue;
 				}
@@ -1126,12 +1126,16 @@ export class DiscordService extends Service implements IDiscordService {
 						limit: 10,
 					});
 					for (const member of members.values()) {
-						const score = scoreDiscordConnectorMatch(normalizedQuery, member.id, [
-							member.displayName,
-							member.user.username,
-							member.user.globalName,
-							member.user.tag,
-						]);
+						const score = scoreDiscordConnectorMatch(
+							normalizedQuery,
+							member.id,
+							[
+								member.displayName,
+								member.user.username,
+								member.user.globalName,
+								member.user.tag,
+							],
+						);
 						const target = this.buildConnectorUserTarget(
 							member.user,
 							guild,
@@ -1202,7 +1206,9 @@ export class DiscordService extends Service implements IDiscordService {
 
 		if (context.target?.channelId) {
 			try {
-				const channel = await this.client.channels.fetch(context.target.channelId);
+				const channel = await this.client.channels.fetch(
+					context.target.channelId,
+				);
 				if (channel) {
 					const target = this.buildConnectorChannelTarget(channel, 0.6);
 					if (target) {
@@ -1227,7 +1233,10 @@ export class DiscordService extends Service implements IDiscordService {
 		const targets: MessageConnectorTarget[] = [];
 		for (const guild of this.client.guilds.cache.values()) {
 			for (const channel of guild.channels.cache.values()) {
-				const target = this.buildConnectorChannelTarget(channel as Channel, 0.5);
+				const target = this.buildConnectorChannelTarget(
+					channel as Channel,
+					0.5,
+				);
 				if (target) {
 					targets.push(target);
 				}
@@ -1293,7 +1302,9 @@ export class DiscordService extends Service implements IDiscordService {
 			topic?: string | null;
 			guild?: Guild;
 			messages?: {
-				fetch: (options: { limit: number }) => Promise<Collection<string, Message>>;
+				fetch: (options: {
+					limit: number;
+				}) => Promise<Collection<string, Message>>;
 			};
 		};
 		const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
@@ -1346,7 +1357,9 @@ export class DiscordService extends Service implements IDiscordService {
 			label,
 			summary:
 				channelRecord.topic ||
-				(channelRecord.guild?.name ? `Discord channel in ${channelRecord.guild.name}` : undefined),
+				(channelRecord.guild?.name
+					? `Discord channel in ${channelRecord.guild.name}`
+					: undefined),
 			recentMessages,
 			metadata: {
 				discordChannelId: channelId,
@@ -1364,7 +1377,9 @@ export class DiscordService extends Service implements IDiscordService {
 			return null;
 		}
 
-		const discordUserId = await this.resolveDiscordTargetUserId(String(entityId));
+		const discordUserId = await this.resolveDiscordTargetUserId(
+			String(entityId),
+		);
 		if (!discordUserId) {
 			return null;
 		}
@@ -1425,7 +1440,8 @@ export class DiscordService extends Service implements IDiscordService {
 		serviceInstance: DiscordService,
 	) {
 		if (serviceInstance) {
-			const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+			const sendHandler =
+				serviceInstance.handleSendMessage.bind(serviceInstance);
 			if (typeof runtime.registerMessageConnector === "function") {
 				runtime.registerMessageConnector({
 					source: "discord",

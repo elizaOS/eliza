@@ -106,7 +106,8 @@ export const searchContactsAction: Action = {
 			stopSequences: [],
 		});
 
-		const parsedResponse = parseToonKeyValue<SearchContactsToonResult>(response);
+		const parsedResponse =
+			parseToonKeyValue<SearchContactsToonResult>(response);
 
 		// Build search criteria
 		const criteria: {

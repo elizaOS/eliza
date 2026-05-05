@@ -295,7 +295,9 @@ export async function generateSummary(
 		prompt,
 	});
 
-	const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
+	const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+		response,
+	) as {
 		title?: string;
 		summary?: string;
 	} | null;

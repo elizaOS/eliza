@@ -11,11 +11,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
 import type { MatrixService } from "../service.js";
 import { isValidMatrixRoomAlias, isValidMatrixRoomId, MATRIX_SERVICE_NAME } from "../types.js";
 
@@ -86,8 +82,7 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsed =
-        parseToonKeyValue<Record<string, unknown>>(String(response));
+      const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
       if (parsed?.text) {
         messageInfo = {
           text: String(parsed.text),

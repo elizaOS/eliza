@@ -27,7 +27,10 @@ import {
 	skillInstructionsProvider,
 	skillsSummaryProvider,
 } from "./providers/skills";
-import { registerAgentSkillsSearchCategory } from "./search-category";
+import {
+	installAgentSkillsSearchDispatcher,
+	registerAgentSkillsSearchCategory,
+} from "./search-category";
 // Services
 import { AgentSkillsService } from "./services/skills";
 
@@ -112,6 +115,7 @@ export const agentSkillsPlugin: Plugin = {
 	// handles periodic hourly refreshes.
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
 		registerAgentSkillsSearchCategory(runtime);
+		installAgentSkillsSearchDispatcher(runtime);
 
 		// If a previous runtime left a timer behind (e.g. reload in dev), clear
 		// it before installing a fresh one so we never stack intervals.

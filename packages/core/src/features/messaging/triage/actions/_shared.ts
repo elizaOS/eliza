@@ -263,7 +263,9 @@ export function parseManageMessageParams(
 	let source: MessageSource | undefined;
 	if (sourceStr) {
 		if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(sourceStr)) {
-			return { error: `source "${sourceStr}" is not a supported message source` };
+			return {
+				error: `source "${sourceStr}" is not a supported message source`,
+			};
 		}
 		source = sourceStr as MessageSource;
 	}
@@ -278,7 +280,10 @@ export function parseManageMessageParams(
 		operation = parseOperation(opRaw.toLowerCase(), params);
 	}
 	if (!operation) {
-		return { error: "operation.kind is required (archive|trash|spam|mark_read|label_add|label_remove|tag_add|tag_remove|mute_thread|unsubscribe)" };
+		return {
+			error:
+				"operation.kind is required (archive|trash|spam|mark_read|label_add|label_remove|tag_add|tag_remove|mute_thread|unsubscribe)",
+		};
 	}
 	return { messageId, source, operation };
 }

@@ -1,20 +1,12 @@
-import type {
-  IAgentRuntime,
-  SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-  LINEAR_ISSUES_SEARCH_CATEGORY,
-  registerLinearSearchCategory,
-} from "./search-category";
+import { LINEAR_ISSUES_SEARCH_CATEGORY, registerLinearSearchCategory } from "./search-category";
 
 function createRuntime() {
   const categories = new Map<string, SearchCategoryRegistration>();
-  const registerSearchCategory = vi.fn(
-    (registration: SearchCategoryRegistration) => {
-      categories.set(registration.category, registration);
-    },
-  );
+  const registerSearchCategory = vi.fn((registration: SearchCategoryRegistration) => {
+    categories.set(registration.category, registration);
+  });
   const getSearchCategory = vi.fn((category: string) => {
     const registration = categories.get(category);
     if (!registration) throw new Error(`Missing category ${category}`);
@@ -24,8 +16,7 @@ function createRuntime() {
   return {
     categories,
     registerSearchCategory,
-    runtime: { getSearchCategory, registerSearchCategory } as unknown as
-      IAgentRuntime,
+    runtime: { getSearchCategory, registerSearchCategory } as unknown as IAgentRuntime,
   };
 }
 
@@ -52,7 +43,7 @@ describe("Linear search category", () => {
         "team",
         "priority",
         "limit",
-      ]),
+      ])
     );
   });
 });

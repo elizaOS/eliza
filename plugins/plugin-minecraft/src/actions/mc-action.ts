@@ -608,12 +608,12 @@ export const minecraftAction: Action = {
   description:
     "Route Minecraft automation with subaction connect, movement, look, scan, dig, place, chat, attack, or waypoints.",
   descriptionCompressed:
-    "minecraft router; subactions connect movement look scan dig place chat attack waypoints",
+    "Route live Minecraft automation by subaction: connect, movement, look, scan, dig, place, chat, attack, waypoints.",
   parameters: [
     {
       name: "subaction",
       description: "Minecraft operation group.",
-      descriptionCompressed: "operation group",
+      descriptionCompressed: "Minecraft subaction group.",
       required: true,
       schema: {
         type: "string",
@@ -634,7 +634,7 @@ export const minecraftAction: Action = {
       name: "operation",
       description:
         "Optional operation inside connect (connect/disconnect), movement (goto/control/stop), or waypoints (set/delete/goto).",
-      descriptionCompressed: "nested operation",
+      descriptionCompressed: "Nested operation for connect, movement, or waypoints.",
       required: false,
       schema: { type: "string" },
     },

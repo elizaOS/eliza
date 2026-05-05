@@ -119,7 +119,7 @@ const EVIDENCE_IMPACT_MAP: Record<
 };
 
 export class TrustEngine extends Service {
-	static serviceType = "trust-engine" as const;
+	static serviceType = "trust-engine:core" as const;
 
 	capabilityDescription =
 		"Multi-dimensional trust scoring and evaluation system";

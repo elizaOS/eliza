@@ -7,7 +7,6 @@ import { queueMusic } from "./actions/queueMusic";
 import { showQueue } from "./actions/showQueue";
 import { skipTrack } from "./actions/skipTrack";
 import { stopMusic } from "./actions/stopMusic";
-import { musicPlayerInstructionsProvider } from "./providers/musicPlayerInstructions";
 import { musicPlayerRoutes } from "./routes";
 import { installProcessActionsTransportPatch } from "./runtime/processActionsTransportPatch";
 import { MusicService } from "./service";
@@ -60,7 +59,7 @@ const musicPlayerPlugin: Plugin = {
     queueMusic,
     showQueue,
   ],
-  providers: [musicPlayerInstructionsProvider],
+  providers: [],
   routes: musicPlayerRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     installProcessActionsTransportPatch(runtime);

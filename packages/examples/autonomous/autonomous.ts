@@ -10,6 +10,7 @@ import {
   createMessageMemory,
   logger,
   MemoryType,
+  parseToonKeyValue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -73,37 +74,35 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-function extractTag(text: string, tagName: string): string | null {
-  const startTag = `<${tagName}>`;
-  const endTag = `</${tagName}>`;
-  const startIdx = text.indexOf(startTag);
-  if (startIdx === -1) return null;
-  const endIdx = text.indexOf(endTag, startIdx + startTag.length);
-  if (endIdx === -1) return null;
-  return text.slice(startIdx + startTag.length, endIdx).trim();
-}
-
-function extractResponseBlock(text: string): string | null {
-  const start = text.indexOf("<response>");
-  const end = text.indexOf("</response>");
-  if (start === -1 || end === -1) return null;
-  return text.slice(start, end + "</response>".length);
+function readStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = record[key];
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
 }
 
 function parseDecision(raw: string): AgentDecision | null {
-  const block = extractResponseBlock(raw);
-  const xml = block ?? raw;
+  const parsed = parseToonKeyValue<Record<string, unknown>>(raw);
+  if (!parsed) return null;
 
-  const actionRaw = extractTag(xml, "action")?.trim().toUpperCase();
+  const actionRaw = readStringField(parsed, "action")?.toUpperCase();
   if (!actionRaw) return null;
 
-  const note = extractTag(xml, "note") ?? "";
+  const note = readStringField(parsed, "note") ?? "";
 
   switch (actionRaw) {
     case "STOP":
       return { action: "STOP", note };
     case "SLEEP": {
-      const sleepRaw = extractTag(xml, "sleepMs");
+      const sleepRaw = readStringField(parsed, "sleepMs");
       const sleepMsParsed = sleepRaw ? Number(sleepRaw) : NaN;
       if (!Number.isFinite(sleepMsParsed)) return null;
       return {
@@ -113,7 +112,7 @@ function parseDecision(raw: string): AgentDecision | null {
       };
     }
     case "RUN": {
-      const command = extractTag(xml, "command");
+      const command = readStringField(parsed, "command");
       if (!command) return null;
       return { action: "RUN", command, note };
     }
@@ -166,18 +165,16 @@ SANDBOX:
 RECENT HISTORY (most recent last):
 ${params.recentSteps}
 
-Choose exactly ONE next step and output ONLY this XML (no extra text):
-<response>
-  <action>RUN|SLEEP|STOP</action>
-  <command>...</command>
-  <sleepMs>...</sleepMs>
-  <note>short reason</note>
-</response>
+Choose exactly ONE next step and output ONLY this TOON document (no extra text):
+action: RUN|SLEEP|STOP
+command: ...
+sleepMs: ...
+note: short reason
 
 Rules:
-- If action is RUN, include <command> and omit <sleepMs>.
-- If action is SLEEP, include <sleepMs> (100-60000) and omit <command>.
-- If action is STOP, omit both <command> and <sleepMs>.
+- If action is RUN, include command and omit sleepMs.
+- If action is SLEEP, include sleepMs (100-60000) and omit command.
+- If action is STOP, omit both command and sleepMs.
 - Keep output short.
 `.trim();
 }

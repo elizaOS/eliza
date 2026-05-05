@@ -1,12 +1,19 @@
-import type { IAgentRuntime, Memory, State } from '@elizaos/core'; // Added type keyword
-import type { Provider } from '@elizaos/core'; // Added type keyword
+import {
+    encodeToonValue,
+    type IAgentRuntime,
+    type Memory,
+    type Provider,
+    type RecordLlmCallDetails,
+    recordLlmCall,
+    type State,
+} from '@elizaos/core';
 
 export interface SunoConfig {
     apiKey: string;
     baseUrl?: string;
 }
 
-export class SunoProvider implements Provider {
+export class SunoProvider {
     private apiKey: string;
     private baseUrl: string;
 
@@ -16,7 +23,7 @@ export class SunoProvider implements Provider {
         _state?: State
     ): Promise<SunoProvider> {
         const apiKey = runtime.getSetting('SUNO_API_KEY');
-        if (!apiKey) {
+        if (typeof apiKey !== 'string' || !apiKey) {
             throw new Error('SUNO_API_KEY is required');
         }
         return new SunoProvider({ apiKey });
@@ -35,7 +42,7 @@ export class SunoProvider implements Provider {
         return { status: 'ready' };
     }
 
-    async request(endpoint: string, options: RequestInit = {}) {
+    async request(runtime: IAgentRuntime, endpoint: string, options: RequestInit = {}) {
         const url = `${this.baseUrl}${endpoint}`;
         const headers = {
             Authorization: `Bearer ${this.apiKey}`,
@@ -43,18 +50,65 @@ export class SunoProvider implements Provider {
             ...options.headers,
         };
 
-        const response = await fetch(url, {
-            ...options,
-            headers,
+        const body = typeof options.body === 'string' ? options.body : '';
+        const details: RecordLlmCallDetails = {
+            model: 'suno',
+            modelVersion: 'api-v1',
+            systemPrompt: 'Suno music generation API request',
+            userPrompt: body,
+            temperature: readTemperature(body),
+            maxTokens: 0,
+            purpose: 'action',
+            actionType: `suno.fetch${endpoint}`,
+        };
+
+        return recordLlmCall(runtime, details, async () => {
+            const response = await fetch(url, {
+                ...options,
+                headers,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Suno API error: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            details.response = encodeToonValue({ suno_response: data });
+            return data;
         });
-
-        if (!response.ok) {
-            throw new Error(`Suno API error: ${response.statusText}`);
-        }
-
-        return response.json();
     }
 }
+
+function readTemperature(body: string): number {
+    if (!body) return 0;
+    try {
+        const parsed = JSON.parse(body) as { temperature?: unknown };
+        return typeof parsed.temperature === 'number' ? parsed.temperature : 0;
+    } catch {
+        return 0;
+    }
+}
+
+export const sunoStatusProvider: Provider = {
+    name: 'SUNO_STATUS',
+    description: 'Suno music generation status',
+    descriptionCompressed: 'Suno generation availability.',
+    get: async (runtime: IAgentRuntime) => {
+        const configured = Boolean(runtime.getSetting('SUNO_API_KEY'));
+        return {
+            text: encodeToonValue({
+                suno: {
+                    configured,
+                    status: configured ? 'ready' : 'missing_api_key',
+                    action: 'MUSIC_GENERATION',
+                    subactions: ['generate', 'custom', 'extend'],
+                },
+            }),
+            data: { configured },
+            values: { sunoConfigured: configured },
+        };
+    },
+};
 
 export interface GenerateParams {
     prompt: string;

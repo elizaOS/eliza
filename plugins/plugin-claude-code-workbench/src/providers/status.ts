@@ -32,22 +32,35 @@ export const claudeCodeWorkbenchStatusProvider: Provider = {
     const status = service.getStatus();
 
     const lines = [
-      `Workbench availability: ${status.available ? "available" : "unavailable"}`,
-      `Workflow count: ${status.workflows.length}`,
-      `Workspace root: ${status.workspaceRoot}`,
-      `Timeout: ${status.timeoutMs}ms`,
-      `Output cap: ${status.maxOutputChars} chars`,
-      `Mutating workflows: ${status.enableMutatingWorkflows ? "enabled" : "disabled"}`,
+      "claude_code_workbench:",
+      `  available: ${status.available}`,
+      `  running: ${status.running}`,
+      `  workspaceRoot: ${status.workspaceRoot}`,
+      `  timeoutMs: ${status.timeoutMs}`,
+      `  maxOutputChars: ${status.maxOutputChars}`,
+      `  mutatingWorkflowsEnabled: ${status.enableMutatingWorkflows}`,
+      `workflows[${status.workflows.length}]{id,title,category,mutatesRepo,enabled,description}:`,
+      ...status.workflows.map((workflow) =>
+        [
+          `  ${workflow.id}`,
+          workflow.title,
+          workflow.category,
+          String(workflow.mutatesRepo),
+          String(workflow.enabled),
+          workflow.description.replace(/\s+/g, " ").trim(),
+        ].join(","),
+      ),
     ];
 
     if (status.lastRunAt) {
-      lines.push(`Last run: ${new Date(status.lastRunAt).toISOString()}`);
+      lines.push("lastRun:");
+      lines.push(`  at: ${new Date(status.lastRunAt).toISOString()}`);
     }
     if (status.lastWorkflow) {
-      lines.push(`Last workflow: ${status.lastWorkflow}`);
+      lines.push(`  workflow: ${status.lastWorkflow}`);
     }
     if (typeof status.lastExitCode !== "undefined") {
-      lines.push(`Last exit code: ${String(status.lastExitCode)}`);
+      lines.push(`  exitCode: ${String(status.lastExitCode)}`);
     }
 
     return {

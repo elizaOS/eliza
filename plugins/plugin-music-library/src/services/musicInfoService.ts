@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   AlbumInfo,
   ArtistInfo,
@@ -10,7 +10,7 @@ import { LastFmClient } from "./lastFmClient";
 import { MusicBrainzClient } from "./musicBrainzClient";
 import type { MusicInfoServiceStatus, ServiceStatus } from "./serviceStatus";
 import { TheAudioDbClient } from "./theAudioDbClient";
-import type { WikipediaService } from "./wikipediaClient";
+import type { WikipediaClient } from "./wikipediaClient";
 
 const MUSIC_INFO_SERVICE_NAME = "musicInfo";
 
@@ -19,8 +19,7 @@ const MUSIC_INFO_SERVICE_NAME = "musicInfo";
  * Track metadata comes from YouTube for direct URLs and MusicBrainz for
  * text queries; artist and album metadata comes from MusicBrainz only.
  */
-export class MusicInfoService extends Service {
-  static serviceType: string = MUSIC_INFO_SERVICE_NAME;
+export class MusicInfoHelper {
   capabilityDescription =
     "Fetches music metadata (tracks, artists, albums) from authoritative sources";
 
@@ -31,6 +30,7 @@ export class MusicInfoService extends Service {
   private lastFmClient: LastFmClient | null = null;
   private geniusClient: GeniusClient | null = null;
   private theAudioDbClient: TheAudioDbClient | null = null;
+  private readonly wikipediaClient: WikipediaClient | null;
   private serviceStatus: MusicInfoServiceStatus = {
     musicBrainz: { status: "not_configured" as ServiceStatus, lastChecked: 0 },
     lastFm: { status: "not_configured" as ServiceStatus, lastChecked: 0 },
@@ -39,8 +39,11 @@ export class MusicInfoService extends Service {
     wikipedia: { status: "not_configured" as ServiceStatus, lastChecked: 0 },
   };
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
+  constructor(
+    runtime?: IAgentRuntime,
+    wikipediaClient?: WikipediaClient | null,
+  ) {
+    this.wikipediaClient = wikipediaClient ?? null;
 
     // Initialize MusicBrainz (free, no API key needed)
     const userAgent =
@@ -112,10 +115,7 @@ export class MusicInfoService extends Service {
     }
 
     // Check Wikipedia service availability
-    const wikipediaService = runtime?.getService(
-      "wikipedia",
-    ) as WikipediaService | null;
-    if (wikipediaService) {
+    if (this.wikipediaClient) {
       this.serviceStatus.wikipedia = {
         status: "active" as ServiceStatus,
         lastChecked: Date.now(),
@@ -126,13 +126,6 @@ export class MusicInfoService extends Service {
     this.validateApiKeys().catch((error) => {
       logger.debug(`API key validation completed with some issues: ${error}`);
     });
-  }
-
-  static async start(runtime: IAgentRuntime): Promise<MusicInfoService> {
-    logger.debug(
-      `Starting MusicInfoService for agent ${runtime.character.name}`,
-    );
-    return new MusicInfoService(runtime);
   }
 
   async stop(): Promise<void> {
@@ -258,13 +251,11 @@ export class MusicInfoService extends Service {
     }
 
     // Validate Wikipedia
-    const wikipediaService = this.runtime?.getService(
-      "wikipedia",
-    ) as WikipediaService | null;
-    if (wikipediaService) {
+    if (this.wikipediaClient) {
       try {
         const startTime = Date.now();
-        const testResult = await wikipediaService.getArtistInfo("The Beatles");
+        const testResult =
+          await this.wikipediaClient.getArtistInfo("The Beatles");
         const responseTime = Date.now() - startTime;
         this.serviceStatus.wikipedia = {
           status: testResult
@@ -525,3 +516,7 @@ export class MusicInfoService extends Service {
     await Promise.allSettled(promises);
   }
 }
+
+export const MUSIC_INFO_HELPER_NAME = MUSIC_INFO_SERVICE_NAME;
+
+export { MusicInfoHelper as MusicInfoService };

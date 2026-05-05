@@ -1549,8 +1549,8 @@ export async function runScenario(
               };
       let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
-      // via the message callback but the LLM failed to wrap the response in
-      // an `<action><name>REPLY></action>` envelope. This happens regularly
+      // via the message callback but the LLM failed to select REPLY in its
+      // structured response. This happens regularly
       // with smaller models (e.g. Groq llama-3.1-8b) on plain conversational
       // turns. The scenario intent is "a conversational reply happened" —
       // without this, ~30% of cross-cutting scenarios fail on provider-quirk

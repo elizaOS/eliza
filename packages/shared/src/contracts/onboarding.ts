@@ -131,6 +131,8 @@ export interface ModelOption {
   name: string;
   provider: string;
   description: string;
+  recommended?: boolean;
+  free?: boolean;
 }
 
 export interface OpenRouterModelOption {

@@ -273,7 +273,7 @@ function buildCompletion(prompt: string): string {
   }
 
   if (/Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) || /RLM benchmark task/i.test(prompt)) {
-    return buildReplyToon(`<answer>${extractRlmAnswer(prompt) ?? "UNKNOWN"}</answer>`);
+    return buildReplyToon(extractRlmAnswer(prompt) ?? "UNKNOWN");
   }
 
   if (/Benchmark:\*{0,2}\s*gaia/i.test(prompt) || /GAIA benchmark task|FINAL ANSWER/i.test(prompt)) {

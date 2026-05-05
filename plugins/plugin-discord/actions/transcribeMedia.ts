@@ -41,7 +41,9 @@ const getMediaAttachmentId = async (
 			prompt,
 		});
 
-		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			attachmentId: string;
 		} | null;
 

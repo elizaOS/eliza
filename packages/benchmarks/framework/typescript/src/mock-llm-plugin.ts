@@ -2,7 +2,7 @@
  * Mock LLM Plugin for Framework Benchmarking
  *
  * Replaces all LLM model handlers with deterministic, zero-latency handlers
- * that return pre-computed valid XML responses. This isolates framework
+ * that return pre-computed valid TOON responses. This isolates framework
  * overhead from LLM latency for accurate performance measurement.
  */
 
@@ -16,47 +16,35 @@ import type { State } from "../../../../core/src/types/state";
 // ─── Mock response constants ───────────────────────────────────────────────
 
 /** Response for shouldRespond evaluations (TEXT_SMALL / dynamicPromptExec) */
-const SHOULD_RESPOND_XML = `<response>
-  <name>BenchmarkAgent</name>
-  <reasoning>The message is directed at me. I should respond.</reasoning>
-  <action>RESPOND</action>
-</response>`;
+const SHOULD_RESPOND_TOON = `name: BenchmarkAgent
+reasoning: The message is directed at me. I should respond.
+action: RESPOND`;
 
 /** Response for main message handler (TEXT_LARGE / dynamicPromptExec) */
-const MESSAGE_HANDLER_XML = `<response>
-    <thought>Processing benchmark message. Will reply with a fixed response.</thought>
-    <actions>REPLY</actions>
-    <providers></providers>
-    <text>This is a fixed benchmark response from the mock LLM plugin.</text>
-    <simple>true</simple>
-</response>`;
+const MESSAGE_HANDLER_TOON = `thought: Processing benchmark message. Will reply with a fixed response.
+actions: REPLY
+providers:
+text: This is a fixed benchmark response from the mock LLM plugin.
+simple: true`;
 
 /** Response for reply action (TEXT_LARGE direct calls) */
-const REPLY_ACTION_XML = `<response>
-    <thought>Generating a reply for the benchmark.</thought>
-    <text>Fixed reply from mock LLM plugin.</text>
-</response>`;
+const REPLY_ACTION_TOON = `thought: Generating a reply for the benchmark.
+text: Fixed reply from mock LLM plugin.`;
 
 /** Multi-step decision response (marks task as finished immediately) */
-const MULTI_STEP_DECISION_XML = `<response>
-  <thought>The task is straightforward, completing immediately.</thought>
-  <action></action>
-  <providers></providers>
-  <isFinish>true</isFinish>
-</response>`;
+const MULTI_STEP_DECISION_TOON = `thought: The task is straightforward, completing immediately.
+action:
+providers:
+isFinish: true`;
 
 /** Multi-step summary response */
-const MULTI_STEP_SUMMARY_XML = `<response>
-  <thought>Summarizing benchmark run.</thought>
-  <text>Benchmark multi-step task completed successfully.</text>
-</response>`;
+const MULTI_STEP_SUMMARY_TOON = `thought: Summarizing benchmark run.
+text: Benchmark multi-step task completed successfully.`;
 
 /** Reflection evaluator response */
-const REFLECTION_XML = `<response>
-  <thought>Benchmark interaction processed normally.</thought>
-  <facts></facts>
-  <relationships></relationships>
-</response>`;
+const REFLECTION_TOON = `thought: Benchmark interaction processed normally.
+facts:
+relationships:`;
 
 /** Fixed 384-dimension embedding vector (all zeros). Frozen to prevent mutation. */
 const ZERO_EMBEDDING: readonly number[] = Object.freeze(
@@ -77,7 +65,7 @@ function detectAndRespondTextLarge(
 
   // Multi-step decision template
   if (prompt.includes("Multi-Step Workflow") || prompt.includes("isFinish")) {
-    return MULTI_STEP_DECISION_XML;
+    return MULTI_STEP_DECISION_TOON;
   }
 
   // Multi-step summary template
@@ -85,7 +73,7 @@ function detectAndRespondTextLarge(
     prompt.includes("Execution Trace") ||
     prompt.includes("Summarize what the assistant")
   ) {
-    return MULTI_STEP_SUMMARY_XML;
+    return MULTI_STEP_SUMMARY_TOON;
   }
 
   // Reflection evaluator template
@@ -93,7 +81,7 @@ function detectAndRespondTextLarge(
     prompt.includes("Generate Agent Reflection") ||
     prompt.includes("Extract Facts")
   ) {
-    return REFLECTION_XML;
+    return REFLECTION_TOON;
   }
 
   // Reply action template
@@ -101,11 +89,11 @@ function detectAndRespondTextLarge(
     prompt.includes("Generate dialog for the character") &&
     !prompt.includes("decide what actions")
   ) {
-    return REPLY_ACTION_XML;
+    return REPLY_ACTION_TOON;
   }
 
   // Default: message handler response
-  return MESSAGE_HANDLER_XML;
+  return MESSAGE_HANDLER_TOON;
 }
 
 function detectAndRespondTextSmall(
@@ -119,7 +107,7 @@ function detectAndRespondTextSmall(
     prompt.includes("should respond") ||
     prompt.includes("RESPOND | IGNORE | STOP")
   ) {
-    return SHOULD_RESPOND_XML;
+    return SHOULD_RESPOND_TOON;
   }
 
   // Boolean footer (yes/no responses)
@@ -129,11 +117,11 @@ function detectAndRespondTextSmall(
 
   // Post generation
   if (prompt.includes("Generate dialog")) {
-    return MESSAGE_HANDLER_XML;
+    return MESSAGE_HANDLER_TOON;
   }
 
   // Default for small model
-  return SHOULD_RESPOND_XML;
+  return SHOULD_RESPOND_TOON;
 }
 
 // ─── Dummy providers for scaling tests ──────────────────────────────────────

@@ -1,13 +1,9 @@
-import type {
-  IAgentRuntime,
-  SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const LINEAR_ISSUES_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "linear_issues",
   label: "Linear issues",
-  description:
-    "Search Linear issues by text and issue metadata filters.",
+  description: "Search Linear issues by text and issue metadata filters.",
   contexts: ["automation", "system"],
   filters: [
     { name: "query", label: "Query", type: "string", required: true },

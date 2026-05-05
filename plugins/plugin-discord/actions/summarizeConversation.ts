@@ -149,7 +149,9 @@ const getDateRange = async (
 		});
 
 		// Try parsing the TOON response.
-		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			objective: string;
 			start: string | number;
 			end: string | number;

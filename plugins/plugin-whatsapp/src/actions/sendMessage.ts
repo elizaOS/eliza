@@ -8,11 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
 
 export const WHATSAPP_SEND_MESSAGE_ACTION = "WHATSAPP_SEND_MESSAGE";
 
@@ -92,7 +88,9 @@ export const sendMessageAction: Action = {
         prompt,
       });
 
-      const parsed = (parseToonKeyValue<Record<string, unknown>>(response)) as unknown as SendMessageParams | null;
+      const parsed = parseToonKeyValue<Record<string, unknown>>(
+        response
+      ) as unknown as SendMessageParams | null;
       if (!parsed?.to || !parsed.text) {
         // Try to use context from message
         const to = message.content?.from as string;

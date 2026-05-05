@@ -391,12 +391,12 @@ export const robloxAction: Action = {
   name: actionName,
   similes: ["ROBLOX", "ROBLOX_ROUTER", "ROBLOX_GAME_ACTION"],
   description: "Route Roblox game integration with subaction message, execute, or get_player.",
-  descriptionCompressed: "Roblox router; subactions message execute get_player",
+  descriptionCompressed: "Route Roblox game subaction: message, execute, or get_player.",
   parameters: [
     {
       name: "subaction",
       description: "Roblox operation: message, execute, or get_player.",
-      descriptionCompressed: "operation",
+      descriptionCompressed: "Roblox subaction.",
       required: true,
       schema: { type: "string", enum: ["message", "execute", "get_player"] },
     },

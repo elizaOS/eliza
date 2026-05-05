@@ -557,34 +557,26 @@ const pendingBirths: AgentState[] = [];
 // MODEL HANDLER - DECIDES WHICH ACTION TO TAKE
 // ============================================================================
 
-function escapeXml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+function renderToonField(key: string, value: string): string {
+  if (value.includes("\n")) {
+    return `${key}:\n${value
+      .split(/\r?\n/)
+      .map((line) => `  ${line}`)
+      .join("\n")}`;
+  }
+  return `${key}: ${value}`;
 }
 
-function decisionXml(
+function decisionToon(
   actionName: string,
   thought: string,
   text: string,
 ): string {
-  // DefaultMessageService expects XML-ish tags like <thought>, <actions>, <text>.
-  // We return a minimal, deterministic payload (no LLM) that still flows through
-  // the full Eliza message pipeline.
   return [
-    "<thought>",
-    escapeXml(thought),
-    "</thought>",
-    "<actions>",
-    escapeXml(actionName),
-    "</actions>",
-    "<text>",
-    escapeXml(text),
-    "</text>",
-  ].join("");
+    renderToonField("thought", thought),
+    renderToonField("actions", actionName),
+    renderToonField("text", text),
+  ].join("\n");
 }
 
 type DecisionModelParams = { prompt?: string };
@@ -595,14 +587,14 @@ async function decisionModelHandler(
 ): Promise<string> {
   const state = getAgentState(runtime);
   if (!state || !state.isAlive) {
-    return decisionXml("NONE", "I am not alive; no action.", "NONE");
+    return decisionToon("NONE", "I am not alive; no action.", "NONE");
   }
 
   // Priority-based action selection (no LLM, pure rules)
 
   // 1. If standing on food, eat it
   if (world.food.has(posKey(state.position.x, state.position.y))) {
-    return decisionXml(
+    return decisionToon(
       "EAT",
       "Food is underfoot; eating is the highest value action.",
       "EAT",
@@ -629,7 +621,7 @@ async function decisionModelHandler(
       }
     }
     if (safe) {
-      return decisionXml(
+      return decisionToon(
         "REPRODUCE",
         "Energy is high and conditions look safe; reproducing increases lineage fitness.",
         "REPRODUCE",
@@ -646,7 +638,7 @@ async function decisionModelHandler(
         other.dna.aggression > 0.5
       ) {
         if (distance(state.position, other.position) <= state.dna.vision) {
-          return decisionXml(
+          return decisionToon(
             "FLEE",
             "A nearby aggressive agent is within vision; fleeing reduces risk.",
             "FLEE",
@@ -665,7 +657,7 @@ async function decisionModelHandler(
         other.energy < state.energy * 0.8
       ) {
         if (distance(state.position, other.position) <= 2) {
-          return decisionXml(
+          return decisionToon(
             "ATTACK",
             "A weaker agent is within striking range; attacking can steal energy.",
             "ATTACK",
@@ -678,7 +670,7 @@ async function decisionModelHandler(
   // 5. If see food, move toward it
   for (const food of world.food.values()) {
     if (distance(state.position, food) <= state.dna.vision) {
-      return decisionXml(
+      return decisionToon(
         "MOVE_TOWARD_FOOD",
         "Visible food detected; moving toward it improves survival odds.",
         "MOVE_TOWARD_FOOD",
@@ -692,7 +684,7 @@ async function decisionModelHandler(
   const promptPreview = params.prompt
     ? params.prompt.trim().slice(0, 120)
     : "(no prompt)";
-  return decisionXml(
+  return decisionToon(
     "WANDER",
     `No immediate opportunities; wandering explores. envPreview=${promptPreview}`,
     "WANDER",

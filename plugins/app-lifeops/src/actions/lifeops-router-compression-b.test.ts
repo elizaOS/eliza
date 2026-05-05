@@ -96,9 +96,9 @@ vi.mock("../lifeops/cross-channel-search.js", () => ({
   })),
 }));
 
+import { crossChannelContextProvider } from "../providers/cross-channel-context.js";
 import { crossChannelSendAction } from "./cross-channel-send.js";
 import { lifeOpsConnectorAction } from "./lifeops-connector.js";
-import { crossChannelContextProvider } from "../providers/cross-channel-context.js";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-000000000002" as UUID;
@@ -227,6 +227,10 @@ describe("LifeOps router compression B", () => {
 
     expect(result.text).toContain("cross_channel_context");
     expect(result.text).not.toContain("Cross-channel context for");
+    expect(result.values).toMatchObject({
+      crossChannelHits: 1,
+      crossChannelChannels: ["gmail"],
+    });
     const parsed = parseToonKeyValue<Record<string, unknown>>(result.text);
     expect(parsed?.cross_channel_context).toMatchObject({
       query: "Frontier Tower",

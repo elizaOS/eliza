@@ -96,9 +96,9 @@ const editMessage: Action = {
 				prompt,
 			});
 
-			const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(
+			const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
 				response,
-			)) as Record<string, unknown> | null;
+			) as Record<string, unknown> | null;
 			if (
 				parsedResponse &&
 				typeof parsedResponse.messageId === "string" &&

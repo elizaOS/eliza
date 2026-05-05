@@ -8,11 +8,19 @@ export interface CatalogModel {
   released?: number;
   name?: string;
   description?: string;
+  architecture?: {
+    modality?: string;
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
+  context_length?: number;
   context_window?: number;
   max_tokens?: number;
   type?: string;
   tags?: string[];
   pricing?: Record<string, unknown>;
+  recommended?: boolean;
+  free?: boolean;
 }
 
 export interface SelectorModel {
@@ -21,11 +29,61 @@ export interface SelectorModel {
   description: string;
   modelId: string;
   provider: string;
+  recommended?: boolean;
+  free?: boolean;
 }
+
+export const OPENROUTER_RECOMMENDED_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
+export const OPENROUTER_DEFAULT_TEXT_MODEL = OPENROUTER_RECOMMENDED_TEXT_MODEL;
+export const OPENROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
+
+const OPENROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([OPENROUTER_RECOMMENDED_TEXT_MODEL]);
 
 // Verified against the public provider catalogs on 2026-04-25:
 // - OpenRouter: https://openrouter.ai/api/v1/models
 // - Groq docs: https://console.groq.com/docs/models
+const OPENROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
+  {
+    id: OPENROUTER_RECOMMENDED_TEXT_MODEL,
+    object: "model",
+    created: 0,
+    owned_by: "openai",
+    name: "GPT OSS 120B Nitro",
+    description: "Recommended OpenRouter high-throughput open-weight reasoning model",
+    type: "language",
+    context_window: 131072,
+    tags: ["recommended", "reasoning", "open-weight", "nitro"],
+    recommended: true,
+  },
+  {
+    id: "openai/gpt-oss-120b",
+    object: "model",
+    created: 0,
+    owned_by: "openai",
+    name: "GPT OSS 120B",
+    description: "OpenRouter open-weight reasoning model",
+    type: "language",
+    context_window: 131072,
+    tags: ["reasoning", "open-weight"],
+  },
+  {
+    id: OPENROUTER_DEFAULT_FREE_MODEL,
+    object: "model",
+    created: 0,
+    owned_by: "openai",
+    name: "GPT OSS 120B Free",
+    description: "Free OpenRouter open-weight reasoning model",
+    type: "language",
+    context_window: 131072,
+    pricing: {
+      prompt: "0",
+      completion: "0",
+    },
+    tags: ["free", "reasoning", "open-weight"],
+    free: true,
+  },
+];
+
 const OPENAI_TEXT_MODEL_IDS = [
   "openai/gpt-5.5",
   "openai/gpt-5.4",
@@ -272,6 +330,51 @@ function buildCatalogModel(modelId: string): CatalogModel {
   };
 }
 
+function numericPricingValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function isFreePricing(pricing?: Record<string, unknown>): boolean {
+  if (!pricing) return false;
+
+  const prompt = numericPricingValue(pricing.prompt);
+  const completion = numericPricingValue(pricing.completion);
+  const request = numericPricingValue(pricing.request);
+
+  if (prompt === 0 && completion === 0) {
+    return true;
+  }
+
+  return request === 0 && prompt == null && completion == null;
+}
+
+export function annotateCatalogModel(model: CatalogModel): CatalogModel {
+  const recommended = model.recommended === true || OPENROUTER_RECOMMENDED_MODEL_IDS.has(model.id);
+  const free = model.free === true || model.id.endsWith(":free") || isFreePricing(model.pricing);
+  const tags = new Set(model.tags ?? []);
+
+  if (recommended) tags.add("recommended");
+  if (free) tags.add("free");
+
+  return {
+    ...model,
+    ...(recommended ? { recommended: true } : {}),
+    ...(free ? { free: true } : {}),
+    ...(tags.size > 0 ? { tags: Array.from(tags) } : {}),
+  };
+}
+
+export function annotateCatalogModels(models: CatalogModel[]): CatalogModel[] {
+  return models.map(annotateCatalogModel);
+}
+
 export const GROQ_NATIVE_MODELS: CatalogModel[] = [
   {
     id: "groq/compound",
@@ -358,7 +461,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
 // add quants/variants (e.g. a Q5_K_M for cheaper hosts) without restructuring.
 export const VAST_NATIVE_MODEL_ID_MAP: Record<string, string> = {};
 
-export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = [
+const STATIC_TEXT_MODEL_IDS = [
   ...OPENAI_TEXT_MODEL_IDS,
   ...ANTHROPIC_TEXT_MODEL_IDS,
   ...GOOGLE_TEXT_MODEL_IDS,
@@ -378,7 +481,12 @@ export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = [
   ...MEITUAN_TEXT_MODEL_IDS,
   ...GROQ_NATIVE_MODELS.map((model) => model.id),
   ...VAST_NATIVE_MODELS.map((model) => model.id),
-].map(buildCatalogModel);
+] as const;
+
+export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = annotateCatalogModels([
+  ...OPENROUTER_FEATURED_TEXT_MODELS,
+  ...STATIC_TEXT_MODEL_IDS.map(buildCatalogModel),
+]);
 
 export function isGroqNativeModel(modelId: string): boolean {
   return modelId in GROQ_NATIVE_MODEL_ID_MAP;
@@ -412,11 +520,22 @@ export function mergeCatalogModels(
     }
   }
 
-  return Array.from(merged.values());
+  return annotateCatalogModels(Array.from(merged.values()));
 }
 
 export function isSelectableTextModel(model: CatalogModel): boolean {
   if (model.type && model.type !== "language") {
+    return false;
+  }
+
+  const outputs = model.architecture?.output_modalities?.map((value) => value.toLowerCase());
+  const modality = model.architecture?.modality?.toLowerCase();
+  if (
+    outputs &&
+    outputs.length > 0 &&
+    !outputs.includes("text") &&
+    !modality?.includes("text->text")
+  ) {
     return false;
   }
 
@@ -492,6 +611,11 @@ function getProviderSortIndex(provider: string): number {
 
 export function sortSelectorModels(models: SelectorModel[]): SelectorModel[] {
   return [...models].sort((a, b) => {
+    const priorityDelta = getSelectorModelPriority(b) - getSelectorModelPriority(a);
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+
     const providerDelta = getProviderSortIndex(a.provider) - getProviderSortIndex(b.provider);
     if (providerDelta !== 0) {
       return providerDelta;
@@ -501,6 +625,12 @@ export function sortSelectorModels(models: SelectorModel[]): SelectorModel[] {
   });
 }
 
+function getSelectorModelPriority(model: SelectorModel): number {
+  if (model.recommended) return 2;
+  if (model.free) return 1;
+  return 0;
+}
+
 export function toSelectorModel(model: CatalogModel): SelectorModel {
   return {
     id: model.id,
@@ -508,6 +638,8 @@ export function toSelectorModel(model: CatalogModel): SelectorModel {
     provider: model.owned_by,
     name: model.name || buildSelectorName(model.id),
     description: model.description || buildSelectorDescription(model.id),
+    ...(model.recommended ? { recommended: true } : {}),
+    ...(model.free ? { free: true } : {}),
   };
 }
 
@@ -524,16 +656,15 @@ export function getGroqCatalogModel(modelId: string): CatalogModel | null {
  * Maps gateway model IDs to OpenRouter free-tier models.
  */
 export const OPENROUTER_FREE_MODEL_MAP: Record<string, string> = {
-  "openai/gpt-4o": "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-5-mini": "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-5.5": "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-5-mini": "meta-llama/llama-3.3-70b-instruct:free",
-  "anthropic/claude-sonnet-4.6": "meta-llama/llama-3.3-70b-instruct:free",
-  "anthropic/claude-sonnet-4-6": "meta-llama/llama-3.3-70b-instruct:free",
+  [OPENROUTER_RECOMMENDED_TEXT_MODEL]: OPENROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-oss-120b": OPENROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-4o": OPENROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-5-mini": OPENROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-5.5": OPENROUTER_DEFAULT_FREE_MODEL,
+  "anthropic/claude-sonnet-4.6": OPENROUTER_DEFAULT_FREE_MODEL,
+  "anthropic/claude-sonnet-4-6": OPENROUTER_DEFAULT_FREE_MODEL,
   "google/gemini-2.0-flash": "google/gemini-2.0-flash-exp:free",
 };
-
-export const OPENROUTER_DEFAULT_FREE_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
 /**
  * Resolve a model ID to an OpenRouter free equivalent when falling back.

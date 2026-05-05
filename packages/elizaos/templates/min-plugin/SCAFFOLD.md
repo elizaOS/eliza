@@ -20,7 +20,7 @@ In `package.json`:
 
 ## 3. Implement the actual feature
 
-The default `helloAction` and `infoProvider` are smoke implementations. Add the real actions, providers, services, and types for whatever the user asked for. Keep at least one passing test in `tests/` per real action you add.
+The default `infoProvider` is a smoke implementation. Add real actions, providers, services, and types for whatever the user asked for. Keep at least one passing test in `tests/` per real action you add.
 
 ## 4. Verify before signaling done
 

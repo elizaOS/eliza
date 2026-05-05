@@ -16,7 +16,7 @@ import {
   getX402Health,
   listX402Configs,
   paymentAddressIsBundledExample,
-} from "./payment-config.ts";
+} from "./payment-config.js";
 
 /**
  * Validation result with warnings and errors

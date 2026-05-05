@@ -25,7 +25,9 @@ function createRuntime() {
 describe("Discord message connector adapter", () => {
 	it("registers connector metadata and dispatches through the existing send handler", async () => {
 		const runtime = createRuntime();
-		const service = Object.create(DiscordService.prototype) as DiscordService & {
+		const service = Object.create(
+			DiscordService.prototype,
+		) as DiscordService & {
 			handleSendMessage: ReturnType<typeof vi.fn>;
 			resolveConnectorTargets: ReturnType<typeof vi.fn>;
 			listRecentConnectorTargets: ReturnType<typeof vi.fn>;
@@ -126,9 +128,12 @@ describe("Discord message connector adapter", () => {
 		const userTargets = await service.resolveConnectorTargets("ada", {
 			runtime,
 		});
-		expect(userTargets.some((target: any) => target.kind === "user")).toBe(true);
+		expect(userTargets.some((target: any) => target.kind === "user")).toBe(
+			true,
+		);
 		expect(
-			userTargets.find((target: any) => target.kind === "user")?.target.entityId,
+			userTargets.find((target: any) => target.kind === "user")?.target
+				.entityId,
 		).toBe("333333333333333333");
 	});
 });

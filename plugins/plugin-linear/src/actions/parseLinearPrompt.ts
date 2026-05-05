@@ -33,9 +33,7 @@ function splitListString(value: string): string[] {
 }
 
 export function parseLinearPromptResponse(response: string): Record<string, unknown> {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(response) ?? {}
-  );
+  return parseToonKeyValue<Record<string, unknown>>(response) ?? {};
 }
 
 export function getRecordValue(value: unknown): Record<string, unknown> | undefined {

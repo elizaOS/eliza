@@ -26,9 +26,9 @@ import {
   type NostrProfile,
   type NostrSendResult,
   type NostrSettings,
-  splitMessageForNostr,
   normalizePubkey,
   pubkeyToNpub,
+  splitMessageForNostr,
   validatePrivateKey,
 } from "./types.js";
 

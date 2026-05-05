@@ -45,7 +45,9 @@ const getChannelInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			channelIdentifier: string;
 			messageCount: number;
 			summarize?: boolean;

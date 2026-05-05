@@ -146,15 +146,19 @@ export function buildTriagePrompt(ctx: TriageContext): string {
       ? `BLOCKED prompt: "${ctx.promptText.slice(0, 300)}"`
       : `TURN COMPLETE. Recent output:\n${(ctx.recentOutput ?? "").slice(-500)}`;
 
-  return (
-    `Classify this task-agent event as "routine" or "creative".\n\n` +
-    `Task: ${ctx.originalTask.slice(0, 200)}\n` +
-    `Event: ${eventDesc}\n\n` +
-    `"routine" = simple approval, permission, config, yes/no, tool consent, obvious pass/fail.\n` +
-    `"creative" = needs task context, error recovery, design choice, ambiguous situation, approach selection.\n\n` +
-    `Respond with TOON only:\n` +
-    `tier: routine`
-  );
+  return [
+    "task: classify_task_agent_event",
+    `originalTask: ${ctx.originalTask.slice(0, 200)}`,
+    `eventType: ${ctx.eventType}`,
+    "event: |",
+    ...eventDesc.split("\n").map((line) => `  ${line}`),
+    "tiers:",
+    "  routine: simple approval, permission, config, yes/no, tool consent, obvious pass/fail",
+    "  creative: task context needed, error recovery, design choice, ambiguity, approach selection",
+    "outputShape:",
+    "  tier: routine",
+    "response: TOON only",
+  ].join("\n");
 }
 
 /**

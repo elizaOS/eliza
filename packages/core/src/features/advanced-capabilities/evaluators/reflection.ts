@@ -274,7 +274,8 @@ function extractJsonReflectionRecord(
 			reflection.task = candidate.task as TaskCompletionToon;
 		}
 		if ("taskCompletion" in candidate && isRecord(candidate.taskCompletion)) {
-			reflection.taskCompletion = candidate.taskCompletion as TaskCompletionToon;
+			reflection.taskCompletion =
+				candidate.taskCompletion as TaskCompletionToon;
 		}
 		if ("task_completed" in candidate) {
 			reflection.task_completed =
@@ -309,7 +310,9 @@ function parseReflectionResponse(response: string): {
 	}
 
 	const candidates = new Set<string>([trimmed]);
-	const fencedBlocks = trimmed.matchAll(/```(?:toon|json)?\s*([\s\S]*?)\s*```/gi);
+	const fencedBlocks = trimmed.matchAll(
+		/```(?:toon|json)?\s*([\s\S]*?)\s*```/gi,
+	);
 	for (const block of fencedBlocks) {
 		const candidate = block[1]?.trim();
 		if (candidate) {

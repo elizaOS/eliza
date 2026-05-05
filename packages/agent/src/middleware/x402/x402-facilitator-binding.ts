@@ -1,7 +1,7 @@
 import type {
   FacilitatorVerificationResponse,
   FacilitatorVerifyContext,
-} from "./types.ts";
+} from "./types.js";
 
 /**
  * When true, facilitator JSON must echo `resource`, route, `priceInCents`, and

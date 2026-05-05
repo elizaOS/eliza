@@ -183,10 +183,10 @@ function classifyLlmPurpose(
   if (
     head.includes("which actions") ||
     head.includes("select the most appropriate action") ||
-    head.includes("<actions>") ||
+    head.includes("actions:") ||
     head.includes("available actions") ||
     head.includes("action planner") ||
-    /<\s*action\s*>/i.test(response.slice(0, 200))
+    /(^|\n)\s*action\s*:/i.test(response.slice(0, 200))
   ) {
     return "action_planner";
   }

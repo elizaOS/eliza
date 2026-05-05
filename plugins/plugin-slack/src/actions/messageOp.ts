@@ -137,8 +137,7 @@ export const messageOp: Action = {
     const __avKeywordOk =
       __avKeywords.length > 0 &&
       __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex =
-      /\b(?:slack|send|edit|delete|react|pin|unpin|message)\b/i;
+    const __avRegex = /\b(?:slack|send|edit|delete|react|pin|unpin|message)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
     const __avSource = String(
       message?.content?.source ?? message?.metadata?.source ?? "",

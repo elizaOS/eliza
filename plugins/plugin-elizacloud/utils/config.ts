@@ -1,5 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined") {
@@ -72,7 +73,7 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
-    (getSetting(runtime, "SMALL_MODEL", "openai/gpt-5.4-mini") as string)
+    (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string)
   );
 }
 
@@ -95,7 +96,7 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
-    (getSetting(runtime, "LARGE_MODEL", "anthropic/claude-sonnet-4.6") as string)
+    (getSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string)
   );
 }
 

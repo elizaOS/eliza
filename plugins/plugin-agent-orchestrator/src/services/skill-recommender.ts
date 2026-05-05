@@ -228,24 +228,29 @@ function buildLlmScoringPrompt(
   taskKind: string | undefined,
   candidates: Array<{ slug: string; name: string; description: string }>,
 ): string {
-  const skillBlock = candidates
-    .map(
-      (skill, idx) =>
-        `${idx + 1}. slug=\`${skill.slug}\` — ${skill.name}\n   ${skill.description}`,
-    )
-    .join("\n");
-  const kindLine = taskKind ? `\nTask kind: ${taskKind}` : "";
-  return (
-    `You are scoring how relevant each candidate skill is for an upcoming agent task.\n` +
-    `Task description: """${taskText}"""${kindLine}\n\n` +
-    `Candidate skills:\n${skillBlock}\n\n` +
-    `For each candidate, return a TOON scores table with this shape:\n` +
-    `scores[2]{slug,score,reason}:\n` +
-    `  first-skill,0.9,One short sentence.\n` +
-    `  second-skill,0.1,One short sentence.\n` +
-    `Use 0 for irrelevant, 1 for a perfect fit. Reasons must be one short sentence.\n` +
-    `Respond with TOON only — no preamble, no markdown fences.`
-  );
+  const skillBlock = candidates.flatMap((skill, idx) => [
+    `  ${idx + 1}:`,
+    `    slug: ${skill.slug}`,
+    `    name: ${skill.name}`,
+    `    description: ${skill.description.replace(/\s+/g, " ").trim()}`,
+  ]);
+  return [
+    "task: score_candidate_skills",
+    "taskDescription: |",
+    ...taskText.split("\n").map((line) => `  ${line}`),
+    `taskKind: ${taskKind ?? "unknown"}`,
+    `candidates[${candidates.length}]:`,
+    ...skillBlock,
+    "scoring:",
+    "  irrelevant: 0",
+    "  perfectFit: 1",
+    "  reasonLength: one short sentence",
+    "outputShape:",
+    "  scores[2]{slug,score,reason}:",
+    "    first-skill,0.9,One short sentence.",
+    "    second-skill,0.1,One short sentence.",
+    "response: TOON only; no preamble; no markdown fences",
+  ].join("\n");
 }
 
 function normalizeLlmScoreEntry(entry: unknown): LlmScoreEntry | null {

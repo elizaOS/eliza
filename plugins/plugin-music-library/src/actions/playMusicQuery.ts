@@ -10,7 +10,7 @@ import {
   parseToonKeyValue,
   type State,
 } from "@elizaos/core";
-import type { YouTubeSearchService } from "../services/youtubeSearch";
+import type { MusicLibraryService } from "../services/musicLibraryService";
 import { confirmationRequired, isConfirmed } from "./confirmation";
 
 interface MusicQueryIntent {
@@ -65,19 +65,6 @@ interface MusicQueryIntent {
 interface SearchResultSnippet {
   description?: string;
   snippet?: string;
-}
-
-interface WikipediaLookupService {
-  getArtistInfo(artistName: string): Promise<{
-    discography?: unknown;
-    similarArtists?: string[];
-  } | null>;
-}
-
-interface MusicInfoLookupService {
-  getArtistInfo(artistName: string): Promise<{
-    similarArtists?: string[];
-  } | null>;
 }
 
 interface WebSearchService {
@@ -273,12 +260,9 @@ const researchMusicInfo = async (
   intent: MusicQueryIntent,
 ): Promise<string | null> => {
   try {
-    const wikipediaService = runtime.getService(
-      "wikipedia",
-    ) as WikipediaLookupService | null;
-    const musicInfoService = runtime.getService(
-      "musicInfo",
-    ) as MusicInfoLookupService | null;
+    const musicLibrary = runtime.getService(
+      "musicLibrary",
+    ) as MusicLibraryService | null;
     const webSearchService = runtime.getService(
       "webSearch",
     ) as WebSearchService | null;
@@ -295,10 +279,10 @@ const researchMusicInfo = async (
         if (!intent.artist) break;
 
         // Try to get artist info from Wikipedia
-        if (wikipediaService?.getArtistInfo) {
-          const artistInfo = await wikipediaService.getArtistInfo(
+        if (musicLibrary?.getWikipediaArtistInfo) {
+          const artistInfo = (await musicLibrary.getWikipediaArtistInfo(
             intent.artist,
-          );
+          )) as { discography?: unknown; similarArtists?: string[] } | null;
           if (artistInfo?.discography) {
             // Use LLM to extract first single/album from discography
             const prompt = `From this artist discography, what was their first ${intent.queryType === "first_single" ? "single" : "album"}?
@@ -375,8 +359,8 @@ Respond with ONLY the album name, nothing else.`;
         if (!intent.artist) break;
 
         // Try to get similar artists from Wikipedia
-        if (wikipediaService?.getArtistInfo) {
-          const artistInfo = await wikipediaService.getArtistInfo(
+        if (musicLibrary?.getWikipediaArtistInfo) {
+          const artistInfo = await musicLibrary.getWikipediaArtistInfo(
             intent.artist,
           );
           if (
@@ -392,11 +376,9 @@ Respond with ONLY the album name, nothing else.`;
           }
         }
 
-        // Fallback: use musicInfo service
-        if (!searchQuery && musicInfoService?.getArtistInfo) {
-          const artistInfo = await musicInfoService.getArtistInfo(
-            intent.artist,
-          );
+        // Fallback: use canonical music metadata
+        if (!searchQuery && musicLibrary?.getArtistInfo) {
+          const artistInfo = await musicLibrary.getArtistInfo(intent.artist);
           if (
             artistInfo?.similarArtists &&
             artistInfo.similarArtists.length > 0
@@ -742,10 +724,10 @@ export const playMusicQuery: Action = {
       logger.info(`Final search query: ${finalSearchQuery}`);
 
       // Step 3: Search YouTube for the track
-      const youtubeSearch = runtime.getService(
-        "youtubeSearch",
-      ) as YouTubeSearchService;
-      if (!youtubeSearch) {
+      const musicLibrary = runtime.getService(
+        "musicLibrary",
+      ) as MusicLibraryService | null;
+      if (!musicLibrary) {
         await callback({
           text: "YouTube search service is not available.",
           source: message.content.source,
@@ -753,7 +735,7 @@ export const playMusicQuery: Action = {
         return;
       }
 
-      const results = await youtubeSearch.search(finalSearchQuery, {
+      const results = await musicLibrary.searchYouTube(finalSearchQuery, {
         limit: 1,
       });
       if (!results || results.length === 0) {

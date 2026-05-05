@@ -1,13 +1,5 @@
-import type {
-  Content,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  Service,
-  State,
-  UUID,
-} from "@elizaos/core";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Content, HandlerCallback, IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { starterPlugin } from "../index";
 import { cleanupTestRuntime, createTestRuntime, setupLoggerSpies } from "./test-utils";
 
@@ -17,7 +9,7 @@ import { cleanupTestRuntime, createTestRuntime, setupLoggerSpies } from "./test-
  * examine how components interact with each other.
  *
  * For example, this file shows how the HelloWorld action and HelloWorld provider
- * interact with the StarterService and the plugin's core functionality.
+ * interact with the plugin's core functionality.
  */
 
 // Set up spies on logger
@@ -29,34 +21,19 @@ afterAll(() => {
   // No global restore needed in vitest
 });
 
-describe("Integration: HelloWorld Action with StarterService", () => {
+describe("Integration: HelloWorld Action", () => {
   let runtime: IAgentRuntime;
 
   beforeEach(async () => {
     // Create real runtime
-    runtime = await createTestRuntime();
-
-    // Create a service mock that will be returned by getService
-    const mockService: Partial<Service> = {
-      capabilityDescription:
-        "This is a starter service which is attached to the agent through the starter plugin.",
-      stop: () => Promise.resolve(),
-    };
-
-    // Spy on getService to return our mock service
-    vi.spyOn(runtime, "getService").mockImplementation((serviceType: string): Service | null => {
-      if (serviceType === "starter") {
-        return mockService as Service;
-      }
-      return null;
-    });
+    runtime = await createTestRuntime({ skipInitialize: true });
   });
 
   afterEach(async () => {
     await cleanupTestRuntime(runtime);
   });
 
-  it("should handle HelloWorld action with StarterService available", async () => {
+  it("should handle HelloWorld action", async () => {
     // Find the HelloWorld action
     const helloWorldAction = starterPlugin.actions?.find((action) => action.name === "HELLO_WORLD");
     expect(helloWorldAction).toBeDefined();
@@ -99,15 +76,10 @@ describe("Integration: HelloWorld Action with StarterService", () => {
       expect(callbackCalls[0][0].actions).toEqual(["HELLO_WORLD"]);
       expect(callbackCalls[0][0].source).toBe("test");
     }
-
-    // Get the service to ensure integration
-    const service = runtime.getService("starter");
-    expect(service).toBeDefined();
-    expect(service?.capabilityDescription).toContain("starter service");
   });
 });
 
-describe("Integration: Plugin initialization and service registration", () => {
+describe("Integration: Plugin initialization", () => {
   let runtime: IAgentRuntime;
 
   afterEach(async () => {
@@ -116,33 +88,15 @@ describe("Integration: Plugin initialization and service registration", () => {
     }
   });
 
-  it("should initialize the plugin and register the service", async () => {
+  it("should initialize the plugin without registering example services", async () => {
     // Create a real runtime
-    runtime = await createTestRuntime();
-
-    // Track registerService calls
-    const registerServiceCalls: { service: typeof Service }[] = [];
-    vi.spyOn(runtime, "registerService").mockImplementation((service: typeof Service) => {
-      registerServiceCalls.push({ service });
-      return Promise.resolve();
-    });
+    runtime = await createTestRuntime({ skipInitialize: true });
 
     // Run a minimal simulation of the plugin initialization process
     if (starterPlugin.init) {
       await starterPlugin.init({ EXAMPLE_PLUGIN_VARIABLE: "test-value" }, runtime);
-
-      // Directly start the service that happens during initialization
-      // because unit tests don't run the full agent initialization flow
-      if (starterPlugin.services) {
-        const StarterServiceClass = starterPlugin.services[0];
-        const _serviceInstance = await StarterServiceClass.start(runtime);
-
-        // Register the Service class to match the core API
-        runtime.registerService(StarterServiceClass);
-      }
-
-      // Now verify the service was registered with the runtime
-      expect(registerServiceCalls.length).toBeGreaterThan(0);
     }
+
+    expect(starterPlugin.services ?? []).toHaveLength(0);
   });
 });

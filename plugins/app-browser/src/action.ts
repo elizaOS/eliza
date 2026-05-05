@@ -16,11 +16,240 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { encodeToonValue } from "@elizaos/core";
 
 type BrowserWorkspaceActionRequest = BrowserWorkspaceCommand;
 
 const URL_RE = /https?:\/\/[^\s)]+/i;
 const TAB_ID_RE = /\b(btab_\d+)\b/i;
+const WRITE_SUBACTIONS: readonly BrowserWorkspaceSubaction[] = [
+  "fill",
+  "keyboardinserttext",
+  "keyboardtype",
+  "select",
+  "type",
+];
+const EXPLICIT_SUBACTIONS: readonly BrowserWorkspaceSubaction[] = [
+  "back",
+  "batch",
+  "check",
+  "clipboard",
+  "click",
+  "close",
+  "console",
+  "cookies",
+  "dblclick",
+  "diff",
+  "dialog",
+  "drag",
+  "errors",
+  "eval",
+  "fill",
+  "find",
+  "focus",
+  "forward",
+  "frame",
+  "get",
+  "highlight",
+  "hide",
+  "hover",
+  "inspect",
+  "keydown",
+  "keyup",
+  "keyboardinserttext",
+  "keyboardtype",
+  "list",
+  "mouse",
+  "navigate",
+  "network",
+  "open",
+  "pdf",
+  "press",
+  "profiler",
+  "reload",
+  "scroll",
+  "scrollinto",
+  "screenshot",
+  "select",
+  "set",
+  "show",
+  "snapshot",
+  "state",
+  "storage",
+  "tab",
+  "trace",
+  "type",
+  "uncheck",
+  "upload",
+  "wait",
+  "window",
+];
+const EXPLICIT_SUBACTION_SET = new Set<string>(EXPLICIT_SUBACTIONS);
+const READ_ONLY_PROVIDER_REQUEST_RE = /\b(list|tabs?|state|info|context)\b/;
+
+type BrowserInferenceContext = {
+  lower: string;
+  url?: string;
+  steps?: BrowserWorkspaceCommand[];
+  params: Record<string, unknown>;
+};
+
+type BrowserInferenceRule = {
+  subaction: BrowserWorkspaceSubaction;
+  when: (context: BrowserInferenceContext) => boolean;
+};
+
+const BROWSER_INFERENCE_RULES: readonly BrowserInferenceRule[] = [
+  {
+    subaction: "find",
+    when: ({ params }) => typeof params.findBy === "string",
+  },
+  {
+    subaction: "batch",
+    when: ({ steps }) => Boolean(steps?.length),
+  },
+  {
+    subaction: "screenshot",
+    when: ({ lower }) => /\bscreenshot\b/.test(lower),
+  },
+  {
+    subaction: "snapshot",
+    when: ({ lower }) => /\bsnapshot\b/.test(lower),
+  },
+  {
+    subaction: "open",
+    when: ({ lower, url }) => /\b(open|new tab|browse)\b/.test(lower) && !!url,
+  },
+  {
+    subaction: "navigate",
+    when: ({ lower, url }) => /\bnavigate\b/.test(lower) && !!url,
+  },
+  { subaction: "show", when: ({ lower }) => /\bshow\b/.test(lower) },
+  {
+    subaction: "hide",
+    when: ({ lower }) => /\bhide\b|\bbackground\b/.test(lower),
+  },
+  { subaction: "close", when: ({ lower }) => /\bclose\b/.test(lower) },
+  {
+    subaction: "inspect",
+    when: ({ lower }) => /\binspect\b|\bscan page\b|\bwhat.*page\b/.test(lower),
+  },
+  {
+    subaction: "dblclick",
+    when: ({ lower }) => /\bdouble click\b|\bdblclick\b/.test(lower),
+  },
+  { subaction: "hover", when: ({ lower }) => /\bhover\b/.test(lower) },
+  { subaction: "focus", when: ({ lower }) => /\bfocus\b/.test(lower) },
+  { subaction: "select", when: ({ lower }) => /\bselect\b/.test(lower) },
+  { subaction: "check", when: ({ lower }) => /\bcheck\b/.test(lower) },
+  { subaction: "uncheck", when: ({ lower }) => /\buncheck\b/.test(lower) },
+  {
+    subaction: "scrollinto",
+    when: ({ lower }) => /\bscroll into\b/.test(lower),
+  },
+  { subaction: "scroll", when: ({ lower }) => /\bscroll\b/.test(lower) },
+  { subaction: "keydown", when: ({ lower }) => /\bkey down\b/.test(lower) },
+  { subaction: "keyup", when: ({ lower }) => /\bkey up\b/.test(lower) },
+  {
+    subaction: "keyboardtype",
+    when: ({ lower }) => /\bkeyboard type\b/.test(lower),
+  },
+  {
+    subaction: "keyboardinserttext",
+    when: ({ lower }) => /\binsert text\b/.test(lower),
+  },
+  {
+    subaction: "click",
+    when: ({ lower, params }) =>
+      /\bclick\b/.test(lower) &&
+      (typeof params.selector === "string" || typeof params.text === "string"),
+  },
+  {
+    subaction: "fill",
+    when: ({ lower, params }) =>
+      /\bfill\b|\benter\b|\btype into\b/.test(lower) &&
+      (typeof params.selector === "string" || typeof params.text === "string"),
+  },
+  { subaction: "wait", when: ({ lower }) => /\bwait\b/.test(lower) },
+  {
+    subaction: "get",
+    when: ({ lower }) => /\bget\b|\bread\b|\bextract\b/.test(lower),
+  },
+  {
+    subaction: "clipboard",
+    when: ({ lower }) => /\bclipboard\b|\bcopy\b|\bpaste\b/.test(lower),
+  },
+  {
+    subaction: "mouse",
+    when: ({ lower }) => /\bmouse\b|\bwheel\b/.test(lower),
+  },
+  { subaction: "drag", when: ({ lower }) => /\bdrag\b/.test(lower) },
+  {
+    subaction: "upload",
+    when: ({ lower }) => /\bupload\b|\bfile input\b/.test(lower),
+  },
+  {
+    subaction: "set",
+    when: ({ lower }) =>
+      /\bviewport\b|\boffline\b|\bheaders\b|\bcredentials\b|\buser agent\b|\bmedia\b/.test(
+        lower,
+      ),
+  },
+  { subaction: "cookies", when: ({ lower }) => /\bcookies?\b/.test(lower) },
+  {
+    subaction: "storage",
+    when: ({ lower }) =>
+      /\bstorage\b|\blocalstorage\b|\bsessionstorage\b/.test(lower),
+  },
+  {
+    subaction: "network",
+    when: ({ lower }) => /\bnetwork\b|\broute\b|\bhar\b/.test(lower),
+  },
+  {
+    subaction: "dialog",
+    when: ({ lower }) =>
+      /\bdialog\b|\bconfirm\b|\bprompt\b|\balert\b/.test(lower),
+  },
+  { subaction: "console", when: ({ lower }) => /\bconsole\b/.test(lower) },
+  { subaction: "errors", when: ({ lower }) => /\berrors?\b/.test(lower) },
+  { subaction: "highlight", when: ({ lower }) => /\bhighlight\b/.test(lower) },
+  { subaction: "diff", when: ({ lower }) => /\bdiff\b/.test(lower) },
+  { subaction: "trace", when: ({ lower }) => /\btrace\b/.test(lower) },
+  {
+    subaction: "profiler",
+    when: ({ lower }) => /\bprofile\b|\bprofiler\b/.test(lower),
+  },
+  {
+    subaction: "frame",
+    when: ({ lower }) => /\bframe\b|\biframe\b/.test(lower),
+  },
+  { subaction: "window", when: ({ lower }) => /\bwindow\b/.test(lower) },
+  { subaction: "pdf", when: ({ lower }) => /\bpdf\b/.test(lower) },
+  {
+    subaction: "tab",
+    when: ({ lower }) =>
+      /\btab\b/.test(lower) && /\b(new|switch|close)\b/.test(lower),
+  },
+  {
+    subaction: "eval",
+    when: ({ lower }) => /\beval\b|\bexecute js\b|\brun script\b/.test(lower),
+  },
+];
+
+function isWriteSubaction(
+  subaction: BrowserWorkspaceSubaction | null | undefined,
+): boolean {
+  return Boolean(subaction && WRITE_SUBACTIONS.includes(subaction));
+}
+
+function inferSubaction(
+  context: BrowserInferenceContext,
+): BrowserWorkspaceSubaction | null {
+  return (
+    BROWSER_INFERENCE_RULES.find((rule) => rule.when(context))?.subaction ??
+    null
+  );
+}
 
 function getMessageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
@@ -30,68 +259,16 @@ function normalizeSubaction(
   value: string | undefined,
 ): BrowserWorkspaceSubaction | null {
   if (!value) return null;
-  switch (value.trim().toLowerCase()) {
-    case "back":
-    case "batch":
-    case "check":
-    case "clipboard":
-    case "click":
-    case "close":
-    case "console":
-    case "cookies":
-    case "dblclick":
-    case "diff":
-    case "dialog":
-    case "drag":
-    case "errors":
-    case "eval":
-    case "fill":
-    case "find":
-    case "focus":
-    case "forward":
-    case "frame":
-    case "get":
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
     case "goto":
-    case "highlight":
-    case "hide":
-    case "hover":
-    case "inspect":
-    case "keydown":
-    case "keyboardinserttext":
-    case "keyboardtype":
-    case "list":
-    case "mouse":
-    case "navigate":
-    case "network":
-    case "open":
-    case "pdf":
-    case "press":
-    case "profiler":
-    case "reload":
-    case "scroll":
-    case "scrollinto":
-    case "screenshot":
-    case "select":
-    case "set":
-    case "show":
-    case "snapshot":
-    case "state":
-    case "storage":
-    case "tab":
-    case "trace":
-    case "type":
-    case "uncheck":
-    case "upload":
-    case "wait":
-    case "window":
-      if (value.trim().toLowerCase() === "goto") {
-        return "navigate";
-      }
-      return value.trim().toLowerCase() as BrowserWorkspaceSubaction;
+      return "navigate";
     case "read":
       return "get";
     default:
-      return null;
+      return EXPLICIT_SUBACTION_SET.has(normalized)
+        ? (normalized as BrowserWorkspaceSubaction)
+        : null;
   }
 }
 
@@ -276,13 +453,7 @@ function parseCommandRecord(
     typeof raw.by === "string" &&
     typeof raw.findBy !== "string" &&
     typeof raw.label !== "string";
-  const writesTextValue = [
-    "fill",
-    "keyboardinserttext",
-    "keyboardtype",
-    "select",
-    "type",
-  ].includes(subaction);
+  const writesTextValue = isWriteSubaction(subaction);
   const rawText =
     rawLabel ??
     rawTargetText ??
@@ -474,7 +645,7 @@ function parseStepsParam(
   }
 }
 
-function parseRequest(
+export function parseBrowserWorkspaceActionRequest(
   message: Memory,
   options?: HandlerOptions,
 ): BrowserWorkspaceActionRequest | null {
@@ -520,188 +691,28 @@ function parseRequest(
     typeof params.by === "string" &&
     typeof params.findBy !== "string" &&
     typeof params.label !== "string";
-  const writesTextValue = [
-    "fill",
-    "keyboardinserttext",
-    "keyboardtype",
-    "select",
-    "type",
-  ];
   const rawText =
     rawLabel ??
     rawTargetText ??
     (usesByLocatorValue &&
     rawValueValue &&
-    (rawTextValue ||
-      rawOptionValue ||
-      !writesTextValue.includes(fromParams ?? ""))
+    (rawTextValue || rawOptionValue || !isWriteSubaction(fromParams))
       ? rawValueValue
       : rawTextValue);
   const lower = messageText.toLowerCase();
-  const inferred =
-    fromParams ??
-    (typeof params.findBy === "string" ? "find" : null) ??
-    (steps?.length ? "batch" : null) ??
-    (/\b(list|tabs?)\b/.test(lower)
-      ? "list"
-      : /\b(snapshot|screenshot)\b/.test(lower)
-        ? /\bscreenshot\b/.test(lower)
-          ? "screenshot"
-          : "snapshot"
-        : /\b(open|new tab|browse)\b/.test(lower) && url
-          ? "open"
-          : /\bnavigate\b/.test(lower) && url
-            ? "navigate"
-            : /\bshow\b/.test(lower)
-              ? "show"
-              : /\bhide\b|\bbackground\b/.test(lower)
-                ? "hide"
-                : /\bclose\b/.test(lower)
-                  ? "close"
-                  : /\binspect\b|\bscan page\b|\bwhat.*page\b/.test(lower)
-                    ? "inspect"
-                    : /\bdouble click\b|\bdblclick\b/.test(lower)
-                      ? "dblclick"
-                      : /\bhover\b/.test(lower)
-                        ? "hover"
-                        : /\bfocus\b/.test(lower)
-                          ? "focus"
-                          : /\bselect\b/.test(lower)
-                            ? "select"
-                            : /\bcheck\b/.test(lower)
-                              ? "check"
-                              : /\buncheck\b/.test(lower)
-                                ? "uncheck"
-                                : /\bscroll into\b/.test(lower)
-                                  ? "scrollinto"
-                                  : /\bscroll\b/.test(lower)
-                                    ? "scroll"
-                                    : /\bkey down\b/.test(lower)
-                                      ? "keydown"
-                                      : /\bkey up\b/.test(lower)
-                                        ? "keyup"
-                                        : /\bkeyboard type\b/.test(lower)
-                                          ? "keyboardtype"
-                                          : /\binsert text\b/.test(lower)
-                                            ? "keyboardinserttext"
-                                            : /\bclick\b/.test(lower) &&
-                                                (typeof params.selector ===
-                                                  "string" ||
-                                                  typeof params.text ===
-                                                    "string")
-                                              ? "click"
-                                              : /\bfill\b|\benter\b|\btype into\b/.test(
-                                                    lower,
-                                                  ) &&
-                                                  (typeof params.selector ===
-                                                    "string" ||
-                                                    typeof params.text ===
-                                                      "string")
-                                                ? "fill"
-                                                : /\bwait\b/.test(lower)
-                                                  ? "wait"
-                                                  : /\bget\b|\bread\b|\bextract\b/.test(
-                                                        lower,
-                                                      )
-                                                    ? "get"
-                                                    : /\bclipboard\b|\bcopy\b|\bpaste\b/.test(
-                                                          lower,
-                                                        )
-                                                      ? "clipboard"
-                                                      : /\bmouse\b|\bwheel\b/.test(
-                                                            lower,
-                                                          )
-                                                        ? "mouse"
-                                                        : /\bdrag\b/.test(lower)
-                                                          ? "drag"
-                                                          : /\bupload\b|\bfile input\b/.test(
-                                                                lower,
-                                                              )
-                                                            ? "upload"
-                                                            : /\bviewport\b|\boffline\b|\bheaders\b|\bcredentials\b|\buser agent\b|\bmedia\b/.test(
-                                                                  lower,
-                                                                )
-                                                              ? "set"
-                                                              : /\bcookies?\b/.test(
-                                                                    lower,
-                                                                  )
-                                                                ? "cookies"
-                                                                : /\bstorage\b|\blocalstorage\b|\bsessionstorage\b/.test(
-                                                                      lower,
-                                                                    )
-                                                                  ? "storage"
-                                                                  : /\bnetwork\b|\broute\b|\bhar\b/.test(
-                                                                        lower,
-                                                                      )
-                                                                    ? "network"
-                                                                    : /\bdialog\b|\bconfirm\b|\bprompt\b|\balert\b/.test(
-                                                                          lower,
-                                                                        )
-                                                                      ? "dialog"
-                                                                      : /\bconsole\b/.test(
-                                                                            lower,
-                                                                          )
-                                                                        ? "console"
-                                                                        : /\berrors?\b/.test(
-                                                                              lower,
-                                                                            )
-                                                                          ? "errors"
-                                                                          : /\bhighlight\b/.test(
-                                                                                lower,
-                                                                              )
-                                                                            ? "highlight"
-                                                                            : /\bdiff\b/.test(
-                                                                                  lower,
-                                                                                )
-                                                                              ? "diff"
-                                                                              : /\btrace\b/.test(
-                                                                                    lower,
-                                                                                  )
-                                                                                ? "trace"
-                                                                                : /\bprofile\b|\bprofiler\b/.test(
-                                                                                      lower,
-                                                                                    )
-                                                                                  ? "profiler"
-                                                                                  : /\bstate\b/.test(
-                                                                                        lower,
-                                                                                      )
-                                                                                    ? "state"
-                                                                                    : /\bframe\b|\biframe\b/.test(
-                                                                                          lower,
-                                                                                        )
-                                                                                      ? "frame"
-                                                                                      : /\bwindow\b/.test(
-                                                                                            lower,
-                                                                                          )
-                                                                                        ? "window"
-                                                                                        : /\bpdf\b/.test(
-                                                                                              lower,
-                                                                                            )
-                                                                                          ? "pdf"
-                                                                                          : /\btab\b/.test(
-                                                                                                lower,
-                                                                                              ) &&
-                                                                                              /\b(new|switch|close)\b/.test(
-                                                                                                lower,
-                                                                                              )
-                                                                                            ? "tab"
-                                                                                            : /\beval\b|\bexecute js\b|\brun script\b/.test(
-                                                                                                  lower,
-                                                                                                )
-                                                                                              ? "eval"
-                                                                                              : null);
+  const inferred = fromParams ?? inferSubaction({ lower, url, steps, params });
 
   if (!inferred) return null;
 
   const inferredWriteValue =
     typeof rawText === "string" &&
-    writesTextValue.includes(inferred) &&
+    isWriteSubaction(inferred) &&
     (typeof params.selector === "string" || typeof params.findBy === "string")
       ? rawText
       : undefined;
   const parsedValue =
     rawOptionValue ??
-    (writesTextValue.includes(inferred) &&
+    (isWriteSubaction(inferred) &&
     usesByLocatorValue &&
     rawValueValue &&
     rawTextValue
@@ -1059,8 +1070,18 @@ function formatBrowserWorkspaceCommandResult(
 
 export const manageElizaBrowserWorkspaceAction: Action = {
   name: "MANAGE_ELIZA_BROWSER_WORKSPACE",
-  description:
-    "Use the Eliza browser workspace through one main action. Pass a subaction such as list, open, navigate, show, hide, close, inspect, snapshot, screenshot, find, click, dblclick, fill, type, keyboardtype, keyboardinserttext, focus, hover, select, check, uncheck, press, keydown, keyup, scroll, scrollinto, wait, get, back, forward, reload, eval, batch, clipboard, mouse, drag, upload, set, cookies, storage, network, dialog, console, errors, highlight, diff, trace, profiler, state, frame, tab, window, or pdf. Use batch with stepsJson to run a series of browser subactions in order. Snapshot and inspect return reusable element refs like @e1 that can be passed back as selector values.",
+  description: encodeToonValue({
+    browser_workspace_action: {
+      purpose:
+        "Control the Eliza browser workspace through one compact router action.",
+      subactions: EXPLICIT_SUBACTIONS,
+      provider_state:
+        "Read-only tab and wallet state is available from the app_browser_workspace provider. Use list/state only when explicitly refreshing live browser state.",
+      batch:
+        "Use batch with stepsJson to run browser subactions in order. stepsJson remains a JSON string because the route command parser consumes JSON.",
+      refs: "snapshot and inspect return reusable element refs such as @e1 for selector values.",
+    },
+  }),
   descriptionCompressed:
     "Browser workspace: navigate, click, fill, type, screenshot, DOM, eval, tabs, cookies, network, console.",
   similes: [
@@ -1460,13 +1481,19 @@ export const manageElizaBrowserWorkspaceAction: Action = {
       schema: { type: "string", enum: ["list", "new", "switch", "close"] },
     },
   ],
-  validate: async (
-    _runtime: IAgentRuntime,
-    message: Memory,
-    options?: HandlerOptions,
-  ) => {
-    if (parseRequest(message, options)) {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state) => {
+    const request = parseBrowserWorkspaceActionRequest(message);
+    if (request) {
       return true;
+    }
+    const lower = getMessageText(message).toLowerCase();
+    if (
+      /\b(browser|tab|tabs|webpage|website|iframe|page)\b/i.test(
+        getMessageText(message),
+      ) &&
+      READ_ONLY_PROVIDER_REQUEST_RE.test(lower)
+    ) {
+      return false;
     }
     return /\b(browser|tab|tabs|webpage|website|iframe|page)\b/i.test(
       getMessageText(message),
@@ -1479,7 +1506,7 @@ export const manageElizaBrowserWorkspaceAction: Action = {
     options,
     callback,
   ) => {
-    const request = parseRequest(message, options);
+    const request = parseBrowserWorkspaceActionRequest(message, options);
     if (!request) {
       const text =
         "Could not determine the browser subaction. Pass subaction plus selector/url/value explicitly, or use batch with stepsJson.";

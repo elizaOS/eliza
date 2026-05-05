@@ -148,11 +148,19 @@ export interface OpenAIModel {
   released?: number;
   name?: string;
   description?: string;
+  architecture?: {
+    modality?: string;
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
+  context_length?: number;
   context_window?: number;
   max_tokens?: number;
   type?: string;
   tags?: string[];
   pricing?: Record<string, unknown>;
+  recommended?: boolean;
+  free?: boolean;
 }
 
 /**

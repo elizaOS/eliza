@@ -91,10 +91,7 @@ import {
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
 import { getUserMessageText } from "../utils/message-text";
-import {
-	createStreamingContext,
-	MarkableExtractor,
-} from "../utils/streaming";
+import { createStreamingContext, MarkableExtractor } from "../utils/streaming";
 import {
 	extractFirstSentence,
 	hasFirstSentence,
@@ -3241,8 +3238,8 @@ export class DefaultMessageService implements IMessageService {
 					// marked as streamable in the schema.
 					const streamingContext = undefined;
 					// Voice handling state
-					let firstSentenceSent = false;
-					let firstSentenceText = "";
+					const firstSentenceSent = false;
+					const firstSentenceText = "";
 
 					const processingPromise = runWithStreamingContext(
 						streamingContext,
@@ -6416,8 +6413,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 					.replace(/<think>[\s\S]*?<\/think>/g, "")
 					.trim();
 				const looksStructuredReply =
-					/^TOON\b/i.test(cleaned) ||
-					/^(thought|text)\s*:/i.test(cleaned);
+					/^TOON\b/i.test(cleaned) || /^(thought|text)\s*:/i.test(cleaned);
 				const parsed = looksStructuredReply
 					? parseToonKeyValue<{ text?: string }>(cleaned)
 					: null;

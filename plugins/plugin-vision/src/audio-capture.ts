@@ -2,7 +2,12 @@ import { exec } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  withStandaloneTrajectory,
+} from "@elizaos/core";
 
 const execAsync = promisify(exec);
 
@@ -146,9 +151,16 @@ export class AudioCaptureService {
 
       // Transcribe using runtime model
       const audioBuffer = await fs.readFile(audioFile);
-      const transcription = await this.runtime.useModel(
-        ModelType.TRANSCRIPTION,
-        audioBuffer,
+      const transcription = await withStandaloneTrajectory(
+        this.runtime,
+        {
+          source: "plugin-vision:audio-transcription",
+          metadata: {
+            modelType: ModelType.TRANSCRIPTION,
+            audioBytes: audioBuffer.byteLength,
+          },
+        },
+        () => this.runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer),
       );
 
       // Clean up audio file

@@ -242,7 +242,7 @@ export function filterInMemory(
 		if (senderId && m.from.identifier.toLowerCase() !== senderId) continue;
 		if (senderName) {
 			const name = m.from.displayName?.toLowerCase();
-			if (!name || !name.includes(senderName)) continue;
+			if (!name?.includes(senderName)) continue;
 		}
 		if (wantedTags.length > 0) {
 			const tags = m.tags ?? [];

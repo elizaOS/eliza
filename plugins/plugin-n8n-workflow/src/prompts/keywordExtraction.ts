@@ -5,10 +5,16 @@ Given a user prompt describing an n8n workflow, extract up to 5 concise keywords
 Focus on terms likely to match n8n node names or functionalities. Avoid generic words.
 
 Examples:
-- "Send me Stripe payment summaries via Gmail every Monday" → ["stripe", "gmail", "send", "email", "schedule"]
-- "Post RSS feed updates to Slack channel" → ["rss", "slack", "post", "feed", "webhook"]
-- "Summarize weekly GitHub issues and send to Notion" → ["github", "issues", "notion", "summarize"]
-- "Fetch weather data hourly and store in Google Sheets" → ["weather", "http", "schedule", "google sheets", "store"]
-- "When new Stripe payment, create invoice in QuickBooks" → ["stripe", "webhook", "quickbooks", "invoice", "payment"]
+- request: Send me Stripe payment summaries via Gmail every Monday
+  keywords: stripe, gmail, send, email, schedule
+- request: Post RSS feed updates to Slack channel
+  keywords: rss, slack, post, feed, webhook
+- request: Summarize weekly GitHub issues and send to Notion
+  keywords: github, issues, notion, summarize
+- request: Fetch weather data hourly and store in Google Sheets
+  keywords: weather, http, schedule, google sheets, store
+- request: When new Stripe payment, create invoice in QuickBooks
+  keywords: stripe, webhook, quickbooks, invoice, payment
 
-Return structured data with a "keywords" array containing 1-5 relevant search terms.`;
+Respond with structured TOON-style fields:
+keywords: 1-5 relevant search terms`;

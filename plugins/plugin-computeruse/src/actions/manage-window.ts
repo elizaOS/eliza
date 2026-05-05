@@ -52,21 +52,9 @@ export const manageWindowAction: Action = {
     "WINDOW_MANAGEMENT",
   ],
   description:
-    "Manage desktop windows — list all visible windows, bring a window to the front, " +
-    "arrange or move windows, minimize, maximize, restore, or close a window.\n\n" +
-    "Available actions:\n" +
-    "- list: List all visible windows with their IDs, titles, and app names.\n" +
-    "- focus: Bring a window to the front. Requires windowId.\n" +
-    "- switch: Switch to a window by ID, title, or app name.\n" +
-    "- arrange: Arrange visible windows using tile, cascade, vertical, or horizontal layout.\n" +
-    "- move: Move a window to screen coordinates. Requires windowId/windowTitle and x/y.\n" +
-    "- minimize: Minimize a window. Requires windowId.\n" +
-    "- maximize: Maximize a window. Requires windowId.\n" +
-    "- restore: Restore a minimized or maximized window.\n" +
-    "- close: Close a window. Requires windowId.\n\n" +
-    "Use 'list' first to discover window IDs, then use other actions to manage them.",
+    "manage_window_action:\n  purpose: Manage desktop windows: list visible windows, focus or switch, arrange or move, minimize, maximize, restore, and close.\n  guidance: Use list first to discover window IDs, then use focused window actions.\n  actions: list/focus/switch/arrange/move/minimize/maximize/restore/close.",
   descriptionCompressed:
-    "manage desktop window list visible window, bring window front, arrange move window, minimize, maximize, restore, close window available action: - list: list visible window w/ IDs, title, app name - focus: bring window front require windowid - switch: Switch window ID, title, app name - arrange: Arrange visible window use tile, cascade, vertical, horizontal layout - move: move window screen coordinate require windowid/windowtitle x/y - minimize: Minimize window require windowid - maximize: Maximize window require windowid - restore: Restore minimize maximize window - close: close window require windowid use list first discover window IDs, use other action manage",
+    "Window management router: list/focus/switch/arrange/move/minimize/maximize/restore/close; list first to discover window ids.",
 
   parameters: [
     {

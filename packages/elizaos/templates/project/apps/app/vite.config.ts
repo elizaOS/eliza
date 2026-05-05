@@ -3,11 +3,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
   type DevSettingsRow,
   formatDevSettingsTable,
 } from "@elizaos/shared/dev-settings-table";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,

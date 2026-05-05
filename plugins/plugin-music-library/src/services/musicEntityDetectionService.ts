@@ -3,7 +3,6 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
-  Service,
 } from "@elizaos/core";
 
 const MUSIC_ENTITY_DETECTION_SERVICE_NAME = "musicEntityDetection";
@@ -26,8 +25,7 @@ interface RawDetectedMusicEntity {
  * Service for detecting music entity names (artists, albums, songs) from text
  * Uses LLM for intelligent extraction with caching
  */
-export class MusicEntityDetectionService extends Service {
-  static serviceType: string = MUSIC_ENTITY_DETECTION_SERVICE_NAME;
+export class MusicEntityDetectionHelper {
   capabilityDescription =
     "Detects music entity names (artists, albums, songs) from text using LLM";
 
@@ -36,14 +34,10 @@ export class MusicEntityDetectionService extends Service {
     { entities: DetectedMusicEntity[]; timestamp: number }
   > = new Map();
   private readonly CACHE_TTL = 3600000; // 1 hour in milliseconds
+  private readonly runtime?: IAgentRuntime;
 
-  static async start(
-    runtime: IAgentRuntime,
-  ): Promise<MusicEntityDetectionService> {
-    logger.debug(
-      `Starting MusicEntityDetectionService for agent ${runtime.character.name}`,
-    );
-    return new MusicEntityDetectionService(runtime);
+  constructor(runtime?: IAgentRuntime) {
+    this.runtime = runtime;
   }
 
   async stop(): Promise<void> {
@@ -66,7 +60,7 @@ export class MusicEntityDetectionService extends Service {
     }
 
     if (!this.runtime) {
-      throw new Error("MusicEntityDetectionService requires a runtime");
+      throw new Error("Music entity detection requires a runtime");
     }
 
     try {
@@ -104,7 +98,9 @@ IMPORTANT: Only return TOON. Do not include explanation or extra text.`;
       try {
         const cleaned = String(response).trim();
         let parsedEntities: RawDetectedMusicEntity[] = [];
-        const parsedToon = parseToonKeyValue<{ entities?: RawDetectedMusicEntity[] }>(cleaned);
+        const parsedToon = parseToonKeyValue<{
+          entities?: RawDetectedMusicEntity[];
+        }>(cleaned);
         if (Array.isArray(parsedToon?.entities)) {
           parsedEntities = parsedToon.entities;
         }
@@ -191,3 +187,8 @@ IMPORTANT: Only return TOON. Do not include explanation or extra text.`;
     }
   }
 }
+
+export const MUSIC_ENTITY_DETECTION_HELPER_NAME =
+  MUSIC_ENTITY_DETECTION_SERVICE_NAME;
+
+export { MusicEntityDetectionHelper as MusicEntityDetectionService };

@@ -37,8 +37,7 @@ const getUserIdentifier = async (
 			prompt,
 		});
 
-		const parsedResponse =
-			parseToonKeyValue<Record<string, unknown>>(response);
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
 		if (parsedResponse?.userIdentifier) {
 			return {
 				userIdentifier: String(parsedResponse.userIdentifier),

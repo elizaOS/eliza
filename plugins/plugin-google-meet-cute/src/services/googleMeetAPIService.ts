@@ -232,6 +232,32 @@ export class GoogleMeetAPIService extends Service {
     }
   }
 
+  async listTranscripts(conferenceRecordName: string): Promise<any[]> {
+    if (!this.conferenceClient) {
+      throw new Error("Meet API client not initialized");
+    }
+
+    try {
+      const transcripts: any[] = [];
+      const iterable = (this.conferenceClient as any).listTranscriptsAsync({
+        parent: conferenceRecordName,
+        pageSize: 100,
+      });
+
+      for await (const transcript of iterable) {
+        transcripts.push(transcript);
+      }
+
+      return transcripts;
+    } catch (error) {
+      logger.error(
+        `Failed to list transcripts for ${conferenceRecordName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+  }
+
   async listRecordings(conferenceRecordName: string): Promise<any[]> {
     if (!this.conferenceClient) {
       throw new Error("Meet API client not initialized");

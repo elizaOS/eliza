@@ -2280,17 +2280,10 @@ async function buildAndroidSystem() {
     ]),
   };
 
-  // AOSP product builds set ELIZA_GRADLE_AOSP_BUILD=true upstream so
-  // gradle bakes BuildConfig.AOSP_BUILD=true into the privileged APK.
-  // The Capacitor APK path leaves it false; both share the same gradle
-  // because the packages/app/android/ tree is regenerated each run.
-  const gradleArgs = [":app:assembleRelease"];
-  if (
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
-  ) {
-    gradleArgs.unshift("-PelizaAospBuild=true");
-  }
+  // This target always produces the privileged AOSP APK, so bake the local
+  // agent flag into BuildConfig and preserve assets/agent. The regular
+  // Capacitor target leaves this property unset and strips those assets.
+  const gradleArgs = ["-PelizaAospBuild=true", ":app:assembleRelease"];
   await run(
     "./gradlew",
     [":capacitor-cordova-android-plugins:writeReleaseAarMetadata"],

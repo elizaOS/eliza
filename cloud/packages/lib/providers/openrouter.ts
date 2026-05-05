@@ -96,7 +96,7 @@ export class OpenRouterProvider implements AIProvider {
   }
 
   async listModels(): Promise<Response> {
-    return await this.fetchWithTimeout(`${this.baseUrl}/models`, {
+    return await this.fetchWithTimeout(`${this.baseUrl}/models?output_modalities=all`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

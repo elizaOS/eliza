@@ -61,7 +61,7 @@ import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.j
 import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
-import { validateX402Startup } from "../middleware/x402/startup-validator.ts";
+import { validateX402Startup } from "../middleware/x402/startup-validator.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
   type AgentEventPayloadLike,

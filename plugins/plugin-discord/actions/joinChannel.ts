@@ -48,7 +48,9 @@ const getJoinChannelInfo = async (
 			prompt,
 		});
 
-		const parsedResponse = (parseToonKeyValue<Record<string, unknown>>(response)) as {
+		const parsedResponse = parseToonKeyValue<Record<string, unknown>>(
+			response,
+		) as {
 			channelIdentifier: string;
 			isVoiceChannel: boolean;
 		} | null;

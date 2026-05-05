@@ -14,8 +14,8 @@ import {
 } from "../../../utils/context-catalog";
 import {
 	CONTEXT_CAPABILITIES_STATE_KEY,
-	getExplicitRoutingContexts,
 	getActiveRoutingContextsForTurn,
+	getExplicitRoutingContexts,
 	isPageScopedRoutingContext,
 	routingContextsOverlap,
 	shouldIncludeByContext,
@@ -167,7 +167,8 @@ function expandActionDescription(
 	action: Action,
 	group: ContextCapabilityGroup,
 ): string {
-	const base = renderCompressedDescription(action) || "No description available";
+	const base =
+		renderCompressedDescription(action) || "No description available";
 	const sections = [
 		formatCapabilityItems(
 			"subactions",
@@ -219,10 +220,16 @@ function buildContextCapabilityGroups(
 		const dynamicProviders = providers
 			.filter((provider) => provider.dynamic === true)
 			.filter((provider) =>
-				shouldIncludeByContext(resolveProviderContexts(provider), activeContexts),
+				shouldIncludeByContext(
+					resolveProviderContexts(provider),
+					activeContexts,
+				),
 			)
 			.filter((provider) =>
-				routingContextsOverlap(resolveProviderContexts(provider), groupContexts),
+				routingContextsOverlap(
+					resolveProviderContexts(provider),
+					groupContexts,
+				),
 			)
 			.map(providerCapabilityItem)
 			.sort((left, right) => left.name.localeCompare(right.name));
@@ -409,9 +416,7 @@ export const actionsProvider: Provider = {
 		const actionNames = `Possible response actions: ${formatActionNames(actionsData, actionSeed)}`;
 
 		const actionsWithDescriptions =
-			actionsData.length > 0
-				? formatActions(actionsData, actionSeed)
-				: "";
+			actionsData.length > 0 ? formatActions(actionsData, actionSeed) : "";
 		const contextCapabilitiesText =
 			formatContextCapabilities(contextCapabilities);
 
@@ -423,11 +428,7 @@ export const actionsProvider: Provider = {
 		};
 
 		// Combine all text sections - now including actionsWithDescriptions
-		const text = [
-			actionNames,
-			actionsWithDescriptions,
-			contextCapabilitiesText,
-		]
+		const text = [actionNames, actionsWithDescriptions, contextCapabilitiesText]
 			.filter(Boolean)
 			.join("\n\n");
 

@@ -2591,71 +2591,142 @@ export const allActionsSpec = {
 			description:
 				"Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
 			parameters: [],
+			descriptionCompressed:
+				"activate n8n workflow start process trigger run automatically identify workflow ID, name, semantic description language",
 			similes: [
 				"ACTIVATE_WORKFLOW",
 				"ENABLE_WORKFLOW",
 				"START_WORKFLOW",
 				"TURN_ON_WORKFLOW",
 			],
-			descriptionCompressed:
-				"Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
-		},
-		{
-			name: "ADD_AUTOFILL_WHITELIST",
-			description:
-				"Add a domain to the autofill whitelist. Requires explicit user confirmation (confirmed: true). Persisted to the local profile store.",
-			parameters: [],
-			similes: ["TRUST_SITE_FOR_AUTOFILL", "APPROVE_AUTOFILL_DOMAIN"],
-			descriptionCompressed:
-				"Add a domain to the autofill whitelist. Requires explicit user confirmation (confirmed: true). Persisted to the local profile store.",
 		},
 		{
 			name: "ADD_TO_PLAYLIST",
 			description:
 				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description:
+						"Must be true to add music to the playlist after preview.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to add music to the playlist after preview.",
+				},
+			],
+			descriptionCompressed:
+				"Add track to playlist. Creates playlist if missing. Fetches track if not in library.",
 			similes: [
 				"ADD_SONG_TO_PLAYLIST",
 				"PUT_IN_PLAYLIST",
 				"SAVE_TO_PLAYLIST",
 				"ADD_TRACK_TO_PLAYLIST",
 			],
-			descriptionCompressed:
-				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates...",
+			exampleCalls: [
+				{
+					user: "Use ADD_TO_PLAYLIST with the provided parameters.",
+					actions: ["ADD_TO_PLAYLIST"],
+					params: {
+						ADD_TO_PLAYLIST: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "ASTROLOGY_READING",
 			description:
 				"Perform an astrological natal chart reading, progressively revealing planetary placements.",
 			parameters: [],
+			descriptionCompressed:
+				"Start astrology natal chart reading; reveal planetary placements iteratively.",
 			similes: [
 				"BIRTH_CHART",
 				"NATAL_CHART",
 				"HOROSCOPE_READING",
 				"ZODIAC_READING",
 			],
-			descriptionCompressed:
-				"Perform an astrological natal chart reading, progressively revealing planetary placements.",
 		},
 		{
 			name: "ATTACK_NPC",
 			description: "Attack a nearby NPC by name",
 			parameters: [],
+			descriptionCompressed: "Attack nearby NPC by name.",
 			similes: ["FIGHT_NPC", "MELEE_NPC"],
-			descriptionCompressed: "Attack a nearby NPC by name",
 		},
 		{
 			name: "AUTHENTICATE_GOOGLE",
 			description: "Authenticate with Google to access Meet API",
 			parameters: [],
+			descriptionCompressed: "authenticate w/ Google access Meet API",
 			similes: ["login to google", "google auth", "sign in", "authenticate"],
-			descriptionCompressed: "Authenticate with Google to access Meet API",
 		},
 		{
 			name: "BLOCK_UNTIL_TASK_COMPLETE",
 			description:
 				"Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "websites",
+					description: "List of website hostnames to block.",
+					required: true,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "List of website hostnames to block.",
+				},
+				{
+					name: "todoId",
+					description:
+						"ID of an existing todo. Preferred over todoName when known.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ID of an existing todo. Preferred over todoName when known.",
+				},
+				{
+					name: "todoName",
+					description:
+						"Name of the todo. Resolved against active todos; created if no match.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name of the todo. Resolved against active todos. created if no match.",
+				},
+				{
+					name: "unlockDurationMinutes",
+					description:
+						"Optional: once the gate is satisfied, re-lock the same websites after this many minutes.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Optional: once the gate is satisfied, re-lock the same websites after this many minutes.",
+				},
+				{
+					name: "profile",
+					description: "Optional profile label for the block rule.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional profile label for the block rule.",
+				},
+			],
+			descriptionCompressed: "Block websites until a named todo is completed.",
 			similes: [
 				"BLOCK_SITES_UNTIL_TODO_DONE",
 				"BLOCK_WEBSITE_UNTIL_TASK",
@@ -2663,22 +2734,158 @@ export const allActionsSpec = {
 				"BLOCK_UNTIL_DONE",
 				"FOCUS_UNTIL_TASK_DONE",
 			],
-			descriptionCompressed:
-				"Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like...",
+			exampleCalls: [
+				{
+					user: "Use BLOCK_UNTIL_TASK_COMPLETE with the provided parameters.",
+					actions: ["BLOCK_UNTIL_TASK_COMPLETE"],
+					params: {
+						BLOCK_UNTIL_TASK_COMPLETE: {
+							websites: null,
+							todoId: null,
+							todoName: null,
+							unlockDurationMinutes: null,
+							profile: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "BLUEBUBBLES_SEND_REACTION",
 			description: "Add or remove a reaction on a message via BlueBubbles",
 			parameters: [],
+			descriptionCompressed: "React on iMessage via BlueBubbles.",
 			similes: ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"],
-			descriptionCompressed:
-				"Add or remove a reaction on a msg via BlueBubbles",
 		},
 		{
 			name: "BROWSER_ACTION",
 			description:
-				"Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n",
-			parameters: [],
+				"browser_action:\n  purpose: Control a Chromium-based browser through the local runtime: launch, navigate, interact, inspect, execute JavaScript, wait, and manage tabs.\n  provider_state: Read-only browser availability and recent action state are available from the computerState provider. Use state/info/list_tabs only for explicit live refreshes.\n  flow: Open or connect first, then navigate and interact. Use clickables to discover interactive elements.\n  actions: open/connect/close/navigate/click/type/scroll/screenshot/dom/get_dom/clickables/get_clickables/execute/state/info/context/get_context/wait/list_tabs/open_tab/close_tab/switch_tab.",
+			parameters: [
+				{
+					name: "action",
+					description: "Browser action to perform.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"open",
+							"connect",
+							"close",
+							"navigate",
+							"click",
+							"type",
+							"scroll",
+							"screenshot",
+							"dom",
+							"get_dom",
+							"clickables",
+							"get_clickables",
+							"execute",
+							"state",
+							"info",
+							"context",
+							"get_context",
+							"wait",
+							"list_tabs",
+							"open_tab",
+							"close_tab",
+							"switch_tab",
+						],
+					},
+					descriptionCompressed: "Browser action to perform.",
+				},
+				{
+					name: "url",
+					description: "URL for open, navigate, or open_tab.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "URL for open, navigate, or open_tab.",
+				},
+				{
+					name: "selector",
+					description: "CSS selector for click, type, or wait.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "CSS selector for click, type, or wait.",
+				},
+				{
+					name: "coordinate",
+					description: "Viewport [x, y] coordinate for click.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed: "Viewport [x, y] coordinate for click.",
+				},
+				{
+					name: "text",
+					description: "Text to type, text to click, or text to wait for.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Text to type, text to click, or text to wait for.",
+				},
+				{
+					name: "code",
+					description: "JavaScript source to execute in the page.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "JavaScript source to execute in the page.",
+				},
+				{
+					name: "direction",
+					description: "Scroll direction.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["up", "down"],
+					},
+					descriptionCompressed: "Scroll direction.",
+				},
+				{
+					name: "amount",
+					description: "Scroll amount in pixels.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 300,
+					},
+					descriptionCompressed: "Scroll amount in pixels.",
+				},
+				{
+					name: "tabId",
+					description: "Tab identifier for tab actions.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Tab id for tab actions.",
+				},
+				{
+					name: "timeout",
+					description: "Timeout in milliseconds for wait actions.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 5000,
+					},
+					descriptionCompressed: "Timeout in milliseconds for wait actions.",
+				},
+			],
+			descriptionCompressed:
+				"Chromium browser control router: open/connect/close/navigate/click/type/scroll/screenshot/dom/clickables/execute/wait/tabs; provider has passive state.",
 			similes: [
 				"CONTROL_BROWSER",
 				"WEB_BROWSER",
@@ -2688,30 +2895,47 @@ export const allActionsSpec = {
 				"BROWSER_CLICK",
 				"BROWSER_TYPE",
 			],
-			descriptionCompressed:
-				"Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into...",
+			exampleCalls: [
+				{
+					user: "Use BROWSER_ACTION with the provided parameters.",
+					actions: ["BROWSER_ACTION"],
+					params: {
+						BROWSER_ACTION: {
+							action: null,
+							url: null,
+							selector: null,
+							coordinate: null,
+							text: null,
+							code: null,
+							direction: null,
+							amount: null,
+							tabId: null,
+							timeout: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "BURN_LOGS",
 			description: "Use tinderbox on logs in inventory to light a fire",
 			parameters: [],
+			descriptionCompressed: "Use tinderbox on logs to light fire.",
 			similes: ["LIGHT_FIRE", "FIREMAKING"],
-			descriptionCompressed:
-				"Use tinderbox on logs in inventory to light a fire",
 		},
 		{
 			name: "BUY_FROM_SHOP",
 			description:
 				"Buy an item from the currently open shop, optionally specifying a count (defaults to 1)",
 			parameters: [],
+			descriptionCompressed: "Buy item from open shop.",
 			similes: ["PURCHASE_ITEM", "BUY_ITEM"],
-			descriptionCompressed:
-				"Buy an item from the open shop, optionally specifying a count (defaults to 1)",
 		},
 		{
 			name: "CALL_MCP_TOOL",
 			description: "Calls a tool from an MCP server to perform a specific task",
 			parameters: [],
+			descriptionCompressed: "call tool MCP server perform specific task",
 			similes: [
 				"CALL_TOOL",
 				"CALL_MCP_TOOL",
@@ -2724,39 +2948,80 @@ export const allActionsSpec = {
 				"INVOKE_TOOL",
 				"INVOKE_MCP_TOOL",
 			],
-			descriptionCompressed:
-				"Calls a tool from an MCP server to perform a specific task",
 		},
 		{
 			name: "CAST_SPELL",
 			description: "Cast a spell by ID, optionally targeting an NPC",
 			parameters: [],
+			descriptionCompressed: "Cast spell by ID, opt. target NPC.",
 			similes: ["USE_MAGIC", "CAST"],
-			descriptionCompressed: "Cast a spell by ID, optionally targeting an NPC",
 		},
 		{
 			name: "CHAT_PUBLIC",
 			description:
 				"Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.",
 			parameters: [],
+			descriptionCompressed: "Say something in public chat.",
 			similes: ["SAY", "SPEAK", "TALK", "BROADCAST"],
-			descriptionCompressed:
-				"Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.",
 		},
 		{
 			name: "CHECK_AVAILABILITY",
 			description:
 				"Check whether the owner is free or busy across a specific ISO-8601 ",
-			parameters: [],
-			similes: ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
+			parameters: [
+				{
+					name: "startAt",
+					description: "ISO-8601 start of the window to check.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ISO-8601 start of the window to check.",
+				},
+				{
+					name: "endAt",
+					description: "ISO-8601 end of the window to check.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ISO-8601 end of the window to check.",
+				},
+			],
 			descriptionCompressed:
-				"Check whether the owner is free or busy across a specific ISO-8601",
+				"Check owner free/busy for one ISO-8601 time window and list overlapping events.",
+			similes: ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
+			exampleCalls: [
+				{
+					user: "Use CHECK_AVAILABILITY with the provided parameters.",
+					actions: ["CHECK_AVAILABILITY"],
+					params: {
+						CHECK_AVAILABILITY: {
+							startAt: null,
+							endAt: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "CHECK_BALANCE",
 			description:
 				"Check wallet balances across chains. Use this when a user asks about ",
-			parameters: [],
+			parameters: [
+				{
+					name: "chain",
+					description:
+						'Which chain to check: "all", "bsc", "ethereum", "base", or "solana". Defaults to "all".',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Which chain to check: "all", "bsc", "ethereum", "base", or "solana". Defaults to "all".',
+				},
+			],
+			descriptionCompressed: "Check wallet balances across chains.",
 			similes: [
 				"GET_BALANCE",
 				"WALLET_BALANCE",
@@ -2765,116 +3030,261 @@ export const allActionsSpec = {
 				"PORTFOLIO",
 				"HOLDINGS",
 			],
-			descriptionCompressed:
-				"Check wallet balances across chains. Use when a user asks about",
-		},
-		{
-			name: "CHECK_CLOUD_CREDITS",
-			description:
-				"Check ElizaCloud credit balance, container costs, and estimated remaining runtime.",
-			parameters: [],
-			similes: [
-				"check credits",
-				"check balance",
-				"how much credit",
-				"cloud billing",
+			exampleCalls: [
+				{
+					user: "Use CHECK_BALANCE with the provided parameters.",
+					actions: ["CHECK_BALANCE"],
+					params: {
+						CHECK_BALANCE: {
+							chain: null,
+						},
+					},
+				},
 			],
-			descriptionCompressed:
-				"Check ElizaCloud credit balance, container costs, and estimated remaining runtime.",
 		},
 		{
 			name: "CHECK_PAYMENT",
 			description:
 				"Check if payment has been received for the current reading session.",
 			parameters: [],
-			similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
 			descriptionCompressed:
-				"Check if payment has been received for the current reading session.",
+				"Check payment status for the active mysticism reading session.",
+			similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
 		},
 		{
 			name: "CHOP_TREE",
 			description:
 				"Chop a nearby tree, optionally specifying the tree type (oak, willow, etc.)",
 			parameters: [],
+			descriptionCompressed: "Chop nearby tree, opt. specify type.",
 			similes: ["CUT_TREE", "WOODCUT"],
-			descriptionCompressed:
-				"Chop a nearby tree, optionally specifying the tree type (oak, willow, etc.)",
 		},
 		{
 			name: "CLAUDE_CODE_WORKBENCH_LIST",
 			description: "List available Claude Code workbench workflows.",
 			parameters: [],
+			descriptionCompressed: "list available Claude Code workbench workflow",
 			similes: ["LIST_WORKBENCH_WORKFLOWS", "WORKBENCH_LIST", "CCW_LIST"],
-			descriptionCompressed: "List available Claude Code workbench workflows.",
 		},
 		{
 			name: "CLAUDE_CODE_WORKBENCH_RUN",
 			description:
 				"Run an allowlisted repo workflow through the Claude Code workbench service.",
 			parameters: [],
-			similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
 			descriptionCompressed:
-				"Run an allowlisted repo workflow through the Claude Code workbench service.",
+				"run allowlist repo workflow through Claude Code workbench service",
+			similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
 		},
 		{
 			name: "CLEAR_GRAPH",
 			description: "Clear all entities and relationships from the graph.",
 			parameters: [],
+			descriptionCompressed: "clear entity relationship graph",
 			similes: ["RESET_GRAPH", "CLEAR_ALL", "DELETE_ALL"],
-			descriptionCompressed:
-				"Clear all entities and relationships from the graph.",
 		},
 		{
 			name: "CLEAR_LINEAR_ACTIVITY",
 			description: "Clear the Linear activity log",
 			parameters: [],
+			descriptionCompressed: "clear Linear activity log",
 			similes: [
 				"clear-linear-activity",
 				"reset-linear-activity",
 				"delete-linear-activity",
 			],
-			descriptionCompressed: "Clear the Linear activity log",
 		},
 		{
 			name: "CLOSE_BANK",
 			description: "Close the bank interface",
 			parameters: [],
+			descriptionCompressed: "Close bank interface.",
 			similes: ["EXIT_BANK"],
-			descriptionCompressed: "Close the bank interface",
 		},
 		{
 			name: "CLOSE_SHOP",
 			description: "Close the shop interface",
 			parameters: [],
+			descriptionCompressed: "Close shop interface.",
 			similes: ["EXIT_SHOP"],
-			descriptionCompressed: "Close the shop interface",
+		},
+		{
+			name: "CLOUD_AGENT",
+			description:
+				"ElizaCloud agent ops router: provision a container, freeze (snapshot+stop) a running agent, resume a frozen agent from snapshot, or check credit balance and runtime estimate.",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Which cloud-agent operation to run: 'provision', 'freeze', 'resume', or 'check_credits'.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["provision", "freeze", "resume", "check_credits"],
+					},
+					descriptionCompressed:
+						"Which cloud-agent operation to run: 'provision', 'freeze', 'resume', or 'check_credits'.",
+				},
+				{
+					name: "name",
+					description:
+						"Human-readable agent name. Required for op='provision' and op='resume'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Human-readable agent name. Required for op='provision' and op='resume'.",
+				},
+				{
+					name: "project_name",
+					description:
+						"Project identifier (lowercase, no spaces). Required for op='provision' and op='resume'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Project id (lowercase, no spaces). Required for op='provision' and op='resume'.",
+				},
+				{
+					name: "containerId",
+					description: "Container ID. Required for op='freeze'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Container ID. Required for op='freeze'.",
+				},
+				{
+					name: "snapshotId",
+					description:
+						"Specific snapshot ID for op='resume' (defaults to latest).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Specific snapshot ID for op='resume' (defaults to latest).",
+				},
+				{
+					name: "description",
+					description: "Optional description for op='provision'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional description for op='provision'.",
+				},
+				{
+					name: "environment_vars",
+					description:
+						"Additional environment variables for op='provision' or op='resume'.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Additional environment variables for op='provision' or op='resume'.",
+				},
+				{
+					name: "auto_backup",
+					description:
+						"Enable periodic auto-backup for op='provision' (default: true).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Enable periodic auto-backup for op='provision' (default: true).",
+				},
+				{
+					name: "detailed",
+					description: "Include transaction history for op='check_credits'.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Include transaction history for op='check_credits'.",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Must be true to execute mutating ops ('provision', 'freeze', 'resume') after the preview.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to execute mutating ops ('provision', 'freeze', 'resume') after the preview.",
+				},
+			],
+			descriptionCompressed:
+				"Cloud agent ops: provision, freeze, resume, check credits.",
+			similes: [
+				"deploy agent to cloud",
+				"launch cloud agent",
+				"provision container",
+				"freeze agent",
+				"hibernate agent",
+				"stop cloud agent",
+				"resume agent",
+				"unfreeze agent",
+				"restore agent",
+				"check credits",
+				"check balance",
+				"cloud billing",
+				"PROVISION_CLOUD_AGENT",
+				"FREEZE_CLOUD_AGENT",
+				"RESUME_CLOUD_AGENT",
+				"CHECK_CLOUD_CREDITS",
+			],
+			exampleCalls: [
+				{
+					user: "Use CLOUD_AGENT with the provided parameters.",
+					actions: ["CLOUD_AGENT"],
+					params: {
+						CLOUD_AGENT: {
+							op: null,
+							name: null,
+							project_name: null,
+							containerId: null,
+							snapshotId: null,
+							description: null,
+							environment_vars: null,
+							auto_backup: null,
+							detailed: null,
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "COMMANDS_LIST",
 			description:
 				"List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
 			parameters: [],
-			similes: ["/commands", "/cmds"],
 			descriptionCompressed:
-				"List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
+				"List available commands. Trigger: /commands, /cmds.",
+			similes: ["/commands", "/cmds"],
 		},
 		{
 			name: "COMPLETE_GOAL",
 			description:
-				"Mark the active goal (or a specific goal id) as completed or abandoned. Use <status>completed|abandoned</status> and optional <notes>why</notes>.",
+				"Mark the active goal (or a specific goal id) as completed or abandoned. Use status: completed|abandoned and optional notes: why.",
 			parameters: [],
+			descriptionCompressed: "Mark goal completed or abandoned.",
 			similes: ["FINISH_GOAL", "ABANDON_GOAL", "CLOSE_GOAL"],
-			descriptionCompressed:
-				"Mark the active goal (or a specific goal id) as completed or abandoned. Use <status>completed|abandoned</status> and optional <notes>why</notes>.",
 		},
 		{
 			name: "COOK_FOOD",
 			description:
 				"Cook raw food on a nearby fire or range, optionally specifying the food name",
 			parameters: [],
+			descriptionCompressed: "Cook raw food on fire/range.",
 			similes: ["COOK", "COOK_RAW_FOOD"],
-			descriptionCompressed:
-				"Cook raw food on a nearby fire or range, optionally specifying the food name",
 		},
 		{
 			name: "COUNT_STATISTICS",
@@ -2891,6 +3301,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed: "get statistic current relational data graph",
 			similes: ["STATS", "STATISTICS", "COUNT"],
 			exampleCalls: [
 				{
@@ -2903,17 +3314,14 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Get statistics about the current relational data graph.",
 		},
 		{
 			name: "CRAFT_LEATHER",
 			description:
 				"Use a needle on leather in inventory to craft leather armour",
 			parameters: [],
+			descriptionCompressed: "Craft leather armour with needle.",
 			similes: ["CRAFTING", "SEW_LEATHER"],
-			descriptionCompressed:
-				"Use a needle on leather in inventory to craft leather armour",
 		},
 		{
 			name: "CREATE_ENTITY",
@@ -2931,6 +3339,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"create new entity w/ type name entity node relational graph",
 			similes: ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
 			exampleCalls: [
 				{
@@ -2943,8 +3353,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Create a new entity with a type and name. Entities are the nodes in our relational graph.",
 		},
 		{
 			name: "CREATE_LINEAR_COMMENT",
@@ -2961,6 +3369,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The name to use.",
 				},
 			],
+			descriptionCompressed: "add comment Linear issue",
 			similes: [
 				"create-linear-comment",
 				"add-linear-comment",
@@ -2978,26 +3387,25 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Add a comment to a Linear issue",
 		},
 		{
 			name: "CREATE_LINEAR_ISSUE",
 			description: "Create a new issue in Linear",
 			parameters: [],
+			descriptionCompressed: "create new issue Linear",
 			similes: ["create-linear-issue", "new-linear-issue", "add-linear-issue"],
-			descriptionCompressed: "Create a new issue in Linear",
 		},
 		{
 			name: "CREATE_MEETING",
 			description: "Create a new Google Meet meeting space",
 			parameters: [],
+			descriptionCompressed: "create new Google Meet meet space",
 			similes: [
 				"start a meeting",
 				"create a meet",
 				"new meeting",
 				"setup a call",
 			],
-			descriptionCompressed: "Create a new Google Meet meeting space",
 		},
 		{
 			name: "CREATE_RELATIONSHIP",
@@ -3015,6 +3423,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"create relationship between two entity relationship edge relational graph",
 			similes: ["LINK", "CONNECT", "RELATE"],
 			exampleCalls: [
 				{
@@ -3027,43 +3437,100 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Create a relationship between two entities. Relationships are the edges in our relational graph.",
 		},
 		{
 			name: "CROSS_PLATFORM_GATEWAY",
 			description:
 				"Create a real cross-platform group handoff room or escalate a request back to the owner when direct user action is required. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"create_group_chat vs escalate_to_user when caller supplies it.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["create_group_chat", "escalate_to_user"],
+					},
+					descriptionCompressed:
+						"create_group_chat vs escalate_to_user when caller supplies it.",
+				},
+				{
+					name: "platform",
+					description:
+						"Target connector (discord, telegram, whatsapp, signal).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target connector (discord, telegram, whatsapp, signal).",
+				},
+				{
+					name: "participants",
+					description: "Human names to invite to the shared handoff room.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Human names to invite to the shared handoff room.",
+				},
+				{
+					name: "title",
+					description: "Optional room or escalation title.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional room or escalation title.",
+				},
+				{
+					name: "reason",
+					description:
+						"Why escalate_to_user (e.g., needs owner negotiation or signing).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Why escalate_to_user (e. g. , needs owner negotiation or signing).",
+				},
+			],
+			descriptionCompressed:
+				"Cross-platform group handoff room OR escalate need-owner-signature negotiation",
 			similes: [
 				"GROUP_CHAT_HANDOFF",
 				"CREATE_GROUP_CHAT",
 				"ESCALATE_TO_USER",
 				"CROSS_PLATFORM_HANDOFF",
 			],
-			descriptionCompressed:
-				"Create a real cross-platform group handoff room or escalate a request back to the owner when direct user action is required.",
-		},
-		{
-			name: "custom-generate-music",
-			description: "Generate music with custom parameters using Suno AI",
-			parameters: [],
-			similes: [
-				"CREATE_CUSTOM_MUSIC",
-				"GENERATE_CUSTOM_AUDIO",
-				"MAKE_CUSTOM_MUSIC",
-				"COMPOSE_CUSTOM_MUSIC",
-				"COMPOSE_MUSIC",
-				"CREATE_MUSIC",
-				"GENERATE_MUSIC",
+			exampleCalls: [
+				{
+					user: "Use CROSS_PLATFORM_GATEWAY with the provided parameters.",
+					actions: ["CROSS_PLATFORM_GATEWAY"],
+					params: {
+						CROSS_PLATFORM_GATEWAY: {
+							subaction: null,
+							platform: null,
+							participants: null,
+							title: null,
+							reason: null,
+						},
+					},
+				},
 			],
-			descriptionCompressed: "Generate music with custom params using Suno AI",
 		},
 		{
 			name: "DEACTIVATE_N8N_WORKFLOW",
 			description:
 				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
 			parameters: [],
+			descriptionCompressed:
+				"deactivate n8n workflow stop process trigger run automatically identify workflow ID, name, semantic description language",
 			similes: [
 				"DEACTIVATE_WORKFLOW",
 				"DISABLE_WORKFLOW",
@@ -3071,22 +3538,20 @@ export const allActionsSpec = {
 				"PAUSE_WORKFLOW",
 				"TURN_OFF_WORKFLOW",
 			],
-			descriptionCompressed:
-				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any...",
 		},
 		{
 			name: "DEEPEN_READING",
 			description:
 				"Provide a deeper interpretation of a specific element in an active reading.",
 			parameters: [],
+			descriptionCompressed:
+				"Deepen active reading with more interpretation for a specific element.",
 			similes: [
 				"EXPLAIN_MORE",
 				"GO_DEEPER",
 				"ELABORATE_READING",
 				"READING_DETAIL",
 			],
-			descriptionCompressed:
-				"Provide a deeper interpretation of a specific element in an active reading.",
 		},
 		{
 			name: "DELETE_ENTITY",
@@ -3103,6 +3568,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed: "delete current entity relationship",
 			similes: ["REMOVE_ENTITY", "DESTROY_ENTITY"],
 			exampleCalls: [
 				{
@@ -3115,36 +3581,34 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Delete the current entity and all its relationships.",
 		},
 		{
 			name: "DELETE_LINEAR_ISSUE",
 			description: "Delete (archive) an issue in Linear",
 			parameters: [],
+			descriptionCompressed: "delete (archive) issue Linear",
 			similes: [
 				"delete-linear-issue",
 				"archive-linear-issue",
 				"remove-linear-issue",
 				"close-linear-issue",
 			],
-			descriptionCompressed: "Delete (archive) an issue in Linear",
 		},
 		{
 			name: "DELETE_MESSAGE",
 			description: "Delete a message from a Discord channel",
 			parameters: [],
+			descriptionCompressed: "delete message Discord channel",
 			similes: ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"],
-			descriptionCompressed: "Delete a msg from a Discord channel",
 		},
 		{
 			name: "DELETE_N8N_WORKFLOW",
 			description:
-				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
+				"Delete an n8n workflow permanently by ID, name, or semantic description in any language. Cannot be undone.",
 			parameters: [],
-			similes: ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
 			descriptionCompressed:
-				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
+				"Delete n8n workflow permanently by ID, name, or semantic description; cannot be undone.",
+			similes: ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
 		},
 		{
 			name: "DELETE_PLAYLIST",
@@ -3152,16 +3616,19 @@ export const allActionsSpec = {
 				"Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
 			parameters: [
 				{
-					name: "data",
-					description: "The data to use.",
+					name: "confirmed",
+					description:
+						"Must be true to delete the saved playlist after preview.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "boolean",
+						default: false,
 					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
+					descriptionCompressed:
+						"Must be true to delete the saved playlist after preview.",
 				},
 			],
+			descriptionCompressed: "Delete saved playlist.",
 			similes: [
 				"REMOVE_PLAYLIST",
 				"DELETE_SAVED_PLAYLIST",
@@ -3173,22 +3640,19 @@ export const allActionsSpec = {
 					actions: ["DELETE_PLAYLIST"],
 					params: {
 						DELETE_PLAYLIST: {
-							data: "example",
+							confirmed: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
 		},
 		{
 			name: "DEPOSIT_ITEM",
 			description:
 				"Deposit an item into the bank by name, optionally specifying a count (defaults to all)",
 			parameters: [],
+			descriptionCompressed: "Deposit item into bank.",
 			similes: ["BANK_ITEM", "STORE_ITEM"],
-			descriptionCompressed:
-				"Deposit an item into the bank by name, optionally specifying a count (defaults to all)",
 		},
 		{
 			name: "DEXSCREENER_BOOSTED_TOKENS",
@@ -3262,7 +3726,20 @@ export const allActionsSpec = {
 			name: "DOWNLOAD_MUSIC",
 			description:
 				"Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description: "Must be true to download music after preview.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to download music after preview.",
+				},
+			],
+			descriptionCompressed: "Download track to library without playing.",
 			similes: [
 				"FETCH_MUSIC",
 				"GET_MUSIC",
@@ -3270,78 +3747,333 @@ export const allActionsSpec = {
 				"SAVE_MUSIC",
 				"GRAB_MUSIC",
 			],
-			descriptionCompressed:
-				"Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
+			exampleCalls: [
+				{
+					user: "Use DOWNLOAD_MUSIC with the provided parameters.",
+					actions: ["DOWNLOAD_MUSIC"],
+					params: {
+						DOWNLOAD_MUSIC: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "DROP_ITEM",
 			description: "Drop an item from inventory by name",
 			parameters: [],
+			descriptionCompressed: "Drop inventory item.",
 			similes: ["DISCARD_ITEM", "THROW_AWAY"],
-			descriptionCompressed: "Drop an item from inventory by name",
 		},
 		{
 			name: "EAT_FOOD",
 			description: "Eat the first food item found in inventory",
 			parameters: [],
+			descriptionCompressed: "Eat food from inventory.",
 			similes: ["CONSUME_FOOD", "HEAL"],
-			descriptionCompressed: "Eat the first food item found in inventory",
 		},
 		{
 			name: "EDIT_MESSAGE",
 			description: "Edit an existing message in a Discord channel",
 			parameters: [],
+			descriptionCompressed: "Edit existing Discord message.",
 			similes: [
 				"UPDATE_MESSAGE",
 				"MODIFY_MESSAGE",
 				"CHANGE_MESSAGE",
 				"EDIT_DISCORD_MESSAGE",
 			],
-			descriptionCompressed: "Edit an existing msg in a Discord channel",
 		},
 		{
 			name: "EQUIP_ITEM",
 			description: "Equip an item from inventory by name",
 			parameters: [],
+			descriptionCompressed: "Equip inventory item.",
 			similes: ["WEAR_ITEM", "WIELD_ITEM"],
-			descriptionCompressed: "Equip an item from inventory by name",
 		},
 		{
 			name: "EXECUTE_TRADE",
 			description:
 				"Execute a BSC token trade (buy or sell). Use this when a user asks to ",
-			parameters: [],
-			similes: ["BUY_TOKEN", "SELL_TOKEN", "SWAP", "TRADE", "BUY", "SELL"],
-			descriptionCompressed:
-				"Execute a BSC token trade (buy or sell). Use when a user asks to",
-		},
-		{
-			name: "extend-audio",
-			description: "Extend the duration of an existing audio generation",
-			parameters: [],
-			similes: [
-				"LENGTHEN_AUDIO",
-				"PROLONG_AUDIO",
-				"INCREASE_DURATION",
-				"MAKE_AUDIO_LONGER",
+			parameters: [
+				{
+					name: "side",
+					description: 'Trade direction: "buy" or "sell"',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: 'Trade direction: "buy" or "sell"',
+				},
+				{
+					name: "tokenAddress",
+					description:
+						"BSC token contract address (0x-prefixed, 40 hex characters)",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"BSC token contract address (0x-prefixed, 40 hex characters)",
+				},
+				{
+					name: "amount",
+					description:
+						'Human-readable trade amount (e.g. "0.5" BNB for buys, or token amount for sells)',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Human-readable trade amount (e. g. "0. 5" BNB for buys, or token amount for sells)',
+				},
+				{
+					name: "slippageBps",
+					description: "Slippage tolerance in basis points (default 300 = 3%)",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Slippage tolerance in basis points (default 300 = 3%)",
+				},
+				{
+					name: "routeProvider",
+					description:
+						'Route provider preference for the swap: "pancakeswap-v2" or "0x". Defaults to "pancakeswap-v2".',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Route provider preference for the swap: "pancakeswap-v2" or "0x". Defaults to "pancakeswap-v2".',
+				},
 			],
 			descriptionCompressed:
-				"Extend the duration of an existing audio generation",
+				"Execute BSC token trade (buy/sell) via PancakeSwap (admin/owner only).",
+			similes: ["BUY_TOKEN", "SELL_TOKEN", "SWAP", "TRADE", "BUY", "SELL"],
+			exampleCalls: [
+				{
+					user: "Use EXECUTE_TRADE with the provided parameters.",
+					actions: ["EXECUTE_TRADE"],
+					params: {
+						EXECUTE_TRADE: {
+							side: null,
+							tokenAddress: null,
+							amount: null,
+							slippageBps: null,
+							routeProvider: null,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "FARCASTER_CAST",
+			description:
+				"Create or reply to a public Farcaster cast with subaction post or reply.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "post or reply.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["post", "reply"],
+					},
+					descriptionCompressed: "post or reply.",
+				},
+				{
+					name: "text",
+					description: "Cast text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Cast text.",
+				},
+				{
+					name: "parentCastHash",
+					description: "Parent cast hash for replies.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Parent cast hash for replies.",
+				},
+				{
+					name: "parentFid",
+					description: "Parent cast author FID for replies.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Parent cast author FID for replies.",
+				},
+			],
+			descriptionCompressed:
+				"public Farcaster cast router; subaction post reply",
+			similes: [
+				"SEND_CAST",
+				"REPLY_TO_CAST",
+				"POST_CAST",
+				"FARCASTER_POST",
+				"SHARE_ON_FARCASTER",
+			],
+			exampleCalls: [
+				{
+					user: "Use FARCASTER_CAST with the provided parameters.",
+					actions: ["FARCASTER_CAST"],
+					params: {
+						FARCASTER_CAST: {
+							subaction: null,
+							text: null,
+							parentCastHash: null,
+							parentFid: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "FETCH_FEED_TOP",
 			description:
 				"Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
 			parameters: [],
-			similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
 			descriptionCompressed:
-				"Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
+				"fetch home timeline x return top-n tweet rank engagement (like + retweet 2)",
+			similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
 		},
 		{
 			name: "FILE_ACTION",
 			description:
 				"Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n",
-			parameters: [],
+			parameters: [
+				{
+					name: "action",
+					description: "File action to perform.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"read",
+							"write",
+							"edit",
+							"append",
+							"delete",
+							"exists",
+							"list",
+							"delete_directory",
+							"upload",
+							"download",
+							"list_downloads",
+						],
+					},
+					descriptionCompressed: "File action to perform.",
+				},
+				{
+					name: "path",
+					description: "Primary file or directory path.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Primary file or directory path.",
+				},
+				{
+					name: "filepath",
+					description: "Upstream alias for path.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Upstream alias for path.",
+				},
+				{
+					name: "dirpath",
+					description: "Upstream alias for directory path.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Upstream alias for directory path.",
+				},
+				{
+					name: "content",
+					description: "Content for write, append, or upload.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Content for write, append, or upload.",
+				},
+				{
+					name: "encoding",
+					description: "Encoding for read/download.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Encoding for read/download.",
+				},
+				{
+					name: "oldText",
+					description: "Replacement source text alias for edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Replacement source text alias for edit.",
+				},
+				{
+					name: "newText",
+					description: "Replacement destination text alias for edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Replacement destination text alias for edit.",
+				},
+				{
+					name: "old_text",
+					description: "Upstream edit source text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Upstream edit source text.",
+				},
+				{
+					name: "new_text",
+					description: "Upstream edit destination text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Upstream edit destination text.",
+				},
+				{
+					name: "find",
+					description: "Upstream alias for old_text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Upstream alias for old_text.",
+				},
+				{
+					name: "replace",
+					description: "Upstream alias for new_text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Upstream alias for new_text.",
+				},
+			],
+			descriptionCompressed:
+				"File ops: read, write, edit, append, delete, list directory.",
 			similes: [
 				"READ_FILE",
 				"WRITE_FILE",
@@ -3350,8 +4082,28 @@ export const allActionsSpec = {
 				"LIST_DIRECTORY",
 				"FILE_OPERATION",
 			],
-			descriptionCompressed:
-				"Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory...",
+			exampleCalls: [
+				{
+					user: "Use FILE_ACTION with the provided parameters.",
+					actions: ["FILE_ACTION"],
+					params: {
+						FILE_ACTION: {
+							action: null,
+							path: null,
+							filepath: null,
+							dirpath: null,
+							content: null,
+							encoding: null,
+							oldText: null,
+							newText: null,
+							old_text: null,
+							new_text: null,
+							find: null,
+							replace: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "FINALIZE_WORKSPACE",
@@ -3359,16 +4111,74 @@ export const allActionsSpec = {
 				"Finalize workspace changes by committing, pushing, and optionally creating a pull request. ",
 			parameters: [
 				{
-					name: "codingWorkspace",
-					description: "The coding workspace to use.",
+					name: "workspaceId",
+					description:
+						"ID of the workspace to finalize. Uses current workspace if not specified.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The coding workspace to use.",
+					descriptionCompressed:
+						"Commit, push, opt. create PR for workspace changes.",
+				},
+				{
+					name: "commitMessage",
+					description: "Commit message for the changes.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Commit msg for the changes.",
+				},
+				{
+					name: "prTitle",
+					description: "Title for the pull request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Title for the pull request.",
+				},
+				{
+					name: "prBody",
+					description: "Body/description for the pull request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Body/description for the pull request.",
+				},
+				{
+					name: "baseBranch",
+					description: "Base branch for the PR (e.g., main, develop).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Base branch for the PR (e. g. , main, develop).",
+				},
+				{
+					name: "draft",
+					description: "Create as draft PR.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Create as draft PR.",
+				},
+				{
+					name: "skipPR",
+					description: "Skip PR creation, only commit and push.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Skip PR creation, only commit and push.",
 				},
 			],
+			descriptionCompressed:
+				"finalize workspace change commit, push, optionally create pull request use after task agent complete task",
 			similes: [
 				"COMMIT_AND_PR",
 				"CREATE_PR",
@@ -3381,13 +4191,17 @@ export const allActionsSpec = {
 					actions: ["FINALIZE_WORKSPACE"],
 					params: {
 						FINALIZE_WORKSPACE: {
-							codingWorkspace: "example",
+							workspaceId: null,
+							commitMessage: null,
+							prTitle: null,
+							prBody: null,
+							baseBranch: null,
+							draft: null,
+							skipPR: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Finalize workspace changes by committing, pushing, and optionally creating a pull request.",
 		},
 		{
 			name: "FIND_PATH",
@@ -3405,6 +4219,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"find shortest path between two entity relationship graph",
 			similes: ["PATH", "ROUTE", "CONNECTION_PATH"],
 			exampleCalls: [
 				{
@@ -3417,112 +4233,55 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Find the shortest path between two entities in the relationship graph.",
 		},
 		{
 			name: "FISH",
 			description:
 				"Fish at a nearby fishing spot, optionally specifying the spot type",
 			parameters: [],
+			descriptionCompressed: "Fish at nearby spot, opt. type.",
 			similes: ["GO_FISHING", "CATCH_FISH"],
-			descriptionCompressed:
-				"Fish at a nearby fishing spot, optionally specifying the spot type",
 		},
 		{
 			name: "FLETCH_LOGS",
 			description: "Use a knife on logs in inventory to fletch them",
 			parameters: [],
+			descriptionCompressed: "Fletch logs with knife.",
 			similes: ["FLETCHING", "CARVE_LOGS"],
-			descriptionCompressed: "Use a knife on logs in inventory to fletch them",
 		},
 		{
 			name: "FORM_RESTORE",
 			description: "Restore a previously stashed form session",
 			parameters: [],
+			descriptionCompressed: "Restore stashed form session.",
 			similes: ["RESUME_FORM", "CONTINUE_FORM"],
-			descriptionCompressed: "Restore a previously stashed form session",
-		},
-		{
-			name: "FREEZE_CLOUD_AGENT",
-			description:
-				"Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
-			parameters: [],
-			similes: [
-				"freeze agent",
-				"hibernate agent",
-				"pause agent",
-				"stop cloud agent",
-			],
-			descriptionCompressed:
-				"Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
 		},
 		{
 			name: "GENERATE_REPORT",
 			description:
-				"Generate a comprehensive report from Google Meet artifacts (transcripts, recordings)",
+				"Generate a report from Google Meet conference records, participants, transcripts, and recordings.",
 			parameters: [],
+			descriptionCompressed:
+				"generate Google Meet report conference record participants transcript recordings",
 			similes: [
 				"create report",
 				"meeting summary",
 				"get transcript",
 				"meeting notes",
 			],
-			descriptionCompressed:
-				"Generate a comprehensive report from Google Meet artifacts (transcripts, recordings)",
-		},
-		{
-			name: "generate-music",
-			description: "Generate music using Suno AI",
-			parameters: [],
-			similes: [
-				"CREATE_MUSIC",
-				"MAKE_MUSIC",
-				"COMPOSE_MUSIC",
-				"GENERATE_AUDIO",
-				"CREATE_SONG",
-				"MAKE_SONG",
-			],
-			descriptionCompressed: "Generate music using Suno AI",
-		},
-		{
-			name: "GET_ACTIVITY_REPORT",
-			description:
-				"Per-app time breakdown for the last N hours (default 24h). Returns noDataReason='macos-only' on non-Darwin platforms.",
-			parameters: [],
-			similes: [
-				"ACTIVITY_REPORT",
-				"WHAT_DID_I_WORK_ON",
-				"TIME_TRACKING_REPORT",
-			],
-			descriptionCompressed:
-				"Per-app time breakdown for the last N hours (default 24h). Returns noDataReason='macos-only' on non-Darwin platforms.",
-		},
-		{
-			name: "GET_APP_BLOCK_STATUS",
-			description:
-				"Owner-only. Check whether an app block is currently active and when it ends.",
-			parameters: [],
-			similes: [
-				"CHECK_APP_BLOCK_STATUS",
-				"IS_APP_BLOCK_RUNNING",
-				"APP_BLOCK_STATUS",
-			],
-			descriptionCompressed:
-				"Owner-only. Check whether an app block is active and when it ends.",
 		},
 		{
 			name: "GET_LINEAR_ACTIVITY",
 			description: "Get recent Linear activity log with optional filters",
 			parameters: [],
+			descriptionCompressed:
+				"get recent Linear activity log w/ optional filter",
 			similes: [
 				"get-linear-activity",
 				"show-linear-activity",
 				"view-linear-activity",
 				"check-linear-activity",
 			],
-			descriptionCompressed:
-				"Get recent Linear activity log with optional filters",
 		},
 		{
 			name: "GET_LINEAR_ISSUE",
@@ -3539,6 +4298,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The name to use.",
 				},
 			],
+			descriptionCompressed: "get detail specific Linear issue",
 			similes: [
 				"get-linear-issue",
 				"show-linear-issue",
@@ -3557,25 +4317,26 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Get details of a specific Linear issue",
 		},
 		{
 			name: "GET_MEETING_INFO",
 			description: "Get information about a Google Meet meeting",
 			parameters: [],
+			descriptionCompressed: "get information Google Meet meet",
 			similes: [
 				"meeting info",
 				"check meeting",
 				"meeting status",
 				"meeting details",
 			],
-			descriptionCompressed: "Get info about a Google Meet meeting",
 		},
 		{
 			name: "GET_N8N_EXECUTIONS",
 			description:
 				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
 			parameters: [],
+			descriptionCompressed:
+				"get execution history n8n workflow show status, start time, error message identify workflow ID, name, semantic description language",
 			similes: [
 				"GET_EXECUTIONS",
 				"SHOW_EXECUTIONS",
@@ -3583,27 +4344,38 @@ export const allActionsSpec = {
 				"WORKFLOW_RUNS",
 				"WORKFLOW_EXECUTIONS",
 			],
-			descriptionCompressed:
-				"Get execution history for an n8n workflow. Shows status, start time, and error msgs if any. Identifies workflows by ID, name, or semantic description in any...",
 		},
 		{
 			name: "GET_PARTICIPANTS",
 			description: "Get the list of participants in a Google Meet conference",
 			parameters: [],
+			descriptionCompressed: "get list participant Google Meet conference",
 			similes: [
 				"who's in the meeting",
 				"list participants",
 				"attendees",
 				"who joined",
 			],
-			descriptionCompressed:
-				"Get the list of participants in a Google Meet conference",
 		},
 		{
 			name: "GET_RECEIVE_ADDRESS",
 			description:
 				"Return wallet receive addresses by chain. Use this when a user asks ",
-			parameters: [],
+			parameters: [
+				{
+					name: "chain",
+					description:
+						'Which chain to return: "all", "evm", "solana", "bsc", "ethereum", or "base". EVM-family chains share the same EVM address. Defaults to "all".',
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["all", "evm", "solana", "bsc", "ethereum", "base"],
+					},
+					descriptionCompressed:
+						'Which chain to return: "all", "evm", "solana", "bsc", "ethereum", or "base". EVM-family chains share the same EVM address. Defaults to "all".',
+				},
+			],
+			descriptionCompressed: "Return wallet receive addresses by chain.",
 			similes: [
 				"RECEIVE_ADDRESS",
 				"DEPOSIT_ADDRESS",
@@ -3611,99 +4383,125 @@ export const allActionsSpec = {
 				"MY_ADDRESS",
 				"SHOW_ADDRESS",
 			],
-			descriptionCompressed:
-				"Return wallet receive addresses by chain. Use when a user asks",
+			exampleCalls: [
+				{
+					user: "Use GET_RECEIVE_ADDRESS with the provided parameters.",
+					actions: ["GET_RECEIVE_ADDRESS"],
+					params: {
+						GET_RECEIVE_ADDRESS: {
+							chain: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "GET_SKILL_DETAILS",
 			description:
 				"Get detailed information about a specific skill including version, owner, and stats.",
 			parameters: [],
+			descriptionCompressed: "Get skill version, owner, stats.",
 			similes: ["SKILL_INFO", "SKILL_DETAILS"],
-			descriptionCompressed:
-				"Get detailed info about a specific skill including version, owner, and stats.",
 		},
 		{
 			name: "GET_TAILSCALE_STATUS",
 			description: "Get the current status of the Tailscale tunnel",
 			parameters: [],
+			descriptionCompressed: "get current status Tailscale tunnel",
 			similes: ["TAILSCALE_STATUS", "CHECK_TUNNEL", "TUNNEL_INFO"],
-			descriptionCompressed: "Get the current status of the Tailscale tunnel",
-		},
-		{
-			name: "GET_TIME_ON_APP",
-			description:
-				"Time spent on a specific app (matched by app name or bundle id) over the last N hours.",
-			parameters: [],
-			similes: ["TIME_IN_APP", "HOW_LONG_IN_APP"],
-			descriptionCompressed:
-				"Time spent on a specific app (matched by app name or bundle id) over the last N hours.",
-		},
-		{
-			name: "GET_TIME_ON_SITE",
-			description:
-				"Time on a specific site based on browser activity reports pushed into the runtime store.",
-			parameters: [],
-			similes: ["TIME_ON_WEBSITE", "TIME_ON_DOMAIN"],
-			descriptionCompressed:
-				"Time on a specific site based on browser activity reports pushed into the runtime store.",
-		},
-		{
-			name: "GET_WEBSITE_BLOCK_STATUS",
-			description:
-				"Owner-only. Check whether a local hosts-file website block is currently active and when it ends.",
-			parameters: [],
-			similes: [
-				"SELFCONTROL_GET_BLOCK_STATUS",
-				"CHECK_WEBSITE_BLOCK_STATUS",
-				"CHECK_SELFCONTROL",
-				"IS_BLOCK_RUNNING",
-			],
-			descriptionCompressed:
-				"Owner-only. Check whether a local hosts-file website block is active and when it ends.",
 		},
 		{
 			name: "GOOGLE_CHAT_LIST_SPACES",
 			description: "List all Google Chat spaces the bot is a member of",
 			parameters: [],
+			descriptionCompressed: "list Google Chat space bot member",
 			similes: [
 				"LIST_GOOGLE_CHAT_SPACES",
 				"GCHAT_SPACES",
 				"SHOW_GOOGLE_CHAT_SPACES",
 			],
-			descriptionCompressed:
-				"List all Google Chat spaces the bot is a member of",
 		},
 		{
 			name: "GOOGLE_CHAT_SEND_MESSAGE",
 			description: "Send a message to a Google Chat space",
 			parameters: [],
+			descriptionCompressed: "send message Google Chat space",
 			similes: [
 				"SEND_GOOGLE_CHAT_MESSAGE",
 				"MESSAGE_GOOGLE_CHAT",
 				"GCHAT_SEND",
 				"GOOGLE_CHAT_TEXT",
 			],
-			descriptionCompressed: "Send a msg to a Google Chat space",
 		},
 		{
 			name: "GOOGLE_CHAT_SEND_REACTION",
 			description: "Add or remove an emoji reaction to a Google Chat message",
 			parameters: [],
+			descriptionCompressed: "add remove emoji reaction Google Chat message",
 			similes: [
 				"REACT_GOOGLE_CHAT",
 				"GCHAT_REACT",
 				"GOOGLE_CHAT_EMOJI",
 				"ADD_GOOGLE_CHAT_REACTION",
 			],
-			descriptionCompressed:
-				"Add or remove an emoji reaction to a Google Chat msg",
 		},
 		{
 			name: "HEALTH",
 			description:
 				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
-			parameters: [],
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Which health query to run: today, trend, by_metric, status.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Which health query to run: today, trend, by_metric, status.",
+				},
+				{
+					name: "intent",
+					description:
+						"Free-form user intent used to infer subaction when not explicitly set.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-form user intent used to infer subaction when not explicitly set.",
+				},
+				{
+					name: "metric",
+					description:
+						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+				},
+				{
+					name: "date",
+					description: "YYYY-MM-DD for single-day queries.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "YYYY-MM-DD for single-day queries.",
+				},
+				{
+					name: "days",
+					description: "Window size for trend and by_metric queries.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Window size for trend and by_metric queries.",
+				},
+			],
 			similes: [
 				"FITNESS",
 				"HEALTHKIT",
@@ -3724,6 +4522,21 @@ export const allActionsSpec = {
 				"CALORIES",
 				"ACTIVITY_METRICS",
 			],
+			exampleCalls: [
+				{
+					user: "Use HEALTH with the provided parameters.",
+					actions: ["HEALTH"],
+					params: {
+						HEALTH: {
+							subaction: null,
+							intent: null,
+							metric: null,
+							date: null,
+							days: null,
+						},
+					},
+				},
+			],
 			descriptionCompressed:
 				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura - sleep",
 		},
@@ -3732,107 +4545,99 @@ export const allActionsSpec = {
 			description:
 				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
 			parameters: [],
-			similes: ["/help", "/h", "/?"],
 			descriptionCompressed:
-				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
+				"Show commands and descriptions. Trigger: /help, /h, /?.",
+			similes: ["/help", "/h", "/?"],
 		},
 		{
 			name: "ICHING_READING",
 			description:
 				"Perform an I Ching divination reading by casting a hexagram and interpreting changing lines.",
 			parameters: [],
+			descriptionCompressed:
+				"Start I Ching reading; cast a hexagram and interpret changing lines.",
 			similes: [
 				"CAST_HEXAGRAM",
 				"CONSULT_ICHING",
 				"THROW_COINS",
 				"ORACLE_READING",
 			],
-			descriptionCompressed:
-				"Perform an I Ching divination reading by casting a hexagram and interpreting changing lines.",
 		},
 		{
 			name: "IMESSAGE_SEND_MESSAGE",
 			description: "Send a text message via iMessage (macOS only)",
 			parameters: [],
+			descriptionCompressed: "Send iMessage (macOS).",
 			similes: ["SEND_IMESSAGE", "IMESSAGE_TEXT", "TEXT_IMESSAGE", "SEND_IMSG"],
-			descriptionCompressed: "Send a text msg via iMessage (macOS only)",
-		},
-		{
-			name: "INBOX_TRIAGE_GMAIL",
-			description:
-				"Compatibility-only Gmail triage shim. Delegates to the cross-platform TRIAGE_MESSAGES action with sources=['gmail']; new planner-facing inbox/email routing should use OWNER_INBOX instead.",
-			parameters: [],
-			similes: ["TRIAGE_GMAIL", "GMAIL_TRIAGE", "CHECK_GMAIL"],
-			descriptionCompressed:
-				"Compatibility-only Gmail triage shim. Delegates to the cross-platform TRIAGE_MESSAGES action with sources=['gmail']. new planner-facing inbox/email routing...",
 		},
 		{
 			name: "INSTALL_SKILL",
 			description:
 				"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
 			parameters: [],
-			similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
 			descriptionCompressed:
-				"Install a skill from the ClawHub registry. The skill will be security-scanned before activation.",
+				"Install skill from ClawHub registry. Security-scanned before activation.",
+			similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
 		},
 		{
 			name: "INTERACT_OBJECT",
 			description:
 				"Interact with a world object by name, with an optional interaction option",
 			parameters: [],
+			descriptionCompressed: "Interact with world object.",
 			similes: ["USE_OBJECT", "CLICK_OBJECT"],
-			descriptionCompressed:
-				"Interact with a world object by name, with optional interaction option",
 		},
 		{
 			name: "LINE_SEND_FLEX_MESSAGE",
 			description: "Send a rich flex message/card via LINE",
 			parameters: [],
+			descriptionCompressed: "send rich flex message/card via LINE",
 			similes: ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"],
-			descriptionCompressed: "Send a rich flex msg/card via LINE",
 		},
 		{
 			name: "LINE_SEND_LOCATION",
 			description: "Send a location message via LINE",
 			parameters: [],
+			descriptionCompressed: "send location message via LINE",
 			similes: [
 				"SEND_LINE_LOCATION",
 				"LINE_LOCATION",
 				"LINE_MAP",
 				"SHARE_LOCATION_LINE",
 			],
-			descriptionCompressed: "Send a location msg via LINE",
 		},
 		{
 			name: "LINE_SEND_MESSAGE",
 			description: "Send a text message via LINE",
 			parameters: [],
+			descriptionCompressed: "send text message via LINE",
 			similes: [
 				"SEND_LINE_MESSAGE",
 				"LINE_MESSAGE",
 				"LINE_TEXT",
 				"MESSAGE_LINE",
 			],
-			descriptionCompressed: "Send a text msg via LINE",
 		},
 		{
 			name: "LIST_ACTIVE_BLOCKS",
 			description:
 				"List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
 			parameters: [],
+			descriptionCompressed:
+				"List live website blocker status and active block rules.",
 			similes: [
 				"LIST_BLOCK_RULES",
 				"SHOW_ACTIVE_BLOCKS",
 				"WEBSITE_BLOCKS_STATUS",
 			],
-			descriptionCompressed:
-				"List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app...",
 		},
 		{
 			name: "LIST_AGENTS",
 			description:
 				"List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.",
 			parameters: [],
+			descriptionCompressed:
+				"List active task agents with progress for async status updates.",
 			similes: [
 				"LIST_CODING_AGENTS",
 				"SHOW_CODING_AGENTS",
@@ -3843,17 +4648,6 @@ export const allActionsSpec = {
 				"LIST_SUB_AGENTS",
 				"SHOW_TASK_STATUS",
 			],
-			descriptionCompressed:
-				"List active task agents together with current task progress so the main agent can keep user updated while work continues asynchronously.",
-		},
-		{
-			name: "LIST_AUTOFILL_WHITELIST",
-			description:
-				"List effective autofill whitelist entries: the bundled defaults plus user-added entries.",
-			parameters: [],
-			similes: ["SHOW_AUTOFILL_WHITELIST", "GET_AUTOFILL_WHITELIST"],
-			descriptionCompressed:
-				"List effective autofill whitelist entries: the bundled defaults plus user-added entries.",
 		},
 		{
 			name: "LIST_LINEAR_PROJECTS",
@@ -3870,6 +4664,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The to lower case to use.",
 				},
 			],
+			descriptionCompressed: "list project Linear w/ optional filter",
 			similes: [
 				"list-linear-projects",
 				"show-linear-projects",
@@ -3887,19 +4682,18 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "List projects in Linear with optional filters",
 		},
 		{
 			name: "LIST_LINEAR_TEAMS",
 			description: "List teams in Linear with optional filters",
 			parameters: [],
+			descriptionCompressed: "list team Linear w/ optional filter",
 			similes: [
 				"list-linear-teams",
 				"show-linear-teams",
 				"get-linear-teams",
 				"view-linear-teams",
 			],
-			descriptionCompressed: "List teams in Linear with optional filters",
 		},
 		{
 			name: "LIST_OVERDUE_FOLLOWUPS",
@@ -3932,6 +4726,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "List all saved playlists.",
 			similes: [
 				"SHOW_PLAYLISTS",
 				"MY_PLAYLISTS",
@@ -3949,8 +4744,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"List all saved playlists for user. Works best in DMs to avoid flooding group chats.",
 		},
 		{
 			name: "LOAD_PLAYLIST",
@@ -3958,16 +4751,18 @@ export const allActionsSpec = {
 				"Load a saved playlist and add all tracks to the queue after confirmed:true. Works best in DMs to avoid flooding group chats.",
 			parameters: [
 				{
-					name: "data",
-					description: "The data to use.",
+					name: "confirmed",
+					description: "Must be true to add the playlist tracks to the queue.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "boolean",
+						default: false,
 					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
+					descriptionCompressed:
+						"Must be true to add the playlist tracks to the queue.",
 				},
 			],
+			descriptionCompressed: "Load saved playlist, add tracks to queue.",
 			similes: [
 				"PLAY_PLAYLIST",
 				"LOAD_QUEUE",
@@ -3980,19 +4775,19 @@ export const allActionsSpec = {
 					actions: ["LOAD_PLAYLIST"],
 					params: {
 						LOAD_PLAYLIST: {
-							data: "example",
+							confirmed: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Load a saved playlist and add all tracks to the queue after confirmed:true. Works best in DMs to avoid flooding group chats.",
 		},
 		{
 			name: "lp_management",
 			description:
-				"Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, concentrated liquidity positions with custom price ranges, checking APR/yield, setting auto-rebalance preferences, and finding best pools. Use this action when users mention: liquidity, LP, pools, APR, yield, deposit, withdraw, concentrated, price range, narrow range, degenai, ai16z, SOL pairs, or want help getting started with LP management.",
+				"Single LP management action. Params: subaction=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences, chain=solana|evm, dex, pool, position, amount, range, tokenA, tokenB, chainId, slippageBps.",
 			parameters: [],
+			descriptionCompressed:
+				"manage LP positions with subaction chain dex pool position amount range token filters",
 			similes: [
 				"LP_MANAGEMENT",
 				"LIQUIDITY_POOL_MANAGEMENT",
@@ -4000,13 +4795,87 @@ export const allActionsSpec = {
 				"MANAGE_LP",
 				"MANAGE_LIQUIDITY",
 			],
-			descriptionCompressed:
-				"Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions...",
 		},
 		{
 			name: "MANAGE_ISSUES",
 			description: "Manage GitHub issues for a repository. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "operation",
+					description:
+						"The operation to perform: create, list, get, update, comment, close, reopen, add_labels",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Manage GitHub issues: create, list, comment, close, reopen.",
+				},
+				{
+					name: "repo",
+					description: "Repository in owner/repo format or full GitHub URL.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Repository in owner/repo format or full GitHub URL.",
+				},
+				{
+					name: "title",
+					description: "Issue title (for create operation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Issue title (for create operation).",
+				},
+				{
+					name: "body",
+					description:
+						"Issue body/description (for create or comment operations).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Issue body/description (for create or comment operations).",
+				},
+				{
+					name: "issueNumber",
+					description:
+						"Issue number (for get, update, comment, close, reopen operations).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Issue number (for get, update, comment, close, reopen operations).",
+				},
+				{
+					name: "labels",
+					description: "Labels to add (comma-separated string or array).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Labels to add (comma-separated string or array).",
+				},
+				{
+					name: "state",
+					description:
+						"Filter by state: open, closed, or all (for list operation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Filter by state: open, closed, or all (for list operation).",
+				},
+			],
+			descriptionCompressed:
+				"manage GitHub issue repository support create issue, list issue, get issue detail, add comment, updat, close, reopen issue",
 			similes: [
 				"CREATE_ISSUE",
 				"LIST_ISSUES",
@@ -4015,71 +4884,228 @@ export const allActionsSpec = {
 				"UPDATE_ISSUE",
 				"GET_ISSUE",
 			],
-			descriptionCompressed: "Manage GitHub issues for a repository.",
+			exampleCalls: [
+				{
+					user: "Use MANAGE_ISSUES with the provided parameters.",
+					actions: ["MANAGE_ISSUES"],
+					params: {
+						MANAGE_ISSUES: {
+							operation: null,
+							repo: null,
+							title: null,
+							body: null,
+							issueNumber: null,
+							labels: null,
+							state: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "manage_raydium_positions",
 			description:
 				"Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
 			parameters: [],
+			descriptionCompressed:
+				"automatically manage Raydium position rebalance drift too far pool price",
 			similes: [
 				"AUTOMATE_RAYDIUM_REBALANCING",
 				"AUTOMATE_RAYDIUM_POSITIONS",
 				"START_MANAGING_RAYDIUM_POSITIONS",
 			],
-			descriptionCompressed:
-				"Auto manage Raydium positions by rebalancing them when they drift too far from the pool price",
 		},
 		{
 			name: "MANAGE_SHOPIFY_CUSTOMERS",
 			description: "List and search customers in a connected Shopify store.",
 			parameters: [],
+			descriptionCompressed: "List/search Shopify customers.",
 			similes: ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"],
-			descriptionCompressed:
-				"List and search customers in a connected Shopify store.",
 		},
 		{
 			name: "MANAGE_SHOPIFY_INVENTORY",
 			description:
 				"Check inventory levels and list store locations. Stock adjustments require confirmed:true.",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description:
+						"Must be true to adjust Shopify inventory after preview.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to adjust Shopify inventory after preview.",
+				},
+			],
+			descriptionCompressed:
+				"Check inventory, adjust stock, list Shopify locations.",
 			similes: [
 				"CHECK_INVENTORY",
 				"ADJUST_INVENTORY",
 				"CHECK_STOCK",
 				"UPDATE_STOCK",
 			],
-			descriptionCompressed:
-				"Check inventory levels and list store locations. Stock adjustments require confirmed:true.",
+			exampleCalls: [
+				{
+					user: "Use MANAGE_SHOPIFY_INVENTORY with the provided parameters.",
+					actions: ["MANAGE_SHOPIFY_INVENTORY"],
+					params: {
+						MANAGE_SHOPIFY_INVENTORY: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "MANAGE_SHOPIFY_ORDERS",
 			description:
 				"List recent orders and check order status. Fulfillment requires confirmed:true.",
-			parameters: [],
-			similes: ["LIST_ORDERS", "CHECK_ORDERS", "FULFILL_ORDER", "ORDER_STATUS"],
+			parameters: [
+				{
+					name: "confirmed",
+					description: "Must be true to fulfill a Shopify order after preview.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to fulfill a Shopify order after preview.",
+				},
+			],
 			descriptionCompressed:
-				"List recent orders and check order status. Fulfillment requires confirmed:true.",
+				"List orders, check status, mark fulfilled in Shopify.",
+			similes: ["LIST_ORDERS", "CHECK_ORDERS", "FULFILL_ORDER", "ORDER_STATUS"],
+			exampleCalls: [
+				{
+					user: "Use MANAGE_SHOPIFY_ORDERS with the provided parameters.",
+					actions: ["MANAGE_SHOPIFY_ORDERS"],
+					params: {
+						MANAGE_SHOPIFY_ORDERS: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "MANAGE_SHOPIFY_PRODUCTS",
 			description:
 				"List and search Shopify products. Product creation and updates require confirmed:true.",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description:
+						"Must be true to create or update a Shopify product after preview.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to create or update a Shopify product after preview.",
+				},
+			],
+			descriptionCompressed: "List/search/create/update Shopify products.",
 			similes: [
 				"LIST_PRODUCTS",
 				"CREATE_PRODUCT",
 				"UPDATE_PRODUCT",
 				"SEARCH_PRODUCTS",
 			],
-			descriptionCompressed:
-				"List and search Shopify products. Product creation and updates require confirmed:true.",
+			exampleCalls: [
+				{
+					user: "Use MANAGE_SHOPIFY_PRODUCTS with the provided parameters.",
+					actions: ["MANAGE_SHOPIFY_PRODUCTS"],
+					params: {
+						MANAGE_SHOPIFY_PRODUCTS: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "MANAGE_WINDOW",
 			description:
-				"Manage desktop windows — list all visible windows, bring a window to the front, ",
-			parameters: [],
+				"manage_window_action:\n  purpose: Manage desktop windows: list visible windows, focus or switch, arrange or move, minimize, maximize, restore, and close.\n  guidance: Use list first to discover window IDs, then use focused window actions.\n  actions: list/focus/switch/arrange/move/minimize/maximize/restore/close.",
+			parameters: [
+				{
+					name: "action",
+					description: "Window action to perform.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"list",
+							"focus",
+							"switch",
+							"arrange",
+							"move",
+							"minimize",
+							"maximize",
+							"restore",
+							"close",
+						],
+					},
+					descriptionCompressed: "Window action to perform.",
+				},
+				{
+					name: "windowId",
+					description: "Window identifier.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Window id.",
+				},
+				{
+					name: "windowTitle",
+					description:
+						"Window title or app-name query for switch/restore/focus operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Window title or app-name query for switch/restore/focus operations.",
+				},
+				{
+					name: "arrangement",
+					description:
+						"Layout for arrange: tile, cascade, vertical, or horizontal.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Layout for arrange: tile, cascade, vertical, or horizontal.",
+				},
+				{
+					name: "x",
+					description: "Target X coordinate for move.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target X coordinate for move.",
+				},
+				{
+					name: "y",
+					description: "Target Y coordinate for move.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target Y coordinate for move.",
+				},
+			],
+			descriptionCompressed:
+				"Window management router: list/focus/switch/arrange/move/minimize/maximize/restore/close; list first to discover window ids.",
 			similes: [
 				"LIST_WINDOWS",
 				"FOCUS_WINDOW",
@@ -4091,20 +5117,79 @@ export const allActionsSpec = {
 				"CLOSE_WINDOW",
 				"WINDOW_MANAGEMENT",
 			],
-			descriptionCompressed:
-				"Manage desktop windows - list all visible windows, bring a window to the front,",
+			exampleCalls: [
+				{
+					user: "Use MANAGE_WINDOW with the provided parameters.",
+					actions: ["MANAGE_WINDOW"],
+					params: {
+						MANAGE_WINDOW: {
+							action: null,
+							windowId: null,
+							windowTitle: null,
+							arrangement: null,
+							x: null,
+							y: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "MARK_FOLLOWUP_DONE",
 			description:
 				"Mark a contact as already followed-up-with (updates lastContactedAt to now). ",
-			parameters: [],
+			parameters: [
+				{
+					name: "contactId",
+					description:
+						"UUID of the contact. Preferred when known — eliminates name ambiguity.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"UUID of the contact. Preferred when known - eliminates name ambiguity.",
+				},
+				{
+					name: "contactName",
+					description:
+						"Human-readable contact name. Must be unambiguous across stored contacts.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Human-readable contact name. Must be unambiguous across stored contacts.",
+				},
+				{
+					name: "note",
+					description: "Optional note about the interaction.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional note about the interaction.",
+				},
+			],
 			similes: [
 				"FOLLOWED_UP",
 				"FOLLOWUP_DONE",
 				"CONTACTED",
 				"MARK_CONTACTED",
 				"RECORD_INTERACTION",
+			],
+			exampleCalls: [
+				{
+					user: "Use MARK_FOLLOWUP_DONE with the provided parameters.",
+					actions: ["MARK_FOLLOWUP_DONE"],
+					params: {
+						MARK_FOLLOWUP_DONE: {
+							contactId: null,
+							contactName: null,
+							note: null,
+						},
+					},
+				},
 			],
 			descriptionCompressed:
 				"Mark a contact as already followed-up-with (updates lastContactedAt to now).",
@@ -4113,8 +5198,8 @@ export const allActionsSpec = {
 			name: "MATH_CLEAR",
 			description: "Clear all calculation buffers and reset to zero.",
 			parameters: [],
+			descriptionCompressed: "clear calculation buffer reset zero",
 			similes: ["CLEAR", "RESET", "CLEAR_ALL"],
-			descriptionCompressed: "Clear all calculation buffers and reset to zero.",
 		},
 		{
 			name: "MATH_RECALL",
@@ -4131,6 +5216,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed: "recall value memory input buffer",
 			similes: ["RECALL", "LOAD", "MEMORY_RECALL"],
 			exampleCalls: [
 				{
@@ -4143,7 +5229,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Recall value from memory to input buffer.",
 		},
 		{
 			name: "MATH_STORE",
@@ -4160,6 +5245,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed: "store current accumulator value memory",
 			similes: ["STORE", "SAVE", "MEMORY_STORE"],
 			exampleCalls: [
 				{
@@ -4172,21 +5258,20 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Store current accumulator value to memory.",
 		},
 		{
 			name: "MATRIX_JOIN_ROOM",
 			description: "Join a Matrix room by ID or alias",
 			parameters: [],
+			descriptionCompressed: "join Matrix room ID alia",
 			similes: ["JOIN_MATRIX_ROOM", "ENTER_ROOM"],
-			descriptionCompressed: "Join a Matrix room by ID or alias",
 		},
 		{
 			name: "MATRIX_LIST_ROOMS",
 			description: "List all Matrix rooms the bot has joined",
 			parameters: [],
+			descriptionCompressed: "list Matrix room bot join",
 			similes: ["LIST_MATRIX_ROOMS", "SHOW_ROOMS", "GET_ROOMS", "MY_ROOMS"],
-			descriptionCompressed: "List all Matrix rooms the bot has joined",
 		},
 		{
 			name: "MATRIX_SEND_MESSAGE",
@@ -4203,6 +5288,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "send message Matrix room",
 			similes: ["SEND_MATRIX_MESSAGE", "MESSAGE_MATRIX", "MATRIX_TEXT"],
 			exampleCalls: [
 				{
@@ -4215,7 +5301,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send a msg to a Matrix room",
 		},
 		{
 			name: "MATRIX_SEND_REACTION",
@@ -4232,6 +5317,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "react Matrix message w/ emoji",
 			similes: ["REACT_MATRIX", "MATRIX_REACT", "ADD_MATRIX_REACTION"],
 			exampleCalls: [
 				{
@@ -4244,169 +5330,35 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "React to a Matrix msg with an emoji",
-		},
-		{
-			name: "MC_ATTACK",
-			description:
-				"Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
-			parameters: [],
-			similes: ["MINECRAFT_ATTACK", "HIT_ENTITY"],
-			descriptionCompressed:
-				"Attack an entity by numeric entityId (from MC_WORLD_STATE. nearbyEntities).",
-		},
-		{
-			name: "MC_CHAT",
-			description: "Send a chat message in Minecraft as the bot",
-			parameters: [],
-			similes: ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"],
-			descriptionCompressed: "Send a chat msg in Minecraft as the bot",
-		},
-		{
-			name: "MC_CONNECT",
-			description: "Connect the Mineflayer bot to a Minecraft server",
-			parameters: [],
-			similes: ["MINECRAFT_CONNECT", "JOIN_SERVER", "CONNECT_TO_MINECRAFT"],
-			descriptionCompressed: "Connect the Mineflayer bot to a Minecraft server",
-		},
-		{
-			name: "MC_CONTROL",
-			description:
-				"Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
-			parameters: [],
-			similes: ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"],
-			descriptionCompressed:
-				"Set a control state (e. g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control, state, durationMs?} or 'forward true 1000'.",
-		},
-		{
-			name: "MC_DIG",
-			description:
-				'Dig/break the block at (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
-			parameters: [],
-			similes: ["MINECRAFT_DIG", "MINE_BLOCK", "BREAK_BLOCK"],
-			descriptionCompressed:
-				'Dig/break the block at (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10, "y":64, "z":-20}.',
-		},
-		{
-			name: "MC_DISCONNECT",
-			description: "Disconnect the Mineflayer bot from the Minecraft server",
-			parameters: [],
-			similes: ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"],
-			descriptionCompressed:
-				"Disconnect the Mineflayer bot from the Minecraft server",
-		},
-		{
-			name: "MC_GOTO",
-			description:
-				'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
-			parameters: [],
-			similes: ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"],
-			descriptionCompressed:
-				'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10, "y":64, "z":-20}.',
-		},
-		{
-			name: "MC_LOOK",
-			description:
-				"Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
-			parameters: [],
-			similes: ["MINECRAFT_LOOK", "TURN_HEAD"],
-			descriptionCompressed:
-				"Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw, pitch}.",
-		},
-		{
-			name: "MC_PLACE",
-			description:
-				"Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
-			parameters: [],
-			similes: ["MINECRAFT_PLACE", "PLACE_BLOCK"],
-			descriptionCompressed:
-				"Place the -held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x, y, z, face}.",
-		},
-		{
-			name: "MC_SCAN",
-			description:
-				'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"],"radius":16,"maxResults":32}. If omitted, scans for any non-air blocks.',
-			parameters: [],
-			similes: ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"],
-			descriptionCompressed:
-				'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"], "radius":16, "maxResults":32}. If omitted, scans for any non-air blocks.',
-		},
-		{
-			name: "MC_STOP",
-			description: "Stop pathfinding / movement goals.",
-			parameters: [],
-			similes: ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"],
-			descriptionCompressed: "Stop pathfinding/movement goals.",
-		},
-		{
-			name: "MC_WAYPOINT_DELETE",
-			description: "Delete a named waypoint (message text is the name).",
-			parameters: [],
-			similes: [
-				"MINECRAFT_WAYPOINT_DELETE",
-				"DELETE_WAYPOINT",
-				"REMOVE_WAYPOINT",
-			],
-			descriptionCompressed: "Delete a named waypoint (msg text is the name).",
-		},
-		{
-			name: "MC_WAYPOINT_GOTO",
-			description: "Pathfind to a named waypoint (message text is the name).",
-			parameters: [],
-			similes: [
-				"MINECRAFT_WAYPOINT_GOTO",
-				"GOTO_WAYPOINT",
-				"NAVIGATE_WAYPOINT",
-			],
-			descriptionCompressed:
-				"Pathfind to a named waypoint (msg text is the name).",
-		},
-		{
-			name: "MC_WAYPOINT_LIST",
-			description: "List saved waypoints.",
-			parameters: [],
-			similes: ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"],
-			descriptionCompressed: "List saved waypoints.",
-		},
-		{
-			name: "MC_WAYPOINT_SET",
-			description:
-				"Save the bot's current position as a named waypoint (message text is the name).",
-			parameters: [],
-			similes: ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"],
-			descriptionCompressed:
-				"Save the bot's current position as a named waypoint (msg text is the name).",
 		},
 		{
 			name: "MINE_ROCK",
 			description:
 				"Mine a nearby rock, optionally specifying the ore type (copper, tin, iron, etc.)",
 			parameters: [],
+			descriptionCompressed: "Mine nearby rock, opt. ore type.",
 			similes: ["MINE_ORE", "MINE"],
-			descriptionCompressed:
-				"Mine a nearby rock, optionally specifying the ore type (copper, tin, iron, etc.)",
 		},
 		{
 			name: "MODELS_COMMAND",
 			description:
 				"List available AI models and providers. Only activates for /models slash command.",
 			parameters: [],
+			descriptionCompressed: "List AI models/providers. Trigger: /models.",
 			similes: ["/models"],
-			descriptionCompressed:
-				"List available AI models and providers. Only activates for /models slash command.",
 		},
 		{
 			name: "MODIFY_EXISTING_N8N_WORKFLOW",
 			description: "Load an existing deployed n8n workflow for modification. ",
 			parameters: [],
+			descriptionCompressed:
+				"Load deployed n8n workflow into draft editor; then use CREATE_N8N_WORKFLOW to change, preview, redeploy.",
 			similes: [
 				"EDIT_EXISTING_WORKFLOW",
 				"UPDATE_EXISTING_WORKFLOW",
 				"CHANGE_EXISTING_WORKFLOW",
 				"LOAD_WORKFLOW_FOR_EDIT",
 			],
-			descriptionCompressed:
-				"Load an existing deployed n8n workflow for modification.",
 		},
 		{
 			name: "MULTIVERSE_ADD",
@@ -4424,6 +5376,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"perform addition multiverse number behave differently base dimensional constant (prime, quantum, chaos)",
 			similes: ["M_ADD", "MULTI_ADD", "DIMENSIONAL_ADD"],
 			exampleCalls: [
 				{
@@ -4436,8 +5390,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
 		},
 		{
 			name: "MULTIVERSE_DIVIDE",
@@ -4455,6 +5407,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"perform division multiverse infinity zero special meaning (safe, infinite, golden)",
 			similes: ["M_DIVIDE", "MULTI_DIV", "DIMENSIONAL_DIVIDE"],
 			exampleCalls: [
 				{
@@ -4467,8 +5421,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
 		},
 		{
 			name: "MULTIVERSE_MODULO",
@@ -4486,6 +5438,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"perform modulo operation multiverse w/ cyclical dimensional property (cyclical, spiral, fractal)",
 			similes: ["M_MODULO", "MULTI_MOD", "DIMENSIONAL_MODULO"],
 			exampleCalls: [
 				{
@@ -4498,8 +5452,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
 		},
 		{
 			name: "MULTIVERSE_MULTIPLY",
@@ -4517,6 +5469,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"perform multiplication across dimensional boundary w/ exotic number behavior (fibonacci, exponential, harmonic)",
 			similes: ["M_MULTIPLY", "MULTI_MUL", "DIMENSIONAL_MULTIPLY"],
 			exampleCalls: [
 				{
@@ -4529,8 +5483,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
 		},
 		{
 			name: "MULTIVERSE_POWER",
@@ -4548,6 +5500,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"raise number power multiverse w/ dimensional effect (standard, imaginary, recursive)",
 			similes: ["M_POWER", "MULTI_POW", "DIMENSIONAL_POWER"],
 			exampleCalls: [
 				{
@@ -4560,8 +5514,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
 		},
 		{
 			name: "MULTIVERSE_SQRT",
@@ -4579,6 +5531,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"take square root multiverse w/ dimensional variation (positive, complex, quantum)",
 			similes: ["M_SQRT", "MULTI_ROOT", "DIMENSIONAL_SQRT"],
 			exampleCalls: [
 				{
@@ -4591,8 +5545,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
 		},
 		{
 			name: "MULTIVERSE_SUBTRACT",
@@ -4610,6 +5562,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"perform subtraction multiverse negative number exist dimension (absolute, mirror, void)",
 			similes: ["M_SUBTRACT", "MULTI_SUB", "DIMENSIONAL_SUBTRACT"],
 			exampleCalls: [
 				{
@@ -4622,60 +5576,309 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "MUSIC_GENERATION",
+			description:
+				"Generate music through Suno. Use subaction generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Suno operation: generate, custom, or extend.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["generate", "custom", "extend"],
+					},
+					descriptionCompressed: "Suno operation: generate, custom, or extend.",
+				},
+				{
+					name: "prompt",
+					description: "Music prompt for generate/custom.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Music prompt for generate/custom.",
+				},
+				{
+					name: "audio_id",
+					description: "Existing Suno audio id for extend.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Existing Suno audio id for extend.",
+				},
+				{
+					name: "duration",
+					description: "Generation duration or extension seconds.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 30,
+					},
+					descriptionCompressed: "Generation duration or extension seconds.",
+				},
+			],
 			descriptionCompressed:
-				"Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
+				"Suno music generation router: generate, custom, extend.",
+			similes: [
+				"GENERATE_MUSIC",
+				"CREATE_MUSIC",
+				"MAKE_MUSIC",
+				"COMPOSE_MUSIC",
+				"CUSTOM_GENERATE_MUSIC",
+				"EXTEND_AUDIO",
+			],
+			exampleCalls: [
+				{
+					user: "Use MUSIC_GENERATION with the provided parameters.",
+					actions: ["MUSIC_GENERATION"],
+					params: {
+						MUSIC_GENERATION: {
+							subaction: null,
+							prompt: null,
+							audio_id: null,
+							duration: null,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MUSIC_LIBRARY",
+			description:
+				"Music library router. Use subaction download to fetch music into the local library without playing it. Requires confirmed:true before downloading.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Library operation. Currently: download.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["download"],
+					},
+					descriptionCompressed: "Library operation. : download.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true to download music.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true to download music.",
+				},
+			],
+			descriptionCompressed:
+				"Library router: download music into local library.",
+			similes: ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
+			exampleCalls: [
+				{
+					user: "Use MUSIC_LIBRARY with the provided parameters.",
+					actions: ["MUSIC_LIBRARY"],
+					params: {
+						MUSIC_LIBRARY: {
+							subaction: null,
+							confirmed: null,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MUSIC_METADATA_SEARCH",
+			description:
+				"Music metadata/search router. Use subaction youtube to return YouTube links, wikipedia to look up artist/album/song metadata, or resolve_and_queue for complex music requests that need research before queueing. ",
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Search operation: youtube, wikipedia, or resolve_and_queue.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["youtube", "wikipedia", "resolve_and_queue"],
+					},
+					descriptionCompressed:
+						"Search operation: youtube, wikipedia, or resolve_and_queue.",
+				},
+				{
+					name: "query",
+					description: "Search or metadata lookup query.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search or metadata lookup query.",
+				},
+				{
+					name: "entityType",
+					description: "For wikipedia subaction: artist, album, or song.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["artist", "album", "song"],
+					},
+					descriptionCompressed:
+						"For wikipedia subaction: artist, album, or song.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for resolve_and_queue.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true for resolve_and_queue.",
+				},
+			],
+			descriptionCompressed:
+				"Music metadata/search: YouTube links, Wikipedia metadata, resolve complex query and queue.",
+			similes: [
+				"SEARCH_YOUTUBE",
+				"FIND_YOUTUBE",
+				"PLAY_MUSIC_QUERY",
+				"RESEARCH_AND_PLAY",
+				"WIKIPEDIA_MUSIC",
+				"MUSIC_INFO_SEARCH",
+			],
+			exampleCalls: [
+				{
+					user: "Use MUSIC_METADATA_SEARCH with the provided parameters.",
+					actions: ["MUSIC_METADATA_SEARCH"],
+					params: {
+						MUSIC_METADATA_SEARCH: {
+							subaction: null,
+							query: null,
+							entityType: null,
+							confirmed: null,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MUSIC_PLAYLIST",
+			description:
+				"Playlist router. Use subaction save, load, list, delete, or add. Save/load/delete/add require confirmed:true when changing queue or saved playlists.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Playlist operation: save, load, list, delete, or add.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["save", "load", "list", "delete", "add"],
+					},
+					descriptionCompressed:
+						"Playlist operation: save, load, list, delete, or add.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for state-changing playlist operations.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true for state-changing playlist operations.",
+				},
+			],
+			descriptionCompressed: "Playlist router: save, load, list, delete, add.",
+			similes: [
+				"SAVE_PLAYLIST",
+				"LOAD_PLAYLIST",
+				"LIST_PLAYLISTS",
+				"DELETE_PLAYLIST",
+				"ADD_TO_PLAYLIST",
+			],
+			exampleCalls: [
+				{
+					user: "Use MUSIC_PLAYLIST with the provided parameters.",
+					actions: ["MUSIC_PLAYLIST"],
+					params: {
+						MUSIC_PLAYLIST: {
+							subaction: null,
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "NAVIGATE_DIALOG",
 			description:
 				"Select a dialog option by number (1-based) during an NPC conversation",
 			parameters: [],
+			descriptionCompressed: "Select NPC dialog option by number.",
 			similes: ["SELECT_DIALOG", "CHOOSE_OPTION", "DIALOG_OPTION"],
-			descriptionCompressed:
-				"Select a dialog option by number (1-based) during an NPC convo",
 		},
 		{
 			name: "NOSTR_PUBLISH_PROFILE",
 			description:
 				"Publish or update the bot's Nostr profile (kind:0 metadata)",
 			parameters: [],
-			similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
 			descriptionCompressed:
-				"Publish or update the bot's Nostr profile (kind:0 metadata)",
+				"publish update bot Nostr profile (kind: 0 metadata)",
+			similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
 		},
 		{
 			name: "NOSTR_SEND_DM",
 			description: "Send an encrypted direct message via Nostr (NIP-04)",
 			parameters: [],
+			descriptionCompressed: "send encrypt direct message via Nostr (NIP-04)",
 			similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
-			descriptionCompressed: "Send an encrypted direct msg via Nostr (NIP-04)",
 		},
 		{
 			name: "OPEN_BANK",
 			description: "Open the nearest bank booth or banker NPC",
 			parameters: [],
+			descriptionCompressed: "Open nearest bank.",
 			similes: ["USE_BANK", "ACCESS_BANK"],
-			descriptionCompressed: "Open the nearest bank booth or banker NPC",
 		},
 		{
 			name: "OPEN_DOOR",
 			description: "Open the nearest door or gate",
 			parameters: [],
+			descriptionCompressed: "Open nearest door/gate.",
 			similes: ["OPEN_GATE", "USE_DOOR"],
-			descriptionCompressed: "Open the nearest door or gate",
 		},
 		{
 			name: "OPEN_SHOP",
 			description: "Open a shop by talking to a shopkeeper NPC",
 			parameters: [],
+			descriptionCompressed: "Open shop via shopkeeper.",
 			similes: ["TRADE_WITH_NPC", "BROWSE_SHOP"],
-			descriptionCompressed: "Open a shop by talking to a shopkeeper NPC",
 		},
 		{
 			name: "OWNER_SCHEDULE",
 			description:
 				"Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "subaction",
+					description: "Optional. summary or inspect.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional. summary or inspect.",
+				},
+				{
+					name: "timezone",
+					description: "Optional IANA timezone override.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional IANA timezone override.",
+				},
+			],
 			similes: [
 				"OWNER_SLEEP",
 				"OWNER_SLEEP_SCHEDULE",
@@ -4683,6 +5886,18 @@ export const allActionsSpec = {
 				"OWNER_ROUTINE",
 				"SLEEP_INFERENCE",
 				"MEAL_INFERENCE",
+			],
+			exampleCalls: [
+				{
+					user: "Use OWNER_SCHEDULE with the provided parameters.",
+					actions: ["OWNER_SCHEDULE"],
+					params: {
+						OWNER_SCHEDULE: {
+							subaction: null,
+							timezone: null,
+						},
+					},
+				},
 			],
 			descriptionCompressed:
 				"Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals.",
@@ -4692,38 +5907,74 @@ export const allActionsSpec = {
 			description:
 				"Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio. ",
 			parameters: [],
+			descriptionCompressed: "Pause current track. Not via PLAY_AUDIO.",
 			similes: ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"],
-			descriptionCompressed:
-				"Pause the playing track (hold playback). Use whenever user asks to pause music or audio.",
 		},
 		{
 			name: "PICKPOCKET_NPC",
 			description: "Pickpocket a nearby NPC by name",
 			parameters: [],
+			descriptionCompressed: "Pickpocket nearby NPC.",
 			similes: ["STEAL_FROM_NPC", "THIEVE_NPC"],
-			descriptionCompressed: "Pickpocket a nearby NPC by name",
 		},
 		{
 			name: "PICKUP_ITEM",
 			description: "Pick up an item from the ground by name",
 			parameters: [],
+			descriptionCompressed: "Pick up ground item.",
 			similes: ["TAKE_ITEM", "GRAB_ITEM", "LOOT_ITEM"],
-			descriptionCompressed: "Pick up an item from the ground by name",
 		},
 		{
 			name: "PLACE_CALL",
 			description:
 				"Place a phone call to a given number using the Android Telecom service. ",
-			parameters: [],
-			similes: ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
+			parameters: [
+				{
+					name: "phoneNumber",
+					description:
+						"Phone number to call. Accepts E.164 (`+15551234567`) or local ",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Phone number to call. Accepts E. 164 (`+15551234567`) or local",
+				},
+			],
 			descriptionCompressed:
-				"Place a phone call to a given number using the Android Telecom service.",
+				"Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
+			similes: ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
+			exampleCalls: [
+				{
+					user: "Use PLACE_CALL with the provided parameters.",
+					actions: ["PLACE_CALL"],
+					params: {
+						PLACE_CALL: {
+							phoneNumber: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "PLAY_AUDIO",
 			description:
 				"Start playing a new song: provide a track name, artist, search words, or a media URL. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description: "Must be true to play or queue the requested audio.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to play or queue the requested audio.",
+				},
+			],
+			descriptionCompressed:
+				"Play new song by name/artist/URL. Not for pause/resume/stop/skip.",
 			similes: [
 				"PLAY_YOUTUBE",
 				"PLAY_YOUTUBE_AUDIO",
@@ -4738,14 +5989,37 @@ export const allActionsSpec = {
 				"QUEUE_SONG",
 				"ADD_TO_QUEUE",
 			],
-			descriptionCompressed:
-				"Start playing a new song: provide a track name, artist, search words, or a media URL.",
+			exampleCalls: [
+				{
+					user: "Use PLAY_AUDIO with the provided parameters.",
+					actions: ["PLAY_AUDIO"],
+					params: {
+						PLAY_AUDIO: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "PLAY_EMOTE",
 			description:
 				"Play a one-shot emote animation on your 3D VRM avatar, then return to idle. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "emote",
+					description:
+						"Required emote ID to play once silently before returning to idle. ",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Required emote ID to play once silently before returning to idle.",
+				},
+			],
+			descriptionCompressed:
+				"Play one-shot VRM avatar emote animation. Silent visual side-action.",
 			similes: [
 				"EMOTE",
 				"ANIMATE",
@@ -4756,77 +6030,212 @@ export const allActionsSpec = {
 				"DO_EMOTE",
 				"PERFORM",
 			],
-			descriptionCompressed:
-				"Play a one-shot emote animation on your 3D VRM avatar, then return to idle.",
+			exampleCalls: [
+				{
+					user: "Use PLAY_EMOTE with the provided parameters.",
+					actions: ["PLAY_EMOTE"],
+					params: {
+						PLAY_EMOTE: {
+							emote: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "PLAY_MUSIC_QUERY",
 			description:
 				"Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description:
+						"Must be true to resolve the music query and add the result to the queue.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to resolve the music query and add the result to the queue.",
+				},
+			],
+			descriptionCompressed:
+				"Complex music search: artist, genre, mood, era, activity, charts, soundtracks, versions. Uses web search + databases.",
 			similes: [
 				"SMART_PLAY",
 				"RESEARCH_AND_PLAY",
 				"FIND_AND_PLAY",
 				"INTELLIGENT_MUSIC_SEARCH",
 			],
-			descriptionCompressed:
-				"Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first...",
+			exampleCalls: [
+				{
+					user: "Use PLAY_MUSIC_QUERY with the provided parameters.",
+					actions: ["PLAY_MUSIC_QUERY"],
+					params: {
+						PLAY_MUSIC_QUERY: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "POLYMARKET_GET_MARKET",
 			description: "Fetch a single Polymarket market by market id or slug.",
-			parameters: [],
+			parameters: [
+				{
+					name: "id",
+					description: "Polymarket Gamma market id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Polymarket Gamma market id.",
+				},
+				{
+					name: "slug",
+					description: "Polymarket market slug.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Polymarket market slug.",
+				},
+			],
+			descriptionCompressed: "Fetch a Polymarket market by id or slug.",
 			similes: ["POLYMARKET_MARKET", "POLYMARKET_MARKET_DETAILS"],
-			descriptionCompressed:
-				"Fetch a single Polymarket market by market id or slug.",
+			exampleCalls: [
+				{
+					user: "Use POLYMARKET_GET_MARKET with the provided parameters.",
+					actions: ["POLYMARKET_GET_MARKET"],
+					params: {
+						POLYMARKET_GET_MARKET: {
+							id: null,
+							slug: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "POLYMARKET_GET_MARKETS",
 			description:
 				"List active Polymarket markets. Supports limit and offset parameters.",
-			parameters: [],
+			parameters: [
+				{
+					name: "limit",
+					description: "Maximum markets to return, from 1 to 100.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 20,
+					},
+					descriptionCompressed: "max markets to return, from 1 to 100.",
+				},
+				{
+					name: "offset",
+					description: "Market result offset.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 0,
+					},
+					descriptionCompressed: "Market result offset.",
+				},
+			],
+			descriptionCompressed: "List active Polymarket markets.",
 			similes: ["POLYMARKET_MARKETS", "SEARCH_POLYMARKET_MARKETS"],
-			descriptionCompressed:
-				"List active Polymarket markets. Supports limit and offset params.",
+			exampleCalls: [
+				{
+					user: "Use POLYMARKET_GET_MARKETS with the provided parameters.",
+					actions: ["POLYMARKET_GET_MARKETS"],
+					params: {
+						POLYMARKET_GET_MARKETS: {
+							limit: null,
+							offset: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "POLYMARKET_GET_ORDERBOOK",
 			description:
 				"Fetch a token orderbook and derive true best bid/ask from all CLOB levels.",
-			parameters: [],
+			parameters: [
+				{
+					name: "tokenId",
+					description: "Polymarket CLOB token id.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Polymarket CLOB token id.",
+				},
+			],
+			descriptionCompressed: "Get a Polymarket token quote/orderbook.",
 			similes: [
 				"POLYMARKET_QUOTE",
 				"POLYMARKET_ORDERBOOK",
 				"POLYMARKET_TOKEN_INFO",
 			],
-			descriptionCompressed:
-				"Fetch a token orderbook and derive true best bid/ask from all CLOB levels.",
+			exampleCalls: [
+				{
+					user: "Use POLYMARKET_GET_ORDERBOOK with the provided parameters.",
+					actions: ["POLYMARKET_GET_ORDERBOOK"],
+					params: {
+						POLYMARKET_GET_ORDERBOOK: {
+							tokenId: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "POLYMARKET_GET_POSITIONS",
 			description: "Fetch Polymarket positions for a wallet address.",
-			parameters: [],
+			parameters: [
+				{
+					name: "user",
+					description: "Wallet address whose positions should be fetched.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Wallet address whose positions should be fetched.",
+				},
+			],
+			descriptionCompressed: "Fetch Polymarket wallet positions.",
 			similes: ["POLYMARKET_POSITIONS", "POLYMARKET_WALLET_POSITIONS"],
-			descriptionCompressed: "Fetch Polymarket positions for a wallet address.",
+			exampleCalls: [
+				{
+					user: "Use POLYMARKET_GET_POSITIONS with the provided parameters.",
+					actions: ["POLYMARKET_GET_POSITIONS"],
+					params: {
+						POLYMARKET_GET_POSITIONS: {
+							user: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "POLYMARKET_PLACE_ORDER",
 			description:
 				"Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
 			parameters: [],
+			descriptionCompressed: "Report disabled Polymarket trading readiness.",
 			similes: ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"],
-			descriptionCompressed:
-				"Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
 		},
 		{
 			name: "POLYMARKET_STATUS",
 			description:
 				"Check Polymarket public-read and trading readiness for the local app.",
 			parameters: [],
+			descriptionCompressed: "Check Polymarket readiness.",
 			similes: ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"],
-			descriptionCompressed:
-				"Check Polymarket public-read and trading readiness for the local app.",
 		},
 		{
 			name: "POST_INSTAGRAM_COMMENT",
@@ -4843,6 +6252,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The reply to use.",
 				},
 			],
+			descriptionCompressed: "post comment Instagram post media",
 			similes: [
 				"instagram_comment",
 				"comment_instagram",
@@ -4860,12 +6270,12 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Post a comment on an Instagram post or media",
 		},
 		{
 			name: "POST_TWEET",
 			description: "Post a tweet on Twitter",
 			parameters: [],
+			descriptionCompressed: "Post tweet.",
 			similes: [
 				"TWEET",
 				"SEND_TWEET",
@@ -4873,13 +6283,79 @@ export const allActionsSpec = {
 				"POST_ON_TWITTER",
 				"SHARE_ON_TWITTER",
 			],
-			descriptionCompressed: "Post a tweet on Twitter",
 		},
 		{
 			name: "PREPARE_SWAP",
 			description:
 				"Prepare a non-binding swap proposal: returns route options, slippage ",
-			parameters: [],
+			parameters: [
+				{
+					name: "fromSymbol",
+					description:
+						'Source asset symbol (e.g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Source asset symbol (e. g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+				},
+				{
+					name: "toSymbol",
+					description:
+						'Destination asset symbol (e.g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Destination asset symbol (e. g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+				},
+				{
+					name: "amount",
+					description:
+						'Amount of the source asset to swap (human-readable units, e.g. "0.5").',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Amount of the source asset to swap (human-readable units, e. g. "0. 5").',
+				},
+				{
+					name: "fromAddress",
+					description:
+						"Source token contract address (required when the source asset is not BNB).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Source token contract address (required when the source asset is not BNB).",
+				},
+				{
+					name: "toAddress",
+					description:
+						"Destination token contract address (required when the destination asset is not BNB).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Destination token contract address (required when the destination asset is not BNB).",
+				},
+				{
+					name: "slippageBps",
+					description: "Slippage tolerance in basis points (default 300 = 3%).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Slippage tolerance in basis points (default 300 = 3%).",
+				},
+			],
+			descriptionCompressed: "Quote a BSC swap (no execution).",
 			similes: [
 				"QUOTE_SWAP",
 				"PREVIEW_SWAP",
@@ -4887,52 +6363,127 @@ export const allActionsSpec = {
 				"SWAP_QUOTE",
 				"GET_SWAP_QUOTE",
 			],
-			descriptionCompressed:
-				"Prepare a non-binding swap proposal: returns route options, slippage",
+			exampleCalls: [
+				{
+					user: "Use PREPARE_SWAP with the provided parameters.",
+					actions: ["PREPARE_SWAP"],
+					params: {
+						PREPARE_SWAP: {
+							fromSymbol: null,
+							toSymbol: null,
+							amount: null,
+							fromAddress: null,
+							toAddress: null,
+							slippageBps: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "PREPARE_TRANSFER",
 			description:
 				"Prepare a non-binding transfer proposal: validates the recipient ",
-			parameters: [],
+			parameters: [
+				{
+					name: "toAddress",
+					description:
+						"Recipient EVM address (0x-prefixed, 40 hex characters).",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Recipient EVM address (0x-prefixed, 40 hex characters).",
+				},
+				{
+					name: "assetSymbol",
+					description: 'Token symbol to transfer (e.g. "BNB", "USDT", "USDC").',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Token symbol to transfer (e. g. "BNB", "USDT", "USDC").',
+				},
+				{
+					name: "amount",
+					description: 'Human-readable transfer amount (e.g. "1.5", "100").',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Human-readable transfer amount (e. g. "1. 5", "100").',
+				},
+			],
+			descriptionCompressed: "Preview a token transfer (no execution).",
 			similes: [
 				"PREVIEW_TRANSFER",
 				"ESTIMATE_TRANSFER",
 				"QUOTE_TRANSFER",
 				"TRANSFER_PREVIEW",
 			],
-			descriptionCompressed:
-				"Prepare a non-binding transfer proposal: validates the recipient",
-		},
-		{
-			name: "PROVISION_CLOUD_AGENT",
-			description:
-				"Deploy an ElizaOS agent to ElizaCloud. Provisions a container, waits for deployment, connects the bridge, and starts auto-backup.",
-			parameters: [],
-			similes: [
-				"deploy agent to cloud",
-				"launch cloud agent",
-				"start remote agent",
-				"provision container",
+			exampleCalls: [
+				{
+					user: "Use PREPARE_TRANSFER with the provided parameters.",
+					actions: ["PREPARE_TRANSFER"],
+					params: {
+						PREPARE_TRANSFER: {
+							toAddress: null,
+							assetSymbol: null,
+							amount: null,
+						},
+					},
+				},
 			],
-			descriptionCompressed:
-				"Deploy an ElizaOS agent to ElizaCloud. Provisions a container, waits for deployment, connects the bridge, and starts auto-backup.",
 		},
 		{
 			name: "PROVISION_WORKSPACE",
 			description: "Create a git workspace for coding tasks. ",
 			parameters: [
 				{
-					name: "codingWorkspace",
-					description: "The coding workspace to use.",
+					name: "repo",
+					description: "Git repository URL to clone.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The coding workspace to use.",
+					descriptionCompressed: "Create git workspace for coding tasks.",
+				},
+				{
+					name: "baseBranch",
+					description:
+						"Base branch to create feature branch from (default: main).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Base branch to create feature branch from (default: main).",
+				},
+				{
+					name: "useWorktree",
+					description: "Create a git worktree instead of a full clone.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Create a git worktree instead of a full clone.",
+				},
+				{
+					name: "parentWorkspaceId",
+					description: "Parent workspace ID for worktree creation.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Parent workspace ID for worktree creation.",
 				},
 			],
+			descriptionCompressed:
+				"create git workspace cod task clone repository create git worktree isolat development",
 			similes: [
 				"CREATE_WORKSPACE",
 				"CLONE_REPO",
@@ -4945,12 +6496,14 @@ export const allActionsSpec = {
 					actions: ["PROVISION_WORKSPACE"],
 					params: {
 						PROVISION_WORKSPACE: {
-							codingWorkspace: "example",
+							repo: null,
+							baseBranch: null,
+							useWorktree: null,
+							parentWorkspaceId: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed: "Create a git workspace for coding tasks.",
 		},
 		{
 			name: "QUERY_ENTITIES",
@@ -4967,6 +6520,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed: "query entity type attribute value",
 			similes: ["FIND_ENTITIES", "SEARCH_ENTITIES", "LIST_ENTITIES"],
 			exampleCalls: [
 				{
@@ -4979,7 +6533,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Query entities by type or attribute values.",
 		},
 		{
 			name: "QUERY_RELATIONSHIPS",
@@ -4997,6 +6550,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed: "query relationship specific type specific entity",
 			similes: ["FIND_RELATIONSHIPS", "GET_CONNECTIONS", "SHOW_LINKS"],
 			exampleCalls: [
 				{
@@ -5009,24 +6563,24 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Query relationships of a specific type or for a specific entity.",
 		},
 		{
 			name: "QUEUE_MUSIC",
 			description: "Add a song to the queue for later after confirmed:true.",
 			parameters: [
 				{
-					name: "data",
-					description: "The data to use.",
+					name: "confirmed",
+					description: "Must be true to fetch and add the song to the queue.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "boolean",
+						default: false,
 					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
+					descriptionCompressed:
+						"Must be true to fetch and add the song to the queue.",
 				},
 			],
+			descriptionCompressed: "Queue song for later.",
 			similes: ["ADD_TO_QUEUE", "QUEUE_SONG", "QUEUE_TRACK", "ADD_SONG"],
 			exampleCalls: [
 				{
@@ -5034,27 +6588,49 @@ export const allActionsSpec = {
 					actions: ["QUEUE_MUSIC"],
 					params: {
 						QUEUE_MUSIC: {
-							data: "example",
+							confirmed: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Add a song to the queue for later after confirmed:true.",
 		},
 		{
 			name: "READ_CALL_LOG",
 			description:
 				"List the most recent phone calls from the Android call log. Returns up ",
-			parameters: [],
+			parameters: [
+				{
+					name: "limit",
+					description:
+						"Maximum number of call log entries to return (1-50). Defaults to 50.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed:
+						"max number of call log entries to return (1-50). Defaults to 50.",
+				},
+			],
+			descriptionCompressed: "List recent Android phone calls (max 50).",
 			similes: ["RECENT_CALLS", "CALL_HISTORY", "LIST_CALLS"],
-			descriptionCompressed:
-				"List the most recent phone calls from the Android call log. Returns up",
+			exampleCalls: [
+				{
+					user: "Use READ_CALL_LOG with the provided parameters.",
+					actions: ["READ_CALL_LOG"],
+					params: {
+						READ_CALL_LOG: {
+							limit: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "READ_MCP_RESOURCE",
 			description: "Reads a resource from an MCP server",
 			parameters: [],
+			descriptionCompressed: "read resource MCP server",
 			similes: [
 				"READ_RESOURCE",
 				"READ_MCP_RESOURCE",
@@ -5065,52 +6641,97 @@ export const allActionsSpec = {
 				"ACCESS_RESOURCE",
 				"ACCESS_MCP_RESOURCE",
 			],
-			descriptionCompressed: "Reads a resource from an MCP server",
 		},
 		{
 			name: "READ_UNREAD_X_DMS",
 			description: "List unread Twitter/X direct messages.",
 			parameters: [],
+			descriptionCompressed: "list unread Twitter/X direct message",
 			similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
-			descriptionCompressed: "List unread Twitter/X direct msgs.",
 		},
 		{
 			name: "READING_FOLLOWUP",
 			description:
 				"Continue an active reading by processing user feedback and revealing the next element.",
 			parameters: [],
+			descriptionCompressed:
+				"Continue active reading; process user feedback and reveal the next element.",
 			similes: [
 				"CONTINUE_READING",
 				"NEXT_CARD",
 				"READING_RESPONSE",
 				"PROCEED_READING",
 			],
-			descriptionCompressed:
-				"Continue an active reading by processing user feedback and revealing the next element.",
 		},
 		{
 			name: "RELEASE_BLOCK",
 			description:
 				"Release an active website block rule. Requires confirmed:true. ",
-			parameters: [],
-			similes: ["RELEASE_WEBSITE_BLOCK", "END_BLOCK_RULE", "BYPASS_BLOCK_RULE"],
+			parameters: [
+				{
+					name: "ruleId",
+					description: "ID of the block rule to release.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ID of the block rule to release.",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Must be true to release. Prevents accidental unblocking.",
+					required: true,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Must be true to release. Prevents accidental unblocking.",
+				},
+				{
+					name: "reason",
+					description: "Optional reason for release, stored on the rule.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional reason for release, stored on the rule.",
+				},
+			],
 			descriptionCompressed:
-				"Release an active website block rule. Requires confirmed:true.",
+				"Release a website block rule; requires confirmation.",
+			similes: ["RELEASE_WEBSITE_BLOCK", "END_BLOCK_RULE", "BYPASS_BLOCK_RULE"],
+			exampleCalls: [
+				{
+					user: "Use RELEASE_BLOCK with the provided parameters.",
+					actions: ["RELEASE_BLOCK"],
+					params: {
+						RELEASE_BLOCK: {
+							ruleId: null,
+							confirmed: null,
+							reason: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "REMEMBER",
 			description:
 				"Write a note to the Scape Journal. Use for lessons, landmarks, and things you want to remember next step.",
 			parameters: [],
-			similes: ["NOTE", "LOG", "JOURNAL", "RECORD"],
 			descriptionCompressed:
-				"Write a note to the Scape Journal. Use for lessons, landmarks, and things you want to remember next step.",
+				"Write note to Scape Journal for future reference.",
+			similes: ["NOTE", "LOG", "JOURNAL", "RECORD"],
 		},
 		{
 			name: "REMOTE_ATTESTATION",
 			description:
 				"Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
 			parameters: [],
+			descriptionCompressed:
+				"generate remote attestation prove agent run TEE (Trusted Execution Environment)",
 			similes: [
 				"REMOTE_ATTESTATION",
 				"TEE_REMOTE_ATTESTATION",
@@ -5121,60 +6742,74 @@ export const allActionsSpec = {
 				"PROVE_TEE",
 				"VERIFY_TEE",
 			],
-			descriptionCompressed:
-				"Generate a remote attestation to prove that agent is running in a TEE (Trusted Execution Environment)",
 		},
 		{
 			name: "REPLY_X_DM",
 			description:
 				"Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
-			parameters: [],
-			similes: ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
+			parameters: [
+				{
+					name: "recipient",
+					description: "Recipient user id or username (without leading @).",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Recipient user id or username (without leading @).",
+				},
+				{
+					name: "text",
+					description: "The DM body.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "The DM body.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for the DM to actually send.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true for the DM to send.",
+				},
+			],
 			descriptionCompressed:
-				"Reply to a Twitter/X direct msg. Two-stage: without `confirmed: true` this returns a preview and requires confirmation. with `confirmed: true` the DM is sent.",
+				"reply Twitter/X direct message two-stage: wo/ confirm: true return preview require confirmation; w/ confirm: true DM send",
+			similes: ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
+			exampleCalls: [
+				{
+					user: "Use REPLY_X_DM with the provided parameters.",
+					actions: ["REPLY_X_DM"],
+					params: {
+						REPLY_X_DM: {
+							recipient: null,
+							text: null,
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "REQUEST_PAYMENT",
 			description:
 				"Request payment from the user for a reading service. Specify the amount to charge.",
 			parameters: [],
+			descriptionCompressed:
+				"Request payment amount for the active mysticism reading service.",
 			similes: ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"],
-			descriptionCompressed:
-				"Request payment from user for a reading service. Specify the amount to charge.",
-		},
-		{
-			name: "REQUEST_WEBSITE_BLOCKING_PERMISSION",
-			description:
-				"Owner-only. Prepare local website blocking by requesting administrator/root approval when the machine supports it, or explain the manual change needed when it does not.",
-			parameters: [],
-			similes: [
-				"ENABLE_WEBSITE_BLOCKING",
-				"ALLOW_WEBSITE_BLOCKING",
-				"GRANT_WEBSITE_BLOCKING_PERMISSION",
-				"REQUEST_SELFCONTROL_PERMISSION",
-			],
-			descriptionCompressed:
-				"Owner-only. Prepare local website blocking by requesting administrator/root approval when the machine supports it, or explain the manual change needed when...",
-		},
-		{
-			name: "RESUME_CLOUD_AGENT",
-			description:
-				"Resume a frozen cloud agent from snapshot. Re-provisions, restores state, reconnects bridge.",
-			parameters: [],
-			similes: [
-				"resume agent",
-				"unfreeze agent",
-				"restart cloud agent",
-				"restore agent",
-			],
-			descriptionCompressed:
-				"Resume a frozen cloud agent from snapshot. Re-provisions, restores state, reconnects bridge.",
 		},
 		{
 			name: "RESUME_MUSIC",
 			description:
 				"Resume music after a pause. Use when the user says resume, unpause, or continue. ",
 			parameters: [],
+			descriptionCompressed: "Resume paused music. Not via PLAY_AUDIO.",
 			similes: [
 				"RESUME",
 				"RESUME_AUDIO",
@@ -5183,8 +6818,6 @@ export const allActionsSpec = {
 				"UNPAUSE_MUSIC",
 				"CONTINUE_MUSIC",
 			],
-			descriptionCompressed:
-				"Resume music after a pause. Use when user says resume, unpause, or continue.",
 		},
 		{
 			name: "SAVE_PLAYLIST",
@@ -5192,16 +6825,18 @@ export const allActionsSpec = {
 				"Save the current music queue as a playlist for the user after confirmed:true. Works best in DMs to avoid flooding group chats.",
 			parameters: [
 				{
-					name: "data",
-					description: "The data to use.",
+					name: "confirmed",
+					description: "Must be true to save the current queue as a playlist.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "boolean",
+						default: false,
 					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
+					descriptionCompressed:
+						"Must be true to save the current queue as a playlist.",
 				},
 			],
+			descriptionCompressed: "Save current queue as playlist.",
 			similes: [
 				"SAVE_QUEUE",
 				"CREATE_PLAYLIST",
@@ -5214,44 +6849,112 @@ export const allActionsSpec = {
 					actions: ["SAVE_PLAYLIST"],
 					params: {
 						SAVE_PLAYLIST: {
-							data: "example",
+							confirmed: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Save the current music queue as a playlist for user after confirmed:true. Works best in DMs to avoid flooding group chats.",
 		},
 		{
 			name: "SCAN_WIFI",
 			description:
 				"List nearby Wi-Fi networks visible to the device. Returns SSID, BSSID, ",
-			parameters: [],
-			similes: ["LIST_WIFI", "WIFI_SCAN", "NEARBY_WIFI", "WIFI_NETWORKS"],
+			parameters: [
+				{
+					name: "limit",
+					description:
+						"Maximum number of networks to return (1-100). Defaults to 25.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed:
+						"max number of networks to return (1-100). Defaults to 25.",
+				},
+				{
+					name: "maxAge",
+					description:
+						"Reuse cached scan results if completed within this many milliseconds. ",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 0,
+					},
+					descriptionCompressed:
+						"Reuse cached scan results if completed within this many milliseconds.",
+				},
+			],
 			descriptionCompressed:
-				"List nearby Wi-Fi networks visible to the device. Returns SSID, BSSID,",
+				"List nearby Wi-Fi networks (Android scanResults).",
+			similes: ["LIST_WIFI", "WIFI_SCAN", "NEARBY_WIFI", "WIFI_NETWORKS"],
+			exampleCalls: [
+				{
+					user: "Use SCAN_WIFI with the provided parameters.",
+					actions: ["SCAN_WIFI"],
+					params: {
+						SCAN_WIFI: {
+							limit: null,
+							maxAge: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SCHEDULE_X_DM_REPLY",
 			description:
 				"Schedule a Twitter/X DM reply to send later by creating a real trigger task. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "recipient",
+					description: "Target X handle or id (without @ preferred).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Target X handle or id (without @ preferred).",
+				},
+				{
+					name: "text",
+					description: "DM body to send at sendAtIso.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "DM body to send at sendAtIso.",
+				},
+				{
+					name: "sendAtIso",
+					description: "ISO-8601 delivery time (may be filled by planner LLM).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO-8601 delivery time (may be filled by planner LLM).",
+				},
+			],
+			descriptionCompressed:
+				"Queue X DM send-later trigger task OWNER_SEND_MESSAGE x_dm if now",
 			similes: [
 				"QUEUE_X_DM_REPLY",
 				"SCHEDULE_TWITTER_DM_REPLY",
 				"SCHEDULE_X_REPLY",
 			],
-			descriptionCompressed:
-				"Schedule a Twitter/X DM reply to send later by creating a real trigger task.",
-		},
-		{
-			name: "SCREEN_TIME",
-			description:
-				"Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break down my screen time by app this week', or 'which websites did I spend the most time on?'. Do not use this when the user is only reflecting or venting like 'I spend too much time on my phone' unless they actually ask for the numbers. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website.",
-			parameters: [],
-			similes: ["SCREENTIME", "APP_USAGE", "WEBSITE_USAGE", "DWELL_TIME"],
-			descriptionCompressed:
-				"Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break...",
+			exampleCalls: [
+				{
+					user: "Use SCHEDULE_X_DM_REPLY with the provided parameters.",
+					actions: ["SCHEDULE_X_DM_REPLY"],
+					params: {
+						SCHEDULE_X_DM_REPLY: {
+							recipient: null,
+							text: null,
+							sendAtIso: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SEARCH_LINEAR_ISSUES",
@@ -5268,6 +6971,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The name to use.",
 				},
 			],
+			descriptionCompressed: "search issue Linear w/ various filter",
 			similes: [
 				"search-linear-issues",
 				"find-linear-issues",
@@ -5285,40 +6989,73 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Search for issues in Linear with various filters",
 		},
 		{
 			name: "SEARCH_SHOPIFY_STORE",
 			description:
 				"Search across products, orders, and customers in a connected Shopify store.",
 			parameters: [],
+			descriptionCompressed: "Search Shopify products, orders, customers.",
 			similes: ["SHOPIFY_SEARCH", "STORE_SEARCH"],
-			descriptionCompressed:
-				"Search across products, orders, and customers in a connected Shopify store.",
 		},
 		{
 			name: "SEARCH_SKILLS",
 			description:
 				"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
 			parameters: [],
-			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
 			descriptionCompressed:
-				"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
+				"Search skill registry; returns action chips per result.",
+			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
 		},
 		{
 			name: "SEARCH_X",
 			description:
 				"Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
-			parameters: [],
-			similes: ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
+			parameters: [
+				{
+					name: "query",
+					description: "Search query to run against X recent tweets.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search query to run against X recent tweets.",
+				},
+				{
+					name: "maxResults",
+					description: "Maximum tweets to return (1-100).",
+					required: false,
+					schema: {
+						type: "number",
+						default: 10,
+						minimum: 1,
+						maximum: 100,
+					},
+					descriptionCompressed: "max tweets to return (1-100).",
+				},
+			],
 			descriptionCompressed:
-				"Search X recent tweets using the v2 recent search endpoint. params: query (required), maxResults (optional, default 10).",
+				"search x recent tweet use v2 recent search endpoint parameter: query (require), maxresult (optional, default 10)",
+			similes: ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
+			exampleCalls: [
+				{
+					user: "Use SEARCH_X with the provided parameters.",
+					actions: ["SEARCH_X"],
+					params: {
+						SEARCH_X: {
+							query: null,
+							maxResults: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SEARCH_YOUTUBE",
 			description:
 				"Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific URL.",
 			parameters: [],
+			descriptionCompressed: "Search YouTube for song/video, return link.",
 			similes: [
 				"FIND_YOUTUBE",
 				"SEARCH_YOUTUBE_VIDEO",
@@ -5327,8 +7064,6 @@ export const allActionsSpec = {
 				"GET_YOUTUBE_LINK",
 				"LOOKUP_YOUTUBE",
 			],
-			descriptionCompressed:
-				"Search YouTube for a song or video and return the link. Use when a user asks to find or search for a YouTube video or song without providing a specific URL.",
 		},
 		{
 			name: "SELECT_DIMENSION",
@@ -5346,6 +7081,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"select dimensional constant affect how mathematical operation behave multiverse",
 			similes: ["DIMENSION", "SET_DIMENSION", "CHOOSE_DIMENSION"],
 			exampleCalls: [
 				{
@@ -5358,8 +7095,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
 		},
 		{
 			name: "SELECT_ENTITY",
@@ -5376,6 +7111,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed: "select entity current entity operation",
 			similes: ["CHOOSE_ENTITY", "FOCUS_ENTITY", "SET_CURRENT_ENTITY"],
 			exampleCalls: [
 				{
@@ -5388,22 +7124,20 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Select an entity as the current entity for operations.",
 		},
 		{
 			name: "SELL_TO_SHOP",
 			description:
 				"Sell an item to the currently open shop, optionally specifying a count (defaults to 1)",
 			parameters: [],
+			descriptionCompressed: "Sell item to open shop.",
 			similes: ["SELL_ITEM"],
-			descriptionCompressed:
-				"Sell an item to the open shop, optionally specifying a count (defaults to 1)",
 		},
 		{
 			name: "SEND_BLUEBUBBLES_MESSAGE",
 			description: "Send a message via iMessage through BlueBubbles",
 			parameters: [],
+			descriptionCompressed: "Send iMessage via BlueBubbles.",
 			similes: [
 				"SEND_IMESSAGE",
 				"TEXT_MESSAGE",
@@ -5411,7 +7145,6 @@ export const allActionsSpec = {
 				"BLUEBUBBLES_SEND",
 				"APPLE_MESSAGE",
 			],
-			descriptionCompressed: "Send a msg via iMessage through BlueBubbles",
 		},
 		{
 			name: "SEND_INSTAGRAM_DM",
@@ -5428,6 +7161,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The reply to use.",
 				},
 			],
+			descriptionCompressed: "send direct message Instagram user",
 			similes: [
 				"instagram_dm",
 				"instagram_message",
@@ -5446,7 +7180,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send direct msg to an Instagram user",
 		},
 		{
 			name: "SEND_TO_AGENT",
@@ -5454,16 +7187,61 @@ export const allActionsSpec = {
 				"Send text input or key presses to a running task-agent session. ",
 			parameters: [
 				{
-					name: "codingSession",
-					description: "The coding session to use.",
+					name: "sessionId",
+					description:
+						"ID of the task-agent session to send to. If not specified, uses the current session.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The coding session to use.",
+					descriptionCompressed: "Send input/keypresses to running task agent.",
+				},
+				{
+					name: "input",
+					description: "Text input to send to the running task agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Text input to send to the running task agent.",
+				},
+				{
+					name: "task",
+					description:
+						"New tracked task to assign to the existing agent. This is also sent as the next input so provider status reflects the new assignment.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"New tracked task to assign to the existing agent. This is also sent as the next input so provider status reflects the new assignment.",
+				},
+				{
+					name: "label",
+					description:
+						"Optional label to use when tracking a newly assigned task on an existing agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional label to use when tracking a newly assigned task on an existing agent.",
+				},
+				{
+					name: "keys",
+					description:
+						"Special key sequence to send (e.g., 'Enter', 'Ctrl-C', 'y').",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Special key sequence to send (e. g. , 'Enter', 'Ctrl-C', 'y').",
 				},
 			],
+			descriptionCompressed:
+				"send text input key press run task-agent session use respond agent prompt, provide feedback, continue task, assign fresh track task exist agent",
 			similes: [
 				"SEND_TO_CODING_AGENT",
 				"MESSAGE_CODING_AGENT",
@@ -5479,22 +7257,56 @@ export const allActionsSpec = {
 					actions: ["SEND_TO_AGENT"],
 					params: {
 						SEND_TO_AGENT: {
-							codingSession: "example",
+							sessionId: null,
+							input: null,
+							task: null,
+							label: null,
+							keys: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Send text input or key presses to a running task-agent session.",
 		},
 		{
 			name: "SEND_X_POST",
 			description:
 				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
-			parameters: [],
-			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
+			parameters: [
+				{
+					name: "text",
+					description: "The tweet body.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "The tweet body.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for the tweet to actually post.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true for the tweet to post.",
+				},
+			],
 			descriptionCompressed:
-				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview. with `confirmed: true` the tweet is posted.",
+				"publish tweet Twitter/X w/ confirmation gate two-stage: wo/ confirm: true return preview; w/ confirm: true tweet post",
+			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
+			exampleCalls: [
+				{
+					user: "Use SEND_X_POST with the provided parameters.",
+					actions: ["SEND_X_POST"],
+					params: {
+						SEND_X_POST: {
+							text: null,
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SET_ATTRIBUTE",
@@ -5512,6 +7324,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"set attribute current entity attribute store additional data entity",
 			similes: ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
 			exampleCalls: [
 				{
@@ -5524,27 +7338,70 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Set an attribute on the current entity. Attributes store additional data on entities.",
 		},
 		{
 			name: "SET_COMBAT_STYLE",
 			description:
 				"Set the combat style (0=Attack, 1=Strength, 2=Defence, 3=Controlled)",
 			parameters: [],
-			similes: ["CHANGE_COMBAT_STYLE", "SWITCH_COMBAT"],
 			descriptionCompressed:
-				"Set the combat style (0=Attack, 1=Strength, 2=Defence, 3=Controlled)",
+				"Set combat style (Attack/Strength/Defence/Controlled).",
+			similes: ["CHANGE_COMBAT_STYLE", "SWITCH_COMBAT"],
 		},
 		{
 			name: "SET_FOLLOWUP_THRESHOLD",
 			description:
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "contactId",
+					description: "UUID of the contact. Preferred when known.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "UUID of the contact. Preferred when known.",
+				},
+				{
+					name: "contactName",
+					description:
+						"Human-readable contact name. Must be unambiguous across stored contacts.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Human-readable contact name. Must be unambiguous across stored contacts.",
+				},
+				{
+					name: "thresholdDays",
+					description:
+						"Number of days after last contact before this contact is considered overdue.",
+					required: true,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Number of days after last contact before this contact is considered overdue.",
+				},
+			],
 			similes: [
 				"FOLLOWUP_RULE",
 				"CHANGE_FOLLOWUP_INTERVAL",
 				"SET_CONTACT_FREQUENCY_DAYS",
+			],
+			exampleCalls: [
+				{
+					user: "Use SET_FOLLOWUP_THRESHOLD with the provided parameters.",
+					actions: ["SET_FOLLOWUP_THRESHOLD"],
+					params: {
+						SET_FOLLOWUP_THRESHOLD: {
+							contactId: null,
+							contactName: null,
+							thresholdDays: null,
+						},
+					},
+				},
 			],
 			descriptionCompressed:
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact.",
@@ -5554,9 +7411,8 @@ export const allActionsSpec = {
 			description:
 				"Declare a new goal you want to pursue. Write a short title and optional notes; the goal goes into the Scape Journal and drives future steps until it's completed or abandoned.",
 			parameters: [],
+			descriptionCompressed: "Declare new goal to pursue.",
 			similes: ["DECLARE_GOAL", "NEW_GOAL", "PLAN"],
-			descriptionCompressed:
-				"Declare a new goal you want to pursue. Write a short title and optional notes. the goal goes into the Scape Journal and drives future steps until it's...",
 		},
 		{
 			name: "SETUP_CREDENTIALS",
@@ -5574,6 +7430,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed:
+				"Guide credential setup for third-party services, validate and store securely.",
 			similes: [
 				"ADD_CREDENTIALS",
 				"CONFIGURE_SERVICE",
@@ -5592,53 +7450,50 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Guide user through setting up API credentials for supported 3p services, validate them when possible, and store them securely.",
 		},
 		{
 			name: "SHOW_QUEUE",
 			description: "Show the current music queue",
 			parameters: [],
+			descriptionCompressed: "show current music queue",
 			similes: ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"],
-			descriptionCompressed: "Show the current music queue",
 		},
 		{
 			name: "SIGNAL_LIST_CONTACTS",
 			description: "List Signal contacts",
 			parameters: [],
+			descriptionCompressed: "list Signal contact",
 			similes: [
 				"LIST_SIGNAL_CONTACTS",
 				"SHOW_CONTACTS",
 				"GET_CONTACTS",
 				"SIGNAL_CONTACTS",
 			],
-			descriptionCompressed: "List Signal contacts",
 		},
 		{
 			name: "SIGNAL_LIST_GROUPS",
 			description: "List Signal groups",
 			parameters: [],
+			descriptionCompressed: "list Signal group",
 			similes: [
 				"LIST_SIGNAL_GROUPS",
 				"SHOW_GROUPS",
 				"GET_GROUPS",
 				"SIGNAL_GROUPS",
 			],
-			descriptionCompressed: "List Signal groups",
 		},
 		{
 			name: "SIGNAL_READ_RECENT_MESSAGES",
 			description:
 				"Read the most recent Signal messages across active conversations",
 			parameters: [],
+			descriptionCompressed: "Read recent Signal messages.",
 			similes: [
 				"READ_SIGNAL_MESSAGES",
 				"CHECK_SIGNAL_MESSAGES",
 				"SHOW_SIGNAL_MESSAGES",
 				"SIGNAL_INBOX",
 			],
-			descriptionCompressed:
-				"Read the most recent Signal msgs across active convos",
 		},
 		{
 			name: "SIGNAL_SEND_MESSAGE",
@@ -5655,6 +7510,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Send Signal message.",
 			similes: [
 				"SEND_SIGNAL_MESSAGE",
 				"TEXT_SIGNAL",
@@ -5672,7 +7528,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send a msg to a Signal contact or group",
 		},
 		{
 			name: "SIGNAL_SEND_REACTION",
@@ -5689,6 +7544,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "React to Signal message.",
 			similes: [
 				"REACT_SIGNAL",
 				"SIGNAL_REACT",
@@ -5706,16 +7562,36 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "React to a Signal msg with an emoji",
 		},
 		{
 			name: "SKIP_TRACK",
 			description:
 				"Skip the current track and play the next queued song. Use for skip, next track, or next song. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description: "Must be true to skip the current track.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true to skip the current track.",
+				},
+			],
+			descriptionCompressed: "Skip to next queued song. Not via PLAY_AUDIO.",
 			similes: ["SKIP", "NEXT_TRACK", "SKIP_SONG", "NEXT_SONG"],
-			descriptionCompressed:
-				"Skip the current track and play the next queued song. Use for skip, next track, or next song.",
+			exampleCalls: [
+				{
+					user: "Use SKIP_TRACK with the provided parameters.",
+					actions: ["SKIP_TRACK"],
+					params: {
+						SKIP_TRACK: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SLACK_DELETE_MESSAGE",
@@ -5732,6 +7608,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Delete Slack message.",
 			similes: ["REMOVE_SLACK_MESSAGE", "DELETE_MESSAGE", "SLACK_REMOVE"],
 			exampleCalls: [
 				{
@@ -5744,7 +7621,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Delete a Slack msg",
 		},
 		{
 			name: "SLACK_EDIT_MESSAGE",
@@ -5761,6 +7637,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Edit Slack message.",
 			similes: [
 				"UPDATE_SLACK_MESSAGE",
 				"MODIFY_MESSAGE",
@@ -5778,7 +7655,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Edit an existing Slack msg",
 		},
 		{
 			name: "SLACK_EMOJI_LIST",
@@ -5798,6 +7674,7 @@ export const allActionsSpec = {
 			name: "SLACK_GET_USER_INFO",
 			description: "Get information about a Slack user",
 			parameters: [],
+			descriptionCompressed: "Get Slack user info.",
 			similes: [
 				"GET_SLACK_USER",
 				"USER_INFO",
@@ -5805,7 +7682,6 @@ export const allActionsSpec = {
 				"MEMBER_INFO",
 				"WHO_IS",
 			],
-			descriptionCompressed: "Get info about a Slack user",
 		},
 		{
 			name: "SLACK_LIST_CHANNELS",
@@ -5834,6 +7710,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "List Slack pinned messages.",
 			similes: [
 				"LIST_SLACK_PINS",
 				"SHOW_PINS",
@@ -5851,7 +7728,69 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "List pinned msgs in a Slack channel",
+		},
+		{
+			name: "SLACK_MESSAGE_OP",
+			description:
+				"Slack message operation router. Send, edit, delete, react, pin, or unpin Slack messages by setting op.",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			descriptionCompressed:
+				"Slack message ops: send, edit, delete, react, pin, unpin.",
+			similes: [
+				"SLACK_SEND_MESSAGE",
+				"SEND_SLACK_MESSAGE",
+				"POST_TO_SLACK",
+				"MESSAGE_SLACK",
+				"SLACK_POST",
+				"SEND_TO_CHANNEL",
+				"SLACK_EDIT_MESSAGE",
+				"UPDATE_SLACK_MESSAGE",
+				"MODIFY_MESSAGE",
+				"CHANGE_MESSAGE",
+				"SLACK_UPDATE",
+				"SLACK_DELETE_MESSAGE",
+				"REMOVE_SLACK_MESSAGE",
+				"DELETE_MESSAGE",
+				"SLACK_REMOVE",
+				"SLACK_REACT_TO_MESSAGE",
+				"ADD_SLACK_REACTION",
+				"REACT_SLACK",
+				"SLACK_EMOJI",
+				"ADD_EMOJI",
+				"REMOVE_REACTION",
+				"SLACK_PIN_MESSAGE",
+				"PIN_SLACK_MESSAGE",
+				"PIN_MESSAGE",
+				"SLACK_PIN",
+				"SAVE_MESSAGE",
+				"SLACK_UNPIN_MESSAGE",
+				"UNPIN_SLACK_MESSAGE",
+				"UNPIN_MESSAGE",
+				"SLACK_UNPIN",
+				"REMOVE_PIN",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_MESSAGE_OP with the provided parameters.",
+					actions: ["SLACK_MESSAGE_OP"],
+					params: {
+						SLACK_MESSAGE_OP: {
+							data: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SLACK_PIN_MESSAGE",
@@ -5868,6 +7807,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Pin Slack message.",
 			similes: [
 				"PIN_SLACK_MESSAGE",
 				"PIN_MESSAGE",
@@ -5885,7 +7825,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Pin a msg in a Slack channel",
 		},
 		{
 			name: "SLACK_REACT_TO_MESSAGE",
@@ -5902,6 +7841,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Add/remove Slack message reaction.",
 			similes: [
 				"ADD_SLACK_REACTION",
 				"REACT_SLACK",
@@ -5920,7 +7860,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Add or remove an emoji reaction to a Slack msg",
 		},
 		{
 			name: "SLACK_READ_CHANNEL",
@@ -5937,6 +7876,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Read Slack channel message history.",
 			similes: [
 				"READ_SLACK_MESSAGES",
 				"GET_CHANNEL_HISTORY",
@@ -5955,7 +7895,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Read msg history from a Slack channel",
 		},
 		{
 			name: "SLACK_SEND_MESSAGE",
@@ -5972,6 +7911,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Send Slack channel/thread message.",
 			similes: [
 				"SEND_SLACK_MESSAGE",
 				"POST_TO_SLACK",
@@ -5990,7 +7930,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Send a msg to a Slack channel or thread",
 		},
 		{
 			name: "SLACK_UNPIN_MESSAGE",
@@ -6007,6 +7946,7 @@ export const allActionsSpec = {
 					descriptionCompressed: "The data to use.",
 				},
 			],
+			descriptionCompressed: "Unpin Slack message.",
 			similes: [
 				"UNPIN_SLACK_MESSAGE",
 				"UNPIN_MESSAGE",
@@ -6024,16 +7964,14 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed: "Unpin a msg from a Slack channel",
 		},
 		{
 			name: "SMITH_AT_ANVIL",
 			description:
 				"Smith a metal bar at a nearby anvil, optionally specifying what to make",
 			parameters: [],
+			descriptionCompressed: "Smith bar at nearby anvil.",
 			similes: ["SMITHING", "USE_ANVIL"],
-			descriptionCompressed:
-				"Smith a metal bar at a nearby anvil, optionally specifying what to make",
 		},
 		{
 			name: "SPAWN_AGENT",
@@ -6041,16 +7979,75 @@ export const allActionsSpec = {
 				"Spawn a specific task agent inside an existing workspace when you need direct control. ",
 			parameters: [
 				{
-					name: "codingWorkspace",
-					description: "The coding workspace to use.",
+					name: "agentType",
+					description:
+						"Specific task-agent framework to spawn. Options: claude (Claude Code), codex (OpenAI Codex), gemini (Google Gemini), aider, pi, shell (generic shell). ",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The coding workspace to use.",
+					descriptionCompressed:
+						"Specific task-agent framework to spawn. Options: claude (Claude Code), codex (OpenAI Codex), gemini (Google Gemini), aider, pi, shell (generic shell).",
+				},
+				{
+					name: "workdir",
+					description:
+						"Working directory for the agent. Defaults to current directory.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Spawn task agent in existing workspace for direct control.",
+				},
+				{
+					name: "task",
+					description:
+						"Open-ended task or prompt to send to the task agent once spawned.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Open-ended task or prompt to send to the task agent once spawned.",
+				},
+				{
+					name: "memoryContent",
+					description:
+						"Instructions or shared context to write to the task agent's memory file before spawning.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Instructions or shared context to write to the task agent's memory file before spawning.",
+				},
+				{
+					name: "approvalPreset",
+					description:
+						"OPTIONAL permission preset. Leave UNSET for normal coding/research tasks — the runtime defaults to 'autonomous' which gives the agent full tools including shell, the helpers it needs to work effectively, and standard --dangerously-skip-permissions (the orchestrator runs in a sandbox so this is safe). Only set this when the user EXPLICITLY asks for a constrained agent: 'readonly' for a true audit-only review (no shell, no writes, no web), 'standard' or 'permissive' for unusual approval flows. Picking 'readonly' for normal tasks breaks bash helper scripts and is almost never what the user wants.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["readonly", "standard", "permissive", "autonomous"],
+					},
+					descriptionCompressed:
+						"OPTIONAL permission preset. Leave UNSET for normal coding/research tasks - the runtime defaults to 'autonomous' which gives agent full tools including shell...",
+				},
+				{
+					name: "keepAliveAfterComplete",
+					description:
+						"Keep the spawned task-agent session alive after a completed turn so it can receive another tracked task.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Keep the spawned task-agent session alive after a completed turn so it can receive another tracked task.",
 				},
 			],
+			descriptionCompressed:
+				"Spawn task agent in existing workspace for async coding/research; returns session id for follow-up.",
 			similes: [
 				"SPAWN_CODING_AGENT",
 				"START_CODING_AGENT",
@@ -6068,47 +8065,61 @@ export const allActionsSpec = {
 					actions: ["SPAWN_AGENT"],
 					params: {
 						SPAWN_AGENT: {
-							codingWorkspace: "example",
+							agentType: null,
+							workdir: null,
+							task: null,
+							memoryContent: null,
+							approvalPreset: null,
+							keepAliveAfterComplete: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Spawn a specific task agent inside an existing workspace when you need direct control.",
 		},
 		{
 			name: "START_TAILSCALE",
 			description:
 				"Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
 			parameters: [],
-			similes: ["START_TUNNEL", "OPEN_TUNNEL", "CREATE_TUNNEL", "TAILSCALE_UP"],
 			descriptionCompressed:
-				"Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
+				"start Tailscale tunnel expose local port tailnet (public internet via Funnel)",
+			similes: ["START_TUNNEL", "OPEN_TUNNEL", "CREATE_TUNNEL", "TAILSCALE_UP"],
 		},
 		{
 			name: "STATUS_COMMAND",
 			description:
 				"Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
 			parameters: [],
+			descriptionCompressed: "Show session settings. Trigger: /status, /s.",
 			similes: ["/status", "/s"],
-			descriptionCompressed:
-				"Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
 		},
 		{
 			name: "STOP_AGENT",
 			description: "Stop a running task-agent session. ",
 			parameters: [
 				{
-					name: "codingSession",
-					description: "The coding session to use.",
+					name: "sessionId",
+					description:
+						"ID of the session to stop. If not specified, stops the current session.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["example"],
-					descriptionCompressed: "The coding session to use.",
+					descriptionCompressed: "Stop running task agent, cleanup resources.",
+				},
+				{
+					name: "all",
+					description: "If true, stop all active task-agent sessions.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"If true, stop all active task-agent sessions.",
 				},
 			],
+			descriptionCompressed:
+				"stop run task-agent session terminate PTY session clean up resource",
 			similes: [
 				"STOP_CODING_AGENT",
 				"KILL_CODING_AGENT",
@@ -6124,27 +8135,40 @@ export const allActionsSpec = {
 					actions: ["STOP_AGENT"],
 					params: {
 						STOP_AGENT: {
-							codingSession: "example",
+							sessionId: null,
+							all: null,
 						},
 					},
 				},
 			],
-			descriptionCompressed: "Stop a running task-agent session.",
 		},
 		{
 			name: "STOP_COMMAND",
 			description:
 				"Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.",
 			parameters: [],
-			similes: ["/stop", "/abort", "/cancel"],
 			descriptionCompressed:
-				"Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.",
+				"Stop/abort running tasks. Trigger: /stop, /abort, /cancel.",
+			similes: ["/stop", "/abort", "/cancel"],
 		},
 		{
 			name: "STOP_MUSIC",
 			description:
 				"Stop playback and clear the queue. Use when the user wants music off or the queue cleared. ",
-			parameters: [],
+			parameters: [
+				{
+					name: "confirmed",
+					description: "Must be true to stop playback and clear the queue.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true to stop playback and clear the queue.",
+				},
+			],
+			descriptionCompressed: "Stop playback, clear queue. Not via PLAY_AUDIO.",
 			similes: [
 				"STOP_AUDIO",
 				"STOP_PLAYING",
@@ -6153,55 +8177,137 @@ export const allActionsSpec = {
 				"MUSIC_OFF",
 				"SILENCE",
 			],
-			descriptionCompressed:
-				"Stop playback and clear the queue. Use when user wants music off or the queue cleared.",
+			exampleCalls: [
+				{
+					user: "Use STOP_MUSIC with the provided parameters.",
+					actions: ["STOP_MUSIC"],
+					params: {
+						STOP_MUSIC: {
+							confirmed: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "STOP_TAILSCALE",
 			description: "Stop the running Tailscale tunnel",
 			parameters: [],
+			descriptionCompressed: "stop run Tailscale tunnel",
 			similes: ["STOP_TUNNEL", "CLOSE_TUNNEL", "TAILSCALE_DOWN"],
-			descriptionCompressed: "Stop the running Tailscale tunnel",
 		},
 		{
 			name: "SUMMARIZE_FEED",
 			description:
 				"Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
 			parameters: [],
-			similes: ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"],
 			descriptionCompressed:
-				"Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
+				"fetch top-n x tweet produce concise natural-language summary use runtime small text model",
+			similes: ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"],
 		},
 		{
 			name: "SYNC_SKILL_CATALOG",
 			description:
 				"Sync the skill catalog from the registry to discover new skills.",
 			parameters: [],
+			descriptionCompressed: "Sync skill catalog from registry.",
 			similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
-			descriptionCompressed:
-				"Sync the skill catalog from the registry to discover new skills.",
 		},
 		{
 			name: "TALK_TO_NPC",
 			description: "Talk to a nearby NPC by name",
 			parameters: [],
+			descriptionCompressed: "Talk to nearby NPC.",
 			similes: ["SPEAK_TO_NPC", "CHAT_WITH_NPC"],
-			descriptionCompressed: "Talk to a nearby NPC by name",
 		},
 		{
 			name: "TAROT_READING",
 			description:
 				"Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
 			parameters: [],
-			similes: ["READ_TAROT", "DRAW_CARDS", "TAROT_SPREAD", "CARD_READING"],
 			descriptionCompressed:
-				"Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
+				"Start tarot reading; draw a card spread and reveal cards iteratively.",
+			similes: ["READ_TAROT", "DRAW_CARDS", "TAROT_SPREAD", "CARD_READING"],
 		},
 		{
 			name: "TASK_CONTROL",
 			description:
 				"Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
-			parameters: [],
+			parameters: [
+				{
+					name: "operation",
+					description: "Control operation to apply to the task thread.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["pause", "stop", "resume", "continue", "archive", "reopen"],
+					},
+					descriptionCompressed:
+						"Control operation to apply to the task thread.",
+				},
+				{
+					name: "threadId",
+					description: "Specific task thread id to control.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Specific task thread id to control.",
+				},
+				{
+					name: "sessionId",
+					description: "Task session id to resolve into a thread when needed.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Task session id to resolve into a thread when needed.",
+				},
+				{
+					name: "search",
+					description: "Search text used to find the relevant thread.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Search text used to find the relevant thread.",
+				},
+				{
+					name: "note",
+					description: "Optional reason for pausing or stopping the thread.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional reason for pausing or stopping the thread.",
+				},
+				{
+					name: "instruction",
+					description:
+						"Follow-up instruction for resume or continue operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Follow-up instruction for resume or continue operations.",
+				},
+				{
+					name: "agentType",
+					description: "Optional framework override for a resumed task.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional framework override for a resumed task.",
+				},
+			],
+			descriptionCompressed:
+				"Pause/stop/resume/archive/reopen coordinator task thread.",
 			similes: [
 				"CONTROL_TASK",
 				"PAUSE_TASK",
@@ -6211,14 +8317,99 @@ export const allActionsSpec = {
 				"ARCHIVE_TASK",
 				"REOPEN_TASK",
 			],
-			descriptionCompressed:
-				"Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
+			exampleCalls: [
+				{
+					user: "Use TASK_CONTROL with the provided parameters.",
+					actions: ["TASK_CONTROL"],
+					params: {
+						TASK_CONTROL: {
+							operation: null,
+							threadId: null,
+							sessionId: null,
+							search: null,
+							note: null,
+							instruction: null,
+							agentType: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "TASK_HISTORY",
 			description:
 				"Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.",
-			parameters: [],
+			parameters: [
+				{
+					name: "metric",
+					description: "Query mode: list, count, or detail.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["list", "count", "detail"],
+					},
+					descriptionCompressed: "Query mode: list, count, or detail.",
+				},
+				{
+					name: "window",
+					description: "Relative time window for the query.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"active",
+							"today",
+							"yesterday",
+							"last_7_days",
+							"last_30_days",
+						],
+					},
+					descriptionCompressed: "Relative time window for the query.",
+				},
+				{
+					name: "search",
+					description:
+						"Topic or free-text search string to match task threads.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Topic or free-text search string to match task threads.",
+				},
+				{
+					name: "statuses",
+					description: "Optional status filter list.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "Optional status filter list.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of thread summaries to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "max number of thread summaries to return.",
+				},
+				{
+					name: "includeArchived",
+					description: "Whether archived threads should be included.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Whether archived threads should be included.",
+				},
+			],
+			descriptionCompressed:
+				"Query task history: active work, summaries, search, thread details.",
 			similes: [
 				"LIST_TASK_HISTORY",
 				"GET_TASK_HISTORY",
@@ -6226,14 +8417,59 @@ export const allActionsSpec = {
 				"COUNT_TASKS",
 				"TASK_STATUS_HISTORY",
 			],
-			descriptionCompressed:
-				"Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search...",
+			exampleCalls: [
+				{
+					user: "Use TASK_HISTORY with the provided parameters.",
+					actions: ["TASK_HISTORY"],
+					params: {
+						TASK_HISTORY: {
+							metric: null,
+							window: null,
+							search: null,
+							statuses: null,
+							limit: null,
+							includeArchived: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "TASK_SHARE",
 			description:
 				"Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
-			parameters: [],
+			parameters: [
+				{
+					name: "threadId",
+					description: "Specific task thread id to inspect.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Specific task thread id to inspect.",
+				},
+				{
+					name: "sessionId",
+					description: "Task session id to resolve to its thread.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Task session id to resolve to its thread.",
+				},
+				{
+					name: "search",
+					description: "Search text used to find the task thread to share.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Search text used to find the task thread to share.",
+				},
+			],
+			descriptionCompressed:
+				"Find best way to view/share task result: artifacts, URLs, paths.",
 			similes: [
 				"SHARE_TASK_RESULT",
 				"SHOW_TASK_ARTIFACT",
@@ -6241,14 +8477,111 @@ export const allActionsSpec = {
 				"CAN_I_SEE_IT",
 				"PULL_IT_UP",
 			],
-			descriptionCompressed:
-				"Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
+			exampleCalls: [
+				{
+					user: "Use TASK_SHARE with the provided parameters.",
+					actions: ["TASK_SHARE"],
+					params: {
+						TASK_SHARE: {
+							threadId: null,
+							sessionId: null,
+							search: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "TERMINAL_ACTION",
 			description:
 				"Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n",
-			parameters: [],
+			parameters: [
+				{
+					name: "action",
+					description: "Terminal action to perform.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"connect",
+							"execute",
+							"read",
+							"type",
+							"clear",
+							"close",
+							"execute_command",
+						],
+					},
+					descriptionCompressed: "Terminal action to perform.",
+				},
+				{
+					name: "command",
+					description: "Shell command for execute or execute_command.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Shell command for execute or execute_command.",
+				},
+				{
+					name: "cwd",
+					description: "Working directory for connect or execute.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Working directory for connect or execute.",
+				},
+				{
+					name: "sessionId",
+					description: "Session ID alias.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Session ID alias.",
+				},
+				{
+					name: "session_id",
+					description: "Upstream session ID alias.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Upstream session ID alias.",
+				},
+				{
+					name: "text",
+					description: "Text for terminal type.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Text for terminal type.",
+				},
+				{
+					name: "timeout",
+					description: "Timeout in seconds.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 30,
+					},
+					descriptionCompressed: "Timeout in seconds.",
+				},
+				{
+					name: "timeoutSeconds",
+					description: "Alias for timeout.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 30,
+					},
+					descriptionCompressed: "Alias for timeout.",
+				},
+			],
+			descriptionCompressed: "Execute terminal commands or manage sessions.",
 			similes: [
 				"RUN_COMMAND",
 				"EXECUTE_COMMAND",
@@ -6256,14 +8589,31 @@ export const allActionsSpec = {
 				"TERMINAL",
 				"RUN_SHELL",
 			],
-			descriptionCompressed:
-				"Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear...",
+			exampleCalls: [
+				{
+					user: "Use TERMINAL_ACTION with the provided parameters.",
+					actions: ["TERMINAL_ACTION"],
+					params: {
+						TERMINAL_ACTION: {
+							action: null,
+							command: null,
+							cwd: null,
+							sessionId: null,
+							session_id: null,
+							text: null,
+							timeout: null,
+							timeoutSeconds: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "TOGGLE_SKILL",
 			description:
 				"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
 			parameters: [],
+			descriptionCompressed: "Enable/disable installed skill.",
 			similes: [
 				"ENABLE_SKILL",
 				"DISABLE_SKILL",
@@ -6272,8 +8622,6 @@ export const allActionsSpec = {
 				"ACTIVATE_SKILL",
 				"DEACTIVATE_SKILL",
 			],
-			descriptionCompressed:
-				"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
 		},
 		{
 			name: "TRANSFER_TO_INPUT",
@@ -6291,6 +8639,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "The values to use.",
 				},
 			],
+			descriptionCompressed:
+				"transfer accumulator value input buffer next operation",
 			similes: ["TRANSFER", "MOVE_TO_INPUT", "ACCUMULATOR_TO_INPUT"],
 			exampleCalls: [
 				{
@@ -6303,14 +8653,57 @@ export const allActionsSpec = {
 					},
 				},
 			],
-			descriptionCompressed:
-				"Transfer accumulator value to input buffer for next operation.",
 		},
 		{
 			name: "TRANSFER_TOKEN",
 			description:
 				"Transfer tokens or native BNB to another address. Use this when a user ",
-			parameters: [],
+			parameters: [
+				{
+					name: "toAddress",
+					description: "Recipient EVM address (0x-prefixed, 40 hex characters)",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Recipient EVM address (0x-prefixed, 40 hex characters)",
+				},
+				{
+					name: "amount",
+					description:
+						'Human-readable transfer amount (e.g. "1.5" BNB, "100" USDT)',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Human-readable transfer amount (e. g. "1. 5" BNB, "100" USDT)',
+				},
+				{
+					name: "assetSymbol",
+					description: 'Token symbol to transfer (e.g. "BNB", "USDT", "USDC")',
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Token symbol to transfer (e. g. "BNB", "USDT", "USDC")',
+				},
+				{
+					name: "tokenAddress",
+					description:
+						"Token contract address for custom tokens (optional, not needed for native BNB)",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Token contract address for custom tokens (optional, not needed for native BNB)",
+				},
+			],
+			descriptionCompressed:
+				"Transfer tokens/BNB to address on BSC (admin/owner only).",
 			similes: [
 				"SEND_TOKEN",
 				"TRANSFER",
@@ -6319,101 +8712,258 @@ export const allActionsSpec = {
 				"SEND_CRYPTO",
 				"PAY",
 			],
+			exampleCalls: [
+				{
+					user: "Use TRANSFER_TOKEN with the provided parameters.",
+					actions: ["TRANSFER_TOKEN"],
+					params: {
+						TRANSFER_TOKEN: {
+							toAddress: null,
+							amount: null,
+							assetSymbol: null,
+							tokenAddress: null,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "TWITCH_CHANNEL",
+			description:
+				"Manage Twitch channel membership with subaction join, leave, or list.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "One of join, leave, or list.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["join", "leave", "list"],
+					},
+					descriptionCompressed: "One of join, leave, or list.",
+				},
+				{
+					name: "channel",
+					description: "Twitch channel name without # for join/leave.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Twitch channel name without # for join/leave.",
+				},
+			],
 			descriptionCompressed:
-				"Transfer tokens or native BNB to another address. Use when a user",
+				"manage Twitch channel membership; subaction join leave list",
+			similes: [
+				"TWITCH_JOIN_CHANNEL",
+				"TWITCH_LEAVE_CHANNEL",
+				"TWITCH_LIST_CHANNELS",
+				"MANAGE_TWITCH_CHANNEL",
+			],
+			exampleCalls: [
+				{
+					user: "Use TWITCH_CHANNEL with the provided parameters.",
+					actions: ["TWITCH_CHANNEL"],
+					params: {
+						TWITCH_CHANNEL: {
+							subaction: null,
+							channel: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "TWITCH_JOIN_CHANNEL",
 			description: "Join a Twitch channel to listen and send messages",
 			parameters: [],
+			descriptionCompressed: "join Twitch channel listen send message",
 			similes: ["JOIN_TWITCH_CHANNEL", "ENTER_CHANNEL", "CONNECT_CHANNEL"],
-			descriptionCompressed: "Join a Twitch channel to listen and send msgs",
 		},
 		{
 			name: "TWITCH_LEAVE_CHANNEL",
 			description: "Leave a Twitch channel",
 			parameters: [],
+			descriptionCompressed: "leave Twitch channel",
 			similes: [
 				"LEAVE_TWITCH_CHANNEL",
 				"EXIT_CHANNEL",
 				"PART_CHANNEL",
 				"DISCONNECT_CHANNEL",
 			],
-			descriptionCompressed: "Leave a Twitch channel",
 		},
 		{
 			name: "TWITCH_LIST_CHANNELS",
 			description: "List all Twitch channels the bot is currently in",
 			parameters: [],
+			descriptionCompressed: "list Twitch channel bot",
 			similes: [
 				"LIST_TWITCH_CHANNELS",
 				"SHOW_CHANNELS",
 				"GET_CHANNELS",
 				"CURRENT_CHANNELS",
 			],
-			descriptionCompressed: "List all Twitch channels the bot is in",
 		},
 		{
 			name: "TWITCH_SEND_MESSAGE",
 			description: "Send a message to a Twitch channel",
 			parameters: [],
+			descriptionCompressed: "send message Twitch channel",
 			similes: [
 				"SEND_TWITCH_MESSAGE",
 				"TWITCH_CHAT",
 				"CHAT_TWITCH",
 				"SAY_IN_TWITCH",
 			],
-			descriptionCompressed: "Send a msg to a Twitch channel",
-		},
-		{
-			name: "UNBLOCK_APPS",
-			description:
-				"Owner-only. Remove the current app block, unshielding all blocked apps.",
-			parameters: [],
-			similes: [
-				"UNBLOCK_APP",
-				"REMOVE_APP_BLOCK",
-				"STOP_BLOCKING_APPS",
-				"UNSHIELD_APPS",
-			],
-			descriptionCompressed:
-				"Owner-only. Remove the current app block, unshielding all blocked apps.",
-		},
-		{
-			name: "UNBLOCK_WEBSITES",
-			description:
-				"Owner-only. Remove the current local website block by restoring the system hosts file entries Eliza added.",
-			parameters: [],
-			similes: [
-				"SELFCONTROL_UNBLOCK_WEBSITES",
-				"REMOVE_WEBSITE_BLOCK",
-				"STOP_BLOCKING_SITES",
-				"LIFT_WEBSITE_BLOCK",
-			],
-			descriptionCompressed:
-				"Owner-only. Remove the current local website block by restoring the system hosts file entries Eliza added.",
 		},
 		{
 			name: "UNEQUIP_ITEM",
 			description: "Unequip a worn item by name",
 			parameters: [],
+			descriptionCompressed: "Unequip worn item.",
 			similes: ["REMOVE_ITEM", "TAKE_OFF_ITEM"],
-			descriptionCompressed: "Unequip a worn item by name",
 		},
 		{
 			name: "UNINSTALL_SKILL",
 			description:
 				"Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
 			parameters: [],
+			descriptionCompressed: "Remove non-bundled skill.",
 			similes: ["REMOVE_SKILL", "DELETE_SKILL"],
-			descriptionCompressed:
-				"Uninstall a non-bundled skill. Bundled skills cannot be removed.",
 		},
 		{
 			name: "USE_COMPUTER",
 			description:
-				"Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n",
-			parameters: [],
+				"use_computer_action:\n  purpose: Control the local desktop for real application interaction when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+			parameters: [
+				{
+					name: "action",
+					description: "Desktop action to perform.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"screenshot",
+							"click",
+							"click_with_modifiers",
+							"double_click",
+							"right_click",
+							"mouse_move",
+							"type",
+							"key",
+							"key_combo",
+							"scroll",
+							"drag",
+							"detect_elements",
+							"ocr",
+						],
+					},
+					descriptionCompressed: "Desktop action to perform.",
+				},
+				{
+					name: "coordinate",
+					description: "Target [x, y] pixel coordinate.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed: "Target [x, y] pixel coordinate.",
+				},
+				{
+					name: "startCoordinate",
+					description: "Start [x, y] pixel coordinate for drag.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed: "Start [x, y] pixel coordinate for drag.",
+				},
+				{
+					name: "text",
+					description: "Text to type.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Text to type.",
+				},
+				{
+					name: "modifiers",
+					description:
+						"Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Modifier keys to hold during click_with_modifiers, e. g. ['cmd', 'shift'] or ['ctrl'].",
+				},
+				{
+					name: "key",
+					description: "Single key or combo string depending on action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Single key or combo string depending on action.",
+				},
+				{
+					name: "button",
+					description: "Mouse button for click_with_modifiers.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["left", "middle", "right"],
+					},
+					descriptionCompressed: "Mouse button for click_with_modifiers.",
+				},
+				{
+					name: "clicks",
+					description: "Number of clicks for click_with_modifiers.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 5,
+					},
+					descriptionCompressed: "Number of clicks for click_with_modifiers.",
+				},
+				{
+					name: "scrollDirection",
+					description: "Scroll direction.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["up", "down", "left", "right"],
+					},
+					descriptionCompressed: "Scroll direction.",
+				},
+				{
+					name: "scrollAmount",
+					description: "Scroll tick count.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 3,
+						minimum: 1,
+						maximum: 20,
+					},
+					descriptionCompressed: "Scroll tick count.",
+				},
+			],
+			descriptionCompressed:
+				"Desktop control router: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr; screenshot before acting.",
 			similes: [
 				"CONTROL_COMPUTER",
 				"COMPUTER_ACTION",
@@ -6432,56 +8982,72 @@ export const allActionsSpec = {
 				"CAPTURE_SCREEN",
 				"SEE_SCREEN",
 			],
-			descriptionCompressed:
-				"Control the local desktop. inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for...",
+			exampleCalls: [
+				{
+					user: "Use USE_COMPUTER with the provided parameters.",
+					actions: ["USE_COMPUTER"],
+					params: {
+						USE_COMPUTER: {
+							action: null,
+							coordinate: null,
+							startCoordinate: null,
+							text: null,
+							modifiers: null,
+							key: null,
+							button: null,
+							clicks: null,
+							scrollDirection: null,
+							scrollAmount: null,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "USE_ITEM",
 			description: "Use an item from inventory by name",
 			parameters: [],
+			descriptionCompressed: "Use inventory item.",
 			similes: ["ACTIVATE_ITEM"],
-			descriptionCompressed: "Use an item from inventory by name",
 		},
 		{
 			name: "USE_ITEM_ON_ITEM",
 			description: "Use one inventory item on another (e.g. tinderbox on logs)",
 			parameters: [],
+			descriptionCompressed: "Use inventory item on another.",
 			similes: ["COMBINE_ITEMS"],
-			descriptionCompressed:
-				"Use one inventory item on another (e. g. tinderbox on logs)",
 		},
 		{
 			name: "USE_ITEM_ON_OBJECT",
 			description:
 				"Use an inventory item on a world object (e.g. ore on furnace)",
 			parameters: [],
+			descriptionCompressed: "Use inventory item on world object.",
 			similes: ["ITEM_ON_OBJECT"],
-			descriptionCompressed:
-				"Use an inventory item on a world object (e. g. ore on furnace)",
 		},
 		{
 			name: "USE_SKILL",
 			description:
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 			parameters: [],
+			descriptionCompressed: "Invoke an enabled skill by slug.",
 			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
-			descriptionCompressed:
-				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the convo.",
 		},
 		{
 			name: "WALK_TO",
 			description:
 				"Walk the player to a coordinate or named destination (e.g. bank, lumbridge)",
 			parameters: [],
+			descriptionCompressed: "Walk to coordinate or named destination.",
 			similes: ["MOVE_TO", "GO_TO", "TRAVEL_TO"],
-			descriptionCompressed:
-				"Walk the player to a coordinate or named destination (e. g. bank, lumbridge)",
 		},
 		{
 			name: "WEB_SEARCH",
 			description:
 				"Perform a web search to find information related to the message.",
 			parameters: [],
+			descriptionCompressed:
+				"perform web search find information relat message",
 			similes: [
 				"SEARCH_WEB",
 				"INTERNET_SEARCH",
@@ -6493,17 +9059,87 @@ export const allActionsSpec = {
 				"ONLINE_SEARCH",
 				"FIND_INFORMATION",
 			],
-			descriptionCompressed:
-				"Perform a web search to find info related to the msg.",
 		},
 		{
 			name: "WITHDRAW_ITEM",
 			description:
 				"Withdraw an item from the bank by name, optionally specifying a count (defaults to 1)",
 			parameters: [],
+			descriptionCompressed: "Withdraw item from bank.",
 			similes: ["TAKE_FROM_BANK"],
+		},
+		{
+			name: "X_POST",
+			description:
+				"Create a public X/Twitter post or public reply. Direct messages are handled by the X DM connector.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Public posting operation.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["post", "reply"],
+						default: "post",
+					},
+					descriptionCompressed: "Public posting operation.",
+				},
+				{
+					name: "text",
+					description: "The public post body.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "The public post body.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for the public post to actually publish.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true for the public post to publish.",
+				},
+				{
+					name: "inReplyTo",
+					description: "Tweet id to reply to when subaction is reply.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Tweet id to reply to when subaction is reply.",
+				},
+			],
 			descriptionCompressed:
-				"Withdraw an item from the bank by name, optionally specifying a count (defaults to 1)",
+				"public X/Twitter post router; subaction post|reply, no DMs",
+			similes: [
+				"POST_TWEET",
+				"SEND_X_POST",
+				"POST_X",
+				"TWEET",
+				"SEND_TWEET",
+				"TWITTER_POST",
+				"POST_ON_TWITTER",
+				"SHARE_ON_TWITTER",
+			],
+			exampleCalls: [
+				{
+					user: "Use X_POST with the provided parameters.",
+					actions: ["X_POST"],
+					params: {
+						X_POST: {
+							subaction: null,
+							text: null,
+							confirmed: null,
+							inReplyTo: null,
+						},
+					},
+				},
+			],
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

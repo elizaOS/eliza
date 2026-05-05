@@ -10,12 +10,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import { isLineOutboundActionContext } from "../line-action-validate.js";
 import type { LineService } from "../service.js";
 import {
@@ -126,8 +121,7 @@ export const sendFlexMessage: Action = {
         prompt,
       });
 
-      const parsed =
-        parseToonKeyValue<Record<string, unknown>>(response);
+      const parsed = parseToonKeyValue<Record<string, unknown>>(response);
       if (parsed?.title && parsed?.body) {
         flexInfo = {
           altText: String(parsed.altText || `${parsed.title}: ${parsed.body}`),

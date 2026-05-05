@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { CacheKeys, CacheStaleTTL, CacheTTL } from "@/lib/cache/keys";
 import {
+  FALLBACK_TEXT_SELECTOR_MODELS,
   getGroqApiModelId,
   isGroqNativeModel,
   isSelectableTextModel,
   mergeCatalogModels,
+  OPENROUTER_DEFAULT_FREE_MODEL,
+  OPENROUTER_RECOMMENDED_TEXT_MODEL,
 } from "@/lib/models";
 
 describe("Groq catalog helpers", () => {
@@ -104,6 +107,19 @@ describe("text model selection filter", () => {
         type: "language",
       }),
     ).toBe(false);
+
+    expect(
+      isSelectableTextModel({
+        id: "black-forest-labs/flux-kontext-max",
+        object: "model",
+        created: 0,
+        owned_by: "black-forest-labs",
+        type: "language",
+        architecture: {
+          output_modalities: ["image"],
+        },
+      }),
+    ).toBe(false);
   });
 });
 
@@ -136,6 +152,50 @@ describe("catalog merging", () => {
 
     expect(merged).toHaveLength(2);
     expect(merged.map((model) => model.id)).toEqual(["openai/gpt-5.4", "groq/compound"]);
+  });
+
+  test("annotates recommended and free OpenRouter models", () => {
+    const merged = mergeCatalogModels(
+      [
+        {
+          id: OPENROUTER_DEFAULT_FREE_MODEL,
+          object: "model",
+          created: 1,
+          owned_by: "openai",
+          pricing: { prompt: "0", completion: "0" },
+        },
+      ],
+      [
+        {
+          id: OPENROUTER_RECOMMENDED_TEXT_MODEL,
+          object: "model",
+          created: 0,
+          owned_by: "openai",
+        },
+      ],
+    );
+
+    expect(merged.find((model) => model.id === OPENROUTER_DEFAULT_FREE_MODEL)?.free).toBe(true);
+    expect(merged.find((model) => model.id === OPENROUTER_DEFAULT_FREE_MODEL)?.tags).toContain(
+      "free",
+    );
+    expect(
+      merged.find((model) => model.id === OPENROUTER_RECOMMENDED_TEXT_MODEL)?.recommended,
+    ).toBe(true);
+  });
+});
+
+describe("fallback selector catalog", () => {
+  test("includes recommended and free OpenRouter GPT OSS models", () => {
+    const recommended = FALLBACK_TEXT_SELECTOR_MODELS.find(
+      (model) => model.modelId === OPENROUTER_RECOMMENDED_TEXT_MODEL,
+    );
+    const free = FALLBACK_TEXT_SELECTOR_MODELS.find(
+      (model) => model.modelId === OPENROUTER_DEFAULT_FREE_MODEL,
+    );
+
+    expect(recommended?.recommended).toBe(true);
+    expect(free?.free).toBe(true);
   });
 });
 

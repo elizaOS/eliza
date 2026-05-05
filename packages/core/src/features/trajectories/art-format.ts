@@ -10,6 +10,7 @@
  * - Grouping by scenario for GRPO
  */
 
+import { encodeToonValue } from "../../utils/toon";
 import type {
 	ARTTrajectory,
 	ChatMessage,
@@ -18,7 +19,6 @@ import type {
 	TrajectoryGroup,
 	TrajectoryStep,
 } from "./types";
-import { encodeToonValue } from "../../utils/toon";
 
 /**
  * Convert rich trajectory to ART message format.
@@ -97,7 +97,9 @@ function buildAssistantMessage(step: TrajectoryStep): string | null {
 	if (action.reasoning) {
 		parts.push(`Reasoning: ${action.reasoning}`);
 	}
-	parts.push(`Parameters:\n${encodeToonValue({ parameters: action.parameters })}`);
+	parts.push(
+		`Parameters:\n${encodeToonValue({ parameters: action.parameters })}`,
+	);
 
 	return parts.join("\n");
 }

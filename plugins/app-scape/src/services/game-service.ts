@@ -24,6 +24,7 @@ import {
   ModelType,
   parseToonKeyValue,
   Service,
+  setTrajectoryPurpose,
   withStandaloneTrajectory,
 } from "@elizaos/core";
 
@@ -468,6 +469,7 @@ export class ScapeGameService extends Service {
 
           let response: unknown;
           try {
+            setTrajectoryPurpose("background");
             response = await this.runtime.useModel(this.modelSize, {
               prompt,
               maxTokens: 300,

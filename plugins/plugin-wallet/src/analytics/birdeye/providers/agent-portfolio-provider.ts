@@ -12,7 +12,7 @@ import {
 export const agentPortfolioProvider = createBirdeyePortfolioProvider({
   name: "BIRDEYE_WALLET_PORTFOLIO",
   description: "Birdeye token balances for the agent wallet",
-  descriptionCompressed: "birdeye agent wallet portfolio holdings",
+  descriptionCompressed: "Read Birdeye token balances for the agent wallet.",
 });
 
 export { formatPortfolio };
