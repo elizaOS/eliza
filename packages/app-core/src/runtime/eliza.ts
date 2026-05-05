@@ -20,10 +20,8 @@ import {
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent/runtime/eliza";
-import {
-  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
-  collectPluginNames as upstreamCollectPluginNames,
-} from "@elizaos/agent/runtime/plugin-collector";
+import { collectPluginNames as upstreamCollectPluginNames } from "@elizaos/agent/runtime/plugin-collector";
+export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
 import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 
 export {
@@ -77,11 +75,6 @@ import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.j
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
 const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
-const INTERNAL_CHANNEL_PLUGIN_OVERRIDES = {
-  signal: "@elizaos/plugin-signal",
-  whatsapp: "@elizaos/plugin-whatsapp",
-  wechat: "elizaoswechat",
-} as const;
 
 /** Swarm / PTY paths call TEXT_TO_SPEECH; Edge TTS supplies that model with no API key. */
 const AGENT_ORCHESTRATOR_PLUGIN = "agent-orchestrator";
@@ -120,11 +113,6 @@ function isAutonomyService(value: unknown): value is AutonomyServiceLike {
     typeof value.enableAutonomy === "function"
   );
 }
-
-export const CHANNEL_PLUGIN_MAP = {
-  ...upstreamChannelPluginMap,
-  ...INTERNAL_CHANNEL_PLUGIN_OVERRIDES,
-};
 
 /** Guards against registering signal handlers more than once. */
 let signalHandlersRegistered = false;
