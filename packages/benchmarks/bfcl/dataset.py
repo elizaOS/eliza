@@ -258,7 +258,8 @@ class BFCLDataset:
         if not data_path.exists():
             raise FileNotFoundError(f"BFCL data path not found: {data_path}")
 
-        for file_name, category in self.CATEGORY_FILES.items():
+        file_map = {**self.CATEGORY_FILES, **self.V3_CATEGORY_FILES}
+        for file_name, category in file_map.items():
             # Skip if category not in configured categories
             if (
                 self.config.categories
@@ -268,16 +269,12 @@ class BFCLDataset:
 
             file_path = data_path / f"{file_name}.json"
             if not file_path.exists():
-                logger.warning(f"Category file not found: {file_path}")
                 continue
-
-            with open(file_path) as f:
-                data = json.load(f)
 
             count = 0
             max_tests = self.config.max_tests_per_category
 
-            for idx, item in enumerate(data):
+            for idx, item in enumerate(self._iter_local_records(file_path)):
                 if max_tests and count >= max_tests:
                     break
 
@@ -287,6 +284,28 @@ class BFCLDataset:
                     count += 1
 
             logger.info(f"Loaded {count} test cases for category {category.value}")
+
+    @staticmethod
+    def _iter_local_records(file_path: Path) -> Iterator[dict[str, object]]:
+        """Yield records from either JSON arrays or BFCL NDJSON files."""
+        with open(file_path) as f:
+            content = f.read().strip()
+        if not content:
+            return
+        if content.startswith("["):
+            data = json.loads(content)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        yield item
+            return
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            item = json.loads(line)
+            if isinstance(item, dict):
+                yield item
 
 
     def _parse_test_case(
@@ -553,6 +572,8 @@ class BFCLDataset:
 
         if categories is None:
             categories = self.get_categories()
+        if not categories:
+            return []
 
         samples_per_category = max(1, n // len(categories))
         samples: list[BFCLTestCase] = []

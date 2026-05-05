@@ -1,4 +1,9 @@
-import { type IAgentRuntime, ModelType, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ModelType,
+  parseKeyValueXml,
+  Service,
+} from "@elizaos/core";
 import { type GatewayHandle, startGateway } from "../gateway/index.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
@@ -31,60 +36,60 @@ const DEFAULT_MODEL_SIZE = ModelType.TEXT_SMALL;
 const ACTION_LIST = [
   {
     name: "WALK_TO",
-    params: "<destination>name</destination> OR <x>N</x><z>N</z>",
+    params: "destination: name OR x: N, z: N",
   },
   { name: "OPEN_DOOR", params: "(no params — opens nearest door/gate)" },
-  { name: "TALK_TO_NPC", params: "<npc>name</npc>" },
-  { name: "NAVIGATE_DIALOG", params: "<option>1-based index</option>" },
+  { name: "TALK_TO_NPC", params: "npc: name" },
+  { name: "NAVIGATE_DIALOG", params: "option: 1-based index" },
   {
     name: "INTERACT_OBJECT",
-    params: "<object>name</object> <option>action</option>",
+    params: "object: name, option: action",
   },
-  { name: "CHOP_TREE", params: "<tree>type (optional)</tree>" },
-  { name: "MINE_ROCK", params: "<rock>type (optional)</rock>" },
-  { name: "FISH", params: "<spot>type (optional)</spot>" },
-  { name: "ATTACK_NPC", params: "<npc>name</npc>" },
+  { name: "CHOP_TREE", params: "tree: type (optional)" },
+  { name: "MINE_ROCK", params: "rock: type (optional)" },
+  { name: "FISH", params: "spot: type (optional)" },
+  { name: "ATTACK_NPC", params: "npc: name" },
   { name: "EAT_FOOD", params: "(no params — eats first food found)" },
   {
     name: "SET_COMBAT_STYLE",
-    params: "<style>0=Atk 1=Str 2=Def 3=Ctrl</style>",
+    params: "style: 0=Atk 1=Str 2=Def 3=Ctrl",
   },
-  { name: "DROP_ITEM", params: "<item>name</item>" },
-  { name: "PICKUP_ITEM", params: "<item>name</item>" },
-  { name: "EQUIP_ITEM", params: "<item>name</item>" },
-  { name: "UNEQUIP_ITEM", params: "<item>name</item>" },
-  { name: "USE_ITEM", params: "<item>name</item>" },
+  { name: "DROP_ITEM", params: "item: name" },
+  { name: "PICKUP_ITEM", params: "item: name" },
+  { name: "EQUIP_ITEM", params: "item: name" },
+  { name: "UNEQUIP_ITEM", params: "item: name" },
+  { name: "USE_ITEM", params: "item: name" },
   {
     name: "USE_ITEM_ON_ITEM",
-    params: "<item1>name</item1><item2>name</item2>",
+    params: "item1: name, item2: name",
   },
   {
     name: "USE_ITEM_ON_OBJECT",
-    params: "<item>name</item><object>name</object>",
+    params: "item: name, object: name",
   },
   { name: "OPEN_BANK", params: "(no params — finds nearest bank)" },
   { name: "CLOSE_BANK", params: "(no params)" },
   {
     name: "DEPOSIT_ITEM",
-    params: "<item>name</item> <count>N (optional)</count>",
+    params: "item: name, count: N (optional)",
   },
   {
     name: "WITHDRAW_ITEM",
-    params: "<item>name</item> <count>N (optional)</count>",
+    params: "item: name, count: N (optional)",
   },
-  { name: "OPEN_SHOP", params: "<npc>shopkeeper name</npc>" },
+  { name: "OPEN_SHOP", params: "npc: shopkeeper name" },
   { name: "CLOSE_SHOP", params: "(no params)" },
-  { name: "BUY_FROM_SHOP", params: "<item>name</item> <count>N</count>" },
-  { name: "SELL_TO_SHOP", params: "<item>name</item> <count>N</count>" },
+  { name: "BUY_FROM_SHOP", params: "item: name, count: N" },
+  { name: "SELL_TO_SHOP", params: "item: name, count: N" },
   { name: "BURN_LOGS", params: "(no params — uses tinderbox on logs)" },
-  { name: "COOK_FOOD", params: "<food>raw food name (optional)</food>" },
+  { name: "COOK_FOOD", params: "food: raw food name (optional)" },
   { name: "FLETCH_LOGS", params: "(no params)" },
   { name: "CRAFT_LEATHER", params: "(no params)" },
-  { name: "SMITH_AT_ANVIL", params: "<item>item to smith (optional)</item>" },
-  { name: "PICKPOCKET_NPC", params: "<npc>name</npc>" },
+  { name: "SMITH_AT_ANVIL", params: "item: item to smith (optional)" },
+  { name: "PICKPOCKET_NPC", params: "npc: name" },
   {
     name: "CAST_SPELL",
-    params: "<spell>spellId</spell> <target>npcNid (optional)</target>",
+    params: "spell: spellId, target: npcNid (optional)",
   },
 ];
 
@@ -400,7 +405,9 @@ ${providerContext}
 ${recentActions || "  (none yet)"}
 
 # Available Actions
-Choose exactly ONE action. Respond with <action>ACTION_NAME</action> and any required params in XML tags.
+Choose exactly ONE action. Return only a TOON record:
+action: ACTION_NAME
+param_name: value
 ${actionListStr}
 
 # Instructions
@@ -415,7 +422,17 @@ Your choice:`;
   private parseActionFromResponse(
     response: string,
   ): { actionType: string; params: Record<string, unknown> } | null {
-    // Try <action>ACTION_NAME</action> format first
+    const toonParsed = parseKeyValueXml<Record<string, unknown>>(response);
+    const toonAction = this.extractActionName(toonParsed);
+    if (toonAction) {
+      const dispatchKey = ACTION_NAME_TO_DISPATCH[toonAction];
+      if (!dispatchKey) return null;
+      const params = this.extractParamsFromParsedResponse(toonParsed);
+      this.mapParamAliases(dispatchKey, params);
+      return { actionType: dispatchKey, params };
+    }
+
+    // Legacy fallback for old XML-shaped loop outputs.
     const actionMatch = response.match(/<action>\s*(\w+)\s*<\/action>/i);
     let actionName: string | null = actionMatch?.[1]?.toUpperCase() ?? null;
 
@@ -434,7 +451,7 @@ Your choice:`;
     const dispatchKey = ACTION_NAME_TO_DISPATCH[actionName];
     if (!dispatchKey) return null;
 
-    // Extract XML params
+    // Extract legacy XML params.
     const params: Record<string, unknown> = {};
     const paramRegex = /<(\w+)>([\s\S]*?)<\/\1>/gi;
     let match: RegExpExecArray | null;
@@ -447,13 +464,59 @@ Your choice:`;
       params[key] = Number.isFinite(num) && /^\d+$/.test(val) ? num : val;
     }
 
-    // Map common XML param names to what dispatchAction expects
+    // Map common param names to what dispatchAction expects.
     this.mapParamAliases(dispatchKey, params);
 
     return { actionType: dispatchKey, params };
   }
 
-  /** Normalize param names from LLM XML to dispatchAction expectations. */
+  private extractActionName(
+    parsed: Record<string, unknown> | null,
+  ): string | null {
+    const raw =
+      parsed?.action ?? parsed?.actionName ?? parsed?.name ?? parsed?.type;
+    if (typeof raw !== "string") return null;
+    return (
+      raw
+        .trim()
+        .replace(/[\s-]+/g, "_")
+        .toUpperCase() || null
+    );
+  }
+
+  private extractParamsFromParsedResponse(
+    parsed: Record<string, unknown> | null,
+  ): Record<string, unknown> {
+    if (!parsed) return {};
+    const params: Record<string, unknown> = {};
+    const nestedParams =
+      parsed.params &&
+      typeof parsed.params === "object" &&
+      !Array.isArray(parsed.params)
+        ? (parsed.params as Record<string, unknown>)
+        : null;
+    const source = nestedParams ?? parsed;
+
+    for (const [key, value] of Object.entries(source)) {
+      if (["action", "actionName", "name", "type", "params"].includes(key)) {
+        continue;
+      }
+      params[key] = this.coerceParamValue(value);
+    }
+
+    return params;
+  }
+
+  private coerceParamValue(value: unknown): unknown {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+    if (/^(true|false)$/i.test(trimmed))
+      return trimmed.toLowerCase() === "true";
+    return trimmed;
+  }
+
+  /** Normalize param names from model output to dispatchAction expectations. */
   private mapParamAliases(
     actionType: string,
     params: Record<string, unknown>,

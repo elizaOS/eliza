@@ -113,8 +113,8 @@ Examples:
     run_parser.add_argument(
         "--model",
         type=str,
-        default="heuristic",
-        help="Model to use (default: heuristic)",
+        default="openai/gpt-oss-120b",
+        help="Model to use (default: openai/gpt-oss-120b)",
     )
     run_parser.add_argument(
         "--provider",
@@ -220,32 +220,22 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     # Setup LLM provider if specified
     llm_provider: LLMProvider | None = None
     if args.provider == "openai":
-        try:
-            from elizaos_vending_bench.providers.openai import OpenAIProvider
+        from elizaos_vending_bench.providers.openai import OpenAIProvider
 
-            llm_provider = OpenAIProvider(
-                api_key=args.api_key,
-                model=args.model,
-            )
-            logger.info(f"Using OpenAI provider with model {args.model}")
-        except ImportError:
-            logger.warning("OpenAI provider not available, falling back to heuristic")
-        except ValueError as e:
-            logger.warning(f"OpenAI provider not configured ({e}), falling back to heuristic")
+        llm_provider = OpenAIProvider(
+            api_key=args.api_key,
+            model=args.model,
+        )
+        logger.info(f"Using OpenAI provider with model {args.model}")
 
     elif args.provider == "anthropic":
-        try:
-            from elizaos_vending_bench.providers.anthropic import AnthropicProvider
+        from elizaos_vending_bench.providers.anthropic import AnthropicProvider
 
-            llm_provider = AnthropicProvider(
-                api_key=args.api_key,
-                model=args.model,
-            )
-            logger.info(f"Using Anthropic provider with model {args.model}")
-        except ImportError:
-            logger.warning("Anthropic provider not available, falling back to heuristic")
-        except ValueError as e:
-            logger.warning(f"Anthropic provider not configured ({e}), falling back to heuristic")
+        llm_provider = AnthropicProvider(
+            api_key=args.api_key,
+            model=args.model,
+        )
+        logger.info(f"Using Anthropic provider with model {args.model}")
 
     elif args.provider == "eliza":
         # Route generation through the elizaOS TS benchmark bridge.
@@ -261,53 +251,43 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         # Groq exposes an OpenAI-compatible /v1 API, so reuse OpenAIProvider
         # with Groq's base URL and GROQ_API_KEY. This matches the provider
         # selection just added to adhdbench / mint / gauntlet / woobench / solana.
-        try:
-            import os
+        import os
 
-            from elizaos_vending_bench.providers.openai import OpenAIProvider
+        from elizaos_vending_bench.providers.openai import OpenAIProvider
 
-            api_key = args.api_key or os.getenv("GROQ_API_KEY")
-            if not api_key:
-                raise ValueError("GROQ_API_KEY not set")
-            # Pass the model name as-is — Groq's catalog uses fully qualified IDs
-            # like "openai/gpt-oss-120b", so we must NOT strip the slash prefix.
-            llm_provider = OpenAIProvider(
-                api_key=api_key,
-                model=args.model,
-                base_url="https://api.groq.com/openai/v1",
-            )
-            logger.info(f"Using Groq provider (OpenAI-compatible) with model {args.model}")
-        except ImportError:
-            logger.warning("Groq/OpenAI provider not available, falling back to heuristic")
-        except ValueError as e:
-            logger.warning(f"Groq provider not configured ({e}), falling back to heuristic")
+        api_key = args.api_key or os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not set")
+        # Pass the model name as-is — Groq's catalog uses fully qualified IDs
+        # like "openai/gpt-oss-120b", so we must NOT strip the slash prefix.
+        llm_provider = OpenAIProvider(
+            api_key=api_key,
+            model=args.model,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        logger.info(f"Using Groq provider (OpenAI-compatible) with model {args.model}")
 
     elif args.provider == "vllm":
         # vLLM exposes an OpenAI-compatible /v1 API. The orchestrator sets
         # OPENAI_BASE_URL/VLLM_BASE_URL and provides a dummy key for local servers.
-        try:
-            import os
+        import os
 
-            from elizaos_vending_bench.providers.openai import OpenAIProvider
+        from elizaos_vending_bench.providers.openai import OpenAIProvider
 
-            api_key = args.api_key or os.getenv("VLLM_API_KEY") or os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("VLLM_API_KEY or OPENAI_API_KEY not set")
-            base_url = (
-                os.getenv("VLLM_BASE_URL")
-                or os.getenv("OPENAI_BASE_URL")
-                or "http://127.0.0.1:8001/v1"
-            )
-            llm_provider = OpenAIProvider(
-                api_key=api_key,
-                model=args.model,
-                base_url=base_url,
-            )
-            logger.info(f"Using vLLM provider at {base_url} with model {args.model}")
-        except ImportError:
-            logger.warning("vLLM/OpenAI provider not available, falling back to heuristic")
-        except ValueError as e:
-            logger.warning(f"vLLM provider not configured ({e}), falling back to heuristic")
+        api_key = args.api_key or os.getenv("VLLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("VLLM_API_KEY or OPENAI_API_KEY not set")
+        base_url = (
+            os.getenv("VLLM_BASE_URL")
+            or os.getenv("OPENAI_BASE_URL")
+            or "http://127.0.0.1:8001/v1"
+        )
+        llm_provider = OpenAIProvider(
+            api_key=api_key,
+            model=args.model,
+            base_url=base_url,
+        )
+        logger.info(f"Using vLLM provider at {base_url} with model {args.model}")
 
     # Run benchmark
     runner = VendingBenchRunner(config, llm_provider)

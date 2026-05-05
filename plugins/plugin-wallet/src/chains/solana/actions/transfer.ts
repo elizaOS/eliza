@@ -11,6 +11,7 @@ import {
   type Memory,
   ModelType,
   parseJSONObjectFromText,
+  parseKeyValueXml,
   type State,
 } from "@elizaos/core";
 import {
@@ -117,7 +118,7 @@ export default {
       prompt: transferPrompt,
     });
 
-    const content = parseJSONObjectFromText(result);
+    const content = parseKeyValueXml(result) ?? parseJSONObjectFromText(result);
 
     if (!content) {
       if (callback) {

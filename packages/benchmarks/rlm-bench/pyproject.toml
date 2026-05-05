@@ -18,20 +18,20 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 
-dependencies = []
+dependencies = [
+    "eliza-adapter",
+]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
-rlm = [
-    "elizaos-plugin-rlm>=0.1.0",
-]
-eliza = [
-    "elizaos-plugin-rlm>=0.1.0",
-    "elizaos>=0.1.0",
-]
+rlm = []
+eliza = []
 
 [project.scripts]
 rlm-bench = "elizaos_rlm_bench.__main__:main"

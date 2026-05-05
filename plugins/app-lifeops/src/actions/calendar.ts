@@ -281,6 +281,39 @@ function buildCalendarPlanFromParsed(
   };
 }
 
+function formatCalendarPromptValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "none";
+    }
+    return value
+      .map(
+        (entry, index) =>
+          `item ${index + 1}: ${formatCalendarPromptValue(entry)}`,
+      )
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return "none";
+    }
+    return entries
+      .map(([key, entry]) => `${key}: ${formatCalendarPromptValue(entry)}`)
+      .join("\n");
+  }
+  return String(value);
+}
+
 function buildCalendarPlanRepairPrompt(args: {
   currentMessage: string;
   intent: string;
@@ -313,10 +346,10 @@ function buildCalendarPlanRepairPrompt(args: {
     `Current timezone: ${args.timeZone}`,
     `Current local datetime: ${args.localNow}`,
     `Current ISO datetime: ${args.nowIso}`,
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Previous invalid output:\n${args.rawResponse}`,
   ].join("\n");
 }
 
@@ -458,24 +491,30 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
     "If you choose trip_window, also return tripLocation when the place is recoverable from the request or recent conversation.",
     "",
     "Examples:",
-    '  "What\'s on my calendar today?" -> {"subaction":"feed"}',
-    '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "¿Cuál es mi próxima reunión?" -> {"subaction":"next_event"}',
-    '  "find my return flight" -> {"subaction":"search_events"}',
-    '  "can you search my calendar and tell me if i have any flights to denver?" -> {"subaction":"search_events"}',
-    '  "puedes buscar en mi calendario y decirme si tengo un vuelo a denver" -> {"subaction":"search_events"}',
-    '  "what event do i have on April 19" -> {"subaction":"search_events"}',
-    '  "東京にいる間、何がありますか？" -> {"subaction":"trip_window","tripLocation":"東京"}',
-    '  "Can you help me with my calendar?" -> {"subaction":null}',
+    "request: What's on my calendar today?",
+    "subaction: feed",
     "",
-    "Return ONLY valid JSON with exactly these fields:",
+    "request: What's my next meeting?",
+    "subaction: next_event",
+    "",
+    "request: find my return flight",
+    "subaction: search_events",
+    "",
+    "request: 東京にいる間、何がありますか？",
+    "subaction: trip_window",
+    "tripLocation: 東京",
+    "",
+    "request: Can you help me with my calendar?",
+    "subaction: null",
+    "",
+    "Return TOON only with exactly these fields:",
     "  subaction: feed, next_event, search_events, trip_window, or null",
     "  tripLocation: optional string",
     "",
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Current planner candidate: ${JSON.stringify(args.candidateSubaction)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Current planner candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
   try {
@@ -516,18 +555,22 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "If the request contains a specific attendee, title, flight, dentist, place, date constraint, or other lookup key, choose search_events, even when it also names a time window like today, tomorrow, or this week.",
     "",
     "Examples:",
-    '  "What\'s my next meeting?" -> {"subaction":"next_event"}',
-    '  "次のミーティングはいつですか？" -> {"subaction":"next_event"}',
-    '  "meetings with Sarah this week" -> {"subaction":"search_events"}',
-    '  "帰りの便を探して" -> {"subaction":"search_events"}',
+    "request: What's my next meeting?",
+    "subaction: next_event",
+    "",
+    "request: meetings with Sarah this week",
+    "subaction: search_events",
+    "",
+    "request: 帰りの便を探して",
+    "subaction: search_events",
     "",
     "Return TOON only with exactly this field:",
     "  subaction: next_event or search_events",
     "",
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Current candidate: ${JSON.stringify(args.candidateSubaction)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Current candidate:\n${args.candidateSubaction}`,
   ].join("\n");
 
   try {
@@ -569,21 +612,25 @@ async function resolveCalendarMutationBoundaryWithLlm(args: {
     "Prefer create_event when the user gives a time/date and asks to add or schedule a meeting or appointment, regardless of language.",
     "",
     "Examples:",
-    '  "Schedule a meeting with Alex at 3pm tomorrow" -> {"subaction":"create_event"}',
-    '  "Agenda una reunión con Alex mañana a las 3pm" -> {"subaction":"create_event"}',
-    '  "明日の午後3時にアレックスとのミーティングを入れて" -> {"subaction":"create_event"}',
-    '  "Reschedule the dentist to Friday" -> {"subaction":"update_event"}',
-    '  "Cambia la cita del dentista al viernes" -> {"subaction":"update_event"}',
-    '  "Delete the team meeting tomorrow" -> {"subaction":"delete_event"}',
-    '  "今日の予定は何ですか？" -> {"subaction":null}',
+    "request: Schedule a meeting with Alex at 3pm tomorrow",
+    "subaction: create_event",
+    "",
+    "request: Reschedule the dentist to Friday",
+    "subaction: update_event",
+    "",
+    "request: Delete the team meeting tomorrow",
+    "subaction: delete_event",
+    "",
+    "request: 今日の予定は何ですか？",
+    "subaction: null",
     "",
     "Return TOON only with exactly this field:",
     "  subaction: create_event, update_event, delete_event, or null",
     "",
-    `Current request: ${JSON.stringify(args.currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Current candidate: ${JSON.stringify(args.candidateSubaction)}`,
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${args.recentConversation}`,
+    `Current candidate:\n${args.candidateSubaction ?? "null"}`,
   ].join("\n");
 
   try {
@@ -1867,26 +1914,47 @@ export async function extractCalendarPlanWithLlm(
     "For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.",
     "",
     "Examples:",
-    '  "what\'s on my calendar tomorrow" → {"subaction":"feed","shouldAct":true,"response":null}',
-    '  "今日の予定は何ですか？" → {"subaction":"feed","shouldAct":true,"response":null}',
-    '  "what\'s my next meeting" → {"subaction":"next_event","shouldAct":true,"response":null}',
-    '  "schedule a meeting with Alex at 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Meeting with Alex"}',
-    '  "Agenda una reunión con Alex mañana a las 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Reunión con Alex"}',
-    '  "Planifie une réunion avec Alex demain à 15h" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Réunion avec Alex"}',
-    '  "明日の午後3時にアレックスとのミーティングを入れて" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"アレックスとのミーティング"}',
-    '  "find my return flight" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["return flight"]}',
-    '  "can you search my calendar and tell me if i have any flights to denver?" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["flight to denver","denver"]}',
-    '  "puedes buscar en mi calendario y decirme si tengo un vuelo a denver" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["vuelo a denver","denver"]}',
-    '  "what event do i have on April 19" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["april 19"]}',
-    '  "what do I have while I\'m in Tokyo" → {"subaction":"trip_window","shouldAct":true,"response":null,"queries":["tokyo"],"tripLocation":"Tokyo"}',
-    '  "rename my meeting to standup" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup"}',
-    '  "delete the team meeting tomorrow" → {"subaction":"delete_event","shouldAct":true,"response":null,"queries":["team meeting"]}',
-    '  "can you help me with my calendar?" → {"subaction":null,"shouldAct":false,"response":"What do you want to do on your calendar — check your schedule, find an event, or create one?","queries":[]}',
+    "request: what's on my calendar tomorrow",
+    "subaction: feed",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: schedule a meeting with Alex at 3pm",
+    "subaction: create_event",
+    "shouldAct: true",
+    "response: null",
+    "title: Meeting with Alex",
+    "",
+    "request: can you search my calendar and tell me if i have any flights to denver?",
+    "subaction: search_events",
+    "shouldAct: true",
+    "response: null",
+    "queries: flight to denver || denver",
+    "",
+    "request: what do I have while I'm in Tokyo",
+    "subaction: trip_window",
+    "shouldAct: true",
+    "response: null",
+    "queries: tokyo",
+    "tripLocation: Tokyo",
+    "",
+    "request: rename my meeting to standup",
+    "subaction: update_event",
+    "shouldAct: true",
+    "response: null",
+    "queries: meeting",
+    "title: standup",
+    "",
+    "request: can you help me with my calendar?",
+    "subaction: null",
+    "shouldAct: false",
+    "response: What do you want to do on your calendar — check your schedule, find an event, or create one?",
+    "queries:",
     "",
     "The user may speak any language. Detect the calendar intent regardless of language.",
     "When the user asks about what is happening in a specific location or during a trip, detect this as trip_window and extract the location, regardless of language.",
     "",
-    "Return TOON only. No prose. No markdown. No XML. No <think>.",
+    "Return TOON only. No prose. No markdown. No hidden reasoning.",
     "",
     `Current timezone: ${timeZone}`,
     `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
@@ -1894,15 +1962,9 @@ export async function extractCalendarPlanWithLlm(
     `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
     "When the user says 'today', 'tomorrow', 'yesterday', or similar, resolve the calendar day from the LOCAL DATE ANCHORS above (not from the UTC datetime) and build timeMin/timeMax as a full local-day window in the current timezone.",
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
   let rawResponse = "";
@@ -2012,15 +2074,19 @@ async function inferCalendarSearchQueriesWithLlm(args: {
     "If nothing usable can be extracted, return an empty array.",
     "",
     "Examples:",
-    '  "can you search my calendar and tell me if i have any flights to denver?" -> {"queries":["flight to denver","denver"]}',
-    '  "puedes buscar en mi calendario y decirme si tengo un vuelo a denver" -> {"queries":["vuelo a denver","denver"]}',
-    '  "what event do i have on April 19" -> {"queries":["april 19"]}',
-    '  "meetings with Alex next week" -> {"queries":["alex","meeting"]}',
+    "request: can you search my calendar and tell me if i have any flights to denver?",
+    "queries: flight to denver || denver",
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
-    `Current planner output: ${JSON.stringify(args.llmPlan ?? null)}`,
+    "request: what event do i have on April 19",
+    "queries: april 19",
+    "",
+    "request: meetings with Alex next week",
+    "queries: alex || meeting",
+    "",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Current planner output:\n${formatCalendarPromptValue(args.llmPlan ?? null)}`,
   ].join("\n");
 
   try {
@@ -2434,18 +2500,10 @@ async function inferCreateEventDetails(
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime: ${nowIso}`,
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
-    "<calendar_context>",
-    formatCreateEventCalendarContext(calendarContext),
-    "</calendar_context>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
   try {
@@ -2505,18 +2563,10 @@ async function inferUpdateEventDetails(
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime: ${nowIso}`,
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
-    "<current_event>",
-    formatUpdateEventTargetContext(targetEvent),
-    "</current_event>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Current event:\n${formatUpdateEventTargetContext(targetEvent)}`,
   ].join("\n");
 
   try {
@@ -2583,21 +2633,13 @@ async function repairCreateEventDetails(
     `Current local datetime: ${nowReadable}`,
     `Current ISO datetime: ${nowIso}`,
     `Create failure: ${error.message}`,
-    `Previous extraction: ${JSON.stringify(previousExtraction)}`,
-    `Previous create request: ${JSON.stringify(failedRequest)}`,
+    `Previous extraction:\n${formatCalendarPromptValue(previousExtraction)}`,
+    `Previous create request:\n${formatCalendarPromptValue(failedRequest)}`,
     "",
-    "<current_request>",
-    currentMessage,
-    "</current_request>",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
-    "<calendar_context>",
-    formatCreateEventCalendarContext(calendarContext),
-    "</calendar_context>",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${recentConversation}`,
+    `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
   ].join("\n");
 
   try {
@@ -2820,22 +2862,16 @@ async function groundCalendarSearchMatchesWithLlm(
     "Return NO matches when the candidate only shares a generic time window or vague travel context.",
     "If the request names a person, company, topic, or event name, only match candidates that explicitly mention that subject in the title, description, location, or attendees.",
     "Flights only count when the request is actually about flights/travel, or the flight text explicitly mentions the named subject.",
-    "Return TOON only. No prose. No <think>.",
+    "Return TOON only. No prose. No hidden reasoning.",
     "Use || to separate multiple ids.",
     "",
     "Example:",
     "matchIds: evt_1 || evt_2",
     "reason:",
     "",
-    "<resolved_intent>",
-    intent,
-    "</resolved_intent>",
-    "<search_queries>",
-    queries.join(" || "),
-    "</search_queries>",
-    "<recent_conversation>",
-    recentConversation,
-    "</recent_conversation>",
+    `Resolved intent:\n${intent}`,
+    `Search queries:\n${queries.join(" || ")}`,
+    `Recent conversation:\n${recentConversation}`,
     "",
     "Candidates:",
     ...candidates.map(

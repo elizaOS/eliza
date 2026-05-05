@@ -12,6 +12,7 @@ import Handlebars from "handlebars";
 import {
 	withCanonicalActionDocs,
 	withCanonicalEvaluatorDocs,
+	withCanonicalProviderDocs,
 } from "./action-docs";
 import { parseActionParams, validateActionParams } from "./actions";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
@@ -2278,9 +2279,10 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	registerProvider(provider: Provider) {
-		this.providers.push(provider);
+		const canonical = withCanonicalProviderDocs(provider);
+		this.providers.push(canonical);
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, provider: provider.name },
+			{ src: "agent", agentId: this.agentId, provider: canonical.name },
 			"Provider registered",
 		);
 	}

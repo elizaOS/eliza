@@ -28,6 +28,110 @@ function extractCommand(prompt: string): string {
   return "CLICK(10,10)";
 }
 
+function extractRlmAnswer(prompt: string): string | null {
+  const pairs = [
+    /authorization code is ([A-Z0-9]{8})/i,
+    /encrypted key sequence is ([A-Z0-9]{8})/i,
+    /vault combination is ([A-Z0-9]{8})/i,
+    /project identifier is ([A-Z0-9]{8})/i,
+    /access token is ([A-Z0-9]{8})/i,
+    /critical finding reference number is ([A-Z0-9]{8})/i,
+  ];
+  for (const regex of pairs) {
+    const match = regex.exec(prompt);
+    if (match?.[1]) return match[1];
+  }
+
+  const shared = /shared protocol version is ([A-Z0-9]{8})/i.exec(prompt)?.[1];
+  const docA = /document A identifier is ([A-Z0-9]{8})/i.exec(prompt)?.[1];
+  const docB = /document B identifier is ([A-Z0-9]{8})/i.exec(prompt)?.[1];
+  if (shared && docA && docB) {
+    return `Shared: ${shared}, A: ${docA}, B: ${docB}`;
+  }
+
+  const allNeedles = Array.from(
+    prompt.matchAll(
+      /(?:authorization code|encrypted key sequence|vault combination|project identifier|access token) is ([A-Z0-9]{8})/gi,
+    ),
+    (match) => match[1],
+  );
+  if (allNeedles.length > 0) {
+    return Array.from(new Set(allNeedles)).join(", ");
+  }
+  return null;
+}
+
+function extractArithmeticAnswer(prompt: string): string | null {
+  const match = /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(
+    prompt,
+  );
+  if (!match) return null;
+  const left = Number(match[1]);
+  const op = match[2].toLowerCase();
+  const right = Number(match[3]);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
+  if (op === "+") return String(left + right);
+  if (op === "-") return String(left - right);
+  if (op === "*" || op === "x") return String(left * right);
+  return null;
+}
+
+function buildReplyXml(answer: string): string {
+  return `<response>
+<thought>Answering the benchmark question directly.</thought>
+<actions>REPLY</actions>
+<providers></providers>
+<text>${answer}</text>
+</response>`;
+}
+
+function buildHyperliquidPlanXml(): string {
+  const plan = {
+    steps: [
+      {
+        perp_orders: {
+          orders: [
+            {
+              coin: "ETH",
+              side: "buy",
+              tif: "ALO",
+              sz: 0.01,
+              reduceOnly: false,
+              px: "mid-1%",
+            },
+            {
+              coin: "BTC",
+              side: "sell",
+              tif: "IOC",
+              sz: 0.01,
+              reduceOnly: true,
+              px: "mid+1%",
+            },
+          ],
+        },
+      },
+      { usd_class_transfer: { toPerp: true, usdc: 5 } },
+      { set_leverage: { coin: "ETH", leverage: 3, cross: false } },
+      { cancel_all: { coin: "BTC" } },
+    ],
+  };
+  return buildReplyXml(JSON.stringify(plan));
+}
+
+function buildVendingActionXml(prompt: string): string {
+  const hasPending =
+    /pending orders/i.test(prompt) && !/no pending orders/i.test(prompt);
+  const action = hasPending
+    ? { action: "ADVANCE_DAY" }
+    : {
+        action: "PLACE_ORDER",
+        supplier_id: "beverage_dist",
+        items: { water: 12 },
+        reasoning: "Initial stock order for a high-demand product.",
+      };
+  return buildReplyXml(JSON.stringify(action));
+}
+
 function extractValidationFields(prompt: string): Record<string, string> {
   const tags: Record<string, string> = {};
 
@@ -99,6 +203,23 @@ function buildCompletion(prompt: string): string {
       thought: "Summarizing completed benchmark execution.",
       text: `Executed ${command}`,
     });
+  }
+
+  if (/Benchmark:\s*(rlm-bench|rlm_bench)/i.test(prompt)) {
+    return buildReplyXml(`<answer>${extractRlmAnswer(prompt) ?? "UNKNOWN"}</answer>`);
+  }
+
+  if (/Benchmark:\s*gaia/i.test(prompt)) {
+    const answer = extractArithmeticAnswer(prompt) ?? "mock-answer";
+    return buildReplyXml(`FINAL ANSWER: ${answer}`);
+  }
+
+  if (/Benchmark:\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(prompt)) {
+    return buildHyperliquidPlanXml();
+  }
+
+  if (/Benchmark:\s*(vending-bench|vending_bench)/i.test(prompt)) {
+    return buildVendingActionXml(prompt);
   }
 
   // Default message handler path (single-shot core)

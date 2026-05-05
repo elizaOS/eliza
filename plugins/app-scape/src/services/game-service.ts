@@ -19,7 +19,12 @@
  * unless `BOT_SDK_TOKEN` is set. Nothing happens silently.
  */
 
-import { type IAgentRuntime, ModelType, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ModelType,
+  parseKeyValueXml,
+  Service,
+} from "@elizaos/core";
 
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
@@ -62,43 +67,42 @@ const MAX_EVENT_LOG = 12;
 const ACTION_LIST = [
   {
     name: "WALK_TO",
-    params: "<x>N</x><z>N</z><run>true|false</run>",
+    params: "x: N, z: N, run: true|false",
     hint: "Walk to an absolute world tile. Useful to explore or approach something.",
   },
   {
     name: "CHAT_PUBLIC",
-    params: "<message>text (max 80 chars)</message>",
+    params: "message: text (max 80 chars)",
     hint: "Say something in public chat — narrate, socialize, or respond to operator.",
   },
   {
     name: "ATTACK_NPC",
-    params: "<npcId>N</npcId>",
+    params: "npcId: N",
     hint: "Attack a nearby NPC. Use an id from SCAPE_NEARBY's npcs section. Server walks into range automatically.",
   },
   {
     name: "DROP_ITEM",
-    params: "<slot>0-27</slot>",
+    params: "slot: 0-27",
     hint: "Drop the item in this inventory slot to the ground at your feet.",
   },
   {
     name: "EAT_FOOD",
-    params: "<slot>0-27</slot> (optional)",
-    hint: "Consume food to restore HP. If <slot> is omitted the server picks the first edible item.",
+    params: "slot: 0-27 (optional)",
+    hint: "Consume food to restore HP. If slot is omitted the server picks the first edible item.",
   },
   {
     name: "SET_GOAL",
-    params: "<title>text</title><notes>text (optional)</notes>",
+    params: "title: text, notes: text (optional)",
     hint: "Declare or update your active goal. The journal remembers it across steps and sessions.",
   },
   {
     name: "COMPLETE_GOAL",
-    params: "<status>completed|abandoned</status><notes>optional</notes>",
+    params: "status: completed|abandoned, notes: optional",
     hint: "Close the active goal when done or when you've decided to give up.",
   },
   {
     name: "REMEMBER",
-    params:
-      "<kind>note|lesson|landmark</kind><text>…</text><weight>1-5</weight>",
+    params: "kind: note|lesson|landmark, text: note text, weight: 1-5",
     hint: "Write a note to the Scape Journal so it survives the sliding event log.",
   },
 ] as const;
@@ -619,7 +623,9 @@ ${context}
 ${eventLog}
 
 # Available Actions
-Choose exactly ONE action. Respond with <action>ACTION_NAME</action> plus any required params in XML tags.
+Choose exactly ONE action. Return only a TOON record:
+action: ACTION_NAME
+param_name: value
 ${actionList}
 
 # Instructions
@@ -634,12 +640,23 @@ Your choice:`;
   private parseActionFromResponse(
     response: string,
   ): { actionName: string; params: Record<string, unknown> } | null {
+    const toonParsed = parseKeyValueXml<Record<string, unknown>>(response);
+    const toonAction = this.extractActionName(toonParsed);
+    if (toonAction) {
+      if (!ACTION_LIST.some((a) => a.name === toonAction)) return null;
+      return {
+        actionName: toonAction,
+        params: this.extractParamsFromParsedResponse(toonParsed),
+      };
+    }
+
+    // Legacy fallback for old XML-shaped loop outputs.
     const actionMatch = response.match(/<action>\s*(\w+)\s*<\/action>/i);
     const actionName = actionMatch?.[1]?.toUpperCase() ?? null;
     if (!actionName) return null;
     if (!ACTION_LIST.some((a) => a.name === actionName)) return null;
 
-    // Bulk-extract every XML tag in the response except the action tag.
+    // Bulk-extract every legacy XML tag in the response except the action tag.
     const params: Record<string, unknown> = {};
     const paramRegex = /<(\w+)>([\s\S]*?)<\/\1>/gi;
     for (;;) {
@@ -653,6 +670,52 @@ Your choice:`;
         /^-?\d+$/.test(rawValue) && Number.isFinite(num) ? num : rawValue;
     }
     return { actionName, params };
+  }
+
+  private extractActionName(
+    parsed: Record<string, unknown> | null,
+  ): string | null {
+    const raw =
+      parsed?.action ?? parsed?.actionName ?? parsed?.name ?? parsed?.type;
+    if (typeof raw !== "string") return null;
+    return (
+      raw
+        .trim()
+        .replace(/[\s-]+/g, "_")
+        .toUpperCase() || null
+    );
+  }
+
+  private extractParamsFromParsedResponse(
+    parsed: Record<string, unknown> | null,
+  ): Record<string, unknown> {
+    if (!parsed) return {};
+    const params: Record<string, unknown> = {};
+    const nestedParams =
+      parsed.params &&
+      typeof parsed.params === "object" &&
+      !Array.isArray(parsed.params)
+        ? (parsed.params as Record<string, unknown>)
+        : null;
+    const source = nestedParams ?? parsed;
+
+    for (const [key, value] of Object.entries(source)) {
+      if (["action", "actionName", "name", "type", "params"].includes(key)) {
+        continue;
+      }
+      params[key] = this.coerceParamValue(value);
+    }
+
+    return params;
+  }
+
+  private coerceParamValue(value: unknown): unknown {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+    if (/^(true|false)$/i.test(trimmed))
+      return trimmed.toLowerCase() === "true";
+    return trimmed;
   }
 
   /**

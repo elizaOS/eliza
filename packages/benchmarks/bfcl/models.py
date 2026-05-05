@@ -2,7 +2,7 @@
 BFCL Model Provider Configuration
 
 Comprehensive support for multiple LLM providers:
-- Groq (default, with llama-3.1-8b-instant)
+- Groq (default, with openai/gpt-oss-120b)
 - OpenAI
 - Anthropic
 - Google GenAI

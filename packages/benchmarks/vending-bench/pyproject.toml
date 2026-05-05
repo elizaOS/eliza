@@ -24,8 +24,11 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp>=3.9.0",
-    "elizaos>=1.0.0",
+    "eliza-adapter",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 openai = [

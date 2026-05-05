@@ -27,16 +27,15 @@ import {
 } from "@elizaos/core";
 import {
   LIFEOPS_MESSAGE_CHANNELS,
-  type LifeOpsFollowUpStatus,
   type LifeOpsMessageChannel,
 } from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "./lifeops-grounded-reply.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type Subaction =
   | "list_contacts"
@@ -419,8 +418,10 @@ async function resolveRelationshipPlanWithLlm(args: {
   const prompt = [
     "Plan the OWNER_RELATIONSHIP (Rolodex) subaction for this request.",
     "The user may speak in any language.",
-    "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"list_contacts"|"add_contact"|"log_interaction"|"add_follow_up"|"complete_follow_up"|"follow_up_list"|"days_since"|"list_overdue_followups"|"mark_followup_done"|"set_followup_threshold"|null,"shouldAct":true|false,"response":"string|null"}',
+    "Return TOON only with exactly these fields:",
+    "subaction: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold, or null",
+    "shouldAct: true or false",
+    "response: short clarifying question, or null",
     "",
     "Choose list_contacts when the user wants to see, browse, list, or recall who is in the Rolodex.",
     "Choose add_contact when the user wants to remember a new person, store a handle, or add them to the contact list.",
@@ -435,10 +436,12 @@ async function resolveRelationshipPlanWithLlm(args: {
     "Set shouldAct=false only when the request is too vague to safely choose any of the ten subactions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Structured parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Structured parameters:\n${Object.entries(args.params)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join("\n")}`,
+    `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
   try {
@@ -512,15 +515,17 @@ export const relationshipAction: Action & {
     "Subactions: list_contacts | add_contact | log_interaction | days_since | " +
     "add_follow_up | complete_follow_up | follow_up_list | list_overdue_followups | " +
     "mark_followup_done | set_followup_threshold. " +
-    "Positive triggers: 'how long since I talked to <person>' → days_since; " +
-    "'remind me to follow up with <person> [when]' → add_follow_up; " +
+    "Positive triggers: 'how long since I talked to Sarah' → days_since; " +
+    "'remind me to follow up with Sarah next week' → add_follow_up; " +
     "'who do I need to follow up with' / 'show overdue follow-ups' → " +
-    "list_overdue_followups; 'mark the <person> follow-up done' → " +
+    "list_overdue_followups; 'mark the Sarah follow-up done' → " +
     "mark_followup_done; 'bump the overdue threshold to N days' → " +
     "set_followup_threshold. " +
     "Do NOT split this request across OWNER_RELATIONSHIP and any LIST_OVERDUE_FOLLOWUPS " +
     "/ MARK_FOLLOWUP_DONE / SET_FOLLOWUP_THRESHOLD action — OWNER_RELATIONSHIP is " +
     "the single entry point for the entire contacts + follow-up surface.",
+  descriptionCompressed:
+    "Owner contacts/rolodex and follow-up tracker: list/add contacts, log interactions, follow-ups, days-since, overdue, and cadence thresholds.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (

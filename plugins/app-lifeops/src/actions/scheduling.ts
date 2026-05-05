@@ -46,11 +46,11 @@ import {
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { getZonedDateParts } from "../lifeops/time.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "./lifeops-grounded-reply.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { inferTimeZoneFromLocationText } from "./timezone-normalization.js";
 
 const MS_PER_MINUTE = 60_000;
@@ -469,15 +469,17 @@ export const proposeMeetingTimesAction: Action & {
     "days. Also correct for bundled scheduling while traveling or concrete " +
     "reschedule options. " +
     "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
-    "'propose three times for a sync with <person>', 'suggest a few times for " +
-    "<person>', 'offer Marco three 30-minute slots', 'find us three options " +
-    "next week', 'give me slots to send <person>'. " +
+    "'propose three times for a sync with a person', 'suggest a few times for " +
+    "Jill', 'offer Marco three 30-minute slots', 'find us three options " +
+    "next week', 'give me slots to send Sarah'. " +
     "DO NOT use this for small talk, weather, or vague conversation. " +
     "DO NOT use this to check the owner's calendar, create a calendar event, " +
     "or view upcoming events — that is CALENDAR_ACTION. " +
     "DO NOT use this to start a multi-turn scheduling negotiation record — " +
     "that is SCHEDULING (subaction: start). This action just generates the " +
     "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
+  descriptionCompressed:
+    "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
@@ -673,6 +675,8 @@ export const checkAvailabilityAction: Action = {
   description:
     "Check whether the owner is free or busy across a specific ISO-8601 " +
     "time window. Returns a free/busy summary and any overlapping events.",
+  descriptionCompressed:
+    "Check owner free/busy for one ISO-8601 time window and list overlapping events.",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
     const respond = makeSchedulingRespond({
@@ -845,6 +849,8 @@ export const updateMeetingPreferencesAction: Action & {
     "of day (24h HH:MM local), blackout windows, default meeting duration, " +
     "and travel buffer. These drive PROPOSE_MEETING_TIMES. Use this for durable " +
     "sleep windows, no-call hours, and other recurring scheduling rules.",
+  descriptionCompressed:
+    "Persist owner meeting preferences: preferred hours, blackout windows, default duration, and travel buffer.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
@@ -1075,7 +1081,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Plan the scheduling negotiation action for this request.",
     "The user may speak in any language.",
     "Use the current request, the structured parameters, and recent conversation context.",
-    "Return a JSON object with exactly these fields:",
+    "Return TOON only with exactly these fields:",
     "  subaction: one of start, propose, respond, finalize, cancel, list_active, list_proposals, or null",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false or clarification is needed",
@@ -1091,18 +1097,37 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
     "",
     "Examples:",
-    '  "start scheduling lunch with Jill" -> {"subaction":"start","shouldAct":true,"response":null}',
-    '  "propose Tuesday at 3" with negotiationId/startAt/endAt params -> {"subaction":"propose","shouldAct":true,"response":null}',
-    '  "mark that proposal accepted" with proposalId/response params -> {"subaction":"respond","shouldAct":true,"response":null}',
-    '  "confirm that slot" with proposalId/confirmed params -> {"subaction":"finalize","shouldAct":true,"response":null}',
-    '  "list my scheduling negotiations" -> {"subaction":"list_active","shouldAct":true,"response":null}',
-    '  "help me schedule something" -> {"subaction":null,"shouldAct":false,"response":"Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?"}',
+    "request: start scheduling lunch with Jill",
+    "subaction: start",
+    "shouldAct: true",
+    "response: null",
     "",
-    "Return ONLY valid JSON.",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Structured parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    "request: propose Tuesday at 3 with negotiationId/startAt/endAt params",
+    "subaction: propose",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: mark that proposal accepted with proposalId/response params",
+    "subaction: respond",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: confirm that slot with proposalId/confirmed params",
+    "subaction: finalize",
+    "shouldAct: true",
+    "response: null",
+    "",
+    "request: help me schedule something",
+    "subaction: null",
+    "shouldAct: false",
+    "response: Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?",
+    "",
+    `Current request:\n${currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Structured parameters:\n${Object.entries(args.params)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join("\n")}`,
+    `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
   try {
@@ -1178,6 +1203,8 @@ export const schedulingAction: Action & {
     "travel-time bundling, missed-call repair, or fresh candidate-slot " +
     "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
     "or CROSS_CHANNEL_SEND.",
+  descriptionCompressed:
+    "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (

@@ -1280,13 +1280,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if agent == "eliza":
             args.extend(["--real-llm", "--provider", "eliza"])
         else:
-            if model.provider:
+            provider_name = (model.provider or "").strip().lower()
+            if model.provider and provider_name != "mock":
                 args.extend(["--provider", model.provider])
             real_llm = extra.get("real_llm")
             if real_llm is True:
                 args.append("--real-llm")
             if model.model:
-                provider_name = (model.provider or "").strip().lower()
                 if provider_name == "groq":
                     args.extend(["--groq-small-model", model.model])
                     args.extend(["--groq-large-model", model.model])
@@ -1365,22 +1365,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
         The explorer is env-driven (no CLI flags). Caller propagates settings
         via environment variables: ``MODEL_NAME``, ``MAX_MESSAGES``,
-        ``ENVIRONMENT_CONFIG``, ``USE_EXTERNAL_SURFPOOL``, and ``MODE``
-        (set ``MODE=eliza`` to route LLM calls through the elizaOS TS
-        benchmark server instead of an in-process AgentRuntime).
+        ``ENVIRONMENT_CONFIG``, ``USE_EXTERNAL_SURFPOOL``, and ``OUTPUT_DIR``.
         """
         args = [
-            python, "-m", "benchmarks.solana.eliza_explorer",
+            python, "-m", "benchmarks.solana.eliza_explorer", "--output-dir", str(output_dir),
         ]
         # All knobs flow through env vars read by ``eliza_explorer.main``.
         _ = model
         _ = extra
-        _ = output_dir
         return args
 
     def _solana_result(output_dir: Path) -> Path:
-        gym_metrics = repo_root / "benchmarks" / "solana" / "solana-gym-env" / "metrics"
-        return find_latest_file(gym_metrics, glob_pattern="eliza_*_metrics.json")
+        return find_latest_file(output_dir, glob_pattern="eliza_*_metrics.json")
 
     def _osworld_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for OSWorld benchmark."""

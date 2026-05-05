@@ -7,7 +7,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalRequest } from "../lifeops/approval-queue.types.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
@@ -98,6 +102,39 @@ function normalizePassengers(value: unknown): TravelBookingPassenger[] {
     .filter(
       (passenger): passenger is TravelBookingPassenger => passenger !== null,
     );
+}
+
+function formatBookTravelPromptValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "none";
+    }
+    return value
+      .map(
+        (entry, index) =>
+          `item ${index + 1}: ${formatBookTravelPromptValue(entry)}`,
+      )
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return "none";
+    }
+    return entries
+      .map(([key, entry]) => `${key}: ${formatBookTravelPromptValue(entry)}`)
+      .join("\n");
+  }
+  return String(value);
 }
 
 function normalizeCalendarSync(value: unknown): TravelCalendarSyncPlan | null {
@@ -196,8 +233,15 @@ async function extractBookTravelPlanWithLlm(args: {
 
   const prompt = [
     "Extract structured booking data for the BOOK_TRAVEL action.",
-    "Return ONLY valid JSON with exactly these keys:",
-    '{"offerId":string|null,"origin":string|null,"destination":string|null,"departureDate":string|null,"returnDate":string|null,"passengerCount":number|null,"passengers":[{"offerPassengerId":string|null,"givenName":string|null,"familyName":string|null,"bornOn":string|null,"email":string|null,"phoneNumber":string|null,"title":string|null,"gender":string|null}],"calendarSync":{"enabled":boolean|null,"calendarId":string|null,"title":string|null,"description":string|null,"location":string|null,"timeZone":string|null}|null}',
+    "Return TOON only with exactly these keys:",
+    "offerId: string or null",
+    "origin: IATA airport code or null",
+    "destination: IATA airport code or null",
+    "departureDate: YYYY-MM-DD or null",
+    "returnDate: YYYY-MM-DD or null",
+    "passengerCount: number or null",
+    "passengers: passenger records if known; each record may include offerPassengerId, givenName, familyName, bornOn, email, phoneNumber, title, gender",
+    "calendarSync: calendar sync fields if known; may include enabled, calendarId, title, description, location, timeZone",
     "",
     "Rules:",
     "- Do not invent airports, dates, or passenger birthdays.",
@@ -207,18 +251,18 @@ async function extractBookTravelPlanWithLlm(args: {
     "",
     `User message:\n${messageText(args.message)}`,
     "",
-    `Current parameters:\n${JSON.stringify(args.params)}`,
+    `Current parameters:\n${formatBookTravelPromptValue(args.params)}`,
     "",
     `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
   let parsed: Record<string, unknown> | null = null;
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    parsed = parseJSONObjectFromText(
-      typeof raw === "string" ? raw : "",
-    ) as Record<string, unknown> | null;
+    const rawText = typeof raw === "string" ? raw : "";
+    parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawText) ??
+      (parseJSONObjectFromText(rawText) as Record<string, unknown> | null);
   } catch {
     parsed = null;
   }
@@ -295,6 +339,8 @@ export const bookTravelAction: Action & {
   ],
   description:
     "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed. This action still owns the turn when the owner is asking you to prepare the booking package now and hold it for approval, when they say you can start booking if it is good with them, or when some itinerary details still need a follow-up before the approval queue entry can be finalized.",
+  descriptionCompressed:
+    "Approval-gated real travel booking for flights/hotels, with missing-detail collection and calendar sync after approval.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {

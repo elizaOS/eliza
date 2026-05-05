@@ -20,8 +20,11 @@ classifiers = [
 ]
 
 dependencies = [
-  "elizaos>=1.0.0",
+  "eliza-adapter",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
 dev = [

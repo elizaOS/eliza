@@ -9,6 +9,7 @@ import {
   type Memory,
   ModelType,
   parseJSONObjectFromText,
+  parseKeyValueXml,
   type State,
 } from "@elizaos/core";
 import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
@@ -194,7 +195,8 @@ export const executeSwap: Action = {
         prompt: swapPrompt,
       });
 
-      const response = parseJSONObjectFromText(result) as {
+      const parsedExtraction = parseKeyValueXml(result) ?? parseJSONObjectFromText(result);
+      const response = parsedExtraction as {
         inputTokenSymbol?: string;
         outputTokenSymbol?: string;
         inputTokenCA?: string;

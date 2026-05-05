@@ -7,8 +7,8 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelClass,
-  parseKeyValueXml,
   parseJSONObjectFromText,
+  parseKeyValueXml,
   type State,
   settings,
 } from "@elizaos/core";

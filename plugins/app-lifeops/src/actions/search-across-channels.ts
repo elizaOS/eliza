@@ -114,7 +114,7 @@ async function extractSearchPlan(
   params: SearchAcrossChannelsParams,
 ): Promise<ExtractedSearchPlan> {
   // If caller already provided a concrete query, trust it.
-  if (params.query && params.query.trim()) {
+  if (params.query?.trim()) {
     return {
       query: params.query.trim(),
       person: params.person ?? null,
@@ -166,8 +166,10 @@ async function extractSearchPlan(
     "- shouldAct: false ONLY if the request is too vague to derive a query.",
     "- clarification: when shouldAct is false, ask the minimum clarifying question in the user's language.",
     "",
-    `Current request: ${JSON.stringify(intent)}`,
-    `Recent conversation: ${JSON.stringify(recentTexts(state).join("\n"))}`,
+    "Current request:",
+    intent || "(empty)",
+    "Recent conversation:",
+    recentTexts(state).join("\n") || "(none)",
   ].join("\n");
 
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });

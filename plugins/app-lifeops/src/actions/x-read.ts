@@ -147,13 +147,15 @@ async function resolveXReadPlanWithLlm(args: {
     '  "help me with X" -> subaction: null; feedType: null; query: null; limit: null; shouldAct: false; response: Do you want me to read your X DMs, timeline, mentions, or run a search?',
     "",
     "Return TOON only.",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    "Current request:",
+    currentMessage || "(empty)",
+    "Resolved intent:",
+    args.intent || "(none)",
+    "Recent conversation:",
+    recentConversation || "(none)",
   ].join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });

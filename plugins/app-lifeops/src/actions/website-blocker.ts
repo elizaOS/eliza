@@ -405,15 +405,17 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "- If the user gives an exact timed duration like 45, 90, or 135 minutes, preserve that exact duration.",
     "",
     "Examples:",
-    '  shouldAct: true; confirmed: true; response: null; websites[0]: x.com; websites[1]: twitter.com; durationMinutes: 120',
-    '  shouldAct: true; confirmed: true; response: null; websites[0]: twitter.com; durationMinutes: 90',
-    '  shouldAct: false; confirmed: false; response: I noted those websites and will wait for your confirmation before blocking them.; websites[0]: x.com; websites[1]: twitter.com',
-    '  shouldAct: false; confirmed: false; response: Tell me which public website hostnames to block, such as x.com or youtube.com.; websites:',
-    '  shouldAct: true; confirmed: true; response: null; websites[0]: x.com; websites[1]: twitter.com; durationMinutes: 1',
+    "  shouldAct: true; confirmed: true; response: null; websites[0]: x.com; websites[1]: twitter.com; durationMinutes: 120",
+    "  shouldAct: true; confirmed: true; response: null; websites[0]: twitter.com; durationMinutes: 90",
+    "  shouldAct: false; confirmed: false; response: I noted those websites and will wait for your confirmation before blocking them.; websites[0]: x.com; websites[1]: twitter.com",
+    "  shouldAct: false; confirmed: false; response: Tell me which public website hostnames to block, such as x.com or youtube.com.; websites:",
+    "  shouldAct: true; confirmed: true; response: null; websites[0]: x.com; websites[1]: twitter.com; durationMinutes: 1",
     "",
     "Return TOON only.",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Recent conversation turns: ${JSON.stringify(recentTurns)}`,
+    "Current request:",
+    currentMessage || "(empty)",
+    "Recent conversation turns:",
+    recentTurns.join("\n") || "(none)",
   ].join("\n");
 
   try {
@@ -482,8 +484,10 @@ async function recoverWebsiteContextWithLlm(args: {
     "- Return an empty array when no websites were previously mentioned.",
     "",
     "Return TOON only.",
-    `Current request: ${JSON.stringify(currentMessage)}`,
-    `Recent conversation turns: ${JSON.stringify(recentTurns)}`,
+    "Current request:",
+    currentMessage || "(empty)",
+    "Recent conversation turns:",
+    recentTurns.join("\n") || "(none)",
   ].join("\n");
 
   try {

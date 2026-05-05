@@ -127,9 +127,24 @@ For question-answering / text tasks:
 <text>[YOUR ANSWER HERE]</text>
 </response>
 
+For JSON-plan tasks (hyperliquid_bench):
+<response>
+<thought>I will provide the requested plan JSON.</thought>
+<actions>REPLY</actions>
+<text>{"steps":[...]}</text>
+</response>
+
+For Vending-Bench tasks:
+<response>
+<thought>I will manage inventory and cash flow.</thought>
+<actions>REPLY</actions>
+<text>{"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}</text>
+</response>
+
 RULES:
 - Always use BENCHMARK_ACTION (not the raw action name) for action-based benchmarks
-- For pure Q&A benchmarks (context-bench), use REPLY with the answer in <text>
+- For pure Q&A benchmarks (context-bench, rlm-bench, gaia), use REPLY with the answer in <text>
+- For hyperliquid_bench and vending-bench, use REPLY with the exact JSON payload in <text>
 - Never use REPLY for benchmarks that need tool/command execution
 - Be precise and decisive — choose the best action immediately
 </critical_instructions>`;
@@ -140,6 +155,23 @@ RULES:
 
 function formatContextAsText(ctx: BenchmarkContext): string {
   const sections: string[] = [];
+  const benchmark = ctx.benchmark.trim().toLowerCase();
+  const isQuestionAnswerBenchmark = new Set([
+    "context-bench",
+    "context_bench",
+    "rlm-bench",
+    "rlm_bench",
+    "gaia",
+  ]).has(benchmark);
+  const isJsonPlanBenchmark = new Set([
+    "hyperliquid_bench",
+    "hyperliquid-bench",
+    "hyperliquidbench",
+  ]).has(benchmark);
+  const isJsonActionBenchmark = new Set([
+    "vending-bench",
+    "vending_bench",
+  ]).has(benchmark);
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -167,7 +199,22 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   }
 
   // Tau-bench: tools
-  if (ctx.tools && ctx.tools.length > 0) {
+  if (isQuestionAnswerBenchmark) {
+    sections.push(
+      `Answer the benchmark question directly. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+    sections.push(
+      `Put only the final answer in the response text. Do not include commentary unless the task explicitly asks for it.`,
+    );
+  } else if (isJsonPlanBenchmark) {
+    sections.push(
+      `Return only the requested JSON plan in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isJsonActionBenchmark) {
+    sections.push(
+      `Return only one Vending-Bench JSON action in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (ctx.tools && ctx.tools.length > 0) {
     const toolLines = ctx.tools.map((t) => {
       const name = t.name ?? "unknown";
       const desc = t.description ?? "";

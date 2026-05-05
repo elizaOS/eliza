@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 
 # Ensure the parent directory is importable
@@ -41,14 +42,18 @@ def parse_args() -> argparse.Namespace:
 
     # -- run --
     run_parser = sub.add_parser("run", help="Run the benchmark")
-    run_parser.add_argument("--model", default="gpt-4o-mini", help="Model name (default: gpt-4o-mini)")
+    run_parser.add_argument(
+        "--model",
+        default="openai/gpt-oss-120b",
+        help="Model name (default: openai/gpt-oss-120b)",
+    )
     run_parser.add_argument(
         "--provider",
-        default="openai",
+        default="mock",
         help=(
-            "Model provider. Default 'openai' uses the in-process Python "
-            "AgentRuntime. Use 'eliza' to route through the elizaOS TypeScript "
-            "benchmark bridge (requires the bridge server to be running)."
+            "Model provider. Default 'mock' uses the deterministic local "
+            "runner. Use 'eliza' to route through the Eliza TypeScript "
+            "benchmark bridge."
         ),
     )
     run_parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2], help="Levels to run (0, 1, 2)")
@@ -71,6 +76,31 @@ def parse_args() -> argparse.Namespace:
     list_parser.add_argument("--tags", nargs="+", default=[])
 
     return parser.parse_args()
+
+
+def _configure_bridge_model_env(model_name: str | None) -> None:
+    provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    if not provider:
+        if os.environ.get("GROQ_API_KEY"):
+            provider = "groq"
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.environ.get("OPENAI_API_KEY"):
+            provider = "openai"
+
+    model = (model_name or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
+    if not model:
+        model = "openai/gpt-oss-120b" if provider in {"groq", "openrouter"} else "gpt-4o-mini"
+
+    if provider:
+        os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
+    os.environ["BENCHMARK_MODEL_NAME"] = model
+    os.environ["OPENAI_LARGE_MODEL"] = model
+    os.environ["OPENAI_SMALL_MODEL"] = model
+    os.environ["GROQ_LARGE_MODEL"] = model
+    os.environ["GROQ_SMALL_MODEL"] = model
+    os.environ["OPENROUTER_LARGE_MODEL"] = model
+    os.environ["OPENROUTER_SMALL_MODEL"] = model
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -122,12 +152,18 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     if (config.model_provider or "").strip().lower() == "eliza":
         # Route through the elizaOS TypeScript benchmark bridge instead of
-        # the in-process Python AgentRuntime. This requires the TS bench
-        # server to be reachable via ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN.
+        # the removed in-process Python AgentRuntime.
         from eliza_adapter.adhdbench import ElizaADHDBenchRunner
+        from eliza_adapter.server_manager import ElizaServerManager
 
-        runner = ElizaADHDBenchRunner(config)
-        results = asyncio.run(runner.run(progress_callback=progress))
+        _configure_bridge_model_env(config.model_name)
+        manager = ElizaServerManager()
+        manager.start()
+        try:
+            runner = ElizaADHDBenchRunner(config, client=manager.client)
+            results = asyncio.run(runner.run(progress_callback=progress))
+        finally:
+            manager.stop()
     else:
         from elizaos_adhdbench.runner import ADHDBenchRunner
         runner = ADHDBenchRunner(config)

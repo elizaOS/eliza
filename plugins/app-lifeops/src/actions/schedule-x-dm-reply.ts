@@ -72,16 +72,17 @@ async function resolveSchedulePlan(args: {
     "",
     "Examples:",
     '  "Schedule a reply to @devfriend\'s Twitter DM for 9am tomorrow saying thanks for the intro." -> recipient: devfriend; text: thanks for the intro; sendAtIso: <tomorrow at 09:00 local time as ISO>; shouldAct: true; response: null',
-    '  "Queue an X DM reply to alice at 2pm saying I\'ll send the deck tonight." -> recipient: alice; text: I\'ll send the deck tonight.; sendAtIso: <today at 14:00 local time as ISO>; shouldAct: true; response: null',
+    "  \"Queue an X DM reply to alice at 2pm saying I'll send the deck tonight.\" -> recipient: alice; text: I'll send the deck tonight.; sendAtIso: <today at 14:00 local time as ISO>; shouldAct: true; response: null",
     '  "Schedule an X DM for later." -> recipient: null; text: null; sendAtIso: null; shouldAct: false; response: Who should receive the X DM, what should it say, and when should I send it?',
     "",
     `Current time: ${nowIso}`,
-    `Current request: ${JSON.stringify(currentText)}`,
-    `Recent conversation: ${JSON.stringify(recent.join("\n"))}`,
+    "Current request:",
+    currentText || "(empty)",
+    "Recent conversation:",
+    recent.join("\n") || "(none)",
   ].join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const parsed =
       parseKeyValueXml<Record<string, unknown>>(

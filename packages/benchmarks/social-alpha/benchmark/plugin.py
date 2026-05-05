@@ -186,10 +186,7 @@ def _compute_trust_score(user_id: str) -> float:
     archetype = _classify_archetype(user_id)
     m = _compute_user_metrics(user_id)
 
-    from elizaos_plugin_social_alpha.trust_score import (
-        TrustScoreMetrics,
-        calculate_balanced_trust_score,
-    )
+    from benchmark.trust_score import TrustScoreMetrics, calculate_balanced_trust_score
 
     metrics = TrustScoreMetrics(
         total_calls=n,

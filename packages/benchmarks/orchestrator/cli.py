@@ -545,7 +545,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--agent", default="eliza", help="Agent label for this run")
     p_run.add_argument("--provider", default="groq", help="Model provider")
-    p_run.add_argument("--model", default="qwen3", help="Model name")
+    p_run.add_argument("--model", default="openai/gpt-oss-120b", help="Model name")
     p_run.add_argument("--extra", default=None, help="JSON object with benchmark-specific options")
     p_run.add_argument("--resume", action="store_true", help="Alias for idempotent run behavior")
     p_run.add_argument("--rerun-failed", action="store_true", help="Only re-run failed signatures")

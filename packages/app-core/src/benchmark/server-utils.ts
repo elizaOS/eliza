@@ -226,6 +226,10 @@ export function extractTaskId(
   if (typeof bySnake === "string" && bySnake.trim()) return bySnake.trim();
   const byCamel = context?.taskId;
   if (typeof byCamel === "string" && byCamel.trim()) return byCamel.trim();
+  const byScenario = context?.scenario_id;
+  if (typeof byScenario === "string" && byScenario.trim()) {
+    return byScenario.trim();
+  }
   return "default-task";
 }
 

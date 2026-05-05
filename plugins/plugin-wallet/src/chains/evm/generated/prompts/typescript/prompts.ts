@@ -46,18 +46,15 @@ Extract the following information about the requested proposal:
 - Governor address
 - Chain to execute on
 
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined:
+Respond using TOON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
+targets[2]: 0xTargetAddress1,0xTargetAddress2
+values[2]: 0,1000000000000000000
+calldatas[2]: 0xCalldata1,0xCalldata2
+description: proposal description, or null
+governor: governor contract address, or null
+chain: chain to execute on, or null
 
-\`\`\`json
-{
-    "targets": string[] | null,
-    "values": string[] | null,
-    "calldatas": string[] | null,
-    "description": string | null,
-    "governor": string | null,
-    "chain": string | null
-}
-\`\`\``;
+IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
 export const EXECUTE_PROPOSAL_TEMPLATE = executeProposalTemplate;
 
@@ -75,18 +72,15 @@ Extract the following information about the requested proposal:
 - Governor address
 - Chain to execute on
 
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined:
+Respond using TOON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
+targets[2]: 0xTargetAddress1,0xTargetAddress2
+values[2]: 0,1000000000000000000
+calldatas[2]: 0xCalldata1,0xCalldata2
+description: proposal description, or null
+governor: governor contract address, or null
+chain: chain to execute on, or null
 
-\`\`\`json
-{
-    "targets": string[] | null,
-    "values": string[] | null,
-    "calldatas": string[] | null,
-    "description": string | null,
-    "governor": string | null,
-    "chain": string | null
-}
-\`\`\``;
+IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
 export const PROPOSE_TEMPLATE = proposeTemplate;
 
@@ -104,18 +98,15 @@ Extract the following information about the requested proposal:
 - Governor address
 - Chain to execute on
 
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined:
+Respond using TOON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
+targets[2]: 0xTargetAddress1,0xTargetAddress2
+values[2]: 0,1000000000000000000
+calldatas[2]: 0xCalldata1,0xCalldata2
+description: proposal description, or null
+governor: governor contract address, or null
+chain: chain to execute on, or null
 
-\`\`\`json
-{
-    "targets": string[] | null,
-    "values": string[] | null,
-    "calldatas": string[] | null,
-    "description": string | null,
-    "governor": string | null,
-    "chain": string | null
-}
-\`\`\``;
+IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
 export const QUEUE_PROPOSAL_TEMPLATE = queueProposalTemplate;
 
@@ -192,15 +183,12 @@ Extract the following information about the requested vote:
 - Governor address
 - Chain to execute on
 
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined:
+Respond using TOON like this. Use null for any value that cannot be determined:
+proposalId: proposal ID, or null
+support: 0 for against, 1 for yes, 2 for abstain, or null
+governor: governor contract address, or null
+chain: chain to execute on, or null
 
-\`\`\`json
-{
-    "proposalId": string | null,
-    "support": number | null,
-    "governor": string | null,
-    "chain": string | null
-}
-\`\`\``;
+IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
 export const VOTE_TEMPLATE = voteTemplate;

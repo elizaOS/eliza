@@ -313,7 +313,7 @@ def show_models(args: argparse.Namespace) -> int:
             print("   - XAI_API_KEY")
             print("   - OPENROUTER_API_KEY")
         else:
-            print("\nDefault: Groq llama-3.1-8b-instant")
+            print("\nDefault: Groq openai/gpt-oss-120b")
             print("Override: --provider <name> or --model <provider/model>")
         
         print("\nUse --all to see all supported models")

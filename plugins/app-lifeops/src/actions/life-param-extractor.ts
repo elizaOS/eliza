@@ -12,7 +12,11 @@
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
@@ -83,6 +87,18 @@ const EMPTY_TASK_CREATE_PLAN: ExtractedTaskCreatePlan = {
   durationMinutes: null,
 };
 
+function promptText(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "(empty)";
+}
+
+function parseStructuredRecord(raw: string): Record<string, unknown> | null {
+  return (
+    parseKeyValueXml<Record<string, unknown>>(raw) ??
+    parseJSONObjectFromText(raw)
+  );
+}
+
 // ── Prompt ────────────────────────────────────────────
 
 function buildExtractionPrompt(
@@ -95,7 +111,7 @@ function buildExtractionPrompt(
     "The user may speak informally, formally, code-switched, or in another language.",
     "Do not strip acknowledgements, fillers, or language-footer text. Interpret the whole request in context.",
     "Infer practical reminder windows from natural phrases when needed: wake up or before work -> morning, lunch or after lunch -> afternoon, after work or dinner -> evening, before bed or before sleep -> night.",
-    "Return ONLY a JSON object with these fields (use null for unknown):",
+    "Return ONLY a TOON record with these fields (use null for unknown):",
     "",
     '- mode: "create" when the request is specific enough to create or preview a LifeOps item now, "respond" when you should reply without creating anything yet',
     '  Choose mode="create" whenever the user gives a title and cadence, even if they say "preview the plan", "don\'t save yet", "just show it first", or similar — the handler (not you) controls whether it is saved or previewed. Only use mode="respond" when the user hasn\'t specified what to track or when.',
@@ -110,8 +126,8 @@ function buildExtractionPrompt(
     '  - "times_per_day" — happens multiple times on the SAME recurring day, with multiple times or windows (e.g. "morning and night", "three times a day")',
     '  - "interval" — happens every N minutes/hours (e.g. "every 2 hours")',
     '  If the request names a specific calendar date OR a specific wall-clock time without a recurrence word, pick "once".',
-    '- windows: array of time windows like ["morning", "night", "afternoon", "evening"]',
-    "- weekdays: array of weekday numbers (0=Sun, 1=Mon, ..., 6=Sat) for weekly tasks",
+    "- windows: list of time windows like [morning, night, afternoon, evening]",
+    "- weekdays: list of weekday numbers (0=Sun, 1=Mon, ..., 6=Sat) for weekly tasks",
     '- timeOfDay: specific time in HH:MM 24h format like "15:00" or "08:30" if mentioned',
     '- timeZone: IANA timezone like "America/Denver" when the user explicitly gives one',
     '- everyMinutes: interval in minutes for recurring tasks (e.g., 120 for "every 2 hours")',
@@ -120,25 +136,42 @@ function buildExtractionPrompt(
     "- durationMinutes: how long the activity takes if mentioned",
     "",
     "Examples:",
-    '  "remind me to brush teeth morning and night" -> {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","cadenceKind":"daily","windows":["morning","night"],"description":null,"weekdays":null,"timeOfDay":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "call mom every Sunday at 3pm" -> {"mode":"create","response":null,"requestKind":null,"title":"Call mom","cadenceKind":"weekly","weekdays":[0],"timeOfDay":"15:00","description":null,"windows":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "drink water every 2 hours" -> {"mode":"create","response":null,"requestKind":null,"title":"Drink water","cadenceKind":"interval","everyMinutes":120,"description":null,"windows":null,"weekdays":null,"timeOfDay":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "workout 4 times a week" -> {"mode":"create","response":null,"requestKind":null,"title":"Workout","cadenceKind":"weekly","weekdays":[1,3,5,6],"timesPerDay":null,"description":null,"windows":null,"timeOfDay":null,"everyMinutes":null,"priority":null,"durationMinutes":null}',
-    '  "set an alarm for 7 am" -> {"mode":"create","response":null,"requestKind":"alarm","title":"Alarm","cadenceKind":"once","timeOfDay":"07:00","description":null,"windows":null,"weekdays":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "set a reminder for tomorrow at 9am to call mom" -> {"mode":"create","response":null,"requestKind":"reminder","title":"Call mom","cadenceKind":"once","timeOfDay":"09:00","description":null,"windows":null,"weekdays":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "make sure I brush my teeth when I wake up and before bed" -> {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","cadenceKind":"daily","windows":["morning","night"],"description":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "recuérdame cepillarme los dientes por la mañana y por la noche" -> {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","cadenceKind":"daily","windows":["morning","night"],"description":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "set a reminder for april 17 at 8pm mountain time to hug my wife" -> {"mode":"create","response":null,"requestKind":"reminder","title":"Hug my wife","cadenceKind":"once","timeOfDay":"20:00","timeZone":"America/Denver","description":null,"windows":null,"weekdays":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":30}',
-    '  "lol yeah. can you help me add a todo for my life?" -> {"mode":"respond","response":"What do you want the todo to be, and when should it happen?","requestKind":null,"title":null,"description":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',
-    '  "Please make that into a routine named Evening mobility flow with reminders around 8am and 9pm. Just preview the plan for now and do not save it yet." -> {"mode":"create","response":null,"requestKind":"reminder","title":"Evening mobility flow","cadenceKind":"times_per_day","timesPerDay":2,"windows":["morning","night"],"description":null,"weekdays":null,"timeOfDay":null,"everyMinutes":null,"priority":null,"durationMinutes":null}',
+    'Input: "remind me to brush teeth morning and night"',
+    "mode: create",
+    "response: null",
+    "requestKind: reminder",
+    "title: Brush teeth",
+    "cadenceKind: daily",
+    "windows: [morning, night]",
+    "weekdays: null",
+    "timeOfDay: null",
+    "everyMinutes: null",
+    "timesPerDay: null",
+    "",
+    'Input: "call mom every Sunday at 3pm"',
+    "mode: create",
+    "response: null",
+    "requestKind: null",
+    "title: Call mom",
+    "cadenceKind: weekly",
+    "weekdays: [0]",
+    "timeOfDay: 15:00",
+    "",
+    'Input: "lol yeah. can you help me add a todo for my life?"',
+    "mode: respond",
+    "response: What do you want the todo to be, and when should it happen?",
+    "requestKind: null",
+    "title: null",
+    "cadenceKind: null",
     "",
     "Use recent conversation only to resolve short follow-ups. Do not emit requestKind='alarm' or requestKind='reminder' unless the current request or recent conversation explicitly supports it.",
     "If the user has not actually specified the todo/habit yet, choose mode='respond' and ask a concise clarifying question instead of inventing a task.",
     "",
-    "Return ONLY valid JSON. No prose.",
+    "Return ONLY valid TOON. No prose, markdown, code fences, or any other format.",
     "",
-    `User request: ${JSON.stringify(intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    `User request: ${promptText(intent)}`,
+    "Recent conversation:",
+    promptText(recentConversation),
   ].join("\n");
 }
 
@@ -284,16 +317,18 @@ function buildRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the LifeOps create-definition planner was invalid.",
-    "Return ONLY valid JSON with these exact fields:",
+    "Return ONLY valid TOON with these exact fields:",
     "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, priority, durationMinutes",
     "",
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",
     "If mode is create, response must be null.",
     "",
-    `User request: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(args.recentConversation)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `User request: ${promptText(args.intent)}`,
+    "Recent conversation:",
+    promptText(args.recentConversation),
+    "Previous invalid output:",
+    promptText(args.rawResponse),
   ].join("\n");
 }
 
@@ -337,7 +372,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
     runtime,
     prompt,
     parser: (raw) => {
-      const parsedObject = parseJSONObjectFromText(raw);
+      const parsedObject = parseStructuredRecord(raw);
       return parsedObject
         ? buildTaskCreatePlan({
             parsed: parsedObject,
@@ -402,7 +437,7 @@ function parseReminderIntensityPlan(
     };
   }
 
-  const parsed = parseJSONObjectFromText(raw);
+  const parsed = parseStructuredRecord(raw);
   if (!parsed || typeof parsed.intensity !== "string") {
     return null;
   }
@@ -421,11 +456,13 @@ function buildReminderIntensityRepairPrompt(args: {
 }): string {
   return [
     "Your last reply for the LifeOps reminder-intensity extractor was invalid.",
-    'Return ONLY valid JSON like {"intensity":"minimal"}.',
+    "Return ONLY valid TOON like:",
+    "intensity: minimal",
     'Allowed intensity values: "minimal", "normal", "persistent", "high_priority_only".',
     "",
-    `User said: ${JSON.stringify(args.intent)}`,
-    `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
+    `User said: ${promptText(args.intent)}`,
+    "Previous invalid output:",
+    promptText(args.rawResponse),
   ].join("\n");
 }
 
@@ -447,9 +484,11 @@ export async function extractReminderIntensityWithLlm(args: {
     "- persistent: user wants more/frequent reminders",
     "- high_priority_only: user wants to pause or mute most reminders",
     "",
-    'Return ONLY valid JSON like {"intensity":"minimal"}. No prose.',
+    "Return ONLY valid TOON like:",
+    "intensity: minimal",
+    "No prose, markdown, code fences, or any other format.",
     "",
-    `User said: ${JSON.stringify(args.intent)}`,
+    `User said: ${promptText(args.intent)}`,
   ].join("\n");
 
   const { parsed } = await runExtractorPipeline({
@@ -499,10 +538,10 @@ export async function extractUnlockModeWithLlm(args: {
     "- until_manual_lock: unlock until user manually re-locks",
     "- until_callback: unlock until a specific event/task completes (extract callbackKey as a slug)",
     "",
-    "Return JSON: { mode, durationMinutes?, callbackKey? }",
-    "Return null if no unlock mode is detectable.",
+    "Return a TOON record with fields: mode, durationMinutes, callbackKey.",
+    "Use mode: null if no unlock mode is detectable.",
     "",
-    `User said: ${JSON.stringify(args.intent)}`,
+    `User said: ${promptText(args.intent)}`,
   ].join("\n");
 
   try {
@@ -510,7 +549,7 @@ export async function extractUnlockModeWithLlm(args: {
       prompt,
     });
     const raw = typeof result === "string" ? result : "";
-    const parsed = parseJSONObjectFromText(raw);
+    const parsed = parseStructuredRecord(raw);
     if (!parsed?.mode) return null;
     if (!VALID_UNLOCK_MODES.has(parsed.mode as string)) return null;
     return {

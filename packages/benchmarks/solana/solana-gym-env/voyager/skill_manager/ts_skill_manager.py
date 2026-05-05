@@ -7,6 +7,32 @@ from typing import List
 import voyager.utils as U
 from langchain_openai import ChatOpenAI
 
+
+def _openai_compatible_provider() -> tuple[str, str]:
+    provider = os.getenv("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    if not provider:
+        if os.getenv("GROQ_API_KEY"):
+            provider = "groq"
+        elif os.getenv("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.getenv("OPENAI_API_KEY"):
+            provider = "openai"
+        else:
+            provider = "openrouter"
+    config = {
+        "groq": ("GROQ_API_KEY", "https://api.groq.com/openai/v1"),
+        "openrouter": ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1"),
+        "openai": ("OPENAI_API_KEY", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+    }
+    if provider not in config:
+        raise RuntimeError("Solana skill manager supports provider=openai, groq, or openrouter")
+    key_var, base_url = config[provider]
+    api_key = os.getenv(key_var)
+    if not api_key:
+        raise RuntimeError(f"API key required: set {key_var} for provider={provider}")
+    return base_url, api_key
+
+
 class TypeScriptSkillManager:
     def __init__(
         self, 
@@ -17,12 +43,13 @@ class TypeScriptSkillManager:
         ckpt_dir="ckpt",
         resume=False
     ):
+        base_url, api_key = _openai_compatible_provider()
         self.llm = ChatOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=base_url,
             model=model_name,
             temperature=temperature,
             request_timeout=request_timeout,
-            api_key=os.getenv("OPENROUTER_API_KEY"),
+            api_key=api_key,
         )
         U.f_mkdir(f"{ckpt_dir}/skill/code")
         U.f_mkdir(f"{ckpt_dir}/skill/description")
