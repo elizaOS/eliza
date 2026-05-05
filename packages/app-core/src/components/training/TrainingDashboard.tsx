@@ -1,14 +1,14 @@
 import { Button, Input } from "@elizaos/ui";
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { TrainingJob, TrainingModel } from "./types";
-import { JobDetailPanel } from "./JobDetailPanel";
-import { InferenceEndpointPanel } from "./InferenceEndpointPanel";
 import {
   useCreateTrainingJob,
   useTrainingJobs,
   useTrainingModels,
 } from "./hooks/useTrainingApi";
+import { InferenceEndpointPanel } from "./InferenceEndpointPanel";
+import { JobDetailPanel } from "./JobDetailPanel";
+import type { TrainingJob, TrainingModel } from "./types";
 
 interface CreateModalState {
   open: boolean;
@@ -264,7 +264,7 @@ export function TrainingDashboard() {
     setCreateError(null);
 
     const epochs = parseInt(createModal.epochs, 10);
-    if (isNaN(epochs) || epochs < 1) {
+    if (Number.isNaN(epochs) || epochs < 1) {
       setCreateError("Epochs must be a positive number");
       return;
     }
@@ -337,8 +337,14 @@ export function TrainingDashboard() {
               </div>
             )}
             <div>
-              <label className="text-xs text-muted block mb-1">Epochs</label>
+              <label
+                className="text-xs text-muted block mb-1"
+                htmlFor="training-epochs"
+              >
+                Epochs
+              </label>
               <Input
+                id="training-epochs"
                 type="number"
                 min="1"
                 value={createModal.epochs}
@@ -352,10 +358,14 @@ export function TrainingDashboard() {
               />
             </div>
             <div>
-              <label className="text-xs text-muted block mb-1">
+              <label
+                className="text-xs text-muted block mb-1"
+                htmlFor="training-run-name"
+              >
                 Run Name (optional)
               </label>
               <Input
+                id="training-run-name"
                 type="text"
                 value={createModal.runName}
                 onChange={(e) =>

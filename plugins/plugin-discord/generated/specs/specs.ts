@@ -33,212 +33,113 @@ export const coreActionsSpec = {
   "version": "1.0.0",
   "actions": [
     {
-      "name": "CHAT_WITH_ATTACHMENTS",
+      "name": "DISCORD_CHAT_WITH_ATTACHMENTS",
       "description": "Legacy Discord attachment summarization for explicitly selected attachment IDs. Prefer READ_ATTACHMENT for normal current or recent files, images, media, links, and documents.",
       "descriptionCompressed": "Legacy Discord attachment-ID summarization.",
       "similes": [
-        "ANALYZE_ATTACHMENTS",
-        "SUMMARIZE_ATTACHMENTS",
-        "ANSWER_WITH_ATTACHMENTS"
+        "DISCORD_ANALYZE_ATTACHMENTS",
+        "DISCORD_SUMMARIZE_ATTACHMENTS",
+        "DISCORD_ANSWER_WITH_ATTACHMENTS"
       ],
       "parameters": []
     },
     {
-      "name": "DOWNLOAD_MEDIA",
-      "description": "Download a Discord media attachment or media URL for later inspection or processing.",
-      "descriptionCompressed": "Download Discord media attachment or URL.",
+      "name": "DISCORD_MESSAGE_OP",
+      "description": "Run a Discord message operation: send a channel message, reply to a message, send a direct message, edit one of the bot's messages, delete one of the bot's messages, react with an emoji, pin a message, or unpin a message. Pick the op that matches the user request.",
+      "descriptionCompressed": "Discord message ops: send, reply, dm, edit, delete, react, pin, unpin.",
       "similes": [
-        "FETCH_MEDIA",
-        "SAVE_ATTACHMENT",
-        "GET_MEDIA"
+        "DISCORD_SEND_MESSAGE",
+        "DISCORD_POST_MESSAGE",
+        "DISCORD_MESSAGE_CHANNEL",
+        "DISCORD_REPLY",
+        "DISCORD_SEND_DM",
+        "DISCORD_DIRECT_MESSAGE",
+        "DISCORD_DM_USER",
+        "DISCORD_EDIT_MESSAGE",
+        "DISCORD_UPDATE_MESSAGE",
+        "DISCORD_DELETE_MESSAGE",
+        "DISCORD_REMOVE_MESSAGE",
+        "DISCORD_REACT_TO_MESSAGE",
+        "DISCORD_ADD_REACTION",
+        "DISCORD_PIN_MESSAGE",
+        "DISCORD_UNPIN_MESSAGE"
       ],
       "parameters": []
     },
     {
-      "name": "JOIN_CHANNEL",
-      "description": "Join a Discord voice channel when the user asks the agent to enter voice chat.",
-      "descriptionCompressed": "Join Discord voice channel.",
+      "name": "DISCORD_CHANNEL_OP",
+      "description": "Run a Discord channel operation: join a voice or text channel, leave a voice or text channel, read or summarize recent channel messages, or search messages in a channel.",
+      "descriptionCompressed": "Discord channel ops: join, leave, read, search.",
       "similes": [
-        "JOIN_VOICE",
-        "ENTER_VOICE_CHANNEL"
+        "DISCORD_JOIN_CHANNEL",
+        "DISCORD_JOIN_VOICE",
+        "DISCORD_LEAVE_CHANNEL",
+        "DISCORD_LEAVE_VOICE",
+        "DISCORD_READ_CHANNEL",
+        "DISCORD_READ_MESSAGES",
+        "DISCORD_SHOW_MESSAGES",
+        "DISCORD_SUMMARIZE_CHANNEL",
+        "DISCORD_CATCH_UP_CHANNEL",
+        "DISCORD_SEARCH_MESSAGES",
+        "DISCORD_FIND_MESSAGES"
       ],
       "parameters": []
     },
     {
-      "name": "LEAVE_CHANNEL",
-      "description": "Leave the current Discord voice channel.",
-      "descriptionCompressed": "Leave Discord voice channel.",
+      "name": "DISCORD_MEDIA_OP",
+      "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
+      "descriptionCompressed": "Discord media ops: download, transcribe.",
       "similes": [
-        "LEAVE_VOICE",
-        "EXIT_VOICE_CHANNEL"
+        "DISCORD_DOWNLOAD_MEDIA",
+        "DISCORD_FETCH_MEDIA",
+        "DISCORD_SAVE_ATTACHMENT",
+        "DISCORD_TRANSCRIBE_MEDIA",
+        "DISCORD_TRANSCRIBE_ATTACHMENT",
+        "DISCORD_AUDIO_TO_TEXT",
+        "DISCORD_VIDEO_TRANSCRIPT"
       ],
       "parameters": []
     },
     {
-      "name": "LIST_CHANNELS",
-      "description": "List Discord channels the bot can see in the current server.",
-      "descriptionCompressed": "List visible Discord channels.",
-      "similes": [
-        "SHOW_CHANNELS",
-        "CHANNEL_LIST"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "READ_CHANNEL",
-      "description": "Read or summarize recent messages from the current or specified Discord text channel. Use this for requests like 'last 100 messages', 'recent chat', or 'summarize this channel'.",
-      "descriptionCompressed": "Read or summarize recent Discord channel messages.",
-      "similes": [
-        "READ_MESSAGES",
-        "SHOW_MESSAGES",
-        "CHECK_CHANNEL",
-        "SUMMARIZE_CHANNEL",
-        "CATCH_UP_CHANNEL"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SEND_DM",
-      "description": "Send a direct message to a Discord user only when the user explicitly asks for a DM to be sent.",
-      "descriptionCompressed": "Send Discord direct message.",
-      "similes": [
-        "DIRECT_MESSAGE",
-        "DM_USER"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SEND_MESSAGE",
-      "description": "Send a message to a Discord channel only when the user explicitly asks for a channel message to be posted.",
-      "descriptionCompressed": "Send Discord channel message.",
-      "similes": [
-        "POST_MESSAGE",
-        "MESSAGE_CHANNEL"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SUMMARIZE_CONVERSATION",
-      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use READ_CHANNEL instead.",
+      "name": "DISCORD_SUMMARIZE_CONVERSATION",
+      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use DISCORD_CHANNEL_OP with op='read' instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
-        "SUMMARIZE_HISTORY",
-        "CONVERSATION_SUMMARY",
-        "RECAP_CONVERSATION"
+        "DISCORD_SUMMARIZE_HISTORY",
+        "DISCORD_CONVERSATION_SUMMARY",
+        "DISCORD_RECAP_CONVERSATION"
       ],
       "parameters": []
     },
     {
-      "name": "TRANSCRIBE_MEDIA",
-      "description": "Transcribe an audio or video attachment from Discord.",
-      "descriptionCompressed": "Transcribe Discord audio or video.",
-      "similes": [
-        "TRANSCRIBE_ATTACHMENT",
-        "AUDIO_TO_TEXT",
-        "VIDEO_TRANSCRIPT"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SEARCH_MESSAGES",
-      "description": "Search Discord message history for terms, users, or topics.",
-      "descriptionCompressed": "Search Discord messages.",
-      "similes": [
-        "FIND_MESSAGES",
-        "SEARCH_CHAT",
-        "LOOK_UP_MESSAGES"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "CREATE_POLL",
+      "name": "DISCORD_CREATE_POLL",
       "description": "Create a Discord poll when the user asks for a poll or vote.",
       "descriptionCompressed": "Create Discord poll.",
       "similes": [
-        "MAKE_POLL",
-        "START_VOTE"
+        "DISCORD_MAKE_POLL",
+        "DISCORD_START_VOTE"
       ],
       "parameters": []
     },
     {
-      "name": "GET_USER_INFO",
+      "name": "DISCORD_GET_USER_INFO",
       "description": "Get Discord profile or server-member information for a user.",
       "descriptionCompressed": "Get Discord user info.",
       "similes": [
-        "USER_INFO",
-        "MEMBER_INFO",
-        "PROFILE_INFO"
+        "DISCORD_USER_INFO",
+        "DISCORD_MEMBER_INFO",
+        "DISCORD_PROFILE_INFO"
       ],
       "parameters": []
     },
     {
-      "name": "REACT_TO_MESSAGE",
-      "description": "Add an emoji reaction to a Discord message when the user asks for a reaction.",
-      "descriptionCompressed": "React to Discord message.",
-      "similes": [
-        "ADD_REACTION",
-        "EMOJI_REACT"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "PIN_MESSAGE",
-      "description": "Pin a Discord message when the user explicitly asks for a message to be pinned.",
-      "descriptionCompressed": "Pin Discord message.",
-      "similes": [
-        "PIN",
-        "SAVE_MESSAGE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "UNPIN_MESSAGE",
-      "description": "Unpin a Discord message when the user explicitly asks for a message to be unpinned.",
-      "descriptionCompressed": "Unpin Discord message.",
-      "similes": [
-        "UNPIN",
-        "REMOVE_PIN"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SERVER_INFO",
-      "description": "Get information about the current Discord server, including channels, roles, and member counts.",
-      "descriptionCompressed": "Get Discord server info.",
-      "similes": [
-        "GUILD_INFO",
-        "SERVER_DETAILS"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "EDIT_MESSAGE",
-      "description": "Edit one of the bot's Discord messages when the user explicitly asks for an edit.",
-      "descriptionCompressed": "Edit bot Discord message.",
-      "similes": [
-        "UPDATE_MESSAGE",
-        "MODIFY_MESSAGE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "DELETE_MESSAGE",
-      "description": "Delete one of the bot's Discord messages when the user explicitly asks for deletion.",
-      "descriptionCompressed": "Delete bot Discord message.",
-      "similes": [
-        "REMOVE_MESSAGE",
-        "DELETE_POST"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SETUP_CREDENTIALS",
+      "name": "DISCORD_SETUP_CREDENTIALS",
       "description": "Start Discord credential setup or account pairing when the user requests setup.",
       "descriptionCompressed": "Set up Discord credentials.",
       "similes": [
-        "SETUP_DISCORD",
-        "PAIR_DISCORD",
-        "CONNECT_DISCORD"
+        "DISCORD_SETUP",
+        "DISCORD_PAIR",
+        "DISCORD_CONNECT"
       ],
       "parameters": []
     }
@@ -248,212 +149,113 @@ export const allActionsSpec = {
   "version": "1.0.0",
   "actions": [
     {
-      "name": "CHAT_WITH_ATTACHMENTS",
+      "name": "DISCORD_CHAT_WITH_ATTACHMENTS",
       "description": "Legacy Discord attachment summarization for explicitly selected attachment IDs. Prefer READ_ATTACHMENT for normal current or recent files, images, media, links, and documents.",
       "descriptionCompressed": "Legacy Discord attachment-ID summarization.",
       "similes": [
-        "ANALYZE_ATTACHMENTS",
-        "SUMMARIZE_ATTACHMENTS",
-        "ANSWER_WITH_ATTACHMENTS"
+        "DISCORD_ANALYZE_ATTACHMENTS",
+        "DISCORD_SUMMARIZE_ATTACHMENTS",
+        "DISCORD_ANSWER_WITH_ATTACHMENTS"
       ],
       "parameters": []
     },
     {
-      "name": "DOWNLOAD_MEDIA",
-      "description": "Download a Discord media attachment or media URL for later inspection or processing.",
-      "descriptionCompressed": "Download Discord media attachment or URL.",
+      "name": "DISCORD_MESSAGE_OP",
+      "description": "Run a Discord message operation: send a channel message, reply to a message, send a direct message, edit one of the bot's messages, delete one of the bot's messages, react with an emoji, pin a message, or unpin a message. Pick the op that matches the user request.",
+      "descriptionCompressed": "Discord message ops: send, reply, dm, edit, delete, react, pin, unpin.",
       "similes": [
-        "FETCH_MEDIA",
-        "SAVE_ATTACHMENT",
-        "GET_MEDIA"
+        "DISCORD_SEND_MESSAGE",
+        "DISCORD_POST_MESSAGE",
+        "DISCORD_MESSAGE_CHANNEL",
+        "DISCORD_REPLY",
+        "DISCORD_SEND_DM",
+        "DISCORD_DIRECT_MESSAGE",
+        "DISCORD_DM_USER",
+        "DISCORD_EDIT_MESSAGE",
+        "DISCORD_UPDATE_MESSAGE",
+        "DISCORD_DELETE_MESSAGE",
+        "DISCORD_REMOVE_MESSAGE",
+        "DISCORD_REACT_TO_MESSAGE",
+        "DISCORD_ADD_REACTION",
+        "DISCORD_PIN_MESSAGE",
+        "DISCORD_UNPIN_MESSAGE"
       ],
       "parameters": []
     },
     {
-      "name": "JOIN_CHANNEL",
-      "description": "Join a Discord voice channel when the user asks the agent to enter voice chat.",
-      "descriptionCompressed": "Join Discord voice channel.",
+      "name": "DISCORD_CHANNEL_OP",
+      "description": "Run a Discord channel operation: join a voice or text channel, leave a voice or text channel, read or summarize recent channel messages, or search messages in a channel.",
+      "descriptionCompressed": "Discord channel ops: join, leave, read, search.",
       "similes": [
-        "JOIN_VOICE",
-        "ENTER_VOICE_CHANNEL"
+        "DISCORD_JOIN_CHANNEL",
+        "DISCORD_JOIN_VOICE",
+        "DISCORD_LEAVE_CHANNEL",
+        "DISCORD_LEAVE_VOICE",
+        "DISCORD_READ_CHANNEL",
+        "DISCORD_READ_MESSAGES",
+        "DISCORD_SHOW_MESSAGES",
+        "DISCORD_SUMMARIZE_CHANNEL",
+        "DISCORD_CATCH_UP_CHANNEL",
+        "DISCORD_SEARCH_MESSAGES",
+        "DISCORD_FIND_MESSAGES"
       ],
       "parameters": []
     },
     {
-      "name": "LEAVE_CHANNEL",
-      "description": "Leave the current Discord voice channel.",
-      "descriptionCompressed": "Leave Discord voice channel.",
+      "name": "DISCORD_MEDIA_OP",
+      "description": "Run a Discord media operation: download a media attachment or URL, or transcribe an audio or video attachment.",
+      "descriptionCompressed": "Discord media ops: download, transcribe.",
       "similes": [
-        "LEAVE_VOICE",
-        "EXIT_VOICE_CHANNEL"
+        "DISCORD_DOWNLOAD_MEDIA",
+        "DISCORD_FETCH_MEDIA",
+        "DISCORD_SAVE_ATTACHMENT",
+        "DISCORD_TRANSCRIBE_MEDIA",
+        "DISCORD_TRANSCRIBE_ATTACHMENT",
+        "DISCORD_AUDIO_TO_TEXT",
+        "DISCORD_VIDEO_TRANSCRIPT"
       ],
       "parameters": []
     },
     {
-      "name": "LIST_CHANNELS",
-      "description": "List Discord channels the bot can see in the current server.",
-      "descriptionCompressed": "List visible Discord channels.",
-      "similes": [
-        "SHOW_CHANNELS",
-        "CHANNEL_LIST"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "READ_CHANNEL",
-      "description": "Read or summarize recent messages from the current or specified Discord text channel. Use this for requests like 'last 100 messages', 'recent chat', or 'summarize this channel'.",
-      "descriptionCompressed": "Read or summarize recent Discord channel messages.",
-      "similes": [
-        "READ_MESSAGES",
-        "SHOW_MESSAGES",
-        "CHECK_CHANNEL",
-        "SUMMARIZE_CHANNEL",
-        "CATCH_UP_CHANNEL"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SEND_DM",
-      "description": "Send a direct message to a Discord user only when the user explicitly asks for a DM to be sent.",
-      "descriptionCompressed": "Send Discord direct message.",
-      "similes": [
-        "DIRECT_MESSAGE",
-        "DM_USER"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SEND_MESSAGE",
-      "description": "Send a message to a Discord channel only when the user explicitly asks for a channel message to be posted.",
-      "descriptionCompressed": "Send Discord channel message.",
-      "similes": [
-        "POST_MESSAGE",
-        "MESSAGE_CHANNEL"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SUMMARIZE_CONVERSATION",
-      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use READ_CHANNEL instead.",
+      "name": "DISCORD_SUMMARIZE_CONVERSATION",
+      "description": "Summarize a date or time range from the stored Discord conversation history. For recent channel-message requests such as 'summarize last 100 messages', use DISCORD_CHANNEL_OP with op='read' instead.",
       "descriptionCompressed": "Summarize date-range Discord conversation history.",
       "similes": [
-        "SUMMARIZE_HISTORY",
-        "CONVERSATION_SUMMARY",
-        "RECAP_CONVERSATION"
+        "DISCORD_SUMMARIZE_HISTORY",
+        "DISCORD_CONVERSATION_SUMMARY",
+        "DISCORD_RECAP_CONVERSATION"
       ],
       "parameters": []
     },
     {
-      "name": "TRANSCRIBE_MEDIA",
-      "description": "Transcribe an audio or video attachment from Discord.",
-      "descriptionCompressed": "Transcribe Discord audio or video.",
-      "similes": [
-        "TRANSCRIBE_ATTACHMENT",
-        "AUDIO_TO_TEXT",
-        "VIDEO_TRANSCRIPT"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SEARCH_MESSAGES",
-      "description": "Search Discord message history for terms, users, or topics.",
-      "descriptionCompressed": "Search Discord messages.",
-      "similes": [
-        "FIND_MESSAGES",
-        "SEARCH_CHAT",
-        "LOOK_UP_MESSAGES"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "CREATE_POLL",
+      "name": "DISCORD_CREATE_POLL",
       "description": "Create a Discord poll when the user asks for a poll or vote.",
       "descriptionCompressed": "Create Discord poll.",
       "similes": [
-        "MAKE_POLL",
-        "START_VOTE"
+        "DISCORD_MAKE_POLL",
+        "DISCORD_START_VOTE"
       ],
       "parameters": []
     },
     {
-      "name": "GET_USER_INFO",
+      "name": "DISCORD_GET_USER_INFO",
       "description": "Get Discord profile or server-member information for a user.",
       "descriptionCompressed": "Get Discord user info.",
       "similes": [
-        "USER_INFO",
-        "MEMBER_INFO",
-        "PROFILE_INFO"
+        "DISCORD_USER_INFO",
+        "DISCORD_MEMBER_INFO",
+        "DISCORD_PROFILE_INFO"
       ],
       "parameters": []
     },
     {
-      "name": "REACT_TO_MESSAGE",
-      "description": "Add an emoji reaction to a Discord message when the user asks for a reaction.",
-      "descriptionCompressed": "React to Discord message.",
-      "similes": [
-        "ADD_REACTION",
-        "EMOJI_REACT"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "PIN_MESSAGE",
-      "description": "Pin a Discord message when the user explicitly asks for a message to be pinned.",
-      "descriptionCompressed": "Pin Discord message.",
-      "similes": [
-        "PIN",
-        "SAVE_MESSAGE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "UNPIN_MESSAGE",
-      "description": "Unpin a Discord message when the user explicitly asks for a message to be unpinned.",
-      "descriptionCompressed": "Unpin Discord message.",
-      "similes": [
-        "UNPIN",
-        "REMOVE_PIN"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SERVER_INFO",
-      "description": "Get information about the current Discord server, including channels, roles, and member counts.",
-      "descriptionCompressed": "Get Discord server info.",
-      "similes": [
-        "GUILD_INFO",
-        "SERVER_DETAILS"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "EDIT_MESSAGE",
-      "description": "Edit one of the bot's Discord messages when the user explicitly asks for an edit.",
-      "descriptionCompressed": "Edit bot Discord message.",
-      "similes": [
-        "UPDATE_MESSAGE",
-        "MODIFY_MESSAGE"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "DELETE_MESSAGE",
-      "description": "Delete one of the bot's Discord messages when the user explicitly asks for deletion.",
-      "descriptionCompressed": "Delete bot Discord message.",
-      "similes": [
-        "REMOVE_MESSAGE",
-        "DELETE_POST"
-      ],
-      "parameters": []
-    },
-    {
-      "name": "SETUP_CREDENTIALS",
+      "name": "DISCORD_SETUP_CREDENTIALS",
       "description": "Start Discord credential setup or account pairing when the user requests setup.",
       "descriptionCompressed": "Set up Discord credentials.",
       "similes": [
-        "SETUP_DISCORD",
-        "PAIR_DISCORD",
-        "CONNECT_DISCORD"
+        "DISCORD_SETUP",
+        "DISCORD_PAIR",
+        "DISCORD_CONNECT"
       ],
       "parameters": []
     }
@@ -476,6 +278,18 @@ export const coreProvidersSpec = {
       "name": "voiceState",
       "description": "Provides information about the voice state of the agent, including whether it is currently in a voice channel.",
       "dynamic": true
+    },
+    {
+      "name": "discordChannels",
+      "description": "Lists Discord channels the bot is currently listening to, grouped by server. TOON-encoded.",
+      "descriptionCompressed": "Discord channels bot listens to (grouped by server).",
+      "dynamic": true
+    },
+    {
+      "name": "discordServerInfo",
+      "description": "Discord server overview: members, channels, roles, owner, premium tier. TOON-encoded.",
+      "descriptionCompressed": "Discord server overview (members, channels, roles).",
+      "dynamic": true
     }
   ]
 } as const;
@@ -495,6 +309,18 @@ export const allProvidersSpec = {
     {
       "name": "voiceState",
       "description": "Provides information about the voice state of the agent, including whether it is currently in a voice channel.",
+      "dynamic": true
+    },
+    {
+      "name": "discordChannels",
+      "description": "Lists Discord channels the bot is currently listening to, grouped by server. TOON-encoded.",
+      "descriptionCompressed": "Discord channels bot listens to (grouped by server).",
+      "dynamic": true
+    },
+    {
+      "name": "discordServerInfo",
+      "description": "Discord server overview: members, channels, roles, owner, premium tier. TOON-encoded.",
+      "descriptionCompressed": "Discord server overview (members, channels, roles).",
       "dynamic": true
     }
   ]

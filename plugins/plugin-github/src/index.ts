@@ -3,10 +3,8 @@
  * @description elizaOS plugin for GitHub integration.
  *
  * Actions:
- *   - LIST_PRS
- *   - REVIEW_PR (confirmed)
- *   - CREATE_ISSUE (confirmed)
- *   - ASSIGN_ISSUE (confirmed)
+ *   - GITHUB_PR_OP (review requires confirmation)
+ *   - GITHUB_ISSUE_OP (write ops require confirmation)
  *   - GITHUB_NOTIFICATION_TRIAGE
  *
  * Auth: two independent PATs.
@@ -15,19 +13,18 @@
  *   E2E fallbacks: ELIZA_E2E_GITHUB_USER_PAT / ELIZA_E2E_GITHUB_AGENT_PAT.
  *
  * Each action takes an `as: "user" | "agent"` option that selects which
- * token executes the request. REVIEW_PR and GITHUB_NOTIFICATION_TRIAGE
- * default to `"user"`; the other actions default to `"agent"`.
+ * token executes the request. GITHUB_PR_OP review and
+ * GITHUB_NOTIFICATION_TRIAGE default to `"user"`; the other ops default to
+ * `"agent"`.
  */
 
 import type http from "node:http";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
 import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
 import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
-import { assignIssueAction } from "./actions/assign-issue.js";
-import { createIssueAction } from "./actions/create-issue.js";
-import { listPrsAction } from "./actions/list-prs.js";
+import { issueOpAction } from "./actions/issue-op.js";
 import { notificationTriageAction } from "./actions/notification-triage.js";
-import { reviewPrAction } from "./actions/review-pr.js";
+import { prOpAction } from "./actions/pr-op.js";
 import { handleGitHubRoutes } from "./routes/github-routes.js";
 import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
@@ -40,10 +37,7 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
   ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
-    const url = new URL(
-      httpReq.url ?? "/api/github/token",
-      "http://localhost",
-    );
+    const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
     const state = { current: runtime } as CompatRuntimeState;
     if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
     await handleGitHubRoutes({
@@ -55,15 +49,13 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
   };
 }
 
-export { assignIssueAction } from "./actions/assign-issue.js";
-export { createIssueAction } from "./actions/create-issue.js";
-export { listPrsAction } from "./actions/list-prs.js";
+export { issueOpAction } from "./actions/issue-op.js";
 export {
   notificationTriageAction,
   scoreNotification,
   type TriagedNotification,
 } from "./actions/notification-triage.js";
-export { reviewPrAction } from "./actions/review-pr.js";
+export { prOpAction } from "./actions/pr-op.js";
 export { GitHubService } from "./services/github-service.js";
 export * from "./types.js";
 
@@ -93,13 +85,7 @@ export const githubPlugin: Plugin = {
   description:
     "GitHub integration for pull requests, issues, and notification triage",
   services: [GitHubService],
-  actions: [
-    listPrsAction,
-    reviewPrAction,
-    createIssueAction,
-    assignIssueAction,
-    notificationTriageAction,
-  ],
+  actions: [prOpAction, issueOpAction, notificationTriageAction],
   routes: githubRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerGitHubSearchCategory(runtime);

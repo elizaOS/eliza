@@ -20,7 +20,7 @@ import type {
 } from "@elizaos/core";
 import { parseToonKeyValue } from "@elizaos/core";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
-import { recentConversationTextsFromState } from "../life-recent-context.js";
+import { recentConversationTextsFromState } from "./recent-context.js";
 
 // ── Public types ──────────────────────────────────────
 

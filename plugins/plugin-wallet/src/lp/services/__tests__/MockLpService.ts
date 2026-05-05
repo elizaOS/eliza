@@ -29,7 +29,10 @@ export class MockLpService extends Service implements ILpService {
     return this.dexName;
   }
 
-  async getPools(tokenAMint?: string, tokenBMint?: string): Promise<PoolInfo[]> {
+  async getPools(
+    tokenAMint?: string,
+    tokenBMint?: string,
+  ): Promise<PoolInfo[]> {
     const pools: PoolInfo[] = [
       {
         id: `${this.dexName}-sol-usdc`,
@@ -84,7 +87,9 @@ export class MockLpService extends Service implements ILpService {
     };
   }
 
-  async removeLiquidity(config: RemoveLiquidityConfig): Promise<TransactionResult> {
+  async removeLiquidity(
+    config: RemoveLiquidityConfig,
+  ): Promise<TransactionResult> {
     const owner = config.userVault?.publicKey?.toBase58?.() || "test-owner";
     this.positions.set(
       owner,

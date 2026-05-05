@@ -6,6 +6,10 @@
  *   2. Secrets (modal)
  */
 
+import {
+  buildWalletRpcUpdateRequest,
+  resolveInitialWalletRpcSelections,
+} from "@elizaos/app-wallet/wallet-rpc";
 import type { WalletRpcSelections } from "@elizaos/shared";
 import {
   Button,
@@ -17,10 +21,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../state";
 import { preOpenWindow } from "../../utils";
-import {
-  buildWalletRpcUpdateRequest,
-  resolveInitialWalletRpcSelections,
-} from "@elizaos/app-wallet/wallet-rpc";
 import {
   BSC_RPC_OPTIONS,
   CloudServicesSection,

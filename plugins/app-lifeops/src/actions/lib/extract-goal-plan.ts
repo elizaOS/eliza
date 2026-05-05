@@ -4,16 +4,16 @@ import type {
   CreateLifeOpsGoalRequest,
   LifeOpsGoalDefinition,
   UpdateLifeOpsGoalRequest,
-} from "../contracts/index.js";
+} from "../../contracts/index.js";
 import {
   buildGoalGroundingMetadata,
   GOAL_GROUNDING_STATES,
   type GoalGroundingMetadata,
   type GoalGroundingState,
   mergeGoalGroundingMetadata,
-} from "../lifeops/goal-grounding.js";
-import { runExtractorPipeline } from "./extractor-pipeline.js";
-import { recentConversationTexts } from "./life-recent-context.js";
+} from "../../lifeops/goal-grounding.js";
+import { runExtractorPipeline } from "../extractor-pipeline.js";
+import { recentConversationTexts } from "./recent-context.js";
 
 export const GOAL_GROUNDING_FIELD_VALUES = [
   "title",

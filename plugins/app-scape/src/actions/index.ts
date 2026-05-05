@@ -1,17 +1,29 @@
 /**
  * Action registry for `@elizaos/app-scape`.
  *
- * The planner-facing surface is intentionally compressed into routers so
- * overlapping game verbs do not collide with other RuneScape-like apps.
+ * Five planner-facing actions:
+ *   - WALK_TO       (standalone)
+ *   - ATTACK_NPC    (standalone)
+ *   - CHAT_PUBLIC   (standalone)
+ *   - JOURNAL_OP    (router: set-goal | complete-goal | remember)
+ *   - INVENTORY_OP  (router: eat | drop)
  */
 
 import type { Action } from "@elizaos/core";
 
+import { attackNpc } from "./attack-npc.js";
+import { chatPublic } from "./chat-public.js";
+import { scapeInventoryAction, scapeJournalAction } from "./routers.js";
+import { walkTo } from "./walk-to.js";
+
+export { attackNpc } from "./attack-npc.js";
+export { chatPublic } from "./chat-public.js";
 export {
-  scapeGameAction,
+  scapeInventoryAction,
   scapeJournalAction,
   scapeRouterActions,
 } from "./routers.js";
+export { walkTo } from "./walk-to.js";
 export {
   SCAPE_ACTION_ROUTER_DEFINITIONS,
   formatScapeRouterPrompt,
@@ -19,6 +31,10 @@ export {
   resolveScapeRouterAction,
 } from "./router-definitions.js";
 
-import { scapeRouterActions } from "./routers.js";
-
-export const scapeActions: Action[] = scapeRouterActions;
+export const scapeActions: Action[] = [
+  walkTo,
+  attackNpc,
+  chatPublic,
+  scapeJournalAction,
+  scapeInventoryAction,
+];

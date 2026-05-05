@@ -4,8 +4,8 @@ import {
   parseToonKeyValue,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
-import { runExtractorPipeline } from "./extractor-pipeline.js";
-import { resolveContextWindow } from "./lifeops-extraction-config.js";
+import { runExtractorPipeline } from "../extractor-pipeline.js";
+import { resolveContextWindow } from "../lifeops-extraction-config.js";
 
 export const LIFE_OPERATION_VALUES = [
   "create_definition",

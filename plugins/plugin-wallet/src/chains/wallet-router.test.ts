@@ -43,7 +43,10 @@ function handler(
   name: string,
   chainId: string,
   kind: "evm" | "solana",
-  supportedActions: WalletChainHandler["supportedActions"] = ["transfer", "swap"],
+  supportedActions: WalletChainHandler["supportedActions"] = [
+    "transfer",
+    "swap",
+  ],
 ): WalletChainHandler {
   const execute = vi.fn(
     async (params: WalletRouterParams): Promise<WalletRouterExecution> => ({
@@ -65,7 +68,10 @@ function handler(
     chain,
     name,
     chainId,
-    aliases: kind === "solana" ? [chain, name, chainId, "sol"] : [chain, name, chainId],
+    aliases:
+      kind === "solana"
+        ? [chain, name, chainId, "sol"]
+        : [chain, name, chainId],
     supportedActions,
     tokens: [
       {

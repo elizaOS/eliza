@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "matrix-js-sdk": "^41.4.0",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

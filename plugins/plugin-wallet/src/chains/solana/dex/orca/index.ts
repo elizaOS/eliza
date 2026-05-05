@@ -25,7 +25,7 @@ export const orcaPlugin: Plugin = {
         dex: "orca",
         label: "Orca",
         service,
-      }),
+      })
     );
   },
 };

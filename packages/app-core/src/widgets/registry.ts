@@ -14,13 +14,13 @@ import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
 // -- Bundled widget component imports ----------------------------------------
 
+import { WALLET_STATUS_WIDGET } from "@elizaos/app-wallet/widgets/wallet-status";
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
-import { WALLET_STATUS_WIDGET } from "@elizaos/app-wallet/widgets/wallet-status";
 
 // -- Static component registry -----------------------------------------------
 

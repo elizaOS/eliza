@@ -59,6 +59,9 @@ const SKIP_DIR_NAMES = new Set([
 const TEST_PATH_PATTERN =
   /(^|\/)(__mocks__|__tests__|e2e|fixtures?|mocks?|tests?)(\/|$)|\.(?:bench|e2e|fixture|mock|spec|test)\.[cm]?[jt]sx?$/;
 
+const NON_PRODUCTION_PATH_PATTERN =
+  /(^|\/)packages\/(benchmarks|docs|examples|training)(\/|$)|(^|\/)packages\/core\/src\/testing(\/|$)|(^|\/)packages\/elizaos\/templates(\/|$)/;
+
 const GENERATED_PATH_PATTERN =
   /(^|\/)(generated|dist|dist-mobile|build|public|assets)(\/|$)|(^|\/)types\/generated(\/|$)|(^|\/)electrobun\/build(\/|$)|(^|\/)prompts\/scripts(\/|$)/;
 
@@ -137,7 +140,7 @@ const TRAJECTORY_WRAPPER_NAMES = new Set([
   "withProviderStep",
 ]);
 
-const RAW_GENERATION_CALLEE_NAMES = new Set(["generateObject", "generateText"]);
+const RAW_GENERATION_CALLEE_NAMES = new Set(["generateObject"]);
 
 const FETCH_GENERATION_PATTERN =
   /(chat\/completions|\/responses|\/messages|generateContent|:generateContent|anthropic|openai|openrouter|ollama|groq|vertex|xai|completion|completions)/i;
@@ -248,6 +251,7 @@ function isPromptFile(filePath) {
 }
 
 function shouldSkipPath(relativeFile, includeTests) {
+  if (NON_PRODUCTION_PATH_PATTERN.test(relativeFile)) return true;
   if (GENERATED_PATH_PATTERN.test(relativeFile)) return true;
   if (!includeTests && TEST_PATH_PATTERN.test(relativeFile)) return true;
   return false;
@@ -322,6 +326,22 @@ function createSourceFile(filePath, text) {
 
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
+}
+
+function tryReadText(filePath) {
+  try {
+    return readText(filePath);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function getLine(sourceFile, nodeOrPosition) {
@@ -728,12 +748,6 @@ function getCallName(expression) {
   return expression.getText();
 }
 
-function getCallExpressionText(expression) {
-  if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression)) return expression.getText();
-  return expression.getText();
-}
-
 function hasTrajectoryWrapperAncestor(node) {
   let current = node.parent;
   while (current) {
@@ -748,7 +762,7 @@ function hasTrajectoryWrapperAncestor(node) {
   return false;
 }
 
-function lineWindowText(text, sourceFile, line, radius = 8) {
+function lineWindowText(text, line, radius = 8) {
   const lines = text.split(/\r?\n/);
   const start = Math.max(0, line - radius - 1);
   const end = Math.min(lines.length, line + radius);
@@ -757,18 +771,23 @@ function lineWindowText(text, sourceFile, line, radius = 8) {
 
 function isRawGenerationCall(call, sourceFile, text) {
   const callName = getCallName(call.expression);
-  const callText = getCallExpressionText(call.expression);
-  if (callName === "useModel" && /\.useModel$/.test(callText)) {
-    return { match: callText };
-  }
   if (RAW_GENERATION_CALLEE_NAMES.has(callName)) {
     return { match: callName };
   }
   if (callName === "fetch") {
+    if (
+      !(
+        ts.isIdentifier(call.expression) ||
+        (ts.isPropertyAccessExpression(call.expression) &&
+          ts.isIdentifier(call.expression.expression) &&
+          ["globalThis", "window"].includes(call.expression.expression.text))
+      )
+    ) {
+      return null;
+    }
     const line = getLine(sourceFile, call);
     const nearby = `${call.getText(sourceFile)}\n${lineWindowText(
       text,
-      sourceFile,
       line,
       12,
     )}`;
@@ -782,9 +801,31 @@ function isRawGenerationCall(call, sourceFile, text) {
   return null;
 }
 
+function packageScope(file) {
+  const parts = file.split("/");
+  if (parts[0] === "plugins" && parts[1]) return `${parts[0]}/${parts[1]}`;
+  if (parts[0] === "packages" && parts[1]) return `${parts[0]}/${parts[1]}`;
+  return parts[0] ?? file;
+}
+
+function isDelegatingWrapperObject(objectLiteral, sourceFile) {
+  const arrayContext = getArrayPropertyContext(objectLiteral);
+  if (
+    !["actions", "providers", "evaluators", "services"].includes(arrayContext)
+  ) {
+    return false;
+  }
+  const text = objectLiteral.getText(sourceFile);
+  return (
+    /\bimport\s*\(/.test(text) &&
+    /\b(?:handler|validate|get|start)\s*:/.test(text)
+  );
+}
+
 function parseSourceFiles(repoRoot, sourceFiles) {
-  return sourceFiles.map((filePath) => {
-    const text = readText(filePath);
+  return sourceFiles.flatMap((filePath) => {
+    const text = tryReadText(filePath);
+    if (text === null) return [];
     return {
       filePath,
       relativeFile: relativePath(repoRoot, filePath),
@@ -802,7 +843,7 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
   const rawGenerationCalls = [];
 
   for (const parsed of parsedFiles) {
-    const { filePath, relativeFile, sourceFile, text } = parsed;
+    const { relativeFile, sourceFile, text } = parsed;
     const constants = collectLocalConstants(sourceFile, globalConstants);
 
     function addComponent(kind, node) {
@@ -815,6 +856,7 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
         line: getLine(sourceFile, node),
         name,
         node,
+        isDelegatingWrapper: isDelegatingWrapperObject(node, sourceFile),
         variableName: getVariableName(node),
       };
       if (kind === "action") {
@@ -832,6 +874,9 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
       services.push({
         className,
         file: relativeFile,
+        isDelegatingWrapper:
+          ts.isObjectLiteralExpression(node) &&
+          isDelegatingWrapperObject(node, sourceFile),
         line: getLine(sourceFile, node),
         serviceType,
       });
@@ -897,7 +942,7 @@ function collectComponentAndServiceDefinitions(parsedFiles, globalConstants) {
         const rawCall = isRawGenerationCall(node, sourceFile, text);
         if (rawCall && !hasTrajectoryWrapperAncestor(node)) {
           const line = getLine(sourceFile, node);
-          const nearby = lineWindowText(text, sourceFile, line, 3);
+          const nearby = lineWindowText(text, line, 3);
           if (!/@(?:duplicate-component-audit|trajectory)-allow/.test(nearby)) {
             rawGenerationCalls.push({
               file: relativeFile,
@@ -961,14 +1006,23 @@ function addDuplicateIssues(issues, kind, records, valueField) {
   }
 
   for (const [value, group] of groups.entries()) {
-    if (group.length < 2) continue;
-    const locations = group.map((record) => ({
+    const filteredGroup = group.filter((record) => {
+      if (!record.isDelegatingWrapper) return true;
+      return !group.some(
+        (other) =>
+          other !== record &&
+          other[valueField] === value &&
+          packageScope(other.file) === packageScope(record.file),
+      );
+    });
+    if (filteredGroup.length < 2) continue;
+    const locations = filteredGroup.map((record) => ({
       file: record.file,
       line: record.line,
       name: record.name,
       serviceType: record.serviceType,
     }));
-    const first = group[0];
+    const first = filteredGroup[0];
     const rule =
       kind === "service" ? "duplicate-service-type" : DUPLICATE_RULES[kind];
     issues.push(
@@ -1072,7 +1126,9 @@ function collectPromptIssues(repoRoot, promptFiles) {
   for (const filePath of promptFiles) {
     const relativeFile = relativePath(repoRoot, filePath);
     if (!PROMPT_LIKE_PATH_PATTERN.test(relativeFile)) continue;
-    const lines = readText(filePath).split(/\r?\n/);
+    const text = tryReadText(filePath);
+    if (text === null) continue;
+    const lines = text.split(/\r?\n/);
     lines.forEach((lineText, index) => {
       const trimmed = lineText.trim();
       if (!trimmed) return;
@@ -1113,9 +1169,9 @@ function collectPromptIssues(repoRoot, promptFiles) {
 function globToRegExp(glob) {
   const escaped = glob
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "\u0000")
+    .replace(/\*\*/g, "__DOUBLE_STAR__")
     .replace(/\*/g, "[^/]*")
-    .replace(/\u0000/g, ".*");
+    .replace(/__DOUBLE_STAR__/g, ".*");
   return new RegExp(`^${escaped}$`);
 }
 

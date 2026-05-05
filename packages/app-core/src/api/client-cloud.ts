@@ -979,7 +979,9 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     body: JSON.stringify({
       agentName: opts.agentName,
       ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
-      ...(opts.environmentVars ? { environmentVars: opts.environmentVars } : {}),
+      ...(opts.environmentVars
+        ? { environmentVars: opts.environmentVars }
+        : {}),
     }),
   });
   if (direct) {

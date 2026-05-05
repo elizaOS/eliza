@@ -87,7 +87,7 @@
     "bs58": "^6.0.0",
     "tweetnacl": "^1.0.3",
     "viem": "^2.48.8",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "publishConfig": {
     "access": "public"

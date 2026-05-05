@@ -255,8 +255,6 @@ export function collectPluginNames(
   // The local handler already registers at priority -1 (see
   // ensure-local-inference-handler.ts), so cloud/direct providers win when
   // the user has them configured, and local fills in otherwise.
-  // TODO(local-only-mode): introduce a separate explicit opt-in flag (e.g.
-  // `ELIZA_LOCAL_ONLY=1`) for users who want all-cloud-providers stripped.
   const localOnlyInference =
     legacyLocalOnlyInference ||
     (cloudExplicitlyDisabled &&

@@ -242,8 +242,7 @@ export async function extractAndValidateConfiguration(
   });
 
   try {
-    const configuration =
-      parseToonKeyValue<Record<string, unknown>>(content);
+    const configuration = parseToonKeyValue<Record<string, unknown>>(content);
     if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
       throw new Error("Configuration must be a structured object");
     }

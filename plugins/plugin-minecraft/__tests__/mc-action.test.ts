@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { minecraftAction } from "../src/actions/index.js";
-import { minecraftWaypointsProvider } from "../src/providers/index.js";
+import { minecraftLocomoteOpAction } from "../src/actions/index.js";
+import { minecraftVisionProvider, minecraftWaypointsProvider } from "../src/providers/index.js";
 import { MINECRAFT_SERVICE_TYPE } from "../src/services/minecraft-service.js";
 import { WAYPOINTS_SERVICE_TYPE } from "../src/services/waypoints-service.js";
 
@@ -33,8 +33,8 @@ describe("MC_ACTION", () => {
     const mc = { request: vi.fn().mockResolvedValue({}) };
     const runtime = runtimeWithServices({ [MINECRAFT_SERVICE_TYPE]: mc });
 
-    const result = await minecraftAction.handler(runtime, memory("move"), undefined, {
-      parameters: { subaction: "movement", operation: "goto", x: 10, y: 64, z: -20 },
+    const result = await minecraftLocomoteOpAction.handler(runtime, memory("move"), undefined, {
+      parameters: { op: "goto", x: 10, y: 64, z: -20 },
     });
 
     expect(result?.success).toBe(true);
@@ -44,40 +44,61 @@ describe("MC_ACTION", () => {
 
   it("routes scan and returns result count", async () => {
     const mc = {
+      getWorldState: vi.fn().mockResolvedValue({
+        connected: true,
+        biome: { name: "plains" },
+        position: { x: 10, y: 64, z: -20 },
+        lookingAt: { name: "grass_block", position: { x: 10, y: 63, z: -19 } },
+        nearbyEntities: [],
+      }),
       request: vi.fn().mockResolvedValue({ blocks: [{ name: "oak_log" }, { name: "stone" }] }),
     };
     const runtime = runtimeWithServices({ [MINECRAFT_SERVICE_TYPE]: mc });
 
-    const result = await minecraftAction.handler(runtime, memory("scan nearby blocks"), undefined, {
-      parameters: { subaction: "scan", blocks: ["oak_log"], radius: 8, maxResults: 4 },
-    });
+    const result = await minecraftVisionProvider.get(runtime, memory("scan nearby blocks"));
 
-    expect(result?.success).toBe(true);
-    expect(result?.values).toMatchObject({ count: 2 });
+    expect(result.text).toContain("NearbyBlocksFound: 2");
+    expect(result?.values).toMatchObject({ connected: true, blocksFound: 2 });
     expect(mc.request).toHaveBeenCalledWith("scan", {
-      blocks: ["oak_log"],
-      radius: 8,
-      maxResults: 4,
+      blocks: expect.arrayContaining(["oak_log", "stone"]),
+      radius: 16,
+      maxResults: 24,
     });
   });
 
   it("keeps waypoint list/read state in the provider surface", async () => {
+    const mc = { request: vi.fn().mockResolvedValue({}) };
     const waypoints = {
+      getWaypoint: vi.fn().mockReturnValue({
+        name: "Home",
+        x: 1,
+        y: 65,
+        z: 2,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      }),
       listWaypoints: vi
         .fn()
         .mockReturnValue([
           { name: "Home", x: 1, y: 65, z: 2, createdAt: new Date("2026-01-01T00:00:00Z") },
         ]),
     };
-    const runtime = runtimeWithServices({ [WAYPOINTS_SERVICE_TYPE]: waypoints });
-
-    const result = await minecraftAction.handler(runtime, memory("list waypoints"), undefined, {
-      parameters: { subaction: "waypoints", operation: "list" },
+    const runtime = runtimeWithServices({
+      [MINECRAFT_SERVICE_TYPE]: mc,
+      [WAYPOINTS_SERVICE_TYPE]: waypoints,
     });
 
+    const result = await minecraftLocomoteOpAction.handler(
+      runtime,
+      memory("go to waypoint Home"),
+      undefined,
+      {
+        parameters: { op: "waypoint-goto", name: "Home" },
+      }
+    );
+
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain("MC_WAYPOINTS");
-    expect(result?.data).toMatchObject({ waypointCount: 1 });
+    expect(result?.text).toContain('Navigating to waypoint "Home"');
+    expect(mc.request).toHaveBeenCalledWith("goto", { x: 1, y: 65, z: 2 });
 
     const providerResult = await minecraftWaypointsProvider.get(runtime, memory(""));
     expect(providerResult.text).toContain("Home");

@@ -218,7 +218,7 @@ describe("READ_ATTACHMENT", () => {
 		const { callback, result, runtime } = await runReadAttachment({
 			responder: (modelType) =>
 				modelType === ModelType.IMAGE_DESCRIPTION
-					? "<response><description>a red square with a black border</description></response>"
+					? "description: a red square with a black border"
 					: "red square",
 			request: "what shape is in the image? keep it short",
 			attachments: [imageAttachment],
@@ -278,8 +278,8 @@ describe("READ_ATTACHMENT", () => {
 
 	it("answers from several current-message images when descriptions are available", async () => {
 		const descriptions = [
-			"<response><description>a red square</description></response>",
-			"<response><description>a green triangle</description></response>",
+			"description: a red square",
+			"description: a green triangle",
 			"Both images are simple colored shapes.",
 		];
 		const { result, runtime } = await runReadAttachment({

@@ -15,7 +15,7 @@ import {
 } from "@elizaos/core";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import { searchAcrossChannelsAction } from "./search-across-channels.js";
 

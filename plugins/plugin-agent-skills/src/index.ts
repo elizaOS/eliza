@@ -26,11 +26,6 @@ export {
 	validateSkillDirectory,
 } from "./parser";
 export { agentSkillsPlugin, default } from "./plugin";
-export {
-	installAgentSkillsSearchDispatcher,
-	registerAgentSkillsSearchCategory,
-	SKILLS_SEARCH_CATEGORY,
-} from "./search-category";
 // Providers
 export { enabledSkillsProvider } from "./providers/enabled-skills";
 export {
@@ -38,6 +33,11 @@ export {
 	skillInstructionsProvider,
 	skillsSummaryProvider,
 } from "./providers/skills";
+export {
+	installAgentSkillsSearchDispatcher,
+	registerAgentSkillsSearchCategory,
+	SKILLS_SEARCH_CATEGORY,
+} from "./search-category";
 // Install service
 export {
 	findBestInstallOption,

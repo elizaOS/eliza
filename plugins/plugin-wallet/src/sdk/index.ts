@@ -34,6 +34,13 @@ export type {
   SpendPolicy,
   WalletHealth,
 } from "./types.js";
+export {
+  agentTransferToken,
+  checkBudget,
+  createWallet,
+  NATIVE_TOKEN,
+  setSpendPolicy,
+} from "./wallet-core.js";
 export type {
   X402ClientConfig,
   X402PaymentPayload,
@@ -56,13 +63,6 @@ export {
   X402Client,
   X402PaymentError,
 } from "./x402/index.js";
-export {
-  agentTransferToken,
-  checkBudget,
-  createWallet,
-  NATIVE_TOKEN,
-  setSpendPolicy,
-} from "./wallet-core.js";
 
 const CHAINS: Record<string, Chain> = {
   base,

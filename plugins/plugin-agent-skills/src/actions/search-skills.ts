@@ -15,8 +15,7 @@ import type {
 	State,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
-import type { CacheOptions } from "../types";
-import type { SkillSearchResult } from "../types";
+import type { CacheOptions, SkillSearchResult } from "../types";
 import { createAgentSkillsActionValidator } from "./validators";
 
 export type SkillResultActionKind =

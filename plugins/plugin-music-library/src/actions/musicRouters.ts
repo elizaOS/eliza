@@ -254,7 +254,8 @@ export const musicPlaylist: Action = {
   ],
   description:
     "Playlist router. Use subaction save, load, list, delete, or add. Save/load/delete/add require confirmed:true when changing queue or saved playlists.",
-  descriptionCompressed: "Playlist router subaction: save, load, list, delete, add.",
+  descriptionCompressed:
+    "Playlist router subaction: save, load, list, delete, add.",
   parameters: [
     {
       name: "subaction",
@@ -322,7 +323,8 @@ export const musicLibrary: Action = {
   similes: ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
   description:
     "Music library router. Use subaction download to fetch music into the local library without playing it. Requires confirmed:true before downloading.",
-  descriptionCompressed: "Library router subaction: download music into local library.",
+  descriptionCompressed:
+    "Library router subaction: download music into local library.",
   parameters: [
     {
       name: "subaction",

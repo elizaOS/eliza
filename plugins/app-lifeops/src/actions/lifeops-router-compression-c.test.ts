@@ -119,7 +119,7 @@ import {
   getWebsiteBlockStatusAction,
   requestWebsiteBlockingPermissionAction,
   unblockWebsitesAction,
-} from "./website-blocker.js";
+} from "./owner-website-block.js";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-000000000002" as UUID;

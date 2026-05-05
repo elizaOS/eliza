@@ -30,7 +30,7 @@ export const taskShareAction: Action = {
   description:
     "Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
   descriptionCompressed:
-    "Find best way to view/share live task result: artifacts, URLs, paths.",
+    "Find best way to view/share task result: artifacts, live URLs, paths.",
   examples: [
     [
       {

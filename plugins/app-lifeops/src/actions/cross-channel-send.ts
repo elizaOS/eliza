@@ -47,7 +47,7 @@ import {
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
 } from "../lifeops/twilio.js";
-import { recentConversationTexts } from "./life-recent-context.js";
+import { recentConversationTexts } from "./lib/recent-context.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 const ACTION_NAME = "OWNER_SEND_MESSAGE";

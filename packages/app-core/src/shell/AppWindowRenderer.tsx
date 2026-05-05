@@ -9,6 +9,7 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
+import { InventoryView } from "@elizaos/app-wallet/ui";
 import {
   type JSX,
   Suspense,
@@ -48,7 +49,6 @@ import {
 // the call site that owns the only path to the module.
 import { ChatView } from "../components/pages/ChatView";
 import { DatabasePageView } from "../components/pages/DatabasePageView";
-import { InventoryView } from "@elizaos/app-wallet/ui";
 import { LogsPageView } from "../components/pages/LogsPageView";
 import { MemoryViewerView } from "../components/pages/MemoryViewerView";
 import { PluginsPageView } from "../components/pages/PluginsPageView";

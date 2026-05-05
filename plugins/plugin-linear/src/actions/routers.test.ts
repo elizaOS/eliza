@@ -4,7 +4,6 @@ import { createIssueAction } from "./createIssue";
 import {
   getLinearRouteForTest,
   linearIssueRouterAction,
-  linearProjectTeamRouterAction,
   linearWorkflowRouterAction,
 } from "./routers";
 
@@ -27,11 +26,8 @@ function createMessage(text: string): Memory {
 }
 
 describe("Linear router actions", () => {
-  it("selects issue, project/team, and workflow subactions from message text", () => {
+  it("selects issue and workflow subactions from message text", () => {
     expect(getLinearRouteForTest("issue", createMessage("Archive ENG-123"))).toBe("delete");
-    expect(getLinearRouteForTest("project_team", createMessage("Show Linear projects"))).toBe(
-      "list_projects"
-    );
     expect(getLinearRouteForTest("workflow", createMessage("Search open Linear bugs"))).toBe(
       "search_issues"
     );
@@ -70,9 +66,6 @@ describe("Linear router actions", () => {
 
     await expect(
       linearIssueRouterAction.validate(runtime, createMessage("Update issue ENG-2"))
-    ).resolves.toBe(true);
-    await expect(
-      linearProjectTeamRouterAction.validate(runtime, createMessage("List Linear teams"))
     ).resolves.toBe(true);
     await expect(
       linearWorkflowRouterAction.validate(runtime, createMessage("Show Linear activity"))

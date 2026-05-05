@@ -8,16 +8,14 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./account-auth-service": {
-      "import": {
-        "types": "./dist/account-auth-service.d.ts",
-        "default": "./dist/account-auth-service.js"
-      }
+      "types": "./dist/account-auth-service.d.ts",
+      "import": "./dist/account-auth-service.js",
+      "default": "./dist/account-auth-service.js"
     }
   },
   "files": [

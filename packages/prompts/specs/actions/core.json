@@ -274,7 +274,7 @@
             "type": "string"
           },
           "examples": ["telegram", "discord"],
-      "descriptionCompressed": "source platform (telegram, discord, x)."
+          "descriptionCompressed": "source platform (telegram, discord, x)."
         },
         {
           "name": "target",
@@ -472,7 +472,7 @@
             "type": "string"
           },
           "examples": ["notes: prefers email; tags: friend"],
-      "descriptionCompressed": "Structured fields to update: notes, tags, category/categories, preferences."
+          "descriptionCompressed": "Structured fields to update: notes, tags, category/categories, preferences."
         }
       ],
       "examples": [

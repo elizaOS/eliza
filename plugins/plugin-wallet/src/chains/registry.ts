@@ -1,3 +1,4 @@
+import type { IAgentRuntime, ITokenDataService } from "@elizaos/core";
 import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
@@ -12,13 +13,12 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import type { IAgentRuntime, ITokenDataService } from "@elizaos/core";
 import {
   type Address,
+  type Chain,
   encodeFunctionData,
   parseAbi,
   parseUnits,
-  type Chain,
 } from "viem";
 import * as viemChains from "viem/chains";
 import type { WalletBackendService } from "../services/wallet-backend-service.js";
@@ -28,18 +28,16 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
 } from "../types/wallet-router.js";
-import {
-  buildSendTxParams,
-} from "./evm/actions/helpers";
+import { buildSendTxParams } from "./evm/actions/helpers";
 import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
 import { DEFAULT_CHAINS, NATIVE_TOKEN_ADDRESS } from "./evm/constants";
 import { initWalletProvider } from "./evm/providers/wallet";
 import type { SupportedChain, Transaction } from "./evm/types";
+import BigNumber from "./solana/bn";
 import { SOLANA_SERVICE_NAME } from "./solana/constants";
 import { getWalletKey } from "./solana/keypairUtils";
 import type { SolanaService } from "./solana/service";
-import BigNumber from "./solana/bn";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
@@ -70,7 +68,9 @@ function configuredEvmChains(runtime: IAgentRuntime): Array<{
     typeof settings.chains === "object" &&
     "evm" in settings.chains &&
     Array.isArray(settings.chains.evm)
-      ? settings.chains.evm.filter((chain): chain is string => typeof chain === "string")
+      ? settings.chains.evm.filter(
+          (chain): chain is string => typeof chain === "string",
+        )
       : [...DEFAULT_CHAINS];
 
   const out: Array<{ key: string; chain: Chain }> = [];
@@ -215,13 +215,17 @@ async function executeEvmTransfer(
     return transactionToExecution(tx, params, chainKey, chain);
   }
 
-  const walletClient = walletProvider.getWalletClient(chainKey as SupportedChain);
+  const walletClient = walletProvider.getWalletClient(
+    chainKey as SupportedChain,
+  );
   const account = walletClient.account;
   if (!account) {
     throw new Error("Wallet account is not available.");
   }
 
-  const publicClient = walletProvider.getPublicClient(chainKey as SupportedChain);
+  const publicClient = walletProvider.getPublicClient(
+    chainKey as SupportedChain,
+  );
   const decimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
   const decimals = Number(
     await publicClient.readContract({
@@ -231,7 +235,9 @@ async function executeEvmTransfer(
       authorizationList: undefined,
     }),
   );
-  const transferAbi = parseAbi(["function transfer(address,uint256) returns (bool)"]);
+  const transferAbi = parseAbi([
+    "function transfer(address,uint256) returns (bool)",
+  ]);
   const data = encodeFunctionData({
     abi: transferAbi,
     functionName: "transfer",
@@ -336,7 +342,8 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     dryRun: {
       supported: true,
       supportedActions: ["transfer", "swap"],
-      description: "Prepare mode and dry-run return route metadata without signing.",
+      description:
+        "Prepare mode and dry-run return route metadata without signing.",
     },
     async execute(params, context) {
       if (params.subaction === "transfer") {
@@ -364,11 +371,14 @@ function resolveSolanaMint(token: string | undefined): string {
 }
 
 function getSolanaConnection(runtime: IAgentRuntime): Connection {
-  const service = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService | null;
+  const service = runtime.getService(
+    SOLANA_SERVICE_NAME,
+  ) as SolanaService | null;
   if (service) {
     return service.getConnection();
   }
-  const rpcUrl = getRuntimeSetting(runtime, "SOLANA_RPC_URL") ?? SOLANA_DEFAULT_RPC;
+  const rpcUrl =
+    getRuntimeSetting(runtime, "SOLANA_RPC_URL") ?? SOLANA_DEFAULT_RPC;
   return new Connection(rpcUrl);
 }
 
@@ -433,7 +443,10 @@ async function executeSolanaTransfer(
       mintPubkey,
       senderKeypair.publicKey,
     );
-    const recipientAta = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
+    const recipientAta = getAssociatedTokenAddressSync(
+      mintPubkey,
+      recipientPubkey,
+    );
     const recipientAtaInfo = await connection.getAccountInfo(recipientAta);
     if (!recipientAtaInfo) {
       instructions.push(
@@ -518,7 +531,10 @@ async function executeSolanaSwap(
     throw new Error(`Failed to get Jupiter quote: ${quoteData.error}`);
   }
 
-  const { publicKey: walletPublicKey } = await getWalletKey(context.runtime, false);
+  const { publicKey: walletPublicKey } = await getWalletKey(
+    context.runtime,
+    false,
+  );
   if (!walletPublicKey) {
     throw new Error("Solana public key is not available.");
   }
@@ -572,7 +588,9 @@ async function executeSolanaSwap(
     "confirmed",
   );
   if (confirmation.value.err) {
-    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    throw new Error(
+      `Transaction failed: ${JSON.stringify(confirmation.value.err)}`,
+    );
   }
 
   return {
@@ -614,7 +632,8 @@ function createSolanaHandler(): WalletChainHandler {
     dryRun: {
       supported: true,
       supportedActions: ["transfer", "swap"],
-      description: "Prepare mode and dry-run return route metadata without signing.",
+      description:
+        "Prepare mode and dry-run return route metadata without signing.",
     },
     async execute(params, context) {
       if (params.subaction === "transfer") {
@@ -636,7 +655,9 @@ export function registerDefaultWalletChainHandlers(
     service.registerChainHandler(createEvmHandler(key, chain));
   }
 
-  const solanaNoActions = parseBoolSetting(runtime.getSetting("SOLANA_NO_ACTIONS"));
+  const solanaNoActions = parseBoolSetting(
+    runtime.getSetting("SOLANA_NO_ACTIONS"),
+  );
   if (!solanaNoActions) {
     service.registerChainHandler(createSolanaHandler());
   }

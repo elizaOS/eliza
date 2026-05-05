@@ -47,7 +47,8 @@
     "@elizaos/core": "workspace:*",
     "@slack/bolt": "^4.1.0",
     "@slack/web-api": "^7.15.2",
-    "zod": "^4.4.2"
+    "@toon-format/toon": "2.1.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

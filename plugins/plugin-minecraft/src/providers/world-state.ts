@@ -1,6 +1,66 @@
-import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+  encodeToonValue,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
+
+type InventoryRow = { slot: number; name: string; count: number };
+type EntityRow = { id: number; type: string; name: string; x: number; y: number; z: number };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function pickInventoryRows(inventory: unknown): InventoryRow[] {
+  if (!Array.isArray(inventory)) return [];
+  const rows: InventoryRow[] = [];
+  for (const item of inventory) {
+    if (!isRecord(item)) continue;
+    const slot = typeof item.slot === "number" ? item.slot : null;
+    const count = typeof item.count === "number" ? item.count : null;
+    const name =
+      typeof item.displayName === "string"
+        ? item.displayName
+        : typeof item.name === "string"
+          ? item.name
+          : null;
+    if (slot === null || count === null || !name) continue;
+    rows.push({ slot, name, count });
+  }
+  return rows;
+}
+
+function pickEntityRows(nearby: unknown): EntityRow[] {
+  if (!Array.isArray(nearby)) return [];
+  const rows: EntityRow[] = [];
+  for (const ent of nearby) {
+    if (!isRecord(ent)) continue;
+    const id = typeof ent.id === "number" ? ent.id : null;
+    const type = typeof ent.type === "string" ? ent.type : null;
+    const username = typeof ent.username === "string" ? ent.username : null;
+    const entName = typeof ent.name === "string" ? ent.name : null;
+    const name = username ?? entName ?? type ?? "unknown";
+    const pos = isRecord(ent.position) ? ent.position : null;
+    const x = pos && typeof pos.x === "number" ? pos.x : null;
+    const y = pos && typeof pos.y === "number" ? pos.y : null;
+    const z = pos && typeof pos.z === "number" ? pos.z : null;
+    if (id === null || !type || x === null || y === null || z === null) continue;
+    rows.push({
+      id,
+      type,
+      name,
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      z: Math.round(z * 10) / 10,
+    });
+  }
+  return rows;
+}
 
 export const minecraftWorldStateProvider: Provider = {
   name: "MC_WORLD_STATE",
@@ -26,7 +86,7 @@ export const minecraftWorldStateProvider: Provider = {
       const state = await service.getWorldState();
       if (!state.connected) {
         return {
-          text: "Minecraft bot is not connected. Use MC_ACTION connect to join a server.",
+          text: "Minecraft bot is not connected. Use MC_CONNECT to join a server.",
           values: { connected: false },
           data: {},
         };
@@ -35,11 +95,21 @@ export const minecraftWorldStateProvider: Provider = {
       const pos = state.position
         ? `(${state.position.x.toFixed(1)}, ${state.position.y.toFixed(1)}, ${state.position.z.toFixed(1)})`
         : "(unknown)";
-      const invCount = Array.isArray(state.inventory) ? state.inventory.length : 0;
-      const entCount = Array.isArray(state.nearbyEntities) ? state.nearbyEntities.length : 0;
+      const inventoryRows = pickInventoryRows(state.inventory);
+      const entityRows = pickEntityRows(state.nearbyEntities);
+
+      const headerLines = [
+        `Minecraft: hp=${state.health ?? "?"} food=${state.food ?? "?"} pos=${pos} invItems=${inventoryRows.length} nearbyEntities=${entityRows.length}`,
+      ];
+      if (inventoryRows.length > 0) {
+        headerLines.push(encodeToonValue({ inventory: inventoryRows }));
+      }
+      if (entityRows.length > 0) {
+        headerLines.push(encodeToonValue({ nearbyEntities: entityRows }));
+      }
 
       return {
-        text: `Minecraft: hp=${state.health ?? "?"} food=${state.food ?? "?"} pos=${pos} invItems=${invCount} nearbyEntities=${entCount}`,
+        text: headerLines.join("\n"),
         values: {
           connected: true,
           health: state.health ?? null,
@@ -47,8 +117,8 @@ export const minecraftWorldStateProvider: Provider = {
           x: state.position?.x ?? null,
           y: state.position?.y ?? null,
           z: state.position?.z ?? null,
-          inventoryCount: invCount,
-          nearbyEntitiesCount: entCount,
+          inventoryCount: inventoryRows.length,
+          nearbyEntitiesCount: entityRows.length,
         },
         data: state as Record<string, string | number | boolean | string[]>,
       };

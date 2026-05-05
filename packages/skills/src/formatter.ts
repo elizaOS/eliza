@@ -1,24 +1,18 @@
 import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
 
 /**
- * Escape special XML characters
+ * Compact a skill field for prompt-friendly TOON text.
  *
- * @param str - String to escape
- * @returns XML-escaped string
+ * @param str - String to compact
+ * @returns Single-line prompt field
  */
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+function compactPromptField(str: string): string {
+  return str.replace(/\s+/g, " ").trim();
 }
 
 /**
  * Format skills for inclusion in a system prompt.
- * Uses XML format per Agent Skills standard.
- * See: https://agentskills.io/integrate-skills
+ * Uses compact TOON-style text.
  *
  * Skills with disableModelInvocation=true are excluded from the prompt
  * (they can only be invoked explicitly via /skill:name commands).
@@ -38,22 +32,16 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
     "Use the read tool to load a skill's file when the task matches its description.",
     "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
     "",
-    "<available_skills>",
+    "available_skills:",
   ];
 
   for (const skill of visibleSkills) {
-    lines.push("  <skill>");
-    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-    lines.push(
-      `    <description>${escapeXml(skill.description)}</description>`,
-    );
+    lines.push(`- name: ${compactPromptField(skill.name)}`);
+    lines.push(`  description: ${compactPromptField(skill.description)}`);
     if (skill.filePath) {
-      lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+      lines.push(`  location: ${compactPromptField(skill.filePath)}`);
     }
-    lines.push("  </skill>");
   }
-
-  lines.push("</available_skills>");
 
   return lines.join("\n");
 }

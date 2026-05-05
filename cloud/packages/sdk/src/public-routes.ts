@@ -256,6 +256,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/credits/balance": { method: "GET", path: "/api/v1/credits/balance", methodName: "getApiV1CreditsBalance", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/credits/balance/route.ts" },
   "GET /api/v1/credits/summary": { method: "GET", path: "/api/v1/credits/summary", methodName: "getApiV1CreditsSummary", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/credits/summary/route.ts" },
   "GET /api/v1/credits/verify": { method: "GET", path: "/api/v1/credits/verify", methodName: "getApiV1CreditsVerify", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/credits/verify/route.ts" },
+  "GET /api/v1/cron/agent-hot-pool": { method: "GET", path: "/api/v1/cron/agent-hot-pool", methodName: "getApiV1CronAgentHotPool", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/agent-hot-pool/route.ts" },
   "GET /api/v1/cron/deployment-monitor": { method: "GET", path: "/api/v1/cron/deployment-monitor", methodName: "getApiV1CronDeploymentMonitor", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/deployment-monitor/route.ts" },
   "GET /api/v1/cron/health-check": { method: "GET", path: "/api/v1/cron/health-check", methodName: "getApiV1CronHealthCheck", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/health-check/route.ts" },
   "GET /api/v1/cron/node-autoscale": { method: "GET", path: "/api/v1/cron/node-autoscale", methodName: "getApiV1CronNodeAutoscale", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/node-autoscale/route.ts" },
@@ -554,6 +555,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/containers": { method: "POST", path: "/api/v1/containers", methodName: "postApiV1Containers", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/containers/route.ts" },
   "POST /api/v1/containers/credentials": { method: "POST", path: "/api/v1/containers/credentials", methodName: "postApiV1ContainersCredentials", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/containers/credentials/route.ts" },
   "POST /api/v1/credits/checkout": { method: "POST", path: "/api/v1/credits/checkout", methodName: "postApiV1CreditsCheckout", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/credits/checkout/route.ts" },
+  "POST /api/v1/cron/agent-hot-pool": { method: "POST", path: "/api/v1/cron/agent-hot-pool", methodName: "postApiV1CronAgentHotPool", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/agent-hot-pool/route.ts" },
   "POST /api/v1/cron/deployment-monitor": { method: "POST", path: "/api/v1/cron/deployment-monitor", methodName: "postApiV1CronDeploymentMonitor", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/deployment-monitor/route.ts" },
   "POST /api/v1/cron/health-check": { method: "POST", path: "/api/v1/cron/health-check", methodName: "postApiV1CronHealthCheck", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/health-check/route.ts" },
   "POST /api/v1/cron/node-autoscale": { method: "POST", path: "/api/v1/cron/node-autoscale", methodName: "postApiV1CronNodeAutoscale", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/node-autoscale/route.ts" },
@@ -962,6 +964,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/credits/balance": Record<never, never>;
   "GET /api/v1/credits/summary": Record<never, never>;
   "GET /api/v1/credits/verify": Record<never, never>;
+  "GET /api/v1/cron/agent-hot-pool": Record<never, never>;
   "GET /api/v1/cron/deployment-monitor": Record<never, never>;
   "GET /api/v1/cron/health-check": Record<never, never>;
   "GET /api/v1/cron/node-autoscale": Record<never, never>;
@@ -1260,6 +1263,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/containers": Record<never, never>;
   "POST /api/v1/containers/credentials": Record<never, never>;
   "POST /api/v1/credits/checkout": Record<never, never>;
+  "POST /api/v1/cron/agent-hot-pool": Record<never, never>;
   "POST /api/v1/cron/deployment-monitor": Record<never, never>;
   "POST /api/v1/cron/health-check": Record<never, never>;
   "POST /api/v1/cron/node-autoscale": Record<never, never>;
@@ -3014,6 +3018,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/credits/verify"> = {}
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/credits/verify", TResponse>("GET /api/v1/credits/verify", options);
+  }
+
+  getApiV1CronAgentHotPool<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/cron/agent-hot-pool"> = {}
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/cron/agent-hot-pool", TResponse>("GET /api/v1/cron/agent-hot-pool", options);
   }
 
   getApiV1CronDeploymentMonitor<TResponse = unknown>(
@@ -4802,6 +4812,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/credits/checkout"> = {}
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/credits/checkout", TResponse>("POST /api/v1/credits/checkout", options);
+  }
+
+  postApiV1CronAgentHotPool<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/cron/agent-hot-pool"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/cron/agent-hot-pool", TResponse>("POST /api/v1/cron/agent-hot-pool", options);
   }
 
   postApiV1CronDeploymentMonitor<TResponse = unknown>(
@@ -6620,6 +6636,10 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/credits/verify", options);
   }
 
+  getApiV1CronAgentHotPoolRaw(options: PublicRouteCallOptions<"GET /api/v1/cron/agent-hot-pool"> = {}): Promise<Response> {
+    return this.callRaw("GET /api/v1/cron/agent-hot-pool", options);
+  }
+
   getApiV1CronDeploymentMonitorRaw(options: PublicRouteCallOptions<"GET /api/v1/cron/deployment-monitor"> = {}): Promise<Response> {
     return this.callRaw("GET /api/v1/cron/deployment-monitor", options);
   }
@@ -7810,6 +7830,10 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1CreditsCheckoutRaw(options: PublicRouteCallOptions<"POST /api/v1/credits/checkout"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/credits/checkout", options);
+  }
+
+  postApiV1CronAgentHotPoolRaw(options: PublicRouteCallOptions<"POST /api/v1/cron/agent-hot-pool"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/cron/agent-hot-pool", options);
   }
 
   postApiV1CronDeploymentMonitorRaw(options: PublicRouteCallOptions<"POST /api/v1/cron/deployment-monitor"> = {}): Promise<Response> {

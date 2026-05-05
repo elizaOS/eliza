@@ -30,7 +30,7 @@
     "@huggingface/hub": "^2.6.12",
     "@vercel/blob": "2.3.2",
     "ethers": "^6.16.0",
-    "uuid": "^11.1.0"
+    "uuid": "^14.0.0"
   },
   "peerDependencies": {
     "@babylon/core": "workspace:*",
@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
-    "@types/uuid": "^10.0.0",
+    "@types/uuid": "^11.0.0",
     "bun-types": "^1.3.2",
     "typescript": "^5.9.3"
   }

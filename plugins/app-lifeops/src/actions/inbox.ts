@@ -30,7 +30,7 @@ import type {
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalChannel } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { executeApprovedRequest } from "./approval.js";
+import { executeApprovedRequest } from "./owner-resolve-request.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 // ---------------------------------------------------------------------------

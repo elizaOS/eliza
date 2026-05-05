@@ -621,6 +621,44 @@ export class N8nSidecar {
     // The supervisor continues to run in the background after this resolves;
     // stop() is the canonical way to terminate it.
     const supervisorPromise = this.runSupervisor();
+    // Watch for an unexpected supervisor exit. The inner loop already
+    // handles known crash paths and parks state in "error"; this handler
+    // exists for the case where the supervisor itself throws or returns
+    // without reaching a terminal status (which would otherwise leave
+    // consumers like AutomationsView wedged on "starting" forever with no
+    // signal). When that happens, log and pin status=error so the UI's
+    // existing error branches (WorkflowRuntimeNotice, resolveProxyTarget)
+    // can surface the failure.
+    supervisorPromise.then(
+      () => {
+        if (
+          !this.stopping &&
+          this.state.status !== "ready" &&
+          this.state.status !== "error"
+        ) {
+          logger.error(
+            `[n8n-sidecar] supervisor exited without reaching a terminal status: state=${this.state.status}`,
+          );
+          this.setState({
+            status: "error",
+            errorMessage:
+              this.state.errorMessage ?? "supervisor exited unexpectedly",
+            pid: null,
+          });
+        }
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error(`[n8n-sidecar] supervisor exited: ${message}`);
+        if (!this.stopping) {
+          this.setState({
+            status: "error",
+            errorMessage: message,
+            pid: null,
+          });
+        }
+      },
+    );
     await new Promise<void>((resolve) => {
       if (this.state.status === "ready" || this.state.status === "error") {
         resolve();
@@ -633,8 +671,6 @@ export class N8nSidecar {
         }
       });
     });
-    // Don't leave an unhandled rejection if the supervisor later errors.
-    supervisorPromise.catch(() => undefined);
   }
 
   /**

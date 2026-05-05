@@ -1,16 +1,15 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
 import { parseEther } from "viem";
 import { base, mainnet } from "viem/chains";
+import { describe, expect, it, vi } from "vitest";
+import type { WalletRouterContext } from "../../../../types/wallet-router.js";
+import { createEvmWalletChainHandler } from "../../chain-handler";
 import evmPlugin from "../../index";
 import type { WalletProvider } from "../../providers/wallet";
-import { createEvmWalletChainHandler } from "../../chain-handler";
-import type { WalletRouterContext } from "../../../../types/wallet-router.js";
 
 const ACCOUNT = "0x1111111111111111111111111111111111111111";
 const RECIPIENT = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
-const HASH =
-  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const HASH = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
 function createFakeWalletProvider(sendTransaction = vi.fn(async () => HASH)) {

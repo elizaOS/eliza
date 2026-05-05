@@ -44,6 +44,7 @@ export const describeSceneAction: Action = {
   similes: ["ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND"],
   description:
     "Analyzes the current visual scene and provides a detailed description of what the agent sees through the camera. Returns scene analysis data including people count, objects, and camera info for action chaining.",
+  descriptionCompressed: "Describe what camera sees as natural language.",
   validate: async (
     runtime: any,
     message: any,
@@ -347,6 +348,7 @@ export const captureImageAction: Action = {
   similes: ["TAKE_PHOTO", "SCREENSHOT", "CAPTURE_FRAME", "TAKE_PICTURE"],
   description:
     "Captures the current frame from the camera and saves it as an image attachment. Returns image data with camera info and timestamp for action chaining. Can be combined with DESCRIBE_SCENE for analysis or NAME_ENTITY for identification workflows.",
+  descriptionCompressed: "Take camera snapshot to memory.",
   validate: async (
     runtime: any,
     message: any,
@@ -620,6 +622,7 @@ export const captureImageAction: Action = {
 export const setVisionModeAction: Action = {
   name: "SET_VISION_MODE",
   description: "Set the vision mode to OFF, CAMERA, SCREEN, or BOTH",
+  descriptionCompressed: "Set vision mode: face, scene, object, tracking.",
   similes: [
     "change vision to {mode}",
     "set vision mode {mode}",
@@ -852,6 +855,7 @@ export const nameEntityAction: Action = {
   name: "NAME_ENTITY",
   description:
     "Assign a name to a person or object currently visible in the camera view",
+  descriptionCompressed: "Name a tracked entity by id.",
   similes: [
     "call the person {name}",
     "the person in front is {name}",
@@ -1123,6 +1127,8 @@ export const nameEntityAction: Action = {
 export const identifyPersonAction: Action = {
   name: "IDENTIFY_PERSON",
   description: "Identify a person in view if they have been seen before",
+  descriptionCompressed:
+    "Match face to known person via local recognition.",
   similes: [
     "who is that",
     "who is the person",
@@ -1379,6 +1385,7 @@ export const identifyPersonAction: Action = {
 export const trackEntityAction: Action = {
   name: "TRACK_ENTITY",
   description: "Start tracking a specific person or object in view",
+  descriptionCompressed: "Track entity id across frames.",
   similes: [
     "track the {description}",
     "follow the {description}",

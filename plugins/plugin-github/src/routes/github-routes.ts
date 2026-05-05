@@ -214,4 +214,3 @@ export async function handleGitHubRoutes(
       return true;
   }
 }
-

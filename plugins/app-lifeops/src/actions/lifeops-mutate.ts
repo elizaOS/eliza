@@ -1,3 +1,9 @@
+/**
+ * DEPRECATED: every subaction here is being absorbed by its owning OWNER_*
+ * umbrella. Callers should migrate to direct LifeOpsService calls. This file
+ * persists during the consolidation wave so callers don't break mid-flight;
+ * Wave 3 verification will delete it once all callers are migrated.
+ */
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,

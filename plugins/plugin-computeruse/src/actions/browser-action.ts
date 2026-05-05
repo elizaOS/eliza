@@ -39,7 +39,7 @@ export const browserAction: Action = {
   description:
     "browser_action:\n  purpose: Control a Chromium-based browser through the local runtime: launch, navigate, interact, inspect, execute JavaScript, wait, and manage tabs.\n  provider_state: Read-only browser availability and recent action state are available from the computerState provider. Use state/info/list_tabs only for explicit live refreshes.\n  flow: Open or connect first, then navigate and interact. Use clickables to discover interactive elements.\n  actions: open/connect/close/navigate/click/type/scroll/screenshot/dom/get_dom/clickables/get_clickables/execute/state/info/context/get_context/wait/list_tabs/open_tab/close_tab/switch_tab.",
   descriptionCompressed:
-    "Chromium browser control router: open/connect/navigate/click/type/read dom/clickables/execute/wait/tabs; provider passive state.",
+    "Chromium browser control router: open/connect/navigate/click/type/read dom/clickables/execute/wait/tabs; read-only state.",
 
   parameters: [
     {

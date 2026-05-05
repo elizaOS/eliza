@@ -32,6 +32,8 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
     "/api/cron/cleanup-stuck-provisioning",
+    "/api/v1/cron/node-autoscale",
+    "/api/v1/cron/agent-hot-pool",
   ],
   "*/10 * * * *": ["/api/cron/cleanup-expired-crypto-payments"],
   "*/15 * * * *": [

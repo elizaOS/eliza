@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
 	ChannelType,
 	type Content,
@@ -18,7 +19,6 @@ import {
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
-import { createHash } from "node:crypto";
 import {
 	AttachmentBuilder,
 	type Channel,
@@ -1065,7 +1065,7 @@ export class MessageManager {
 		message: DiscordMessage,
 	): Promise<{ processedContent: string; attachments: Media[] }> {
 		let processedContent = message.content;
-		let attachments: Media[] = [];
+		const attachments: Media[] = [];
 
 		if (message.embeds?.length) {
 			for (const i in message.embeds) {

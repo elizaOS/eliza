@@ -19,11 +19,11 @@ import {
 import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
-} from "../contracts/index.js";
-import { runExtractorPipeline } from "./extractor-pipeline.js";
-import { recentConversationTexts } from "./life-recent-context.js";
-import { resolveContextWindow } from "./lifeops-extraction-config.js";
-import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
+} from "../../contracts/index.js";
+import { runExtractorPipeline } from "../extractor-pipeline.js";
+import { recentConversationTexts } from "./recent-context.js";
+import { resolveContextWindow } from "../lifeops-extraction-config.js";
+import { normalizeExplicitTimeZoneToken } from "../timezone-normalization.js";
 
 // ── Types ─────────────────────────────────────────────
 

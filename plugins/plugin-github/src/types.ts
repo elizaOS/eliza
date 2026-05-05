@@ -50,6 +50,29 @@ type GitHubAssigneesResult = {
   assignees?: Array<GitHubUserSummary | null> | null;
 };
 
+type GitHubLabelSummary =
+  | string
+  | {
+      name?: string | null;
+    };
+
+type GitHubIssueDetail = {
+  number: number;
+  title: string;
+  state: string;
+  html_url: string;
+  body?: string | null;
+  labels?: Array<GitHubLabelSummary | null> | null;
+  user?: GitHubUserSummary | null;
+};
+
+type GitHubIssueCommentResult = {
+  id: number;
+  html_url: string;
+};
+
+type GitHubAddLabelsResult = Array<GitHubLabelSummary | null>;
+
 type GitHubNotificationSummary = {
   id: string;
   reason?: string | null;
@@ -82,7 +105,21 @@ export interface GitHubOctokitClient {
       Octokit["issues"]["addAssignees"],
       GitHubAssigneesResult
     >;
+    addLabels: OctokitEndpoint<
+      Octokit["issues"]["addLabels"],
+      GitHubAddLabelsResult
+    >;
     create: OctokitEndpoint<Octokit["issues"]["create"], GitHubIssueResult>;
+    createComment: OctokitEndpoint<
+      Octokit["issues"]["createComment"],
+      GitHubIssueCommentResult
+    >;
+    get: OctokitEndpoint<Octokit["issues"]["get"], GitHubIssueDetail>;
+    listForRepo: OctokitEndpoint<
+      Octokit["issues"]["listForRepo"],
+      GitHubIssueDetail[]
+    >;
+    update: OctokitEndpoint<Octokit["issues"]["update"], GitHubIssueDetail>;
   };
   pulls: {
     createReview: OctokitEndpoint<
@@ -110,12 +147,22 @@ export interface IGitHubService {
 export const GITHUB_SERVICE_TYPE = "github";
 
 export const GitHubActions = {
-  LIST_PRS: "LIST_PRS",
-  REVIEW_PR: "REVIEW_PR",
-  CREATE_ISSUE: "CREATE_ISSUE",
-  ASSIGN_ISSUE: "ASSIGN_ISSUE",
+  GITHUB_ISSUE_OP: "GITHUB_ISSUE_OP",
+  GITHUB_PR_OP: "GITHUB_PR_OP",
   GITHUB_NOTIFICATION_TRIAGE: "GITHUB_NOTIFICATION_TRIAGE",
 } as const;
+
+/** Issue ops accepted by GITHUB_ISSUE_OP. */
+export type GitHubIssueOp =
+  | "create"
+  | "assign"
+  | "close"
+  | "reopen"
+  | "comment"
+  | "label";
+
+/** PR ops accepted by GITHUB_PR_OP. */
+export type GitHubPrOp = "list" | "review";
 
 /**
  * Structured result returned by action handlers. Actions never throw —

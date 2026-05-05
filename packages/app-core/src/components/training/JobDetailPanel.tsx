@@ -1,7 +1,6 @@
 import { Button } from "@elizaos/ui";
-import { ChevronDown, ChevronUp, Copy, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import type { TrainingJobDetail } from "./types";
 import {
   useCancelTrainingJob,
   useEvalTrainingJob,
@@ -23,7 +22,6 @@ function ProgressChart({
     return <div className="text-xs text-muted">No progress data</div>;
   }
 
-  const maxStep = Math.max(...data.map((d) => d.step), 1);
   const width = 400;
   const height = 120;
   const padding = 40;
@@ -31,6 +29,7 @@ function ProgressChart({
   const chartHeight = height - padding;
 
   const points = data.map((d, i) => ({
+    step: d.step,
     x: padding + (i / Math.max(data.length - 1, 1)) * chartWidth,
     y: padding + chartHeight / 2,
     formatOk: d.format_ok,
@@ -41,8 +40,11 @@ function ProgressChart({
     <svg
       width={width}
       height={height}
+      role="img"
+      aria-labelledby="training-progress-title"
       className="border border-border rounded bg-card"
     >
+      <title id="training-progress-title">Training progress</title>
       <text x={10} y={20} fontSize="12" fill="currentColor">
         Training Progress
       </text>
@@ -57,8 +59,8 @@ function ProgressChart({
         opacity="0.2"
       />
 
-      {points.map((point, i) => (
-        <g key={i}>
+      {points.map((point) => (
+        <g key={`${point.step}-${point.formatOk}-${point.contentOk}`}>
           <circle
             cx={point.x}
             cy={point.y - 15}
@@ -146,8 +148,8 @@ function JobLogs({ jobId }: { jobId: string }) {
       {loading && <div className="text-xs text-muted">Loading logs...</div>}
       {logs && (
         <div className="text-xs bg-card border border-border rounded p-2 font-mono max-h-48 overflow-auto">
-          {logs.map((line, i) => (
-            <div key={i} className="text-muted">
+          {logs.map((line) => (
+            <div key={line} className="text-muted">
               {line}
             </div>
           ))}
