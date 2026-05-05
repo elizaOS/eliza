@@ -34,16 +34,19 @@ const app = new Hono<AppEnv>();
 async function loadOwnedApp(c: AppContext) {
   const user = await requireUserOrApiKeyWithOrg(c);
   const appId = c.req.param("id");
-  if (!appId) return null;
+  if (!appId) return { error: "missing path params", status: 400 as const };
   const appRow = await appsService.getById(appId);
-  if (!appRow || appRow.organization_id !== user.organization_id) return null;
+  if (!appRow) return { error: "App not found", status: 404 as const };
+  if (appRow.organization_id !== user.organization_id) {
+    return { error: "App belongs to a different organization", status: 403 as const };
+  }
   return { user, app: appRow, appId };
 }
 
 app.get("/", async (c) => {
   try {
     const ctx = await loadOwnedApp(c);
-    if (!ctx) return c.json({ success: false, error: "App not found" }, 404);
+    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const domains = await managedDomainsService.listForApp(ctx.user.organization_id, ctx.appId);
     return c.json({
@@ -68,7 +71,7 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const ctx = await loadOwnedApp(c);
-    if (!ctx) return c.json({ success: false, error: "App not found" }, 404);
+    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const parsed = DomainSchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -142,7 +145,7 @@ app.post("/", async (c) => {
 app.delete("/", async (c) => {
   try {
     const ctx = await loadOwnedApp(c);
-    if (!ctx) return c.json({ success: false, error: "App not found" }, 404);
+    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const parsed = DomainSchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -159,7 +162,21 @@ app.delete("/", async (c) => {
     }
 
     await managedDomainsService.unassignFromResource(md.id);
-    await appDomainsCompat.clearCustomDomain(ctx.appId);
+    const remainingDomains = (
+      await managedDomainsService.listForApp(ctx.user.organization_id, ctx.appId)
+    ).filter((candidate) => candidate.id !== md.id);
+    const primaryDomain =
+      remainingDomains.find((candidate) => candidate.verified && candidate.status === "active") ??
+      remainingDomains[0];
+    if (primaryDomain) {
+      await appDomainsCompat.setCustomDomain({
+        appId: ctx.appId,
+        domain: primaryDomain.domain,
+        verified: primaryDomain.verified,
+      });
+    } else {
+      await appDomainsCompat.clearCustomDomain(ctx.appId);
+    }
     logger.info("[Domains DELETE] detached domain", {
       appId: ctx.appId,
       domain,
