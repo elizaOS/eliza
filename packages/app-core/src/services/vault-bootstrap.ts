@@ -10,8 +10,9 @@
  *   4. `process.env[KEY]` for keys flagged sensitive in any registered plugin
  *      (does not mutate process.env — only mirrors to the vault).
  *
- * Idempotent: a hydration marker at `<stateDir>/.vault-hydrated.json`
- * keeps re-runs cheap once a clean migration has completed. Per-key
+ * Idempotent by `vault.has(key)` per-key checks — no separate marker
+ * file. Re-running the bootstrap after a partial run is safe and cheap;
+ * only keys not already in the vault get re-attempted. Per-key
  * failures are isolated; if every write fails the function throws.
  */
 
@@ -34,19 +35,8 @@ import type { Vault } from "@elizaos/vault";
 import { loadRegistry } from "../registry";
 import { sharedVault } from "./vault-mirror";
 
-const MARKER_VERSION = 1;
-const MARKER_FILENAME = ".vault-hydrated.json";
-
-interface HydrationMarker {
-  version: number;
-  completedAt: string;
-  migratedKeys: string[];
-  skippedKeys: string[];
-}
-
 export interface VaultBootstrapResult {
   migrated: number;
-  alreadyHydrated: number;
   failed: string[];
 }
 
@@ -75,40 +65,6 @@ function sensitiveKeysFromRegistry(): Set<string> {
     }
   }
   return keys;
-}
-
-async function readMarker(stateDir: string): Promise<HydrationMarker | null> {
-  const filePath = path.join(stateDir, MARKER_FILENAME);
-  try {
-    const raw = await fs.readFile(filePath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<HydrationMarker>;
-    if (
-      typeof parsed.version === "number" &&
-      typeof parsed.completedAt === "string" &&
-      Array.isArray(parsed.migratedKeys) &&
-      Array.isArray(parsed.skippedKeys)
-    ) {
-      return parsed as HydrationMarker;
-    }
-    return null;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw err;
-  }
-}
-
-async function writeMarker(
-  stateDir: string,
-  marker: HydrationMarker,
-): Promise<void> {
-  await fs.mkdir(stateDir, { recursive: true });
-  const filePath = path.join(stateDir, MARKER_FILENAME);
-  const tmpPath = `${filePath}.tmp`;
-  await fs.writeFile(tmpPath, JSON.stringify(marker, null, 2), {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await fs.rename(tmpPath, filePath);
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -268,12 +224,6 @@ export async function runVaultBootstrap(
   const stateDir = opts.stateDir ?? resolveStateDir();
   const vault = opts.vault ?? sharedVault();
 
-  const marker = await readMarker(stateDir);
-  const alreadyHydrated =
-    marker && marker.version === MARKER_VERSION
-      ? marker.migratedKeys.length + marker.skippedKeys.length
-      : 0;
-
   const sensitiveKeys = sensitiveKeysFromRegistry();
   const config = loadElizaConfig();
 
@@ -306,26 +256,16 @@ export async function runVaultBootstrap(
     );
   }
 
-  await writeMarker(stateDir, {
-    version: MARKER_VERSION,
-    completedAt: new Date().toISOString(),
-    migratedKeys,
-    skippedKeys,
-  });
-
   if (migratedKeys.length > 0 || failedKeys.length > 0) {
     logger.info(
       `[vault-bootstrap] migrated=${migratedKeys.length} skipped=${skippedKeys.length} failed=${failedKeys.length}`,
     );
   } else {
-    logger.debug(
-      `[vault-bootstrap] no plaintext secrets found (already-hydrated keys=${alreadyHydrated})`,
-    );
+    logger.debug("[vault-bootstrap] no plaintext secrets to migrate");
   }
 
   return {
     migrated: migratedKeys.length,
-    alreadyHydrated,
     failed: failedKeys,
   };
 }

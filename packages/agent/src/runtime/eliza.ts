@@ -2823,7 +2823,7 @@ export async function startEliza(
     );
     const bootResult = await runVaultBootstrap();
     logger.info(
-      `[vault-bootstrap] migrated=${bootResult.migrated} already-hydrated=${bootResult.alreadyHydrated} failed=${bootResult.failed.length}`,
+      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
     );
 
     const { resolved, missing } = await resolveConfigEnvForProcess(
