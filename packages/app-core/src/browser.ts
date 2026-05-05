@@ -95,7 +95,6 @@ export * from "./config/ui-spec.ts";
 export * from "./events/index.ts";
 export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";
-export * from "./hooks/useCanvasWindow.ts";
 export * from "./hooks/useChatAvatarVoiceBridge.ts";
 export * from "./hooks/useContextMenu.ts";
 export {
@@ -103,7 +102,6 @@ export {
   useShortcutsHelp,
 } from "./hooks/useKeyboardShortcuts.ts";
 export * from "./hooks/useMediaQuery.ts";
-export * from "./hooks/useMusicPlayer.ts";
 export * from "./hooks/useRenderGuard.ts";
 export * from "./hooks/useSignalPairing.ts";
 export * from "./hooks/useStreamPopoutNavigation.ts";
