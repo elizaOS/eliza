@@ -15,11 +15,11 @@ import Electrobun, {
 	webgpu,
 } from "electrobun/bun";
 import {
-	pushApiBaseToRenderer,
 	resolveDesktopRuntimeMode,
 	resolveInitialApiBase,
 	resolveRendererFacingApiBase,
 } from "./api-base";
+import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
 	buildApplicationMenu,
 	EMPTY_HEARTBEAT_MENU_SNAPSHOT,
@@ -327,7 +327,7 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 							) ??
 							apiBase);
 					if (base) {
-						pushApiBaseToRenderer(currentWindow, base, apiToken);
+						apiBaseOwner.notifyChange(currentWindow, base, apiToken);
 					}
 				}
 			},
@@ -820,11 +820,12 @@ async function startRendererServer(): Promise<string> {
 		".vrm": "model/gltf-binary",
 	};
 
-	// Determine the expected agent API base URL so we can inject it into the
-	// HTML before the renderer JS runs. This prevents a 404 fatal-error loop
-	// where the renderer fetches /api/auth/status relative to the static server.
-	// If the agent falls back to a dynamic port, apiBaseUpdate messages will
-	// update window.__ELIZA_API_BASE__ and the client will pick it up lazily.
+	// Seed the api-base-owner singleton with the initial value so the
+	// HTML-inject path and the RPC push path both read the same source of
+	// truth. Without this seeding, the static server would inject one value
+	// into HTML before the renderer mounts and the RPC bridge would push a
+	// different value moments later — the renderer racing two answers is
+	// what produced the port-shift disconnect documented in MASTER.md §0.
 	const initialApiBase = resolveInitialApiBase(
 		process.env as Record<string, string | undefined>,
 	);
@@ -833,32 +834,7 @@ async function startRendererServer(): Promise<string> {
 			.mode === "local"
 			? configureDesktopLocalApiAuth()
 			: (resolveApiToken(process.env) ?? "");
-
-	// Inject the API base into index.html so it's available before React mounts.
-	// Two surfaces both must be set: `__ELIZA_API_BASE__` (legacy global the
-	// appClient reads) and `__ELIZA_APP_BOOT_CONFIG__.apiBase` (typed boot
-	// config the SettingsView reads). Without the second one, the same renderer
-	// loaded via a regular browser at this static-server's origin falls back to
-	// `pageOrigin` for apiBase and every /api/* call returns SPA HTML.
-	function injectApiBaseIntoHtml(html: string): string {
-		if (!initialApiBase) {
-			return html;
-		}
-		const baseLiteral = JSON.stringify(initialApiBase);
-		const tokenLiteral = initialApiToken ? JSON.stringify(initialApiToken) : "";
-		const tokenInject = tokenLiteral
-			? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
-			: "";
-		const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
-		const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${tokenInject}${bootConfigInject}</script>`;
-		if (html.includes("</head>")) {
-			return html.replace("</head>", `${script}</head>`);
-		}
-		if (html.includes("<body")) {
-			return html.replace("<body", `${script}<body`);
-		}
-		return script + html;
-	}
+	apiBaseOwner.setCurrent(initialApiBase, initialApiToken);
 
 	const resolveRendererCacheControl = (
 		pathname: string,
@@ -954,7 +930,7 @@ async function startRendererServer(): Promise<string> {
 				const content = fs.readFileSync(filePath);
 				// Inject API base into HTML responses
 				if (mimeExt === ".html" || filePath.endsWith("index.html")) {
-					const html = injectApiBaseIntoHtml(content.toString("utf8"));
+					const html = apiBaseOwner.injectIntoHtml(content.toString("utf8"));
 					return new Response(html, {
 						headers: {
 							"Content-Type": "text/html; charset=utf-8",
@@ -1501,10 +1477,10 @@ function injectApiBase(win: BrowserWindow): void {
 		runtimeResolution.mode === "external" &&
 		runtimeResolution.externalApi.base
 	) {
-		pushApiBaseToRenderer(
+		apiBaseOwner.notifyChange(
 			win,
 			runtimeResolution.externalApi.base,
-			resolveApiToken(process.env) ?? undefined,
+			resolveApiToken(process.env) ?? "",
 		);
 		setAgentReady(true);
 		return;
@@ -1513,7 +1489,7 @@ function injectApiBase(win: BrowserWindow): void {
 	const agent = getAgentManager();
 	const port = agent.getPort() ?? resolveDesktopApiPort(process.env);
 	const apiToken = configureDesktopLocalApiAuth();
-	pushApiBaseToRenderer(
+	apiBaseOwner.notifyChange(
 		win,
 		resolveRendererFacingApiBase(
 			process.env as Record<string, string | undefined>,
@@ -1644,8 +1620,8 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
 			// the bridge succeeds, the renderer skips the login UI; if it fails,
 			// the renderer behaves like a remote browser (password-required).
 			await primeDesktopSessionAuth(apiBase, rendererBase);
-			const apiToken = resolveApiToken(process.env) ?? undefined;
-			pushApiBaseToRenderer(win, rendererBase, apiToken);
+			const apiToken = resolveApiToken(process.env) ?? "";
+			apiBaseOwner.notifyChange(win, rendererBase, apiToken);
 			setAgentReady(true);
 			// Sync real OS permission states to the REST API so the renderer
 			// can display them and capability toggles can unlock.
@@ -2363,11 +2339,12 @@ async function main(): Promise<void> {
 		}
 	}
 
-	// Agent startup: in external mode, push the API base via injectApiBase
-	// (the agent is already running externally). In local mode, start the
-	// embedded agent first — injectApiBaseIntoHtml already set the initial
-	// window.__ELIZA_API_BASE__ but _startAgent will push the actual port
-	// once the agent reports it.
+	// Agent startup: in external mode, push the API base via the
+	// api-base-owner (the agent is already running externally). In local
+	// mode, start the embedded agent first — apiBaseOwner.injectIntoHtml()
+	// already set the initial window.__ELIZA_API_BASE__ from the seed value
+	// in main(), but _startAgent will push the actual port once the agent
+	// reports it.
 	if (currentWindow) {
 		const rt = resolveDesktopRuntimeMode(
 			process.env as Record<string, string | undefined>,
