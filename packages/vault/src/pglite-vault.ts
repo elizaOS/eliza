@@ -367,10 +367,18 @@ export class PgliteVaultImpl implements Vault {
         `[vault] failed to read legacy vault.json for migration; PGlite vault starts empty`,
         err,
       );
+      // Still write the sentinel — without it every subsequent boot
+      // re-reads the file (which keeps failing) and re-logs the warning.
+      await writeMigrationSentinel(db, "read-failed");
       return;
     }
     const keys = Object.keys(store.entries);
-    if (keys.length === 0) return;
+    if (keys.length === 0) {
+      // Same reason as the read-failed path: without the sentinel, every
+      // subsequent boot re-reads the empty legacy file.
+      await writeMigrationSentinel(db, "empty-source");
+      return;
+    }
 
     let migrated = 0;
     await db.transaction(async (tx) => {
@@ -378,18 +386,44 @@ export class PgliteVaultImpl implements Vault {
         await insertLegacyEntry(tx, key, entry);
         migrated += 1;
       }
-      // Sentinel — surfaces in `vault.list()` as a marker so it's not silent.
       await tx.query(
         `INSERT INTO vault_entries (key, kind, value, last_modified)
          VALUES ('_migrated_from_file_v1', 'value', $1, $2)
          ON CONFLICT (key) DO NOTHING`,
-        [new Date().toISOString(), Date.now()],
+        [
+          JSON.stringify({ at: new Date().toISOString(), migrated }),
+          Date.now(),
+        ],
       );
     });
     this.opts.logger?.warn(
       `[vault] migrated ${migrated} entries from ${legacyPath} to PGlite. Legacy file retained as safety net.`,
     );
   }
+}
+
+/**
+ * Write the migration sentinel without any legacy entries. Called from the
+ * read-failed and empty-source paths so the COUNT(*) check on the next boot
+ * sees a non-empty table and short-circuits — avoiding repeated readStore
+ * I/O and repeated warning spam from the read-failed branch.
+ *
+ * The reason field surfaces in `describe("_migrated_from_file_v1")` for
+ * post-mortem if migration ever needs investigating.
+ */
+async function writeMigrationSentinel(
+  db: PGlite,
+  reason: "read-failed" | "empty-source",
+): Promise<void> {
+  await db.query(
+    `INSERT INTO vault_entries (key, kind, value, last_modified)
+     VALUES ('_migrated_from_file_v1', 'value', $1, $2)
+     ON CONFLICT (key) DO NOTHING`,
+    [
+      JSON.stringify({ at: new Date().toISOString(), reason, migrated: 0 }),
+      Date.now(),
+    ],
+  );
 }
 
 async function insertLegacyEntry(

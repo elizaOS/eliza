@@ -604,6 +604,14 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           // against api.elizacloud.ai with a stale key after reset. Without
           // this, the renderer keeps making direct cloud calls even though
           // the UI shows disconnected.
+          //
+          // Coupling guarantee: this runs in `clearElizaCloudSessionUi`,
+          // which `complete-reset-local-state-after-wipe.ts` calls on
+          // line 43 — immediately before `markOnboardingReset()` on
+          // line 44. The two callbacks always fire as a pair, so the
+          // token clear happens on every reset path that uses the
+          // shared cascade. (The cascade is the sole caller; there
+          // is no path that calls one without the other.)
           if (typeof globalThis !== "undefined") {
             try {
               delete (globalThis as Record<string, unknown>)
