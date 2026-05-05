@@ -8,6 +8,20 @@
  * `RuntimeGate` ElizaOS branch) treat the device as already-onboarded
  * for the local agent.
  *
+ * Stock-Android Capacitor APKs (installed from the Play Store onto a
+ * non-branded handset) MUST NOT pre-seed: the user actively chooses
+ * Cloud / Remote / Local from `RuntimeGate`, and there is no on-device
+ * agent listening at 127.0.0.1:31337 unless the user explicitly picks
+ * Local (which then goes through `ElizaAgentService.shouldAutoStart`).
+ * Pre-seeding on stock Android would skip the picker and dead-end the
+ * boot in a "Failed to connect to /127.0.0.1:31337" loop.
+ *
+ * Detection: we look for `ElizaOS/<tag>` in the WebView user-agent,
+ * which `MainActivity.applyBrandUserAgentMarkers` appends only when
+ * `ro.elizaos.product` (or `ro.miladyos.product`) is set by the AOSP
+ * product makefile. White-label forks pick this up automatically as
+ * long as their product config sets one of those system properties.
+ *
  * Implementation note: this file deliberately does NOT import from
  * `state/persistence` — that module's transitive dep graph is heavy
  * (pulls in i18n, themes, telegram). All this helper needs is one
@@ -67,8 +81,21 @@ function writeLocalAgentActiveServer(): void {
   }
 }
 
+function isBrandedAndroidDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent ?? "";
+  // MainActivity.applyBrandUserAgentMarkers appends these tokens only
+  // when the corresponding `ro.<brand>os.product` system property is
+  // set by the AOSP product makefile. Stock Android leaves the UA
+  // untouched, which is exactly when we want to render the picker.
+  return /\bElizaOS\//.test(ua) || /\bMiladyOS\//.test(ua);
+}
+
 /**
  * No-op when:
+ *   - the device is not an AOSP/branded ElizaOS variant (stock Android
+ *     installs must always run through `RuntimeGate`'s picker — there
+ *     is no on-device agent unless the user opts in),
  *   - a persisted mode already exists (the user — or a previous boot —
  *     has made a deliberate choice; don't clobber it),
  *   - a persisted active server already exists (a remote/cloud target was
@@ -83,6 +110,7 @@ function writeLocalAgentActiveServer(): void {
  * `?runtime=picker` override.
  */
 export function preSeedAndroidLocalRuntimeIfFresh(): boolean {
+  if (!isBrandedAndroidDevice()) return false;
   if (readPersistedMobileRuntimeMode() != null) return false;
   if (hasPersistedActiveServer()) return false;
 
