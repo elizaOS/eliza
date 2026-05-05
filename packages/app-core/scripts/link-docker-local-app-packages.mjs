@@ -276,19 +276,21 @@ for (const packagePath of localPackages) {
   }
 
   if (pkg.name === "@elizaos/plugin-sql") {
-    linkRootDependency({
-      packageName: "drizzle-orm",
-      target: path.join(packageDir, "node_modules", "drizzle-orm"),
-    });
-    linkRootDependency({
-      packageName: "drizzle-orm",
-      target: path.join(
-        packageDir,
-        "typescript",
-        "node_modules",
-        "drizzle-orm",
-      ),
-    });
+    for (const rootDep of ["drizzle-orm", "pg"]) {
+      linkRootDependency({
+        packageName: rootDep,
+        target: path.join(packageDir, "node_modules", rootDep),
+      });
+      linkRootDependency({
+        packageName: rootDep,
+        target: path.join(
+          packageDir,
+          "typescript",
+          "node_modules",
+          rootDep,
+        ),
+      });
+    }
   }
 }
 
