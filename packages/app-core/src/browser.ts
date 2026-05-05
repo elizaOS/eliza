@@ -71,7 +71,6 @@ export {
 } from "./components/config-ui/ui-renderer.tsx";
 export * from "./components/pages/ChatModalView.tsx";
 export * from "./components/pages/PageScopedChatPane.tsx";
-export { LoadingScreen } from "./components/shell/LoadingScreen.tsx";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
