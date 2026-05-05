@@ -56,6 +56,7 @@ import {
   type UiTheme,
   useApp,
 } from "../../state";
+import { fetchWithTimeout } from "../../utils/api-request";
 import { preOpenWindow, resolveAppAssetUrl } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
@@ -63,6 +64,8 @@ import { ThemeToggle } from "../shared/ThemeToggle";
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
+
+const CLOUD_AGENT_PROBE_TIMEOUT_MS = 4_000;
 
 const LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
 
@@ -174,6 +177,22 @@ function resolveCloudAgentApiBase(agent: CloudCompatAgent): string | undefined {
     .filter((value): value is string => Boolean(value));
 
   return candidates.find((value) => !isCloudControlPlaneUrl(value));
+}
+
+async function probeCloudAgentReachable(
+  apiBase: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  try {
+    const res = await fetchWithTimeout(
+      `${apiBase.replace(/\/$/, "")}/api/status`,
+      { method: "GET" },
+      timeoutMs,
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // TODO: replace with real onboarding artwork per runtime choice
@@ -724,6 +743,7 @@ export function RuntimeGate() {
       }
 
       let consecutivePollFailures = 0;
+      const provisionDeadline = Date.now() + AGENT_URL_WAIT_DEADLINE_MS;
       const stopPollingWithError = (message: string) => {
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -731,6 +751,15 @@ export function RuntimeGate() {
         setCloudStage("agent-list");
       };
       const pollProvisionJob = async () => {
+        if (Date.now() > provisionDeadline) {
+          stopPollingWithError(
+            t("runtimegate.provisioningTimeout", {
+              defaultValue:
+                "Cloud agent provisioning is taking too long. The hosting service may be unavailable.",
+            }),
+          );
+          return;
+        }
         let jobRes: Awaited<ReturnType<typeof client.getCloudCompatJobStatus>>;
         try {
           jobRes = await client.getCloudCompatJobStatus(jobId);
@@ -862,10 +891,17 @@ export function RuntimeGate() {
             setCloudStage("agent-list");
             return;
           }
-          if (
-            primary.status !== "running" ||
-            !resolveCloudAgentApiBase(primary)
-          ) {
+          const primaryApiBase = resolveCloudAgentApiBase(primary);
+          if (primary.status !== "running" || !primaryApiBase) {
+            await provisionAndConnect(primary.agent_id);
+            return;
+          }
+          const reachable = await probeCloudAgentReachable(
+            primaryApiBase,
+            CLOUD_AGENT_PROBE_TIMEOUT_MS,
+          );
+          if (cancelled) return;
+          if (!reachable) {
             await provisionAndConnect(primary.agent_id);
             return;
           }
@@ -875,7 +911,6 @@ export function RuntimeGate() {
       }
 
       // No agents yet — auto-create "My Agent" and provision.
-      setCloudStage("auto-creating");
       setError(null);
       const createRes = await client.createCloudCompatAgent({
         agentName: DEFAULT_AUTO_AGENT_NAME,
@@ -890,6 +925,17 @@ export function RuntimeGate() {
         setCloudStage("agent-list");
         return;
       }
+      if (createRes.data.nodeId == null) {
+        setError(
+          t("runtimegate.cloudHostingUnavailable", {
+            defaultValue:
+              "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
+          }),
+        );
+        setCloudStage("agent-list");
+        return;
+      }
+      setCloudStage("auto-creating");
 
       await provisionAndConnect(createRes.data.agentId);
     })().catch((err) => {
