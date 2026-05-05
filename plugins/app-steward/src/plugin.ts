@@ -20,12 +20,11 @@
 import type http from "node:http";
 import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
 import type { Plugin, Route } from "@elizaos/core";
-import { checkBalanceAction } from "./actions/check-balance";
 import { executeTradeAction } from "./actions/execute-trade";
-import { getReceiveAddressAction } from "./actions/get-receive-address";
-import { prepareSwapAction } from "./actions/prepare-swap";
-import { prepareTransferAction } from "./actions/prepare-transfer";
 import { transferTokenAction } from "./actions/transfer-token";
+import { walletPrepareAction } from "./actions/wallet-prepare";
+import { stewardBalanceProvider } from "./providers/steward-balance";
+import { stewardReceiveAddressProvider } from "./providers/steward-receive-address";
 import { handleStewardCompatRoutes } from "./routes/steward-compat-routes";
 import { handleWalletBrowserCompatRoutes } from "./routes/wallet-browser-compat-routes";
 import { handleWalletBscCoreRoutes } from "./routes/wallet-bsc-core-routes";
@@ -362,13 +361,15 @@ export const stewardPlugin: Plugin = {
     "Steward wallet management, browser wallet bridge, and trade/transfer routes (extracted from agent server.ts)",
   routes: stewardRoutes,
   actions: [
-    // Read-only — no role gate, anyone can ask the agent for prep info
-    checkBalanceAction,
-    getReceiveAddressAction,
-    prepareSwapAction,
-    prepareTransferAction,
-    // Mutating — admin/owner-gated in their validate steps via hasAdminAccess
-    transferTokenAction,
+    // Read-only preview router (kind=swap | transfer) — no role gate.
+    walletPrepareAction,
+    // Mutating actions — admin/owner gated in their own validate() hooks.
     executeTradeAction,
+    transferTokenAction,
+  ],
+  providers: [
+    // Read-only wallet snapshots surfaced to the planner every turn.
+    stewardBalanceProvider,
+    stewardReceiveAddressProvider,
   ],
 };

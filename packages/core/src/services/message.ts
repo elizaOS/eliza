@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import z from "zod";
 import {
 	formatActionNames,
 	formatActions,
@@ -550,6 +551,15 @@ function extractStructuredProviderList(rawProviders: string): string[] {
 	return tokens;
 }
 
+// Schemas for LLM-emitted provider lists embedded as JSON strings inside the
+// planner TOON output. The planner sometimes returns providers as a JSON array
+// of strings or as a `{ providers: string[] }` object instead of a TOON list.
+// We coerce non-string entries to string and validate downstream.
+const ProviderJsonArraySchema = z.array(z.unknown());
+const ProviderJsonEnvelopeSchema = z.object({
+	providers: z.array(z.unknown()),
+});
+
 export function extractPlannerProviderNames(
 	parsedToon: Record<string, unknown>,
 ): string[] {
@@ -564,9 +574,10 @@ export function extractPlannerProviderNames(
 			(trimmedProviders.startsWith("{") && trimmedProviders.endsWith("}"))
 		) {
 			try {
-				const parsedJson = JSON.parse(trimmedProviders) as unknown;
-				if (Array.isArray(parsedJson)) {
-					return parsedJson
+				const parsedJson: unknown = JSON.parse(trimmedProviders);
+				const arrayResult = ProviderJsonArraySchema.safeParse(parsedJson);
+				if (arrayResult.success) {
+					return arrayResult.data
 						.map((providerName) => String(providerName).trim())
 						.filter(
 							(providerName): providerName is string =>
@@ -574,12 +585,9 @@ export function extractPlannerProviderNames(
 								isStructuredPlannerIdentifier(providerName),
 						);
 				}
-				if (
-					typeof parsedJson === "object" &&
-					parsedJson !== null &&
-					Array.isArray((parsedJson as { providers?: unknown }).providers)
-				) {
-					return (parsedJson as { providers: unknown[] }).providers
+				const envelopeResult = ProviderJsonEnvelopeSchema.safeParse(parsedJson);
+				if (envelopeResult.success) {
+					return envelopeResult.data.providers
 						.map((providerName) => String(providerName).trim())
 						.filter(
 							(providerName): providerName is string =>
@@ -587,8 +595,19 @@ export function extractPlannerProviderNames(
 								isStructuredPlannerIdentifier(providerName),
 						);
 				}
-			} catch {
-				// Fall through to delimiter parsing below.
+				logger.warn(
+					{
+						raw: trimmedProviders,
+						arrayErr: arrayResult.error.issues,
+						envelopeErr: envelopeResult.error.issues,
+					},
+					"[message] LLM response failed schema validation",
+				);
+			} catch (err) {
+				logger.warn(
+					{ raw: trimmedProviders, err },
+					"[message] LLM response failed schema validation",
+				);
 			}
 		}
 
@@ -614,17 +633,25 @@ export function extractPlannerProviderNames(
 				(trimmedProvider.startsWith("{") && trimmedProvider.endsWith("}"))
 			) {
 				try {
-					const parsedJson = JSON.parse(trimmedProvider) as unknown;
-					if (Array.isArray(parsedJson)) {
-						return parsedJson
+					const parsedJson: unknown = JSON.parse(trimmedProvider);
+					const arrayResult = ProviderJsonArraySchema.safeParse(parsedJson);
+					if (arrayResult.success) {
+						return arrayResult.data
 							.map((entry) => String(entry).trim())
 							.filter(
 								(entry): entry is string =>
 									entry.length > 0 && isStructuredPlannerIdentifier(entry),
 							);
 					}
-				} catch {
-					// Fall through to structured token parsing below.
+					logger.warn(
+						{ raw: trimmedProvider, err: arrayResult.error.issues },
+						"[message] LLM response failed schema validation",
+					);
+				} catch (err) {
+					logger.warn(
+						{ raw: trimmedProvider, err },
+						"[message] LLM response failed schema validation",
+					);
 				}
 			}
 
@@ -1082,7 +1109,13 @@ function normalizeActionIdentifier(actionName: string): string {
 
 function unwrapPlannerIdentifier(value: string): string {
 	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
-	const trimmed = safe.trim().replace(/^["'`]+|["'`]+$/g, "");
+	const trimmed = safe
+		.trim()
+		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
+		.replace(/^["'`]+|["'`]+$/g, "");
+	if (!trimmed) {
+		return "";
+	}
 	return trimmed;
 }
 
@@ -1204,6 +1237,15 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",
 		"CREATE_TASK",
+		"READ_ATTACHMENT",
+		"TRANSCRIBE_MEDIA",
+		"DOWNLOAD_MEDIA",
+		"CHAT_WITH_ATTACHMENTS",
+		"READ_CHANNEL",
+		"SEARCH_MESSAGES",
+		"SUMMARIZE_CONVERSATION",
+		"LIST_CHANNELS",
+		"SERVER_INFO",
 		"CREATE_TRIGGER_TASK",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
@@ -2097,6 +2139,10 @@ function shouldAttemptProviderRescue(
 	);
 }
 
+export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
+	return (message.content.attachments?.length ?? 0) > 0;
+}
+
 function buildProviderSelectionPrompt(draftReply?: string): string {
 	const trimmedDraftReply = draftReply?.trim() ?? "";
 	const draftReplySection =
@@ -2143,10 +2189,15 @@ Examples:
 
 async function recoverProvidersForTurn(args: {
 	runtime: IAgentRuntime;
+	message: Memory;
 	state: State;
 	draftReply?: string;
 	attachments?: GenerateTextAttachment[];
 }): Promise<string[]> {
+	if (shouldSkipDocumentProviderRescue(args.message)) {
+		return [];
+	}
+
 	try {
 		const parsed = await args.runtime.dynamicPromptExecFromState({
 			state: args.state,
@@ -3608,9 +3659,7 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespondToMessage = true;
 			} else if (responseDecision.skipEvaluation) {
 				routedDecision = withInferredContextRoutingFallback(
-					parseContextRoutingMetadata(
-						responseDecision as unknown as Record<string, unknown>,
-					),
+					parseContextRoutingMetadata(responseDecision),
 					message,
 				);
 				setContextRoutingMetadata(message, routedDecision);
@@ -4385,9 +4434,7 @@ export class DefaultMessageService implements IMessageService {
 				"Skipping LLM evaluation",
 			);
 			routedDecision = withInferredContextRoutingFallback(
-				parseContextRoutingMetadata(
-					responseDecision as unknown as Record<string, unknown>,
-				),
+				parseContextRoutingMetadata(responseDecision),
 				message,
 			);
 			setContextRoutingMetadata(message, routedDecision);
@@ -5720,6 +5767,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 		) {
 			const rescuedProviders = await recoverProvidersForTurn({
 				runtime,
+				message,
 				state,
 				draftReply: String(responseContent.text || ""),
 				attachments: promptAttachments,
@@ -6271,6 +6319,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 		let groundedState = state;
 		const selectedProviders = await recoverProvidersForTurn({
 			runtime,
+			message,
 			state,
 			attachments: promptAttachments,
 		});

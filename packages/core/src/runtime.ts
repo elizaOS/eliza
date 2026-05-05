@@ -5193,67 +5193,14 @@ export class AgentRuntime implements IAgentRuntime {
 				resultRef.current,
 			);
 
-			// Optional trajectory logging: associate model calls with current trajectory step
-			// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise)
-			if (!this.initResolver) {
-				try {
-					type TrajectoryLogger = Service & {
-						logLlmCall: (params: {
-							stepId: string;
-							model: string;
-							systemPrompt: string;
-							userPrompt: string;
-							response: string;
-							temperature: number;
-							maxTokens: number;
-							purpose: string;
-							actionType: string;
-							latencyMs: number;
-							modelSlot?: string;
-							runId?: string;
-							roomId?: string;
-							messageId?: string;
-							executionTraceId?: string;
-						}) => void;
-					};
-					const trajCtx = getTrajectoryContext();
-					const stepId = trajCtx?.trajectoryStepId;
-					const trajLogger = (await this._ensureServiceStarted(
-						"trajectories",
-					)) as TrajectoryLogger | null;
-					if (stepId && trajLogger) {
-						const tempRaw = isPlainObject(modelParams)
-							? (modelParams as { temperature?: number }).temperature
-							: undefined;
-						const maxTokensRaw = isPlainObject(modelParams)
-							? (modelParams as { maxTokens?: number }).maxTokens
-							: undefined;
-						const activeTrace = this.getActiveTrace(this.getCurrentRunId());
-						trajLogger.logLlmCall({
-							stepId,
-							model: String(resolvedModelKey),
-							systemPrompt:
-								typeof this.character.system === "string"
-									? this.character.system
-									: "",
-							userPrompt: promptContent ?? "",
-							response: modelOutToTrajectoryString(resultRef.current),
-							temperature: typeof tempRaw === "number" ? tempRaw : 0,
-							maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-							purpose: trajCtx?.purpose ?? "action",
-							actionType: "runtime.useModel",
-							latencyMs: Math.max(0, Math.round(elapsedTime)),
-							modelSlot: String(modelType),
-							runId: trajCtx?.runId,
-							roomId: trajCtx?.roomId,
-							messageId: trajCtx?.messageId,
-							executionTraceId: activeTrace?.id,
-						});
-					}
-				} catch {
-					// Trajectory logging must never break core model flow.
-				}
-			}
+			await this.recordUseModelTrajectory({
+				modelType: String(modelType),
+				resolvedModelKey: String(resolvedModelKey),
+				modelParams,
+				promptContent,
+				response: modelOutToTrajectoryString(resultRef.current),
+				elapsedTime,
+			});
 
 			return resultRef.current as R;
 		}
@@ -5299,68 +5246,95 @@ export class AgentRuntime implements IAgentRuntime {
 			resultRef.current,
 		);
 
-		// Optional trajectory logging: associate model calls with current trajectory step
-		// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise)
-		if (!this.initResolver) {
-			try {
-				type TrajectoryLogger = Service & {
-					logLlmCall: (params: {
-						stepId: string;
-						model: string;
-						systemPrompt: string;
-						userPrompt: string;
-						response: string;
-						temperature: number;
-						maxTokens: number;
-						purpose: string;
-						actionType: string;
-						latencyMs: number;
-						modelSlot?: string;
-						runId?: string;
-						roomId?: string;
-						messageId?: string;
-						executionTraceId?: string;
-					}) => void;
-				};
-				const trajCtx2 = getTrajectoryContext();
-				const stepId = trajCtx2?.trajectoryStepId;
-				const trajLogger = (await this._ensureServiceStarted(
-					"trajectories",
-				)) as TrajectoryLogger | null;
-				if (stepId && trajLogger) {
-					const tempRaw = isPlainObject(modelParams)
-						? (modelParams as { temperature?: number }).temperature
-						: undefined;
-					const maxTokensRaw = isPlainObject(modelParams)
-						? (modelParams as { maxTokens?: number }).maxTokens
-						: undefined;
-					const activeTrace = this.getActiveTrace(this.getCurrentRunId());
-					trajLogger.logLlmCall({
-						stepId,
-						model: String(resolvedModelKey),
-						systemPrompt:
-							typeof this.character.system === "string"
-								? this.character.system
-								: "",
-						userPrompt: promptContent ?? "",
-						response: modelOutToTrajectoryString(resultRef.current),
-						temperature: typeof tempRaw === "number" ? tempRaw : 0,
-						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-						purpose: trajCtx2?.purpose ?? "action",
-						actionType: "runtime.useModel",
-						latencyMs: Math.max(0, Math.round(elapsedTime)),
-						modelSlot: String(modelType),
-						runId: trajCtx2?.runId,
-						roomId: trajCtx2?.roomId,
-						messageId: trajCtx2?.messageId,
-						executionTraceId: activeTrace?.id,
-					});
-				}
-			} catch {
-				// Trajectory logging must never break core model flow.
-			}
-		}
+		await this.recordUseModelTrajectory({
+			modelType: String(modelType),
+			resolvedModelKey: String(resolvedModelKey),
+			modelParams,
+			promptContent,
+			response: modelOutToTrajectoryString(resultRef.current),
+			elapsedTime,
+		});
 		return resultRef.current as R;
+	}
+
+	/**
+	 * Emit an llm-call entry against the current trajectory step for a
+	 * `useModel` call. Pure dedupe of the streaming and non-streaming paths
+	 * inside {@link useModel}; both paths formerly inlined an identical block.
+	 *
+	 * Skipped while the runtime is still initializing because
+	 * {@link _ensureServiceStarted} awaits `initPromise` and would deadlock.
+	 * Trajectory logging must never break core model flow, so any thrown
+	 * error here is swallowed.
+	 */
+	private async recordUseModelTrajectory(args: {
+		modelType: string;
+		resolvedModelKey: string;
+		modelParams: unknown;
+		promptContent: string | null | undefined;
+		response: string;
+		elapsedTime: number;
+	}): Promise<void> {
+		if (this.initResolver) return;
+
+		type TrajectoryLogger = Service & {
+			logLlmCall: (params: {
+				stepId: string;
+				model: string;
+				systemPrompt: string;
+				userPrompt: string;
+				response: string;
+				temperature: number;
+				maxTokens: number;
+				purpose: string;
+				actionType: string;
+				latencyMs: number;
+				modelSlot?: string;
+				runId?: string;
+				roomId?: string;
+				messageId?: string;
+				executionTraceId?: string;
+			}) => void;
+		};
+
+		try {
+			const trajCtx = getTrajectoryContext();
+			const stepId = trajCtx?.trajectoryStepId;
+			const trajLogger = (await this._ensureServiceStarted(
+				"trajectories",
+			)) as TrajectoryLogger | null;
+			if (!stepId || !trajLogger) return;
+
+			const tempRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { temperature?: number }).temperature
+				: undefined;
+			const maxTokensRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { maxTokens?: number }).maxTokens
+				: undefined;
+			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
+			trajLogger.logLlmCall({
+				stepId,
+				model: args.resolvedModelKey,
+				systemPrompt:
+					typeof this.character.system === "string"
+						? this.character.system
+						: "",
+				userPrompt: args.promptContent ?? "",
+				response: args.response,
+				temperature: typeof tempRaw === "number" ? tempRaw : 0,
+				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+				purpose: trajCtx?.purpose ?? "action",
+				actionType: "runtime.useModel",
+				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
+				modelSlot: args.modelType,
+				runId: trajCtx?.runId,
+				roomId: trajCtx?.roomId,
+				messageId: trajCtx?.messageId,
+				executionTraceId: activeTrace?.id,
+			});
+		} catch {
+			// Trajectory logging must never break core model flow.
+		}
 	}
 
 	/**

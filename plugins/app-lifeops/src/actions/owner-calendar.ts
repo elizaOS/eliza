@@ -9,7 +9,6 @@
  * bounce through a second planner pass before reaching the owning behavior.
  */
 
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -27,29 +26,33 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { calendarAction } from "./calendar.js";
-import { calendlyAction } from "./calendly.js";
+import { calendarAction } from "./lib/calendar-handler.js";
+import { calendlyAction } from "./lib/calendly-handler.js";
 import {
-  formatCalendarEventDateTime,
-  hasLifeOpsAccess,
-  INTERNAL_URL,
-} from "./lifeops-google-helpers.js";
+  resolveActionArgs,
+  type SubactionsMap,
+} from "./lib/resolve-action-args.js";
 import {
   checkAvailabilityAction,
   proposeMeetingTimesAction,
   schedulingAction,
   updateMeetingPreferencesAction,
-} from "./scheduling.js";
+} from "./lib/scheduling-handler.js";
+import {
+  formatCalendarEventDateTime,
+  hasLifeOpsAccess,
+  INTERNAL_URL,
+} from "./lifeops-google-helpers.js";
 
 type OwnerCalendarSubaction =
   // Google Calendar
-  | "view_today"
-  | "view_week"
+  | "feed"
   | "next_event"
   | "search_events"
   | "create_event"
-  | "travel_itinerary"
-  | "recurring_block"
+  | "update_event"
+  | "delete_event"
+  | "trip_window"
   | "bulk_reschedule"
   // Availability
   | "check_availability"
@@ -66,7 +69,8 @@ type OwnerCalendarSubaction =
   | "negotiate_propose"
   | "negotiate_respond"
   | "negotiate_finalize"
-  | "negotiate_list"
+  | "negotiate_list_active"
+  | "negotiate_list_proposals"
   | "negotiate_cancel";
 
 const ACTION_NAME = "OWNER_CALENDAR";
@@ -138,17 +142,20 @@ function translateSubaction(subaction: OwnerCalendarSubaction): {
   innerSubaction?: string;
 } {
   switch (subaction) {
-    case "view_today":
-    case "view_week":
+    case "feed":
       return { target: "calendar", innerSubaction: "feed" };
     case "next_event":
       return { target: "calendar", innerSubaction: "next_event" };
     case "search_events":
-    case "travel_itinerary":
       return { target: "calendar", innerSubaction: "search_events" };
     case "create_event":
-    case "recurring_block":
       return { target: "calendar", innerSubaction: "create_event" };
+    case "update_event":
+      return { target: "calendar", innerSubaction: "update_event" };
+    case "delete_event":
+      return { target: "calendar", innerSubaction: "delete_event" };
+    case "trip_window":
+      return { target: "calendar", innerSubaction: "trip_window" };
     case "bulk_reschedule":
       return { target: "bulk_reschedule" };
 
@@ -176,21 +183,23 @@ function translateSubaction(subaction: OwnerCalendarSubaction): {
       return { target: "scheduling", innerSubaction: "respond" };
     case "negotiate_finalize":
       return { target: "scheduling", innerSubaction: "finalize" };
-    case "negotiate_list":
+    case "negotiate_list_active":
       return { target: "scheduling", innerSubaction: "list_active" };
+    case "negotiate_list_proposals":
+      return { target: "scheduling", innerSubaction: "list_proposals" };
     case "negotiate_cancel":
       return { target: "scheduling", innerSubaction: "cancel" };
   }
 }
 
 const VALID_SUBACTIONS: readonly OwnerCalendarSubaction[] = [
-  "view_today",
-  "view_week",
+  "feed",
   "next_event",
   "search_events",
   "create_event",
-  "travel_itinerary",
-  "recurring_block",
+  "update_event",
+  "delete_event",
+  "trip_window",
   "bulk_reschedule",
   "check_availability",
   "propose_times",
@@ -203,7 +212,8 @@ const VALID_SUBACTIONS: readonly OwnerCalendarSubaction[] = [
   "negotiate_propose",
   "negotiate_respond",
   "negotiate_finalize",
-  "negotiate_list",
+  "negotiate_list_active",
+  "negotiate_list_proposals",
   "negotiate_cancel",
 ];
 
@@ -214,6 +224,162 @@ function normalizeSubaction(value: unknown): OwnerCalendarSubaction | null {
     ? (normalized as OwnerCalendarSubaction)
     : null;
 }
+
+const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
+  feed: {
+    description: "List calendar events over a time window (today, this week, etc).",
+    descriptionCompressed: "list events over time window",
+    required: [],
+    optional: ["intent", "details"],
+  },
+  next_event: {
+    description: "Show the single next upcoming event.",
+    descriptionCompressed: "next upcoming event",
+    required: [],
+    optional: ["intent", "details"],
+  },
+  search_events: {
+    description: "Search calendar events by title, attendee, location, or date.",
+    descriptionCompressed: "search events",
+    required: [],
+    optional: ["intent", "query", "queries", "details"],
+  },
+  create_event: {
+    description: "Create a new Google Calendar event.",
+    descriptionCompressed: "create event",
+    required: [],
+    optional: ["title", "intent", "details"],
+  },
+  update_event: {
+    description: "Update an existing Google Calendar event.",
+    descriptionCompressed: "update event",
+    required: [],
+    optional: ["title", "intent", "details"],
+  },
+  delete_event: {
+    description: "Delete a Google Calendar event.",
+    descriptionCompressed: "delete event",
+    required: [],
+    optional: ["intent", "details"],
+  },
+  trip_window: {
+    description: "List events occurring during a trip or while in a place.",
+    descriptionCompressed: "events during trip",
+    required: [],
+    optional: ["intent", "query", "details"],
+  },
+  bulk_reschedule: {
+    description: "Preview a cohort of meetings to push into a future window.",
+    descriptionCompressed: "preview bulk reschedule cohort",
+    required: [],
+    optional: ["timeZone", "intent"],
+  },
+  check_availability: {
+    description: "Check whether the owner is free in an ISO start/end window.",
+    descriptionCompressed: "check free busy in window",
+    required: [],
+    optional: ["startAt", "endAt", "intent"],
+  },
+  propose_times: {
+    description: "Propose candidate meeting slots within a window.",
+    descriptionCompressed: "propose candidate slots",
+    required: [],
+    optional: [
+      "durationMinutes",
+      "daysAhead",
+      "slotCount",
+      "windowStart",
+      "windowEnd",
+      "counterparties",
+      "timeZone",
+    ],
+  },
+  update_preferences: {
+    description: "Update meeting preferences (preferred hours, blackouts, travel buffer).",
+    descriptionCompressed: "update meeting preferences",
+    required: [],
+    optional: [
+      "timeZone",
+      "preferredStartLocal",
+      "preferredEndLocal",
+      "defaultDurationMinutes",
+      "travelBufferMinutes",
+      "blackoutWindows",
+    ],
+  },
+  calendly_list_event_types: {
+    description: "List Calendly event types.",
+    descriptionCompressed: "list calendly event types",
+    required: [],
+    optional: [],
+  },
+  calendly_availability: {
+    description: "Check Calendly availability for an event type URI.",
+    descriptionCompressed: "calendly availability for event type",
+    required: ["eventTypeUri"],
+    optional: ["startDate", "endDate", "timezone"],
+  },
+  calendly_upcoming: {
+    description: "List upcoming Calendly-scheduled events.",
+    descriptionCompressed: "upcoming calendly events",
+    required: [],
+    optional: ["startDate", "endDate"],
+  },
+  calendly_single_use_link: {
+    description: "Generate a single-use Calendly booking link.",
+    descriptionCompressed: "single-use calendly link",
+    required: ["eventTypeUri"],
+    optional: [],
+  },
+  negotiate_start: {
+    description: "Start a multi-turn scheduling negotiation.",
+    descriptionCompressed: "start scheduling negotiation",
+    required: [],
+    optional: [
+      "subject",
+      "durationMinutes",
+      "counterparties",
+      "relationshipId",
+      "timezone",
+    ],
+  },
+  negotiate_propose: {
+    description: "Propose a slot in an active scheduling negotiation.",
+    descriptionCompressed: "propose slot in negotiation",
+    required: ["negotiationId"],
+    optional: ["startAt", "endAt", "proposedBy"],
+  },
+  negotiate_respond: {
+    description: "Respond to a scheduling proposal.",
+    descriptionCompressed: "respond to scheduling proposal",
+    required: ["proposalId", "response"],
+    optional: ["negotiationId"],
+  },
+  negotiate_finalize: {
+    description: "Finalize a scheduling negotiation by confirming a proposal.",
+    descriptionCompressed: "finalize negotiation",
+    required: ["proposalId"],
+    optional: ["negotiationId", "confirmed"],
+  },
+  negotiate_cancel: {
+    description: "Cancel an active scheduling negotiation.",
+    descriptionCompressed: "cancel negotiation",
+    required: ["negotiationId"],
+    optional: ["reason"],
+  },
+  negotiate_list_active: {
+    description: "List active scheduling negotiations.",
+    descriptionCompressed: "list active negotiations",
+    required: [],
+    optional: [],
+  },
+  negotiate_list_proposals: {
+    description: "List proposals on a single scheduling negotiation.",
+    descriptionCompressed: "list proposals in negotiation",
+    required: ["subaction", "negotiationId"],
+    optional: [],
+  },
+};
 
 function messageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
@@ -491,59 +657,9 @@ export const ownerCalendarAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
-    // Legacy action names (for back-compat inbound routing).
-    "CALENDAR_ACTION",
-    "PROPOSE_MEETING_TIMES",
-    "CHECK_AVAILABILITY",
-    "UPDATE_MEETING_PREFERENCES",
-    "SCHEDULING",
-    "CALENDLY",
-    // Natural synonyms.
     "CALENDAR",
     "SCHEDULE",
     "MEETING",
-    "CHECK_CALENDAR",
-    "SHOW_CALENDAR_TODAY",
-    "WEEK_AHEAD",
-    "WHATS_MY_NEXT_MEETING",
-    "NEXT_MEETING",
-    "SCHEDULE_EVENT",
-    "CREATE_CALENDAR_EVENT",
-    "SEARCH_CALENDAR",
-    "ITINERARY",
-    "TRAVEL_SCHEDULE",
-    "CHECK_FLIGHT_CONFLICT",
-    "FLIGHT_CONFLICT_REBOOKING",
-    "REBOOK_CONFLICTING_EVENT",
-    "BOOK_TIME_BLOCK",
-    "RECURRING_TIME_BLOCK",
-    "REBOOK_TRAVEL",
-    "SUGGEST_MEETING_TIMES",
-    "OFFER_MEETING_SLOTS",
-    "FIND_MEETING_SLOTS",
-    "PROPOSE_SLOTS",
-    "BUNDLE_MEETINGS_WHILE_TRAVELING",
-    "BULK_RESCHEDULE_MEETINGS",
-    "PUSH_MEETINGS_NEXT_MONTH",
-    "AM_I_FREE",
-    "AVAILABILITY_CHECK",
-    "FREE_BUSY",
-    "SET_MEETING_PREFERENCES",
-    "SAVE_MEETING_PREFERENCES",
-    "SET_PREFERRED_TIMES",
-    "SET_BLACKOUT_WINDOWS",
-    "SLEEP_WINDOW",
-    "NO_CALL_HOURS",
-    "PROTECT_SLEEP",
-    "NEGOTIATE_MEETING",
-    "MULTI_TURN_SCHEDULING",
-    "MANAGE_SCHEDULING_NEGOTIATION",
-    "RESPOND_TO_MEETING_PROPOSAL",
-    "FINALIZE_SCHEDULING_NEGOTIATION",
-    "CALENDLY_LIST_EVENT_TYPES",
-    "CALENDLY_AVAILABILITY",
-    "CALENDLY_UPCOMING",
-    "CALENDLY_BOOKING_LINK",
   ],
   tags: [
     "always-include",
@@ -568,40 +684,15 @@ export const ownerCalendarAction: Action & {
     "rebook the other thing",
   ],
   description:
-    "Owner's calendar and scheduling surface: Google Calendar (view, search, create, travel), " +
-    "Calendly (event types, availability, upcoming, booking links), availability " +
-    "checks, meeting-preference updates, and multi-turn scheduling negotiation. " +
-    "This action owns concrete calendar and scheduling requests — route here instead of inventing " +
-    "separate calendar/scheduling/calendly actions. " +
-    "Subactions — Google Calendar: view_today, view_week, next_event, search_events, " +
-    "create_event, travel_itinerary, recurring_block, bulk_reschedule. Availability: check_availability, " +
-    "propose_times. Preferences: update_preferences. Calendly: calendly_availability, " +
-    "calendly_list_event_types, calendly_upcoming, calendly_single_use_link. " +
-    "Negotiation: negotiate_start, negotiate_propose, negotiate_respond, " +
-    "negotiate_finalize, negotiate_list, negotiate_cancel. " +
-    "Routing: default to Google Calendar for most view/create/search/travel " +
-    "operations; when the request mentions Calendly by name or carries a " +
-    "calendly.com / api.calendly.com URL (including eventTypeUri), use the " +
-    "calendly_* subactions; 'help me schedule with <person>' / 'set up a meeting " +
-    "with <person>' / 'find a time with <team>' with no concrete date → " +
-    "negotiate_start; 'propose N times for <person>' / 'suggest a few slots' / " +
-    "'offer three times' → propose_times; 'check if I'm free at <time>' / " +
-    "'am I free tomorrow between 2 and 4' → check_availability; sleep windows, " +
-    "no-call hours, blackout windows, preferred hours → update_preferences. " +
-    "When the user is defining when meetings or calls may be scheduled, even in " +
-    "a policy form like 'no calls between 11pm and 8am unless I explicitly say " +
-    "it's okay', this action owns the preference. Do not hand those scheduling " +
-    "rules to device reminder or phone-ring actions unless the user explicitly " +
-    "means device alerts or ringing behavior. If the user is asking to remind " +
-    "or bump them later about an unanswered decision rather than changing the " +
-    "calendar itself, another action should own it. " +
-    "Choose this action even when the owner has not supplied the exact time window yet, as long as the request is clearly calendar-owned. Recurring daily time blocks, travel-window meeting bundling, and flight-conflict rebooking all belong here and may ask the minimum follow-up inside the action. Do not stay in chat just because the exact flight time, booking reference, or conflicting event id is still missing. " +
-    "Do NOT use this action for morning briefs, night briefs, operating pictures, command-center views, " +
-    "or broad day-start/day-end reviews that combine inbox, calendar, and tasks — those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN. " +
-    "This action provides the final grounded reply; do not pair it with a " +
-    "speculative REPLY action.",
+    "Owner's calendar and scheduling surface: Google Calendar (view feed, search, create/update/delete events, trip windows, bulk reschedule), " +
+    "Calendly (event types, availability, upcoming, single-use booking links), availability checks, meeting-preference updates, " +
+    "and multi-turn scheduling negotiation. Subactions: feed, next_event, search_events, create_event, update_event, delete_event, " +
+    "trip_window, bulk_reschedule, propose_times, check_availability, update_preferences, " +
+    "calendly_list_event_types, calendly_availability, calendly_upcoming, calendly_single_use_link, " +
+    "negotiate_start, negotiate_propose, negotiate_respond, negotiate_finalize, negotiate_cancel, " +
+    "negotiate_list_active, negotiate_list_proposals.",
   descriptionCompressed:
-    "Owner calendar umbrella: Google Calendar + Calendly + availability + meeting preferences + negotiation, routed via `subaction`.",
+    "owner calendar umbrella: google calendar + calendly + availability + meeting preferences + negotiation, routed via subaction.",
   suppressPostActionContinuation: true,
   validate: async (
     runtime: IAgentRuntime,
@@ -616,18 +707,38 @@ export const ownerCalendarAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
-    const rawParams = getParams(options);
-    const params = (await extractActionParamsViaLlm<OwnerCalendarParameters>({
+    if (!(await hasLifeOpsAccess(runtime, message))) {
+      const text = "Calendar actions are restricted to the owner.";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    }
+    const resolved = await resolveActionArgs<
+      OwnerCalendarSubaction,
+      OwnerCalendarParameters
+    >({
       runtime,
       message,
       state,
+      options,
       actionName: ACTION_NAME,
-      actionDescription: ownerCalendarAction.description ?? "",
-      paramSchema: ownerCalendarAction.parameters ?? [],
-      existingParams: rawParams,
-      requiredFields: ["subaction"],
-    })) as OwnerCalendarParameters;
-    const subaction = normalizeSubaction(params.subaction);
+      subactions: OWNER_CALENDAR_SUBACTION_SPECS,
+    });
+    if (!resolved.ok) {
+      const text =
+        resolved.clarification ||
+        "Tell me whether you want to view your calendar, create an event, check availability, propose times, adjust scheduling preferences, use Calendly, or manage a scheduling negotiation.";
+      await callback?.({ text });
+      return {
+        text,
+        success: false,
+        data: {
+          error: "MISSING_SUBACTION",
+          missing: resolved.missing,
+          noop: true,
+        },
+      };
+    }
+    const subaction = normalizeSubaction(resolved.subaction);
     if (!subaction) {
       const text =
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, adjust scheduling preferences, use Calendly, or manage a scheduling negotiation.";
@@ -638,13 +749,17 @@ export const ownerCalendarAction: Action & {
         data: { error: "MISSING_SUBACTION", noop: true },
       };
     }
-    return route(subaction, runtime, message, state, options, callback);
+    const mergedOptions: HandlerOptions = {
+      ...(options ?? {}),
+      parameters: resolved.params as unknown as HandlerOptions["parameters"],
+    };
+    return route(subaction, runtime, message, state, mergedOptions, callback);
   },
   parameters: [
     {
       name: "subaction",
       description:
-        "Which calendar operation to run. Google Calendar: view_today, view_week, next_event, search_events, create_event, travel_itinerary, recurring_block, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences. Calendly: calendly_availability, calendly_list_event_types, calendly_upcoming, calendly_single_use_link. Negotiation: negotiate_start, negotiate_propose, negotiate_respond, negotiate_finalize, negotiate_list, negotiate_cancel.",
+        "Which calendar operation to run. Google Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences. Calendly: calendly_list_event_types, calendly_availability, calendly_upcoming, calendly_single_use_link. Negotiation: negotiate_start, negotiate_propose, negotiate_respond, negotiate_finalize, negotiate_cancel, negotiate_list_active, negotiate_list_proposals.",
       required: false,
       schema: {
         type: "string" as const,

@@ -4,8 +4,6 @@ export * from "./createIssue";
 export * from "./deleteIssue";
 export * from "./getActivity";
 export * from "./getIssue";
-export * from "./listProjects";
-export * from "./listTeams";
 export * from "./routers";
 export * from "./searchIssues";
 export * from "./updateIssue";

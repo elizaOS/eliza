@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
@@ -180,6 +181,10 @@ public class GatewayConnectionService extends Service {
     /** Start the foreground service (safe to call repeatedly). */
     public static void start(Context context) {
         Intent intent = new Intent(context, GatewayConnectionService.class);
+        if (context instanceof Activity) {
+            context.startService(intent);
+            return;
+        }
         context.startForegroundService(intent);
     }
 

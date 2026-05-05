@@ -17,6 +17,28 @@ CONTAINER_CONTROL_PLANE_URL=http://127.0.0.1:8791
 CONTAINER_CONTROL_PLANE_TOKEN=<optional shared secret>
 ```
 
+For production Hetzner-Docker nodes, configure the sidecar with the same
+database as the Worker plus Docker-node SSH credentials:
+
+```bash
+DATABASE_URL=<cloud database url>
+CONTAINER_CONTROL_PLANE_TOKEN=<same value as Worker secret>
+CONTAINERS_SSH_KEY=<base64 private key>
+# or CONTAINERS_SSH_KEY_PATH=/path/to/private_key
+CONTAINERS_SSH_USER=root
+ELIZA_AGENT_IMAGE=ghcr.io/elizaos/eliza:latest
+ELIZA_AGENT_HOT_POOL_PREPULL=true
+```
+
+Autoscaled Hetzner Cloud nodes need the Worker cron secrets:
+
+```bash
+HCLOUD_TOKEN=<hetzner cloud api token>
+CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY=<public key matching CONTAINERS_SSH_KEY>
+CONTAINERS_BOOTSTRAP_CALLBACK_URL=https://api.elizacloud.ai/api/v1/admin/docker-nodes/bootstrap-callback
+CONTAINERS_BOOTSTRAP_SECRET=<strong random secret>
+```
+
 The Worker forwards authenticated user context with:
 
 - `x-eliza-user-id`

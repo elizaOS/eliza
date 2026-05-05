@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { fetchWithTimeoutGuard } from "@elizaos/agent/api/server-helpers-fetch";
+import { resolveCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
 import { logger } from "@elizaos/core";
 import type {
   WalletMarketMover,
@@ -8,7 +9,6 @@ import type {
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
 } from "@elizaos/shared";
-import { resolveCloudApiBaseUrl } from "@elizaos/agent/cloud/base-url";
 
 const MARKET_OVERVIEW_PATH = "/api/wallet/market-overview";
 const CLOUD_MARKET_OVERVIEW_PREVIEW_PATH = "/market/preview/wallet-overview";

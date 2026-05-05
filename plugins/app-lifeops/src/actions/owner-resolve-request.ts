@@ -16,7 +16,7 @@ import {
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { executeApprovedBookTravel } from "./book-travel-executor.js";
+import { executeApprovedBookTravel } from "./owner-book-travel.js";
 import {
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,

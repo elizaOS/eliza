@@ -97,7 +97,7 @@ export const musicGeneration: Action = {
     name: 'MUSIC_GENERATION',
     description:
         'Generate music through Suno. Use subaction generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.',
-    descriptionCompressed: 'Suno music generation router: generate, custom, extend.',
+    descriptionCompressed: 'Suno music generation router subaction: generate, custom, extend.',
     similes: [
         'GENERATE_MUSIC',
         'CREATE_MUSIC',

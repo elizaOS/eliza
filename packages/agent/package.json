@@ -150,7 +150,6 @@
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
@@ -159,7 +158,6 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/plugin-video": "workspace:*",
-    "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
@@ -184,7 +182,7 @@
     "telegram": "2.26.22",
     "viem": "^2.48.8",
     "ws": "^8.19.0",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@elizaos/signal-native": "*"

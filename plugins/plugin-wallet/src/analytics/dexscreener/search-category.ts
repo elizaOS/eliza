@@ -1,8 +1,5 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type {
-  IAgentRuntime,
-  SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const DEXSCREENER_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "dexscreener",

@@ -21,7 +21,7 @@ import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import { formatPromptSection } from "./prompt-format.js";
 
 const ACTION_NAME = "OWNER_APP_BLOCK";

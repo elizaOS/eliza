@@ -240,6 +240,7 @@ export const taskControlAction: Action = {
     {
       name: "search",
       description: "Search text used to find the relevant thread.",
+      descriptionCompressed: "Search text for finding relevant thread.",
       required: false,
       schema: { type: "string" as const },
     },

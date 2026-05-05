@@ -10,7 +10,7 @@ import {
   ModelType,
   parseToonKeyValue,
 } from "@elizaos/core";
-import { recentConversationTexts } from "./life-recent-context.js";
+import { recentConversationTexts } from "./lib/recent-context.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
 import { scheduleOnceTriggerTask } from "./scheduled-trigger-task.js";
 

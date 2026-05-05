@@ -8,6 +8,7 @@ import {
 import { request as requestHttps } from "node:https";
 import net from "node:net";
 import { Readable } from "node:stream";
+import { createPinnedLookup } from "../../network/ssrf.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -151,8 +152,6 @@ async function requestWithPinnedAddress(
 	const method = (init.method ?? "GET").toUpperCase();
 	const headers = toRequestHeaders(new Headers(init.headers));
 	const requestFn = url.protocol === "https:" ? requestHttps : requestHttp;
-	const family = net.isIP(target.pinnedAddress) === 6 ? 6 : 4;
-
 	return await new Promise<Response>((resolve, reject) => {
 		let settled = false;
 		const signal = init.signal;
@@ -177,9 +176,10 @@ async function requestWithPinnedAddress(
 			method,
 			path: `${url.pathname}${url.search}`,
 			headers,
-			lookup: (_hostname, _options, callback) => {
-				callback(null, target.pinnedAddress, family);
-			},
+			lookup: createPinnedLookup({
+				hostname: target.hostname,
+				addresses: [target.pinnedAddress],
+			}) as HttpRequestOptions["lookup"],
 			...(url.protocol === "https:"
 				? { servername: target.hostname }
 				: undefined),
@@ -481,15 +481,7 @@ async function fetchYouTubeTranscript(videoId: string): Promise<string | null> {
 	const segments: string[] = [];
 
 	for (const match of textMatches) {
-		// Decode HTML entities
-		const text = match[1]
-			.replace(/&amp;/g, "&")
-			.replace(/&lt;/g, "<")
-			.replace(/&gt;/g, ">")
-			.replace(/&quot;/g, '"')
-			.replace(/&#39;/g, "'")
-			.replace(/&nbsp;/g, " ")
-			.trim();
+		const text = decodeBasicHtmlEntities(match[1]).trim();
 
 		if (text) {
 			segments.push(text);
@@ -533,6 +525,33 @@ function classifyMimeType(mimeType: string): FetchedKnowledgeUrlKind {
 	}
 	if (normalized.startsWith("text/html")) return "html";
 	return "text";
+}
+
+function decodeBasicHtmlEntities(value: string): string {
+	return value
+		.replace(/&nbsp;/gi, " ")
+		.replace(/&lt;/gi, "<")
+		.replace(/&gt;/gi, ">")
+		.replace(/&quot;/gi, '"')
+		.replace(/&#39;/gi, "'")
+		.replace(/&amp;/gi, "&");
+}
+
+function htmlToPlainText(value: string): string {
+	return decodeBasicHtmlEntities(
+		value
+			.replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
+			.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+			.replace(/<br\s*\/?>/gi, "\n")
+			.replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
+			.replace(/<li\b[^>]*>/gi, "- ")
+			.replace(/<[^>]+>/g, " "),
+	)
+		.replace(/\r/g, "")
+		.replace(/[ \t]+\n/g, "\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.replace(/[ \t]{2,}/g, " ")
+		.trim();
 }
 
 /**
@@ -614,7 +633,7 @@ export async function fetchKnowledgeFromUrl(
 	const text = new TextDecoder().decode(buffer);
 	return {
 		filename,
-		content: text,
+		content: kind === "html" ? htmlToPlainText(text) : text,
 		contentType: kind,
 		mimeType,
 	};

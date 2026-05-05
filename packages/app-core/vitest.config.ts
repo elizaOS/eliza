@@ -27,10 +27,6 @@ const pluginBrowserBridgeSrc = path.join(
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
-const pluginBrowserBridgeSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-browser-bridge/src",
-);
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";

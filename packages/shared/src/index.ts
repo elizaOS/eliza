@@ -177,8 +177,8 @@ export * from "./dev-settings-table.js";
 // dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
 export * from "./env-utils.js";
 export * from "./format-error.js";
-export * from "./onboarding-presets.js";
 export * from "./onboarding-presets.characters.js";
+export * from "./onboarding-presets.js";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";
 export * from "./runtime-env.js";

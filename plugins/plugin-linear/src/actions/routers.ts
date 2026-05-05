@@ -13,14 +13,11 @@ import { createIssueAction } from "./createIssue";
 import { deleteIssueAction } from "./deleteIssue";
 import { getActivityAction } from "./getActivity";
 import { getIssueAction } from "./getIssue";
-import { listProjectsAction } from "./listProjects";
-import { listTeamsAction } from "./listTeams";
 import { searchIssuesAction } from "./searchIssues";
 import { updateIssueAction } from "./updateIssue";
 
 export const LINEAR_ISSUE_CONTEXT = "linear_issue";
 export const LINEAR_COMMENT_CONTEXT = "linear_comment";
-export const LINEAR_PROJECT_TEAM_CONTEXT = "linear_project_team";
 export const LINEAR_WORKFLOW_CONTEXT = "linear_workflow";
 
 type RouterAction = Action & {
@@ -66,19 +63,6 @@ const commentRoutes: LinearRoute[] = [
     subaction: "create",
     action: createCommentAction,
     match: /\b(comment|reply|note|tell)\b.*\b(issue|bug|task|ticket|[a-z]+-\d+)\b/i,
-  },
-];
-
-const projectTeamRoutes: LinearRoute[] = [
-  {
-    subaction: "list_projects",
-    action: listProjectsAction,
-    match: /\b(projects?|roadmap)\b/i,
-  },
-  {
-    subaction: "list_teams",
-    action: listTeamsAction,
-    match: /\b(teams?|squad|group)\b/i,
   },
 ];
 
@@ -192,18 +176,12 @@ async function dispatchRoute(
 }
 
 export function getLinearRouteForTest(
-  group: "issue" | "comment" | "project_team" | "workflow",
+  group: "issue" | "comment" | "workflow",
   message: Memory,
   options?: HandlerOptions | Record<string, unknown>
 ): string | null {
   const routes =
-    group === "issue"
-      ? issueRoutes
-      : group === "comment"
-        ? commentRoutes
-        : group === "project_team"
-          ? projectTeamRoutes
-          : workflowRoutes;
+    group === "issue" ? issueRoutes : group === "comment" ? commentRoutes : workflowRoutes;
   return selectRoute(routes, message, options)?.subaction ?? null;
 }
 
@@ -273,50 +251,6 @@ export const linearCommentRouterAction: RouterAction = {
         content: {
           text: "I'll add that comment to ENG-123.",
           actions: ["LINEAR_COMMENT"],
-        },
-      },
-    ],
-  ],
-};
-
-export const linearProjectTeamRouterAction: RouterAction = {
-  name: "LINEAR_PROJECT_TEAM",
-  description: "Route Linear project and team listing operations.",
-  descriptionCompressed: "route Linear project team list lookup",
-  similes: ["LINEAR_PROJECTS_TEAMS", "LINEAR_PROJECTS", "LINEAR_TEAMS"],
-  contexts: ["general", "automation", LINEAR_PROJECT_TEAM_CONTEXT],
-  actionGroup: { contexts: [LINEAR_PROJECT_TEAM_CONTEXT] },
-  validate: (runtime, message) =>
-    validateRouter(runtime, message, projectTeamRoutes, /\b(linear|projects?|teams?)\b/i),
-  handler: (runtime, message, state, options, callback) =>
-    dispatchRoute(
-      "LINEAR_PROJECT_TEAM",
-      projectTeamRoutes,
-      runtime,
-      message,
-      state,
-      options,
-      callback
-    ),
-  parameters: [
-    {
-      name: "subaction",
-      description: "Project/team operation to run.",
-      required: false,
-      schema: { type: "string", enum: ["list_projects", "list_teams"] },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "Show me active Linear projects" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "I'll list the matching Linear projects.",
-          actions: ["LINEAR_PROJECT_TEAM"],
         },
       },
     ],

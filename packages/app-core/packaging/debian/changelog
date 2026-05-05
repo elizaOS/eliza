@@ -1,4 +1,4 @@
-elizaos-app (2.0.0~alpha7-1) unstable; urgency=medium
+elizaos-app (2.0.0~beta0-1) unstable; urgency=medium
 
   * Initial Debian packaging
   * Personal AI assistant built on elizaOS

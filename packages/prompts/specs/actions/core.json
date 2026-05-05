@@ -68,7 +68,7 @@
           }
         ]
       ],
-      "descriptionCompressed": "Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response."
+      "descriptionCompressed": "Reply in current chat only; use connector actions for external connector sends."
     },
     {
       "name": "IGNORE",
@@ -274,7 +274,7 @@
             "type": "string"
           },
           "examples": ["telegram", "discord"],
-          "descriptionCompressed": "Platform (telegram, discord, x)."
+          "descriptionCompressed": "source platform (telegram, discord, x)."
         },
         {
           "name": "target",
@@ -472,7 +472,7 @@
             "type": "string"
           },
           "examples": ["notes: prefers email; tags: friend"],
-          "descriptionCompressed": "Structured fields to update."
+          "descriptionCompressed": "Structured fields to update: notes, tags, category/categories, preferences."
         }
       ],
       "examples": [

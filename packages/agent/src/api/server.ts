@@ -25,14 +25,6 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import os from "node:os";
 import path from "node:path";
-// Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
-// import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
-// import {
-//   loadWalletTradingProfile,
-//   recordWalletTradeLedgerEntry,
-//   updateWalletTradeLedgerEntryStatus,
-// } from "./wallet-trading-profile.js";
-// Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -221,8 +213,8 @@ import {
   getWalletAddresses,
   initStewardWalletCache,
 } from "./wallet.js";
-// Wallet dispatch moved to @elizaos/app-steward plugin routes.
-// import { handleWalletBscRoutes } from "./wallet-bsc-routes.js";
+// Wallet BSC trade dispatch extracted to @elizaos/app-steward
+// (plugins/app-steward/src/api/wallet-bsc-routes.ts via Plugin.routes).
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -1124,25 +1116,6 @@ function getOrCreateRuntimeOperationManager(
 
 // decodePathComponent imported in the consolidated import at the top
 
-// Workbench task/todo helpers — extracted to workbench-helpers.ts
-import {
-  asObject,
-  normalizeTags,
-  parseNullableNumber,
-  readTaskCompleted,
-  readTaskMetadata,
-  toWorkbenchTask,
-  toWorkbenchTodo,
-  WORKBENCH_TASK_TAG,
-  WORKBENCH_TODO_TAG,
-} from "./workbench-helpers.js";
-
-const _WORKBENCH_TASK_TAG = WORKBENCH_TASK_TAG;
-const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
-
-// (workbench helpers moved to workbench-helpers.ts)
-
-// ── Autonomy / swarm / coding-agent helpers — extracted to server-helpers-swarm.ts ──
 import {
   getPtyConsoleBridge,
   routeAutonomyTextToUser,
@@ -1151,6 +1124,16 @@ import {
   wireCodingAgentWsBridge,
   wireCoordinatorEventRouting,
 } from "./server-helpers-swarm.js";
+
+import {
+  asObject,
+  normalizeTags,
+  parseNullableNumber,
+  readTaskCompleted,
+  readTaskMetadata,
+  toWorkbenchTask,
+  toWorkbenchTodo,
+} from "./workbench-helpers.js";
 
 export {
   handleSwarmSynthesis,

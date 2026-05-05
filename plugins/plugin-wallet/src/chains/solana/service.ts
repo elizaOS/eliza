@@ -45,13 +45,13 @@ import {
 import BigNumber from "bignumber.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
-import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
-import { getWalletKey } from "./keypairUtils";
 import type {
   WalletChainHandler,
   WalletRouterExecution,
   WalletRouterParams,
 } from "../../types/wallet-router.js";
+import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
+import { getWalletKey } from "./keypairUtils";
 import type {
   BirdeyePriceResponse,
   BirdeyeWalletTokenListResponse,

@@ -1,5 +1,6 @@
 import { type Context, Hono } from "hono";
 import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
+import { containersEnv } from "@/lib/config/containers-env";
 import {
   type CreateContainerInput,
   getHetznerContainersClient,
@@ -189,6 +190,34 @@ function deploymentMonitorResponse(c: Context) {
 app.get("/api/v1/cron/deployment-monitor", deploymentMonitorResponse);
 
 app.post("/api/v1/cron/deployment-monitor", deploymentMonitorResponse);
+
+function agentHotPoolResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const syncChanges = await dockerNodeManager.syncAllocatedCounts();
+    const image = containersEnv.defaultAgentImage();
+    const prePullEnabled = process.env.ELIZA_AGENT_HOT_POOL_PREPULL !== "false";
+    const nodes = prePullEnabled
+      ? await dockerNodeManager.prePullAgentImageOnAvailableNodes(image)
+      : [];
+    const capacity = await dockerNodeManager.getCapacityReport();
+
+    return c.json({
+      success: true,
+      data: {
+        image,
+        prePullEnabled,
+        syncedAllocatedCounts: Object.fromEntries(syncChanges),
+        capacity,
+        nodes,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
+}
+
+app.get("/api/v1/cron/agent-hot-pool", agentHotPoolResponse);
+
+app.post("/api/v1/cron/agent-hot-pool", agentHotPoolResponse);
 
 app.post("/api/v1/admin/docker-nodes/:nodeId/health-check", (c) =>
   handle(c, async () => {

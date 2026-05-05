@@ -42,11 +42,7 @@ import {
   optimism,
   polygon,
 } from "viem/chains";
-import {
-  NATIVE_TOKEN,
-  setSpendPolicy,
-  createWallet,
-} from "./wallet-core.js";
+import { createWallet, NATIVE_TOKEN, setSpendPolicy } from "./wallet-core.js";
 import { createX402Client } from "./x402/middleware.js";
 import { DEFAULT_SUPPORTED_NETWORKS, USDC_ADDRESSES } from "./x402/types.js";
 

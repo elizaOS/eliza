@@ -132,7 +132,6 @@ const FEATURE_PLUGINS: Record<string, string> = {
   tts: "@elizaos/plugin-edge-tts",
   stt: "@elizaos/plugin-stt",
   agentSkills: "@elizaos/plugin-agent-skills",
-  // directives: "@elizaos/plugin-directives", // not yet ready — package doesn't exist
   commands: "@elizaos/plugin-commands",
   diagnosticsOtel: "@elizaos/plugin-diagnostics-otel",
   webhooks: "@elizaos/plugin-webhooks",

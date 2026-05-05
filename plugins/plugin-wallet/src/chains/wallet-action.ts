@@ -11,7 +11,7 @@ import type {
 } from "@elizaos/core";
 import {
   WALLET_BACKEND_SERVICE_TYPE,
-  WalletBackendService,
+  type WalletBackendService,
 } from "../services/wallet-backend-service.js";
 import type {
   WalletRouterFailure,
@@ -59,7 +59,9 @@ function legacySubaction(value: unknown): WalletRouterSubaction | undefined {
   return undefined;
 }
 
-function normalizeRawParams(raw: Record<string, unknown>): Record<string, unknown> {
+function normalizeRawParams(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
   const action = raw.action ?? raw.name;
   return {
     subaction:
@@ -97,7 +99,10 @@ function extractRawParams(
   const optionParams = objectRecord(optionRecord?.parameters);
   if (optionParams) return optionParams;
 
-  if (optionRecord && ("subaction" in optionRecord || "action" in optionRecord)) {
+  if (
+    optionRecord &&
+    ("subaction" in optionRecord || "action" in optionRecord)
+  ) {
     return optionRecord;
   }
 
@@ -175,7 +180,9 @@ function resultText(result: WalletRouterResult): string {
   return `Submitted ${execution.subaction} on ${result.handler.chain}${id ? `: ${id}` : "."}`;
 }
 
-function serviceFromRuntime(runtime: IAgentRuntime): WalletBackendService | null {
+function serviceFromRuntime(
+  runtime: IAgentRuntime,
+): WalletBackendService | null {
   const service = runtime.getService(WALLET_BACKEND_SERVICE_TYPE);
   if (
     service &&
@@ -222,7 +229,8 @@ export const walletRouterAction: Action = {
     },
     {
       name: "chain",
-      description: "Chain id or name. Omit only when one chain supports subaction.",
+      description:
+        "Chain id or name. Omit only when one chain supports subaction.",
       required: false,
       schema: { type: "string" },
       examples: ["base", "solana", "8453"],
@@ -236,7 +244,8 @@ export const walletRouterAction: Action = {
     },
     {
       name: "toToken",
-      description: "Destination token symbol, native token alias, or token address.",
+      description:
+        "Destination token symbol, native token alias, or token address.",
       required: false,
       schema: { type: "string" },
       examples: ["USDC", "SOL"],

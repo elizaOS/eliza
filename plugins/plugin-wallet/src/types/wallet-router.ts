@@ -143,10 +143,18 @@ export const WalletRouterParamsSchema = z.object({
     .preprocess((value) => {
       if (typeof value === "string") {
         const normalized = value.trim().toLowerCase();
-        if (normalized === "true" || normalized === "1" || normalized === "yes") {
+        if (
+          normalized === "true" ||
+          normalized === "1" ||
+          normalized === "yes"
+        ) {
           return true;
         }
-        if (normalized === "false" || normalized === "0" || normalized === "no") {
+        if (
+          normalized === "false" ||
+          normalized === "0" ||
+          normalized === "no"
+        ) {
           return false;
         }
       }
@@ -169,5 +177,8 @@ export function isWalletRouterSubaction(
 }
 
 export function normalizeWalletChainKey(value: string | number): string {
-  return String(value).trim().toLowerCase().replace(/[\s_-]+/g, "");
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
 }

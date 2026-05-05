@@ -89,6 +89,17 @@ interface EventLogEntry {
   message: string;
 }
 
+/**
+ * Action names dispatched as standalone (not via JOURNAL_OP / INVENTORY_OP).
+ * The autonomous loop's parser treats these as `actionName === subaction` so
+ * the dispatcher's switch can branch on a single label.
+ */
+const STANDALONE_ACTION_NAMES: ReadonlySet<string> = new Set([
+  "WALK_TO",
+  "ATTACK_NPC",
+  "CHAT_PUBLIC",
+]);
+
 function resolveSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -450,7 +461,7 @@ export class ScapeGameService extends Service {
       await withStandaloneTrajectory(
         this.runtime,
         {
-          source: "app-scape.autonomous-loop",
+          source: "scape-autonomous-loop",
           metadata: {
             game: "scape",
             stepNumber: this.stepNumber + 1,
@@ -619,21 +630,32 @@ Your choice:`;
   } | null {
     const toonParsed = parseToonKeyValue<Record<string, unknown>>(response);
     const toonAction = this.extractActionName(toonParsed);
-    if (toonAction) {
-      const resolved = resolveScapeRouterAction(
-        toonAction,
-        this.extractSubactionName(toonParsed),
-      );
-      if (!resolved) return null;
+    if (!toonAction) return null;
+
+    const params = this.extractParamsFromParsedResponse(toonParsed);
+
+    // Standalone actions: WALK_TO, ATTACK_NPC, CHAT_PUBLIC.
+    if (STANDALONE_ACTION_NAMES.has(toonAction)) {
       return {
-        actionName: resolved.routerName,
-        subaction: resolved.subaction,
-        legacyAction: resolved.legacyAction,
-        params: this.extractParamsFromParsedResponse(toonParsed),
+        actionName: toonAction,
+        subaction: toonAction.toLowerCase(),
+        legacyAction: toonAction,
+        params,
       };
     }
 
-    return null;
+    // Router actions: JOURNAL_OP, INVENTORY_OP.
+    const resolved = resolveScapeRouterAction(
+      toonAction,
+      this.extractSubactionName(toonParsed),
+    );
+    if (!resolved) return null;
+    return {
+      actionName: resolved.routerName,
+      subaction: resolved.subaction,
+      legacyAction: resolved.legacyAction,
+      params,
+    };
   }
 
   private extractActionName(
@@ -653,12 +675,16 @@ Your choice:`;
   private extractSubactionName(
     parsed: Record<string, unknown> | null,
   ): string | null {
-    const raw = parsed?.subaction ?? parsed?.operation ?? parsed?.intent;
+    const raw =
+      parsed?.op ??
+      parsed?.subaction ??
+      parsed?.operation ??
+      parsed?.intent;
     if (typeof raw !== "string") return null;
     return (
       raw
         .trim()
-        .replace(/[\s-]+/g, "_")
+        .replace(/[\s_]+/g, "-")
         .toLowerCase() || null
     );
   }
@@ -677,7 +703,19 @@ Your choice:`;
     const source = nestedParams ?? parsed;
 
     for (const [key, value] of Object.entries(source)) {
-      if (["action", "actionName", "name", "type", "params"].includes(key)) {
+      if (
+        [
+          "action",
+          "actionName",
+          "name",
+          "type",
+          "params",
+          "op",
+          "subaction",
+          "operation",
+          "intent",
+        ].includes(key)
+      ) {
         continue;
       }
       params[key] = this.coerceParamValue(value);
@@ -734,28 +772,25 @@ Your choice:`;
         }
         return this.executeAction({ action: "attackNpc", npcId });
       }
-      case "drop_item": {
-        const slot = Number(parsed.params.slot);
+      case "drop": {
+        const slot = Number(parsed.params.item ?? parsed.params.slot);
         if (!Number.isInteger(slot) || slot < 0 || slot >= 28) {
-          return { success: false, message: "slot must be 0..27" };
+          return { success: false, message: "item must be slot 0..27" };
         }
         return this.executeAction({ action: "dropItem", slot });
       }
-      case "eat_food": {
-        const slotRaw = parsed.params.slot;
-        const slot =
-          slotRaw === undefined || slotRaw === null
-            ? undefined
-            : Number(slotRaw);
+      case "eat": {
+        const raw = parsed.params.item ?? parsed.params.slot;
+        const slot = raw === undefined || raw === null ? undefined : Number(raw);
         if (
           slot !== undefined &&
           (!Number.isInteger(slot) || slot < 0 || slot >= 28)
         ) {
-          return { success: false, message: "slot must be 0..27" };
+          return { success: false, message: "item must be slot 0..27" };
         }
         return this.executeAction({ action: "eatFood", slot });
       }
-      case "set_goal": {
+      case "set-goal": {
         const title = String(parsed.params.title ?? "").trim();
         if (!title) return { success: false, message: "missing title" };
         const notes = String(parsed.params.notes ?? "").trim() || undefined;
@@ -764,7 +799,7 @@ Your choice:`;
         const goal = journal.setGoal({ title, notes, source: "agent" });
         return { success: true, message: `goal set: "${goal.title}"` };
       }
-      case "complete_goal": {
+      case "complete-goal": {
         const journal = this.journalService;
         if (!journal) return { success: false, message: "journal unavailable" };
         const statusRaw = String(
@@ -776,10 +811,14 @@ Your choice:`;
             message: "status must be completed|abandoned",
           };
         }
-        const id =
-          parsed.params.id != null ? String(parsed.params.id) : undefined;
+        const explicitId =
+          parsed.params.goalId != null
+            ? String(parsed.params.goalId)
+            : parsed.params.id != null
+              ? String(parsed.params.id)
+              : undefined;
         const notes = String(parsed.params.notes ?? "").trim() || undefined;
-        const goalId = id ?? journal.getActiveGoal()?.id;
+        const goalId = explicitId ?? journal.getActiveGoal()?.id;
         if (!goalId) return { success: false, message: "no goal to close" };
         const updated = journal.markGoalStatus(
           goalId,
@@ -793,8 +832,10 @@ Your choice:`;
       case "remember": {
         const journal = this.journalService;
         if (!journal) return { success: false, message: "journal unavailable" };
-        const text = String(parsed.params.text ?? "").trim();
-        if (!text) return { success: false, message: "missing text" };
+        const text = String(
+          parsed.params.notes ?? parsed.params.text ?? "",
+        ).trim();
+        if (!text) return { success: false, message: "missing notes" };
         const kind = String(parsed.params.kind ?? "note");
         const weightRaw = Number(parsed.params.weight ?? 2);
         const weight = Math.max(1, Math.min(5, Math.floor(weightRaw)));

@@ -198,8 +198,7 @@ export const deepenReadingAction: Action = {
   name: "DEEPEN_READING",
   similes: ["EXPLAIN_MORE", "GO_DEEPER", "ELABORATE_READING", "READING_DETAIL"],
   description: "Provide a deeper interpretation of a specific element in an active reading.",
-  descriptionCompressed:
-    "Deepen active reading with more interpretation for a specific element.",
+  descriptionCompressed: "Deepen active reading with more interpretation for a specific element.",
 
   validate: async (
     runtime: IAgentRuntime,

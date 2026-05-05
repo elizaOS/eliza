@@ -18,5 +18,6 @@ export default defineConfig({
     ...baseConfig.test,
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     exclude: liveOnlyExcludes,
+    passWithNoTests: true,
   },
 });

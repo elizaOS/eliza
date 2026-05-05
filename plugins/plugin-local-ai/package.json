@@ -55,7 +55,7 @@
     "undici": "^8.0.0",
     "uuid": "^14.0.0",
     "whisper-node": "^1.1.1",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

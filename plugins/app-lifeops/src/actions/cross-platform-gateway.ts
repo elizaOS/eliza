@@ -15,7 +15,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { broadcastIntent } from "../lifeops/intent-sync.js";
-import { recentConversationTexts } from "./life-recent-context.js";
+import { recentConversationTexts } from "./lib/recent-context.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
 
 type GatewaySubaction = "create_group_chat" | "escalate_to_user";

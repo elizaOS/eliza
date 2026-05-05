@@ -1,5 +1,37 @@
 // Re-export selected reusable UI from @elizaos/ui while keeping app-core's
 // higher-level component surface intact.
+
+// Inventory + wallet UI moved to @elizaos/app-wallet. These re-exports keep
+// existing consumers working while they migrate.
+// TODO: remove once consumers import directly from @elizaos/app-wallet.
+export { ChainIcon } from "@elizaos/app-wallet/inventory/ChainIcon";
+export {
+  CHAIN_CONFIGS,
+  type ChainConfig,
+  type ChainKey,
+  chainKeyToWalletRpcChain,
+  getChainConfig,
+  getContractLogoUrl,
+  getExplorerTokenUrl,
+  getExplorerTxUrl,
+  getNativeLogoUrl,
+  getStablecoinAddress,
+  PRIMARY_CHAIN_KEYS,
+  resolveChainKey,
+} from "@elizaos/app-wallet/inventory/chainConfig";
+export {
+  BSC_GAS_READY_THRESHOLD,
+  BSC_GAS_THRESHOLD,
+  HEX_ADDRESS_RE,
+  isAvaxChainName,
+  isBscChainName,
+  type NftItem,
+  type TokenRow,
+  toNormalizedAddress,
+} from "@elizaos/app-wallet/inventory/constants";
+// InventoryView moved to @elizaos/app-wallet — re-exported for compatibility.
+// TODO: remove once consumers import from @elizaos/app-wallet/ui.
+export { InventoryView } from "@elizaos/app-wallet/ui";
 export {
   ConfirmDialog as ConfirmModal,
   type ConfirmDialogProps as ConfirmModalProps,
@@ -31,7 +63,6 @@ export * from "./chat/widgets/registry";
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
-
 export * from "./config-ui";
 export * from "./connectors/BlueBubblesStatusPanel";
 export * from "./connectors/ConnectorSetupPanel";
@@ -43,34 +74,6 @@ export * from "./conversations/conversation-utils";
 export * from "./custom-actions/CustomActionEditor";
 export * from "./custom-actions/CustomActionsPanel";
 export * from "./custom-actions/CustomActionsView";
-// Inventory + wallet UI moved to @elizaos/app-wallet. These re-exports keep
-// existing consumers working while they migrate.
-// TODO: remove once consumers import directly from @elizaos/app-wallet.
-export { ChainIcon } from "@elizaos/app-wallet/inventory/ChainIcon";
-export {
-  CHAIN_CONFIGS,
-  type ChainConfig,
-  type ChainKey,
-  chainKeyToWalletRpcChain,
-  getChainConfig,
-  getContractLogoUrl,
-  getExplorerTokenUrl,
-  getExplorerTxUrl,
-  getNativeLogoUrl,
-  getStablecoinAddress,
-  PRIMARY_CHAIN_KEYS,
-  resolveChainKey,
-} from "@elizaos/app-wallet/inventory/chainConfig";
-export {
-  BSC_GAS_READY_THRESHOLD,
-  BSC_GAS_THRESHOLD,
-  HEX_ADDRESS_RE,
-  isAvaxChainName,
-  isBscChainName,
-  type NftItem,
-  type TokenRow,
-  toNormalizedAddress,
-} from "@elizaos/app-wallet/inventory/constants";
 export * from "./pages/AdvancedPageView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
@@ -84,9 +87,6 @@ export * from "./pages/DatabasePageView";
 export * from "./pages/DatabaseView";
 export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
-// InventoryView moved to @elizaos/app-wallet — re-exported for compatibility.
-// TODO: remove once consumers import from @elizaos/app-wallet/ui.
-export { InventoryView } from "@elizaos/app-wallet/ui";
 export * from "./pages/KnowledgeView";
 
 export * from "./pages/LogsPageView";

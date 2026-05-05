@@ -74,19 +74,23 @@ public class MainActivity extends BridgeActivity {
             applyBrandUserAgentMarkers(settings);
         }
 
-        // Android 13+ requires explicit POST_NOTIFICATIONS permission for the
-        // foreground service notification to be visible.
-        requestNotificationPermissionIfNeeded();
-
-        // Start the foreground service so the OS keeps our process (and the
-        // Capacitor WebSocket gateway plugin) alive in the background.
-        GatewayConnectionService.start(this);
-
         // The local Eliza agent runtime ships only in the AOSP/local-agent
         // APK shape. Store/Capacitor builds strip assets/agent/, so starting
         // the service there would fail during asset extraction.
         if (BuildConfig.AOSP_BUILD) {
             ElizaAgentService.start(this);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (!isFinishing()) {
+            // The gateway notification is only needed to keep the Capacitor
+            // gateway alive after the UI leaves the foreground. Starting it
+            // during first render can trip Android's service-execution ANR on
+            // slower emulator boots.
+            GatewayConnectionService.start(this);
         }
     }
 

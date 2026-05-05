@@ -166,7 +166,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response.",
+				"Reply in current chat only; use connector actions for external connector sends.",
 		},
 		{
 			name: "IGNORE",
@@ -378,7 +378,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["telegram", "discord"],
-					descriptionCompressed: "Platform (telegram, discord, x).",
+					descriptionCompressed: "source platform (telegram, discord, x).",
 				},
 				{
 					name: "target",
@@ -582,7 +582,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["notes: prefers email; tags: friend"],
-					descriptionCompressed: "Structured fields to update.",
+					descriptionCompressed:
+						"Structured fields to update: notes, tags, category/categories, preferences.",
 				},
 			],
 			examples: [
@@ -1413,7 +1414,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response.",
+				"Reply in current chat only; use connector actions for external connector sends.",
 		},
 		{
 			name: "IGNORE",
@@ -1625,7 +1626,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["telegram", "discord"],
-					descriptionCompressed: "Platform (telegram, discord, x).",
+					descriptionCompressed: "source platform (telegram, discord, x).",
 				},
 				{
 					name: "target",
@@ -1829,7 +1830,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["notes: prefers email; tags: friend"],
-					descriptionCompressed: "Structured fields to update.",
+					descriptionCompressed:
+						"Structured fields to update: notes, tags, category/categories, preferences.",
 				},
 			],
 			examples: [
@@ -2653,13 +2655,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "ATTACK_NPC",
-			description: "Attack a nearby NPC by name",
-			parameters: [],
-			descriptionCompressed: "Attack nearby NPC by name.",
-			similes: ["FIGHT_NPC", "MELEE_NPC"],
-		},
-		{
 			name: "AUTHENTICATE_GOOGLE",
 			description: "Authenticate with Google to access Meet API",
 			parameters: [],
@@ -2751,11 +2746,85 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "BLUEBUBBLES_SEND_REACTION",
-			description: "Add or remove a reaction on a message via BlueBubbles",
-			parameters: [],
-			descriptionCompressed: "React on iMessage via BlueBubbles.",
-			similes: ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"],
+			name: "BLUEBUBBLES_MESSAGE_OP",
+			description:
+				"BlueBubbles iMessage operation router. Send a reply or react to a message by setting op (send | react).",
+			parameters: [
+				{
+					name: "op",
+					description: "TOON parameter op.",
+					required: false,
+					schema: {
+						type: "string",
+						default: "send",
+					},
+					descriptionCompressed: "TOON param op.",
+				},
+				{
+					name: "text",
+					description: "TOON parameter text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "TOON param text.",
+				},
+				{
+					name: "emoji",
+					description: "TOON parameter emoji.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "TOON param emoji.",
+				},
+				{
+					name: "messageId",
+					description: "TOON parameter messageId.",
+					required: false,
+					schema: {
+						type: "string",
+						default: "last",
+					},
+					descriptionCompressed: "TOON param messageId.",
+				},
+				{
+					name: "remove",
+					description: "TOON parameter remove.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "TOON param remove.",
+				},
+			],
+			descriptionCompressed: "Bluebubbles message ops: send, react.",
+			similes: [
+				"SEND_IMESSAGE",
+				"TEXT_MESSAGE",
+				"IMESSAGE_REPLY",
+				"BLUEBUBBLES_SEND",
+				"APPLE_MESSAGE",
+				"BLUEBUBBLES_REACT",
+				"BB_REACTION",
+				"IMESSAGE_REACT",
+			],
+			exampleCalls: [
+				{
+					user: "Use BLUEBUBBLES_MESSAGE_OP with the provided parameters.",
+					actions: ["BLUEBUBBLES_MESSAGE_OP"],
+					params: {
+						BLUEBUBBLES_MESSAGE_OP: {
+							op: "send",
+							text: "example",
+							emoji: "example",
+							messageId: "last",
+							remove: false,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "BROWSER_ACTION",
@@ -2885,7 +2954,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Chromium browser control router: open/connect/close/navigate/click/type/scroll/screenshot/dom/clickables/execute/wait/tabs; provider has passive state.",
+				"Chromium browser control router: open/connect/navigate/click/type/read dom/clickables/execute/wait/tabs; read-only state.",
 			similes: [
 				"CONTROL_BROWSER",
 				"WEB_BROWSER",
@@ -2917,21 +2986,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "BURN_LOGS",
-			description: "Use tinderbox on logs in inventory to light a fire",
-			parameters: [],
-			descriptionCompressed: "Use tinderbox on logs to light fire.",
-			similes: ["LIGHT_FIRE", "FIREMAKING"],
-		},
-		{
-			name: "BUY_FROM_SHOP",
-			description:
-				"Buy an item from the currently open shop, optionally specifying a count (defaults to 1)",
-			parameters: [],
-			descriptionCompressed: "Buy item from open shop.",
-			similes: ["PURCHASE_ITEM", "BUY_ITEM"],
-		},
-		{
 			name: "CALL_MCP_TOOL",
 			description: "Calls a tool from an MCP server to perform a specific task",
 			parameters: [],
@@ -2948,13 +3002,6 @@ export const allActionsSpec = {
 				"INVOKE_TOOL",
 				"INVOKE_MCP_TOOL",
 			],
-		},
-		{
-			name: "CAST_SPELL",
-			description: "Cast a spell by ID, optionally targeting an NPC",
-			parameters: [],
-			descriptionCompressed: "Cast spell by ID, opt. target NPC.",
-			similes: ["USE_MAGIC", "CAST"],
 		},
 		{
 			name: "CHAT_PUBLIC",
@@ -3005,44 +3052,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "CHECK_BALANCE",
-			description:
-				"Check wallet balances across chains. Use this when a user asks about ",
-			parameters: [
-				{
-					name: "chain",
-					description:
-						'Which chain to check: "all", "bsc", "ethereum", "base", or "solana". Defaults to "all".',
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Which chain to check: "all", "bsc", "ethereum", "base", or "solana". Defaults to "all".',
-				},
-			],
-			descriptionCompressed: "Check wallet balances across chains.",
-			similes: [
-				"GET_BALANCE",
-				"WALLET_BALANCE",
-				"CHECK_WALLET",
-				"MY_BALANCE",
-				"PORTFOLIO",
-				"HOLDINGS",
-			],
-			exampleCalls: [
-				{
-					user: "Use CHECK_BALANCE with the provided parameters.",
-					actions: ["CHECK_BALANCE"],
-					params: {
-						CHECK_BALANCE: {
-							chain: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "CHECK_PAYMENT",
 			description:
 				"Check if payment has been received for the current reading session.",
@@ -3050,14 +3059,6 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"Check payment status for the active mysticism reading session.",
 			similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
-		},
-		{
-			name: "CHOP_TREE",
-			description:
-				"Chop a nearby tree, optionally specifying the tree type (oak, willow, etc.)",
-			parameters: [],
-			descriptionCompressed: "Chop nearby tree, opt. specify type.",
-			similes: ["CUT_TREE", "WOODCUT"],
 		},
 		{
 			name: "CLAUDE_CODE_WORKBENCH_LIST",
@@ -3092,20 +3093,6 @@ export const allActionsSpec = {
 				"reset-linear-activity",
 				"delete-linear-activity",
 			],
-		},
-		{
-			name: "CLOSE_BANK",
-			description: "Close the bank interface",
-			parameters: [],
-			descriptionCompressed: "Close bank interface.",
-			similes: ["EXIT_BANK"],
-		},
-		{
-			name: "CLOSE_SHOP",
-			description: "Close the shop interface",
-			parameters: [],
-			descriptionCompressed: "Close shop interface.",
-			similes: ["EXIT_SHOP"],
 		},
 		{
 			name: "CLOUD_AGENT",
@@ -3262,6 +3249,46 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "COMMAND",
+			description:
+				"Slash-command router. Operations: help, status, stop, models, list. Selects the operation from parameters.op or the detected /<command> in the message text.",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Command operation. One of: help, status, stop, models, list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Command operation. One of: help, status, stop, models, list.",
+				},
+			],
+			descriptionCompressed:
+				"Slash commands: help, status, stop, models, list.",
+			similes: [
+				"COMMAND_OP",
+				"SLASH_COMMAND",
+				"HELP_COMMAND",
+				"STATUS_COMMAND",
+				"STOP_COMMAND",
+				"MODELS_COMMAND",
+				"COMMANDS_LIST",
+			],
+			exampleCalls: [
+				{
+					user: "Use COMMAND with the provided parameters.",
+					actions: ["COMMAND"],
+					params: {
+						COMMAND: {
+							op: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "COMMANDS_LIST",
 			description:
 				"List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
@@ -3269,22 +3296,6 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"List available commands. Trigger: /commands, /cmds.",
 			similes: ["/commands", "/cmds"],
-		},
-		{
-			name: "COMPLETE_GOAL",
-			description:
-				"Mark the active goal (or a specific goal id) as completed or abandoned. Use status: completed|abandoned and optional notes: why.",
-			parameters: [],
-			descriptionCompressed: "Mark goal completed or abandoned.",
-			similes: ["FINISH_GOAL", "ABANDON_GOAL", "CLOSE_GOAL"],
-		},
-		{
-			name: "COOK_FOOD",
-			description:
-				"Cook raw food on a nearby fire or range, optionally specifying the food name",
-			parameters: [],
-			descriptionCompressed: "Cook raw food on fire/range.",
-			similes: ["COOK", "COOK_RAW_FOOD"],
 		},
 		{
 			name: "COUNT_STATISTICS",
@@ -3314,14 +3325,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-		},
-		{
-			name: "CRAFT_LEATHER",
-			description:
-				"Use a needle on leather in inventory to craft leather armour",
-			parameters: [],
-			descriptionCompressed: "Craft leather armour with needle.",
-			similes: ["CRAFTING", "SEW_LEATHER"],
 		},
 		{
 			name: "CREATE_ENTITY",
@@ -3647,14 +3650,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "DEPOSIT_ITEM",
-			description:
-				"Deposit an item into the bank by name, optionally specifying a count (defaults to all)",
-			parameters: [],
-			descriptionCompressed: "Deposit item into bank.",
-			similes: ["BANK_ITEM", "STORE_ITEM"],
-		},
-		{
 			name: "DEXSCREENER_BOOSTED_TOKENS",
 			description:
 				"Get boosted (promoted/sponsored) tokens from DexScreener, showing tokens with paid promotional boosts",
@@ -3760,20 +3755,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "DROP_ITEM",
-			description: "Drop an item from inventory by name",
-			parameters: [],
-			descriptionCompressed: "Drop inventory item.",
-			similes: ["DISCARD_ITEM", "THROW_AWAY"],
-		},
-		{
-			name: "EAT_FOOD",
-			description: "Eat the first food item found in inventory",
-			parameters: [],
-			descriptionCompressed: "Eat food from inventory.",
-			similes: ["CONSUME_FOOD", "HEAL"],
-		},
-		{
 			name: "EDIT_MESSAGE",
 			description: "Edit an existing message in a Discord channel",
 			parameters: [],
@@ -3784,13 +3765,6 @@ export const allActionsSpec = {
 				"CHANGE_MESSAGE",
 				"EDIT_DISCORD_MESSAGE",
 			],
-		},
-		{
-			name: "EQUIP_ITEM",
-			description: "Equip an item from inventory by name",
-			parameters: [],
-			descriptionCompressed: "Equip inventory item.",
-			similes: ["WEAR_ITEM", "WIELD_ITEM"],
 		},
 		{
 			name: "EXECUTE_TRADE",
@@ -4073,7 +4047,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"File ops: read, write, edit, append, delete, list directory.",
+				"File ops: read, write, edit, append, delete, list, copy, move, rename, exists, stat.",
 			similes: [
 				"READ_FILE",
 				"WRITE_FILE",
@@ -4235,21 +4209,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "FISH",
-			description:
-				"Fish at a nearby fishing spot, optionally specifying the spot type",
-			parameters: [],
-			descriptionCompressed: "Fish at nearby spot, opt. type.",
-			similes: ["GO_FISHING", "CATCH_FISH"],
-		},
-		{
-			name: "FLETCH_LOGS",
-			description: "Use a knife on logs in inventory to fletch them",
-			parameters: [],
-			descriptionCompressed: "Fletch logs with knife.",
-			similes: ["FLETCHING", "CARVE_LOGS"],
-		},
-		{
 			name: "FORM_RESTORE",
 			description: "Restore a previously stashed form session",
 			parameters: [],
@@ -4358,44 +4317,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "GET_RECEIVE_ADDRESS",
-			description:
-				"Return wallet receive addresses by chain. Use this when a user asks ",
-			parameters: [
-				{
-					name: "chain",
-					description:
-						'Which chain to return: "all", "evm", "solana", "bsc", "ethereum", or "base". EVM-family chains share the same EVM address. Defaults to "all".',
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["all", "evm", "solana", "bsc", "ethereum", "base"],
-					},
-					descriptionCompressed:
-						'Which chain to return: "all", "evm", "solana", "bsc", "ethereum", or "base". EVM-family chains share the same EVM address. Defaults to "all".',
-				},
-			],
-			descriptionCompressed: "Return wallet receive addresses by chain.",
-			similes: [
-				"RECEIVE_ADDRESS",
-				"DEPOSIT_ADDRESS",
-				"WALLET_ADDRESS",
-				"MY_ADDRESS",
-				"SHOW_ADDRESS",
-			],
-			exampleCalls: [
-				{
-					user: "Use GET_RECEIVE_ADDRESS with the provided parameters.",
-					actions: ["GET_RECEIVE_ADDRESS"],
-					params: {
-						GET_RECEIVE_ADDRESS: {
-							chain: "all",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "GET_SKILL_DETAILS",
 			description:
 				"Get detailed information about a specific skill including version, owner, and stats.",
@@ -4446,101 +4367,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "HEALTH",
-			description:
-				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
-			parameters: [
-				{
-					name: "subaction",
-					description:
-						"Which health query to run: today, trend, by_metric, status.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Which health query to run: today, trend, by_metric, status.",
-				},
-				{
-					name: "intent",
-					description:
-						"Free-form user intent used to infer subaction when not explicitly set.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Free-form user intent used to infer subaction when not explicitly set.",
-				},
-				{
-					name: "metric",
-					description:
-						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-				},
-				{
-					name: "date",
-					description: "YYYY-MM-DD for single-day queries.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "YYYY-MM-DD for single-day queries.",
-				},
-				{
-					name: "days",
-					description: "Window size for trend and by_metric queries.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Window size for trend and by_metric queries.",
-				},
-			],
-			similes: [
-				"FITNESS",
-				"HEALTHKIT",
-				"GOOGLE_FIT",
-				"STRAVA",
-				"FITBIT",
-				"WITHINGS",
-				"OURA",
-				"WELLNESS",
-				"SLEEP",
-				"SLEEP_DATA",
-				"SLEEP_STATS",
-				"STEPS",
-				"STEP_COUNT",
-				"HEART_RATE",
-				"WORKOUT",
-				"EXERCISE",
-				"CALORIES",
-				"ACTIVITY_METRICS",
-			],
-			exampleCalls: [
-				{
-					user: "Use HEALTH with the provided parameters.",
-					actions: ["HEALTH"],
-					params: {
-						HEALTH: {
-							subaction: "example",
-							intent: "example",
-							metric: "example",
-							date: "example",
-							days: 1,
-						},
-					},
-				},
-			],
-			descriptionCompressed:
-				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura - sleep",
-		},
-		{
 			name: "HELP_COMMAND",
 			description:
 				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
@@ -4578,14 +4404,6 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"Install skill from ClawHub registry. Security-scanned before activation.",
 			similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
-		},
-		{
-			name: "INTERACT_OBJECT",
-			description:
-				"Interact with a world object by name, with an optional interaction option",
-			parameters: [],
-			descriptionCompressed: "Interact with world object.",
-			similes: ["USE_OBJECT", "CLICK_OBJECT"],
 		},
 		{
 			name: "LINE_SEND_FLEX_MESSAGE",
@@ -4647,52 +4465,6 @@ export const allActionsSpec = {
 				"SHOW_TASK_AGENTS",
 				"LIST_SUB_AGENTS",
 				"SHOW_TASK_STATUS",
-			],
-		},
-		{
-			name: "LIST_LINEAR_PROJECTS",
-			description: "List projects in Linear with optional filters",
-			parameters: [
-				{
-					name: "toLowerCase",
-					description: "The to lower case to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The to lower case to use.",
-				},
-			],
-			descriptionCompressed: "list project Linear w/ optional filter",
-			similes: [
-				"list-linear-projects",
-				"show-linear-projects",
-				"get-linear-projects",
-				"view-linear-projects",
-			],
-			exampleCalls: [
-				{
-					user: "Use LIST_LINEAR_PROJECTS with the provided parameters.",
-					actions: ["LIST_LINEAR_PROJECTS"],
-					params: {
-						LIST_LINEAR_PROJECTS: {
-							toLowerCase: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "LIST_LINEAR_TEAMS",
-			description: "List teams in Linear with optional filters",
-			parameters: [],
-			descriptionCompressed: "list team Linear w/ optional filter",
-			similes: [
-				"list-linear-teams",
-				"show-linear-teams",
-				"get-linear-teams",
-				"view-linear-teams",
 			],
 		},
 		{
@@ -4898,7 +4670,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"manage LP positions with subaction chain dex pool position amount range token filters",
+				"Manage LP positions by subaction, chain, dex, pool, position, amount, range, token filters.",
 			similes: [
 				"LP_MANAGEMENT",
 				"LIQUIDITY_POOL_MANAGEMENT",
@@ -5464,14 +5236,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "MINE_ROCK",
-			description:
-				"Mine a nearby rock, optionally specifying the ore type (copper, tin, iron, etc.)",
-			parameters: [],
-			descriptionCompressed: "Mine nearby rock, opt. ore type.",
-			similes: ["MINE_ORE", "MINE"],
-		},
-		{
 			name: "MODELS_COMMAND",
 			description:
 				"List available AI models and providers. Only activates for /models slash command.",
@@ -5754,7 +5518,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Suno music generation router: generate, custom, extend.",
+				"Suno music generation router subaction: generate, custom, extend.",
 			similes: [
 				"GENERATE_MUSIC",
 				"CREATE_MUSIC",
@@ -5805,7 +5569,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Library router: download music into local library.",
+				"Library router subaction: download music into local library.",
 			similes: ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
 			exampleCalls: [
 				{
@@ -5869,7 +5633,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Music metadata/search: YouTube links, Wikipedia metadata, resolve complex query and queue.",
+				"Music metadata/search subaction: YouTube links, Wikipedia metadata, resolve query and queue.",
 			similes: [
 				"SEARCH_YOUTUBE",
 				"FIND_YOUTUBE",
@@ -5921,7 +5685,8 @@ export const allActionsSpec = {
 						"Must be true for state-changing playlist operations.",
 				},
 			],
-			descriptionCompressed: "Playlist router: save, load, list, delete, add.",
+			descriptionCompressed:
+				"Playlist router subaction: save, load, list, delete, add.",
 			similes: [
 				"SAVE_PLAYLIST",
 				"LOAD_PLAYLIST",
@@ -5943,14 +5708,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "NAVIGATE_DIALOG",
-			description:
-				"Select a dialog option by number (1-based) during an NPC conversation",
-			parameters: [],
-			descriptionCompressed: "Select NPC dialog option by number.",
-			similes: ["SELECT_DIALOG", "CHOOSE_OPTION", "DIALOG_OPTION"],
-		},
-		{
 			name: "NOSTR_PUBLISH_PROFILE",
 			description:
 				"Publish or update the bot's Nostr profile (kind:0 metadata)",
@@ -5967,25 +5724,90 @@ export const allActionsSpec = {
 			similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
 		},
 		{
-			name: "OPEN_BANK",
-			description: "Open the nearest bank booth or banker NPC",
-			parameters: [],
-			descriptionCompressed: "Open nearest bank.",
-			similes: ["USE_BANK", "ACCESS_BANK"],
-		},
-		{
-			name: "OPEN_DOOR",
-			description: "Open the nearest door or gate",
-			parameters: [],
-			descriptionCompressed: "Open nearest door/gate.",
-			similes: ["OPEN_GATE", "USE_DOOR"],
-		},
-		{
-			name: "OPEN_SHOP",
-			description: "Open a shop by talking to a shopkeeper NPC",
-			parameters: [],
-			descriptionCompressed: "Open shop via shopkeeper.",
-			similes: ["TRADE_WITH_NPC", "BROWSE_SHOP"],
+			name: "OWNER_HEALTH",
+			description:
+				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Which health query to run: today, trend, by_metric, status.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Which health query to run: today, trend, by_metric, status.",
+				},
+				{
+					name: "intent",
+					description:
+						"Free-form user intent used to infer subaction when not explicitly set.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-form user intent for inferring subaction.",
+				},
+				{
+					name: "metric",
+					description:
+						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+				},
+				{
+					name: "date",
+					description: "YYYY-MM-DD for single-day queries.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "YYYY-MM-DD for single-day queries.",
+				},
+				{
+					name: "days",
+					description: "Window size for trend and by_metric queries.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Window size for trend and by_metric queries.",
+				},
+			],
+			descriptionCompressed:
+				"Owner health via HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today, trend(days), by_metric(steps,heart-rate,sleep,calories,distance), status.",
+			similes: [
+				"FITNESS",
+				"WELLNESS",
+				"SLEEP",
+				"STEPS",
+				"HEART_RATE",
+				"WORKOUT",
+				"EXERCISE",
+				"CALORIES",
+				"ACTIVITY_METRICS",
+			],
+			exampleCalls: [
+				{
+					user: "Use OWNER_HEALTH with the provided parameters.",
+					actions: ["OWNER_HEALTH"],
+					params: {
+						OWNER_HEALTH: {
+							subaction: "example",
+							intent: "example",
+							metric: "example",
+							date: "example",
+							days: 1,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "OWNER_SCHEDULE",
@@ -6041,20 +5863,6 @@ export const allActionsSpec = {
 			parameters: [],
 			descriptionCompressed: "Pause current track. Not via PLAY_AUDIO.",
 			similes: ["PAUSE", "PAUSE_AUDIO", "PAUSE_SONG", "PAUSE_PLAYBACK"],
-		},
-		{
-			name: "PICKPOCKET_NPC",
-			description: "Pickpocket a nearby NPC by name",
-			parameters: [],
-			descriptionCompressed: "Pickpocket nearby NPC.",
-			similes: ["STEAL_FROM_NPC", "THIEVE_NPC"],
-		},
-		{
-			name: "PICKUP_ITEM",
-			description: "Pick up an item from the ground by name",
-			parameters: [],
-			descriptionCompressed: "Pick up ground item.",
-			similes: ["TAKE_ITEM", "GRAB_ITEM", "LOOT_ITEM"],
 		},
 		{
 			name: "PLACE_CALL",
@@ -6213,147 +6021,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "POLYMARKET_GET_MARKET",
-			description: "Fetch a single Polymarket market by market id or slug.",
-			parameters: [
-				{
-					name: "id",
-					description: "Polymarket Gamma market id.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Polymarket Gamma market id.",
-				},
-				{
-					name: "slug",
-					description: "Polymarket market slug.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Polymarket market slug.",
-				},
-			],
-			descriptionCompressed: "Fetch a Polymarket market by id or slug.",
-			similes: ["POLYMARKET_MARKET", "POLYMARKET_MARKET_DETAILS"],
-			exampleCalls: [
-				{
-					user: "Use POLYMARKET_GET_MARKET with the provided parameters.",
-					actions: ["POLYMARKET_GET_MARKET"],
-					params: {
-						POLYMARKET_GET_MARKET: {
-							id: "example",
-							slug: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "POLYMARKET_GET_MARKETS",
-			description:
-				"List active Polymarket markets. Supports limit and offset parameters.",
-			parameters: [
-				{
-					name: "limit",
-					description: "Maximum markets to return, from 1 to 100.",
-					required: false,
-					schema: {
-						type: "number",
-						default: 20,
-					},
-					descriptionCompressed: "max markets to return, from 1 to 100.",
-				},
-				{
-					name: "offset",
-					description: "Market result offset.",
-					required: false,
-					schema: {
-						type: "number",
-						default: 0,
-					},
-					descriptionCompressed: "Market result offset.",
-				},
-			],
-			descriptionCompressed: "List active Polymarket markets.",
-			similes: ["POLYMARKET_MARKETS", "SEARCH_POLYMARKET_MARKETS"],
-			exampleCalls: [
-				{
-					user: "Use POLYMARKET_GET_MARKETS with the provided parameters.",
-					actions: ["POLYMARKET_GET_MARKETS"],
-					params: {
-						POLYMARKET_GET_MARKETS: {
-							limit: 20,
-							offset: 0,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "POLYMARKET_GET_ORDERBOOK",
-			description:
-				"Fetch a token orderbook and derive true best bid/ask from all CLOB levels.",
-			parameters: [
-				{
-					name: "tokenId",
-					description: "Polymarket CLOB token id.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Polymarket CLOB token id.",
-				},
-			],
-			descriptionCompressed: "Get a Polymarket token quote/orderbook.",
-			similes: [
-				"POLYMARKET_QUOTE",
-				"POLYMARKET_ORDERBOOK",
-				"POLYMARKET_TOKEN_INFO",
-			],
-			exampleCalls: [
-				{
-					user: "Use POLYMARKET_GET_ORDERBOOK with the provided parameters.",
-					actions: ["POLYMARKET_GET_ORDERBOOK"],
-					params: {
-						POLYMARKET_GET_ORDERBOOK: {
-							tokenId: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "POLYMARKET_GET_POSITIONS",
-			description: "Fetch Polymarket positions for a wallet address.",
-			parameters: [
-				{
-					name: "user",
-					description: "Wallet address whose positions should be fetched.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Wallet address whose positions should be fetched.",
-				},
-			],
-			descriptionCompressed: "Fetch Polymarket wallet positions.",
-			similes: ["POLYMARKET_POSITIONS", "POLYMARKET_WALLET_POSITIONS"],
-			exampleCalls: [
-				{
-					user: "Use POLYMARKET_GET_POSITIONS with the provided parameters.",
-					actions: ["POLYMARKET_GET_POSITIONS"],
-					params: {
-						POLYMARKET_GET_POSITIONS: {
-							user: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "POLYMARKET_PLACE_ORDER",
 			description:
 				"Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
@@ -6362,12 +6029,115 @@ export const allActionsSpec = {
 			similes: ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"],
 		},
 		{
-			name: "POLYMARKET_STATUS",
+			name: "POLYMARKET_READ",
 			description:
-				"Check Polymarket public-read and trading readiness for the local app.",
-			parameters: [],
-			descriptionCompressed: "Check Polymarket readiness.",
-			similes: ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"],
+				"Read Polymarket public state. kind selects: status (readiness), markets (list active markets), market (single market by id/slug), orderbook (CLOB quote by tokenId), positions (wallet positions).",
+			parameters: [
+				{
+					name: "kind",
+					description:
+						"Read kind: status | markets | market | orderbook | positions.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Read kind: status | markets | market | orderbook | positions.",
+				},
+				{
+					name: "limit",
+					description: "markets only: max markets (1-100).",
+					required: false,
+					schema: {
+						type: "number",
+						default: 20,
+					},
+					descriptionCompressed: "markets only: max markets (1-100).",
+				},
+				{
+					name: "offset",
+					description: "markets only: result offset.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 0,
+					},
+					descriptionCompressed: "markets only: result offset.",
+				},
+				{
+					name: "id",
+					description: "market only: Polymarket Gamma market id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "market only: Polymarket Gamma market id.",
+				},
+				{
+					name: "slug",
+					description: "market only: Polymarket market slug.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "market only: Polymarket market slug.",
+				},
+				{
+					name: "tokenId",
+					description: "orderbook only: Polymarket CLOB token id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "orderbook only: Polymarket CLOB token id.",
+				},
+				{
+					name: "user",
+					description: "positions only: wallet address.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "positions only: wallet address.",
+				},
+			],
+			descriptionCompressed:
+				"Polymarket reads: status, markets, market, orderbook, positions.",
+			similes: [
+				"POLYMARKET_STATUS",
+				"POLYMARKET_READINESS",
+				"POLYMARKET_HEALTH",
+				"POLYMARKET_GET_MARKETS",
+				"POLYMARKET_MARKETS",
+				"SEARCH_POLYMARKET_MARKETS",
+				"POLYMARKET_GET_MARKET",
+				"POLYMARKET_MARKET",
+				"POLYMARKET_MARKET_DETAILS",
+				"POLYMARKET_GET_ORDERBOOK",
+				"POLYMARKET_ORDERBOOK",
+				"POLYMARKET_QUOTE",
+				"POLYMARKET_TOKEN_INFO",
+				"POLYMARKET_GET_POSITIONS",
+				"POLYMARKET_POSITIONS",
+				"POLYMARKET_WALLET_POSITIONS",
+			],
+			exampleCalls: [
+				{
+					user: "Use POLYMARKET_READ with the provided parameters.",
+					actions: ["POLYMARKET_READ"],
+					params: {
+						POLYMARKET_READ: {
+							kind: "example",
+							limit: 20,
+							offset: 0,
+							id: "example",
+							slug: "example",
+							tokenId: "example",
+							user: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "POST_INSTAGRAM_COMMENT",
@@ -6414,160 +6184,6 @@ export const allActionsSpec = {
 				"TWITTER_POST",
 				"POST_ON_TWITTER",
 				"SHARE_ON_TWITTER",
-			],
-		},
-		{
-			name: "PREPARE_SWAP",
-			description:
-				"Prepare a non-binding swap proposal: returns route options, slippage ",
-			parameters: [
-				{
-					name: "fromSymbol",
-					description:
-						'Source asset symbol (e.g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Source asset symbol (e. g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
-				},
-				{
-					name: "toSymbol",
-					description:
-						'Destination asset symbol (e.g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Destination asset symbol (e. g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
-				},
-				{
-					name: "amount",
-					description:
-						'Amount of the source asset to swap (human-readable units, e.g. "0.5").',
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Amount of the source asset to swap (human-readable units, e. g. "0. 5").',
-				},
-				{
-					name: "fromAddress",
-					description:
-						"Source token contract address (required when the source asset is not BNB).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Source token contract address (required when the source asset is not BNB).",
-				},
-				{
-					name: "toAddress",
-					description:
-						"Destination token contract address (required when the destination asset is not BNB).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Destination token contract address (required when the destination asset is not BNB).",
-				},
-				{
-					name: "slippageBps",
-					description: "Slippage tolerance in basis points (default 300 = 3%).",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Slippage tolerance in basis points (default 300 = 3%).",
-				},
-			],
-			descriptionCompressed: "Quote a BSC swap (no execution).",
-			similes: [
-				"QUOTE_SWAP",
-				"PREVIEW_SWAP",
-				"ESTIMATE_SWAP",
-				"SWAP_QUOTE",
-				"GET_SWAP_QUOTE",
-			],
-			exampleCalls: [
-				{
-					user: "Use PREPARE_SWAP with the provided parameters.",
-					actions: ["PREPARE_SWAP"],
-					params: {
-						PREPARE_SWAP: {
-							fromSymbol: "example",
-							toSymbol: "example",
-							amount: "example",
-							fromAddress: "example",
-							toAddress: "example",
-							slippageBps: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "PREPARE_TRANSFER",
-			description:
-				"Prepare a non-binding transfer proposal: validates the recipient ",
-			parameters: [
-				{
-					name: "toAddress",
-					description:
-						"Recipient EVM address (0x-prefixed, 40 hex characters).",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Recipient EVM address (0x-prefixed, 40 hex characters).",
-				},
-				{
-					name: "assetSymbol",
-					description: 'Token symbol to transfer (e.g. "BNB", "USDT", "USDC").',
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Token symbol to transfer (e. g. "BNB", "USDT", "USDC").',
-				},
-				{
-					name: "amount",
-					description: 'Human-readable transfer amount (e.g. "1.5", "100").',
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Human-readable transfer amount (e. g. "1. 5", "100").',
-				},
-			],
-			descriptionCompressed: "Preview a token transfer (no execution).",
-			similes: [
-				"PREVIEW_TRANSFER",
-				"ESTIMATE_TRANSFER",
-				"QUOTE_TRANSFER",
-				"TRANSFER_PREVIEW",
-			],
-			exampleCalls: [
-				{
-					user: "Use PREPARE_TRANSFER with the provided parameters.",
-					actions: ["PREPARE_TRANSFER"],
-					params: {
-						PREPARE_TRANSFER: {
-							toAddress: "example",
-							assetSymbol: "example",
-							amount: "example",
-						},
-					},
-				},
 			],
 		},
 		{
@@ -6849,15 +6465,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "REMEMBER",
-			description:
-				"Write a note to the Scape Journal. Use for lessons, landmarks, and things you want to remember next step.",
-			parameters: [],
-			descriptionCompressed:
-				"Write note to Scape Journal for future reference.",
-			similes: ["NOTE", "LOG", "JOURNAL", "RECORD"],
-		},
-		{
 			name: "REMOTE_ATTESTATION",
 			description:
 				"Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
@@ -7136,7 +6743,7 @@ export const allActionsSpec = {
 				"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
 			parameters: [],
 			descriptionCompressed:
-				"Search skill registry; returns action chips per result.",
+				"Search skill registry by keyword/category; returns action chips.",
 			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
 		},
 		{
@@ -7255,27 +6862,6 @@ export const allActionsSpec = {
 						},
 					},
 				},
-			],
-		},
-		{
-			name: "SELL_TO_SHOP",
-			description:
-				"Sell an item to the currently open shop, optionally specifying a count (defaults to 1)",
-			parameters: [],
-			descriptionCompressed: "Sell item to open shop.",
-			similes: ["SELL_ITEM"],
-		},
-		{
-			name: "SEND_BLUEBUBBLES_MESSAGE",
-			description: "Send a message via iMessage through BlueBubbles",
-			parameters: [],
-			descriptionCompressed: "Send iMessage via BlueBubbles.",
-			similes: [
-				"SEND_IMESSAGE",
-				"TEXT_MESSAGE",
-				"IMESSAGE_REPLY",
-				"BLUEBUBBLES_SEND",
-				"APPLE_MESSAGE",
 			],
 		},
 		{
@@ -7472,15 +7058,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "SET_COMBAT_STYLE",
-			description:
-				"Set the combat style (0=Attack, 1=Strength, 2=Defence, 3=Controlled)",
-			parameters: [],
-			descriptionCompressed:
-				"Set combat style (Attack/Strength/Defence/Controlled).",
-			similes: ["CHANGE_COMBAT_STYLE", "SWITCH_COMBAT"],
-		},
-		{
 			name: "SET_FOLLOWUP_THRESHOLD",
 			description:
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact. ",
@@ -7537,14 +7114,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact.",
-		},
-		{
-			name: "SET_GOAL",
-			description:
-				"Declare a new goal you want to pursue. Write a short title and optional notes; the goal goes into the Scape Journal and drives future steps until it's completed or abandoned.",
-			parameters: [],
-			descriptionCompressed: "Declare new goal to pursue.",
-			similes: ["DECLARE_GOAL", "NEW_GOAL", "PLAN"],
 		},
 		{
 			name: "SETUP_CREDENTIALS",
@@ -7726,83 +7295,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "SLACK_DELETE_MESSAGE",
-			description: "Delete a Slack message",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "Delete Slack message.",
-			similes: ["REMOVE_SLACK_MESSAGE", "DELETE_MESSAGE", "SLACK_REMOVE"],
-			exampleCalls: [
-				{
-					user: "Use SLACK_DELETE_MESSAGE with the provided parameters.",
-					actions: ["SLACK_DELETE_MESSAGE"],
-					params: {
-						SLACK_DELETE_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SLACK_EDIT_MESSAGE",
-			description: "Edit an existing Slack message",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "Edit Slack message.",
-			similes: [
-				"UPDATE_SLACK_MESSAGE",
-				"MODIFY_MESSAGE",
-				"CHANGE_MESSAGE",
-				"SLACK_UPDATE",
-			],
-			exampleCalls: [
-				{
-					user: "Use SLACK_EDIT_MESSAGE with the provided parameters.",
-					actions: ["SLACK_EDIT_MESSAGE"],
-					params: {
-						SLACK_EDIT_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SLACK_EMOJI_LIST",
-			description: "List custom emoji available in the Slack workspace",
-			parameters: [],
-			similes: [
-				"LIST_SLACK_EMOJI",
-				"SHOW_EMOJI",
-				"GET_CUSTOM_EMOJI",
-				"CUSTOM_EMOJI",
-				"WORKSPACE_EMOJI",
-			],
-			descriptionCompressed:
-				"List custom emoji available in the Slack workspace",
-		},
-		{
 			name: "SLACK_GET_USER_INFO",
 			description: "Get information about a Slack user",
 			parameters: [],
@@ -7813,52 +7305,6 @@ export const allActionsSpec = {
 				"SLACK_USER",
 				"MEMBER_INFO",
 				"WHO_IS",
-			],
-		},
-		{
-			name: "SLACK_LIST_CHANNELS",
-			description: "List available Slack channels in the workspace",
-			parameters: [],
-			similes: [
-				"LIST_SLACK_CHANNELS",
-				"SHOW_CHANNELS",
-				"GET_CHANNELS",
-				"CHANNELS_LIST",
-			],
-			descriptionCompressed: "List available Slack channels in the workspace",
-		},
-		{
-			name: "SLACK_LIST_PINS",
-			description: "List pinned messages in a Slack channel",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "List Slack pinned messages.",
-			similes: [
-				"LIST_SLACK_PINS",
-				"SHOW_PINS",
-				"GET_PINNED_MESSAGES",
-				"PINNED_MESSAGES",
-			],
-			exampleCalls: [
-				{
-					user: "Use SLACK_LIST_PINS with the provided parameters.",
-					actions: ["SLACK_LIST_PINS"],
-					params: {
-						SLACK_LIST_PINS: {
-							data: "example",
-						},
-					},
-				},
 			],
 		},
 		{
@@ -8011,75 +7457,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "SLACK_PIN_MESSAGE",
-			description: "Pin a message in a Slack channel",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "Pin Slack message.",
-			similes: [
-				"PIN_SLACK_MESSAGE",
-				"PIN_MESSAGE",
-				"SLACK_PIN",
-				"SAVE_MESSAGE",
-			],
-			exampleCalls: [
-				{
-					user: "Use SLACK_PIN_MESSAGE with the provided parameters.",
-					actions: ["SLACK_PIN_MESSAGE"],
-					params: {
-						SLACK_PIN_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SLACK_REACT_TO_MESSAGE",
-			description: "Add or remove an emoji reaction to a Slack message",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "Add/remove Slack message reaction.",
-			similes: [
-				"ADD_SLACK_REACTION",
-				"REACT_SLACK",
-				"SLACK_EMOJI",
-				"ADD_EMOJI",
-				"REMOVE_REACTION",
-			],
-			exampleCalls: [
-				{
-					user: "Use SLACK_REACT_TO_MESSAGE with the provided parameters.",
-					actions: ["SLACK_REACT_TO_MESSAGE"],
-					params: {
-						SLACK_REACT_TO_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "SLACK_READ_CHANNEL",
 			description: "Read message history from a Slack channel",
 			parameters: [
@@ -8113,83 +7490,6 @@ export const allActionsSpec = {
 					},
 				},
 			],
-		},
-		{
-			name: "SLACK_SEND_MESSAGE",
-			description: "Send a message to a Slack channel or thread",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "Send Slack channel/thread message.",
-			similes: [
-				"SEND_SLACK_MESSAGE",
-				"POST_TO_SLACK",
-				"MESSAGE_SLACK",
-				"SLACK_POST",
-				"SEND_TO_CHANNEL",
-			],
-			exampleCalls: [
-				{
-					user: "Use SLACK_SEND_MESSAGE with the provided parameters.",
-					actions: ["SLACK_SEND_MESSAGE"],
-					params: {
-						SLACK_SEND_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SLACK_UNPIN_MESSAGE",
-			description: "Unpin a message from a Slack channel",
-			parameters: [
-				{
-					name: "data",
-					description: "The data to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The data to use.",
-				},
-			],
-			descriptionCompressed: "Unpin Slack message.",
-			similes: [
-				"UNPIN_SLACK_MESSAGE",
-				"UNPIN_MESSAGE",
-				"SLACK_UNPIN",
-				"REMOVE_PIN",
-			],
-			exampleCalls: [
-				{
-					user: "Use SLACK_UNPIN_MESSAGE with the provided parameters.",
-					actions: ["SLACK_UNPIN_MESSAGE"],
-					params: {
-						SLACK_UNPIN_MESSAGE: {
-							data: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SMITH_AT_ANVIL",
-			description:
-				"Smith a metal bar at a nearby anvil, optionally specifying what to make",
-			parameters: [],
-			descriptionCompressed: "Smith bar at nearby anvil.",
-			similes: ["SMITHING", "USE_ANVIL"],
 		},
 		{
 			name: "SPAWN_AGENT",
@@ -8432,13 +7732,6 @@ export const allActionsSpec = {
 			similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
 		},
 		{
-			name: "TALK_TO_NPC",
-			description: "Talk to a nearby NPC by name",
-			parameters: [],
-			descriptionCompressed: "Talk to nearby NPC.",
-			similes: ["SPEAK_TO_NPC", "CHAT_WITH_NPC"],
-		},
-		{
 			name: "TAROT_READING",
 			description:
 				"Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
@@ -8489,8 +7782,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Search text used to find the relevant thread.",
+					descriptionCompressed: "Search text for finding relevant thread.",
 				},
 				{
 					name: "note",
@@ -8683,11 +7975,11 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Search text used to find the task thread to share.",
+						"Search text for finding task thread to share.",
 				},
 			],
 			descriptionCompressed:
-				"Find best way to view/share task result: artifacts, URLs, paths.",
+				"Find best way to view/share task result: artifacts, live URLs, paths.",
 			similes: [
 				"SHARE_TASK_RESULT",
 				"SHOW_TASK_ARTIFACT",
@@ -8799,7 +8091,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "Alias for timeout.",
 				},
 			],
-			descriptionCompressed: "Execute terminal commands or manage sessions.",
+			descriptionCompressed:
+				"Terminal ops: open, exec, read, type, kill, list, switch, send-input, get-output.",
 			similes: [
 				"RUN_COMMAND",
 				"EXECUTE_COMMAND",
@@ -8867,79 +8160,6 @@ export const allActionsSpec = {
 					params: {
 						TRANSFER_TO_INPUT: {
 							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "TRANSFER_TOKEN",
-			description:
-				"Transfer tokens or native BNB to another address. Use this when a user ",
-			parameters: [
-				{
-					name: "toAddress",
-					description: "Recipient EVM address (0x-prefixed, 40 hex characters)",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Recipient EVM address (0x-prefixed, 40 hex characters)",
-				},
-				{
-					name: "amount",
-					description:
-						'Human-readable transfer amount (e.g. "1.5" BNB, "100" USDT)',
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Human-readable transfer amount (e. g. "1. 5" BNB, "100" USDT)',
-				},
-				{
-					name: "assetSymbol",
-					description: 'Token symbol to transfer (e.g. "BNB", "USDT", "USDC")',
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						'Token symbol to transfer (e. g. "BNB", "USDT", "USDC")',
-				},
-				{
-					name: "tokenAddress",
-					description:
-						"Token contract address for custom tokens (optional, not needed for native BNB)",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Token contract address for custom tokens (optional, not needed for native BNB)",
-				},
-			],
-			descriptionCompressed:
-				"Transfer tokens/BNB to address on BSC (admin/owner only).",
-			similes: [
-				"SEND_TOKEN",
-				"TRANSFER",
-				"SEND",
-				"SEND_BNB",
-				"SEND_CRYPTO",
-				"PAY",
-			],
-			exampleCalls: [
-				{
-					user: "Use TRANSFER_TOKEN with the provided parameters.",
-					actions: ["TRANSFER_TOKEN"],
-					params: {
-						TRANSFER_TOKEN: {
-							toAddress: "example",
-							amount: "example",
-							assetSymbol: "example",
-							tokenAddress: "example",
 						},
 					},
 				},
@@ -9034,13 +8254,6 @@ export const allActionsSpec = {
 				"CHAT_TWITCH",
 				"SAY_IN_TWITCH",
 			],
-		},
-		{
-			name: "UNEQUIP_ITEM",
-			description: "Unequip a worn item by name",
-			parameters: [],
-			descriptionCompressed: "Unequip worn item.",
-			similes: ["REMOVE_ITEM", "TAKE_OFF_ITEM"],
 		},
 		{
 			name: "UNINSTALL_SKILL",
@@ -9222,28 +8435,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "USE_ITEM",
-			description: "Use an item from inventory by name",
-			parameters: [],
-			descriptionCompressed: "Use inventory item.",
-			similes: ["ACTIVATE_ITEM"],
-		},
-		{
-			name: "USE_ITEM_ON_ITEM",
-			description: "Use one inventory item on another (e.g. tinderbox on logs)",
-			parameters: [],
-			descriptionCompressed: "Use inventory item on another.",
-			similes: ["COMBINE_ITEMS"],
-		},
-		{
-			name: "USE_ITEM_ON_OBJECT",
-			description:
-				"Use an inventory item on a world object (e.g. ore on furnace)",
-			parameters: [],
-			descriptionCompressed: "Use inventory item on world object.",
-			similes: ["ITEM_ON_OBJECT"],
-		},
-		{
 			name: "USE_SKILL",
 			description:
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
@@ -9254,37 +8445,189 @@ export const allActionsSpec = {
 		{
 			name: "WALK_TO",
 			description:
-				"Walk the player to a coordinate or named destination (e.g. bank, lumbridge)",
-			parameters: [],
-			descriptionCompressed: "Walk to coordinate or named destination.",
-			similes: ["MOVE_TO", "GO_TO", "TRAVEL_TO"],
-		},
-		{
-			name: "WEB_SEARCH",
-			description:
-				"Perform a web search to find information related to the message.",
-			parameters: [],
-			descriptionCompressed:
-				"perform web search find information relat message",
-			similes: [
-				"SEARCH_WEB",
-				"INTERNET_SEARCH",
-				"LOOKUP",
-				"QUERY_WEB",
-				"FIND_ONLINE",
-				"SEARCH_ENGINE",
-				"WEB_LOOKUP",
-				"ONLINE_SEARCH",
-				"FIND_INFORMATION",
+				"Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
+			parameters: [
+				{
+					name: "destination",
+					description: "Optional named destination (overrides x/z).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Named destination.",
+				},
+				{
+					name: "x",
+					description: "Target world X coordinate.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target x.",
+				},
+				{
+					name: "z",
+					description: "Target world Z coordinate.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target z.",
+				},
+				{
+					name: "reason",
+					description: "Optional reason logged with the walk.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Walk reason.",
+				},
 			],
+			similes: ["MOVE_TO", "GOTO"],
+			exampleCalls: [
+				{
+					user: "Use WALK_TO with the provided parameters.",
+					actions: ["WALK_TO"],
+					params: {
+						WALK_TO: {
+							destination: "example",
+							x: 1,
+							z: 1,
+							reason: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
 		},
 		{
-			name: "WITHDRAW_ITEM",
+			name: "WALLET_PREPARE",
 			description:
-				"Withdraw an item from the bank by name, optionally specifying a count (defaults to 1)",
-			parameters: [],
-			descriptionCompressed: "Withdraw item from bank.",
-			similes: ["TAKE_FROM_BANK"],
+				'Prepare a non-binding wallet proposal. Set kind="swap" to fetch a BSC ',
+			parameters: [
+				{
+					name: "kind",
+					description:
+						'Proposal kind: "swap" for a BSC swap quote, "transfer" for a token transfer preview.',
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["swap", "transfer"],
+					},
+					descriptionCompressed:
+						'Proposal kind: "swap" for a BSC swap quote, "transfer" for a token transfer preview.',
+				},
+				{
+					name: "fromSymbol",
+					description:
+						'Source asset symbol (swap only, e.g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Source asset symbol (swap only, e. g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+				},
+				{
+					name: "toSymbol",
+					description:
+						'Destination asset symbol (swap only, e.g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Destination asset symbol (swap only, e. g. "BNB", "USDT"). One of fromSymbol/toSymbol must be BNB on BSC.',
+				},
+				{
+					name: "fromAddress",
+					description:
+						"Source token contract address (swap only — required when the source asset is not BNB).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Source token contract address (swap only - required when the source asset is not BNB).",
+				},
+				{
+					name: "slippageBps",
+					description:
+						"Slippage tolerance in basis points (swap only, default 300 = 3%).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Slippage tolerance in basis points (swap only, default 300 = 3%).",
+				},
+				{
+					name: "toAddress",
+					description:
+						"Recipient EVM address (transfer) or destination token contract address (swap, required when destination is not BNB). 0x-prefixed, 40 hex characters.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Recipient EVM address (transfer) or destination token contract address (swap, required when destination is not BNB). 0x-prefixed, 40 hex characters.",
+				},
+				{
+					name: "assetSymbol",
+					description:
+						'Token symbol to transfer (transfer only, e.g. "BNB", "USDT", "USDC").',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Token symbol to transfer (transfer only, e. g. "BNB", "USDT", "USDC").',
+				},
+				{
+					name: "amount",
+					description:
+						'Human-readable amount. For swaps the source-asset units (e.g. "0.5"); for transfers the asset units (e.g. "1.5", "100").',
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						'Human-readable amount. For swaps the source-asset units (e. g. "0. 5"). for transfers the asset units (e. g. "1. 5", "100").',
+				},
+			],
+			descriptionCompressed: "Wallet preview ops: swap, transfer.",
+			similes: [
+				"PREPARE_SWAP",
+				"QUOTE_SWAP",
+				"PREVIEW_SWAP",
+				"ESTIMATE_SWAP",
+				"SWAP_QUOTE",
+				"GET_SWAP_QUOTE",
+				"PREVIEW_TRANSFER",
+				"ESTIMATE_TRANSFER",
+				"QUOTE_TRANSFER",
+				"TRANSFER_PREVIEW",
+			],
+			exampleCalls: [
+				{
+					user: "Use WALLET_PREPARE with the provided parameters.",
+					actions: ["WALLET_PREPARE"],
+					params: {
+						WALLET_PREPARE: {
+							kind: "swap",
+							fromSymbol: "example",
+							toSymbol: "example",
+							fromAddress: "example",
+							slippageBps: 1,
+							toAddress: "example",
+							assetSymbol: "example",
+							amount: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "X_POST",
@@ -9333,7 +8676,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"public X/Twitter post router; subaction post|reply, no DMs",
+				"public X/Twitter connector post router; subaction post|reply, no DMs",
 			similes: [
 				"POST_TWEET",
 				"SEND_X_POST",
