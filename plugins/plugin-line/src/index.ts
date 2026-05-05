@@ -7,7 +7,7 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { sendFlexMessage, sendLocation, sendMessage } from "./actions/index.js";
+import { LINE_MESSAGE_OP_ACTION, messageOp } from "./actions/index.js";
 import { LineService } from "./service.js";
 
 // Account management exports
@@ -60,7 +60,7 @@ export {
 } from "./messaging.js";
 // Re-export types and service
 export * from "./types.js";
-export { LineService, sendFlexMessage, sendLocation, sendMessage };
+export { LINE_MESSAGE_OP_ACTION, LineService, messageOp };
 
 /**
  * LINE plugin for ElizaOS agents.
@@ -70,7 +70,7 @@ const linePlugin: Plugin = {
   description: "LINE Messaging API plugin for ElizaOS agents",
 
   services: [LineService],
-  actions: [],
+  actions: [messageOp],
   providers: [],
   tests: [],
 
