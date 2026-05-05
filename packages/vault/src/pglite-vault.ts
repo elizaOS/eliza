@@ -199,9 +199,15 @@ export class PgliteVaultImpl implements Vault {
     }
     // Prefix match as a *segment* (matches `prefix` exactly or `prefix.<rest>`),
     // mirroring VaultImpl's `k === prefix || k.startsWith(prefix + ".")`.
+    // SQL `LIKE` treats `_` as a single-character wildcard and `%` as
+    // multi-character. Vault keys regularly contain underscores
+    // (e.g. `ELIZAOS_CLOUD_API_KEY`), so the prefix has to be escaped or
+    // `list("ELIZAOS_CLOUD")` returns unrelated keys like
+    // `ELIZAOSXCLOUD.foo`. Use an explicit ESCAPE clause.
+    const escapedPrefix = prefix.replace(/[\\%_]/g, "\\$&");
     const res = await db.query<{ key: string }>(
-      `SELECT key FROM vault_entries WHERE key = $1 OR key LIKE $2 ORDER BY key`,
-      [prefix, `${prefix}.%`],
+      `SELECT key FROM vault_entries WHERE key = $1 OR key LIKE $2 ESCAPE '\\' ORDER BY key`,
+      [prefix, `${escapedPrefix}.%`],
     );
     return res.rows.map((r) => r.key);
   }

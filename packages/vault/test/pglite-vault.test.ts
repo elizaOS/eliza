@@ -172,10 +172,6 @@ describe("PgliteVaultImpl", () => {
       // verbatim.
       const masterKey = generateMasterKey();
       const { createVault } = await import("../src/vault.js");
-      const fileVault = createVault({
-        workDir: legacyDir,
-        masterKey: inMemoryMasterKey(masterKey),
-      });
       // Force the file backend regardless of env default.
       const prev = process.env.MILADY_VAULT_BACKEND;
       process.env.MILADY_VAULT_BACKEND = "file";
