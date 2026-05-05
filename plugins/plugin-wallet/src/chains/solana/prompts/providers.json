@@ -4,6 +4,7 @@
     {
       "name": "solana-wallet",
       "description": "your solana wallet information",
+      "descriptionCompressed": "Solana wallet address, balances, and SPL holdings.",
       "dynamic": true
     }
   ]
