@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-nvidiacloud",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "description": "NVIDIA NIM cloud model provider for elizaOS agents.",
   "type": "module",
   "main": "dist/index.js",

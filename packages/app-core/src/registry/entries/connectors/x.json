@@ -3,9 +3,16 @@
   "name": "X (Twitter)",
   "description": "X (formerly Twitter) connector for posts, mentions, replies, DMs, and timeline interactions through the elizaOS plugin-x runtime.",
   "npmName": "@elizaos/plugin-x",
-  "version": "2.0.0-alpha.0",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["connector", "social", "social-chat", "twitter", "x", "dm"],
+  "tags": [
+    "connector",
+    "social",
+    "social-chat",
+    "twitter",
+    "x",
+    "dm"
+  ],
   "config": {
     "TWITTER_AUTH_MODE": {
       "type": "select",
@@ -192,7 +199,11 @@
     "icon": "Twitter",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-x#readme",

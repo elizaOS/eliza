@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-form",
-  "version": "0.0.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Eliza app-form: conversational forms as guardrails for guided user journeys (lazy-loaded native app plugin).",
   "main": "./src/index.ts",

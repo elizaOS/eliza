@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-auto-trader": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",

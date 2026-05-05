@@ -3,9 +3,14 @@
   "name": "Twilio",
   "description": "A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.",
   "npmName": "@elizaos/plugin-twilio",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["llm", "twilio", "sms", "voice"],
+  "tags": [
+    "llm",
+    "twilio",
+    "sms",
+    "voice"
+  ],
   "config": {
     "TWILIO_AUTH_TOKEN": {
       "type": "secret",
@@ -155,7 +160,10 @@
     "icon": "Phone",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

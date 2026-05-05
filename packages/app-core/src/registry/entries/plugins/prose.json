@@ -3,9 +3,16 @@
   "name": "Prose",
   "description": "OpenProse VM integration for ElizaOS - a programming language for AI sessions",
   "npmName": "@elizaos/plugin-prose",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["openprose", "prose", "llm", "vm", "workflow", "orchestration"],
+  "tags": [
+    "openprose",
+    "prose",
+    "llm",
+    "vm",
+    "workflow",
+    "orchestration"
+  ],
   "config": {
     "PROSE_SKILLS_DIR": {
       "type": "file-path",
@@ -39,7 +46,10 @@
     "icon": "PenTool",
     "group": "media",
     "groupOrder": 8,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {},
   "dependsOn": [],

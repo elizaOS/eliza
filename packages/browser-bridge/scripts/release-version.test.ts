@@ -14,9 +14,6 @@ import {
 describe("Agent Browser Bridge release versioning", () => {
   it("maps prerelease versions into Chrome-compatible manifest versions", () => {
     expect(
-      buildChromeExtensionVersion(parseReleaseVersion("2.0.0-alpha.116")),
-    ).toBe("2.0.0.30116");
-    expect(
       buildChromeExtensionVersion(parseReleaseVersion("2.0.0-beta.2")),
     ).toBe("2.0.0.40002");
     expect(buildChromeExtensionVersion(parseReleaseVersion("2.0.0-rc.1"))).toBe(
@@ -42,17 +39,17 @@ describe("Agent Browser Bridge release versioning", () => {
       buildVersion: "201039000",
     });
     expect(
-      buildSafariExtensionVersions(parseReleaseVersion("2.1.3-alpha.4")),
+      buildSafariExtensionVersions(parseReleaseVersion("2.1.3-beta.4")),
     ).toEqual({
       marketingVersion: "2.1.3",
-      buildVersion: "201036004",
+      buildVersion: "201037004",
     });
   });
 
   it("creates versioned artifact names using the release tag", () => {
-    const release = parseReleaseVersion("2.0.0-alpha.116");
+    const release = parseReleaseVersion("2.0.0-beta.0");
     expect(versionedArtifactName("browser-bridge-chrome", "zip", release)).toBe(
-      "browser-bridge-chrome-v2.0.0-alpha.116.zip",
+      "browser-bridge-chrome-v2.0.0-beta.0.zip",
     );
   });
 

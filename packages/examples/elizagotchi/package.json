@@ -1,6 +1,6 @@
 {
   "name": "elizagotchi",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-localdb": "workspace:*",
     "react": "19.2.3",
     "react-dom": "19.2.3"

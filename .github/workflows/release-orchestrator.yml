@@ -6,7 +6,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: "Version to distribute (e.g. 2.0.0-alpha.87)"
+        description: "Version to distribute (e.g. 2.0.0-beta.0)"
         required: true
         type: string
       publish_npm:
@@ -42,7 +42,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to distribute (e.g. 2.0.0-alpha.87)"
+        description: "Version to distribute (e.g. 2.0.0-beta.0)"
         required: true
         type: string
       publish_npm:
@@ -120,7 +120,12 @@ jobs:
           ANDROID_TRACK="production"
           APPLE_TRACK="app-store"
 
-          if echo "$VERSION" | grep -qiE '(alpha|beta|rc|nightly)'; then
+          if echo "$VERSION" | grep -qi 'alpha'; then
+            echo "::error::Alpha releases are disabled. Use a beta, rc, nightly, or stable version."
+            exit 1
+          fi
+
+          if echo "$VERSION" | grep -qiE '(beta|rc|nightly)'; then
             IS_PRERELEASE="true"
             ANDROID_TRACK="internal"
             APPLE_TRACK="testflight"

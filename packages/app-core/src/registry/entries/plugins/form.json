@@ -2,9 +2,13 @@
   "id": "form",
   "name": "Form",
   "description": "Structured conversational forms — FORM service, form context provider, and form evaluator built into elizaOS core as an advanced capability.",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["form", "conversational", "data-collection"],
+  "tags": [
+    "form",
+    "conversational",
+    "data-collection"
+  ],
   "config": {},
   "render": {
     "visible": true,
@@ -13,7 +17,10 @@
     "icon": "ClipboardList",
     "group": "media",
     "groupOrder": 8,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

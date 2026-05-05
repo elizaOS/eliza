@@ -6,7 +6,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: "Version to publish (e.g. 2.0.0-alpha.7)"
+        description: "Version to publish (e.g. 2.0.0-beta.0)"
         required: true
         type: string
       pypi:
@@ -39,7 +39,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (e.g. 2.0.0-alpha.7)"
+        description: "Version to publish (e.g. 2.0.0-beta.0)"
         required: true
         type: string
       pypi:
@@ -87,16 +87,16 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "npm_version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          # PEP 440 conversion: 2.0.0-alpha.7 → 2.0.0a7
-          PYPI_VERSION=$(echo "$VERSION" | sed -E 's/-alpha\.?/a/; s/-beta\.?/b/; s/-rc\.?/rc/')
+          # PEP 440 conversion: 2.0.0-beta.0 → 2.0.0b0
+          PYPI_VERSION=$(echo "$VERSION" | sed -E 's/-beta\.?/b/; s/-rc\.?/rc/')
           echo "pypi_version=$PYPI_VERSION" >> "$GITHUB_OUTPUT"
 
-          # Debian version: 2.0.0-alpha.7 → 2.0.0~alpha7-1
-          DEB_VERSION=$(echo "$VERSION" | sed -E 's/-alpha\./~alpha/; s/-beta\./~beta/; s/-rc\./~rc/')
+          # Debian version: 2.0.0-beta.0 → 2.0.0~beta0-1
+          DEB_VERSION=$(echo "$VERSION" | sed -E 's/-beta\./~beta/; s/-rc\./~rc/')
           echo "deb_version=${DEB_VERSION}-1" >> "$GITHUB_OUTPUT"
 
           # Pre-release detection
-          if echo "$VERSION" | grep -qE '(alpha|beta|rc)'; then
+          if echo "$VERSION" | grep -qE '(beta|rc)'; then
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
@@ -105,7 +105,7 @@ jobs:
           echo "Version: $VERSION"
           echo "PyPI: $PYPI_VERSION"
           echo "Debian: ${DEB_VERSION}-1"
-          echo "Pre-release: $(echo "$VERSION" | grep -qE '(alpha|beta|rc)' && echo true || echo false)"
+          echo "Pre-release: $(echo "$VERSION" | grep -qE '(beta|rc)' && echo true || echo false)"
 
       - name: Check registry credentials
         id: registry_credentials

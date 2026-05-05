@@ -3,7 +3,7 @@
   "name": "iMessage",
   "description": "iMessage connector for Mac-based conversations and message automation.",
   "npmName": "@elizaos/plugin-imessage",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "connector",
@@ -81,7 +81,11 @@
     "icon": "MessageSquare",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#imessage-macos-only"

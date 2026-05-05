@@ -9,7 +9,7 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = join(__dirname, "..");
 const packagesRoot = join(repoRoot, "packages");
 
-const sourceTag = process.argv[2] || "alpha";
+const sourceTag = process.argv[2] || "beta";
 const targetTag = process.argv[3] || "next";
 
 function walkPackageJsonFiles(dir, results = []) {

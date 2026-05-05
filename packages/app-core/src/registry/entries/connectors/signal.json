@@ -3,7 +3,7 @@
   "name": "Signal",
   "description": "Signal messaging integration plugin for ElizaOS agents",
   "npmName": "@elizaos/plugin-signal",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "signal",
@@ -64,7 +64,11 @@
     "icon": "Lock",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-signal#readme",

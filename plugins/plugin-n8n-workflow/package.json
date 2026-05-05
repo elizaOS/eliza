@@ -1,10 +1,18 @@
 {
   "name": "@elizaos/plugin-n8n-workflow",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "description": "ElizaOS plugin for generating and managing n8n workflows from natural language",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "files": [
     "dist"
   ],

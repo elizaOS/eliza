@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-game-of-life",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Agentic Game of Life - multi-agent evolution simulation with self-replicating agents",
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "stats": "bun run game.ts --stats"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-sql": "workspace:*",
     "@clack/prompts": "^0.11.0"
   },

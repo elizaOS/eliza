@@ -3,9 +3,14 @@
   "name": "Bluesky",
   "description": "Bluesky connector for ElizaOS",
   "npmName": "@elizaos/plugin-bluesky",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["connector", "social", "social-feed", "bluesky"],
+  "tags": [
+    "connector",
+    "social",
+    "social-feed",
+    "bluesky"
+  ],
   "config": {
     "BLUESKY_HANDLE": {
       "type": "string",
@@ -156,7 +161,11 @@
     "icon": "Leaf",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/elizaos#readme",

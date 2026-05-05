@@ -3,9 +3,15 @@
   "name": "Rss",
   "description": "news and feed support",
   "npmName": "@elizaos/plugin-rss",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["rss", "atom", "feed", "news", "syndication"],
+  "tags": [
+    "rss",
+    "atom",
+    "feed",
+    "news",
+    "syndication"
+  ],
   "config": {
     "RSS_FEEDS": {
       "type": "json",
@@ -52,7 +58,10 @@
     "icon": "Rss",
     "group": "media",
     "groupOrder": 8,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

@@ -3,9 +3,14 @@
   "name": "Shell",
   "description": "A shell plugin for ElizaOS. USE AT YOUR OWN RISK. THIS GIVES AI FULL ACCESS TO THE HOST MACHINE",
   "npmName": "@elizaos/plugin-shell",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["shell", "terminal", "command", "history"],
+  "tags": [
+    "shell",
+    "terminal",
+    "command",
+    "history"
+  ],
   "config": {
     "SHELL_ALLOWED_DIRECTORY": {
       "type": "file-path",
@@ -82,7 +87,10 @@
     "icon": "Shell",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

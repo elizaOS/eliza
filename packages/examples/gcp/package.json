@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/gcp-examples",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "elizaOS GCP Cloud Run worker (TypeScript) and test client",
   "type": "module",
   "main": "dist/handler.js",
@@ -19,7 +19,7 @@
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "uuid": "^14.0.0"

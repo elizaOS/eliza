@@ -10,7 +10,7 @@
     "package": "bun run build && cd .. && zip -r chrome/chrome-extension.zip chrome -x 'chrome/node_modules/*' -x 'chrome/src/*' -x 'chrome/*.ts' -x 'chrome/tsconfig.json' -x 'chrome/tsup.config.ts'"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "beta",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-eliza-classic": "workspace:*",
     "@elizaos/plugin-google-genai": "workspace:*",

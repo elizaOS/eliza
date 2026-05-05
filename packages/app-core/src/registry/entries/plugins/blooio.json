@@ -3,7 +3,7 @@
   "name": "Blooio",
   "description": "Integrates Blooio iMessage/SMS messaging into elizaOS with signed webhooks and outbound message sending.",
   "npmName": "@elizaos/plugin-blooio",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "connector",
@@ -89,7 +89,10 @@
     "icon": "Circle",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

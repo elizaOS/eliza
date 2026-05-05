@@ -3,9 +3,13 @@
   "name": "Cli",
   "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
   "npmName": "@elizaos/plugin-cli",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["cli", "developer-tools", "terminal"],
+  "tags": [
+    "cli",
+    "developer-tools",
+    "terminal"
+  ],
   "config": {
     "CLI_NAME": {
       "type": "string",
@@ -31,7 +35,10 @@
     "icon": "Hash",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": ["enable", "configure"]
+    "actions": [
+      "enable",
+      "configure"
+    ]
   },
   "resources": {},
   "dependsOn": [],
