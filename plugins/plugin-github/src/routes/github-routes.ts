@@ -12,14 +12,13 @@
  *   DELETE /api/github/token   — clears the saved credential and returns
  *                                 `{ connected: false }`.
  *
- * Migrated from packages/app-core/src/api/github-routes.ts. Auth gating
- * runs in front of every handler — see `routeHandler` below for how the
- * runtime plugin route bridge calls the dispatcher.
+ * `handleGitHubRoutes` is the pure dispatcher — no auth, no runtime deps.
+ * The runtime adapter (`createGitHubRouteHandler`) lives in index.ts where
+ * it can import the heavier app-core auth surface without polluting this
+ * module's import graph (and breaking tests that only need the pure handler).
  */
 
 import type http from "node:http";
-import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
 import {
   buildCredentialsFromUserResponse,
   clearCredentials,
@@ -216,33 +215,3 @@ export async function handleGitHubRoutes(
   }
 }
 
-/**
- * Runtime plugin route adapter. The runtime plugin route bridge passes
- * `(req, res, runtime)`. We thread `runtime` into a CompatRuntimeState
- * shape so the canonical `ensureRouteAuthorized` gate (cookie/CSRF or
- * compat token) runs in front of every method.
- */
-export function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
-  return async (
-    req: unknown,
-    res: unknown,
-    runtime: unknown,
-  ): Promise<void> => {
-    const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
-    const url = new URL(
-      httpReq.url ?? "/api/github/token",
-      "http://localhost",
-    );
-
-    const state = { current: runtime } as CompatRuntimeState;
-    if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) return;
-
-    await handleGitHubRoutes({
-      req: httpReq,
-      res: httpRes,
-      method,
-      pathname: url.pathname,
-    });
-  };
-}
