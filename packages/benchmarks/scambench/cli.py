@@ -115,9 +115,16 @@ def _iter_records(paths: list[Path], limit: int) -> list[dict]:
     return out
 
 
+OPENAI_COMPAT_DEFAULT_BASE_URLS = {
+    "groq": "https://api.groq.com/openai/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "vllm": "http://127.0.0.1:8001/v1",
+}
+
+
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="scambench")
-    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "anthropic"))
+    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "groq", "openrouter"))
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
@@ -133,11 +140,16 @@ def _build_argparser() -> argparse.ArgumentParser:
 def _make_client(args: argparse.Namespace):
     from openai import OpenAI  # noqa: WPS433
 
-    base_url = args.base_url
+    provider = str(args.provider).strip().lower()
+    base_url = args.base_url or os.environ.get("OPENAI_BASE_URL")
+    if not base_url and provider == "vllm":
+        base_url = os.environ.get("VLLM_BASE_URL")
     if not base_url and args.provider == "openai":
         base_url = "https://api.openai.com/v1"
     if not base_url:
-        raise SystemExit("--base-url required for vllm provider")
+        base_url = OPENAI_COMPAT_DEFAULT_BASE_URLS.get(provider)
+    if not base_url:
+        raise SystemExit(f"--base-url required for provider {args.provider!r}")
     api_key = os.environ.get(args.api_key_env, "EMPTY")
     return OpenAI(base_url=base_url, api_key=api_key)
 

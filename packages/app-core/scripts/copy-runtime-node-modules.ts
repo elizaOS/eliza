@@ -58,6 +58,19 @@ const ALLOW_REGISTRY_FETCH =
 const DEP_SKIP = new Set(["typescript", "@types/node", "lucide-react"]);
 const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core"]);
 const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>();
+const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
+  ".github",
+  "benchmark",
+  "benchmarks",
+  "coverage",
+  "doc",
+  "docs",
+  "example",
+  "examples",
+  "test",
+  "tests",
+  "__tests__",
+]);
 const PLATFORM_ALIASES = new Map<string, string>([
   ["android", "android"],
   ["aix", "aix"],
@@ -533,7 +546,11 @@ function isRecursivePackageSymlinkTarget(
 }
 
 export function shouldCopyPackageEntry(entry: string): boolean {
-  if (path.basename(entry) === "node_modules") {
+  const basename = path.basename(entry);
+  if (
+    basename === "node_modules" ||
+    RUNTIME_COPY_PRUNED_DIR_NAMES.has(basename)
+  ) {
     return false;
   }
   if (entry.endsWith(".map")) {

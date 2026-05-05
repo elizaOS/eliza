@@ -1040,17 +1040,6 @@
       "similes": ["SHOW_AUTOFILL_WHITELIST", "GET_AUTOFILL_WHITELIST"]
     },
     {
-      "name": "LIST_EJECTED_PLUGINS",
-      "description": "List all ejected plugins currently being managed locally",
-      "parameters": [],
-      "similes": [
-        "list ejected",
-        "show ejected plugins",
-        "which plugins are ejected",
-        "list local plugins"
-      ]
-    },
-    {
       "name": "LIST_LINEAR_PROJECTS",
       "description": "List projects in Linear with optional filters",
       "parameters": [

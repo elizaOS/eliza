@@ -33,9 +33,16 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("action-calling")
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-TRAINING_ROOT = REPO_ROOT / "training"
+PACKAGES_ROOT = Path(__file__).resolve().parents[2]
+TRAINING_ROOT = PACKAGES_ROOT / "training"
 DEFAULT_TEST = TRAINING_ROOT / "data" / "final" / "test.jsonl"
+
+OPENAI_COMPAT_BASE_URLS = {
+    "groq": "https://api.groq.com/openai/v1",
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "vllm": "http://127.0.0.1:8001/v1",
+}
 
 # Per the eliza_bench.py taxonomy: planner-style buckets emit `actions[N]`.
 PLANNER_TYPES = {"message_handler", "agent_trace", "tool_call", "mcp_tool_call"}
@@ -115,7 +122,11 @@ def _load_planner_records(test_file: Path, limit: int) -> list[dict]:
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="action-calling")
-    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "anthropic"))
+    p.add_argument(
+        "--provider",
+        default="vllm",
+        choices=("vllm", "openai", "groq", "openrouter", "anthropic", "mock"),
+    )
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
@@ -128,18 +139,63 @@ def _build_argparser() -> argparse.ArgumentParser:
 
 
 def _make_client(args: argparse.Namespace):
+    provider = args.provider.strip().lower()
+    if provider == "anthropic":
+        from anthropic import Anthropic  # noqa: WPS433
+
+        api_key = os.environ.get(args.api_key_env)
+        if not api_key and args.api_key_env == "OPENAI_API_KEY":
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+        kwargs: dict[str, str] = {"api_key": api_key or "EMPTY"}
+        if args.base_url:
+            kwargs["base_url"] = args.base_url
+        return Anthropic(**kwargs)
+
     from openai import OpenAI  # noqa: WPS433
 
-    base_url = args.base_url
-    if not base_url and args.provider == "openai":
-        base_url = "https://api.openai.com/v1"
+    base_url = (
+        args.base_url
+        or os.environ.get(f"{provider.upper()}_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+        or OPENAI_COMPAT_BASE_URLS.get(provider)
+    )
     if not base_url:
-        raise SystemExit("--base-url required for vllm provider")
-    api_key = os.environ.get(args.api_key_env, "EMPTY")
+        raise SystemExit(f"--base-url required for {provider} provider")
+    api_key_env = args.api_key_env
+    if api_key_env == "OPENAI_API_KEY" and provider in {"groq", "openrouter", "anthropic"}:
+        api_key_env = {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+        }[provider]
+    api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
-def _generate(client, model: str, messages: list[dict], max_tokens: int, temperature: float) -> str:
+def _generate(
+    client,
+    provider: str,
+    model: str,
+    messages: list[dict],
+    max_tokens: int,
+    temperature: float,
+) -> str:
+    if provider == "anthropic":
+        system = "\n\n".join(str(m.get("content") or "") for m in messages if m.get("role") == "system")
+        chat_messages = [
+            {"role": m.get("role"), "content": str(m.get("content") or "")}
+            for m in messages
+            if m.get("role") in {"user", "assistant"} and m.get("content")
+        ]
+        resp = client.messages.create(
+            model=model,
+            messages=chat_messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system or None,
+        )
+        return "".join(getattr(block, "text", "") for block in resp.content)
+
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
@@ -169,7 +225,7 @@ def main() -> int:
         raise SystemExit(f"no planner records found in {args.test_file}")
     log.info("loaded %d planner records", len(records))
 
-    client = _make_client(args)
+    client = None if args.provider == "mock" else _make_client(args)
 
     n = 0
     n_format_ok = 0
@@ -192,11 +248,21 @@ def main() -> int:
         if not msgs or not expected_text:
             continue
 
-        try:
-            gen = _generate(client, args.model, msgs, args.max_new_tokens, args.temperature)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("generation failed: %s", exc)
-            continue
+        if args.provider == "mock":
+            gen = expected_text
+        else:
+            try:
+                gen = _generate(
+                    client,
+                    args.provider,
+                    args.model,
+                    msgs,
+                    args.max_new_tokens,
+                    args.temperature,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("generation failed: %s", exc)
+                continue
         n += 1
 
         pred = toon_parser.parse(gen)

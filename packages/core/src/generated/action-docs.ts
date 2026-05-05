@@ -3854,19 +3854,6 @@ export const allActionsSpec = {
 				"List effective autofill whitelist entries: the bundled defaults plus user-added entries.",
 		},
 		{
-			name: "LIST_EJECTED_PLUGINS",
-			description: "List all ejected plugins currently being managed locally",
-			parameters: [],
-			similes: [
-				"list ejected",
-				"show ejected plugins",
-				"which plugins are ejected",
-				"list local plugins",
-			],
-			descriptionCompressed:
-				"List all ejected plugins currently being managed locally",
-		},
-		{
 			name: "LIST_LINEAR_PROJECTS",
 			description: "List projects in Linear with optional filters",
 			parameters: [
