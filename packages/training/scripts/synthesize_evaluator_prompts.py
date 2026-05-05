@@ -209,6 +209,60 @@ def strip_fences(s: str) -> str:
     return s.strip()
 
 
+def repair_toon_bullets(s: str) -> str:
+    """Convert markdown-bullet style values into TOON-array form.
+
+    gpt-oss-120b (and other instruction-tuned models) often emit:
+
+        strengths:
+        - Clear tone.
+        - Prompt response.
+
+    Which TOON cannot parse — `strengths:` has no value and the bullets
+    look like new keys. Convert into TOON array form:
+
+        strengths[2]:
+          - Clear tone.
+          - Prompt response.
+
+    Idempotent on already-TOON output. Conservative: only transforms a
+    `key:` line followed by ≥1 line starting with `- ` (after the
+    bullets, the value resumes once we hit a non-bullet line)."""
+    lines = s.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*$", line)
+        if m:
+            # Look ahead for one or more `- item` lines (allow a blank line
+            # between the key and the bullets).
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == "":
+                j += 1
+            bullets: list[str] = []
+            k = j
+            while k < len(lines) and lines[k].lstrip().startswith("- "):
+                bullets.append(lines[k].lstrip()[2:].strip())
+                k += 1
+            if bullets:
+                key = m.group(1)
+                out.append(f"{key}[{len(bullets)}]:")
+                for b in bullets:
+                    out.append(f"  - {b}")
+                i = k
+                continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
+def normalize_teacher_output(s: str) -> str:
+    """Strip fences + apply known repair passes. Used by every evaluator
+    branch in synthesize() so a single fix lands everywhere."""
+    return repair_toon_bullets(strip_fences(s))
+
+
 # ───────────────────────── shared diversity pools ─────────────────────────
 
 PERSONAS = [
@@ -401,6 +455,18 @@ FACT_EXTRACTION_TEMPLATE = """# Task: Classify and extract facts from this messa
 
 You maintain a two-store fact memory for an AI assistant. For each message you decide what to insert, strengthen, decay, or contradict in that memory. You return a single JSON object with an `ops` array — nothing else.
 
+## STRICT op vocabulary (these are the ONLY accepted op values)
+
+- `add_durable`     — for stable identity-level claims (where someone lives, allergies, founded a company, life events)
+- `add_current`     — for time-bound state (anxious today, debugging X, working on Y, traveling next week)
+- `strengthen`      — when a known fact is restated; include `factId`
+- `decay`           — when a current fact looks resolved; include `factId`
+- `contradict`      — when a fact is directly contradicted; include `factId` and `proposedText`
+
+DO NOT emit `op: insert`, `op: add`, `op: update`, or any value not in the
+list above. Use `add_durable` for durable claims and `add_current` for
+time-bound state — never the bare `add` or `insert`.
+
 (see eliza/packages/core/src/prompts.ts:752 for the full description; the
 inputs below replicate the runtime substitution.)
 
@@ -449,12 +515,28 @@ Also extract:
 - **Topics**: List of main topics discussed (comma-separated)
 - **Key Points**: Important facts or decisions (bullet points)
 
-Respond in TOON:
-text: Your comprehensive summary here
-topics[0]: topic1
-topics[1]: topic2
-keyPoints[0]: First key point
-keyPoints[1]: Second key point"""
+## STRICT TOON output
+
+Each `topics[N]` and `keyPoints[N]` entry MUST be a single flat string —
+never an indented sub-object with sub-keys. Do not use markdown bullets.
+
+Use the EXACT layout below (replace placeholders, keep the array form):
+
+text: Your comprehensive summary here.
+topics[3]:
+  - topic1
+  - topic2
+  - topic3
+keyPoints[5]:
+  - First key point as a single sentence.
+  - Second key point as a single sentence.
+  - Third key point as a single sentence.
+  - Fourth key point as a single sentence.
+  - Fifth key point as a single sentence.
+
+If you have a different number of topics or key points, change the index
+length to match (e.g. `topics[2]:`). Each item must be one line, no
+nested keys, no markdown bullets, no leading numbering."""
 
 
 LONG_TERM_EXTRACTION_TEMPLATE = """# Task: Extract Long-Term Memory (Strict Criteria)
@@ -866,7 +948,7 @@ def _generate_one(
         if dry_run:
             target_text = stub_reflection(encoder, rng, ctx, False)
         else:
-            target_text = strip_fences(call_teacher(
+            target_text = normalize_teacher_output(call_teacher(
                 teacher,
                 "You are generating supervised TOON output for the elizaOS "
                 "reflection evaluator. Emit ONE TOON document and nothing else.",
@@ -881,7 +963,7 @@ def _generate_one(
         if dry_run:
             target_text = stub_reflection_evaluator(encoder, rng, ctx, entity_ids, False)
         else:
-            target_text = strip_fences(call_teacher(
+            target_text = normalize_teacher_output(call_teacher(
                 teacher,
                 "You are generating supervised TOON output for the elizaOS "
                 "reflectionEvaluator. Emit ONE TOON document and nothing else. "
@@ -901,7 +983,7 @@ def _generate_one(
         if dry_run:
             target_text = stub_fact_extractor(encoder, rng, ctx, force_empty)
         else:
-            target_text = strip_fences(call_teacher(
+            target_text = normalize_teacher_output(call_teacher(
                 teacher,
                 "You are the elizaOS fact_extractor. Return exactly one JSON "
                 "object `{\"ops\":[...]}`. Empty `{\"ops\":[]}` is a "
@@ -922,7 +1004,7 @@ def _generate_one(
         if dry_run:
             target_text = stub_summarization(encoder, rng, ctx, bucket)
         else:
-            target_text = strip_fences(call_teacher(
+            target_text = normalize_teacher_output(call_teacher(
                 teacher,
                 "You are the elizaOS summarization evaluator. Emit ONE TOON "
                 "document with `text`, `topics[N]`, `keyPoints[M]`. Nothing "
@@ -942,7 +1024,7 @@ def _generate_one(
             band = (0.85, 0.94) if rng.random() < 0.625 else (0.95, 1.0)
             target_text = stub_long_term(encoder, rng, ctx, force_empty, band)
         else:
-            target_text = strip_fences(call_teacher(
+            target_text = normalize_teacher_output(call_teacher(
                 teacher,
                 "You are the elizaOS long_term_extraction evaluator. ULTRA-"
                 "STRICT: when in doubt, emit no memories entries — empty "
