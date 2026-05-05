@@ -85,10 +85,10 @@ import "@elizaos/app-hyperscape/ui";
 import "@elizaos/app-2004scape/ui";
 import "@elizaos/app-defense-of-the-agents/ui";
 import "@clawville/app-clawville/ui";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
@@ -97,7 +97,7 @@ import {
   ApprovalQueue,
   StewardLogo,
   TransactionHistory,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/ui";
 import {
   CodingAgentControlChip,
   CodingAgentSettingsSection,

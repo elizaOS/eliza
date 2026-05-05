@@ -15,6 +15,7 @@ const appTaskCoordinatorSrc = path.join(
   "plugins/app-task-coordinator/src",
 );
 const appCompanionSrc = path.join(monorepoRoot, "plugins/app-companion/src");
+const appWalletSrc = path.join(monorepoRoot, "plugins/app-wallet/src");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/typescript");
 const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
@@ -22,6 +23,10 @@ const pluginAgentSkillsSrc = path.join(
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
+const pluginBrowserBridgeSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-browser-bridge/src",
+);
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
@@ -108,6 +113,18 @@ export default defineConfig({
         replacement: path.join(appCompanionSrc, "$1"),
       },
       {
+        find: /^@elizaos\/app-wallet$/,
+        replacement: path.join(appWalletSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/app-wallet\/ui$/,
+        replacement: path.join(appWalletSrc, "ui.ts"),
+      },
+      {
+        find: /^@elizaos\/app-wallet\/(.+)$/,
+        replacement: path.join(appWalletSrc, "$1"),
+      },
+      {
         find: /^@elizaos\/plugin-sql$/,
         replacement: path.join(pluginSqlSrc, "index.node.ts"),
       },
@@ -130,6 +147,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-pdf\/(.+)$/,
         replacement: path.join(pluginPdfSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-browser-bridge$/,
+        replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-browser-bridge\/(.+)$/,
+        replacement: path.join(pluginBrowserBridgeSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-edge-tts\/node$/,

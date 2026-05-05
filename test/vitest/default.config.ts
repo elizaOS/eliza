@@ -358,6 +358,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-steward",
     "app-lifeops",
     "app-knowledge",
+    "app-wallet",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot, {
     includeElizaAlias: true,
@@ -421,6 +422,8 @@ export default defineConfig({
       "eliza/plugins/app-vincent/src/**/*.test.ts",
       "eliza/plugins/app-shopify/src/**/*.test.ts",
       "eliza/plugins/app-steward/src/**/*.test.ts",
+      "eliza/plugins/app-wallet/src/**/*.test.ts",
+      "eliza/plugins/app-wallet/src/**/*.test.tsx",
       "eliza/plugins/app-lifeops/src/**/*.test.ts",
       "packages/plugin-wechat/src/**/*.test.ts",
       "eliza/plugins/plugin-music-player/src/**/*.test.ts",

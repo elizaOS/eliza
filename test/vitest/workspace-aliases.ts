@@ -410,20 +410,28 @@ export function getWorkspaceAppAliases(
 ): ModuleAlias[] {
   const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return appNames.flatMap((appName) => {
-    const appRoot = path.join(elizaWorkspaceRoot, "apps", appName);
-    const appSourceRoot = path.join(appRoot, "src");
-    const appEntry = path.join(appSourceRoot, "index.ts");
+    const candidates = [
+      path.join(elizaWorkspaceRoot, "apps", appName),
+      path.join(elizaWorkspaceRoot, "plugins", appName),
+    ];
 
-    if (!existsSync(appEntry)) {
-      return [];
+    for (const appRoot of candidates) {
+      const appSourceRoot = path.join(appRoot, "src");
+      const appEntry = path.join(appSourceRoot, "index.ts");
+
+      if (!existsSync(appEntry)) {
+        continue;
+      }
+
+      return [
+        ...getWorkspacePackageExportAliases(appName, appRoot),
+        ...getPackageSourceAliases(appName, appSourceRoot, {
+          rootReplacement: appEntry,
+        }),
+      ];
     }
 
-    return [
-      ...getWorkspacePackageExportAliases(appName, appRoot),
-      ...getPackageSourceAliases(appName, appSourceRoot, {
-        rootReplacement: appEntry,
-      }),
-    ];
+    return [];
   });
 }
 
