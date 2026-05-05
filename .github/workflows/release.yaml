@@ -293,7 +293,7 @@ jobs:
           # so we must detect collisions here and bump again if needed.
           VERSION=$(node -p "require('./lerna.json').version")
 
-          if [[ "${RELEASE_TYPE}" == "beta" ]]; then
+          if [[ "${RELEASE_TYPE}" == "beta" && "${{ steps.release_type.outputs.is_release_event }}" != "true" ]]; then
             MAX_RETRIES=3
             for i in $(seq 1 $MAX_RETRIES); do
               # Check if this version already exists on npm
@@ -319,6 +319,8 @@ jobs:
               echo "❌ Version ${VERSION} still exists on npm after ${MAX_RETRIES} bumps — aborting"
               exit 1
             fi
+          elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
+            echo "Tagged beta release uses exact version ${VERSION}; not auto-bumping on npm collision."
           fi
 
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
