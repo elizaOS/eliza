@@ -119,6 +119,10 @@ describe("Birdeye search categories", () => {
       mode: "symbol",
       resultCount: 1,
     });
+    expect(result.mode).toBe("symbol");
+    if (result.mode !== "symbol") {
+      throw new Error("Expected symbol search result");
+    }
     expect(result.results[0].tokens).toHaveLength(1);
     expect(result.text).toContain("birdeye_token_search:");
     expect(result.text).toContain("mode: symbol");
@@ -182,6 +186,10 @@ describe("Birdeye search categories", () => {
       mode: "address",
       resultCount: 1,
     });
+    expect(result.mode).toBe("address");
+    if (result.mode !== "address") {
+      throw new Error("Expected address search result");
+    }
     expect(result.results[0].chain).toBe("base");
     expect(result.text).toContain("mode: address");
     expect(result.text).toContain("Aave");

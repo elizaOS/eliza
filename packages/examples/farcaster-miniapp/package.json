@@ -12,7 +12,9 @@
     "test:real": "USE_REAL_API=true vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "vitest run __tests__/integration"
+    "test:e2e": "vitest run __tests__/integration",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@farcaster/miniapp-sdk": "^0.2.1",
@@ -34,7 +36,7 @@
     "@vitest/ui": "^4.0.17",
     "jsdom": "^29.0.0",
     "typescript": "^6.0.0",
-    "vite": "^6.0.1",
+    "vite": "^8.0.8",
     "vitest": "^4.0.17"
   }
 }

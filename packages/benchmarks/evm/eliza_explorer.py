@@ -485,7 +485,9 @@ async def main() -> None:
         model_name, max_messages, chain, use_external,
     )
 
-    explorer = ElizaExplorer(
+    from eliza_adapter.evm import ElizaBridgeEVMExplorer
+
+    explorer = ElizaBridgeEVMExplorer(
         model_name=model_name,
         max_messages=max_messages,
         run_index=run_index,

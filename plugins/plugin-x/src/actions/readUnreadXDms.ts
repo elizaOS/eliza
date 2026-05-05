@@ -20,6 +20,14 @@ export const readUnreadXDmsAction: Action = {
   similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
   description: "List unread Twitter/X direct messages.",
   descriptionCompressed: "list unread Twitter/X direct message",
+  parameters: [
+    {
+      name: "limit",
+      description: "Maximum direct messages to scan for unread items.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 100, default: DEFAULT_LIMIT },
+    },
+  ],
   examples: [
     [
       { name: "{{user1}}", content: { text: "Any unread X DMs?" } },

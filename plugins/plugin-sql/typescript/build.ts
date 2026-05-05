@@ -102,8 +102,11 @@ const reexportRoot = `export * from './index.node';\nexport { default } from './
 const reexportRootRuntime = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\n`;
 
 await writeFile(join(DIST, "node", "index.d.ts"), reexportNode);
+await writeFile(join(DIST, "node", "index.node.d.ts"), reexportNode);
 await writeFile(join(DIST, "browser", "index.d.ts"), reexportBrowser);
+await writeFile(join(DIST, "browser", "index.browser.d.ts"), reexportBrowser);
 await writeFile(join(DIST, "cjs", "index.d.ts"), reexportNode);
+await writeFile(join(DIST, "cjs", "index.node.d.cts"), reexportNode);
 await writeFile(join(DIST, "index.d.ts"), reexportRoot);
 await writeFile(join(DIST, "index.js"), reexportRootRuntime);
 await appendFile(

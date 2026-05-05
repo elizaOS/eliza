@@ -10,6 +10,16 @@ import {
 import { GoogleMeetAPIService } from "../services/googleMeetAPIService";
 import { GetMeetingInfoParams } from "../types";
 
+function getParams(params?: unknown): GetMeetingInfoParams {
+  const direct =
+    params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+  const nested =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...nested } as GetMeetingInfoParams;
+}
+
 export const getMeetingInfoAction: Action = {
   name: "GET_MEETING_INFO",
   description: "Get information about a Google Meet meeting",
@@ -19,6 +29,15 @@ export const getMeetingInfoAction: Action = {
     "check meeting",
     "meeting status",
     "meeting details",
+  ],
+  parameters: [
+    {
+      name: "meetingId",
+      description:
+        "Optional Google Meet space name or stored meeting ID. Omit to inspect the current active meeting.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   examples: [
     [
@@ -86,10 +105,14 @@ export const getMeetingInfoAction: Action = {
         throw new Error("Google Meet API service not found");
       }
 
-      const meetingParams = params as GetMeetingInfoParams | undefined;
+      const meetingParams = getParams(params);
 
       // Try to get current meeting first
       let meeting = googleMeetService.getCurrentMeeting();
+
+      if (!meeting && meetingParams.meetingId) {
+        meeting = googleMeetService.getMeeting(meetingParams.meetingId);
+      }
 
       // If no current meeting, try to extract meeting ID from message
       if (!meeting && message.content.text) {
@@ -102,11 +125,6 @@ export const getMeetingInfoAction: Action = {
           throw new Error(
             "Please provide the full meeting space ID (not just the meeting code) to retrieve meeting information",
           );
-        }
-
-        // Check if a specific meeting ID was provided
-        if (meetingParams?.meetingId) {
-          meeting = googleMeetService.getMeeting(meetingParams.meetingId);
         }
       }
 

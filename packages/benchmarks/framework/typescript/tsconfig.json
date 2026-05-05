@@ -7,8 +7,7 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "resolveJsonModule": true
   },
   "include": ["src/**/*.ts"]

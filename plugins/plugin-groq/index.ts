@@ -5,8 +5,15 @@ import type {
   ModelTypeName,
   ObjectGenerationParams,
   Plugin,
+  RecordLlmCallDetails,
 } from "@elizaos/core";
-import { EventType, type GenerateTextParams, logger, ModelType } from "@elizaos/core";
+import {
+  EventType,
+  type GenerateTextParams,
+  logger,
+  ModelType,
+  recordLlmCall,
+} from "@elizaos/core";
 import { APICallError, generateObject, generateText } from "ai";
 
 const _globalThis = globalThis as typeof globalThis & {
@@ -71,6 +78,15 @@ function normalizeTokenUsage(usage: unknown): NormalizedUsage | null {
     completionTokens: normalizedCompletionTokens,
     totalTokens: totalTokens ?? normalizedPromptTokens + normalizedCompletionTokens,
   };
+}
+
+function applyUsageToDetails(details: RecordLlmCallDetails, usage: unknown): void {
+  const normalized = normalizeTokenUsage(usage);
+  if (!normalized) {
+    return;
+  }
+  details.promptTokens = normalized.promptTokens;
+  details.completionTokens = normalized.completionTokens;
 }
 
 function estimateTokenCount(text: string): number {
@@ -268,17 +284,33 @@ async function generateWithRetry(
     stopSequences: string[];
   }
 ): Promise<string> {
-  const generate = () =>
-    generateText({
-      model: groq.languageModel(model),
-      prompt: params.prompt,
-      system: params.system,
+  const generate = () => {
+    const details: RecordLlmCallDetails = {
+      model,
+      systemPrompt: params.system ?? "",
+      userPrompt: params.prompt,
       temperature: params.temperature,
-      maxRetries: 3,
-      frequencyPenalty: params.frequencyPenalty,
-      presencePenalty: params.presencePenalty,
-      stopSequences: params.stopSequences,
+      maxTokens: params.maxTokens,
+      purpose: "external_llm",
+      actionType: "ai.generateText",
+    };
+
+    return recordLlmCall(runtime, details, async () => {
+      const result = await generateText({
+        model: groq.languageModel(model),
+        prompt: params.prompt,
+        system: params.system,
+        temperature: params.temperature,
+        maxRetries: 3,
+        frequencyPenalty: params.frequencyPenalty,
+        presencePenalty: params.presencePenalty,
+        stopSequences: params.stopSequences,
+      });
+      details.response = result.text;
+      applyUsageToDetails(details, result.usage);
+      return result;
     });
+  };
 
   const MAX_RATE_LIMIT_RETRIES = 5;
   const MAX_TRANSIENT_RETRIES = 2;
@@ -503,11 +535,25 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getSmallModel(runtime);
 
-      const { object, usage } = await generateObject({
-        model: groq.languageModel(model),
-        output: "no-schema",
-        prompt: params.prompt,
-        temperature: params.temperature,
+      const details: RecordLlmCallDetails = {
+        model,
+        systemPrompt: "",
+        userPrompt: params.prompt,
+        temperature: params.temperature ?? 0,
+        maxTokens: params.maxTokens ?? 8192,
+        purpose: "external_llm",
+        actionType: "ai.generateObject",
+      };
+      const { object, usage } = await recordLlmCall(runtime, details, async () => {
+        const result = await generateObject({
+          model: groq.languageModel(model),
+          output: "no-schema",
+          prompt: params.prompt,
+          temperature: params.temperature,
+        });
+        details.response = stringifyForUsage(result.object);
+        applyUsageToDetails(details, result.usage);
+        return result;
       });
       emitModelUsed(
         runtime,
@@ -525,11 +571,25 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getLargeModel(runtime);
 
-      const { object, usage } = await generateObject({
-        model: groq.languageModel(model),
-        output: "no-schema",
-        prompt: params.prompt,
-        temperature: params.temperature,
+      const details: RecordLlmCallDetails = {
+        model,
+        systemPrompt: "",
+        userPrompt: params.prompt,
+        temperature: params.temperature ?? 0,
+        maxTokens: params.maxTokens ?? 8192,
+        purpose: "external_llm",
+        actionType: "ai.generateObject",
+      };
+      const { object, usage } = await recordLlmCall(runtime, details, async () => {
+        const result = await generateObject({
+          model: groq.languageModel(model),
+          output: "no-schema",
+          prompt: params.prompt,
+          temperature: params.temperature,
+        });
+        details.response = stringifyForUsage(result.object);
+        applyUsageToDetails(details, result.usage);
+        return result;
       });
       emitModelUsed(
         runtime,
@@ -578,19 +638,32 @@ export const groqPlugin: Plugin = {
       formData.append("model", DEFAULT_TRANSCRIPTION_MODEL);
 
       const apiKey = runtime.getSetting("GROQ_API_KEY");
-      const response = await fetch(`${baseURL}/audio/transcriptions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
-        },
-        body: formData,
+      const details: RecordLlmCallDetails = {
+        model: DEFAULT_TRANSCRIPTION_MODEL,
+        systemPrompt: "",
+        userPrompt: `audio transcription request: ${audioBuffer.byteLength} bytes`,
+        temperature: 0,
+        maxTokens: 0,
+        purpose: "external_llm",
+        actionType: "groq.audio.transcriptions.create",
+      };
+      const data = await recordLlmCall(runtime, details, async () => {
+        const response = await fetch(`${baseURL}/audio/transcriptions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Transcription failed: ${response.status} ${await response.text()}`);
+        }
+
+        const result = (await response.json()) as { text: string };
+        details.response = result.text;
+        return result;
       });
-
-      if (!response.ok) {
-        throw new Error(`Transcription failed: ${response.status} ${await response.text()}`);
-      }
-
-      const data = (await response.json()) as { text: string };
       return data.text;
     },
 
@@ -637,25 +710,38 @@ export const groqPlugin: Plugin = {
               : DEFAULT_TTS_RESPONSE_FORMAT;
 
       const apiKey = runtime.getSetting("GROQ_API_KEY");
-      const response = await fetch(`${baseURL}/audio/speech`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          voice,
-          input: text,
-          response_format: responseFormat,
-        }),
+      const details: RecordLlmCallDetails = {
+        model,
+        systemPrompt: "",
+        userPrompt: text,
+        temperature: 0,
+        maxTokens: 0,
+        purpose: "external_llm",
+        actionType: "groq.audio.speech.create",
+      };
+      const arrayBuffer = await recordLlmCall(runtime, details, async () => {
+        const response = await fetch(`${baseURL}/audio/speech`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            voice,
+            input: text,
+            response_format: responseFormat,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`TTS failed: ${response.status} ${await response.text()}`);
+        }
+
+        const result = await response.arrayBuffer();
+        details.response = `[audio bytes=${result.byteLength} format=${responseFormat}]`;
+        return result;
       });
-
-      if (!response.ok) {
-        throw new Error(`TTS failed: ${response.status} ${await response.text()}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
       return new Uint8Array(arrayBuffer);
     },
   },

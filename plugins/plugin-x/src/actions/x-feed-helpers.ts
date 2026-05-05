@@ -142,8 +142,9 @@ export function readBooleanOption(
   options: Record<string, unknown> | undefined,
   key: string,
 ): boolean {
-  if (!options) return false;
-  const raw = options[key];
+  const source = optionSource(options);
+  if (!source) return false;
+  const raw = source[key];
   return raw === true || raw === "true";
 }
 
@@ -151,8 +152,9 @@ export function readStringOption(
   options: Record<string, unknown> | undefined,
   key: string,
 ): string | null {
-  if (!options) return null;
-  const raw = options[key];
+  const source = optionSource(options);
+  if (!source) return null;
+  const raw = source[key];
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 
@@ -160,12 +162,24 @@ export function readNumberOption(
   options: Record<string, unknown> | undefined,
   key: string,
 ): number | null {
-  if (!options) return null;
-  const raw = options[key];
+  const source = optionSource(options);
+  if (!source) return null;
+  const raw = source[key];
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw === "string") {
     const parsed = Number.parseFloat(raw);
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
+}
+
+function optionSource(
+  options: Record<string, unknown> | undefined,
+): Record<string, unknown> | null {
+  if (!options) return null;
+  const parameters =
+    options.parameters && typeof options.parameters === "object"
+      ? (options.parameters as Record<string, unknown>)
+      : {};
+  return { ...options, ...parameters };
 }

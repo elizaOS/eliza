@@ -204,22 +204,19 @@ class ElizaExplorer:
 
         if str(GYM_ENV_DIR) not in sys.path:
             sys.path.insert(0, str(GYM_ENV_DIR))
-        from code_loop_explorer import CodeLoopExplorer
         from voyager.surfpool_env import SurfpoolEnv, _surfpool_validator
+        from eliza_adapter.solana import ElizaBridgeSolanaExplorer
 
         old_cwd = Path.cwd()
         os.chdir(GYM_ENV_DIR)
         try:
-            runner = CodeLoopExplorer(
+            runner = ElizaBridgeSolanaExplorer(
                 model_name=self.model_name,
                 run_index=self.run_index,
                 max_messages=self.max_messages,
-                verbose=self.verbose,
                 code_file=self.code_file,
                 environment_config=self.environment_config_path,
             )
-            runner.run_id = self.run_id
-            runner.metrics["run_id"] = self.run_id
 
             allowed_programs = []
             if runner.env_config and "reward_config" in runner.env_config:
@@ -230,8 +227,8 @@ class ElizaExplorer:
                 env = SurfpoolEnv(allowed_programs=allowed_programs, use_external_surfpool=True)
                 await env.reset()
                 try:
-                    await runner.run_exploration_loop(env)
-                    metrics_path = Path(runner.save_checkpoint())
+                    data = await runner.run(env)
+                    metrics_path = GYM_ENV_DIR / "metrics" / f"{runner.run_id}_metrics.json"
                 finally:
                     await env.close()
             else:
@@ -239,11 +236,13 @@ class ElizaExplorer:
                     env = SurfpoolEnv(allowed_programs=allowed_programs, use_external_surfpool=True)
                     await env.reset()
                     try:
-                        await runner.run_exploration_loop(env)
-                        metrics_path = Path(runner.save_checkpoint())
+                        data = await runner.run(env)
+                        metrics_path = GYM_ENV_DIR / "metrics" / f"{runner.run_id}_metrics.json"
                     finally:
                         await env.close()
 
+            if not metrics_path.exists():
+                metrics_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             data = json.loads(metrics_path.read_text(encoding="utf-8"))
             cumulative = data.get("cumulative_rewards")
             data["final_reward"] = cumulative[-1] if isinstance(cumulative, list) and cumulative else 0

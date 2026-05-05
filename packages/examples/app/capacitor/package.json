@@ -3,10 +3,13 @@
   "version": "2.0.0-alpha",
   "type": "module",
   "scripts": {
-    "dev:backend": "bun --cwd backend dev",
-    "dev:frontend": "bun --cwd frontend dev",
-    "build:frontend": "bun --cwd frontend build",
-    "cap:sync": "bunx cap sync"
+    "dev:backend": "bun run --cwd backend dev",
+    "dev:frontend": "bun run --cwd frontend dev",
+    "build:frontend": "bun run --cwd frontend build",
+    "cap:sync": "bunx cap sync",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'",
+    "build": "echo 'No build step configured; skipping build'"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.0",

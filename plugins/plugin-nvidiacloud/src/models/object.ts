@@ -1,6 +1,15 @@
-import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
-import { generateObject, jsonSchema, type LanguageModel } from "ai";
+import type {
+  IAgentRuntime,
+  ObjectGenerationParams,
+  RecordLlmCallDetails,
+} from "@elizaos/core";
+import { logger, ModelType, recordLlmCall } from "@elizaos/core";
+import {
+  generateObject,
+  jsonSchema,
+  type LanguageModel,
+  type LanguageModelUsage,
+} from "ai";
 import type { JSONSchema7 } from "json-schema";
 import { createNvidiaOpenAI } from "../providers/nvidia";
 import { getLargeModel, getSmallModel } from "../utils/config";
@@ -9,6 +18,21 @@ import {
   getJsonRepairFunction,
   handleObjectGenerationError,
 } from "../utils/helpers";
+
+function applyUsageToDetails(
+  details: RecordLlmCallDetails,
+  usage: LanguageModelUsage | undefined,
+): void {
+  if (!usage) {
+    return;
+  }
+  details.promptTokens = Number(
+    (usage as { inputTokens?: number }).inputTokens || 0,
+  );
+  details.completionTokens = Number(
+    (usage as { outputTokens?: number }).outputTokens || 0,
+  );
+}
 
 async function generateObjectWithModel(
   runtime: IAgentRuntime,
@@ -27,17 +51,36 @@ async function generateObjectWithModel(
   const temperature = params.temperature ?? 0.7;
 
   try {
-    const { object, usage } = await generateObject({
-      model: client.chat(modelName) as LanguageModel,
-      ...(params.schema && {
-        schema: jsonSchema(params.schema as JSONSchema7),
-      }),
-      output: params.schema ? "object" : "no-schema",
-      prompt: params.prompt,
-      system: runtime.character.system ?? undefined,
+    const systemPrompt = runtime.character.system ?? "";
+    const details: RecordLlmCallDetails = {
+      model: modelName,
+      systemPrompt,
+      userPrompt: params.prompt,
       temperature,
-      experimental_repairText: getJsonRepairFunction(),
-    });
+      maxTokens: params.maxTokens ?? 8192,
+      purpose: "external_llm",
+      actionType: "ai.generateObject",
+    };
+    const { object, usage } = await recordLlmCall(
+      runtime,
+      details,
+      async () => {
+        const result = await generateObject({
+          model: client.chat(modelName) as LanguageModel,
+          ...(params.schema && {
+            schema: jsonSchema(params.schema as JSONSchema7),
+          }),
+          output: params.schema ? "object" : "no-schema",
+          prompt: params.prompt,
+          system: systemPrompt || undefined,
+          temperature,
+          experimental_repairText: getJsonRepairFunction(),
+        });
+        details.response = JSON.stringify(result.object);
+        applyUsageToDetails(details, result.usage);
+        return result;
+      },
+    );
 
     if (usage) {
       emitModelUsageEvent(runtime, modelType, usage, modelName, modelLabel);

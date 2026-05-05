@@ -24,9 +24,11 @@ function cosineDistance(a: number[], b: number[]): number {
   let normB = 0;
 
   for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
+    const aValue = a[i] ?? 0;
+    const bValue = b[i] ?? 0;
+    dotProduct += aValue * bValue;
+    normA += aValue * aValue;
+    normB += bValue * bValue;
   }
 
   const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
@@ -130,7 +132,10 @@ export class EphemeralHNSW implements IVectorStorage {
       }
 
       if (neighbors.length > 0) {
-        currentNode = neighbors[0].id;
+        const closestNeighbor = neighbors[0];
+        if (closestNeighbor) {
+          currentNode = closestNeighbor.id;
+        }
       }
     }
 
@@ -167,6 +172,7 @@ export class EphemeralHNSW implements IVectorStorage {
 
       results.sort((a, b) => b.distance - a.distance);
       const furthestResult = results[0];
+      if (!furthestResult) break;
 
       if (current.distance > furthestResult.distance) {
         break;
@@ -271,8 +277,9 @@ export class EphemeralHNSW implements IVectorStorage {
 
     for (let l = this.maxLevel; l > 0; l--) {
       const closest = this.searchLayer(query, currentNode, 1, l);
-      if (closest.length > 0) {
-        currentNode = closest[0].id;
+      const closestNode = closest[0];
+      if (closestNode) {
+        currentNode = closestNode.id;
       }
     }
 

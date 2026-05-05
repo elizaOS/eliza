@@ -54,7 +54,7 @@ interface VerificationMetadata {
   structuredProof: unknown;
   /**
    * Room where the verification verdict should be posted back. Carried
-   * from CREATE_TASK metadata into session metadata. Consumers (e.g.
+   * from START_CODING_TASK metadata into session metadata. Consumers (e.g.
    * plugin-app-control's verification-room-bridge) read this off the
    * task_complete / escalation broadcast payloads to close the chat loop.
    */
@@ -956,7 +956,7 @@ export async function makeCoordinationDecision(
  *
  * Backward compatibility: this helper is only invoked when the task's
  * session metadata carries a `validator` spec. Pre-existing callers (and
- * any CREATE_TASK invocation that does not pass `validator`) bypass this
+ * any START_CODING_TASK invocation that does not pass `validator`) bypass this
  * branch entirely and continue through `validateTaskCompletion`.
  */
 async function runCustomValidatorBranch(
@@ -1224,7 +1224,7 @@ export async function executeDecision(
       //
       // When the task was registered with a `validator` spec on its
       // session metadata (APP.create / PLUGIN.create / etc. pass one
-      // through CREATE_TASK), defer to that disk-aware verifier instead
+      // through START_CODING_TASK), defer to that disk-aware verifier instead
       // of the generic LLM `validateTaskCompletion` flow below. This is a
       // sibling code path: when no validator is set, behavior is
       // unchanged and the existing escalation path runs.

@@ -4,7 +4,7 @@ type ProcessEnv = Record<string, string | undefined>;
 type ProcessShim = { env: ProcessEnv };
 
 function ensureSecretSalt(env: ProcessEnv): void {
-  if (env.SECRET_SALT && env.SECRET_SALT.trim()) return;
+  if (env.SECRET_SALT?.trim()) return;
   try {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const hex = Array.from(salt)

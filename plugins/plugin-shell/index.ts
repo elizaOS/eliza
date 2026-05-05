@@ -2,7 +2,6 @@ import type { Plugin } from "@elizaos/core";
 import { clearHistory } from "./actions";
 import { ExecApprovalService } from "./approvals";
 import { shellHistoryProvider } from "./providers";
-import { terminalUsageProvider } from "./providers/terminalUsage";
 import { ShellService } from "./services/shellService";
 
 export const shellPlugin: Plugin = {
@@ -10,7 +9,7 @@ export const shellPlugin: Plugin = {
   description: "Shell observability and history management providers",
   services: [ShellService, ExecApprovalService],
   actions: [clearHistory],
-  providers: [shellHistoryProvider, terminalUsageProvider],
+  providers: [shellHistoryProvider],
 };
 
 export default shellPlugin;
@@ -66,8 +65,6 @@ export {
   saveApprovals,
 } from "./approvals";
 export { shellHistoryProvider } from "./providers/shellHistoryProvider";
-// Providers
-export { terminalUsageProvider } from "./providers/terminalUsage";
 export {
   addSession,
   appendOutput,

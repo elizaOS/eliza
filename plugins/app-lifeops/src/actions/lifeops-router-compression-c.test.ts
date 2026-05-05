@@ -106,14 +106,11 @@ vi.mock("../website-blocker/chat-integration/harsh-mode-check.ts", () => ({
 }));
 
 import {
-  addAutofillWhitelistAction,
-  autofillAction,
-  listAutofillWhitelistAction,
-  requestFieldFillAction,
-} from "./autofill.js";
-import { dossierAction } from "./dossier.js";
-import { healthAction } from "./health.js";
-import { relationshipAction } from "./relationships.js";
+  ownerAutofillAction,
+} from "./owner-autofill.js";
+import { dossierAction } from "./owner-dossier.js";
+import { healthAction } from "./owner-health.js";
+import { relationshipAction } from "./owner-relationship.js";
 import {
   blockWebsitesAction,
   getWebsiteBlockStatusAction,
@@ -168,50 +165,52 @@ describe("LifeOps router compression C", () => {
   });
 
   it("collapses autofill legacy actions into one AUTOFILL router", async () => {
-    expect(requestFieldFillAction).toBe(autofillAction);
     expect(
       new Set([
-        requestFieldFillAction.name,
-        addAutofillWhitelistAction.name,
-        listAutofillWhitelistAction.name,
+        ownerAutofillAction.name,
       ]),
-    ).toEqual(new Set(["AUTOFILL"]));
+    ).toEqual(new Set(["OWNER_AUTOFILL"]));
 
     const runtime = makeRuntime();
-    const result = await listAutofillWhitelistAction.handler?.(
+    const result = await ownerAutofillAction.handler?.(
       runtime,
       makeMessage("show autofill whitelist"),
       undefined,
-      {},
+      { parameters: { subaction: "whitelist_list" } },
     );
 
     expect(result?.success).toBe(true);
     expect(result?.data).toMatchObject({
-      actionName: "AUTOFILL",
-      subaction: "list_whitelist",
+      actionName: "OWNER_AUTOFILL",
     });
+    expect(result?.data).toHaveProperty("effective");
     expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
   it("keeps autofill whitelist mutation behind the AUTOFILL subaction", async () => {
     const runtime = makeRuntime();
-    const result = await addAutofillWhitelistAction.handler?.(
+    const result = await ownerAutofillAction.handler?.(
       runtime,
       makeMessage("trust example.com for autofill"),
       undefined,
-      { parameters: { domain: "https://login.example.com", confirmed: true } },
+      {
+        parameters: {
+          subaction: "whitelist_add",
+          domain: "https://login.example.com",
+          confirmed: true,
+        },
+      },
     );
 
     expect(result?.success).toBe(true);
     expect(result?.data).toMatchObject({
-      actionName: "AUTOFILL",
-      subaction: "add_whitelist",
+      actionName: "OWNER_AUTOFILL",
       domain: "example.com",
       added: true,
     });
   });
 
-  it("collapses website blocker legacy actions into one WEBSITE_BLOCKER router", async () => {
+  it("keeps website blocker shims distinct from the owner router", async () => {
     expect(
       new Set([
         blockWebsitesAction.name,
@@ -219,7 +218,14 @@ describe("LifeOps router compression C", () => {
         requestWebsiteBlockingPermissionAction.name,
         unblockWebsitesAction.name,
       ]),
-    ).toEqual(new Set(["WEBSITE_BLOCKER"]));
+    ).toEqual(
+      new Set([
+        "BLOCK_WEBSITES",
+        "GET_WEBSITE_BLOCK_STATUS",
+        "REQUEST_WEBSITE_BLOCKING_PERMISSION",
+        "UNBLOCK_WEBSITES",
+      ]),
+    );
 
     const result = await getWebsiteBlockStatusAction.handler?.(
       makeRuntime(),
@@ -230,7 +236,6 @@ describe("LifeOps router compression C", () => {
 
     expect(result?.success).toBe(true);
     expect(result?.data).toMatchObject({
-      subaction: "status",
       active: true,
       websites: ["x.com"],
     });
@@ -279,7 +284,7 @@ describe("LifeOps router compression C", () => {
 
     expect(result?.success).toBe(true);
     expect(result?.data).toMatchObject({
-      actionName: "DOSSIER",
+      actionName: "OWNER_DOSSIER",
       dossier: { id: "dos-1", subject: "Alice Chen" },
     });
   });

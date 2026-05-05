@@ -1,5 +1,5 @@
 /**
- * CREATE_TASK action to set up and launch task agents.
+ * START_CODING_TASK action to set up and launch task agents.
  *
  * Combines workspace provisioning and agent spawning into a single atomic action.
  * - If a repo URL is provided, clones it into a fresh workspace
@@ -123,17 +123,17 @@ function getMessageText(message: Memory): string {
 /**
  * Detect prompts that belong to LifeOps (LIFE action), not the coding
  * orchestrator. Mirror of `looksLikeCodingTaskRequest` in app-lifeops, so
- * CREATE_TASK can decline when LIFE should win.
+ * START_CODING_TASK can decline when LIFE should win.
  *
- * Why: LIFE and CREATE_TASK share a lot of verb surface ("add a task ...",
- * "create a reminder ..."). The action-selector LLM can pick CREATE_TASK when
+ * Why: LIFE and START_CODING_TASK share a lot of verb surface ("add a task ...",
+ * "create a reminder ..."). The action-selector LLM can pick START_CODING_TASK when
  * a coding keyword appears anywhere in the prompt (e.g. "add a todo to fix
  * that PR"), spawning a subagent for something LIFE should handle as a simple
  * todo insert.
  *
  * Pattern: imperative LIFE verb at the start followed by a LIFE noun within
  * the first few words. Keeps false positives rare: "build a todo app" has
- * verb=build (not in list) so it still routes to CREATE_TASK as intended.
+ * verb=build (not in list) so it still routes to START_CODING_TASK as intended.
  */
 function looksLikeLifeOpsRequest(text: string | undefined | null): boolean {
   if (!text) return false;
@@ -249,7 +249,7 @@ export function splitMultiIntentTask(text: string): string[] {
 
 /**
  * Reject a shell/pi/bash agentType hint when the task text is prose, so both
- * CREATE_TASK and SPAWN_AGENT upgrade to a reasoning framework via
+ * START_CODING_TASK and SPAWN_AGENT upgrade to a reasoning framework via
  * `resolveAgentType`. Returns the sanitized hint (original value or `undefined`
  * if it was rejected). `callerTag` is the [PREFIX] string used when warning
  * so the log line points at the actual callsite.
@@ -276,11 +276,13 @@ type BackgroundAction = Action & {
   suppressPostActionContinuation?: boolean;
 };
 
+const START_CODING_TASK_ACTION_NAME = "START_CODING_TASK";
+
 export const startCodingTaskAction: BackgroundAction = {
-  name: "CREATE_TASK",
+  name: START_CODING_TASK_ACTION_NAME,
 
   similes: [
-    "START_CODING_TASK",
+    "CREATE_TASK",
     "LAUNCH_CODING_TASK",
     "RUN_CODING_TASK",
     "START_AGENT_TASK",
@@ -316,7 +318,7 @@ export const startCodingTaskAction: BackgroundAction = {
         name: "{{agentName}}",
         content: {
           text: "I'll create a background task agent for that repo and keep track of its progress.",
-          action: "CREATE_TASK",
+          action: START_CODING_TASK_ACTION_NAME,
         },
       },
     ],
@@ -331,7 +333,7 @@ export const startCodingTaskAction: BackgroundAction = {
         name: "{{agentName}}",
         content: {
           text: "I'll coordinate parallel task agents for that and keep the results organized.",
-          action: "CREATE_TASK",
+          action: START_CODING_TASK_ACTION_NAME,
         },
       },
     ],
@@ -346,7 +348,7 @@ export const startCodingTaskAction: BackgroundAction = {
         name: "{{agentName}}",
         content: {
           text: "on it",
-          action: "CREATE_TASK",
+          action: START_CODING_TASK_ACTION_NAME,
           agents:
             "implement a quicksort algorithm in typescript with tests | analyze the user's CSV and generate charts (matplotlib or similar) | draft a one-page doc summarizing the quicksort implementation and the CSV findings",
         },
@@ -363,7 +365,7 @@ export const startCodingTaskAction: BackgroundAction = {
         name: "{{agentName}}",
         content: {
           text: "spawning 4",
-          action: "CREATE_TASK",
+          action: START_CODING_TASK_ACTION_NAME,
           agents:
             "implement quicksort in typescript with a small unit test | summarize the markdown file at /tmp/notes.md and report the summary | take the previously provided csv and generate a bar chart of revenue by day | research the market: list companies and their funding/revenue",
         },
@@ -392,7 +394,7 @@ export const startCodingTaskAction: BackgroundAction = {
     }
 
     // LifeOps prompts ("add a todo to fix that PR I made yesterday") share
-    // verb surface with CREATE_TASK similes. Decline so LIFE wins.
+    // verb surface with START_CODING_TASK similes. Decline so LIFE wins.
     if (looksLikeLifeOpsRequest(text)) {
       return false;
     }
@@ -447,7 +449,7 @@ export const startCodingTaskAction: BackgroundAction = {
       (params?.task as string) ??
         (content.task as string) ??
         (content.text as string),
-      "[CREATE_TASK]",
+      "[START_CODING_TASK]",
     );
     const memoryContent =
       (params?.memoryContent as string) ?? (content.memoryContent as string);
@@ -641,7 +643,7 @@ export const startCodingTaskAction: BackgroundAction = {
 
     if (userSegments.length > llmSegments.length && userSegments.length > 1) {
       logger.info(
-        `[CREATE_TASK] auto-split multi-intent user prompt into ${userSegments.length} parallel agents (LLM proposed ${llmSegments.length})`,
+        `[START_CODING_TASK] auto-split multi-intent user prompt into ${userSegments.length} parallel agents (LLM proposed ${llmSegments.length})`,
       );
       return handleMultiAgent(ctx, userSegments.join(" | "));
     }

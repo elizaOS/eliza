@@ -433,6 +433,7 @@ export async function fetchOllamaModels(
     if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
       urlStr = `http://${urlStr}`;
     }
+    // @duplicate-component-audit-allow: Ollama tags is a model catalog lookup, not generation.
     const res = await fetch(`${urlStr}/api/tags`);
     if (!res.ok) return [];
     const data = (await res.json()) as { models?: Array<{ name: string }> };

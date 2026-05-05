@@ -467,8 +467,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           (c.sourceEntityId ?? null) === (component.sourceEntityId ?? null)
       );
 
-      if (naturalKey.length > 0) {
-        const existing = naturalKey[0];
+      const existing = naturalKey[0];
+      if (existing) {
         await this.storage.set(COLLECTIONS.COMPONENTS, existing.id, {
           ...existing,
           ...component,
@@ -1031,8 +1031,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.PARTICIPANTS,
         (p) => p.entityId === entityId && p.roomId === roomId
       );
-      if (existing.length > 0) {
-        ids.push(existing[0].id as UUID);
+      const existingParticipant = existing[0];
+      if (existingParticipant) {
+        ids.push(existingParticipant.id as UUID);
         continue;
       }
       const id = randomUUID() as UUID;

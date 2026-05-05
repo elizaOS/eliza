@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
@@ -41,6 +42,7 @@ import {
 // Load environment variables BEFORE anything else
 // This ensures API keys are available when plugins initialize
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 
 // ---------------------------------------------------------------------------
 // Security: authentication + CORS
@@ -81,8 +83,7 @@ function resolveAllowedOrigin(req: http.IncomingMessage): string {
 }
 
 function resolveBenchToken(): string | null {
-  const token = process.env.ELIZA_BENCH_TOKEN?.trim();
-  return token || null;
+  return BENCH_TOKEN;
 }
 
 function tokenMatches(expected: string, provided: string): boolean {
@@ -277,8 +278,19 @@ export async function startBenchmarkServer() {
     "@elizaos/plugin-elizacloud", // Requires elizaOS cloud auth, conflicts with local LLM
   ]);
 
-  // Load all CORE_PLUGINS — these are what the production Eliza runtime uses
-  for (const pluginName of CORE_PLUGINS) {
+  const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
+  const corePluginsToLoad = skipCorePlugins
+    ? ["@elizaos/plugin-sql"]
+    : CORE_PLUGINS;
+  if (skipCorePlugins) {
+    elizaLogger.info(
+      "[bench] Loading minimal core plugins for benchmark smoke run",
+    );
+  }
+
+  // Load all CORE_PLUGINS by default; smoke runs can opt into the minimal
+  // required set so credential-free bridge checks start quickly.
+  for (const pluginName of corePluginsToLoad) {
     if (skipPlugins.has(pluginName)) {
       elizaLogger.debug(
         `[bench] Skipping plugin (benchmark mode): ${pluginName}`,
@@ -286,7 +298,25 @@ export async function startBenchmarkServer() {
       continue;
     }
     try {
-      const pluginModule = await import(pluginName);
+      let pluginModule: Record<string, unknown>;
+      try {
+        pluginModule = (await import(pluginName)) as Record<string, unknown>;
+      } catch (error) {
+        if (pluginName !== "@elizaos/plugin-sql") {
+          throw error;
+        }
+        const fallbackPath = path.resolve(
+          process.cwd(),
+          "../../plugins/plugin-sql/typescript/index.ts",
+        );
+        elizaLogger.warn(
+          `[bench] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${fallbackPath}`,
+        );
+        pluginModule = (await import(pathToFileURL(fallbackPath).href)) as Record<
+          string,
+          unknown
+        >;
+      }
       const plugin =
         pluginModule.default ?? pluginModule[Object.keys(pluginModule)[0]];
       if (plugin) {
@@ -303,7 +333,7 @@ export async function startBenchmarkServer() {
   }
 
   elizaLogger.info(
-    `[bench] Loaded ${loadedPlugins.length}/${CORE_PLUGINS.length} core plugins`,
+    `[bench] Loaded ${loadedPlugins.length}/${corePluginsToLoad.length} core plugins`,
   );
   if (failedPlugins.length > 0) {
     elizaLogger.debug(

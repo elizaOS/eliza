@@ -7,10 +7,13 @@
     "dev": "npx convex dev",
     "start": "npx convex dev",
     "test": "bun run test-client.ts",
-    "deploy": "npx convex deploy"
+    "deploy": "npx convex deploy",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "if [ -d convex/_generated ]; then tsc --noEmit; else echo 'Convex generated types missing; run convex dev/codegen for full typecheck'; fi",
+    "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-xai": "workspace:*",

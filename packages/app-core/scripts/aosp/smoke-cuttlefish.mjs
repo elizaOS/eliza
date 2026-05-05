@@ -440,6 +440,7 @@ export async function runSmoke({
   let chatResp = null;
   let lastFetchError = null;
   try {
+    // @duplicate-component-audit-allow: smoke test exercises the local chat endpoint; runtime owns model logging.
     chatResp = await fetch(
       `http://127.0.0.1:${HOST_PORT}/v1/chat/completions`,
       {

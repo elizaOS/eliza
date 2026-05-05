@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
+import { extractCalendarPlanWithLlm } from "../src/actions/lib/calendar-handler.js";
 import { extractGmailPlanWithLlm } from "../src/actions/gmail.js";
 
 function message(text: string): Memory {

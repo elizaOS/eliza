@@ -31,6 +31,7 @@ _PYAUTOGUI_FENCE_RE = re.compile(
     r"```(?:python|pyautogui)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE
 )
 _TERMINAL_ACTION_RE = re.compile(r"\b(WAIT|DONE|FAIL)\b")
+_CLICK_ACTION_RE = re.compile(r"^CLICK\(\s*(\d+)\s*,\s*(\d+)\s*\)$", re.IGNORECASE)
 
 
 def _resize_screenshot_b64(raw: bytes, max_dimension: int = 1280) -> str:
@@ -88,6 +89,10 @@ def _parse_actions(response_text: str, params: dict[str, Any]) -> list[str]:
     for action in param_actions:
         if action in ("WAIT", "DONE", "FAIL"):
             return [action]
+        click_match = _CLICK_ACTION_RE.match(action)
+        if click_match:
+            x, y = click_match.groups()
+            return [f"pyautogui.click({x}, {y})"]
         if "pyautogui" in action or "\n" in action:
             return [action]
 

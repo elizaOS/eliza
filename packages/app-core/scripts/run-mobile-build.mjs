@@ -2011,6 +2011,7 @@ async function generateIosBrandAssets() {
         if (!Number.isFinite(pixels) || pixels <= 0) continue;
         await sharp(iconSource)
           .resize(pixels, pixels, { fit: "cover" })
+          .flatten({ background: "#000000" })
           .png()
           .toFile(path.join(iconSetDir, image.filename));
       }

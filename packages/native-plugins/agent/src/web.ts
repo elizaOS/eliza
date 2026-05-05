@@ -90,6 +90,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     retryOnMissingConversation = true,
   ): Promise<ChatResult> {
     const conversationId = await this.ensureLegacyConversationId();
+    // @duplicate-component-audit-allow: agent API message POST; server-side runtime owns model trajectory logging.
     const res = await fetch(
       `${this.apiBase()}/api/conversations/${encodeURIComponent(conversationId)}/messages`,
       {

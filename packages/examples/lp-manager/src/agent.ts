@@ -407,5 +407,5 @@ if (import.meta.main) {
   });
 }
 
-export { LpManagerAgent, loadConfigFromEnv };
 export type { LpAgentConfig };
+export { LpManagerAgent, loadConfigFromEnv };

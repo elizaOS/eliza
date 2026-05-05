@@ -33,9 +33,11 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-// Import the in-memory database adapter directly from plugin source (bun handles .ts)
-import { InMemoryDatabaseAdapter } from "../../../plugins/plugin-inmemorydb/adapter";
-import { MemoryStorage } from "../../../plugins/plugin-inmemorydb/storage-memory";
+// Import the in-memory database adapter directly from plugin package.
+import {
+  InMemoryDatabaseAdapter,
+  MemoryStorage,
+} from "@elizaos/plugin-inmemorydb";
 
 // Disable the full bootstrap plugin - we'll use our own minimal version
 process.env.IGNORE_BOOTSTRAP = "true";
@@ -185,7 +187,7 @@ const moveTowardFoodAction: Action = {
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const state = getAgentState(runtime);
-    if (!state || !state.isAlive) return false;
+    if (!state?.isAlive) return false;
 
     // Find nearest food within vision
     for (const food of world.food.values()) {
@@ -257,7 +259,7 @@ const eatAction: Action = {
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const state = getAgentState(runtime);
-    if (!state || !state.isAlive) return false;
+    if (!state?.isAlive) return false;
     return world.food.has(posKey(state.position.x, state.position.y));
   },
 
@@ -298,7 +300,7 @@ const fleeAction: Action = {
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const state = getAgentState(runtime);
-    if (!state || !state.isAlive) return false;
+    if (!state?.isAlive) return false;
     if (state.dna.aggression > 0.6) return false; // Aggressive agents don't flee
 
     // Check for nearby threats
@@ -374,7 +376,7 @@ const attackAction: Action = {
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const state = getAgentState(runtime);
-    if (!state || !state.isAlive) return false;
+    if (!state?.isAlive) return false;
     if (state.dna.aggression < 0.5) return false; // Only aggressive agents attack
 
     // Look for weaker prey nearby
@@ -452,7 +454,7 @@ const reproduceAction: Action = {
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const state = getAgentState(runtime);
-    if (!state || !state.isAlive) return false;
+    if (!state?.isAlive) return false;
     return (
       state.energy >= CONFIG.REPRODUCTION_THRESHOLD &&
       world.agents.size < CONFIG.MAX_AGENTS
@@ -586,7 +588,7 @@ async function decisionModelHandler(
   params: DecisionModelParams,
 ): Promise<string> {
   const state = getAgentState(runtime);
-  if (!state || !state.isAlive) {
+  if (!state?.isAlive) {
     return decisionToon("NONE", "I am not alive; no action.", "NONE");
   }
 
@@ -747,11 +749,13 @@ async function createAgentRuntime(agentState: AgentState): Promise<LiveAgent> {
   await adapter.init();
 
   // Pre-create the agent and entity records
-  await adapter.createAgent({
-    id: agentState.id as UUID,
-    name: character.name,
-    enabled: true,
-  });
+  await adapter.createAgents([
+    {
+      id: agentState.id as UUID,
+      name: character.name,
+      enabled: true,
+    },
+  ]);
 
   // Pre-create the entity that the runtime will look for
   await adapter.createEntities([
@@ -992,7 +996,7 @@ async function main(): Promise<void> {
     // Process each live agent
     for (const [id, liveAgent] of liveAgents) {
       const state = world.agents.get(id);
-      if (!state || !state.isAlive) continue;
+      if (!state?.isAlive) continue;
 
       // Send a real "environment tick" message through the full Eliza pipeline.
       // This MUST go through runtime.messageService.handleMessage (no bypassing).

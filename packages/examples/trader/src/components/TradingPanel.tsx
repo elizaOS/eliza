@@ -83,6 +83,7 @@ export function TradingPanel({
             className="btn btn-danger btn-full"
             onClick={onStop}
             disabled={loading}
+            type="button"
           >
             {loading ? <span className="loading-spinner"></span> : "⏹️"} Stop
             Trading
@@ -91,8 +92,11 @@ export function TradingPanel({
       ) : (
         <div>
           <div className="form-group">
-            <label className="form-label">Strategy</label>
+            <label className="form-label" htmlFor="trading-strategy">
+              Strategy
+            </label>
             <select
+              id="trading-strategy"
               className="form-select"
               value={strategy}
               onChange={(e) => setStrategy(e.target.value)}
@@ -107,9 +111,12 @@ export function TradingPanel({
           </div>
 
           <div className="form-group">
-            <label className="form-label">Max Position Size</label>
+            <label className="form-label" htmlFor="max-position-size">
+              Max Position Size
+            </label>
             <div className="slider-container">
               <input
+                id="max-position-size"
                 type="range"
                 className="slider"
                 min="1"
@@ -126,9 +133,12 @@ export function TradingPanel({
 
           <div className="grid-2">
             <div className="form-group">
-              <label className="form-label">Stop Loss</label>
+              <label className="form-label" htmlFor="stop-loss-percent">
+                Stop Loss
+              </label>
               <div className="slider-container">
                 <input
+                  id="stop-loss-percent"
                   type="range"
                   className="slider"
                   min="1"
@@ -142,9 +152,12 @@ export function TradingPanel({
             </div>
 
             <div className="form-group">
-              <label className="form-label">Take Profit</label>
+              <label className="form-label" htmlFor="take-profit-percent">
+                Take Profit
+              </label>
               <div className="slider-container">
                 <input
+                  id="take-profit-percent"
                   type="range"
                   className="slider"
                   min="5"
@@ -159,8 +172,11 @@ export function TradingPanel({
           </div>
 
           <div className="form-group">
-            <label className="form-label">Trading Interval</label>
+            <label className="form-label" htmlFor="trading-interval">
+              Trading Interval
+            </label>
             <select
+              id="trading-interval"
               className="form-select"
               value={intervalMinutes}
               onChange={(e) => setIntervalMinutes(Number(e.target.value))}
@@ -178,6 +194,7 @@ export function TradingPanel({
             className="btn btn-success btn-full"
             onClick={handleStart}
             disabled={loading || disabled}
+            type="button"
           >
             {loading ? <span className="loading-spinner"></span> : "▶️"} Start
             Trading

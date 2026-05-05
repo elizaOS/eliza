@@ -40,6 +40,39 @@ const extractSearchQuery = (messageText: string): string | null => {
   return null;
 };
 
+function readOptions(options: unknown): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const params =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...params };
+}
+
+function readSearchQuery(messageText: string, options: unknown): string | null {
+  const params = readOptions(options);
+  const query = params.query ?? params.searchQuery;
+  if (typeof query === "string" && query.trim().length >= 3) {
+    return query.trim();
+  }
+  return extractSearchQuery(messageText);
+}
+
+function readLimit(options: unknown): number {
+  const raw = readOptions(options).limit;
+  const parsed =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number.parseInt(raw, 10)
+        : 5;
+  if (!Number.isFinite(parsed)) return 5;
+  return Math.min(Math.max(1, Math.floor(parsed)), 10);
+}
+
 export const searchYouTube: Action = {
   name: "SEARCH_YOUTUBE",
   similes: [
@@ -53,9 +86,28 @@ export const searchYouTube: Action = {
   description:
     "Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific URL.",
   descriptionCompressed: "Search YouTube for song/video, return link.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  parameters: [
+    {
+      name: "query",
+      description: "Song, artist, or video query to search on YouTube.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "limit",
+      description: "Maximum YouTube results to inspect.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 10, default: 5 },
+    },
+  ],
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+    options?: unknown,
+  ) => {
     const messageText = message.content.text || "";
-    const searchQuery = extractSearchQuery(messageText);
+    const searchQuery = readSearchQuery(messageText, options);
     return !!searchQuery;
   },
   handler: async (
@@ -66,7 +118,7 @@ export const searchYouTube: Action = {
     callback: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const messageText = message.content.text || "";
-    const searchQuery = extractSearchQuery(messageText);
+    const searchQuery = readSearchQuery(messageText, _options);
 
     if (!searchQuery) {
       await callback({
@@ -87,7 +139,7 @@ export const searchYouTube: Action = {
       logger.debug(`Searching YouTube for: ${searchQuery}`);
 
       const searchResults = await musicLibrary.searchYouTube(searchQuery, {
-        limit: 5,
+        limit: readLimit(_options),
       });
 
       if (!searchResults || searchResults.length === 0) {

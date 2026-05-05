@@ -49,6 +49,12 @@ interface GetPluginsResponse {
   plugins?: PluginInfoShape[];
 }
 
+interface ListConnectorsParams {
+  status?: "enabled" | "disabled" | "active" | "inactive";
+  configured?: boolean;
+  search?: string;
+}
+
 function normalizeConfig(value: unknown): Record<string, string> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -536,7 +542,7 @@ export const listConnectorsAction: Action = {
     return hasOwnerAccess(runtime, message);
   },
 
-  handler: async (runtime, message) => {
+  handler: async (runtime, message, _state, options) => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,
@@ -546,7 +552,32 @@ export const listConnectorsAction: Action = {
 
     try {
       const base = getApiBase();
-      const connectors = await fetchConnectors(base);
+      const params = (options as HandlerOptions | undefined)?.parameters as
+        | ListConnectorsParams
+        | undefined;
+      const search = params?.search?.trim().toLowerCase() ?? "";
+      const connectors = (await fetchConnectors(base)).filter((connector) => {
+        if (search) {
+          const haystack =
+            `${connector.id} ${connector.name} ${connector.description ?? ""}`.toLowerCase();
+          if (!haystack.includes(search)) return false;
+        }
+        if (typeof params?.configured === "boolean") {
+          if (Boolean(connector.configured) !== params.configured) return false;
+        }
+        switch (params?.status) {
+          case "enabled":
+            return connector.enabled;
+          case "disabled":
+            return !connector.enabled;
+          case "active":
+            return Boolean(connector.isActive);
+          case "inactive":
+            return !connector.isActive;
+          default:
+            return true;
+        }
+      });
 
       if (connectors.length === 0) {
         return {
@@ -568,7 +599,7 @@ export const listConnectorsAction: Action = {
       return {
         success: true,
         text: [`Connectors (${connectors.length}):`, ...lines].join("\n"),
-        data: { count: connectors.length, connectors },
+        data: { count: connectors.length, connectors, filters: params ?? {} },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -577,7 +608,31 @@ export const listConnectorsAction: Action = {
     }
   },
 
-  parameters: [],
+  parameters: [
+    {
+      name: "status",
+      description: "Optional connector status filter.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["enabled", "disabled", "active", "inactive"],
+      },
+    },
+    {
+      name: "configured",
+      description:
+        "When set, include only configured or unconfigured connectors.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "search",
+      description:
+        "Optional case-insensitive connector name, id, or description filter.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
   examples: [
     [
       {

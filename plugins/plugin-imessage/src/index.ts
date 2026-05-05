@@ -9,7 +9,7 @@ import { platform } from "node:os";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { sendMessage } from "./actions/index.js";
-import { contactsProvider } from "./providers/index.js";
+import { chatContextProvider, contactsProvider } from "./providers/index.js";
 import {
   chatDbMessageToPublicShape,
   IMessageService,
@@ -87,6 +87,7 @@ export {
 // Re-export types and service
 export * from "./types.js";
 export {
+  chatContextProvider,
   chatDbMessageToPublicShape,
   contactsProvider,
   IMessageService,
@@ -103,8 +104,8 @@ const imessagePlugin: Plugin = {
   description: "iMessage plugin for Eliza agents (macOS only)",
 
   services: [IMessageService],
-  actions: [],
-  providers: [contactsProvider],
+  actions: [sendMessage],
+  providers: [chatContextProvider, contactsProvider],
   routes: imessageSetupRoutes,
   tests: [],
 

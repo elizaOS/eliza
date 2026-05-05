@@ -270,6 +270,7 @@ async function probeAnthropicUsage(accessToken: string): Promise<{
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
+    // @duplicate-component-audit-allow: usage probe reads auth/rate-limit headers; response text is ignored.
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       signal: controller.signal,
@@ -331,6 +332,7 @@ async function probeCodexUsage(
       Authorization: `Bearer ${accessToken}`,
     };
     if (codexAccountId) headers["ChatGPT-Account-Id"] = codexAccountId;
+    // @duplicate-component-audit-allow: usage probe reads auth/rate-limit headers; response text is ignored.
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       signal: controller.signal,

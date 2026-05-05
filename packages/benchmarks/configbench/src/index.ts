@@ -2,7 +2,7 @@
 
 // Usage: bun run src/index.ts [--eliza] [--verbose]
 
-import { join, resolve } from "path";
+import { join, resolve } from "node:path";
 import {
   failingHandler,
   perfectHandler,
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
     },
   });
 
-  process.stdout.write("\r" + " ".repeat(80) + "\r");
+  process.stdout.write(`\r${" ".repeat(80)}\r`);
 
   for (const handlerResult of results.handlers) {
     if (verbose) {

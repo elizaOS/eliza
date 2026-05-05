@@ -269,10 +269,10 @@ export const terminalAction: Action = {
   description:
     "Run a single explicit shell command that the user provided directly. " +
     "Only use when the user gives a specific command like 'run ls -la' or 'execute npm install'. " +
-    "Do NOT use for building projects, creating websites, or multi-step work — use CREATE_TASK instead. " +
+    "Do NOT use for building projects, creating websites, or multi-step work — use START_CODING_TASK instead. " +
     "The command output is captured as a document attachment for post-action planning. After the run, decide whether to reply, stay silent, continue with another action, or save the attachment via the clipboard plugin.",
   descriptionCompressed:
-    "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use CREATE_TASK instead command output captur document attachment post-action plan after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
+    "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use START_CODING_TASK instead command output captur document attachment post-action plan after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
 
   validate: async (runtime, message) => {
     // Permission is the only gate here. Whether the action is relevant to the

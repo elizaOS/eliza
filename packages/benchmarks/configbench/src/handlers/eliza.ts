@@ -134,7 +134,8 @@ async function loadModelProviderPlugin(): Promise<Plugin | null> {
           mod = await import("@elizaos/plugin-groq");
         } catch {
           mod = await import(
-            pathToFileURL(resolve(REPO_ROOT, "plugins/plugin-groq/index.ts")).href
+            pathToFileURL(resolve(REPO_ROOT, "plugins/plugin-groq/index.ts"))
+              .href
           );
         }
         const plugin = (mod.groqPlugin ?? mod.default ?? null) as Plugin | null;
@@ -160,7 +161,8 @@ async function loadModelProviderPlugin(): Promise<Plugin | null> {
           mod = await import("@elizaos/plugin-openai");
         } catch {
           mod = await import(
-            pathToFileURL(resolve(REPO_ROOT, "plugins/plugin-openai/index.ts")).href
+            pathToFileURL(resolve(REPO_ROOT, "plugins/plugin-openai/index.ts"))
+              .href
           );
         }
         const plugin = (mod.openaiPlugin ??
@@ -298,7 +300,11 @@ export const elizaHandler: Handler = {
       explicitProvider === "openai"
         ? ["OPENAI_API_KEY", "OPENAI_SMALL_MODEL", "OPENAI_LARGE_MODEL"]
         : explicitProvider === "anthropic"
-          ? ["ANTHROPIC_API_KEY", "ANTHROPIC_SMALL_MODEL", "ANTHROPIC_LARGE_MODEL"]
+          ? [
+              "ANTHROPIC_API_KEY",
+              "ANTHROPIC_SMALL_MODEL",
+              "ANTHROPIC_LARGE_MODEL",
+            ]
           : ["GROQ_API_KEY", "GROQ_SMALL_MODEL", "GROQ_LARGE_MODEL"];
     const providerSettings: Record<string, string> = {};
     for (const key of modelSettingKeys) {
@@ -338,7 +344,10 @@ export const elizaHandler: Handler = {
       character,
       plugins,
     });
-    if (typeof (runtime as unknown as Record<string, unknown>).initialize === "function") {
+    if (
+      typeof (runtime as unknown as Record<string, unknown>).initialize ===
+      "function"
+    ) {
       await (
         runtime as unknown as { initialize(): Promise<void> }
       ).initialize();

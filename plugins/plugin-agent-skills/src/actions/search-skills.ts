@@ -196,7 +196,7 @@ export const searchSkillsAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state: State | undefined,
-		_options: unknown,
+		options: unknown,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		const service = runtime.getService<AgentSkillsService>(
@@ -208,13 +208,39 @@ export const searchSkillsAction: Action = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const query = message.content?.text || "";
-		const result = await runSkillSearch(service, query, 10);
+		const opts = options as
+			| { parameters?: { query?: unknown; limit?: unknown } }
+			| undefined;
+		const query =
+			typeof opts?.parameters?.query === "string"
+				? opts.parameters.query
+				: message.content?.text || "";
+		const limit =
+			typeof opts?.parameters?.limit === "number" &&
+			Number.isFinite(opts.parameters.limit)
+				? Math.max(1, Math.floor(opts.parameters.limit))
+				: 10;
+		const result = await runSkillSearch(service, query, limit);
 		const text = result.text ?? "";
 		if (callback) await callback({ text });
 
 		return result;
 	},
+
+	parameters: [
+		{
+			name: "query",
+			description: "Search query or skill category.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "limit",
+			description: "Maximum number of skill results.",
+			required: false,
+			schema: { type: "number" as const },
+		},
+	],
 
 	examples: [
 		[

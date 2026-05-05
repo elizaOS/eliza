@@ -30,8 +30,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
-from dataclasses import asdict
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -182,15 +183,7 @@ class ElizaHyperliquidAgent:
 
     async def solve_scenario(self, scenario: "TradingScenario") -> "BenchmarkResult":
         """Generate a plan via the eliza TS bridge and execute it via Rust."""
-        from benchmarks.HyperliquidBench.plugin.actions.execute_plan import (
-            _handle_execute_plan,
-        )
-        from benchmarks.HyperliquidBench.types import (
-            BenchmarkResult,
-            EvaluatorResult,
-            Plan,
-            RunnerResult,
-        )
+        from benchmarks.HyperliquidBench.types import BenchmarkResult, Plan
 
         # Reset the bridge session for this scenario.
         await asyncio.to_thread(
@@ -199,16 +192,7 @@ class ElizaHyperliquidAgent:
             "hyperliquid_bench",
         )
 
-        shim = _RuntimeShim()
-        # Set up the same settings the in-process Python runtime would set,
-        # so EXECUTE_PLAN's existing reads work unchanged.
-        shim.set_setting("CURRENT_SCENARIO", asdict(scenario))
-        shim.set_setting("BENCH_ROOT", str(self._config.bench_root))
-        config_dict = asdict(self._config)
-        config_dict["bench_root"] = str(self._config.bench_root)
-        shim.set_setting("BENCH_CONFIG", config_dict)
-
-        best_result: dict[str, Any] | None = None
+        best_result: "BenchmarkResult | None" = None
         last_feedback: str | None = None
         last_error: str | None = None
 
@@ -253,37 +237,27 @@ class ElizaHyperliquidAgent:
                 )
                 continue
 
-            plan_json = json.dumps(plan_dict, separators=(",", ":"))
-            shim.set_setting("CURRENT_PLAN_JSON", plan_json)
-            shim.set_setting("CURRENT_PLAN_DICT", plan_dict)
-            shim.set_setting("PLAN_EXECUTED", False)
-            shim.set_setting("LAST_RESULT_JSON", None)
-
-            # 3) Hand off to the canonical Rust execution path.
-            exec_result = await _handle_execute_plan(
-                shim, None, None, None, None, None,  # type: ignore[arg-type]
+            # 3) Hand off to the Rust runner/evaluator path used by the
+            # deterministic smoke agent, but with the bridge-generated plan.
+            result = await asyncio.to_thread(
+                self._execute_plan_dict_sync,
+                scenario,
+                plan_dict,
             )
 
-            if not exec_result.success:
-                last_error = exec_result.error or "EXECUTE_PLAN failed"
-                logger.warning("EXECUTE_PLAN failed: %s", last_error)
+            if not result.runner.success:
+                last_error = result.error_message or result.runner.stderr or result.runner.stdout
+                logger.warning("hl-runner failed: %s", last_error)
                 last_feedback = (
                     f"Previous plan failed to execute: {last_error}. "
                     "Adjust the plan and try again."
                 )
                 continue
 
-            last_result_str = shim.get_setting("LAST_RESULT_JSON")
-            if isinstance(last_result_str, str):
-                try:
-                    best_result = json.loads(last_result_str)
-                except json.JSONDecodeError:
-                    best_result = None
-
-            if best_result and best_result.get("evaluator"):
-                eval_data = best_result["evaluator"]
-                found = eval_data.get("uniqueSignatures", [])
-                score = eval_data.get("finalScore", 0)
+            best_result = result
+            if best_result.evaluator is not None:
+                found = best_result.evaluator.unique_signatures
+                score = best_result.evaluator.final_score
                 last_feedback = (
                     f"Score: {score}. Found {len(found)} signatures: {found}. "
                     "To IMPROVE: vary buy/sell, reduceOnly true/false, "
@@ -292,56 +266,132 @@ class ElizaHyperliquidAgent:
                     "Generate a DIFFERENT plan with MORE diverse actions."
                 )
 
-            # Reset for the next iteration.
-            shim.set_setting("PLAN_EXECUTED", False)
-            shim.set_setting("CURRENT_PLAN_JSON", None)
-
-        # Build the BenchmarkResult — same shape the in-process agent returns.
-        runner_result = RunnerResult(
-            success=False, out_dir="", run_meta_path="", per_action_path="",
-            stdout="", stderr="", exit_code=-1,
-        )
-        evaluator_result: "EvaluatorResult | None" = None
-        error_message: str | None = None
-
         if best_result:
-            runner_data = best_result.get("runner", {})
-            if isinstance(runner_data, dict):
-                out_dir = str(runner_data.get("outDir", ""))
-                runner_result = RunnerResult(
-                    success=bool(runner_data.get("success", False)),
-                    out_dir=out_dir,
-                    run_meta_path=str(Path(out_dir) / "run_meta.json") if out_dir else "",
-                    per_action_path=str(Path(out_dir) / "per_action.jsonl") if out_dir else "",
-                    stdout="",
-                    stderr=str(runner_data.get("stderr", "")),
-                    exit_code=int(runner_data.get("exitCode", -1)),
-                )
-            eval_data = best_result.get("evaluator")
-            if isinstance(eval_data, dict):
-                sigs = eval_data.get("uniqueSignatures", [])
-                evaluator_result = EvaluatorResult(
-                    success=bool(eval_data.get("success", False)),
-                    final_score=float(eval_data.get("finalScore", 0.0)),
-                    base=float(eval_data.get("base", 0.0)),
-                    bonus=float(eval_data.get("bonus", 0.0)),
-                    penalty=float(eval_data.get("penalty", 0.0)),
-                    unique_signatures=list(sigs) if isinstance(sigs, list) else [],
-                    eval_score_path=str(Path(runner_result.out_dir) / "eval_score.json"),
-                    stdout="",
-                    stderr="",
-                    exit_code=int(eval_data.get("exitCode", -1)),
-                )
-        else:
-            error_message = last_error or "No plan was successfully executed"
+            return best_result
 
         return BenchmarkResult(
             scenario_id=scenario.scenario_id,
             plan=Plan(steps=[]),  # raw plan dict already executed
-            runner=runner_result,
-            evaluator=evaluator_result,
-            error_message=error_message,
+            runner=self._empty_runner_result(),
+            evaluator=None,
+            error_message=last_error or "No plan was successfully executed",
         )
+
+    def _empty_runner_result(self):
+        from benchmarks.HyperliquidBench.types import RunnerResult
+
+        return RunnerResult(
+            success=False,
+            out_dir="",
+            run_meta_path="",
+            per_action_path="",
+            stdout="",
+            stderr="",
+            exit_code=-1,
+        )
+
+    def _execute_plan_dict_sync(
+        self,
+        scenario: "TradingScenario",
+        plan_dict: dict[str, Any],
+    ):
+        from benchmarks.HyperliquidBench.eliza_agent import _binary_or_cargo, _read_json
+        from benchmarks.HyperliquidBench.types import (
+            BenchmarkResult,
+            EvaluatorResult,
+            Plan,
+            RunnerResult,
+        )
+
+        bench_root = self._config.bench_root.resolve()
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        safe_id = "".join(
+            ch if ch.isalnum() or ch in "._-" else "-"
+            for ch in scenario.scenario_id
+        )
+        out_dir = bench_root / self._config.runs_dir / f"eliza-bridge-{safe_id}-{timestamp}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        plan_path = out_dir / "plan_input.json"
+        plan_path.write_text(json.dumps(plan_dict, indent=2), encoding="utf-8")
+
+        runner_cmd = [
+            *_binary_or_cargo(bench_root, "hl-runner"),
+            "--plan",
+            str(plan_path),
+            "--out",
+            str(out_dir),
+            "--network",
+            self._config.network,
+            "--effect-timeout-ms",
+            str(self._config.effect_timeout_ms),
+        ]
+        if self._config.demo_mode:
+            runner_cmd.append("--demo")
+        if self._config.builder_code:
+            runner_cmd.extend(["--builder-code", self._config.builder_code])
+
+        env = os.environ.copy()
+        runner_proc = subprocess.run(
+            runner_cmd,
+            cwd=bench_root,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+            env=env,
+        )
+        runner = RunnerResult(
+            success=runner_proc.returncode == 0,
+            out_dir=str(out_dir),
+            run_meta_path=str(out_dir / "run_meta.json"),
+            per_action_path=str(out_dir / "per_action.jsonl"),
+            stdout=runner_proc.stdout,
+            stderr=runner_proc.stderr,
+            exit_code=runner_proc.returncode,
+        )
+        if not runner.success:
+            return BenchmarkResult(
+                scenario.scenario_id,
+                Plan(steps=[]),
+                runner,
+                None,
+                runner.stderr or runner.stdout,
+            )
+
+        evaluator_cmd = [
+            *_binary_or_cargo(bench_root, "hl-evaluator"),
+            "--input",
+            str(out_dir / "per_action.jsonl"),
+            "--domains",
+            str(bench_root / self._config.domains_file),
+            "--out-dir",
+            str(out_dir),
+        ]
+        evaluator_proc = subprocess.run(
+            evaluator_cmd,
+            cwd=bench_root,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+            env=env,
+        )
+        score_path = out_dir / "eval_score.json"
+        score = _read_json(score_path) if score_path.exists() else {}
+        evaluator = EvaluatorResult(
+            success=evaluator_proc.returncode == 0 and bool(score),
+            final_score=float(score.get("finalScore", 0.0)),
+            base=float(score.get("base", 0.0)),
+            bonus=float(score.get("bonus", 0.0)),
+            penalty=float(score.get("penalty", 0.0)),
+            unique_signatures=list(score.get("uniqueSignatures", [])),
+            eval_score_path=str(score_path),
+            stdout=evaluator_proc.stdout,
+            stderr=evaluator_proc.stderr,
+            exit_code=evaluator_proc.returncode,
+        )
+        error = None if evaluator.success else (evaluator.stderr or evaluator.stdout or "evaluation failed")
+        return BenchmarkResult(scenario.scenario_id, Plan(steps=[]), runner, evaluator, error)
 
     async def run_benchmark(
         self,

@@ -33,6 +33,21 @@ export const searchIssuesAction: Action = {
     "query-linear-issues",
     "list-linear-issues",
   ],
+  parameters: [
+    {
+      name: "filters",
+      description:
+        "Structured Linear issue filters: query, state, assignee, priority, team, label, and limit.",
+      required: false,
+      schema: { type: "object" as const },
+    },
+    {
+      name: "limit",
+      description: "Maximum number of issues to return.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
 
   examples: [
     [

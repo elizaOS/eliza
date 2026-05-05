@@ -803,7 +803,9 @@ async function buildAutomationNodeCatalog(
       label: humanizeCapabilityName(action.name),
       description: action.description || `${action.name} runtime action`,
       class:
-        action.name === "CREATE_TASK" || action.name === "CODE_TASK"
+        action.name === "START_CODING_TASK" ||
+        action.name === "CREATE_TASK" ||
+        action.name === "CODE_TASK"
           ? "agent"
           : "action",
       source: "runtime_action",

@@ -300,10 +300,15 @@ def main() -> int:
 
     config = create_config(args)
 
+    provider = (config.model_provider or "").strip().lower()
+    uses_bridge = provider in {"eliza", "eliza-bridge", "eliza-ts"}
+
     if config.use_mock:
         logger.warning(
             "WARNING: Running in mock mode. Results are not representative of real agent performance."
         )
+    elif uses_bridge:
+        logger.info("Bridge mode: routing through the eliza TypeScript benchmark server.")
     else:
         has_key = bool(
             os.environ.get("GROQ_API_KEY")

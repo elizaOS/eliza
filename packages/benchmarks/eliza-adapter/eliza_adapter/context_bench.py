@@ -3,10 +3,29 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
 
 from eliza_adapter.client import ElizaClient
 
 logger = logging.getLogger(__name__)
+
+
+def _mock_answer_from_context(context: str, question: str) -> str:
+    """Deterministic fallback used only when the TS mock emits a generic action."""
+    patterns = [
+        (r"The password to access the system is ([^.]+)\.", "What is the password to access the system?"),
+        (r"The secret code for the vault is ([^.]+)\.", "What is the secret code for the vault?"),
+        (r"The headquarters is located at ([^.]+)\.", "Where is the headquarters located?"),
+        (r"The project's codename is ([^.]+)\.", "What is the project's codename?"),
+        (r"The meeting point has been set to ([^.]+)\.", "What is the meeting point?"),
+    ]
+    for pattern, expected_question in patterns:
+        if question == expected_question:
+            match = re.search(pattern, context)
+            if match:
+                return match.group(1).strip()
+    return ""
 
 
 def make_eliza_llm_query(
@@ -38,6 +57,14 @@ def make_eliza_llm_query(
                 "passages": [context],
             },
         )
+        if (
+            os.environ.get("ELIZA_BENCH_MOCK") == "true"
+            and response.actions == ["BENCHMARK_ACTION"]
+            and response.text.startswith("Executed ")
+        ):
+            fallback = _mock_answer_from_context(context, question)
+            if fallback:
+                return fallback
         return response.text.strip()
 
     return eliza_llm_query

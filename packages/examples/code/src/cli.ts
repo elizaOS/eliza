@@ -452,10 +452,10 @@ export async function main(
 // ============================================================================
 
 export {
-  parseArgs,
-  getMessage,
-  runCLI,
-  formatOutput,
   type CLIOptions,
   type CLIResult,
+  formatOutput,
+  getMessage,
+  parseArgs,
+  runCLI,
 };

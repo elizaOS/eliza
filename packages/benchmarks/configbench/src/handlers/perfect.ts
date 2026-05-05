@@ -89,17 +89,17 @@ function extractSecretsFromMessages(
 
     const skAnt = text.match(/(sk-ant-[a-zA-Z0-9_-]+)/);
     if (skAnt) {
-      secrets["ANTHROPIC_API_KEY"] = skAnt[1];
+      secrets.ANTHROPIC_API_KEY = skAnt[1];
       continue;
     }
     const sk = text.match(/(sk-[a-zA-Z0-9_-]+)/);
     if (sk) {
-      secrets["OPENAI_API_KEY"] = sk[1];
+      secrets.OPENAI_API_KEY = sk[1];
       continue;
     }
     const gsk = text.match(/(gsk_[a-zA-Z0-9_-]+)/);
     if (gsk) {
-      secrets["GROQ_API_KEY"] = gsk[1];
+      secrets.GROQ_API_KEY = gsk[1];
     }
   }
   return secrets;

@@ -191,11 +191,13 @@ export function resolveRuntimeChoices(args: {
   showLocalOption: boolean;
   localProbePending: boolean;
 }): RuntimeChoice[] {
-  if (args.isAndroid) {
+  if (args.isAndroid || args.isIOS) {
     return ["cloud", "local", "remote"];
   }
-  if (args.isIOS) return ["cloud", "remote"];
   if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
+  if (args.showLocalOption || args.localProbePending) {
+    return ["cloud", "local", "remote"];
+  }
   return ["cloud", "remote"];
 }
 
@@ -346,11 +348,12 @@ export function RuntimeGate() {
   // Local embeddings toggle (elizacloud only, default unchecked)
   const [useLocalEmbeddings, setUseLocalEmbeddings] = useState(false);
 
-  // Local-tile visibility. On desktop/dev this is true synchronously; on
-  // Android it depends on a live probe of the on-device agent's
-  // `/api/health`, so the tile is hidden until the probe resolves. Other
-  // platforms never see it. `null` means "still probing" — Android waits
-  // briefly so AOSP builds can collapse to the local-only path.
+  // Local-tile readiness. Desktop/dev are local-capable synchronously.
+  // Android probes the on-device agent's `/api/health` so ElizaOS can
+  // auto-complete once the bundled runtime is ready, but the mobile picker
+  // still offers Local while that probe is pending. iOS also presents the
+  // Local path from onboarding; web can include it when a caller reports
+  // local availability or an in-progress probe through `resolveRuntimeChoices`.
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;

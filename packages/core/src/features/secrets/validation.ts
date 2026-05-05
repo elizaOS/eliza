@@ -433,6 +433,7 @@ async function verifyAnthropicKey(
 	apiKey: string,
 ): Promise<{ isValid: boolean; error?: string }> {
 	try {
+		// @duplicate-component-audit-allow: credential probe validates the key; response content is ignored.
 		const response = await fetch("https://api.anthropic.com/v1/messages", {
 			method: "POST",
 			headers: {

@@ -6,17 +6,11 @@ import {
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
-  ActionResult,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -58,10 +52,14 @@ import {
   extractLifeOperationWithLlm,
 } from "./lib/extract-life-operation.js";
 import {
+  type ExtractedTaskParams,
   extractReminderIntensityWithLlm,
   extractTaskCreatePlanWithLlm,
 } from "./lib/extract-task-plan.js";
-import { extractUpdateFieldsWithLlm } from "./lib/extract-update-fields.js";
+import {
+  type ExtractedUpdateFields,
+  extractUpdateFieldsWithLlm,
+} from "./lib/extract-update-fields.js";
 import {
   countTurnsSinceLatestDeferredLifeDraft,
   type DeferredLifeDefinitionDraft,
@@ -73,7 +71,6 @@ import {
   extractDeferredLifeDraftFollowupWithLlm,
   latestDeferredLifeDraft,
 } from "./lib/lifeops-deferred-draft.js";
-import { recentConversationTexts } from "./lib/recent-context.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -192,22 +189,19 @@ const SUBACTIONS = {
     optional: ["target", "details"],
   },
   capture_phone: {
-    description:
-      "Save or confirm a phone number for SMS / voice escalation.",
+    description: "Save or confirm a phone number for SMS / voice escalation.",
     descriptionCompressed: "phone number sms voice escalation capture",
     required: ["details"],
     optional: ["intent", "title"],
   },
   configure_escalation: {
-    description:
-      "Set up SMS/voice/call escalation steps for a definition.",
+    description: "Set up SMS/voice/call escalation steps for a definition.",
     descriptionCompressed: "escalation sms voice call steps definition",
     required: ["target"],
     optional: ["intent", "details"],
   },
   query_calendar_today: {
-    description:
-      "Today's, tomorrow's, or this week's calendar feed.",
+    description: "Today's, tomorrow's, or this week's calendar feed.",
     descriptionCompressed: "calendar today tomorrow week feed",
     required: [],
     optional: ["intent", "details"],
@@ -225,10 +219,8 @@ const SUBACTIONS = {
     optional: ["intent", "details"],
   },
   query_overview: {
-    description:
-      "Broad LifeOps status summary or remaining items today.",
-    descriptionCompressed:
-      "overview status remaining active items today",
+    description: "Broad LifeOps status summary or remaining items today.",
+    descriptionCompressed: "overview status remaining active items today",
     required: [],
     optional: ["intent"],
   },
@@ -431,7 +423,6 @@ function matchByTitle<
     null
   );
 }
-
 
 async function resolveGoal(
   service: LifeOpsService,
@@ -1403,7 +1394,7 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
  * valid cadence, letting the caller fall back to regex-derived values.
  */
 function buildCadenceFromLlmParams(
-  params: import("./life-param-extractor.js").ExtractedTaskParams,
+  params: ExtractedTaskParams,
   context?: {
     intent?: string;
     now?: Date;
@@ -1566,7 +1557,7 @@ function buildCadenceFromLlmParams(
 function buildCadenceFromUpdateFields(args: {
   currentCadence: LifeOpsCadence;
   currentWindowPolicy: LifeOpsWindowPolicy;
-  update: import("./life-update-extractor.js").ExtractedUpdateFields;
+  update: ExtractedUpdateFields;
   timeZone: string;
 }): {
   cadence: LifeOpsCadence;
@@ -1896,7 +1887,7 @@ function formatGoalExperienceLoopSummary(
     | null
     | undefined,
 ): string | null {
-  if (!experienceLoop || !experienceLoop.summary) {
+  if (!experienceLoop?.summary) {
     return null;
   }
   const similarGoalTitle = experienceLoop.similarGoals?.[0]?.title?.trim();
@@ -2115,7 +2106,7 @@ export const lifeAction: Action & {
     }
     const explicitSubaction =
       typeof params.subaction === "string" &&
-      Object.prototype.hasOwnProperty.call(SUBACTIONS, params.subaction)
+      Object.hasOwn(SUBACTIONS, params.subaction)
         ? (params.subaction as LifeOperation)
         : undefined;
     const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({

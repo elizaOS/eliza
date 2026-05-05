@@ -13,7 +13,7 @@
  *     keyword, the dispatcher routes back here, and we resolve the choice.
  *  3. Create-new path — extract a kebab-case name + display name via the
  *     LLM, copy the min-project template, then dispatch a coding agent via
- *     CREATE_TASK with the AppVerificationService validator.
+ *     START_CODING_TASK with the AppVerificationService validator.
  *  4. Edit path — same dispatch, but workdir is the existing app's source
  *     directory.
  */
@@ -285,7 +285,7 @@ interface DispatchInput {
 	appName: string;
 	/**
 	 * Room ID to post the verification verdict back to once the orchestrator
-	 * runs the AppVerificationService validator. Forwarded via CREATE_TASK
+	 * runs the AppVerificationService validator. Forwarded via START_CODING_TASK
 	 * metadata into session metadata, then read by the verification room
 	 * bridge service when it filters task_complete / escalation broadcasts.
 	 */
@@ -359,9 +359,14 @@ async function dispatchCodingAgent({
 	originRoomId,
 	callback,
 }: DispatchInput): Promise<DispatchResult> {
-	const createTask = runtime.actions?.find((a) => a.name === "CREATE_TASK");
+	const createTask =
+		runtime.actions?.find((a) => a.name === "START_CODING_TASK") ??
+		runtime.actions?.find((a) => a.name === "CREATE_TASK");
 	if (!createTask) {
-		return { dispatched: false, reason: "CREATE_TASK action not registered" };
+		return {
+			dispatched: false,
+			reason: "START_CODING_TASK action not registered",
+		};
 	}
 
 	const fakeMessage = {
@@ -433,7 +438,7 @@ async function dispatchCodingAgent({
 				result?.text ??
 				(typeof result?.error === "string"
 					? result.error
-					: "CREATE_TASK failed to start"),
+					: "START_CODING_TASK failed to start"),
 		};
 	}
 
@@ -441,7 +446,7 @@ async function dispatchCodingAgent({
 	if (agents.length === 0) {
 		return {
 			dispatched: false,
-			reason: "CREATE_TASK did not return a tracked task status",
+			reason: "START_CODING_TASK did not return a tracked task status",
 		};
 	}
 

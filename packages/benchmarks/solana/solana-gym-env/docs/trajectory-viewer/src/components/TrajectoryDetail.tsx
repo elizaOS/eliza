@@ -65,10 +65,11 @@ const TrajectoryDetail: React.FC = () => {
 
   const extractCodeBlocks = (content: string): string[] => {
     const codePattern = /```(?:typescript|ts|javascript|js)(.*?)```/gs;
-    const matches = [];
-    let match;
-    while ((match = codePattern.exec(content)) !== null) {
+    const matches: string[] = [];
+    let match: RegExpExecArray | null = codePattern.exec(content);
+    while (match !== null) {
       matches.push(match[1].trim());
+      match = codePattern.exec(content);
     }
     return matches;
   };

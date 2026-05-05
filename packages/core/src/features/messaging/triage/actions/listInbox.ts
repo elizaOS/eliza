@@ -11,6 +11,7 @@ import type {
 } from "../../../../types/index.ts";
 import { rankScored } from "../triage-engine.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
+import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import { parseListInboxParams } from "./_shared.ts";
 
 export const listInboxAction: Action = {
@@ -18,6 +19,30 @@ export const listInboxAction: Action = {
 	description:
 		"List unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'.",
 	similes: ["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
+	parameters: [
+		{
+			name: "sources",
+			description:
+				"Optional message sources to include, such as email, slack, discord, imessage, signal, whatsapp, telegram, or x.",
+			required: false,
+			schema: {
+				type: "array" as const,
+				items: { type: "string" as const, enum: [...ALL_MESSAGE_SOURCES] },
+			},
+		},
+		{
+			name: "limit",
+			description: "Maximum unread messages to return.",
+			required: false,
+			schema: { type: "number" as const, minimum: 1, maximum: 100 },
+		},
+		{
+			name: "sinceMs",
+			description: "Only include messages received at or after this timestamp.",
+			required: false,
+			schema: { type: "number" as const },
+		},
+	],
 	examples: [
 		[
 			{

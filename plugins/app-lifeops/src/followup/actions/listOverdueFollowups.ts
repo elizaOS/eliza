@@ -5,6 +5,22 @@ import {
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
 } from "../followup-tracker.js";
 
+interface ListOverdueFollowupsParams {
+  thresholdDays?: unknown;
+  limit?: unknown;
+}
+
+function coercePositiveNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
 export const listOverdueFollowupsAction: Action = {
   name: "LIST_OVERDUE_FOLLOWUPS",
   similes: [
@@ -19,30 +35,50 @@ export const listOverdueFollowupsAction: Action = {
     "Use this for overdue or pending follow-up list queries, not for scheduling a new reminder. " +
     "Returns an empty list when the RelationshipsService is not available.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime: IAgentRuntime) => {
+  handler: async (runtime: IAgentRuntime, _message, _state, options) => {
+    const params = (options?.parameters ?? {}) as ListOverdueFollowupsParams;
+    const thresholdDays =
+      coercePositiveNumber(params.thresholdDays) ??
+      FOLLOWUP_DEFAULT_THRESHOLD_DAYS;
+    const limit = coercePositiveNumber(params.limit);
     const digest = await computeOverdueFollowups(
       runtime,
       Date.now(),
-      FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
+      thresholdDays,
     );
-    if (digest.overdue.length === 0) {
+    const overdue = limit ? digest.overdue.slice(0, Math.floor(limit)) : digest.overdue;
+    if (overdue.length === 0) {
       return {
         success: true,
         text: "No overdue follow-ups.",
         data: { digest },
       };
     }
-    const lines = digest.overdue.map(
+    const lines = overdue.map(
       (entry) =>
         `${entry.displayName}: last contacted ${entry.lastContactedAt} (+${entry.daysOverdue}d over ${entry.thresholdDays}d threshold)`,
     );
     return {
       success: true,
       text: lines.join("\n"),
-      data: { digest },
+      data: { digest: { ...digest, overdue } },
     };
   },
-  parameters: [],
+  parameters: [
+    {
+      name: "thresholdDays",
+      description:
+        "Override the default overdue threshold in days for this query.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "limit",
+      description: "Maximum number of overdue contacts to return.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
   examples: [
     [
       {

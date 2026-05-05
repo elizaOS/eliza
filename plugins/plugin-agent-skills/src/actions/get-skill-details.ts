@@ -15,6 +15,13 @@ import type {
 import type { AgentSkillsService } from "../services/skills";
 import { createAgentSkillsActionValidator } from "./validators";
 
+type GetSkillDetailsOptions = {
+	parameters?: {
+		slug?: unknown;
+	};
+	slug?: unknown;
+};
+
 export const getSkillDetailsAction: Action = {
 	name: "GET_SKILL_DETAILS",
 	similes: ["SKILL_INFO", "SKILL_DETAILS"],
@@ -41,9 +48,15 @@ export const getSkillDetailsAction: Action = {
 				throw new Error("AgentSkillsService not available");
 			}
 
-			const opts = options as { slug?: string } | undefined;
+			const opts = options as GetSkillDetailsOptions | undefined;
+			const explicitSlug =
+				typeof opts?.parameters?.slug === "string"
+					? opts.parameters.slug
+					: typeof opts?.slug === "string"
+						? opts.slug
+						: null;
 			const slug =
-				opts?.slug || extractSlugFromText(message.content?.text || "");
+				explicitSlug || extractSlugFromText(message.content?.text || "");
 
 			if (!slug) {
 				return {
@@ -96,6 +109,15 @@ ${details.latestVersion.changelog ? `**Changelog:** ${details.latestVersion.chan
 			};
 		}
 	},
+
+	parameters: [
+		{
+			name: "slug",
+			description: "Skill slug to inspect, e.g. pdf-processing.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+	],
 
 	examples: [
 		[

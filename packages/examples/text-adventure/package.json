@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "start": "bun run game.ts",
-    "dev": "bun --watch run game.ts"
+    "dev": "bun --watch run game.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@clack/prompts": "^0.11.0",

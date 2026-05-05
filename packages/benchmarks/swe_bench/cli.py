@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sys
+import textwrap
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,7 +45,17 @@ logger = logging.getLogger(__name__)
 _PATCH_FENCE_RE = re.compile(
     r"```(?:diff|patch)?\s*\n(?P<body>.*?)```", re.DOTALL | re.IGNORECASE
 )
-_DIFF_HEADER_RE = re.compile(r"^diff --git ", re.MULTILINE)
+_DIFF_HEADER_RE = re.compile(r"^\s*diff --git ", re.MULTILINE)
+
+
+def _normalize_patch_text(text: str) -> str:
+    """Normalize TOON-indented multiline patch text back to a raw diff."""
+    normalized = textwrap.dedent(text).strip()
+    lines = normalized.splitlines()
+    if lines:
+        lines[0] = lines[0].lstrip()
+    normalized = "\n".join(lines).strip()
+    return normalized + "\n" if normalized else ""
 
 
 def _extract_patch(text: str) -> str:
@@ -60,14 +71,14 @@ def _extract_patch(text: str) -> str:
         return ""
 
     for match in _PATCH_FENCE_RE.finditer(text):
-        body = match.group("body").strip()
+        body = match.group("body")
         if body and "diff --git" in body:
-            return body if body.endswith("\n") else body + "\n"
+            return _normalize_patch_text(body)
 
     diff_match = _DIFF_HEADER_RE.search(text)
     if diff_match:
-        body = text[diff_match.start() :].strip()
-        return body if body.endswith("\n") else body + "\n"
+        body = text[diff_match.start() :]
+        return _normalize_patch_text(body)
 
     return ""
 

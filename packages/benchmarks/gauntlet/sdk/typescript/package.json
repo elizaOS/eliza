@@ -6,7 +6,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "bunx jest --runInBand --passWithNoTests"
+    "test": "bunx jest --runInBand --passWithNoTests",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "solana",

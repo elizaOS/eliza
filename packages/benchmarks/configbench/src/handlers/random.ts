@@ -1,6 +1,5 @@
 /** Coin-flip handler: seeded PRNG picks correct/incorrect at each decision point. */
 
-import { getNewlyActivatedPlugin } from "../plugins/index.js";
 import type { Handler, Scenario, ScenarioOutcome } from "../types.js";
 
 function createRng(seed: number): () => number {

@@ -31,6 +31,9 @@ def _maybe_make_bridge_factory(config: WebShopConfig):
     if not config.use_bridge:
         return None, None
     try:
+        import os
+
+        from eliza_adapter.client import ElizaClient
         from eliza_adapter.server_manager import ElizaServerManager
         from eliza_adapter.webshop import create_eliza_bridge_webshop_agent
     except ImportError as exc:
@@ -40,11 +43,22 @@ def _maybe_make_bridge_factory(config: WebShopConfig):
             f"directory to PYTHONPATH (import error: {exc})."
         ) from exc
 
-    mgr = ElizaServerManager()
-    mgr.start()
-    logger.info(
-        "[WebShopRunner] Eliza bridge ready at %s", mgr.client.base_url
-    )
+    if os.environ.get("ELIZA_BENCH_URL"):
+        client = ElizaClient()
+        client.wait_until_ready(timeout=120)
+
+        class _ExternalBridgeManager:
+            def __init__(self, client: ElizaClient) -> None:
+                self.client = client
+
+            def stop(self) -> None:
+                return None
+
+        mgr = _ExternalBridgeManager(client)
+    else:
+        mgr = ElizaServerManager()
+        mgr.start()
+    logger.info("[WebShopRunner] Eliza bridge ready at %s", mgr.client.base_url)
 
     def _factory(env: WebShopEnvironment) -> object:
         return create_eliza_bridge_webshop_agent(

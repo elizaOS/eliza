@@ -267,8 +267,13 @@ export default function App() {
               response instanceof Uint8Array ||
               response instanceof ArrayBuffer
             ) {
-              buffer =
-                response instanceof Uint8Array ? response.buffer : response;
+              if (response instanceof Uint8Array) {
+                const copy = new Uint8Array(response.byteLength);
+                copy.set(response);
+                buffer = copy.buffer;
+              } else {
+                buffer = response;
+              }
             } else {
               const stream = response as ReadableStream<Uint8Array>;
               const reader = stream.getReader();
@@ -411,7 +416,9 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setMessages((prev) => prev.filter((m) => m.visibleUntil > now));
+      setMessages((prev) =>
+        prev.filter((m) => (m.visibleUntil ?? Number.POSITIVE_INFINITY) > now),
+      );
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -444,7 +451,9 @@ export default function App() {
 
   // Get visible messages for chat bubble display
   const now = Date.now();
-  const visibleMessages = messages.filter((m) => m.visibleUntil > now);
+  const visibleMessages = messages.filter(
+    (m) => (m.visibleUntil ?? Number.POSITIVE_INFINITY) > now,
+  );
 
   return (
     <div className="app-fullpage">

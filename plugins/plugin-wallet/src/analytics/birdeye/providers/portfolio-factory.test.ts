@@ -48,7 +48,11 @@ describe("Birdeye portfolio provider factory", () => {
       descriptionCompressed: "test birdeye portfolio",
     });
 
-    const result = await provider.get(createRuntime(service), {} as any);
+    const result = await provider.get(
+      createRuntime(service),
+      {} as any,
+      {} as any,
+    );
 
     expect(service.fetchWalletTokenList).toHaveBeenCalledWith(
       "solana",
@@ -88,7 +92,11 @@ describe("Birdeye portfolio provider factory", () => {
       includeTrades: true,
     });
 
-    const result = await provider.get(createRuntime(service), {} as any);
+    const result = await provider.get(
+      createRuntime(service),
+      {} as any,
+      {} as any,
+    );
 
     expect(service.fetchWalletTokenList).toHaveBeenCalledTimes(1);
     expect(service.fetchWalletTxList).toHaveBeenCalledWith("solana", WALLET, {
