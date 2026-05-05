@@ -259,8 +259,6 @@ export interface AppBootConfig {
   companionGlobalOverlay?: ComponentType<Record<string, never>>;
   /** Companion scene state hook provided by the host app. */
   useCompanionSceneStatus?: () => CompanionSceneStatus;
-  /** Optional VRM prefetch hook provided by the host app. */
-  prefetchVrmToCache?: (url: string) => Promise<void> | void;
   /** Optional vector browser runtime owned by the host app. */
   companionVectorBrowser?: CompanionVectorBrowserRuntime;
   /** Coding-agent tasks panel provided by the host app. */

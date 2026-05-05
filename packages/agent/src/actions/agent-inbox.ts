@@ -73,7 +73,8 @@ export const agentInboxAction: Action = {
     "'my email', 'inbox digest', 'daily brief' request from the owner " +
     "belongs to OWNER_INBOX. AGENT_INBOX only applies when the subject " +
     "being triaged is the AGENT's own account.",
-  descriptionCompressed: "AGENT-scoped inbox: AGENT's mailbox / channel inbox use agent itself email message account need triage, digest, read, search, draft, send account subaction: triage digest respond search read_message draft_reply send_reply use OWNER's inbox inbox, Gmail, email, inbox digest, daily brief request owner belong OWNER_INBOX AGENT_INBOX apply subject be triage AGENT's account",
+  descriptionCompressed:
+    "AGENT-scoped inbox: AGENT's mailbox / channel inbox use agent itself email message account need triage, digest, read, search, draft, send account subaction: triage digest respond search read_message draft_reply send_reply use OWNER's inbox inbox, Gmail, email, inbox digest, daily brief request owner belong OWNER_INBOX AGENT_INBOX apply subject be triage AGENT's account",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

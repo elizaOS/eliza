@@ -17,5 +17,3 @@
   "fsdp_enabled": true,
   "notes": "4x L40 with tensor parallelism. Target for Qwen3 30B production runs. Adjust model to Qwen/Qwen3-30B when available."
 }
-
-

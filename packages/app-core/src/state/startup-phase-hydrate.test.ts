@@ -38,16 +38,8 @@ vi.mock("../events", () => ({
   dispatchAppEmoteEvent: vi.fn(),
 }));
 
-vi.mock("../components/companion/injected", () => ({
-  prefetchVrmToCache: vi.fn(async () => undefined),
-}));
-
-// runHydrating only needs the count + URL; keep this test independent from
-// boot-time character asset injection.
-vi.mock("./vrm", () => ({
-  VRM_COUNT: 0,
-  getVrmCount: () => 0,
-  getVrmUrl: () => "",
+vi.mock("../components/apps/load-apps-catalog", () => ({
+  prefetchAppsCatalog: vi.fn(async () => undefined),
 }));
 
 import type { HydratingDeps, ReadyPhaseDeps } from "./startup-phase-hydrate";

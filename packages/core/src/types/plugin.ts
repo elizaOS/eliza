@@ -305,6 +305,85 @@ export interface PluginAppBridge {
 	stopRun?: (ctx: PluginAppBridgeRunContext) => Promise<void>;
 }
 
+/**
+ * A nav-tab declaration so an app/plugin can register its own page in the
+ * shell's main navigation without app-core hard-coding it. Resolved by the
+ * shell at startup from the loaded plugin's `app.navTabs` field.
+ */
+export interface PluginAppNavTab {
+	/** Stable id, scoped to the owning plugin (e.g. "wallet.inventory"). */
+	id: string;
+	/** Display label in the tab bar / nav. */
+	label: string;
+	/** Lucide icon name. */
+	icon?: string;
+	/** Route path the tab links to (e.g. "/inventory"). */
+	path: string;
+	/** Sort priority within the nav (lower = first). Default 100. */
+	order?: number;
+	/**
+	 * If true, this tab is only visible when Developer Mode is enabled
+	 * in Settings. Defaults to false.
+	 */
+	developerOnly?: boolean;
+	/**
+	 * Optional named group the tab belongs to (used by the shell to render
+	 * grouped tab strips, e.g. workbench/dev/wallet groupings).
+	 */
+	group?: string;
+	/**
+	 * Optional package export specifier the shell will dynamically import
+	 * when the tab is activated, e.g. "@elizaos/app-wallet/ui#InventoryView".
+	 * The string before `#` is the package subpath, after `#` is the named
+	 * export. When omitted, the shell falls back to the static component
+	 * registry keyed by `id`.
+	 */
+	componentExport?: string;
+}
+
+/**
+ * Serializable widget metadata declared by a plugin. Mirrors the
+ * client-side type in `@elizaos/app-core/widgets` but lives here so plugins
+ * can self-declare without depending on app-core.
+ */
+export interface PluginWidgetDeclaration {
+	/** Unique within the owning plugin, e.g. "lifeops-overview". */
+	id: string;
+	/** Owning plugin ID. */
+	pluginId: string;
+	/** Where this widget renders. */
+	slot:
+		| "chat-sidebar"
+		| "chat-inline"
+		| "wallet"
+		| "browser"
+		| "heartbeats"
+		| "character"
+		| "settings"
+		| "nav-page"
+		| "automations";
+	/** Human-readable label. */
+	label: string;
+	/** Lucide icon name. */
+	icon?: string;
+	/** Sort priority within the slot (lower = first). Default 100. */
+	order?: number;
+	/** Show by default when plugin is active. Default true. */
+	defaultEnabled?: boolean;
+	/** For nav-page slot: which header TabGroup to join. */
+	navGroup?: string;
+	/**
+	 * If true, this widget is only visible when Developer Mode is enabled
+	 * in Settings. Defaults to false.
+	 */
+	developerOnly?: boolean;
+	/**
+	 * Optional package export specifier the shell will dynamically import
+	 * when rendering. Format: "<package-subpath>#<named-export>".
+	 */
+	componentExport?: string;
+}
+
 export interface PluginApp {
 	displayName?: string;
 	category?: string;
@@ -318,6 +397,24 @@ export interface PluginApp {
 	viewer?: PluginAppViewer;
 	session?: PluginAppSession;
 	bridgeExport?: string;
+	/**
+	 * If true, the app is a developer-tooling surface (logs, trajectory
+	 * viewer, etc.) and is hidden from the main UI unless Developer Mode is
+	 * enabled in Settings. Defaults to false.
+	 */
+	developerOnly?: boolean;
+	/**
+	 * Controls whether the app appears in the user-facing app store/catalog.
+	 * Defaults to true. Set to false for apps that auto-install or are
+	 * surfaced only via direct deep-links.
+	 */
+	visibleInAppStore?: boolean;
+	/**
+	 * Nav tabs this app contributes to the shell. The shell reads these at
+	 * runtime so apps can register pages dynamically without app-core
+	 * hard-coding them.
+	 */
+	navTabs?: PluginAppNavTab[];
 }
 
 export interface PluginEventRegistration {
@@ -427,6 +524,14 @@ export interface Plugin {
 
 	app?: PluginApp;
 	appBridge?: PluginAppBridge;
+
+	/**
+	 * Widgets this plugin contributes. Replaces the hard-coded
+	 * `PLUGIN_WIDGET_MAP` in `@elizaos/agent` for plugins that adopt this
+	 * field. The shell merges plugin-declared widgets with any legacy map
+	 * entries at runtime.
+	 */
+	widgets?: PluginWidgetDeclaration[];
 
 	/**
 	 * Domain contexts this plugin's components belong to.

@@ -46,7 +46,3 @@ export function useCompanionSceneStatus(): CompanionSceneStatus {
     DEFAULT_COMPANION_SCENE_STATUS
   );
 }
-
-export function prefetchVrmToCache(url: string): Promise<void> | void {
-  return getBootConfig().prefetchVrmToCache?.(url);
-}

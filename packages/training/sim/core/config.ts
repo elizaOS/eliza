@@ -5,10 +5,10 @@
  * so process.env is populated and available inside babylon.config.ts.
  */
 
-import { execSync } from 'node:child_process';
-import { type ConfigWatcher, loadConfig, watchConfig } from 'c12';
-import type { BabylonConfig } from './augments';
-import type { TickPhase } from './types';
+import { execSync } from "node:child_process";
+import { type ConfigWatcher, loadConfig, watchConfig } from "c12";
+import type { BabylonConfig } from "./augments";
+import type { TickPhase } from "./types";
 
 type IsEmpty<T> = keyof T extends never ? true : false;
 
@@ -17,9 +17,9 @@ let _repoRoot: string | undefined | null = null;
 function findRepoRoot(from?: string): string | undefined {
   if (_repoRoot !== null) return _repoRoot;
   try {
-    _repoRoot = execSync('git rev-parse --show-toplevel', {
+    _repoRoot = execSync("git rev-parse --show-toplevel", {
       cwd: from ?? process.cwd(),
-      encoding: 'utf-8',
+      encoding: "utf-8",
       timeout: 3000,
     }).trim();
   } catch {
@@ -66,7 +66,7 @@ export type BabylonRuntimeConfig = BabylonRuntimeConfigBase &
     : BabylonConfig & { [key: string]: unknown });
 
 export const defaultConfig: BabylonRuntimeConfig = {
-  systemsDir: './systems',
+  systemsDir: "./systems",
   budgetMs: 60_000,
   dev: {
     watch: true,
@@ -75,13 +75,13 @@ export const defaultConfig: BabylonRuntimeConfig = {
 };
 
 export async function loadBabylonConfig(
-  cwd?: string
+  cwd?: string,
 ): Promise<{ config: BabylonRuntimeConfig; configFile?: string }> {
   const configCwd = cwd ?? process.cwd();
   const repoRoot = findRepoRoot(configCwd);
 
   const resolved = await loadConfig<BabylonRuntimeConfig>({
-    name: 'babylon',
+    name: "babylon",
     cwd: configCwd,
     defaults: defaultConfig,
     rcFile: false,
@@ -97,13 +97,13 @@ export async function loadBabylonConfig(
 
 export async function watchBabylonConfig(
   cwd?: string,
-  onUpdate?: (config: BabylonRuntimeConfig) => void
+  onUpdate?: (config: BabylonRuntimeConfig) => void,
 ): Promise<ConfigWatcher<BabylonRuntimeConfig>> {
   const configCwd = cwd ?? process.cwd();
   const repoRoot = findRepoRoot(configCwd);
 
   const watcher = await watchConfig<BabylonRuntimeConfig>({
-    name: 'babylon',
+    name: "babylon",
     cwd: configCwd,
     defaults: defaultConfig,
     rcFile: false,
@@ -120,7 +120,7 @@ export async function watchBabylonConfig(
 }
 
 export function defineBabylonConfig(
-  config: BabylonRuntimeConfig
+  config: BabylonRuntimeConfig,
 ): BabylonRuntimeConfig {
   return config;
 }

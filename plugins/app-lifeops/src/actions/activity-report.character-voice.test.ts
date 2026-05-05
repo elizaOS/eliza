@@ -11,18 +11,12 @@
  * that the streamed callback + ActionResult.text are the rewritten reply.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  ModelTypeName,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, ModelTypeName, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./lifeops-google-helpers.js", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("./lifeops-google-helpers.js")
-  >();
+  const actual =
+    await importOriginal<typeof import("./lifeops-google-helpers.js")>();
   return {
     ...actual,
     hasLifeOpsAccess: async () => true,
@@ -42,8 +36,16 @@ vi.mock("../activity-profile/activity-tracker-reporting.js", () => {
       untilMs: 1_000,
       totalMs: 312 * 60_000,
       apps: [
-        { appName: "VS Code", bundleId: "com.microsoft.VSCode", totalMs: 184 * 60_000 },
-        { appName: "Safari", bundleId: "com.apple.Safari", totalMs: 82 * 60_000 },
+        {
+          appName: "VS Code",
+          bundleId: "com.microsoft.VSCode",
+          totalMs: 184 * 60_000,
+        },
+        {
+          appName: "Safari",
+          bundleId: "com.apple.Safari",
+          totalMs: 82 * 60_000,
+        },
       ],
     }),
     getTimeOnApp: async () => ({
@@ -125,8 +127,10 @@ describe("GET_ACTIVITY_REPORT emits character-voiced text", () => {
 
     // The ActionResult.text should also be the re-voiced reply so downstream
     // context (ACTION_STATE provider) carries the voiced version, not raw.
-    expect(typeof result === "object" && result && "text" in result
-      ? (result as { text?: string }).text
-      : "").toMatch(/love/);
+    expect(
+      typeof result === "object" && result && "text" in result
+        ? (result as { text?: string }).text
+        : "",
+    ).toMatch(/love/);
   });
 });

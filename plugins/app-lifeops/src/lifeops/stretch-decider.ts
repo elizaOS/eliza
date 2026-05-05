@@ -126,7 +126,9 @@ export interface StretchReminderCopyInput {
   dayOfYear: number;
 }
 
-export function pickStretchReminderCopy(input: StretchReminderCopyInput): string {
+export function pickStretchReminderCopy(
+  input: StretchReminderCopyInput,
+): string {
   const length = STRETCH_REMINDER_VARIANTS.length;
   const day = Math.trunc(input.dayOfYear);
   // Branchless positive modulo so negative day-of-year inputs (which

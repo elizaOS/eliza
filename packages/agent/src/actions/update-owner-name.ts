@@ -25,7 +25,8 @@ export const updateOwnerNameAction: Action = {
   similes: ["SET_OWNER_NAME", "CHANGE_OWNER_NAME", "UPDATE_DISPLAY_NAME"],
   description:
     "Update the configured owner display name. Owner-only. Persists to the eliza.json `ui.ownerName` field, the same path the Relationships owner-edit field writes.",
-  descriptionCompressed: "update configur owner display name owner-only persist eliza json ui ownername field, same path Relationships owner-edit field write",
+  descriptionCompressed:
+    "update configur owner display name owner-only persist eliza json ui ownername field, same path Relationships owner-edit field write",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

@@ -35,7 +35,8 @@ export const uninstallPluginAction: Action = {
     "Uninstall a plugin from this agent. Removes the plugin package and " +
     "may trigger a restart so the runtime drops it. Use when the user asks " +
     "to remove, delete, or uninstall a plugin.",
-  descriptionCompressed: "uninstall plugin agent remove plugin package trigger restart runtime drop use user ask remove, delete, uninstall plugin",
+  descriptionCompressed:
+    "uninstall plugin agent remove plugin package trigger restart runtime drop use user ask remove, delete, uninstall plugin",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

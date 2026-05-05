@@ -23,7 +23,8 @@ export const fetchFeedTopAction: Action = {
   similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
   description:
     "Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
-  descriptionCompressed: "fetch home timeline x return top-n tweet rank engagement (like + retweet 2)",
+  descriptionCompressed:
+    "fetch home timeline x return top-n tweet rank engagement (like + retweet 2)",
   examples: [
     [
       {

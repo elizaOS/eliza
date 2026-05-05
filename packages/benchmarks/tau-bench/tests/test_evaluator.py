@@ -148,6 +148,28 @@ class TestTauBenchEvaluator:
 
         # Should have penalty for extra calls
         assert result.tool_call_accuracy < 1.0
+        assert result.metrics["expected_tool_order_accuracy"] == 1.0
+
+    def test_evaluate_ordered_tool_sequence_metric(self, evaluator, sample_task):
+        """Test ordered expected tool sequence diagnostics."""
+        tool_calls = [
+            ToolCall(tool_name="initiate_return", arguments={"order_id": "ORD-123"}),
+            ToolCall(tool_name="get_order_details", arguments={"order_id": "ORD-123"}),
+        ]
+
+        result = evaluator.evaluate_task(
+            task=sample_task,
+            tool_calls_made=tool_calls,
+            response="Return initiated",
+            policy_violations=[],
+            goal_achieved=True,
+            final_state={},
+            duration_ms=1500.0,
+        )
+
+        assert result.tool_selection_accuracy == 1.0
+        assert result.metrics["expected_tool_order_accuracy"] == 0.5
+        assert result.metrics["expected_tool_order_missing_count"] == 1.0
 
     def test_evaluate_response_quality(self, evaluator, sample_task):
         """Test response quality evaluation."""

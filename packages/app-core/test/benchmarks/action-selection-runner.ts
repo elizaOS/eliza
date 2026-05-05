@@ -815,11 +815,7 @@ async function runSingleCaseWithRecording(
     const executionPass =
       tc.expectedAction === null
         ? false
-        : caseMatches(
-            completedAction,
-            tc.expectedAction,
-            tc.acceptableActions,
-          );
+        : caseMatches(completedAction, tc.expectedAction, tc.acceptableActions);
     const selectionPass = plannerPass || startedPass || executionPass;
     const failureMode = determineFailureMode({
       pass: selectionPass,

@@ -76,7 +76,8 @@ export const logLevelAction: Action = {
   ],
   description:
     "Set the log level for the current session (trace, debug, info, warn, error).",
-  descriptionCompressed: "set log level current session (trace, debug, info, warn, error)",
+  descriptionCompressed:
+    "set log level current session (trace, debug, info, warn, error)",
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text || "";
     const hasLevel = resolveLogLevel(text) !== null;

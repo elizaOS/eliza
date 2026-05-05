@@ -8,4 +8,3 @@
   "group_size": 4,
   "notes": "Training uses ~6GB, vLLM uses ~1.5GB, leaving headroom for activations"
 }
-

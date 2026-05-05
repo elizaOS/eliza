@@ -24,7 +24,8 @@ export const summarizeFeedAction: Action = {
   similes: ["X_FEED_SUMMARY", "SUMMARIZE_TWITTER", "SUMMARIZE_X_FEED"],
   description:
     "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
-  descriptionCompressed: "fetch top-n x tweet produce concise natural-language summary use runtime small text model",
+  descriptionCompressed:
+    "fetch top-n x tweet produce concise natural-language summary use runtime small text model",
   examples: [
     [
       {

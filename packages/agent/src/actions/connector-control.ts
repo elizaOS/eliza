@@ -95,7 +95,8 @@ export const toggleConnectorAction: Action = {
     "Enable or disable a connector (a plugin in the 'connector' category, " +
     "such as discord, telegram, slack). Pass enabled=true to turn it on " +
     "and enabled=false to turn it off.",
-  descriptionCompressed: "enable disable connector (plugin connector category, discord, telegram, slack) pass enabl true turn enabl false turn off",
+  descriptionCompressed:
+    "enable disable connector (plugin connector category, discord, telegram, slack) pass enabl true turn enabl false turn off",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);
@@ -216,7 +217,8 @@ export const saveConnectorConfigAction: Action = {
     "Save connector configuration (API keys, tokens, endpoints) and run an " +
     "automatic connection test. Use when the user provides credentials for " +
     "a connector like Discord, Telegram, or Slack.",
-  descriptionCompressed: "save connector configuration (API key, token, endpoint) run automatic connection test use user provide credential connector like Discord, Telegram, Slack",
+  descriptionCompressed:
+    "save connector configuration (API key, token, endpoint) run automatic connection test use user provide credential connector like Discord, Telegram, Slack",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);
@@ -385,7 +387,8 @@ export const disconnectConnectorAction: Action = {
     "Disconnect a connector — sign out of the account, drop its session " +
     "credentials, and stop its sender. Routes to the connector-specific " +
     "disconnect endpoint when available, otherwise disables the plugin.",
-  descriptionCompressed: "disconnect connector sign account, drop session credential, stop sender route connector-specific disconnect endpoint available, otherwise disable plugin",
+  descriptionCompressed:
+    "disconnect connector sign account, drop session credential, stop sender route connector-specific disconnect endpoint available, otherwise disable plugin",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);
@@ -526,7 +529,8 @@ export const listConnectorsAction: Action = {
   description:
     "List the connectors known to this agent (plugins in the 'connector' " +
     "category) and their enabled/active state.",
-  descriptionCompressed: "list connector known agent (plugin connector category) enabled/active state",
+  descriptionCompressed:
+    "list connector known agent (plugin connector category) enabled/active state",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

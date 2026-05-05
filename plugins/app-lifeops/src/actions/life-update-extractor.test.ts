@@ -42,12 +42,10 @@ describe("extractUpdateFieldsWithLlm", () => {
 
   it("issues a repair pass when the first response is unparseable", async () => {
     const calls: string[] = [];
-    const useModel = vi.fn(
-      async (_type: string, opts: { prompt: string }) => {
-        calls.push(opts.prompt);
-        return calls.length === 1 ? "garbage" : '{"cadenceKind":"weekly"}';
-      },
-    );
+    const useModel = vi.fn(async (_type: string, opts: { prompt: string }) => {
+      calls.push(opts.prompt);
+      return calls.length === 1 ? "garbage" : '{"cadenceKind":"weekly"}';
+    });
 
     const result = await extractUpdateFieldsWithLlm({
       runtime: { useModel } as unknown as IAgentRuntime,
@@ -56,6 +54,8 @@ describe("extractUpdateFieldsWithLlm", () => {
 
     expect(result.cadenceKind).toBe("weekly");
     expect(useModel).toHaveBeenCalledTimes(2);
-    expect(calls[1]).toContain("Your last reply for the LifeOps update extractor was invalid");
+    expect(calls[1]).toContain(
+      "Your last reply for the LifeOps update extractor was invalid",
+    );
   });
 });

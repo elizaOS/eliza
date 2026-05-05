@@ -14,7 +14,8 @@ export const kaminoProvider: Provider = {
   name: "KAMINO_LENDING",
   description:
     "Provides information about Kamino lending protocol positions, market data, and available lending/borrowing opportunities",
-  descriptionCompressed: "provide information Kamino lend protocol position, market data, available lending/borrow opportunity",
+  descriptionCompressed:
+    "provide information Kamino lend protocol position, market data, available lending/borrow opportunity",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_LENDING provider called");

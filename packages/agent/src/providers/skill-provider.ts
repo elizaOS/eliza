@@ -317,7 +317,8 @@ export function createDynamicSkillProvider(): Provider {
     name: "elizaDynamicSkills",
     description:
       "Lightweight dynamic skill matching — injects only relevant skills per turn",
-    descriptionCompressed: "lightweight dynamic skill match inject relevant skill per turn",
+    descriptionCompressed:
+      "lightweight dynamic skill match inject relevant skill per turn",
     dynamic: true,
     position: -10,
 

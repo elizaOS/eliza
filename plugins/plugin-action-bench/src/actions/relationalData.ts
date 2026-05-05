@@ -55,7 +55,8 @@ const createEntityAction: Action = {
   similes: ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
   description:
     "Create a new entity with a type and name. Entities are the nodes in our relational graph.",
-  descriptionCompressed: "create new entity w/ type name entity node relational graph",
+  descriptionCompressed:
+    "create new entity w/ type name entity node relational graph",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -147,7 +148,8 @@ const createRelationshipAction: Action = {
   similes: ["LINK", "CONNECT", "RELATE"],
   description:
     "Create a relationship between two entities. Relationships are the edges in our relational graph.",
-  descriptionCompressed: "create relationship between two entity relationship edge relational graph",
+  descriptionCompressed:
+    "create relationship between two entity relationship edge relational graph",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -268,7 +270,8 @@ const setAttributeAction: Action = {
   similes: ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
   description:
     "Set an attribute on the current entity. Attributes store additional data on entities.",
-  descriptionCompressed: "set attribute current entity attribute store additional data entity",
+  descriptionCompressed:
+    "set attribute current entity attribute store additional data entity",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -930,7 +933,8 @@ const findPathAction: Action = {
   similes: ["PATH", "ROUTE", "CONNECTION_PATH"],
   description:
     "Find the shortest path between two entities in the relationship graph.",
-  descriptionCompressed: "find shortest path between two entity relationship graph",
+  descriptionCompressed:
+    "find shortest path between two entity relationship graph",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,

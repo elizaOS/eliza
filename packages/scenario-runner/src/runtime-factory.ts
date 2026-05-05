@@ -33,7 +33,8 @@ async function loadTestMocks() {
   return {
     prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,
     seedLifeOpsSimulatorRuntime: lifeopsSimulator.seedLifeOpsSimulatorRuntime,
-    seedBenchmarkLifeOpsFixtures: benchmarkFixtures.seedBenchmarkLifeOpsFixtures,
+    seedBenchmarkLifeOpsFixtures:
+      benchmarkFixtures.seedBenchmarkLifeOpsFixtures,
     seedGoogleConnectorGrant: grants.seedGoogleConnectorGrant,
     seedXConnectorGrant: grants.seedXConnectorGrant,
   };

@@ -19,4 +19,3 @@
   "fsdp_enabled": true,
   "notes": "8x L40 48GB. vLLM on GPUs 0-3 (tensor parallel), training on GPUs 4-7 (FSDP). ~4-5 hours for 5000 steps. RunPod cost ~$10/hr."
 }
-

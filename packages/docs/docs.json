@@ -32,9 +32,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "examples-gallery/index"
-            ]
+            "pages": ["examples-gallery/index"]
           },
           {
             "group": "By Category",
@@ -60,9 +58,7 @@
       },
       {
         "tab": "REST Reference",
-        "pages": [
-          "rest-reference/index"
-        ],
+        "pages": ["rest-reference/index"],
         "groups": [
           {
             "group": "AGENTS",
@@ -331,9 +327,7 @@
           },
           {
             "group": "WEBSOCKET",
-            "pages": [
-              "rest-reference/websocket/socketio-real-time-connection"
-            ]
+            "pages": ["rest-reference/websocket/socketio-real-time-connection"]
           }
         ]
       },
@@ -342,9 +336,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": [
-              "cli-reference/overview"
-            ]
+            "pages": ["cli-reference/overview"]
           },
           {
             "group": "Commands",
@@ -362,9 +354,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": [
-              "launch-resources/index"
-            ]
+            "pages": ["launch-resources/index"]
           }
         ]
       },
@@ -560,10 +550,7 @@
           },
           {
             "group": "Skills",
-            "pages": [
-              "skills/streaming",
-              "action-catalog"
-            ]
+            "pages": ["skills/streaming", "action-catalog"]
           },
           {
             "group": "Deployment",
@@ -593,9 +580,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "api-reference"
-            ]
+            "pages": ["api-reference"]
           },
           {
             "group": "Core",
@@ -893,9 +878,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "guides/connectors"
-            ]
+            "pages": ["guides/connectors"]
           },
           {
             "group": "Messaging",
@@ -1030,10 +1013,7 @@
           },
           {
             "group": "DeFi & Blockchain",
-            "pages": [
-              "plugin-registry/defi/evm",
-              "plugin-registry/defi/solana"
-            ]
+            "pages": ["plugin-registry/defi/evm", "plugin-registry/defi/solana"]
           }
         ]
       },
@@ -1042,10 +1022,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "api-reference",
-              "websocket-events"
-            ]
+            "pages": ["api-reference", "websocket-events"]
           },
           {
             "group": "Core Endpoints",
@@ -1168,10 +1145,7 @@
           },
           {
             "group": "Deployment",
-            "pages": [
-              "deployment",
-              "deployment-bare-metal"
-            ]
+            "pages": ["deployment", "deployment-bare-metal"]
           }
         ]
       },
@@ -1221,11 +1195,7 @@
           },
           {
             "group": "Reference",
-            "pages": [
-              "changelog",
-              "roadmap",
-              "stability/known-failure-modes"
-            ]
+            "pages": ["changelog", "roadmap", "stability/known-failure-modes"]
           }
         ]
       },
@@ -1234,9 +1204,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "guides/connectors"
-            ]
+            "pages": ["guides/connectors"]
           },
           {
             "group": "Auto-Enabled",
@@ -1362,10 +1330,7 @@
           },
           {
             "group": "DeFi & Blockchain",
-            "pages": [
-              "plugin-registry/defi/evm",
-              "plugin-registry/defi/solana"
-            ]
+            "pages": ["plugin-registry/defi/evm", "plugin-registry/defi/solana"]
           },
           {
             "group": "Utilities",
@@ -1423,10 +1388,7 @@
           },
           {
             "group": "DeFi & Blockchain",
-            "pages": [
-              "plugin-registry/defi/evm",
-              "plugin-registry/defi/solana"
-            ]
+            "pages": ["plugin-registry/defi/evm", "plugin-registry/defi/solana"]
           }
         ]
       },
@@ -1563,9 +1525,7 @@
           },
           {
             "group": "WebSocket",
-            "pages": [
-              "websocket-events"
-            ]
+            "pages": ["websocket-events"]
           },
           {
             "group": "Runtime",
@@ -1600,9 +1560,7 @@
           },
           {
             "group": "Skills",
-            "pages": [
-              "skills/streaming"
-            ]
+            "pages": ["skills/streaming"]
           },
           {
             "group": "Advanced",
@@ -1774,10 +1732,7 @@
           },
           {
             "group": "Changelog",
-            "pages": [
-              "changelog",
-              "roadmap"
-            ]
+            "pages": ["changelog", "roadmap"]
           }
         ]
       }
@@ -1818,13 +1773,7 @@
     }
   },
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity"
-    ]
+    "options": ["copy", "view", "chatgpt", "claude", "perplexity"]
   },
   "analytics": {
     "posthog": {

@@ -63,7 +63,8 @@ export const skillCommandAction: Action = {
   similes: ["/skill"],
   description:
     "Dispatch a slash command to an installed skill. Loads the skill's instructions and responds with contextual guidance.",
-  descriptionCompressed: "dispatch slash command install skill load skill instruction respond w/ contextual guidance",
+  descriptionCompressed:
+    "dispatch slash command install skill load skill instruction respond w/ contextual guidance",
 
   validate: async (
     runtime: IAgentRuntime,

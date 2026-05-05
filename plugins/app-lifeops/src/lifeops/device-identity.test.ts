@@ -72,7 +72,11 @@ describe("device-identity", () => {
     expect(fs.existsSync(deviceIdCacheFile())).toBe(false);
     const generated = getDeviceId();
     expect(generated).toMatch(/-[0-9a-f]{6}$/);
-    expect(generated.startsWith(`${os.hostname().replace(/[^A-Za-z0-9._-]/g, "-")}-`)).toBe(true);
+    expect(
+      generated.startsWith(
+        `${os.hostname().replace(/[^A-Za-z0-9._-]/g, "-")}-`,
+      ),
+    ).toBe(true);
     expect(fs.readFileSync(deviceIdCacheFile(), "utf8").trim()).toBe(generated);
   });
 

@@ -9,4 +9,3 @@
   "skip_vllm": true,
   "notes": "Use external inference server or mock mode"
 }
-

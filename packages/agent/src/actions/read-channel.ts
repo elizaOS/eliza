@@ -106,7 +106,8 @@ export const readChannelAction: Action = {
     "Read messages from a channel on any connected platform. " +
     "Default: recent messages. Supports date ranges and message limits. " +
     "Results include line numbers for easy reference when copying to clipboard.",
-  descriptionCompressed: "read message channel connect platform default: recent message support date range message limit result include line number easy reference copy clipboard",
+  descriptionCompressed:
+    "read message channel connect platform default: recent message support date range message limit result include line number easy reference copy clipboard",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;

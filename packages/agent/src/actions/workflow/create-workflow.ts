@@ -45,7 +45,8 @@ export const createWorkflowAction: Action = {
   ],
   description:
     "Generate a new n8n workflow from a seed prompt describing the desired multi-step pipeline. Requires a seedPrompt — without one the UI only opens a local draft and never creates a real workflow.",
-  descriptionCompressed: "generate new n8n workflow seed prompt describ desir multi-step pipeline require seedprompt wo/ one UI open local draft never create real workflow",
+  descriptionCompressed:
+    "generate new n8n workflow seed prompt describ desir multi-step pipeline require seedprompt wo/ one UI open local draft never create real workflow",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

@@ -54,7 +54,9 @@ function makeStubs(options: {
   const startBlock = vi.fn(async () => ({
     success: options.startSucceeds ?? true,
   }));
-  const sendAlert = vi.fn(async (_alert: ProactiveBlockBridgeAlert) => undefined);
+  const sendAlert = vi.fn(
+    async (_alert: ProactiveBlockBridgeAlert) => undefined,
+  );
   const loadActiveRules = vi.fn(async () => options.rules);
   return {
     startBlock,
@@ -99,7 +101,8 @@ describe("evaluateProactiveBlockOnBrowserFocus", () => {
     });
 
     expect(stubs.sendAlert).toHaveBeenCalledTimes(1);
-    const alert = stubs.sendAlert.mock.calls[0]?.[0] as ProactiveBlockBridgeAlert;
+    const alert = stubs.sendAlert.mock
+      .calls[0]?.[0] as ProactiveBlockBridgeAlert;
     expect(alert.text).toContain("x.com");
     expect(alert.text).toContain("this evening");
     expect(alert.text).toContain("blocking it now");

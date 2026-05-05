@@ -62,7 +62,9 @@ export async function executeLifeOpsSchedulerTask(
   const { escalateUnacknowledgedIntents } = await import("./intent-sync.js");
   const escalationResult = await escalateUnacknowledgedIntents(runtime);
   if (escalationResult.escalated > 0) {
-    logger.info(`[lifeops-scheduler] Escalated ${escalationResult.escalated} unacknowledged intent(s) to mobile.`);
+    logger.info(
+      `[lifeops-scheduler] Escalated ${escalationResult.escalated} unacknowledged intent(s) to mobile.`,
+    );
   }
 
   return {

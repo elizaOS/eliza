@@ -18,5 +18,3 @@
   "use_flash_attention": true,
   "notes": "vLLM on GPU 0 (48GB for 14B model), training on GPU 1. No OOM conflicts."
 }
-
-

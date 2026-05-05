@@ -243,8 +243,11 @@ function parseStagingArgs(argv) {
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const { skip, sourceLabel: sourceLabelArg, appConfigPath: appConfigArg } =
-    parseStagingArgs(argv);
+  const {
+    skip,
+    sourceLabel: sourceLabelArg,
+    appConfigPath: appConfigArg,
+  } = parseStagingArgs(argv);
   if (skip) {
     console.log(
       "[stage-default-models] --skip-bundled-models / ELIZA_SKIP_BUNDLED_MODELS=1; nothing to do.",

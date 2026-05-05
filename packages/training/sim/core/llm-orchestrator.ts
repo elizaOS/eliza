@@ -2,11 +2,11 @@
  * LLM Orchestrator — wraps BabylonLLMClient with the prompt system.
  */
 
-import { BabylonLLMClient } from '@babylon/engine';
-import type { LLMJsonSchema } from '@babylon/engine/llm/types';
-import { renderPrompt } from '@babylon/engine/prompts';
-import type { JsonValue } from '@babylon/engine/types/common';
-import type { LLMExecuteOptions, LLMOrchestrator } from './types';
+import { BabylonLLMClient } from "@babylon/engine";
+import type { LLMJsonSchema } from "@babylon/engine/llm/types";
+import { renderPrompt } from "@babylon/engine/prompts";
+import type { JsonValue } from "@babylon/engine/types/common";
+import type { LLMExecuteOptions, LLMOrchestrator } from "./types";
 
 export class DefaultLLMOrchestrator implements LLMOrchestrator {
   private readonly client: BabylonLLMClient;
@@ -18,12 +18,12 @@ export class DefaultLLMOrchestrator implements LLMOrchestrator {
   async execute<T>(options: LLMExecuteOptions): Promise<T> {
     const rendered = renderPrompt(
       options.prompt,
-      (options.variables ?? {}) as Record<string, JsonValue>
+      (options.variables ?? {}) as Record<string, JsonValue>,
     );
     const result = await this.client.generateJSON(
       rendered,
       options.schema as LLMJsonSchema | undefined,
-      { model: options.model }
+      { model: options.model },
     );
     return result as T;
   }

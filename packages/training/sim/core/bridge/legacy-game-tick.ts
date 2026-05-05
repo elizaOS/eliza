@@ -6,9 +6,9 @@
  * executeGameTick() manages its own internal deadline.
  */
 
-import { type ExecuteGameTickResult, executeGameTick } from '@babylon/engine';
-import { defineSystem } from '../system';
-import { TickPhase } from '../types';
+import { type ExecuteGameTickResult, executeGameTick } from "@babylon/engine";
+import { defineSystem } from "../system";
+import { TickPhase } from "../types";
 
 export interface LegacyBridgeOptions {
   skipContentGeneration?: boolean;
@@ -20,15 +20,15 @@ export function createLegacyGameTickSystem(options: LegacyBridgeOptions = {}) {
   const skipSet = new Set(options.skip ?? []);
 
   return defineSystem({
-    id: 'legacy-game-tick',
-    name: 'Legacy Game Tick',
+    id: "legacy-game-tick",
+    name: "Legacy Game Tick",
     phase: TickPhase.Bootstrap,
     skipDeadlineCheck: true,
 
     async onTick() {
       const r: ExecuteGameTickResult = await executeGameTick(
         options.skipContentGeneration ?? false,
-        skipSet
+        skipSet,
       );
 
       const metrics: Record<string, number | string | boolean> = {
@@ -69,73 +69,73 @@ export function createLegacyGameTickSystem(options: LegacyBridgeOptions = {}) {
 
       // Flatten nested: reputationSyncStats
       if (r.reputationSyncStats) {
-        metrics['reputationSyncStats.total'] = r.reputationSyncStats.total;
-        metrics['reputationSyncStats.successful'] =
+        metrics["reputationSyncStats.total"] = r.reputationSyncStats.total;
+        metrics["reputationSyncStats.successful"] =
           r.reputationSyncStats.successful;
-        metrics['reputationSyncStats.failed'] = r.reputationSyncStats.failed;
+        metrics["reputationSyncStats.failed"] = r.reputationSyncStats.failed;
       }
 
       // Flatten nested: npcGroupDynamics
       if (r.npcGroupDynamics) {
-        metrics['npcGroupDynamics.groupsCreated'] =
+        metrics["npcGroupDynamics.groupsCreated"] =
           r.npcGroupDynamics.groupsCreated;
-        metrics['npcGroupDynamics.membersAdded'] =
+        metrics["npcGroupDynamics.membersAdded"] =
           r.npcGroupDynamics.membersAdded;
-        metrics['npcGroupDynamics.membersRemoved'] =
+        metrics["npcGroupDynamics.membersRemoved"] =
           r.npcGroupDynamics.membersRemoved;
-        metrics['npcGroupDynamics.usersInvited'] =
+        metrics["npcGroupDynamics.usersInvited"] =
           r.npcGroupDynamics.usersInvited;
-        metrics['npcGroupDynamics.usersAutoJoined'] =
+        metrics["npcGroupDynamics.usersAutoJoined"] =
           r.npcGroupDynamics.usersAutoJoined;
-        metrics['npcGroupDynamics.usersKicked'] =
+        metrics["npcGroupDynamics.usersKicked"] =
           r.npcGroupDynamics.usersKicked;
-        metrics['npcGroupDynamics.messagesPosted'] =
+        metrics["npcGroupDynamics.messagesPosted"] =
           r.npcGroupDynamics.messagesPosted;
       }
 
       // Flatten nested: narrativeArcs
       if (r.narrativeArcs) {
-        metrics['narrativeArcs.arcsProcessed'] = r.narrativeArcs.arcsProcessed;
-        metrics['narrativeArcs.transitioned'] = r.narrativeArcs.transitioned;
-        metrics['narrativeArcs.eventsGenerated'] =
+        metrics["narrativeArcs.arcsProcessed"] = r.narrativeArcs.arcsProcessed;
+        metrics["narrativeArcs.transitioned"] = r.narrativeArcs.transitioned;
+        metrics["narrativeArcs.eventsGenerated"] =
           r.narrativeArcs.eventsGenerated;
       }
 
       // Flatten nested: worldFactsStats
       if (r.worldFactsStats) {
-        metrics['worldFactsStats.feedsFetched'] =
+        metrics["worldFactsStats.feedsFetched"] =
           r.worldFactsStats.feedsFetched;
-        metrics['worldFactsStats.newHeadlines'] =
+        metrics["worldFactsStats.newHeadlines"] =
           r.worldFactsStats.newHeadlines;
-        metrics['worldFactsStats.parodiesGenerated'] =
+        metrics["worldFactsStats.parodiesGenerated"] =
           r.worldFactsStats.parodiesGenerated;
-        metrics['worldFactsStats.headlinesCleaned'] =
+        metrics["worldFactsStats.headlinesCleaned"] =
           r.worldFactsStats.headlinesCleaned;
-        metrics['worldFactsStats.worldFactsGenerated'] =
+        metrics["worldFactsStats.worldFactsGenerated"] =
           r.worldFactsStats.worldFactsGenerated;
-        metrics['worldFactsStats.worldFactsArchived'] =
+        metrics["worldFactsStats.worldFactsArchived"] =
           r.worldFactsStats.worldFactsArchived;
       }
 
       // Flatten nested: timeframedMarkets (scalar fields only)
       if (r.timeframedMarkets) {
-        metrics['timeframedMarkets.marketsProcessed'] =
+        metrics["timeframedMarkets.marketsProcessed"] =
           r.timeframedMarkets.marketsProcessed;
-        metrics['timeframedMarkets.transitionsOccurred'] =
+        metrics["timeframedMarkets.transitionsOccurred"] =
           r.timeframedMarkets.transitionsOccurred;
-        metrics['timeframedMarkets.eventsGenerated'] =
+        metrics["timeframedMarkets.eventsGenerated"] =
           r.timeframedMarkets.eventsGenerated;
       }
 
       // Flatten nested: tokenStats
       if (r.tokenStats) {
-        metrics['tokenStats.totalCalls'] = r.tokenStats.totalCalls;
-        metrics['tokenStats.totalInputTokens'] = r.tokenStats.totalInputTokens;
-        metrics['tokenStats.totalOutputTokens'] =
+        metrics["tokenStats.totalCalls"] = r.tokenStats.totalCalls;
+        metrics["tokenStats.totalInputTokens"] = r.tokenStats.totalInputTokens;
+        metrics["tokenStats.totalOutputTokens"] =
           r.tokenStats.totalOutputTokens;
-        metrics['tokenStats.totalTokens'] = r.tokenStats.totalTokens;
+        metrics["tokenStats.totalTokens"] = r.tokenStats.totalTokens;
         if (r.tokenStats.estimatedCostUSD !== undefined) {
-          metrics['tokenStats.estimatedCostUSD'] =
+          metrics["tokenStats.estimatedCostUSD"] =
             r.tokenStats.estimatedCostUSD;
         }
       }

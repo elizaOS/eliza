@@ -96,7 +96,8 @@ export const restartAction: Action = {
   description:
     "Restart the agent process. This stops the runtime, rebuilds if source " +
     "files changed, and relaunches — picking up new code, config, or plugins.",
-  descriptionCompressed: "restart agent process stop runtime, rebuild source file change, relaunch pick up new code, config, plugin",
+  descriptionCompressed:
+    "restart agent process stop runtime, rebuild source file change, relaunch pick up new code, config, plugin",
 
   validate: async (runtime, message, _state) => {
     if (!(await hasOwnerAccess(runtime, message))) {

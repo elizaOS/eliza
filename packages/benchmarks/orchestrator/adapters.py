@@ -92,7 +92,7 @@ def _make_registry_adapter(
     ]
     cwd_value = str(next((candidate for candidate in cwd_candidates if candidate.exists()), workspace_root.resolve()))
     env_builder = None
-    if benchmark_id in {"gaia", "gaia_orchestrated"}:
+    if benchmark_id in {"gaia", "gaia_orchestrated", "realm", "rlm_bench", "social_alpha"}:
         adapter_pythonpath = str((benchmarks_root / "eliza-adapter").resolve())
 
         def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
@@ -992,6 +992,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="Social-alpha trust marketplace benchmark",
             cwd=str((benchmarks_root / "social-alpha").resolve()),
             command_builder=_command_social_alpha,
+            env_builder=lambda ctx, adapter: {
+                "PYTHONPATH": os.pathsep.join(
+                    [str((ctx.benchmarks_root / "eliza-adapter").resolve()), ctx.env.get("PYTHONPATH", "")]
+                ).rstrip(os.pathsep)
+            },
             result_patterns=["benchmark_results_*.json"],
             score_extractor=_score_from_social_alpha,
             default_extra_config={"suites": ["detect"]},
@@ -1049,7 +1054,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             cwd=str(workspace_root.resolve()),
             command_builder=_command_solana,
             env_builder=_env_solana,
-            result_patterns=["benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json"],
+            result_patterns=[
+                "benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
+                "packages/benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
+            ],
             score_extractor=score_extractor_factory.for_benchmark("solana"),
             default_timeout_seconds=14400,
             default_extra_config={

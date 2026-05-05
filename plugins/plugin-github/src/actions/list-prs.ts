@@ -45,7 +45,8 @@ export const listPrsAction: Action = {
   similes: ["LIST_PULL_REQUESTS", "SHOW_PRS", "GITHUB_LIST_PRS"],
   description:
     "Lists GitHub pull requests — either within a specific repo or across all accessible repos, optionally filtered by state and author.",
-  descriptionCompressed: "list GitHub pull request either within specific repo across accessible repos, optionally filter state author",
+  descriptionCompressed:
+    "list GitHub pull request either within specific repo across accessible repos, optionally filter state author",
 
   validate: async (
     runtime: IAgentRuntime,

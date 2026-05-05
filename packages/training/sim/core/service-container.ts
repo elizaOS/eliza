@@ -2,8 +2,8 @@
  * Simple typed DI container backed by a Map.
  */
 
-import { FrameworkError, ServiceNotFoundError } from './errors';
-import type { ServiceContainer } from './types';
+import { FrameworkError, ServiceNotFoundError } from "./errors";
+import type { ServiceContainer } from "./types";
 
 export class DefaultServiceContainer implements ServiceContainer {
   private readonly services = new Map<string, unknown>();
@@ -12,7 +12,7 @@ export class DefaultServiceContainer implements ServiceContainer {
     if (this.services.has(token)) {
       throw new FrameworkError(
         `Service "${token}" is already registered. ` +
-          `Use a unique token or remove the existing registration first.`
+          `Use a unique token or remove the existing registration first.`,
       );
     }
     this.services.set(token, instance);

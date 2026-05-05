@@ -81,20 +81,18 @@ describe("extractLifeOperationWithLlm", () => {
 
   it("issues a repair pass when the first response is unparseable", async () => {
     const calls: string[] = [];
-    const useModel = vi.fn(
-      async (_type: string, opts: { prompt: string }) => {
-        calls.push(opts.prompt);
-        if (calls.length === 1) {
-          return "garbled";
-        }
-        return JSON.stringify({
-          operation: "query_overview",
-          confidence: 0.8,
-          shouldAct: true,
-          missing: [],
-        });
-      },
-    );
+    const useModel = vi.fn(async (_type: string, opts: { prompt: string }) => {
+      calls.push(opts.prompt);
+      if (calls.length === 1) {
+        return "garbled";
+      }
+      return JSON.stringify({
+        operation: "query_overview",
+        confidence: 0.8,
+        shouldAct: true,
+        missing: [],
+      });
+    });
 
     const result = await extractLifeOperationWithLlm({
       runtime: { useModel } as unknown as IAgentRuntime,

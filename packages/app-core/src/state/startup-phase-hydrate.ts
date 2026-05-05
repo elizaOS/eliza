@@ -14,10 +14,9 @@ import {
   type StreamEventEnvelope,
 } from "../api";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
-import { prefetchVrmToCache } from "../components/companion/injected";
+import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
-  COMPANION_ENABLED,
   getWindowNavigationPath,
   isRouteRootPath,
   shouldUseHashNavigation,
@@ -35,7 +34,6 @@ import {
 import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
 import type { StartupEvent } from "./startup-coordinator";
 import type { OnboardingMode } from "./types";
-import { getVrmCount, getVrmUrl, VRM_COUNT } from "./vrm";
 
 export interface HydratingDeps {
   setStartupError: (v: null) => void;
@@ -217,32 +215,10 @@ export async function runHydrating(
       );
   }
 
-  // ── Prefetch companion VRM assets ──────────────────────────────────
-  // Warm the in-memory VRM buffer cache so that when the companion
-  // scene goes active after HYDRATION_COMPLETE, the avatar is already
-  // downloaded. This avoids a cold ~3-10 s blank screen on first
-  // companion render, especially noticeable in cloud containers where
-  // the CDN round-trip is the bottleneck.
-  //
-  // We await the active VRM prefetch (with a 15s timeout) rather than
-  // firing and forgetting. This ensures the in-memory buffer cache is
-  // populated *before* HYDRATION_COMPLETE, so the companion scene gets
-  // an instant cache hit instead of starting a duplicate network download.
-  //
-  // Additionally, fire-and-forget prefetches for ALL other VRM assets so
-  // navigating to the customize/character page doesn't trigger a full
-  // re-download of every character model.
-  if (COMPANION_ENABLED) {
-    const vrmIdx = resolvedIdx > 0 ? resolvedIdx : 1;
-    // Fire-and-forget: warm the browser cache for all VRM assets so the
-    // Character tab and companion app don't need cold downloads.
-    // Companion is now on-demand, so we don't block hydration for VRM.
-    void prefetchVrmToCache(getVrmUrl(vrmIdx));
-    const totalVrm = getVrmCount() || VRM_COUNT;
-    for (let i = 1; i <= totalVrm; i++) {
-      if (i !== vrmIdx) void prefetchVrmToCache(getVrmUrl(i));
-    }
-  }
+  // Warm the apps catalog cache so the Apps tab opens with the real
+  // sections instead of the placeholder skeleton. Fire-and-forget; the
+  // Apps view also loads on its own mount as a fallback.
+  void prefetchAppsCatalog();
 
   void deps.pollCloudCredits();
   await deps.fetchAutonomyReplay();

@@ -59,7 +59,8 @@ export const tokenSearchSymbolAction = {
   ],
   description:
     "Search for detailed token information including security and trade data by symbol",
-  descriptionCompressed: "search detail token information includ security trade data symbol",
+  descriptionCompressed:
+    "search detail token information includ security trade data symbol",
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

@@ -54,6 +54,9 @@ class TauBenchEvaluator:
         tool_metrics = self._evaluate_tool_calls(
             task.expected_tool_calls, tool_calls_made
         )
+        order_metrics = self._evaluate_tool_order(
+            task.expected_tool_calls, tool_calls_made
+        )
 
         # Evaluate response quality
         response_quality = self._evaluate_response(task.ground_truth_response, response)
@@ -100,6 +103,8 @@ class TauBenchEvaluator:
                 "execution_time_ms": sum(tc.execution_time_ms for tc in tool_calls_made),
                 "tool_invocation_count": float(len(tool_calls_made)),
                 "correct_tool_count": float(tool_metrics["correct_count"]),
+                "expected_tool_order_accuracy": order_metrics["order_accuracy"],
+                "expected_tool_order_missing_count": float(order_metrics["missing_count"]),
             },
         )
 
@@ -151,6 +156,35 @@ class TauBenchEvaluator:
             "selection_accuracy": selection_accuracy,
             "parameter_accuracy": param_accuracy,
             "correct_count": correct_params,
+        }
+
+    def _evaluate_tool_order(
+        self, expected: list[ToolCall], actual: list[ToolCall]
+    ) -> dict[str, float]:
+        """
+        Check whether expected tool names appear in order within actual calls.
+
+        This mirrors the action-bench ordered expectedActions pattern while
+        keeping tau-bench's success criteria goal/policy based.
+        """
+        if not expected:
+            return {
+                "order_accuracy": 1.0 if not actual else 0.0,
+                "missing_count": 0.0 if not actual else float(len(actual)),
+            }
+
+        expected_index = 0
+        for call in actual:
+            if (
+                expected_index < len(expected)
+                and call.tool_name == expected[expected_index].tool_name
+            ):
+                expected_index += 1
+
+        missing_count = len(expected) - expected_index
+        return {
+            "order_accuracy": expected_index / len(expected),
+            "missing_count": float(missing_count),
         }
 
     def _params_match(self, expected: dict[str, Any], actual: dict[str, Any]) -> bool:

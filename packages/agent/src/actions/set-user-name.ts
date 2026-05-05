@@ -54,7 +54,8 @@ export const setUserNameAction: Action = {
     "Save the user's preferred display name so you can address them personally. " +
     "Use this when the user tells you their name or asks you to call them something. " +
     "This is a silent side action that does not produce chat text on its own.",
-  descriptionCompressed: "save user preferr display name address personally use user tell name ask call someth silent side action produce chat text",
+  descriptionCompressed:
+    "save user preferr display name address personally use user tell name ask call someth silent side action produce chat text",
 
   validate: async (runtime, message, state) => {
     const content = message.content as Record<string, unknown> | undefined;

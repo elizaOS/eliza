@@ -422,7 +422,7 @@ export async function pruneExpiredIntents(
 
 export async function escalateUnacknowledgedIntents(
   runtime: IAgentRuntime,
-  opts?: { thresholdMinutes?: number }
+  opts?: { thresholdMinutes?: number },
 ): Promise<{ escalated: number }> {
   const threshold = opts?.thresholdMinutes ?? 5;
   const cutoffTime = new Date(Date.now() - threshold * 60_000).toISOString();
@@ -451,7 +451,7 @@ export async function escalateUnacknowledgedIntents(
     const escalatedMetadata = {
       ...(intent.metadata || {}),
       escalatedFrom: intent.id,
-      escalatedAt: new Date().toISOString()
+      escalatedAt: new Date().toISOString(),
     };
 
     await broadcastIntent(runtime, {
@@ -461,7 +461,7 @@ export async function escalateUnacknowledgedIntents(
       body: intent.body,
       actionUrl: intent.actionUrl,
       priority: intent.priority === "urgent" ? "urgent" : "high", // Bump priority
-      metadata: escalatedMetadata
+      metadata: escalatedMetadata,
     });
     escalated++;
   }

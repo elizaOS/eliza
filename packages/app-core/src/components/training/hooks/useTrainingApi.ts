@@ -14,10 +14,7 @@ interface ApiState<T> {
   error: string | null;
 }
 
-async function apiCall<T>(
-  url: string,
-  options?: RequestInit,
-): Promise<T> {
+async function apiCall<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -44,9 +41,7 @@ export function useTrainingJobs(pollIntervalMs: number = 10000) {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const data = await apiCall<{ jobs: TrainingJob[] }>(
-        "/api/training/jobs",
-      );
+      const data = await apiCall<{ jobs: TrainingJob[] }>("/api/training/jobs");
       if (!mountedRef.current) return;
       setState({ data: data.jobs, loading: false, error: null });
     } catch (err) {
@@ -74,7 +69,10 @@ export function useTrainingJobs(pollIntervalMs: number = 10000) {
   return { ...state, refetch: fetchJobs };
 }
 
-export function useTrainingJobDetail(jobId: string, pollIntervalMs: number = 5000) {
+export function useTrainingJobDetail(
+  jobId: string,
+  pollIntervalMs: number = 5000,
+) {
   const [state, setState] = useState<ApiState<TrainingJobDetail>>({
     data: null,
     loading: true,
@@ -95,7 +93,8 @@ export function useTrainingJobDetail(jobId: string, pollIntervalMs: number = 500
       setState({
         data: null,
         loading: false,
-        error: err instanceof Error ? err.message : "Failed to fetch job detail",
+        error:
+          err instanceof Error ? err.message : "Failed to fetch job detail",
       });
     }
   }, [jobId]);
@@ -191,7 +190,11 @@ export function useInferenceEndpoints(pollIntervalMs: number = 30000) {
   return { ...state, refetch: fetchEndpoints };
 }
 
-export function useInferenceStats(label: string, lastMinutes: number = 30, pollIntervalMs: number = 30000) {
+export function useInferenceStats(
+  label: string,
+  lastMinutes: number = 30,
+  pollIntervalMs: number = 30000,
+) {
   const [state, setState] = useState<ApiState<InferenceStats>>({
     data: null,
     loading: true,
@@ -244,13 +247,10 @@ export function useCreateTrainingJob() {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiCall<{ job_id: string }>(
-        "/api/training/jobs",
-        {
-          method: "POST",
-          body: JSON.stringify(request),
-        },
-      );
+      const result = await apiCall<{ job_id: string }>("/api/training/jobs", {
+        method: "POST",
+        body: JSON.stringify(request),
+      });
       setLoading(false);
       return result.job_id;
     } catch (err) {
@@ -273,9 +273,12 @@ export function useCancelTrainingJob() {
     setLoading(true);
     setError(null);
     try {
-      await apiCall<void>(`/api/training/jobs/${encodeURIComponent(jobId)}/cancel`, {
-        method: "POST",
-      });
+      await apiCall<void>(
+        `/api/training/jobs/${encodeURIComponent(jobId)}/cancel`,
+        {
+          method: "POST",
+        },
+      );
       setLoading(false);
     } catch (err) {
       const errorMsg =
@@ -297,9 +300,12 @@ export function useEvalTrainingJob() {
     setLoading(true);
     setError(null);
     try {
-      await apiCall<void>(`/api/training/jobs/${encodeURIComponent(jobId)}/eval`, {
-        method: "POST",
-      });
+      await apiCall<void>(
+        `/api/training/jobs/${encodeURIComponent(jobId)}/eval`,
+        {
+          method: "POST",
+        },
+      );
       setLoading(false);
     } catch (err) {
       const errorMsg =

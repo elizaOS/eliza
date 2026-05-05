@@ -35,7 +35,8 @@ export const provisionWorkspaceAction: Action = {
   description:
     "Create a git workspace for coding tasks. " +
     "Can clone a repository or create a git worktree for isolated development.",
-  descriptionCompressed: "create git workspace cod task clone repository create git worktree isolat development",
+  descriptionCompressed:
+    "create git workspace cod task clone repository create git worktree isolat development",
 
   examples: [
     [

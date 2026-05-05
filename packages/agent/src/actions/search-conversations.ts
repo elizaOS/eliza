@@ -64,7 +64,8 @@ export const searchConversationsAction: Action = {
     "Search across all conversations on all connected platforms. " +
     "Uses semantic search to find relevant messages. " +
     "Results include line numbers for copying to clipboard.",
-  descriptionCompressed: "search across conversation connect platform use semantic search find relevant message result include line number copy clipboard",
+  descriptionCompressed:
+    "search across conversation connect platform use semantic search find relevant message result include line number copy clipboard",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;

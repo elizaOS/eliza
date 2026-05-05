@@ -18,7 +18,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .dataset import SWEBenchDataset
@@ -135,18 +135,56 @@ async def _run_instance(
             error="no patch in response",
         )
 
-    quality = await evaluator.evaluate_patch(instance, patch)
-    return SWEBenchResult(
-        instance_id=instance.instance_id,
-        generated_patch=patch,
-        patch_status=quality.status,
-        tests_passed=quality.tests_passed,
-        tests_failed=quality.tests_failed,
-        success=quality.status == PatchStatus.TESTS_PASSED,
-        duration_seconds=time.time() - started,
-        tokens_used=0,
-        error=quality.error,
+    result = await evaluator.evaluate_patch(instance, patch)
+    result.duration_seconds = time.time() - started
+    return result
+
+
+def _mock_instance() -> SWEBenchInstance:
+    return SWEBenchInstance(
+        instance_id="mock__swe-bench-1",
+        repo="mock/repo",
+        base_commit="abc123",
+        problem_statement="Update the greeting returned by hello.py.",
+        hints_text=(
+            "This synthetic smoke instance avoids dataset, Docker, and provider calls."
+        ),
+        created_at="2026-01-01",
+        patch=(
+            "diff --git a/hello.py b/hello.py\n"
+            "--- a/hello.py\n"
+            "+++ b/hello.py\n"
+            "@@ -1 +1 @@\n"
+            "-print('hello')\n"
+            "+print('hello swe-bench')\n"
+        ),
+        test_patch="",
+        fail_to_pass=["test_hello"],
+        pass_to_pass=[],
     )
+
+
+class _MockClient:
+    def reset(self, *, task_id: str, benchmark: str) -> None:
+        return None
+
+    def send_message(self, *, text: str, context: dict[str, object]) -> object:
+        return type(
+            "MockResponse",
+            (),
+            {
+                "text": (
+                    "```diff\n"
+                    "diff --git a/hello.py b/hello.py\n"
+                    "--- a/hello.py\n"
+                    "+++ b/hello.py\n"
+                    "@@ -1 +1 @@\n"
+                    "-print('hello')\n"
+                    "+print('hello swe-bench')\n"
+                    "```\n"
+                )
+            },
+        )()
 
 
 def _build_report(
@@ -230,8 +268,6 @@ def _report_to_dict(report: SWEBenchReport) -> dict[str, object]:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    from eliza_adapter import ElizaClient, ElizaServerManager
-
     config = SWEBenchConfig(
         variant=SWEBenchVariant(args.variant),
         workspace_dir=args.workspace,
@@ -245,32 +281,41 @@ async def _run(args: argparse.Namespace) -> int:
     )
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
-    dataset = SWEBenchDataset(variant=config.variant)
-    await dataset.load()
-    instances = list(
-        dataset.get_instances(
-            repo_filter=config.repo_filter, limit=config.max_instances
-        )
-    )
-    if not instances:
-        print("No instances matched filters; aborting.", file=sys.stderr)
-        return 2
-
-    eliza_server = None
-    if not os.environ.get("ELIZA_BENCH_URL"):
-        eliza_server = ElizaServerManager()
-        eliza_server.start()
-        client = eliza_server.client
+    if args.mock:
+        instances = [_mock_instance()]
+        client = _MockClient()
+        eliza_server = None
     else:
-        client = ElizaClient()
-        client.wait_until_ready(timeout=180)
+        from eliza_adapter import ElizaClient, ElizaServerManager
+
+        dataset = SWEBenchDataset(variant=config.variant)
+        await dataset.load()
+        instances = list(
+            dataset.get_instances(
+                repo_filter=config.repo_filter, limit=config.max_instances
+            )
+        )
+        if not instances:
+            print("No instances matched filters; aborting.", file=sys.stderr)
+            return 2
+
+        eliza_server = None
+        if not os.environ.get("ELIZA_BENCH_URL"):
+            eliza_server = ElizaServerManager()
+            eliza_server.start()
+            client = eliza_server.client
+        else:
+            client = ElizaClient()
+            client.wait_until_ready(timeout=180)
 
     evaluator = SWEBenchEvaluator(
         workspace_dir=config.workspace_dir,
         timeout_seconds=config.timeout_seconds,
         use_docker=config.use_docker_eval,
     )
-    docker_ok = await evaluator.check_docker_available()
+    docker_ok = (
+        await evaluator.check_docker_available() if config.use_docker_eval else False
+    )
     if config.use_docker_eval and not docker_ok:
         logger.warning(
             "[swe_bench] docker not available — falling back to basic validation"
@@ -290,8 +335,30 @@ async def _run(args: argparse.Namespace) -> int:
 
     report = _build_report(config, results)
     payload = _report_to_dict(report)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    out_path = Path(config.output_dir) / f"swe-bench-{timestamp}.json"
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    if args.orchestrated:
+        providers = args.providers or [args.provider or "direct_shell"]
+        provider_payloads = {provider: payload for provider in providers}
+        payload = {
+            "summary": payload["summary"],
+            "metrics": {
+                "overall_score": payload["summary"]["resolve_rate"],
+                "provider_scores": {
+                    provider: payload["summary"]["resolve_rate"]
+                    for provider in providers
+                },
+            },
+            "matrix": {
+                "execution_mode": args.execution_mode,
+                "providers": providers,
+            },
+            "orchestrated": {
+                provider: provider_payloads[provider] for provider in providers
+            },
+        }
+        out_path = Path(config.output_dir) / f"orchestrated-{timestamp}.json"
+    else:
+        out_path = Path(config.output_dir) / f"swe-bench-{timestamp}.json"
     out_path.write_text(json.dumps(payload, indent=2))
     print(json.dumps(payload["summary"], indent=2))
     print(f"\nResult file: {out_path}")
@@ -328,6 +395,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--timeout", type=int, default=600)
     p.add_argument("--no-docker", action="store_true", help="Skip docker evaluation")
     p.add_argument("--model", default=None, help="Model label for the report")
+    p.add_argument("--provider", default=None, help="Provider label passed by registry")
+    p.add_argument("--mock", action="store_true", help="Run a synthetic smoke instance")
+    p.add_argument(
+        "--orchestrated", action="store_true", help="Emit orchestrated result shape"
+    )
+    p.add_argument(
+        "--execution-mode",
+        choices=["orchestrated", "direct_shell"],
+        default="orchestrated",
+    )
+    p.add_argument("--providers", nargs="+", default=None)
+    p.add_argument("--matrix", action="store_true")
+    p.add_argument("--no-baseline", action="store_true")
+    p.add_argument("--allow-task-fallback", action="store_true")
+    p.add_argument("--orchestrator-model", default=None)
+    p.add_argument("--trace-dir", default=None)
+    p.add_argument("--required-capabilities", default=None)
+    p.add_argument("--strict-capabilities", action="store_true")
     return p.parse_args(argv)
 
 

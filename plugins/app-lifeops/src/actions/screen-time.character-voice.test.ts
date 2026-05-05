@@ -14,18 +14,12 @@
  * the streamed callback + ActionResult.text are the rewritten reply.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  ModelTypeName,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, ModelTypeName, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./lifeops-google-helpers.js", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("./lifeops-google-helpers.js")
-  >();
+  const actual =
+    await importOriginal<typeof import("./lifeops-google-helpers.js")>();
   return {
     ...actual,
     hasLifeOpsAccess: async () => true,
@@ -126,8 +120,10 @@ describe("SCREEN_TIME emits character-voiced text", () => {
     // 4) The ActionResult.text should also be the re-voiced reply so
     //    downstream context (ACTION_STATE provider) carries the voiced
     //    version, not raw.
-    expect(typeof result === "object" && result && "text" in result
-      ? (result as { text?: string }).text
-      : "").toMatch(/love/);
+    expect(
+      typeof result === "object" && result && "text" in result
+        ? (result as { text?: string }).text
+        : "",
+    ).toMatch(/love/);
   });
 });

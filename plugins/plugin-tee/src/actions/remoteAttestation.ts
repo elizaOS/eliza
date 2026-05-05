@@ -27,7 +27,8 @@ export const remoteAttestationAction: Action = {
 
   description:
     "Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
-  descriptionCompressed: "generate remote attestation prove agent run TEE (Trusted Execution Environment)",
+  descriptionCompressed:
+    "generate remote attestation prove agent run TEE (Trusted Execution Environment)",
 
   validate: async (
     runtime: any,

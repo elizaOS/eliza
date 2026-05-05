@@ -117,6 +117,23 @@ function buildServiceWithSpawn(opts: {
 } {
   const trainChild = makeFakeChild();
   const calls: Array<{ command: string; args: string[] }> = [];
+  const trainingRoot = join(tmpRoot, "training-root");
+  mkdirSync(join(trainingRoot, "scripts"), { recursive: true });
+  writeFileSync(
+    join(trainingRoot, "scripts", "dump_registry_json.py"),
+    "# fake registry dump for route tests\n",
+    "utf8",
+  );
+  writeFileSync(
+    join(trainingRoot, "scripts", "train_vast.sh"),
+    "#!/usr/bin/env bash\n",
+    "utf8",
+  );
+  writeFileSync(
+    join(trainingRoot, "scripts", "eval_checkpoint.py"),
+    "# fake eval script for route tests\n",
+    "utf8",
+  );
   const spawnImpl = vi.fn((command: string, args: readonly string[]) => {
     calls.push({ command, args: [...args] });
     const child = makeFakeChild();
@@ -167,7 +184,7 @@ function buildServiceWithSpawn(opts: {
     return child as unknown as ReturnType<typeof import("child_process").spawn>;
   });
   const serviceOpts: VastTrainingServiceOptions = {
-    trainingRoot: "/home/shaw/milady/eliza/packages/training",
+    trainingRoot,
     pythonLauncher: { command: "python", preArgs: [] },
     spawnImpl: spawnImpl as unknown as VastTrainingServiceOptions["spawnImpl"],
     store: new VastJobStore(),

@@ -124,7 +124,8 @@ const selectDimensionAction: Action = {
   similes: ["DIMENSION", "SET_DIMENSION", "CHOOSE_DIMENSION"],
   description:
     "Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
-  descriptionCompressed: "select dimensional constant affect how mathematical operation behave multiverse",
+  descriptionCompressed:
+    "select dimensional constant affect how mathematical operation behave multiverse",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -193,7 +194,8 @@ const multiverseAddAction: Action = {
   similes: ["M_ADD", "MULTI_ADD", "DIMENSIONAL_ADD"],
   description:
     "Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
-  descriptionCompressed: "perform addition multiverse number behave differently base dimensional constant (prime, quantum, chaos)",
+  descriptionCompressed:
+    "perform addition multiverse number behave differently base dimensional constant (prime, quantum, chaos)",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -279,7 +281,8 @@ const multiverseSubtractAction: Action = {
   similes: ["M_SUBTRACT", "MULTI_SUB", "DIMENSIONAL_SUBTRACT"],
   description:
     "Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
-  descriptionCompressed: "perform subtraction multiverse negative number exist dimension (absolute, mirror, void)",
+  descriptionCompressed:
+    "perform subtraction multiverse negative number exist dimension (absolute, mirror, void)",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -362,7 +365,8 @@ const multiverseMultiplyAction: Action = {
   similes: ["M_MULTIPLY", "MULTI_MUL", "DIMENSIONAL_MULTIPLY"],
   description:
     "Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
-  descriptionCompressed: "perform multiplication across dimensional boundary w/ exotic number behavior (fibonacci, exponential, harmonic)",
+  descriptionCompressed:
+    "perform multiplication across dimensional boundary w/ exotic number behavior (fibonacci, exponential, harmonic)",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -447,7 +451,8 @@ const multiverseDivideAction: Action = {
   similes: ["M_DIVIDE", "MULTI_DIV", "DIMENSIONAL_DIVIDE"],
   description:
     "Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
-  descriptionCompressed: "perform division multiverse infinity zero special meaning (safe, infinite, golden)",
+  descriptionCompressed:
+    "perform division multiverse infinity zero special meaning (safe, infinite, golden)",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -540,7 +545,8 @@ const multiverseModuloAction: Action = {
   similes: ["M_MODULO", "MULTI_MOD", "DIMENSIONAL_MODULO"],
   description:
     "Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
-  descriptionCompressed: "perform modulo operation multiverse w/ cyclical dimensional property (cyclical, spiral, fractal)",
+  descriptionCompressed:
+    "perform modulo operation multiverse w/ cyclical dimensional property (cyclical, spiral, fractal)",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -644,7 +650,8 @@ const multiversePowerAction: Action = {
   similes: ["M_POWER", "MULTI_POW", "DIMENSIONAL_POWER"],
   description:
     "Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
-  descriptionCompressed: "raise number power multiverse w/ dimensional effect (standard, imaginary, recursive)",
+  descriptionCompressed:
+    "raise number power multiverse w/ dimensional effect (standard, imaginary, recursive)",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -730,7 +737,8 @@ const multiverseSqrtAction: Action = {
   similes: ["M_SQRT", "MULTI_ROOT", "DIMENSIONAL_SQRT"],
   description:
     "Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
-  descriptionCompressed: "take square root multiverse w/ dimensional variation (positive, complex, quantum)",
+  descriptionCompressed:
+    "take square root multiverse w/ dimensional variation (positive, complex, quantum)",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -970,7 +978,8 @@ const transferAction: Action = {
   name: "TRANSFER_TO_INPUT",
   similes: ["TRANSFER", "MOVE_TO_INPUT", "ACCUMULATOR_TO_INPUT"],
   description: "Transfer accumulator value to input buffer for next operation.",
-  descriptionCompressed: "transfer accumulator value input buffer next operation",
+  descriptionCompressed:
+    "transfer accumulator value input buffer next operation",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,

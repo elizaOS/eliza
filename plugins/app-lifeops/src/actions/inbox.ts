@@ -619,9 +619,7 @@ async function handleTriage(
   // 1. "since" window: current time minus the triage sweep window.
   //    Previous implementation used the most-recent unresolved entry's
   //    createdAt, which could miss messages arriving after that entry.
-  const sinceIso = new Date(
-    Date.now() - TRIAGE_SWEEP_WINDOW_MS,
-  ).toISOString();
+  const sinceIso = new Date(Date.now() - TRIAGE_SWEEP_WINDOW_MS).toISOString();
 
   // 2. Fetch messages from all channels
   const service = new LifeOpsService(runtime);

@@ -10,7 +10,8 @@ export const steerLiquidityProvider: Provider = {
   name: "STEER_LIQUIDITY",
   description:
     "Provides information about Steer Finance vaults, staking pools, and token-specific liquidity data across multiple chains",
-  descriptionCompressed: "provide information Steer Finance vault, stak pool, token-specific liquidity data across multiple chain",
+  descriptionCompressed:
+    "provide information Steer Finance vault, stak pool, token-specific liquidity data across multiple chain",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("🚀 STEER_LIQUIDITY provider called");

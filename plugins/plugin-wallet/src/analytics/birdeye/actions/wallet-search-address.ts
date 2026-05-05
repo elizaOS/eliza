@@ -52,7 +52,8 @@ export const walletSearchAddressAction = {
   ],
   description:
     "Search for detailed wallet information including portfolio and transaction data by address",
-  descriptionCompressed: "search detail wallet information includ portfolio transaction data address",
+  descriptionCompressed:
+    "search detail wallet information includ portfolio transaction data address",
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

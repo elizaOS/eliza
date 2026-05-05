@@ -83,7 +83,8 @@ export const listInstalledPluginsAction: Action = {
     "List the plugins known to this agent. Filter by 'all', 'enabled', " +
     "'disabled', 'installed' (loaded), or 'available' (known but not loaded). " +
     "Defaults to 'all'.",
-  descriptionCompressed: "list plugin known agent filter, enabl, disabl, install (load), available (known load) default",
+  descriptionCompressed:
+    "list plugin known agent filter, enabl, disabl, install (load), available (known load) default",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

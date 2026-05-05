@@ -609,7 +609,9 @@ export async function main(argv = process.argv.slice(2)) {
   const { json: wantJson, appConfigPath } = parseSmokeArgs(argv);
   const cfgPath = resolveAppConfigPath({ repoRoot, flagValue: appConfigPath });
   if (!fs.existsSync(cfgPath)) {
-    throw new Error(`[smoke-cuttlefish] app.config.ts not found at ${cfgPath}.`);
+    throw new Error(
+      `[smoke-cuttlefish] app.config.ts not found at ${cfgPath}.`,
+    );
   }
   const variant = loadAospVariantConfig({ appConfigPath: cfgPath });
   if (!variant) {

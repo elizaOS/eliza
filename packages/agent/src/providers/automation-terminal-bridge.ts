@@ -22,7 +22,8 @@ export const automationTerminalBridgeProvider: Provider = {
   name: "automation-terminal-bridge",
   description:
     "Recent messages from the linked terminal conversation for the current automation room.",
-  descriptionCompressed: "recent message link terminal conversation current automation room",
+  descriptionCompressed:
+    "recent message link terminal conversation current automation room",
   dynamic: true,
   position: 5,
 

@@ -13,6 +13,8 @@ from pathlib import Path
 
 from benchmarks.realm.types import (
     LEADERBOARD_SCORES,
+    PlanningAction,
+    PlanningStep,
     PlanningTrajectory,
     REALMCategory,
     REALMConfig,
@@ -64,60 +66,6 @@ class REALMRunner:
 
         self._start_time = 0.0
         self._agent_initialized = False
-
-
-class _MockREALMAgent:
-    """Deterministic local agent used for tests and cheap smoke runs."""
-
-    def __init__(self, config: REALMConfig):
-        self.config = config
-        self._initialized = False
-
-    async def initialize(self) -> None:
-        self._initialized = True
-
-    async def close(self) -> None:
-        pass
-
-    async def solve_task(self, task, test_case=None) -> PlanningTrajectory:
-        start = time.time()
-        trajectory = PlanningTrajectory(task_id=task.id, start_time_ms=start * 1000)
-
-        expected_actions: list[str] = []
-        if test_case is not None:
-            actions_raw = test_case.expected.get("actions")
-            if isinstance(actions_raw, list):
-                expected_actions = [str(a) for a in actions_raw]
-        if not expected_actions:
-            expected_actions = list(task.available_tools)
-
-        max_steps = min(task.max_steps, self.config.max_steps, len(expected_actions))
-        for idx, action_name in enumerate(expected_actions[:max_steps], start=1):
-            trajectory.steps.append(
-                PlanningStep(
-                    step_number=idx,
-                    action=PlanningAction(
-                        name=action_name,
-                        parameters={"step": idx},
-                        description=f"Execute {action_name}",
-                    ),
-                    observation=f"Mock executed {action_name}",
-                    success=True,
-                    duration_ms=1.0,
-                )
-            )
-
-        trajectory.duration_ms = (time.time() - start) * 1000
-        trajectory.end_time_ms = time.time() * 1000
-        trajectory.tokens_used = 0
-        trajectory.plan_quality_score = 1.0 if trajectory.steps else 0.0
-        trajectory.overall_success = bool(trajectory.steps)
-        trajectory.final_outcome = (
-            "Mock task completed successfully"
-            if trajectory.overall_success
-            else "Mock task produced no steps"
-        )
-        return trajectory
 
     async def run_benchmark(self) -> REALMReport:
         """
@@ -620,3 +568,57 @@ class _MockREALMAgent:
 - GitHub: https://github.com/genglongling/REALM-Bench
 """
         return md
+
+
+class _MockREALMAgent:
+    """Deterministic local agent used for tests and cheap smoke runs."""
+
+    def __init__(self, config: REALMConfig):
+        self.config = config
+        self._initialized = False
+
+    async def initialize(self) -> None:
+        self._initialized = True
+
+    async def close(self) -> None:
+        pass
+
+    async def solve_task(self, task, test_case=None) -> PlanningTrajectory:
+        start = time.time()
+        trajectory = PlanningTrajectory(task_id=task.id, start_time_ms=start * 1000)
+
+        expected_actions: list[str] = []
+        if test_case is not None:
+            actions_raw = test_case.expected.get("actions")
+            if isinstance(actions_raw, list):
+                expected_actions = [str(a) for a in actions_raw]
+        if not expected_actions:
+            expected_actions = list(task.available_tools)
+
+        max_steps = min(task.max_steps, self.config.max_steps, len(expected_actions))
+        for idx, action_name in enumerate(expected_actions[:max_steps], start=1):
+            trajectory.steps.append(
+                PlanningStep(
+                    step_number=idx,
+                    action=PlanningAction(
+                        name=action_name,
+                        parameters={"step": idx},
+                        description=f"Execute {action_name}",
+                    ),
+                    observation=f"Mock executed {action_name}",
+                    success=True,
+                    duration_ms=1.0,
+                )
+            )
+
+        trajectory.duration_ms = (time.time() - start) * 1000
+        trajectory.end_time_ms = time.time() * 1000
+        trajectory.tokens_used = 0
+        trajectory.plan_quality_score = 1.0 if trajectory.steps else 0.0
+        trajectory.overall_success = bool(trajectory.steps)
+        trajectory.final_outcome = (
+            "Mock task completed successfully"
+            if trajectory.overall_success
+            else "Mock task produced no steps"
+        )
+        return trajectory

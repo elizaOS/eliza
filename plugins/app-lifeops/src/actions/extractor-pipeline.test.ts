@@ -42,9 +42,7 @@ describe("runExtractorPipeline", () => {
       calls.push(opts.prompt);
       return calls.length === 1 ? "garbage" : '{"ok":true}';
     });
-    const buildRepairPrompt = vi.fn(
-      (raw: string) => `repair after: ${raw}`,
-    );
+    const buildRepairPrompt = vi.fn((raw: string) => `repair after: ${raw}`);
 
     const result = await runExtractorPipeline({
       runtime: buildRuntime(useModel),

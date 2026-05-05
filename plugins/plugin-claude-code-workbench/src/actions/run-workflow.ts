@@ -84,7 +84,8 @@ export const claudeCodeWorkbenchRunAction: Action = {
   similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
   description:
     "Run an allowlisted repo workflow through the Claude Code workbench service.",
-  descriptionCompressed: "run allowlist repo workflow through Claude Code workbench service",
+  descriptionCompressed:
+    "run allowlist repo workflow through Claude Code workbench service",
 
   validate: async (
     runtime: IAgentRuntime,

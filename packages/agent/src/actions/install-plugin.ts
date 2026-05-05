@@ -30,7 +30,8 @@ export const installPluginAction: Action = {
     "use, enable, set up, or install a plugin that is marked [available] " +
     "(not yet loaded). The plugin will be downloaded and the agent will " +
     "restart to load it.",
-  descriptionCompressed: "install plugin yet install use user ask use, enable, set up, install plugin mark available (yet load) plugin download agent restart load",
+  descriptionCompressed:
+    "install plugin yet install use user ask use, enable, set up, install plugin mark available (yet load) plugin download agent restart load",
 
   validate: async () => true,
 

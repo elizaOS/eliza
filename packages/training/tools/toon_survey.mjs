@@ -15,7 +15,12 @@
  */
 
 import { decode } from "@toon-format/toon";
-import { readdirSync, statSync, createReadStream, writeFileSync } from "node:fs";
+import {
+  readdirSync,
+  statSync,
+  createReadStream,
+  writeFileSync,
+} from "node:fs";
 import { createInterface } from "node:readline";
 import { join, basename } from "node:path";
 
@@ -37,13 +42,17 @@ const onlyArg = (() => {
 function classifyError(msg) {
   // "Expected N inline array items, but got M" -> "Expected N inline array items, but got M"
   // Normalize numbers so we bucket related errors together.
-  const m1 = msg.match(/^(?:RangeError: )?Expected (\d+) inline array items, but got (\d+)/);
+  const m1 = msg.match(
+    /^(?:RangeError: )?Expected (\d+) inline array items, but got (\d+)/,
+  );
   if (m1) return `EXPECTED_INLINE_ARRAY_ITEMS_MISMATCH`;
   const m2 = msg.match(/^(?:SyntaxError: )?Invalid escape sequence/);
   if (m2) return "INVALID_ESCAPE_SEQUENCE";
   const m3 = msg.match(/^(?:SyntaxError: )?Unterminated string/);
   if (m3) return "UNTERMINATED_STRING";
-  const m4 = msg.match(/^(?:SyntaxError: )?Unexpected characters after closing quote/);
+  const m4 = msg.match(
+    /^(?:SyntaxError: )?Unexpected characters after closing quote/,
+  );
   if (m4) return "UNEXPECTED_AFTER_CLOSING_QUOTE";
   const m5 = msg.match(/^(?:SyntaxError: )?Missing colon after key/);
   if (m5) return "MISSING_COLON_AFTER_KEY";
@@ -69,14 +78,22 @@ async function processFile(slug, path) {
     } catch {
       count++;
       fail++;
-      failureRecords.push({ idx: count - 1, error: "JSON_PARSE", snippet: line.slice(0, 200) });
+      failureRecords.push({
+        idx: count - 1,
+        error: "JSON_PARSE",
+        snippet: line.slice(0, 200),
+      });
       continue;
     }
     const er = rec.expectedResponse;
     count++;
     if (typeof er !== "string") {
       fail++;
-      failureRecords.push({ idx: count - 1, error: "NO_EXPECTED_RESPONSE", snippet: JSON.stringify(er).slice(0, 200) });
+      failureRecords.push({
+        idx: count - 1,
+        error: "NO_EXPECTED_RESPONSE",
+        snippet: JSON.stringify(er).slice(0, 200),
+      });
       continue;
     }
     // Skip task types whose expectedResponse is intentionally not TOON.
@@ -87,7 +104,7 @@ async function processFile(slug, path) {
     // the trainer untouched and never go through a TOON round-trip at runtime.
     const taskType = rec?.metadata?.task_type;
     if (taskType === "claude_distill") {
-      ok++;  // counted as ok because TOON validity does not apply
+      ok++; // counted as ok because TOON validity does not apply
       continue;
     }
     try {
@@ -96,7 +113,11 @@ async function processFile(slug, path) {
     } catch (e) {
       fail++;
       const msg = String(e?.message ?? e);
-      failureRecords.push({ idx: count - 1, error: msg, snippet: er.slice(0, 240) });
+      failureRecords.push({
+        idx: count - 1,
+        error: msg,
+        snippet: er.slice(0, 240),
+      });
     }
   }
   return { slug, count, ok, fail, failureRecords };
@@ -105,7 +126,10 @@ async function processFile(slug, path) {
 async function main() {
   const files = readdirSync(NORMALIZED_DIR)
     .filter((f) => f.endsWith(".jsonl") && !f.endsWith(".errors.jsonl"))
-    .map((f) => ({ slug: f.replace(/\.jsonl$/, ""), path: join(NORMALIZED_DIR, f) }))
+    .map((f) => ({
+      slug: f.replace(/\.jsonl$/, ""),
+      path: join(NORMALIZED_DIR, f),
+    }))
     .filter((f) => !onlyArg || onlyArg.has(f.slug));
 
   files.sort((a, b) => statSync(a.path).size - statSync(b.path).size);
@@ -120,32 +144,46 @@ async function main() {
     summary.total += result.count;
     summary.ok += result.ok;
     summary.fail += result.fail;
-    summary.slugs[slug] = { count: result.count, ok: result.ok, fail: result.fail };
+    summary.slugs[slug] = {
+      count: result.count,
+      ok: result.ok,
+      fail: result.fail,
+    };
 
     for (const fr of result.failureRecords) {
       const cls = classifyError(fr.error);
-      const bucket = errors[cls] ?? (errors[cls] = { count: 0, slugs: {}, sample_records: [] });
+      const bucket =
+        errors[cls] ??
+        (errors[cls] = { count: 0, slugs: {}, sample_records: [] });
       bucket.count++;
       bucket.slugs[slug] = (bucket.slugs[slug] ?? 0) + 1;
       if (bucket.sample_records.length < 5) {
-        bucket.sample_records.push({ slug, line_idx: fr.idx, error: fr.error, snippet: fr.snippet });
+        bucket.sample_records.push({
+          slug,
+          line_idx: fr.idx,
+          error: fr.error,
+          snippet: fr.snippet,
+        });
       }
     }
 
     process.stderr.write(
-      `[${dt}s] ${slug}: ${result.ok}/${result.count} ok (${result.fail} fail)\n`
+      `[${dt}s] ${slug}: ${result.ok}/${result.count} ok (${result.fail} fail)\n`,
     );
   }
 
   // Sort error buckets by count desc.
   const sortedErrors = Object.fromEntries(
-    Object.entries(errors).sort(([, a], [, b]) => b.count - a.count)
+    Object.entries(errors).sort(([, a], [, b]) => b.count - a.count),
   );
-  writeFileSync(OUT_PATH, JSON.stringify({ summary, errors: sortedErrors }, null, 2));
+  writeFileSync(
+    OUT_PATH,
+    JSON.stringify({ summary, errors: sortedErrors }, null, 2),
+  );
   process.stderr.write(
-    `\nDONE. total=${summary.total} ok=${summary.ok} fail=${summary.fail} (${
-      ((summary.ok / summary.total) * 100).toFixed(2)
-    }%) -> ${OUT_PATH}\n`
+    `\nDONE. total=${summary.total} ok=${summary.ok} fail=${summary.fail} (${(
+      (summary.ok / summary.total) * 100
+    ).toFixed(2)}%) -> ${OUT_PATH}\n`,
   );
 }
 

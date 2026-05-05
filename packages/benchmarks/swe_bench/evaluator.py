@@ -40,6 +40,7 @@ class SWEBenchEvaluator:
 
     def __init__(
         self,
+        workspace_dir: str | None = None,
         timeout_seconds: int = 600,
         use_docker: bool = True,
         dataset_name: str | None = None,
@@ -49,6 +50,7 @@ class SWEBenchEvaluator:
         instance_image_tag: str = "latest",
         env_image_tag: str = "latest",
     ):
+        self.workspace_dir = Path(workspace_dir) if workspace_dir else None
         self.timeout_seconds = timeout_seconds
         self.use_docker = use_docker
         self.dataset_name = dataset_name or self.DEFAULT_DATASET_NAME
@@ -71,7 +73,7 @@ class SWEBenchEvaluator:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await result.wait()
+            await asyncio.wait_for(result.wait(), timeout=10)
             self._docker_available = result.returncode == 0
         except Exception:
             self._docker_available = False

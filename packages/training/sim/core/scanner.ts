@@ -2,11 +2,11 @@
  * System scanner — uses unimport to discover BabylonSystem exports from a directory.
  */
 
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { logger } from '@babylon/shared';
-import { type Import, scanDirExports } from 'unimport';
-import type { BabylonSystem } from './types';
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { logger } from "@babylon/shared";
+import { type Import, scanDirExports } from "unimport";
+import type { BabylonSystem } from "./types";
 
 export interface ScanResult {
   systems: BabylonSystem[];
@@ -19,7 +19,7 @@ export interface ScanResult {
  */
 export async function scanSystems(
   systemsDir: string,
-  rootDir: string
+  rootDir: string,
 ): Promise<ScanResult> {
   const absoluteDir = resolve(rootDir, systemsDir);
   const systems: BabylonSystem[] = [];
@@ -29,7 +29,7 @@ export async function scanSystems(
     logger.warn(
       `No systems directory found at ${absoluteDir}`,
       undefined,
-      'Runtime'
+      "Runtime",
     );
     return { systems: [], files: [] };
   }
@@ -37,13 +37,13 @@ export async function scanSystems(
   let exports: Import[];
   try {
     exports = await scanDirExports([absoluteDir], {
-      filePatterns: ['*.ts', '*.js', '*.mts', '*.mjs'],
+      filePatterns: ["*.ts", "*.js", "*.mts", "*.mjs"],
     });
   } catch (err) {
     logger.error(
       `Failed to scan systems directory at ${absoluteDir}`,
       err instanceof Error ? err : new Error(String(err)),
-      'Runtime'
+      "Runtime",
     );
     return { systems: [], files: [] };
   }
@@ -66,7 +66,7 @@ export async function scanSystems(
       const candidates: unknown[] = [];
       if (mod.default) candidates.push(mod.default);
       for (const exp of fileExps) {
-        if (exp.name !== 'default' && mod[exp.name]) {
+        if (exp.name !== "default" && mod[exp.name]) {
           candidates.push(mod[exp.name]);
         }
       }
@@ -80,7 +80,7 @@ export async function scanSystems(
           logger.info(
             `Discovered system "${instance.id}" from ${filePath}`,
             undefined,
-            'Runtime'
+            "Runtime",
           );
         }
       }
@@ -88,7 +88,7 @@ export async function scanSystems(
       logger.error(
         `Failed to load system from ${filePath}`,
         err instanceof Error ? err : new Error(String(err)),
-        'Runtime'
+        "Runtime",
       );
     }
   }
@@ -107,7 +107,7 @@ function resolveSystem(candidate: unknown): BabylonSystem | null {
   if (isBabylonSystem(candidate)) return candidate;
 
   // Class constructor — instantiate it
-  if (typeof candidate === 'function') {
+  if (typeof candidate === "function") {
     try {
       const instance = new (candidate as new () => unknown)();
       if (isBabylonSystem(instance)) return instance;
@@ -115,7 +115,7 @@ function resolveSystem(candidate: unknown): BabylonSystem | null {
       logger.warn(
         `Failed to instantiate candidate constructor: ${err instanceof Error ? err.message : String(err)}`,
         undefined,
-        'Runtime'
+        "Runtime",
       );
     }
   }
@@ -124,12 +124,12 @@ function resolveSystem(candidate: unknown): BabylonSystem | null {
 }
 
 function isBabylonSystem(obj: unknown): obj is BabylonSystem {
-  if (!obj || typeof obj !== 'object') return false;
+  if (!obj || typeof obj !== "object") return false;
   const m = obj as Record<string, unknown>;
   return (
-    typeof m.id === 'string' &&
-    typeof m.name === 'string' &&
-    typeof m.phase === 'number' &&
-    typeof m.onTick === 'function'
+    typeof m.id === "string" &&
+    typeof m.name === "string" &&
+    typeof m.phase === "number" &&
+    typeof m.onTick === "function"
   );
 }

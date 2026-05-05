@@ -38,7 +38,8 @@ export const getRuntimeStatusAction: Action = {
   similes: ["RUNTIME_STATUS", "AGENT_STATUS_RUNTIME", "RUNTIME_SNAPSHOT"],
   description:
     "Fetch a high-level runtime snapshot from /api/runtime: agent state, model, plugin / action / provider / evaluator / service counts.",
-  descriptionCompressed: "fetch high-level runtime snapshot / api/runtime: agent state, model, plugin / action / provider / evaluator / service count",
+  descriptionCompressed:
+    "fetch high-level runtime snapshot / api/runtime: agent state, model, plugin / action / provider / evaluator / service count",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -112,7 +113,8 @@ export const describeRegisteredActionsAction: Action = {
   similes: ["LIST_ACTIONS", "REGISTERED_ACTIONS", "AVAILABLE_ACTIONS"],
   description:
     "List all actions currently registered on the runtime, with descriptions. Optionally filter by name substring (case-insensitive).",
-  descriptionCompressed: "list action register runtime, w/ description optionally filter name substr (case-insensitive)",
+  descriptionCompressed:
+    "list action register runtime, w/ description optionally filter name substr (case-insensitive)",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -196,7 +198,8 @@ export const reloadRuntimeConfigAction: Action = {
   similes: ["RELOAD_CONFIG", "REFRESH_CONFIG"],
   description:
     "Reload eliza.json from disk and apply hot-reloadable fields (character name/system/bio, voice config, provider API keys, feature flags) to the running runtime. Plugin list, model registry, and database changes still require RESTART_RUNTIME.",
-  descriptionCompressed: "reload eliza json disk apply hot-reloadable field (character name/system/bio, voice config, provider API key, feature flag) run runtime plugin list, model registry, database change still require RESTART_RUNTIME",
+  descriptionCompressed:
+    "reload eliza json disk apply hot-reloadable field (character name/system/bio, voice config, provider API key, feature flag) run runtime plugin list, model registry, database change still require RESTART_RUNTIME",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -283,7 +286,8 @@ export const restartRuntimeAction: Action = {
   similes: ["RESTART_PROCESS", "RELOAD_RUNTIME", "BOUNCE_RUNTIME"],
   description:
     "Restart the agent runtime by hitting POST /api/restart. The process exits and the supervisor relaunches it.",
-  descriptionCompressed: "restart agent runtime hit POST / api/restart process exit supervisor relaunch",
+  descriptionCompressed:
+    "restart agent runtime hit POST / api/restart process exit supervisor relaunch",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

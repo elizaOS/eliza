@@ -2,12 +2,12 @@
  * Engine and tick context factories.
  */
 
-import { type DrizzleClient, db } from '@babylon/db';
-import { BabylonLLMClient } from '@babylon/engine';
-import { type Logger, logger } from '@babylon/shared';
-import { DefaultLLMOrchestrator } from './llm-orchestrator';
-import { DefaultTickMetrics } from './metrics';
-import { DefaultServiceContainer } from './service-container';
+import { type DrizzleClient, db } from "@babylon/db";
+import { BabylonLLMClient } from "@babylon/engine";
+import { type Logger, logger } from "@babylon/shared";
+import { DefaultLLMOrchestrator } from "./llm-orchestrator";
+import { DefaultTickMetrics } from "./metrics";
+import { DefaultServiceContainer } from "./service-container";
 import type {
   EngineConfig,
   EngineContext,
@@ -16,7 +16,7 @@ import type {
   ServiceContainer,
   TickContext,
   TickSharedData,
-} from './types';
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // DefaultTickSharedData
@@ -59,7 +59,7 @@ export interface CreateEngineContextOptions {
 }
 
 export function createEngineContext(
-  options: CreateEngineContextOptions = {}
+  options: CreateEngineContextOptions = {},
 ): EngineContext {
   const envBudget = process.env.GAME_TICK_BUDGET_MS;
   const parsedBudget = envBudget ? Number(envBudget) : undefined;
@@ -88,7 +88,7 @@ export function createEngineContext(
 export function createTickContext(
   engineCtx: EngineContext,
   tickNumber: number,
-  dayNumber?: number
+  dayNumber?: number,
 ): TickContext {
   const now = new Date();
   const deadline = Date.now() + engineCtx.config.budgetMs;
