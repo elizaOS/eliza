@@ -16,5 +16,7 @@
 
 # General
 node_modules/
+eliza/
+.elizaos/
 .DS_Store
 screenshots/
