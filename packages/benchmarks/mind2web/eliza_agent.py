@@ -76,6 +76,93 @@ def _format_element(step_index: int, task: Mind2WebTask) -> str:
     return "\n".join(lines)
 
 
+@dataclass
+class Mind2WebProviderResult:
+    """Minimal provider-result shape used by tests and legacy harness code."""
+
+    text: str
+    values: dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+async def get_mind2web_context_provider(*_: Any, **__: Any) -> Mind2WebProviderResult:
+    """Return the current Mind2Web task context without importing elizaos."""
+    ctx = get_mind2web_context()
+    if ctx.task is None:
+        return Mind2WebProviderResult(
+            text="No Mind2Web task is active.",
+            values={"mind2web_done": True},
+        )
+
+    task = ctx.task
+    step_index = ctx.current_step_index
+    elements = _format_element(step_index, task)
+    text = (
+        f"Mind2Web Task: {task.confirmed_task}\n"
+        f"Website: {task.website}\n"
+        f"Domain: {task.domain}\n"
+        f"Step: {step_index + 1}/{len(task.actions)}\n\n"
+        f"Available Elements:\n{elements}"
+    )
+    return Mind2WebProviderResult(
+        text=text,
+        values={
+            "mind2web_task_id": task.annotation_id,
+            "mind2web_step": step_index,
+            "mind2web_done": ctx.done,
+        },
+        data={
+            "task": task,
+            "executed_actions": list(ctx.executed_actions),
+        },
+    )
+
+
+class Mind2WebActionHandler:
+    """Compatibility action handler that records local Mind2Web actions only."""
+
+    name = "MIND2WEB_ACTION"
+    similes = ["CLICK", "TYPE", "SELECT", "BROWSER_ACTION"]
+    description = (
+        "Records a Mind2Web browser action with operation, element_id, and optional value."
+    )
+    parameters: list[Any] = []
+
+    async def validate(self, *_: Any, **__: Any) -> bool:
+        ctx = get_mind2web_context()
+        return ctx.task is not None and not ctx.done
+
+    async def handler(self, *_: Any, **kwargs: Any) -> Mind2WebProviderResult:
+        ctx = get_mind2web_context()
+        if ctx.task is None:
+            return Mind2WebProviderResult(
+                text="No Mind2Web task is active.",
+                values={"success": False},
+            )
+
+        operation_raw = str(kwargs.get("operation", "CLICK")).upper()
+        try:
+            operation = Mind2WebOperation(operation_raw)
+        except ValueError:
+            operation = Mind2WebOperation.CLICK
+
+        action = Mind2WebAction(
+            operation=operation,
+            element_id=str(kwargs.get("element_id", "")),
+            value=str(kwargs.get("value", "")),
+            reasoning=str(kwargs.get("reasoning", "Recorded by compatibility handler.")),
+        )
+        ctx.executed_actions.append(action)
+        ctx.current_step_index += 1
+        if ctx.task and ctx.current_step_index >= len(ctx.task.actions):
+            ctx.done = True
+        return Mind2WebProviderResult(
+            text=f"Recorded Mind2Web action: {action.operation.value}",
+            values={"success": True, "mind2web_done": ctx.done},
+            data={"action": action},
+        )
+
+
 class MockMind2WebAgent:
     """Deterministic offline agent that replays ground-truth sample actions."""
 
