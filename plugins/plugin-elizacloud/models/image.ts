@@ -107,21 +107,48 @@ export async function handleImageDescription(
       max_tokens: maxTokens,
     };
 
-    // Retry with exponential backoff for transient errors (429 rate limit)
+    // On 429, honour the upstream's `retryAfter` instead of retrying on a
+    // hardcoded backoff. Hardcoded retries inside the rate-limit window add
+    // wasted requests to the same bucket and make the problem worse — see
+    // #7374's billing render-loop fix and S33's dashboard 429-aware UX.
+    // Strategy: only retry once, only if the upstream signals a short wait
+    // (≤5s, i.e. transient burst). Anything longer, bail immediately and let
+    // the caller fail fast.
     let response: Response | null = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let attemptedRetry = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
       response = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
       });
+      if (response.status !== 429 || attemptedRetry) break;
 
-      if (response.status === 429 && attempt < 2) {
-        const wait = (attempt + 1) * 2000; // 2s, 4s
+      const headerRetryAfter = Number(response.headers.get("retry-after"));
+      let bodyRetryAfter: number | undefined;
+      try {
+        const peek = (await response.clone().json()) as {
+          retryAfter?: unknown;
+        };
+        bodyRetryAfter =
+          typeof peek?.retryAfter === "number" ? peek.retryAfter : undefined;
+      } catch {
+        // Body wasn't JSON — fall through to header value.
+      }
+      const retryAfter = Number.isFinite(headerRetryAfter)
+        ? headerRetryAfter
+        : (bodyRetryAfter ?? 0);
+
+      if (retryAfter > 0 && retryAfter <= 5) {
         logger.warn(
-          `[ELIZAOS_CLOUD] Image analysis rate-limited (429), retrying in ${wait / 1000}s...`
+          `[ELIZAOS_CLOUD] Image analysis rate-limited (429), retrying once after ${retryAfter}s...`
         );
-        await new Promise((r) => setTimeout(r, wait));
+        await new Promise((r) => setTimeout(r, retryAfter * 1000));
+        attemptedRetry = true;
         continue;
       }
+      // Long rate-limit window: don't burn another bucket slot retrying inside it.
+      logger.warn(
+        `[ELIZAOS_CLOUD] Image analysis rate-limited (429); upstream retryAfter=${retryAfter || "unknown"}s — failing fast`
+      );
       break;
     }
 
@@ -130,6 +157,11 @@ export async function handleImageDescription(
       if (status === 402) {
         throw new Error(
           "Eliza Cloud credits exhausted — top up at https://www.elizacloud.ai/dashboard/settings?tab=billing"
+        );
+      }
+      if (status === 429) {
+        throw new Error(
+          "Eliza Cloud rate limit exceeded for image description — try again in a minute"
         );
       }
       throw new Error(`ElizaOS Cloud API error: ${status}`);
