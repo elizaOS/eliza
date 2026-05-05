@@ -10,6 +10,7 @@ import type {
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { recentConversationTexts } from "./lib/recent-context.js";
@@ -124,7 +125,10 @@ async function resolveChatThreadPlan(args: {
   ].join("\n");
 
   try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+    const raw = await runWithTrajectoryContext(
+      { purpose: "lifeops-chat-thread" },
+      () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    );
     const parsed = parseToonKeyValue<Record<string, unknown>>(
       typeof raw === "string" ? raw : "",
     );

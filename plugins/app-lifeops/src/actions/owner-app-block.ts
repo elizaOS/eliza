@@ -6,7 +6,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, parseToonKeyValue } from "@elizaos/core";
+import {
+  ModelType,
+  parseToonKeyValue,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
@@ -186,9 +190,13 @@ async function resolveAppBlockPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-app-block-planner" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {

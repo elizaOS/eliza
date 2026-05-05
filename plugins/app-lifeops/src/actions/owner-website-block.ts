@@ -10,6 +10,7 @@ import type {
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import {
   getSelfControlAccess,
@@ -384,9 +385,13 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-website-block-planner" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
@@ -446,9 +451,13 @@ async function recoverWebsiteContextWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-website-block-recovery" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return normalizeWebsiteCandidates(parsed?.websites);

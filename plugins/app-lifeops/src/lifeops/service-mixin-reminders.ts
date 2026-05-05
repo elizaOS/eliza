@@ -17,6 +17,7 @@ import {
   type IAgentRuntime,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
@@ -1098,9 +1099,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         `text: ${formatReminderPromptValue(input.text)}`,
       ].join("\n");
       try {
-        const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        });
+        const response = await runWithTrajectoryContext(
+          { purpose: "lifeops-reminders-classify-reply" },
+          () =>
+            this.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt,
+            }),
+        );
         if (typeof response !== "string") {
           return null;
         }
@@ -1364,9 +1369,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ].join("\n");
 
       try {
-        const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        });
+        const response = await runWithTrajectoryContext(
+          { purpose: "lifeops-reminders-render-body" },
+          () =>
+            this.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt,
+            }),
+        );
         const text =
           typeof response === "string"
             ? normalizeGeneratedReminderBody(response)
@@ -1425,9 +1434,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ].join("\n");
 
       try {
-        const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        });
+        const response = await runWithTrajectoryContext(
+          { purpose: "lifeops-reminders-workflow-body" },
+          () =>
+            this.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt,
+            }),
+        );
         const text =
           typeof response === "string"
             ? normalizeGeneratedWorkflowBody(response)

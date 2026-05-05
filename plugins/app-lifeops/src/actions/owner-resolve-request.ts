@@ -7,7 +7,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
@@ -20,7 +25,7 @@ import { executeApprovedBookTravel } from "./owner-book-travel.js";
 import {
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,
-} from "./cross-channel-send.js";
+} from "./lib/messaging-helpers.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -97,8 +102,10 @@ ${formatPending(pending)}
 Return TOON only with exactly these keys:
 requestId: id of the single targeted request, or null if ambiguous
 reason: short human-readable reason in the user's language, or null if none given`;
-  // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
-  const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+  const raw = await runWithTrajectoryContext(
+    { purpose: "lifeops-resolve-request" },
+    () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+  );
   const parsed = parseToonKeyValue<Record<string, unknown>>(
     typeof raw === "string" ? raw : "",
   );

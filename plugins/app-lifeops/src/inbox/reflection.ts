@@ -3,6 +3,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
@@ -79,7 +80,10 @@ export async function reflectOnSendConfirmation(
   ].join("\n");
 
   try {
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-inbox-reflect-autoreply" },
+      () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    );
     const raw = typeof result === "string" ? result : "";
     const parsed = parseReflectionObject(raw);
     if (parsed) {
@@ -162,7 +166,10 @@ export async function reflectOnAutoReply(
   ].join("\n");
 
   try {
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-inbox-reflect-send" },
+      () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    );
     const raw = typeof result === "string" ? result : "";
     const parsed = parseReflectionObject(raw);
     if (parsed) {
