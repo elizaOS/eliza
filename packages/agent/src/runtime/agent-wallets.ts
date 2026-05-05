@@ -294,7 +294,55 @@ export async function ensureAgentWallets(
     }
     out.push(await generateAgentWallet(vault, agentId, chain, caller));
   }
+  await bridgeAgentWalletsToProcessEnv(vault, agentId, out, caller);
   return out;
+}
+
+/** Env var the wallet UI + EVM/Solana plugins read for the user wallet. */
+const CHAIN_TO_ENV_KEY: Record<WalletChain, string> = {
+  evm: "EVM_PRIVATE_KEY",
+  solana: "SOLANA_PRIVATE_KEY",
+};
+
+/**
+ * Make the per-agent wallet visible as the user wallet for THIS process.
+ *
+ * The wallet UI tab + every consumer plugin (`@elizaos/plugin-evm`,
+ * `@elizaos/plugin-solana`) reads from `process.env.EVM_PRIVATE_KEY` /
+ * `SOLANA_PRIVATE_KEY`. Per-agent wallets live in the vault, so without
+ * a bridge the UI shows "No EVM/Solana address" even though the agent
+ * has a perfectly good wallet sitting in the vault.
+ *
+ * Single-user assistant case: the agent IS the user's wallet. Bridge
+ * the per-agent private key into the process env so consumers find it.
+ *
+ * Skipped for any chain where the user has already set their own env
+ * var explicitly (so an imported personal key wins over the auto-bridged
+ * agent key). Skipped entirely via `ELIZA_DISABLE_AGENT_WALLET_AS_USER=1`.
+ */
+export async function bridgeAgentWalletsToProcessEnv(
+  vault: Vault,
+  agentId: string,
+  descriptors: readonly AgentWalletDescriptor[],
+  caller?: string,
+): Promise<void> {
+  if (process.env.ELIZA_DISABLE_AGENT_WALLET_AS_USER === "1") return;
+  for (const d of descriptors) {
+    const envKey = CHAIN_TO_ENV_KEY[d.chain];
+    if (process.env[envKey]?.trim()) continue; // user-set wins
+    try {
+      const pk = await revealAgentWalletPrivateKey(
+        vault,
+        agentId,
+        d.chain,
+        caller ?? "agent-wallets:bridge",
+      );
+      process.env[envKey] = pk;
+    } catch {
+      // Vault read failed — leave env unset; the wallet UI will show
+      // empty for that chain and the user can re-enter via Settings.
+    }
+  }
 }
 
 /**
