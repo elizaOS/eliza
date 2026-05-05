@@ -9,7 +9,7 @@ import type {
 } from "../types.js";
 
 describe("TemplateDefinition", () => {
-  test("supports plugin and fullstack-app templates", () => {
+  test("supports plugin and project templates", () => {
     const template: TemplateDefinition = {
       description: "Plugin starter",
       id: "plugin",
@@ -31,11 +31,12 @@ describe("TemplatesManifest", () => {
       repoUrl: "https://github.com/elizaos/eliza",
       templates: [
         {
-          description: "Fullstack workspace",
-          id: "fullstack-app",
-          kind: "fullstack-app",
+          aliases: ["fullstack-app"],
+          description: "Project workspace",
+          id: "project",
+          kind: "project",
           languages: ["typescript"],
-          name: "fullstack-app",
+          name: "project",
           version: 1,
         },
       ],
@@ -43,7 +44,8 @@ describe("TemplatesManifest", () => {
     };
 
     expect(manifest.templates).toHaveLength(1);
-    expect(manifest.templates[0]?.id).toBe("fullstack-app");
+    expect(manifest.templates[0]?.id).toBe("project");
+    expect(manifest.templates[0]?.aliases).toContain("fullstack-app");
   });
 });
 
@@ -86,11 +88,11 @@ describe("CLI option types", () => {
   test("create options support template selection", () => {
     const options: CreateOptions = {
       language: "typescript",
-      template: "fullstack-app",
+      template: "project",
       yes: true,
     };
 
-    expect(options.template).toBe("fullstack-app");
+    expect(options.template).toBe("project");
   });
 
   test("upgrade options support dry runs", () => {

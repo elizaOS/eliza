@@ -50,18 +50,30 @@ function fakeReq(opts: {
   body?: unknown;
   ip?: string;
   host?: string;
+  headers?: http.IncomingHttpHeaders;
 }): http.IncomingMessage {
   const bodyStr = opts.body === undefined ? "" : JSON.stringify(opts.body);
   const stream = Readable.from([bodyStr]) as unknown as http.IncomingMessage;
   Object.assign(stream, {
     method: opts.method,
     url: opts.pathname,
-    headers: { host: opts.host ?? "example.com" },
+    headers: { host: opts.host ?? "example.com", ...opts.headers },
     socket: {
       remoteAddress: opts.ip ?? "203.0.113.10",
     },
   });
   return stream;
+}
+
+function mockGeneratedPairingCodes(...alphabetIndexes: number[]): void {
+  let callCount = 0;
+  vi.spyOn(crypto, "randomInt").mockImplementation(() => {
+    const codeIndex = Math.floor(callCount / 12);
+    callCount += 1;
+    return (
+      alphabetIndexes[Math.min(codeIndex, alphabetIndexes.length - 1)] ?? 0
+    );
+  });
 }
 
 describe("auth pairing compat routes", () => {
@@ -78,6 +90,7 @@ describe("auth pairing compat routes", () => {
 
   afterEach(() => {
     _resetAuthPairingStateForTests();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     if (originalToken === undefined) delete process.env.ELIZA_API_TOKEN;
     else process.env.ELIZA_API_TOKEN = originalToken;
@@ -127,6 +140,154 @@ describe("auth pairing compat routes", () => {
     ).toBe(true);
     expect(pairRes.status()).toBe(200);
     expect(pairRes.body()).toEqual({ token: "pairing-test-token" });
+  });
+
+  it("simulates two remote device contexts through wrong code, consume, bearer access, and reuse rejection", async () => {
+    mockGeneratedPairingCodes(0, 1);
+
+    const ownerBrowser = {
+      ip: "198.51.100.10",
+      host: "owner.example.test",
+    };
+    const phoneBrowser = {
+      ip: "203.0.113.55",
+      host: "phone.example.test",
+    };
+
+    const ownerStatus = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/status",
+        ...ownerBrowser,
+      }),
+      ownerStatus.res,
+      STATE,
+    );
+    expect(ownerStatus.status()).toBe(200);
+    expect(ownerStatus.body()).toMatchObject({
+      required: true,
+      authenticated: false,
+      localAccess: false,
+      pairingEnabled: true,
+    });
+    expect(
+      (ownerStatus.body() as { expiresAt: number | null }).expiresAt,
+    ).toEqual(expect.any(Number));
+
+    const wrongCode = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        body: { code: "BBBB-BBBB-BBBB" },
+        ...phoneBrowser,
+      }),
+      wrongCode.res,
+      STATE,
+    );
+    expect(wrongCode.status()).toBe(403);
+    expect(wrongCode.body()).toMatchObject({ error: "Invalid pairing code" });
+
+    const successfulPair = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        body: { code: "aaaa aaaa aaaa" },
+        ...phoneBrowser,
+      }),
+      successfulPair.res,
+      STATE,
+    );
+    expect(successfulPair.status()).toBe(200);
+    expect(successfulPair.body()).toEqual({ token: "pairing-test-token" });
+
+    const pairedPhoneStatus = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/status",
+        headers: { authorization: "Bearer pairing-test-token" },
+        ...phoneBrowser,
+      }),
+      pairedPhoneStatus.res,
+      STATE,
+    );
+    expect(pairedPhoneStatus.status()).toBe(200);
+    expect(pairedPhoneStatus.body()).toMatchObject({
+      required: false,
+      authenticated: true,
+      localAccess: false,
+      pairingEnabled: true,
+    });
+
+    const reusedCode = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        body: { code: "AAAA-AAAA-AAAA" },
+        ip: "203.0.113.99",
+        host: "second-phone.example.test",
+      }),
+      reusedCode.res,
+      STATE,
+    );
+    expect(reusedCode.status()).toBe(403);
+    expect(reusedCode.body()).toMatchObject({ error: "Invalid pairing code" });
+  });
+
+  it("rejects an expired pending code and allows the replacement code to be consumed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    mockGeneratedPairingCodes(0, 1);
+
+    const statusRes = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({ method: "GET", pathname: "/api/auth/status" }),
+      statusRes.res,
+      STATE,
+    );
+    expect(statusRes.status()).toBe(200);
+    expect(statusRes.body()).toMatchObject({
+      required: true,
+      pairingEnabled: true,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+
+    vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+
+    const expiredCode = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        body: { code: "AAAA-AAAA-AAAA" },
+      }),
+      expiredCode.res,
+      STATE,
+    );
+    expect(expiredCode.status()).toBe(403);
+    expect(expiredCode.body()).toMatchObject({ error: "Invalid pairing code" });
+
+    expect(ensureAuthPairingCodeForRemoteAccess()).toMatchObject({
+      code: "BBBB-BBBB-BBBB",
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+
+    const replacementCode = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        body: { code: "BBBB-BBBB-BBBB" },
+      }),
+      replacementCode.res,
+      STATE,
+    );
+    expect(replacementCode.status()).toBe(200);
+    expect(replacementCode.body()).toEqual({ token: "pairing-test-token" });
   });
 
   it("can pre-generate and log the pairing code before a remote client probes auth status", async () => {

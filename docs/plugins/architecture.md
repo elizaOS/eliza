@@ -27,7 +27,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",               // database adapter — required
   "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
   "@elizaos/app-companion",            // VRM companion emotes
-  "@elizaos/plugin-app-control",       // launch, close, list running Eliza apps
   "@elizaos/plugin-shell",             // shell command execution
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling

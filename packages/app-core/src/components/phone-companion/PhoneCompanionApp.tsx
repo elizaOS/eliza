@@ -19,8 +19,8 @@ import { RemoteSession } from "./RemoteSession";
 /**
  * The phone-companion surface — three-view Capacitor app that pairs with a
  * Eliza desktop agent (QR handshake), mirrors chat, and serves as the
- * remote-session viewer for the paired Mac. Formerly shipped as
- * `apps/app-ios-companion`; now rendered inside the main iOS bundle.
+ * remote-session viewer for the paired Mac. Formerly shipped as a standalone
+ * top-level app project; now rendered inside the main iOS bundle.
  */
 export function PhoneCompanionApp(): React.JSX.Element {
   const nav = useNavigation();

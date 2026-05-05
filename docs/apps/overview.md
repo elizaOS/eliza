@@ -46,7 +46,7 @@ All apps share a common connection pattern:
 - **Mobile** connects via REST API
 - **Dashboard** uses REST + WebSocket for real-time updates
 
-## Standalone Apps vs. Plugin Apps
+## Standalone Apps vs. App Plugins
 
 Eliza has two distinct types of "apps" — understanding the difference prevents confusion.
 
@@ -54,7 +54,7 @@ Eliza has two distinct types of "apps" — understanding the difference prevents
 
 These are the independent applications listed above. Each is a complete, pre-built application that connects to the agent runtime. You install them once and they provide the UI for interacting with your agent.
 
-### Plugin Apps (Game/Experience Apps)
+### App Plugins (Game/Experience Apps)
 
 These are elizaOS plugins with names like `@hyperscape/plugin-hyperscape` that are installed through the Dashboard's **Apps** browser. When launched:
 
@@ -79,15 +79,15 @@ These are elizaOS plugins with names like `@hyperscape/plugin-hyperscape` that a
 └─────────────────────────────────────┘
 ```
 
-Plugin apps are discovered via the [Plugin Registry](/plugins/registry) and filtered by the `app-` prefix in their package name. They are managed through the [Apps API](/rest/apps).
+App plugins are discovered via the [Plugin Registry](/plugins/registry) and filtered by the `app-` prefix in their package name. They are managed through the [Apps API](/rest/apps).
 
 <Note>
-Plugins do **not** inject custom UI components into the Dashboard. Plugin configuration uses schema-driven forms (via `@elizaos/plugin-ui`), not dynamically loaded components. Only plugin apps with a `viewer.url` get embedded as iframes.
+Plugins do **not** inject custom UI components into the Dashboard. Plugin configuration uses schema-driven forms (via `@elizaos/plugin-ui`), not dynamically loaded components. Only app plugins with a `viewer.url` get embedded as iframes.
 </Note>
 
 ### Key Differences
 
-| | Standalone Apps | Plugin Apps |
+| | Standalone Apps | App Plugins |
 |---|---|---|
 | **What they are** | Pre-built platform clients | Plugins that connect to external services |
 | **How you get them** | Install once (binary/extension) | Install from Apps browser in Dashboard |
@@ -110,5 +110,5 @@ Plugins do **not** inject custom UI components into the Dashboard. Plugin config
 - [Installation](/installation) — Install the CLI and apps
 - [Configuration](/configuration) — Configure your agent
 - [Quickstart](/quickstart) — Get started in minutes
-- [Apps API](/rest/apps) — REST API for managing plugin apps
+- [Apps API](/rest/apps) — REST API for managing app plugins
 - [Plugin Registry](/plugins/registry) — Browse available plugins and apps

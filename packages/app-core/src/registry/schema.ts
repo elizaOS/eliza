@@ -176,8 +176,19 @@ const appNpmSchema = z.object({
   v2Version: z.string().nullable(),
 });
 
+const packageRoutePluginSpecifierSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) =>
+      !value.startsWith(".") &&
+      !value.startsWith("/") &&
+      !/(^|\/)(apps|plugins)\//.test(value),
+    "routePlugin.specifier must be a package specifier, not a filesystem path",
+  );
+
 const appRoutePluginSchema = z.object({
-  specifier: z.string().min(1),
+  specifier: packageRoutePluginSpecifierSchema,
   exportName: z.string().min(1).optional(),
 });
 

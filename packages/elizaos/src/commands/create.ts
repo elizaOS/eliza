@@ -27,8 +27,8 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 
 const TEMPLATE_ICONS: Record<string, string> = {
-  "fullstack-app": "🧱",
   plugin: "🔌",
+  project: "🧱",
 };
 
 function normalizeProjectName(value: string): string {
@@ -64,7 +64,7 @@ function getNextSteps(options: {
   templateId: string;
 }): string[] {
   const steps = [`cd ${options.projectDir}`];
-  if (options.templateId === "fullstack-app" && options.skipUpstream) {
+  if (options.templateId === "project" && options.skipUpstream) {
     steps.push("npx elizaos upgrade");
   }
   steps.push("bun install");
@@ -124,7 +124,8 @@ async function promptProjectName(
   initial?: string,
 ): Promise<string> {
   if (initial) return normalizeProjectName(initial);
-  const defaultValue = templateId === "plugin" ? "plugin-example" : "my-app";
+  const defaultValue =
+    templateId === "plugin" ? "plugin-example" : "my-project";
   const input = await clack.text({
     defaultValue,
     message: "Project name:",
@@ -283,5 +284,5 @@ export async function create(
     }).join("\n"),
     "Next steps",
   );
-  clack.outro(`${pc.green("✨")} Your ${template.name} project is ready!`);
+  clack.outro(`${pc.green("✨")} Your ${template.name} is ready!`);
 }

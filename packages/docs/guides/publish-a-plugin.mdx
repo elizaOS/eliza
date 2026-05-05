@@ -143,64 +143,45 @@ gh auth login
 
 ---
 
-## Step 3: Test Publishing (Dry Run)
+## Step 3: Test Publishing Locally
 
-Before actually publishing, test the entire process to catch any issues.
+Before publishing, run the plugin's generated checks and inspect the package contents.
 
-### Run publish test
+### Run local checks
 
 ```bash Terminal
-elizaos publish --test
+bun run build
+bun run test
+npm pack --dry-run
 ```
 
-This command will:
+These commands will:
 
-- Check your npm and GitHub authentication
 - Validate your plugin structure
-- Check for required images and descriptions
-- Show you exactly what would happen without making any changes
-
-**Example output:**
-
-```
-✓ Found existing NPM login: your-username
-✓ GitHub token validated
-⚠ Plugin validation warnings:
-  - Missing required logo.jpg in images/ directory (400x400px, max 500KB)
-  - Missing required banner.jpg in images/ directory (1280x640px, max 1MB)
-  - Description appears to be default generated description
-Your plugin may get rejected if you submit without addressing these issues.
-Do you wish to continue anyway? No
-```
+- Run component and e2e tests defined by your package
+- Show which files would be included in the npm tarball
 
 <Warning>
   Address any validation errors before proceeding. Your plugin may be rejected
   by maintainers if it's missing required assets or has placeholder content.
 </Warning>
 
-### Run dry run (optional)
-
-For an even more detailed preview:
-
-```bash Terminal
-elizaos publish --dry-run
-```
-
-This generates all the registry files locally in `packages/registry/` so you can see exactly what will be submitted.
-
 ---
 
 ## Step 4: Publish Your Plugin
 
-Once your test passes and you're satisfied with the setup, run the actual publish command.
+Once local checks pass, publish the package with standard npm tooling and submit the registry update through the current registry contribution process.
 
-### Execute full publish
+### Publish to npm
 
 ```bash Terminal
-elizaos publish
+npm login
+npm publish --access public
 ```
 
-You will be asked for a scoped Github token and given these instructions:
+### Prepare your registry pull request
+
+You may need a scoped Github token for registry submission tooling:
 
 <Steps>
   <Step title="Create GitHub Personal Access Token (when prompted)">
@@ -252,7 +233,7 @@ An elizaOS core team member will review your registry pull request to ensure all
 
 **Typical review time:** 1-3 business days
 
-**If approved:** Your plugin appears in the official registry and can be discovered via `elizaos plugins list`
+**If approved:** Your plugin appears in the official registry.
 
 **If changes requested:** Address the feedback and update your plugin, then re-submit.
 
@@ -265,7 +246,7 @@ An elizaOS core team member will review your registry pull request to ensure all
 Once approved, users can install your plugin to their projects:
 
 ```bash Terminal
-elizaos plugins add plugin-fal-ai
+bun add @your-scope/plugin-fal-ai
 ```
 
 ### Future updates
@@ -273,9 +254,7 @@ elizaos plugins add plugin-fal-ai
 **For plugin updates after initial publishing:**
 
 <Important>
-  The `elizaos publish` command is only for initial publication. For all future
-  updates, use standard npm and Git workflows - never run `elizaos publish`
-  again.
+  Use standard npm and Git workflows for plugin publication and updates.
 </Important>
 
 ```bash Terminal
@@ -285,7 +264,7 @@ npm version patch  # or minor/major
 
 # 3. Build and test
 bun run build
-elizaos test
+bun run test
 
 # 4. Publish to npm
 npm publish

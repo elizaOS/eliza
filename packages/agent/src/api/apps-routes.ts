@@ -161,12 +161,21 @@ async function resolveWorkspaceAppDirBySlug(
     ]),
   );
   const candidateDirs: string[] = [];
+  const legacyAppsDiscovery = (() => {
+    const raw = process.env.ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY;
+    if (!raw) return false;
+    const normalized = raw.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes";
+  })();
 
   for (const root of roots) {
     candidateDirs.push(
-      path.join(root, "apps", `app-${slug}`),
+      path.join(root, "plugins", `app-${slug}`),
       path.join(root, "packages", `app-${slug}`),
     );
+    if (legacyAppsDiscovery) {
+      candidateDirs.push(path.join(root, "apps", `app-${slug}`));
+    }
 
     let entries: Dirent[] = [];
     try {
@@ -180,9 +189,14 @@ async function resolveWorkspaceAppDirBySlug(
         continue;
       }
       candidateDirs.push(
-        path.join(root, entry.name, "apps", `app-${slug}`),
+        path.join(root, entry.name, "plugins", `app-${slug}`),
         path.join(root, entry.name, "packages", `app-${slug}`),
       );
+      if (legacyAppsDiscovery) {
+        // Temporary opt-in for older external workspaces. Current Eliza app
+        // plugin packages live under plugins/app-*.
+        candidateDirs.push(path.join(root, entry.name, "apps", `app-${slug}`));
+      }
     }
   }
 

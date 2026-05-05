@@ -29,7 +29,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/v1/admin/docker-containers/{id}/logs": { method: "DELETE", path: "/api/v1/admin/docker-containers/{id}/logs", methodName: "deleteApiV1AdminDockerContainersByIdLogs", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-containers/[id]/logs/route.ts" },
   "DELETE /api/v1/admin/docker-containers/audit": { method: "DELETE", path: "/api/v1/admin/docker-containers/audit", methodName: "deleteApiV1AdminDockerContainersAudit", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/docker-containers/audit/route.ts" },
   "DELETE /api/v1/admin/docker-nodes/{nodeId}": { method: "DELETE", path: "/api/v1/admin/docker-nodes/{nodeId}", methodName: "deleteApiV1AdminDockerNodesByNodeId", responseMode: "json", pathParams: ["nodeId"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/[nodeId]/route.ts" },
-  "DELETE /api/v1/admin/docker-nodes/{nodeId}/health-check": { method: "DELETE", path: "/api/v1/admin/docker-nodes/{nodeId}/health-check", methodName: "deleteApiV1AdminDockerNodesByNodeIdHealthCheck", responseMode: "json", pathParams: ["nodeId"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/[nodeId]/health-check/route.ts" },
   "DELETE /api/v1/admin/infrastructure": { method: "DELETE", path: "/api/v1/admin/infrastructure", methodName: "deleteApiV1AdminInfrastructure", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/infrastructure/route.ts" },
   "DELETE /api/v1/admin/infrastructure/containers/actions": { method: "DELETE", path: "/api/v1/admin/infrastructure/containers/actions", methodName: "deleteApiV1AdminInfrastructureContainersActions", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/infrastructure/containers/actions/route.ts" },
   "DELETE /api/v1/admin/orgs/{orgId}/rate-limits": { method: "DELETE", path: "/api/v1/admin/orgs/{orgId}/rate-limits", methodName: "deleteApiV1AdminOrgsByOrgIdRateLimits", responseMode: "json", pathParams: ["orgId"], catchAllPathParams: [], file: "apps/api/v1/admin/orgs/[orgId]/rate-limits/route.ts" },
@@ -42,6 +41,8 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/v1/apis/streaming/sessions/{id}": { method: "DELETE", path: "/api/v1/apis/streaming/sessions/{id}", methodName: "deleteApiV1ApisStreamingSessionsById", responseMode: "stream", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apis/streaming/sessions/[id]/route.ts" },
   "DELETE /api/v1/apps/{id}": { method: "DELETE", path: "/api/v1/apps/{id}", methodName: "deleteApiV1AppsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/route.ts" },
   "DELETE /api/v1/apps/{id}/discord-automation": { method: "DELETE", path: "/api/v1/apps/{id}/discord-automation", methodName: "deleteApiV1AppsByIdDiscordAutomation", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/discord-automation/route.ts" },
+  "DELETE /api/v1/apps/{id}/domains": { method: "DELETE", path: "/api/v1/apps/{id}/domains", methodName: "deleteApiV1AppsByIdDomains", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/route.ts" },
+  "DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { method: "DELETE", path: "/api/v1/apps/{id}/domains/{domain}/dns/{recordId}", methodName: "deleteApiV1AppsByIdDomainsByDomainDnsByRecordId", responseMode: "json", pathParams: ["id", "domain", "recordId"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts" },
   "DELETE /api/v1/apps/{id}/telegram-automation": { method: "DELETE", path: "/api/v1/apps/{id}/telegram-automation", methodName: "deleteApiV1AppsByIdTelegramAutomation", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/telegram-automation/route.ts" },
   "DELETE /api/v1/apps/{id}/twitter-automation": { method: "DELETE", path: "/api/v1/apps/{id}/twitter-automation", methodName: "deleteApiV1AppsByIdTwitterAutomation", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/twitter-automation/route.ts" },
   "DELETE /api/v1/blooio/disconnect": { method: "DELETE", path: "/api/v1/blooio/disconnect", methodName: "deleteApiV1BlooioDisconnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/blooio/disconnect/route.ts" },
@@ -177,7 +178,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/admin/docker-containers/audit": { method: "GET", path: "/api/v1/admin/docker-containers/audit", methodName: "getApiV1AdminDockerContainersAudit", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/docker-containers/audit/route.ts" },
   "GET /api/v1/admin/docker-nodes": { method: "GET", path: "/api/v1/admin/docker-nodes", methodName: "getApiV1AdminDockerNodes", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/route.ts" },
   "GET /api/v1/admin/docker-nodes/{nodeId}": { method: "GET", path: "/api/v1/admin/docker-nodes/{nodeId}", methodName: "getApiV1AdminDockerNodesByNodeId", responseMode: "json", pathParams: ["nodeId"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/[nodeId]/route.ts" },
-  "GET /api/v1/admin/docker-nodes/{nodeId}/health-check": { method: "GET", path: "/api/v1/admin/docker-nodes/{nodeId}/health-check", methodName: "getApiV1AdminDockerNodesByNodeIdHealthCheck", responseMode: "json", pathParams: ["nodeId"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/[nodeId]/health-check/route.ts" },
   "GET /api/v1/admin/docker-nodes/capacity": { method: "GET", path: "/api/v1/admin/docker-nodes/capacity", methodName: "getApiV1AdminDockerNodesCapacity", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/capacity/route.ts" },
   "GET /api/v1/admin/headscale": { method: "GET", path: "/api/v1/admin/headscale", methodName: "getApiV1AdminHeadscale", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/headscale/route.ts" },
   "GET /api/v1/admin/infrastructure": { method: "GET", path: "/api/v1/admin/infrastructure", methodName: "getApiV1AdminInfrastructure", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/infrastructure/route.ts" },
@@ -221,6 +221,9 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/apps/{id}/analytics/requests": { method: "GET", path: "/api/v1/apps/{id}/analytics/requests", methodName: "getApiV1AppsByIdAnalyticsRequests", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/analytics/requests/route.ts" },
   "GET /api/v1/apps/{id}/characters": { method: "GET", path: "/api/v1/apps/{id}/characters", methodName: "getApiV1AppsByIdCharacters", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/characters/route.ts" },
   "GET /api/v1/apps/{id}/discord-automation": { method: "GET", path: "/api/v1/apps/{id}/discord-automation", methodName: "getApiV1AppsByIdDiscordAutomation", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/discord-automation/route.ts" },
+  "GET /api/v1/apps/{id}/domains": { method: "GET", path: "/api/v1/apps/{id}/domains", methodName: "getApiV1AppsByIdDomains", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/route.ts" },
+  "GET /api/v1/apps/{id}/domains/{domain}/dns": { method: "GET", path: "/api/v1/apps/{id}/domains/{domain}/dns", methodName: "getApiV1AppsByIdDomainsByDomainDns", responseMode: "json", pathParams: ["id", "domain"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/[domain]/dns/route.ts" },
+  "GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { method: "GET", path: "/api/v1/apps/{id}/domains/{domain}/dns/{recordId}", methodName: "getApiV1AppsByIdDomainsByDomainDnsByRecordId", responseMode: "json", pathParams: ["id", "domain", "recordId"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts" },
   "GET /api/v1/apps/{id}/earnings": { method: "GET", path: "/api/v1/apps/{id}/earnings", methodName: "getApiV1AppsByIdEarnings", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/earnings/route.ts" },
   "GET /api/v1/apps/{id}/earnings/history": { method: "GET", path: "/api/v1/apps/{id}/earnings/history", methodName: "getApiV1AppsByIdEarningsHistory", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/earnings/history/route.ts" },
   "GET /api/v1/apps/{id}/monetization": { method: "GET", path: "/api/v1/apps/{id}/monetization", methodName: "getApiV1AppsByIdMonetization", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/monetization/route.ts" },
@@ -269,6 +272,8 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/discord/oauth": { method: "GET", path: "/api/v1/discord/oauth", methodName: "getApiV1DiscordOauth", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/oauth/route.ts" },
   "GET /api/v1/discord/status": { method: "GET", path: "/api/v1/discord/status", methodName: "getApiV1DiscordStatus", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/status/route.ts" },
   "GET /api/v1/discovery": { method: "GET", path: "/api/v1/discovery", methodName: "getApiV1Discovery", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discovery/route.ts" },
+  "GET /api/v1/domains": { method: "GET", path: "/api/v1/domains", methodName: "getApiV1Domains", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/route.ts" },
+  "GET /api/v1/domains/resolve": { method: "GET", path: "/api/v1/domains/resolve", methodName: "getApiV1DomainsResolve", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/resolve/route.ts" },
   "GET /api/v1/eliza/agents": { method: "GET", path: "/api/v1/eliza/agents", methodName: "getApiV1ElizaAgents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/route.ts" },
   "GET /api/v1/eliza/agents/{agentId}": { method: "GET", path: "/api/v1/eliza/agents/{agentId}", methodName: "getApiV1ElizaAgentsByAgentId", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/[agentId]/route.ts" },
   "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": { method: "GET", path: "/api/v1/eliza/agents/{agentId}/api/wallet/{path}", methodName: "getApiV1ElizaAgentsByAgentIdApiWalletByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts" },
@@ -377,7 +382,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "PATCH /api/v1/admin/docker-containers/{id}/logs": { method: "PATCH", path: "/api/v1/admin/docker-containers/{id}/logs", methodName: "patchApiV1AdminDockerContainersByIdLogs", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-containers/[id]/logs/route.ts" },
   "PATCH /api/v1/admin/docker-containers/audit": { method: "PATCH", path: "/api/v1/admin/docker-containers/audit", methodName: "patchApiV1AdminDockerContainersAudit", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/docker-containers/audit/route.ts" },
   "PATCH /api/v1/admin/docker-nodes/{nodeId}": { method: "PATCH", path: "/api/v1/admin/docker-nodes/{nodeId}", methodName: "patchApiV1AdminDockerNodesByNodeId", responseMode: "json", pathParams: ["nodeId"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/[nodeId]/route.ts" },
-  "PATCH /api/v1/admin/docker-nodes/{nodeId}/health-check": { method: "PATCH", path: "/api/v1/admin/docker-nodes/{nodeId}/health-check", methodName: "patchApiV1AdminDockerNodesByNodeIdHealthCheck", responseMode: "json", pathParams: ["nodeId"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/[nodeId]/health-check/route.ts" },
   "PATCH /api/v1/admin/infrastructure": { method: "PATCH", path: "/api/v1/admin/infrastructure", methodName: "patchApiV1AdminInfrastructure", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/infrastructure/route.ts" },
   "PATCH /api/v1/admin/infrastructure/containers/actions": { method: "PATCH", path: "/api/v1/admin/infrastructure/containers/actions", methodName: "patchApiV1AdminInfrastructureContainersActions", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/infrastructure/containers/actions/route.ts" },
   "PATCH /api/v1/admin/orgs/{orgId}/rate-limits": { method: "PATCH", path: "/api/v1/admin/orgs/{orgId}/rate-limits", methodName: "patchApiV1AdminOrgsByOrgIdRateLimits", responseMode: "json", pathParams: ["orgId"], catchAllPathParams: [], file: "apps/api/v1/admin/orgs/[orgId]/rate-limits/route.ts" },
@@ -385,6 +389,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "PATCH /api/v1/agents/{agentId}/n8n/{path}": { method: "PATCH", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "patchApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
   "PATCH /api/v1/api-keys/{id}": { method: "PATCH", path: "/api/v1/api-keys/{id}", methodName: "patchApiV1ApiKeysById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/api-keys/[id]/route.ts" },
   "PATCH /api/v1/apps/{id}": { method: "PATCH", path: "/api/v1/apps/{id}", methodName: "patchApiV1AppsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/route.ts" },
+  "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { method: "PATCH", path: "/api/v1/apps/{id}/domains/{domain}/dns/{recordId}", methodName: "patchApiV1AppsByIdDomainsByDomainDnsByRecordId", responseMode: "json", pathParams: ["id", "domain", "recordId"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts" },
   "PATCH /api/v1/connections/{platform}": { method: "PATCH", path: "/api/v1/connections/{platform}", methodName: "patchApiV1ConnectionsByPlatform", responseMode: "json", pathParams: ["platform"], catchAllPathParams: [], file: "apps/api/v1/connections/[platform]/route.ts" },
   "PATCH /api/v1/containers/{id}": { method: "PATCH", path: "/api/v1/containers/{id}", methodName: "patchApiV1ContainersById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/containers/[id]/route.ts" },
   "PATCH /api/v1/cron/process-provisioning-jobs": { method: "PATCH", path: "/api/v1/cron/process-provisioning-jobs", methodName: "patchApiV1CronProcessProvisioningJobs", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/cron/process-provisioning-jobs/route.ts" },
@@ -518,6 +523,13 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/apps/{id}/chat": { method: "POST", path: "/api/v1/apps/{id}/chat", methodName: "postApiV1AppsByIdChat", responseMode: "mixed", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/chat/route.ts" },
   "POST /api/v1/apps/{id}/discord-automation": { method: "POST", path: "/api/v1/apps/{id}/discord-automation", methodName: "postApiV1AppsByIdDiscordAutomation", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/discord-automation/route.ts" },
   "POST /api/v1/apps/{id}/discord-automation/post": { method: "POST", path: "/api/v1/apps/{id}/discord-automation/post", methodName: "postApiV1AppsByIdDiscordAutomationPost", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/discord-automation/post/route.ts" },
+  "POST /api/v1/apps/{id}/domains": { method: "POST", path: "/api/v1/apps/{id}/domains", methodName: "postApiV1AppsByIdDomains", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/route.ts" },
+  "POST /api/v1/apps/{id}/domains/{domain}/dns": { method: "POST", path: "/api/v1/apps/{id}/domains/{domain}/dns", methodName: "postApiV1AppsByIdDomainsByDomainDns", responseMode: "json", pathParams: ["id", "domain"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/[domain]/dns/route.ts" },
+  "POST /api/v1/apps/{id}/domains/buy": { method: "POST", path: "/api/v1/apps/{id}/domains/buy", methodName: "postApiV1AppsByIdDomainsBuy", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/buy/route.ts" },
+  "POST /api/v1/apps/{id}/domains/check": { method: "POST", path: "/api/v1/apps/{id}/domains/check", methodName: "postApiV1AppsByIdDomainsCheck", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/check/route.ts" },
+  "POST /api/v1/apps/{id}/domains/status": { method: "POST", path: "/api/v1/apps/{id}/domains/status", methodName: "postApiV1AppsByIdDomainsStatus", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/status/route.ts" },
+  "POST /api/v1/apps/{id}/domains/sync": { method: "POST", path: "/api/v1/apps/{id}/domains/sync", methodName: "postApiV1AppsByIdDomainsSync", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/sync/route.ts" },
+  "POST /api/v1/apps/{id}/domains/verify": { method: "POST", path: "/api/v1/apps/{id}/domains/verify", methodName: "postApiV1AppsByIdDomainsVerify", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/domains/verify/route.ts" },
   "POST /api/v1/apps/{id}/earnings/withdraw": { method: "POST", path: "/api/v1/apps/{id}/earnings/withdraw", methodName: "postApiV1AppsByIdEarningsWithdraw", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/earnings/withdraw/route.ts" },
   "POST /api/v1/apps/{id}/promote": { method: "POST", path: "/api/v1/apps/{id}/promote", methodName: "postApiV1AppsByIdPromote", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/promote/route.ts" },
   "POST /api/v1/apps/{id}/promote/assets": { method: "POST", path: "/api/v1/apps/{id}/promote/assets", methodName: "postApiV1AppsByIdPromoteAssets", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/promote/assets/route.ts" },
@@ -553,6 +565,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/discord/channels/refresh": { method: "POST", path: "/api/v1/discord/channels/refresh", methodName: "postApiV1DiscordChannelsRefresh", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/channels/refresh/route.ts" },
   "POST /api/v1/discord/connections": { method: "POST", path: "/api/v1/discord/connections", methodName: "postApiV1DiscordConnections", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/connections/route.ts" },
   "POST /api/v1/discord/disconnect": { method: "POST", path: "/api/v1/discord/disconnect", methodName: "postApiV1DiscordDisconnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/discord/disconnect/route.ts" },
+  "POST /api/v1/domains/search": { method: "POST", path: "/api/v1/domains/search", methodName: "postApiV1DomainsSearch", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/domains/search/route.ts" },
   "POST /api/v1/eliza/agents": { method: "POST", path: "/api/v1/eliza/agents", methodName: "postApiV1ElizaAgents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/route.ts" },
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": { method: "POST", path: "/api/v1/eliza/agents/{agentId}/api/wallet/{path}", methodName: "postApiV1ElizaAgentsByAgentIdApiWalletByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts" },
   "POST /api/v1/eliza/agents/{agentId}/bridge": { method: "POST", path: "/api/v1/eliza/agents/{agentId}/bridge", methodName: "postApiV1ElizaAgentsByAgentIdBridge", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/eliza/agents/[agentId]/bridge/route.ts" },
@@ -658,7 +671,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "PUT /api/v1/admin/ai-pricing": { method: "PUT", path: "/api/v1/admin/ai-pricing", methodName: "putApiV1AdminAiPricing", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/ai-pricing/route.ts" },
   "PUT /api/v1/admin/docker-containers/{id}/logs": { method: "PUT", path: "/api/v1/admin/docker-containers/{id}/logs", methodName: "putApiV1AdminDockerContainersByIdLogs", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-containers/[id]/logs/route.ts" },
   "PUT /api/v1/admin/docker-containers/audit": { method: "PUT", path: "/api/v1/admin/docker-containers/audit", methodName: "putApiV1AdminDockerContainersAudit", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/docker-containers/audit/route.ts" },
-  "PUT /api/v1/admin/docker-nodes/{nodeId}/health-check": { method: "PUT", path: "/api/v1/admin/docker-nodes/{nodeId}/health-check", methodName: "putApiV1AdminDockerNodesByNodeIdHealthCheck", responseMode: "json", pathParams: ["nodeId"], catchAllPathParams: [], file: "apps/api/v1/admin/docker-nodes/[nodeId]/health-check/route.ts" },
   "PUT /api/v1/admin/infrastructure": { method: "PUT", path: "/api/v1/admin/infrastructure", methodName: "putApiV1AdminInfrastructure", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/infrastructure/route.ts" },
   "PUT /api/v1/admin/infrastructure/containers/actions": { method: "PUT", path: "/api/v1/admin/infrastructure/containers/actions", methodName: "putApiV1AdminInfrastructureContainersActions", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/infrastructure/containers/actions/route.ts" },
   "PUT /api/v1/admin/service-pricing": { method: "PUT", path: "/api/v1/admin/service-pricing", methodName: "putApiV1AdminServicePricing", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/admin/service-pricing/route.ts" },
@@ -723,7 +735,6 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/admin/docker-containers/{id}/logs": { "id": string | number };
   "DELETE /api/v1/admin/docker-containers/audit": Record<never, never>;
   "DELETE /api/v1/admin/docker-nodes/{nodeId}": { "nodeId": string | number };
-  "DELETE /api/v1/admin/docker-nodes/{nodeId}/health-check": { "nodeId": string | number };
   "DELETE /api/v1/admin/infrastructure": Record<never, never>;
   "DELETE /api/v1/admin/infrastructure/containers/actions": Record<never, never>;
   "DELETE /api/v1/admin/orgs/{orgId}/rate-limits": { "orgId": string | number };
@@ -736,6 +747,8 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/apis/streaming/sessions/{id}": { "id": string | number };
   "DELETE /api/v1/apps/{id}": { "id": string | number };
   "DELETE /api/v1/apps/{id}/discord-automation": { "id": string | number };
+  "DELETE /api/v1/apps/{id}/domains": { "id": string | number };
+  "DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { "id": string | number; "domain": string | number; "recordId": string | number };
   "DELETE /api/v1/apps/{id}/telegram-automation": { "id": string | number };
   "DELETE /api/v1/apps/{id}/twitter-automation": { "id": string | number };
   "DELETE /api/v1/blooio/disconnect": Record<never, never>;
@@ -871,7 +884,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/admin/docker-containers/audit": Record<never, never>;
   "GET /api/v1/admin/docker-nodes": Record<never, never>;
   "GET /api/v1/admin/docker-nodes/{nodeId}": { "nodeId": string | number };
-  "GET /api/v1/admin/docker-nodes/{nodeId}/health-check": { "nodeId": string | number };
   "GET /api/v1/admin/docker-nodes/capacity": Record<never, never>;
   "GET /api/v1/admin/headscale": Record<never, never>;
   "GET /api/v1/admin/infrastructure": Record<never, never>;
@@ -915,6 +927,9 @@ export interface PublicRoutePathParams {
   "GET /api/v1/apps/{id}/analytics/requests": { "id": string | number };
   "GET /api/v1/apps/{id}/characters": { "id": string | number };
   "GET /api/v1/apps/{id}/discord-automation": { "id": string | number };
+  "GET /api/v1/apps/{id}/domains": { "id": string | number };
+  "GET /api/v1/apps/{id}/domains/{domain}/dns": { "id": string | number; "domain": string | number };
+  "GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { "id": string | number; "domain": string | number; "recordId": string | number };
   "GET /api/v1/apps/{id}/earnings": { "id": string | number };
   "GET /api/v1/apps/{id}/earnings/history": { "id": string | number };
   "GET /api/v1/apps/{id}/monetization": { "id": string | number };
@@ -963,6 +978,8 @@ export interface PublicRoutePathParams {
   "GET /api/v1/discord/oauth": Record<never, never>;
   "GET /api/v1/discord/status": Record<never, never>;
   "GET /api/v1/discovery": Record<never, never>;
+  "GET /api/v1/domains": Record<never, never>;
+  "GET /api/v1/domains/resolve": Record<never, never>;
   "GET /api/v1/eliza/agents": Record<never, never>;
   "GET /api/v1/eliza/agents/{agentId}": { "agentId": string | number };
   "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
@@ -1071,7 +1088,6 @@ export interface PublicRoutePathParams {
   "PATCH /api/v1/admin/docker-containers/{id}/logs": { "id": string | number };
   "PATCH /api/v1/admin/docker-containers/audit": Record<never, never>;
   "PATCH /api/v1/admin/docker-nodes/{nodeId}": { "nodeId": string | number };
-  "PATCH /api/v1/admin/docker-nodes/{nodeId}/health-check": { "nodeId": string | number };
   "PATCH /api/v1/admin/infrastructure": Record<never, never>;
   "PATCH /api/v1/admin/infrastructure/containers/actions": Record<never, never>;
   "PATCH /api/v1/admin/orgs/{orgId}/rate-limits": { "orgId": string | number };
@@ -1079,6 +1095,7 @@ export interface PublicRoutePathParams {
   "PATCH /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "PATCH /api/v1/api-keys/{id}": { "id": string | number };
   "PATCH /api/v1/apps/{id}": { "id": string | number };
+  "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": { "id": string | number; "domain": string | number; "recordId": string | number };
   "PATCH /api/v1/connections/{platform}": { "platform": string | number };
   "PATCH /api/v1/containers/{id}": { "id": string | number };
   "PATCH /api/v1/cron/process-provisioning-jobs": Record<never, never>;
@@ -1212,6 +1229,13 @@ export interface PublicRoutePathParams {
   "POST /api/v1/apps/{id}/chat": { "id": string | number };
   "POST /api/v1/apps/{id}/discord-automation": { "id": string | number };
   "POST /api/v1/apps/{id}/discord-automation/post": { "id": string | number };
+  "POST /api/v1/apps/{id}/domains": { "id": string | number };
+  "POST /api/v1/apps/{id}/domains/{domain}/dns": { "id": string | number; "domain": string | number };
+  "POST /api/v1/apps/{id}/domains/buy": { "id": string | number };
+  "POST /api/v1/apps/{id}/domains/check": { "id": string | number };
+  "POST /api/v1/apps/{id}/domains/status": { "id": string | number };
+  "POST /api/v1/apps/{id}/domains/sync": { "id": string | number };
+  "POST /api/v1/apps/{id}/domains/verify": { "id": string | number };
   "POST /api/v1/apps/{id}/earnings/withdraw": { "id": string | number };
   "POST /api/v1/apps/{id}/promote": { "id": string | number };
   "POST /api/v1/apps/{id}/promote/assets": { "id": string | number };
@@ -1247,6 +1271,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/discord/channels/refresh": Record<never, never>;
   "POST /api/v1/discord/connections": Record<never, never>;
   "POST /api/v1/discord/disconnect": Record<never, never>;
+  "POST /api/v1/domains/search": Record<never, never>;
   "POST /api/v1/eliza/agents": Record<never, never>;
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "POST /api/v1/eliza/agents/{agentId}/bridge": { "agentId": string | number };
@@ -1352,7 +1377,6 @@ export interface PublicRoutePathParams {
   "PUT /api/v1/admin/ai-pricing": Record<never, never>;
   "PUT /api/v1/admin/docker-containers/{id}/logs": { "id": string | number };
   "PUT /api/v1/admin/docker-containers/audit": Record<never, never>;
-  "PUT /api/v1/admin/docker-nodes/{nodeId}/health-check": { "nodeId": string | number };
   "PUT /api/v1/admin/infrastructure": Record<never, never>;
   "PUT /api/v1/admin/infrastructure/containers/actions": Record<never, never>;
   "PUT /api/v1/admin/service-pricing": Record<never, never>;
@@ -1630,12 +1654,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"DELETE /api/v1/admin/docker-nodes/{nodeId}", TResponse>("DELETE /api/v1/admin/docker-nodes/{nodeId}", options);
   }
 
-  deleteApiV1AdminDockerNodesByNodeIdHealthCheck<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/admin/docker-nodes/{nodeId}/health-check">
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/admin/docker-nodes/{nodeId}/health-check", TResponse>("DELETE /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
-  }
-
   deleteApiV1AdminInfrastructure<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/admin/infrastructure"> = {}
   ): Promise<TResponse> {
@@ -1706,6 +1724,18 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/discord-automation">
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/apps/{id}/discord-automation", TResponse>("DELETE /api/v1/apps/{id}/discord-automation", options);
+  }
+
+  deleteApiV1AppsByIdDomains<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/domains">
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/apps/{id}/domains", TResponse>("DELETE /api/v1/apps/{id}/domains", options);
+  }
+
+  deleteApiV1AppsByIdDomainsByDomainDnsByRecordId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}">
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", TResponse>("DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", options);
   }
 
   deleteApiV1AppsByIdTelegramAutomation<TResponse = unknown>(
@@ -2518,12 +2548,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"GET /api/v1/admin/docker-nodes/{nodeId}", TResponse>("GET /api/v1/admin/docker-nodes/{nodeId}", options);
   }
 
-  getApiV1AdminDockerNodesByNodeIdHealthCheck<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/admin/docker-nodes/{nodeId}/health-check">
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/admin/docker-nodes/{nodeId}/health-check", TResponse>("GET /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
-  }
-
   getApiV1AdminDockerNodesCapacity<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/admin/docker-nodes/capacity"> = {}
   ): Promise<TResponse> {
@@ -2780,6 +2804,24 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/discord-automation">
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/apps/{id}/discord-automation", TResponse>("GET /api/v1/apps/{id}/discord-automation", options);
+  }
+
+  getApiV1AppsByIdDomains<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/domains">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/domains", TResponse>("GET /api/v1/apps/{id}/domains", options);
+  }
+
+  getApiV1AppsByIdDomainsByDomainDns<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/domains/{domain}/dns">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/domains/{domain}/dns", TResponse>("GET /api/v1/apps/{id}/domains/{domain}/dns", options);
+  }
+
+  getApiV1AppsByIdDomainsByDomainDnsByRecordId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", TResponse>("GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", options);
   }
 
   getApiV1AppsByIdEarnings<TResponse = unknown>(
@@ -3068,6 +3110,18 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/discovery"> = {}
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/discovery", TResponse>("GET /api/v1/discovery", options);
+  }
+
+  getApiV1Domains<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/domains"> = {}
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/domains", TResponse>("GET /api/v1/domains", options);
+  }
+
+  getApiV1DomainsResolve<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/domains/resolve"> = {}
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/domains/resolve", TResponse>("GET /api/v1/domains/resolve", options);
   }
 
   getApiV1ElizaAgents<TResponse = unknown>(
@@ -3718,12 +3772,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"PATCH /api/v1/admin/docker-nodes/{nodeId}", TResponse>("PATCH /api/v1/admin/docker-nodes/{nodeId}", options);
   }
 
-  patchApiV1AdminDockerNodesByNodeIdHealthCheck<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/admin/docker-nodes/{nodeId}/health-check">
-  ): Promise<TResponse> {
-    return this.call<"PATCH /api/v1/admin/docker-nodes/{nodeId}/health-check", TResponse>("PATCH /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
-  }
-
   patchApiV1AdminInfrastructure<TResponse = unknown>(
     options: PublicRouteCallOptions<"PATCH /api/v1/admin/infrastructure"> = {}
   ): Promise<TResponse> {
@@ -3764,6 +3812,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PATCH /api/v1/apps/{id}">
   ): Promise<TResponse> {
     return this.call<"PATCH /api/v1/apps/{id}", TResponse>("PATCH /api/v1/apps/{id}", options);
+  }
+
+  patchApiV1AppsByIdDomainsByDomainDnsByRecordId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}">
+  ): Promise<TResponse> {
+    return this.call<"PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", TResponse>("PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", options);
   }
 
   patchApiV1ConnectionsByPlatform<TResponse = unknown>(
@@ -4564,6 +4618,48 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"POST /api/v1/apps/{id}/discord-automation/post", TResponse>("POST /api/v1/apps/{id}/discord-automation/post", options);
   }
 
+  postApiV1AppsByIdDomains<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/domains", TResponse>("POST /api/v1/apps/{id}/domains", options);
+  }
+
+  postApiV1AppsByIdDomainsByDomainDns<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/{domain}/dns">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/domains/{domain}/dns", TResponse>("POST /api/v1/apps/{id}/domains/{domain}/dns", options);
+  }
+
+  postApiV1AppsByIdDomainsBuy<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/buy">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/domains/buy", TResponse>("POST /api/v1/apps/{id}/domains/buy", options);
+  }
+
+  postApiV1AppsByIdDomainsCheck<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/check">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/domains/check", TResponse>("POST /api/v1/apps/{id}/domains/check", options);
+  }
+
+  postApiV1AppsByIdDomainsStatus<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/status">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/domains/status", TResponse>("POST /api/v1/apps/{id}/domains/status", options);
+  }
+
+  postApiV1AppsByIdDomainsSync<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/sync">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/domains/sync", TResponse>("POST /api/v1/apps/{id}/domains/sync", options);
+  }
+
+  postApiV1AppsByIdDomainsVerify<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/verify">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/domains/verify", TResponse>("POST /api/v1/apps/{id}/domains/verify", options);
+  }
+
   postApiV1AppsByIdEarningsWithdraw<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/earnings/withdraw">
   ): Promise<TResponse> {
@@ -4772,6 +4868,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/discord/disconnect"> = {}
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/discord/disconnect", TResponse>("POST /api/v1/discord/disconnect", options);
+  }
+
+  postApiV1DomainsSearch<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/domains/search"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/domains/search", TResponse>("POST /api/v1/domains/search", options);
   }
 
   postApiV1ElizaAgents<TResponse = unknown>(
@@ -5404,12 +5506,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"PUT /api/v1/admin/docker-containers/audit", TResponse>("PUT /api/v1/admin/docker-containers/audit", options);
   }
 
-  putApiV1AdminDockerNodesByNodeIdHealthCheck<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/admin/docker-nodes/{nodeId}/health-check">
-  ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/admin/docker-nodes/{nodeId}/health-check", TResponse>("PUT /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
-  }
-
   putApiV1AdminInfrastructure<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/admin/infrastructure"> = {}
   ): Promise<TResponse> {
@@ -5616,10 +5712,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/admin/docker-nodes/{nodeId}", options);
   }
 
-  deleteApiV1AdminDockerNodesByNodeIdHealthCheckRaw(options: PublicRouteCallOptions<"DELETE /api/v1/admin/docker-nodes/{nodeId}/health-check">): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
-  }
-
   deleteApiV1AdminInfrastructureRaw(options: PublicRouteCallOptions<"DELETE /api/v1/admin/infrastructure"> = {}): Promise<Response> {
     return this.callRaw("DELETE /api/v1/admin/infrastructure", options);
   }
@@ -5666,6 +5758,14 @@ export class ElizaCloudPublicRoutesClient {
 
   deleteApiV1AppsByIdDiscordAutomationRaw(options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/discord-automation">): Promise<Response> {
     return this.callRaw("DELETE /api/v1/apps/{id}/discord-automation", options);
+  }
+
+  deleteApiV1AppsByIdDomainsRaw(options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/domains">): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/apps/{id}/domains", options);
+  }
+
+  deleteApiV1AppsByIdDomainsByDomainDnsByRecordIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}">): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", options);
   }
 
   deleteApiV1AppsByIdTelegramAutomationRaw(options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/telegram-automation">): Promise<Response> {
@@ -6208,10 +6308,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/admin/docker-nodes/{nodeId}", options);
   }
 
-  getApiV1AdminDockerNodesByNodeIdHealthCheckRaw(options: PublicRouteCallOptions<"GET /api/v1/admin/docker-nodes/{nodeId}/health-check">): Promise<Response> {
-    return this.callRaw("GET /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
-  }
-
   getApiV1AdminDockerNodesCapacityRaw(options: PublicRouteCallOptions<"GET /api/v1/admin/docker-nodes/capacity"> = {}): Promise<Response> {
     return this.callRaw("GET /api/v1/admin/docker-nodes/capacity", options);
   }
@@ -6382,6 +6478,18 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1AppsByIdDiscordAutomationRaw(options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/discord-automation">): Promise<Response> {
     return this.callRaw("GET /api/v1/apps/{id}/discord-automation", options);
+  }
+
+  getApiV1AppsByIdDomainsRaw(options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/domains">): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/domains", options);
+  }
+
+  getApiV1AppsByIdDomainsByDomainDnsRaw(options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/domains/{domain}/dns">): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/domains/{domain}/dns", options);
+  }
+
+  getApiV1AppsByIdDomainsByDomainDnsByRecordIdRaw(options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}">): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", options);
   }
 
   getApiV1AppsByIdEarningsRaw(options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/earnings">): Promise<Response> {
@@ -6574,6 +6682,14 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1DiscoveryRaw(options: PublicRouteCallOptions<"GET /api/v1/discovery"> = {}): Promise<Response> {
     return this.callRaw("GET /api/v1/discovery", options);
+  }
+
+  getApiV1DomainsRaw(options: PublicRouteCallOptions<"GET /api/v1/domains"> = {}): Promise<Response> {
+    return this.callRaw("GET /api/v1/domains", options);
+  }
+
+  getApiV1DomainsResolveRaw(options: PublicRouteCallOptions<"GET /api/v1/domains/resolve"> = {}): Promise<Response> {
+    return this.callRaw("GET /api/v1/domains/resolve", options);
   }
 
   getApiV1ElizaAgentsRaw(options: PublicRouteCallOptions<"GET /api/v1/eliza/agents"> = {}): Promise<Response> {
@@ -7008,10 +7124,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("PATCH /api/v1/admin/docker-nodes/{nodeId}", options);
   }
 
-  patchApiV1AdminDockerNodesByNodeIdHealthCheckRaw(options: PublicRouteCallOptions<"PATCH /api/v1/admin/docker-nodes/{nodeId}/health-check">): Promise<Response> {
-    return this.callRaw("PATCH /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
-  }
-
   patchApiV1AdminInfrastructureRaw(options: PublicRouteCallOptions<"PATCH /api/v1/admin/infrastructure"> = {}): Promise<Response> {
     return this.callRaw("PATCH /api/v1/admin/infrastructure", options);
   }
@@ -7038,6 +7150,10 @@ export class ElizaCloudPublicRoutesClient {
 
   patchApiV1AppsByIdRaw(options: PublicRouteCallOptions<"PATCH /api/v1/apps/{id}">): Promise<Response> {
     return this.callRaw("PATCH /api/v1/apps/{id}", options);
+  }
+
+  patchApiV1AppsByIdDomainsByDomainDnsByRecordIdRaw(options: PublicRouteCallOptions<"PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}">): Promise<Response> {
+    return this.callRaw("PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", options);
   }
 
   patchApiV1ConnectionsByPlatformRaw(options: PublicRouteCallOptions<"PATCH /api/v1/connections/{platform}">): Promise<Response> {
@@ -7572,6 +7688,34 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/apps/{id}/discord-automation/post", options);
   }
 
+  postApiV1AppsByIdDomainsRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains">): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/domains", options);
+  }
+
+  postApiV1AppsByIdDomainsByDomainDnsRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/{domain}/dns">): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/domains/{domain}/dns", options);
+  }
+
+  postApiV1AppsByIdDomainsBuyRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/buy">): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/domains/buy", options);
+  }
+
+  postApiV1AppsByIdDomainsCheckRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/check">): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/domains/check", options);
+  }
+
+  postApiV1AppsByIdDomainsStatusRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/status">): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/domains/status", options);
+  }
+
+  postApiV1AppsByIdDomainsSyncRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/sync">): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/domains/sync", options);
+  }
+
+  postApiV1AppsByIdDomainsVerifyRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/domains/verify">): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/domains/verify", options);
+  }
+
   postApiV1AppsByIdEarningsWithdrawRaw(options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/earnings/withdraw">): Promise<Response> {
     return this.callRaw("POST /api/v1/apps/{id}/earnings/withdraw", options);
   }
@@ -7710,6 +7854,10 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1DiscordDisconnectRaw(options: PublicRouteCallOptions<"POST /api/v1/discord/disconnect"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/discord/disconnect", options);
+  }
+
+  postApiV1DomainsSearchRaw(options: PublicRouteCallOptions<"POST /api/v1/domains/search"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/domains/search", options);
   }
 
   postApiV1ElizaAgentsRaw(options: PublicRouteCallOptions<"POST /api/v1/eliza/agents"> = {}): Promise<Response> {
@@ -8130,10 +8278,6 @@ export class ElizaCloudPublicRoutesClient {
 
   putApiV1AdminDockerContainersAuditRaw(options: PublicRouteCallOptions<"PUT /api/v1/admin/docker-containers/audit"> = {}): Promise<Response> {
     return this.callRaw("PUT /api/v1/admin/docker-containers/audit", options);
-  }
-
-  putApiV1AdminDockerNodesByNodeIdHealthCheckRaw(options: PublicRouteCallOptions<"PUT /api/v1/admin/docker-nodes/{nodeId}/health-check">): Promise<Response> {
-    return this.callRaw("PUT /api/v1/admin/docker-nodes/{nodeId}/health-check", options);
   }
 
   putApiV1AdminInfrastructureRaw(options: PublicRouteCallOptions<"PUT /api/v1/admin/infrastructure"> = {}): Promise<Response> {

@@ -19,7 +19,7 @@ import {
 } from "./internal-tool-apps";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const upstreamAppsDir = path.resolve(here, "../../../../../apps");
+const appPluginsDir = path.resolve(here, "../../../../../plugins");
 const rendererPublicDir = path.resolve(here, "../../../../app/public");
 
 function makeCatalogCandidate(
@@ -49,12 +49,13 @@ function makeCatalogCandidate(
   };
 }
 
-function readUpstreamAppPackageNames(): string[] {
+function readAppPluginPackageNames(): string[] {
   return fs
-    .readdirSync(upstreamAppsDir)
+    .readdirSync(appPluginsDir)
     .sort()
     .flatMap((entry) => {
-      const packageJsonPath = path.join(upstreamAppsDir, entry, "package.json");
+      if (!entry.startsWith("app-")) return [];
+      const packageJsonPath = path.join(appPluginsDir, entry, "package.json");
       if (!fs.existsSync(packageJsonPath)) {
         return [];
       }
@@ -63,7 +64,7 @@ function readUpstreamAppPackageNames(): string[] {
     });
 }
 
-function readUpstreamAppPackages(): Array<{
+function readAppPluginPackages(): Array<{
   dir: string;
   name: string;
   packageJson: {
@@ -75,10 +76,11 @@ function readUpstreamAppPackages(): Array<{
   };
 }> {
   return fs
-    .readdirSync(upstreamAppsDir)
+    .readdirSync(appPluginsDir)
     .sort()
     .flatMap((entry) => {
-      const packageJsonPath = path.join(upstreamAppsDir, entry, "package.json");
+      if (!entry.startsWith("app-")) return [];
+      const packageJsonPath = path.join(appPluginsDir, entry, "package.json");
       if (!fs.existsSync(packageJsonPath)) {
         return [];
       }
@@ -106,21 +108,21 @@ describe("apps catalog coverage", () => {
     setBootConfig(DEFAULT_BOOT_CONFIG);
   });
 
-  it("surfaces every upstream app package under eliza/apps", () => {
-    const upstreamPackageNames = readUpstreamAppPackageNames();
+  it("surfaces every catalog app plugin under eliza/plugins/app-*", () => {
+    const appPluginPackageNames = readAppPluginPackageNames();
     const injectedCatalogNames = new Set(
       getInternalToolApps().map((app) => app.name),
     );
     const filteredCatalogNames = new Set(
       filterAppsForCatalog(
-        upstreamPackageNames
+        appPluginPackageNames
           .filter((name) => !injectedCatalogNames.has(name))
           .map((name) => makeCatalogCandidate(name)),
         { showAllApps: true },
       ).map((app) => app.name),
     );
 
-    const missing = upstreamPackageNames.filter(
+    const missing = appPluginPackageNames.filter(
       (name) =>
         !isHiddenFromAppsView(name) &&
         !injectedCatalogNames.has(name) &&
@@ -142,8 +144,8 @@ describe("apps catalog coverage", () => {
     ).toEqual([]);
   });
 
-  it("backs every upstream catalog app package with a package-local hero", () => {
-    const missing = readUpstreamAppPackages()
+  it("backs every app plugin catalog package with a package-local hero", () => {
+    const missing = readAppPluginPackages()
       .filter(
         ({ name }) => name !== "@elizaos/app" && !isHiddenFromAppsView(name),
       )
@@ -207,7 +209,7 @@ describe("apps catalog coverage", () => {
       makeCatalogCandidate("@elizaos/app-babylon", "game"),
       makeCatalogCandidate("@elizaos/app-2004scape", "game"),
       makeCatalogCandidate("@elizaos/app-scape", "game"),
-      makeCatalogCandidate("@hyperscape/plugin-hyperscape", "game"),
+      makeCatalogCandidate("@elizaos/app-hyperscape", "game"),
       makeCatalogCandidate("@elizaos/app-vincent", "platform"),
       makeCatalogCandidate("@elizaos/app-hyperliquid", "platform"),
       makeCatalogCandidate("@elizaos/app-polymarket", "platform"),
@@ -229,7 +231,7 @@ describe("apps catalog coverage", () => {
         "@elizaos/app-babylon",
         "@elizaos/app-2004scape",
         "@elizaos/app-scape",
-        "@hyperscape/plugin-hyperscape",
+        "@elizaos/app-hyperscape",
         "@elizaos/app-vincent",
         "@elizaos/app-hyperliquid",
         "@elizaos/app-polymarket",

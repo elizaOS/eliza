@@ -103,6 +103,9 @@ const meta = {
   earnings: {
     title: "Earnings",
   },
+  "monetized-apps": {
+    title: "Monetized Apps",
+  },
   billing: {
     title: "Billing & Credits",
   },

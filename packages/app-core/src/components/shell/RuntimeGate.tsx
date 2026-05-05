@@ -98,6 +98,21 @@ export function hasPickerOverride(): boolean {
   }
 }
 
+function normalizeRemoteTarget(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (!parsed.hostname) return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
 type SubView = "chooser" | "cloud" | "remote";
 type RuntimeChoice = "cloud" | "local" | "remote";
 
@@ -515,8 +530,16 @@ export function RuntimeGate() {
   );
 
   const finishAsRemote = useCallback(() => {
-    const url = remoteUrl.trim();
-    if (!url) return;
+    const url = normalizeRemoteTarget(remoteUrl);
+    if (!url) {
+      setError(
+        t("runtimegate.invalidRemoteUrl", {
+          defaultValue: "Enter a valid HTTP or HTTPS remote agent URL.",
+        }),
+      );
+      return;
+    }
+    setError(null);
 
     client.setBaseUrl(url);
     const token = remoteToken.trim() || undefined;
@@ -539,6 +562,7 @@ export function RuntimeGate() {
     completeOnboarding,
     setState,
     startupCoordinator,
+    t,
   ]);
 
   const handleSelectChoice = useCallback(() => {
@@ -1074,6 +1098,15 @@ export function RuntimeGate() {
           onBlur={(e) => setRemoteToken(e.target.value)}
           className="h-11 rounded-none border-2 border-[#f0b90b]/35 bg-black/48 text-white text-sm placeholder:text-white/40"
         />
+
+        {error && (
+          <p
+            style={{ fontFamily: MONO_FONT }}
+            className="text-3xs text-red-400"
+          >
+            {error}
+          </p>
+        )}
 
         <Button
           type="button"

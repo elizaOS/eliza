@@ -35,7 +35,7 @@ async function defaultAction(): Promise<void> {
 
 program
   .name("elizaos")
-  .description("Create and upgrade elizaOS project templates")
+  .description("Create and upgrade elizaOS projects and plugins")
   .version(getCliVersion(), "-v, --version");
 
 program
@@ -45,15 +45,17 @@ program
 
 program
   .command("info")
-  .description("Display information about available templates")
-  .option("-t, --template <template>", "Filter by template id")
+  .description(
+    "Display information about available project and plugin templates",
+  )
+  .option("-t, --template <template>", "Filter by template id or alias")
   .option("-l, --language <lang>", "Filter by language")
   .option("-j, --json", "Output as JSON")
   .action(info);
 
 program
   .command("create")
-  .description("Create a new elizaOS project from a template")
+  .description("Create a new elizaOS project or plugin")
   .argument("[name]", "Name for the new project directory")
   .option("-t, --template <template>", "Template to create")
   .option("-l, --language <lang>", "Template language")

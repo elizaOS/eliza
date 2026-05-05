@@ -53,13 +53,21 @@ can audit them at `/dashboard/earnings`.
 |---|---|
 | Your own Eliza Cloud API key | Set as `ELIZAOS_CLOUD_API_KEY` in your env. Used to construct an `ElizaCloudClient` for everything below. |
 | The `@elizaos/cloud-sdk` package | Already in your runtime (Agent packages it). |
-| A goal: what does the app DO? | Either the human told you, or you decided. Affects how you write the app's server code (chat? image-gen? tool-call agent?). |
+| A goal: what does the Eliza Cloud app do? | Either the human told you, or you decided. Affects how you write the project's server code (chat? image-gen? tool-call agent?). |
 | A name for the app | Make one up if not given. Append a suffix on collision (the `/api/v1/apps/check-name` endpoint will tell you). |
 | Container registry credentials | The cloud needs to pull your image. Push to GHCR, Docker Hub, or any registry the Cloud nodes can access. |
 
 You do NOT need: a description, a website URL, a markup % opinion, a
 custom domain, a separate affiliate code per app — defaults and
 post-creation patches handle all of those.
+
+Terminology guardrails:
+
+- Project: deployable product workspace; containers use `project_name`.
+- App plugin: an `@elizaos/app-*` package inside Eliza.
+- Eliza Cloud app: the Cloud record from `POST /api/v1/apps`; use its
+  `app.id` for chat routing, hosting metadata, marketplace, and
+  monetization.
 
 ---
 
@@ -95,22 +103,24 @@ await fetch(`${process.env.ELIZA_CLOUD_BASE_URL}/api/v1/apps/${app.id}/monetizat
 
 // 3. GENERATE the app code yourself.
 //    Reference: apps/edad-chat/server.ts in cloud-mini-apps shows the
-//    OAuth + same-origin proxy shape. For new apps, forward chats to
+//    OAuth + same-origin proxy shape. For new apps, forward user chats to
 //    cloud.routes.postApiV1AppsByIdChatRaw with pathParams { id: app.id }
-//    so the app-scoped markup is applied directly.
+//    and bearerToken set to the user's Steward JWT. That charges the
+//    user's org credits and applies app-scoped markup directly.
 
 // 4. BUILD + PUSH the Docker image.
 //    bun:1.2-alpine base. /health endpoint. expose port 3000.
 //    push to GHCR, Docker Hub, or any registry the cloud can pull from.
 
 // 5. DEPLOY the container — this is your new home.
-const { container } = await cloud.createContainer({
+const { data: container } = await cloud.createContainer({
   name: input.name,
   project_name: input.name.toLowerCase().replace(/\W/g, "-"),
   port: 3000,
   cpu: 256,
   memory: 512,
   image: pushedImageUri,
+  desired_count: 1,
   health_check_path: "/health",
   environment_vars: {
     PORT: "3000",
@@ -122,8 +132,8 @@ const { container } = await cloud.createContainer({
 // poll until container.status === "running"
 while (true) {
   const c = await cloud.getContainer(container.id);
-  if (c.container.status === "running") break;
-  if (c.container.status === "failed") throw new Error("deploy failed");
+  if (c.data.status === "running") break;
+  if (c.data.status === "failed") throw new Error("deploy failed");
   await new Promise((r) => setTimeout(r, 5000));
 }
 
@@ -197,6 +207,10 @@ already know the skill pick up the new behavior automatically.
 - **Auto-creating an affiliate code per app.** Affiliate codes are
   the human's revenue lever and live across all their apps —
   one personal code, many apps using it. Don't bake it in here.
+- **Assuming affiliate markup works on app-scoped chat.** The generic
+  chat/message APIs read `X-Affiliate-Code`, but
+  `/api/v1/apps/:id/chat` does not currently read it. Forwarding the
+  header is harmless; product/API needs to confirm the intended behavior.
 - **An always-on assumption.** Pay-as-you-go is the default but the
   org's `pay_as_you_go_from_earnings` flag can disable it (in which
   case container hosting comes purely from credits and earnings stay

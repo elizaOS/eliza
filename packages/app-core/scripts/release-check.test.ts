@@ -104,9 +104,9 @@ describe("agent packaged runtime dependencies", () => {
 
     expect(dockerignore).toContain("!packages/agent/node_modules/**");
     expect(dockerignore).toContain("!eliza/packages/agent/node_modules/**");
-    expect(dockerignore).toContain("!apps/app-elizamaker/node_modules/**");
-    expect(dockerignore).toContain("!apps/app-lifeops/node_modules/**");
-    expect(dockerignore).toContain("!apps/app-steward/node_modules/**");
+    expect(dockerignore).toContain("!plugins/app-elizamaker/node_modules/**");
+    expect(dockerignore).toContain("!plugins/app-lifeops/node_modules/**");
+    expect(dockerignore).toContain("!plugins/app-steward/node_modules/**");
   });
 
   it("declares statically imported bundled plugins", () => {
@@ -156,19 +156,19 @@ describe("agent packaged runtime dependencies", () => {
 
   it("keeps runtime app plugins off the agent root barrel", () => {
     const companionPlugin = readFileSync(
-      new URL("../../../apps/app-companion/src/plugin.ts", import.meta.url),
+      new URL("../../../plugins/app-companion/src/plugin.ts", import.meta.url),
       "utf8",
     );
     const companionEmoteAction = readFileSync(
       new URL(
-        "../../../apps/app-companion/src/actions/emote.ts",
+        "../../../plugins/app-companion/src/actions/emote.ts",
         import.meta.url,
       ),
       "utf8",
     );
     const appBlockerEngine = readFileSync(
       new URL(
-        "../../../apps/app-lifeops/src/app-blocker/engine.ts",
+        "../../../plugins/app-lifeops/src/app-blocker/engine.ts",
         import.meta.url,
       ),
       "utf8",

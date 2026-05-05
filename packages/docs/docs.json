@@ -83,7 +83,12 @@
           },
           {
             "group": "PROJECTS",
-            "pages": ["projects/overview", "projects/environment-variables"]
+            "pages": [
+              "projects/overview",
+              "projects/taxonomy",
+              "projects/customize-generated-project",
+              "projects/environment-variables"
+            ]
           },
           {
             "group": "AGENTS",
@@ -116,6 +121,7 @@
                 "group": "Core Concepts",
                 "pages": [
                   "runtime/core",
+                  "runtime/package-boundaries",
                   "runtime/memory",
                   "runtime/events",
                   "runtime/providers",
@@ -455,21 +461,9 @@
             "group": "Commands",
             "pages": [
               "cli-reference/create",
-              "cli-reference/start",
-              "cli-reference/dev",
-              "cli-reference/env",
-              "cli-reference/agent",
-              "cli-reference/plugins",
-              "cli-reference/test",
-              "cli-reference/update",
-              "cli-reference/publish",
-              "cli-reference/monorepo",
-              "cli-reference/tee",
-              "cli-reference/deploy",
-              "cli-reference/login",
-              "cli-reference/containers",
-              "cli-reference/scenario",
-              "cli-reference/report"
+              "cli-reference/upgrade",
+              "cli-reference/info",
+              "cli-reference/version"
             ]
           }
         ]

@@ -331,10 +331,10 @@ jobs:
         with:
           name: browser-bridge-store-bundles
           path: |
-            apps/browser-bridge/dist/artifacts/browser-bridge-chrome-v*.zip
-            apps/browser-bridge/dist/artifacts/browser-bridge-safari-v*.zip
-            apps/browser-bridge/dist/artifacts/browser-bridge-safari-project-v*.zip
-            apps/browser-bridge/dist/artifacts/browser-bridge-release-manifest-v*.json
+            packages/browser-bridge/dist/artifacts/browser-bridge-chrome-v*.zip
+            packages/browser-bridge/dist/artifacts/browser-bridge-safari-v*.zip
+            packages/browser-bridge/dist/artifacts/browser-bridge-safari-project-v*.zip
+            packages/browser-bridge/dist/artifacts/browser-bridge-release-manifest-v*.json
           if-no-files-found: error
           retention-days: 30
 

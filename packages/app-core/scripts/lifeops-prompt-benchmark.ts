@@ -6,13 +6,13 @@ import {
   buildLifeOpsPromptBenchmarkCases,
   buildSelfCarePromptBenchmarkCases,
   type PromptBenchmarkCase,
-} from "../../../apps/app-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts";
+} from "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts";
 import {
   buildAxOptimizationRows,
   formatPromptBenchmarkReportMarkdown,
   runLifeOpsPromptBenchmark,
   serializeAxOptimizationRows,
-} from "../../../apps/app-lifeops/test/helpers/lifeops-prompt-benchmark-runner.ts";
+} from "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-runner.ts";
 import type { LiveProviderName } from "../test/helpers/live-provider.ts";
 
 type CliOptions = {

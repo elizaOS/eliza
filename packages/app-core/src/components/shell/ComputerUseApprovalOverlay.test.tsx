@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComputerUseApprovalOverlay } from "./ComputerUseApprovalOverlay";
@@ -139,6 +140,103 @@ describe("ComputerUseApprovalOverlay", () => {
         "success",
         2600,
       );
+    });
+  });
+
+  it("keeps multiple queued approvals visible and rejects one with a reason", async () => {
+    const setActionNotice = vi.fn();
+    useAppMock.mockReturnValue({
+      setActionNotice,
+      t: (_key: string, values?: Record<string, unknown>) =>
+        typeof values?.defaultValue === "string" ? values.defaultValue : _key,
+    });
+
+    getComputerUseApprovalsMock
+      .mockResolvedValueOnce({
+        mode: "smart_approve",
+        pendingCount: 2,
+        pendingApprovals: [
+          {
+            id: "approval_click",
+            command: "click",
+            parameters: { x: 10, y: 20 },
+            requestedAt: "2026-04-15T00:00:00.000Z",
+          },
+          {
+            id: "approval_type",
+            command: "type",
+            parameters: { text: "private message" },
+            requestedAt: "2026-04-15T00:00:01.000Z",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        mode: "smart_approve",
+        pendingCount: 1,
+        pendingApprovals: [
+          {
+            id: "approval_click",
+            command: "click",
+            parameters: { x: 10, y: 20 },
+            requestedAt: "2026-04-15T00:00:00.000Z",
+          },
+        ],
+      });
+
+    respondToComputerUseApprovalMock.mockResolvedValue({
+      id: "approval_type",
+      command: "type",
+      approved: false,
+      cancelled: true,
+      mode: "smart_approve",
+      requestedAt: "2026-04-15T00:00:01.000Z",
+      resolvedAt: "2026-04-15T00:00:06.000Z",
+      reason: "Contains private text",
+    });
+
+    render(<ComputerUseApprovalOverlay />);
+
+    expect(
+      await screen.findByText("Review queued computer actions"),
+    ).toBeTruthy();
+    expect(screen.getByText("Approval mode: {{mode}}.")).toBeTruthy();
+    expect(screen.getByText("click")).toBeTruthy();
+    expect(screen.getByText("type")).toBeTruthy();
+    expect(screen.getByText(/private message/i)).toBeTruthy();
+
+    const cards = screen
+      .getAllByText("Command")
+      .map((label) => label.closest("div.rounded-2xl"))
+      .filter((card): card is HTMLElement => card !== null);
+    expect(cards).toHaveLength(2);
+
+    const typeCard = cards.find((card) => within(card).queryByText("type"));
+    expect(typeCard).toBeTruthy();
+    if (!typeCard) throw new Error("expected type approval card");
+
+    fireEvent.click(within(typeCard).getByRole("button", { name: "Reject" }));
+    fireEvent.change(screen.getByLabelText("Deny reason"), {
+      target: { value: "Contains private text" },
+    });
+    fireEvent.click(within(typeCard).getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => {
+      expect(respondToComputerUseApprovalMock).toHaveBeenCalledWith(
+        "approval_type",
+        false,
+        "Contains private text",
+      );
+    });
+
+    await waitFor(() => {
+      expect(setActionNotice).toHaveBeenCalledWith(
+        "Rejected type.",
+        "info",
+        2600,
+      );
+    });
+    await waitFor(() => {
+      expect(getComputerUseApprovalsMock).toHaveBeenCalledTimes(2);
     });
   });
 });

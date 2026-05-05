@@ -158,7 +158,7 @@ const CURATED_APPS: CuratedDef[] = [
   },
   {
     id: "hyperscape",
-    npmName: "@hyperscape/plugin-hyperscape",
+    npmName: "@elizaos/app-hyperscape",
     displayName: "Hyperscape",
     description: "Multiplayer 3D world for embodied agent interactions.",
     subtype: "game",

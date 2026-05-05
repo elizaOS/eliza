@@ -306,6 +306,13 @@ function resolveWorkspaceRoots(): string[] {
   return uniquePaths([process.cwd()]);
 }
 
+function legacyAppsWorkspaceDiscoveryEnabled(): boolean {
+  const raw = process.env.ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY;
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;
@@ -318,10 +325,10 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (!packageSegment) return null;
 
   for (const workspaceRoot of resolveWorkspaceRoots()) {
-    const candidates = uniquePaths([
+    const candidates = [
       path.join(workspaceRoot, "plugins", packageSegment, "typescript"),
       path.join(workspaceRoot, "plugins", packageSegment),
-      path.join(workspaceRoot, "apps", packageSegment),
+      path.join(workspaceRoot, "packages", packageSegment),
       path.join(
         workspaceRoot,
         "eliza",
@@ -330,12 +337,20 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
         "typescript",
       ),
       path.join(workspaceRoot, "eliza", "plugins", packageSegment),
-      path.join(workspaceRoot, "eliza", "apps", packageSegment),
       path.join(workspaceRoot, "eliza", "packages", packageSegment),
-      path.join(workspaceRoot, "packages", packageSegment),
-    ]);
+    ];
 
-    for (const candidate of candidates) {
+    if (legacyAppsWorkspaceDiscoveryEnabled()) {
+      // Temporary opt-in for older external workspaces that have not moved
+      // app plugins from apps/app-* to plugins/app-* yet. The Eliza repo no
+      // longer depends on or scans top-level apps/* by default.
+      candidates.push(
+        path.join(workspaceRoot, "apps", packageSegment),
+        path.join(workspaceRoot, "eliza", "apps", packageSegment),
+      );
+    }
+
+    for (const candidate of uniquePaths(candidates)) {
       if (existsSync(path.join(candidate, "package.json"))) {
         return candidate;
       }

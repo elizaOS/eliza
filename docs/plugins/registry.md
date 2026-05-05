@@ -486,7 +486,7 @@ The `plugin-` prefix is required for automatic discovery. The registry scanner r
    - README with setup instructions
 
 4. **Registry CI** validates your plugin builds, loads, and passes tests
-5. Once merged, your plugin appears in `eliza plugins search` and the registry site
+5. Once merged, your plugin appears in the registry site
 
 ### Registry Site
 

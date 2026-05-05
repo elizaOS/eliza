@@ -23,7 +23,20 @@ type ApprovalSnapshot = {
 type ComputerUseService = {
   getApprovalSnapshot(): ApprovalSnapshot;
   setApprovalMode(mode: ApprovalSnapshot["mode"]): ApprovalSnapshot["mode"];
-  resolveApproval(): null;
+  resolveApproval(
+    id: string,
+    approved: boolean,
+    reason?: string,
+  ): {
+    id: string;
+    command: string;
+    approved: boolean;
+    cancelled: boolean;
+    mode: ApprovalSnapshot["mode"];
+    requestedAt: string;
+    resolvedAt: string;
+    reason?: string;
+  } | null;
 };
 
 function stateWithService(service: ComputerUseService): CompatRuntimeState {
@@ -180,6 +193,202 @@ describe("computer-use compat routes", () => {
     expect(modeResponse.status).toBe(200);
     await expect(modeResponse.json()).resolves.toEqual({
       mode: "smart_approve",
+    });
+  });
+
+  it("rejects invalid approval modes before mutating the service", async () => {
+    let mode: ApprovalSnapshot["mode"] = "full_control";
+    const setApprovalModeCalls: string[] = [];
+    const service: ComputerUseService = {
+      getApprovalSnapshot() {
+        return {
+          mode,
+          pendingCount: 0,
+          pendingApprovals: [],
+        };
+      },
+      setApprovalMode(nextMode) {
+        setApprovalModeCalls.push(nextMode);
+        mode = nextMode;
+        return mode;
+      },
+      resolveApproval() {
+        return null;
+      },
+    };
+    harness = await startApiHarness(stateWithService(service));
+
+    const response = await fetch(
+      `${harness.baseUrl}/api/computer-use/approval-mode`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "always_allow" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "mode must be one of full_control, smart_approve, approve_all, off",
+    });
+    expect(setApprovalModeCalls).toEqual([]);
+  });
+
+  it("returns not available for approval mode changes when the service is missing", async () => {
+    harness = await startApiHarness(emptyState());
+
+    const response = await fetch(
+      `${harness.baseUrl}/api/computer-use/approval-mode`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "approve_all" }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Computer use service not available",
+    });
+  });
+
+  it("resolves queued approvals with approve, reject, and reason payloads", async () => {
+    const resolved: Array<{
+      id: string;
+      approved: boolean;
+      reason?: string;
+    }> = [];
+    const service: ComputerUseService = {
+      getApprovalSnapshot() {
+        return {
+          mode: "smart_approve",
+          pendingCount: 2,
+          pendingApprovals: [
+            {
+              id: "approval/with slash",
+              command: "click",
+              parameters: { x: 12, y: 34 },
+              requestedAt: "2026-04-28T00:00:00.000Z",
+            },
+            {
+              id: "approval-2",
+              command: "type",
+              parameters: { text: "hello" },
+              requestedAt: "2026-04-28T00:01:00.000Z",
+            },
+          ],
+        };
+      },
+      setApprovalMode(mode) {
+        return mode;
+      },
+      resolveApproval(id, approved, reason) {
+        resolved.push({ id, approved, reason });
+        if (id === "missing") {
+          return null;
+        }
+        return {
+          id,
+          command: id === "approval-2" ? "type" : "click",
+          approved,
+          cancelled: !approved,
+          mode: "smart_approve",
+          requestedAt: "2026-04-28T00:00:00.000Z",
+          resolvedAt: "2026-04-28T00:00:05.000Z",
+          ...(reason ? { reason } : {}),
+        };
+      },
+    };
+    harness = await startApiHarness(stateWithService(service));
+
+    const approveResponse = await fetch(
+      `${harness.baseUrl}/api/computer-use/approvals/${encodeURIComponent("approval/with slash")}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approved: true }),
+      },
+    );
+    expect(approveResponse.status).toBe(200);
+    await expect(approveResponse.json()).resolves.toMatchObject({
+      id: "approval/with slash",
+      command: "click",
+      approved: true,
+      cancelled: false,
+    });
+
+    const rejectResponse = await fetch(
+      `${harness.baseUrl}/api/computer-use/approvals/approval-2`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          approved: false,
+          reason: "Would click outside the target app",
+        }),
+      },
+    );
+    expect(rejectResponse.status).toBe(200);
+    await expect(rejectResponse.json()).resolves.toMatchObject({
+      id: "approval-2",
+      command: "type",
+      approved: false,
+      cancelled: true,
+      reason: "Would click outside the target app",
+    });
+    expect(resolved).toEqual([
+      { id: "approval/with slash", approved: true, reason: undefined },
+      {
+        id: "approval-2",
+        approved: false,
+        reason: "Would click outside the target app",
+      },
+    ]);
+  });
+
+  it("validates approval resolution payloads and missing ids", async () => {
+    const service: ComputerUseService = {
+      getApprovalSnapshot() {
+        return {
+          mode: "approve_all",
+          pendingCount: 0,
+          pendingApprovals: [],
+        };
+      },
+      setApprovalMode(mode) {
+        return mode;
+      },
+      resolveApproval() {
+        return null;
+      },
+    };
+    harness = await startApiHarness(stateWithService(service));
+
+    const invalidPayloadResponse = await fetch(
+      `${harness.baseUrl}/api/computer-use/approvals/approval-1`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approved: "yes" }),
+      },
+    );
+    expect(invalidPayloadResponse.status).toBe(400);
+    await expect(invalidPayloadResponse.json()).resolves.toEqual({
+      error: "approved must be a boolean",
+    });
+
+    const missingResponse = await fetch(
+      `${harness.baseUrl}/api/computer-use/approvals/missing`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approved: false }),
+      },
+    );
+    expect(missingResponse.status).toBe(404);
+    await expect(missingResponse.json()).resolves.toEqual({
+      error: "Approval not found",
     });
   });
 });

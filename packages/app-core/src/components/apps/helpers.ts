@@ -347,6 +347,7 @@ export function getAppCatalogSectionKey(
     case "@elizaos/app-babylon":
       return "games";
     case "@hyperscape/plugin-hyperscape":
+    case "@elizaos/app-hyperscape":
     case "@elizaos/app-2004scape":
     case "@elizaos/app-scape":
     case "@elizaos/app-defense-of-the-agents":

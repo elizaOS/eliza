@@ -35,11 +35,12 @@ enum TEEMode {
 
 ## Quick Start
 
-### 1. Use the TEE Starter Project
+### 1. Create a Project
 
 ```bash
-elizaos create --type project --template tee my-tee-agent
+elizaos create my-tee-agent --template project
 cd my-tee-agent
+bun install
 ```
 
 ### 2. Configure TEE Settings
@@ -53,7 +54,7 @@ WALLET_SECRET_SALT=your-secret-salt-min-8-chars
 ### 3. Start in TEE Mode
 
 ```bash
-elizaos start
+bun run dev
 ```
 
 ## Configuration

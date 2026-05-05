@@ -84,7 +84,7 @@ function defaultAssetsDir(brand) {
   }
   return path.join(
     repoRoot,
-    "apps",
+    "packages",
     "app",
     "android",
     "app",

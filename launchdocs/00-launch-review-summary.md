@@ -21,6 +21,7 @@ Generated from the TODO-specific QA reports in `launchdocs/`.
 - `17-prompt-optimization.md`
 - `18-finetune-suite.md`
 - `19-local-models.md`
+- `20-automation-minimize-human-qa.md`
 
 ## Fixes Applied In This Pass
 

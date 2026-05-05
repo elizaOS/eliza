@@ -1,15 +1,15 @@
 ---
 title: Apps
-description: Create and manage applications on elizaOS Cloud.
+description: Register, update, monetize, and route chat through Eliza Cloud apps.
 ---
 
-import { Callout, Tabs } from "@/docs/components";
+import { Callout } from "@/docs/components";
 
 # Apps
 
 <div className="status-badge status-stable">Stable</div>
 
-Create and manage applications that use your AI agents.
+Apps are Cloud records used for app identity, hosting metadata, marketplace/domain settings, chat routing, analytics, and monetization.
 
 ## List Apps
 
@@ -18,20 +18,23 @@ Create and manage applications that use your AI agents.
   <span className="path">/api/v1/apps</span>
 </div>
 
-Get all your applications.
+Get all apps for your organization.
 
 ### Response
 
 ```json
 {
+  "success": true,
   "apps": [
     {
-      "id": "app_abc123",
+      "id": "uuid-abc123",
       "name": "Customer Portal",
-      "description": "AI-powered customer support",
-      "agentId": "char_xyz789",
-      "apiKey": "ak_...",
-      "createdAt": "2024-01-15T10:30:00Z"
+      "app_url": "https://customer.example.com",
+      "allowed_origins": ["https://customer.example.com"],
+      "monetization_enabled": true,
+      "inference_markup_percentage": "100.0000",
+      "purchase_share_percentage": "10.0000",
+      "created_at": "2026-05-05T10:30:00Z"
     }
   ]
 }
@@ -46,17 +49,20 @@ Get all your applications.
   <span className="path">/api/v1/apps</span>
 </div>
 
-Create a new application.
+Create a new Cloud app. The response includes a one-time app API key for server-side app administration.
 
 ### Request
 
 ```json
 {
   "name": "My App",
-  "app_url": "https://myapp.example.com",
+  "app_url": "https://placeholder.invalid",
   "description": "Customer support chatbot",
   "website_url": "https://example.com",
-  "contact_email": "support@example.com"
+  "contact_email": "support@example.com",
+  "allowed_origins": ["https://placeholder.invalid"],
+  "logo_url": "https://example.com/logo.png",
+  "skipGitHubRepo": true
 }
 ```
 
@@ -68,12 +74,19 @@ Create a new application.
   "app": {
     "id": "uuid-abc123",
     "name": "My App",
-    "app_url": "https://myapp.example.com",
-    "api_key": "ek_xxx...",
-    "created_at": "2024-01-15T10:30:00Z"
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "created_at": "2026-05-05T10:30:00Z"
+  },
+  "apiKey": {
+    "id": "key_abc123"
   }
 }
 ```
+
+<Callout type="warning">
+  Store the returned API key securely. Use user bearer tokens, not this admin key, for user-facing app-scoped chat.
+</Callout>
 
 ---
 
@@ -84,7 +97,7 @@ Create a new application.
   <span className="path">/api/v1/apps/{"{id}"}</span>
 </div>
 
-Get application details.
+Get app details.
 
 ---
 
@@ -95,7 +108,24 @@ Get application details.
   <span className="path">/api/v1/apps/{"{id}"}</span>
 </div>
 
-Update an application.
+<div className="api-endpoint">
+  <span className="method-badge method-badge-patch">PATCH</span>
+  <span className="path">/api/v1/apps/{"{id}"}</span>
+</div>
+
+Update all or part of an app record.
+
+### Request
+
+```json
+{
+  "app_url": "https://my-app.example.com",
+  "allowed_origins": ["https://my-app.example.com"],
+  "website_url": "https://example.com",
+  "contact_email": "support@example.com",
+  "is_active": true
+}
+```
 
 ---
 
@@ -106,44 +136,40 @@ Update an application.
   <span className="path">/api/v1/apps/{"{id}"}</span>
 </div>
 
-Delete an application.
+Delete an app and run cleanup. Pass `?deleteGitHubRepo=false` to keep the associated repository when one exists.
 
 ---
 
-## App Analytics
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/apps/{"{id}"}/analytics</span>
-</div>
-
-Get usage analytics for an app.
-
-### Response
-
-```json
-{
-  "requests": 15000,
-  "uniqueUsers": 500,
-  "tokensUsed": 1250000,
-  "costUsd": 12.5,
-  "period": "30d"
-}
-```
-
----
-
-## Regenerate API Key
+## App Chat
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/regenerate-api-key</span>
+  <span className="path">/api/v1/apps/{"{id}"}/chat</span>
 </div>
 
-Generate a new API key for the app.
+OpenAI-style chat completions scoped to a Cloud app. Monetized apps are public to authenticated users with credits; non-monetized apps are limited to the owning organization.
 
-<Callout type="warning">
-  This invalidates the previous API key immediately.
+### Headers
+
+| Header | Description |
+| ------ | ----------- |
+| `Authorization: Bearer <user-token>` | Required for user-facing chat. Charges the user's organization credit balance. |
+| `Content-Type: application/json` | Required. |
+
+### Request
+
+```json
+{
+  "model": "openai/gpt-4o-mini",
+  "messages": [{ "role": "user", "content": "Hello" }],
+  "stream": false
+}
+```
+
+If monetization is enabled, the app creator earns `inferenceMarkupPercentage` on the base inference cost.
+
+<Callout type="info">
+  `X-Affiliate-Code` is implemented on generic `/api/v1/chat/completions` and `/api/v1/messages` routes. The app-scoped chat route does not currently read that header.
 </Callout>
 
 ---
@@ -155,7 +181,64 @@ Generate a new API key for the app.
   <span className="path">/api/v1/apps/{"{id}"}/monetization</span>
 </div>
 
-Get monetization settings and earnings.
+Get monetization settings.
+
+### Response
+
+```json
+{
+  "success": true,
+  "monetization": {
+    "monetizationEnabled": true,
+    "inferenceMarkupPercentage": 100,
+    "purchaseSharePercentage": 10,
+    "platformOffsetAmount": 0,
+    "totalCreatorEarnings": 42.5
+  }
+}
+```
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-put">PUT</span>
+  <span className="path">/api/v1/apps/{"{id}"}/monetization</span>
+</div>
+
+Update monetization settings. All fields are optional.
+
+### Request
+
+```json
+{
+  "monetizationEnabled": true,
+  "inferenceMarkupPercentage": 100,
+  "purchaseSharePercentage": 10
+}
+```
+
+| Field | Range | Description |
+| ----- | ----- | ----------- |
+| `monetizationEnabled` | boolean | Enables creator earnings. |
+| `inferenceMarkupPercentage` | 0-1000 | Creator markup on inference calls. |
+| `purchaseSharePercentage` | 0-100 | Purchase share percentage. |
+
+Older `enabled` plus nested `pricing` request bodies are stale and should not be used.
+
+---
+
+## App Earnings
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/apps/{"{id}"}/earnings</span>
+</div>
+
+Get app earnings summary, breakdown, chart data, recent transactions, and monetization settings.
+
+### Query Parameters
+
+| Parameter | Description |
+| --------- | ----------- |
+| `days` | Chart range, 1-90 days. Default: 30. |
 
 ---
 
@@ -172,32 +255,6 @@ Manage custom domains for your multi-tenant applications. See the [App Domains](
 
 Get all domains for an app including subdomain and custom domain status.
 
-#### Response
-
-```json
-{
-  "success": true,
-  "domains": [
-    {
-      "id": "dom_abc123",
-      "subdomain": "myapp",
-      "subdomainUrl": "https://myapp.apps.elizacloud.ai",
-      "customDomain": "myapp.example.com",
-      "customDomainUrl": "https://myapp.example.com",
-      "customDomainVerified": true,
-      "sslStatus": "active",
-      "isPrimary": true,
-      "verificationRecords": [],
-      "createdAt": "2024-01-15T10:30:00Z",
-      "verifiedAt": "2024-01-15T11:00:00Z"
-    }
-  ],
-  "sandboxUrl": null
-}
-```
-
----
-
 ### Add Custom Domain
 
 <div className="api-endpoint">
@@ -205,172 +262,8 @@ Get all domains for an app including subdomain and custom domain status.
   <span className="path">/api/v1/apps/{"{id}"}/domains</span>
 </div>
 
-Add a custom domain to your app. Requires DNS configuration.
-
-#### Request
-
 ```json
 {
   "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "domain": "myapp.example.com",
-  "verified": false,
-  "verificationRecords": [
-    {
-      "type": "TXT",
-      "name": "_vercel.myapp.example.com",
-      "value": "vc-domain-verify=abc123..."
-    }
-  ],
-  "dnsInstructions": [
-    {
-      "type": "CNAME",
-      "name": "myapp",
-      "value": "cname.vercel-dns.com"
-    }
-  ],
-  "isApexDomain": false
-}
-```
-
-<Callout type="info">
-  For apex domains (e.g., `example.com`), use an A record pointing to
-  `76.76.21.21` instead of a CNAME.
-</Callout>
-
----
-
-### Remove Custom Domain
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-delete">DELETE</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains</span>
-</div>
-
-Remove a custom domain from your app.
-
-#### Request
-
-```json
-{
-  "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "message": "Domain removed successfully"
-}
-```
-
----
-
-### Verify Domain
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains/verify</span>
-</div>
-
-Trigger manual verification of domain ownership after configuring DNS records.
-
-#### Request
-
-```json
-{
-  "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "verified": true,
-  "status": {
-    "domain": "myapp.example.com",
-    "status": "valid",
-    "configured": true,
-    "verified": true,
-    "sslStatus": "provisioning",
-    "configuredBy": "CNAME",
-    "isApexDomain": false,
-    "dnsInstructions": []
-  }
-}
-```
-
----
-
-### Check Domain Status
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains/status</span>
-</div>
-
-Check the current DNS and SSL status of a domain.
-
-#### Request
-
-```json
-{
-  "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "domain": "myapp.example.com",
-  "status": "valid",
-  "configured": true,
-  "verified": true,
-  "sslStatus": "active",
-  "sslExpiresAt": "2025-04-15T00:00:00Z",
-  "configuredBy": "CNAME",
-  "records": [],
-  "isApexDomain": false,
-  "dnsInstructions": [
-    {
-      "type": "CNAME",
-      "name": "myapp",
-      "value": "cname.vercel-dns.com"
-    }
-  ]
-}
-```
-
----
-
-### Sync Domain Status
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains/sync</span>
-</div>
-
-Refresh all domain statuses from Vercel to the database.
-
-#### Response
-
-```json
-{
-  "success": true,
-  "domains": [...],
-  "syncedAt": "2024-01-15T12:00:00Z"
 }
 ```

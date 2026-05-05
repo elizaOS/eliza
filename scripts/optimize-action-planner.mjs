@@ -35,7 +35,7 @@ const REPO_ROOT = resolve(__dirname, "..");
 
 const DEFAULT_DATASET = join(
   REPO_ROOT,
-  "apps",
+  "plugins",
   "app-training",
   "datasets",
   "action_planner_from_benchmark.jsonl",

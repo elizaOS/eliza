@@ -17,10 +17,11 @@ description: "Build and coordinate multiple specialized agents working together 
 
 ### Add Hemingway to your project
 
-You already have Shakespeare in `src/character.ts` from the previous guide. Now let's add another agent to our project so they can interact. We'll create a fresh character file for Hemingway using the CLI:
+You already have Shakespeare in `src/character.ts` from the previous guide. Now let's add another agent to our project so they can interact. Create a fresh character file for Hemingway by copying the generated character file:
 
 ```bash Terminal
-elizaos create --type agent hemingway
+mkdir -p src/agents
+cp src/character.ts src/agents/hemingway.ts
 ```
 
 This clones a JSON character template as `hemingway.json`. You'll now have:
@@ -287,7 +288,7 @@ const project: Project = {
 Now when you start your project, both agents launch automatically:
 
 ```bash Terminal
-elizaos start
+bun run dev
 ```
 
 You'll see both agents initialize in the console output:

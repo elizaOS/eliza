@@ -30,12 +30,16 @@ elizaOS is available in **TypeScript**, **Python**, and **Rust** with identical 
 
 ---
 
-## Three Commands. Any Language.
+## Create, Then Run Project Scripts
 
 <Tabs>
   <Tab title="TypeScript">
-    ```bash bun i -g elizaos # Install the CLI elizaos create # Create your
-    project elizaos start # Your agent is live ```
+    ```bash
+    npx elizaos create my-agent-app --template project
+    cd my-agent-app
+    bun install
+    bun run dev
+    ```
   </Tab>
   <Tab title="Python">
     ```bash pip install elizaos # Install the package python -c "from elizaos

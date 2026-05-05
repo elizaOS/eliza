@@ -94,7 +94,7 @@ jobs:
             globs: "eliza/test/scenarios/cross-cutting/**/*.scenario.ts eliza/test/scenarios/gateway/**/*.scenario.ts eliza/test/scenarios/remote/**/*.scenario.ts eliza/test/scenarios/lifeops.*/**/*.scenario.ts eliza/test/scenarios/goals/**/*.scenario.ts eliza/test/scenarios/convo/**/*.scenario.ts"
           - name: lifeops-app
             runs-on: ubuntu-24.04
-            root: apps/app-lifeops/test/scenarios
+            root: plugins/app-lifeops/test/scenarios
             globs: "**/*.scenario.ts"
     runs-on: ${{ matrix.shard.runs-on }}
     timeout-minutes: 60

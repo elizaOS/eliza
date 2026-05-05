@@ -1,6 +1,6 @@
 # elizaOS CLI
 
-Create and upgrade elizaOS project templates.
+Create and upgrade elizaOS projects and plugins.
 
 ## Installation
 
@@ -22,8 +22,11 @@ Create a new project from a packaged template.
 # Interactive template selection
 elizaos create
 
-# Create a fullstack app workspace
-elizaos create my-app --template fullstack-app
+# Create a project
+elizaos create my-project --template project
+
+# Backwards-compatible alias for the project template
+elizaos create my-project --template fullstack-app
 
 # Create a TypeScript plugin starter
 elizaos create plugin-foo --template plugin
@@ -44,7 +47,7 @@ Show available templates and languages.
 
 ```bash
 elizaos info
-elizaos info --template fullstack-app
+elizaos info --template project
 elizaos info --language typescript
 ```
 
@@ -52,8 +55,10 @@ elizaos info --language typescript
 
 | Template | Description | Languages |
 | --- | --- | --- |
+| `project` | elizaOS project backed by a local `eliza` checkout | TypeScript |
 | `plugin` | Plugin starter workspace | TypeScript |
-| `fullstack-app` | Eliza-style app workspace backed by a local `eliza` checkout | TypeScript |
+
+`fullstack-app` remains accepted as an alias for `project`.
 
 ## Development
 

@@ -3,14 +3,19 @@ import { getTemplateById, loadManifest } from "../manifest.js";
 import type { InfoOptions } from "../types.js";
 
 const TEMPLATE_ICONS: Record<string, string> = {
-  "fullstack-app": "🧱",
   plugin: "🔌",
+  project: "🧱",
 };
 
 export function info(options: InfoOptions): void {
   const manifest = loadManifest();
+  const template = options.template
+    ? getTemplateById(options.template)
+    : undefined;
   const templates = options.template
-    ? manifest.templates.filter((template) => template.id === options.template)
+    ? template
+      ? [template]
+      : []
     : options.language
       ? manifest.templates.filter((template) =>
           template.languages.includes(options.language as string),
@@ -38,7 +43,7 @@ export function info(options: InfoOptions): void {
     console.log();
   }
 
-  if (options.template && !getTemplateById(options.template)) {
+  if (options.template && !template) {
     console.log(pc.yellow(`Template '${options.template}' not found.`));
     console.log();
   }

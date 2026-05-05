@@ -17,6 +17,9 @@ describe("resolveRuntimePluginImportSpecifier", () => {
     expect(resolveRuntimePluginImportSpecifier("@elizaos/app-lifeops")).toBe(
       "@elizaos/app-lifeops/plugin",
     );
+    expect(resolveRuntimePluginImportSpecifier("@elizaos/app-shopify")).toBe(
+      "@elizaos/app-shopify/plugin",
+    );
   });
 
   it("keeps app packages without plugin exports on the package root", () => {
@@ -70,7 +73,7 @@ describe("importPluginModuleFromPath", () => {
     );
     try {
       const elizaRoot = path.join(workspaceRoot, "eliza");
-      const appRoot = path.join(elizaRoot, "apps", "app-sample");
+      const appRoot = path.join(elizaRoot, "plugins", "app-sample");
       await fs.mkdir(path.join(appRoot, "src"), { recursive: true });
       await fs.mkdir(path.join(elizaRoot, "node_modules", "@types", "react"), {
         recursive: true,

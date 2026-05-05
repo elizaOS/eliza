@@ -51,6 +51,34 @@ function mkDeps(accounts: LinkedAccountConfig[]): AccountPoolDeps & {
 }
 
 describe("AccountPool selection", () => {
+  it("routes multiple Claude, Codex, and Z.AI accounts by provider without cross-picking", async () => {
+    const deps = mkDeps([
+      mkAccount("claude-a", {
+        providerId: "anthropic-subscription",
+        priority: 1,
+      }),
+      mkAccount("claude-b", {
+        providerId: "anthropic-subscription",
+        priority: 0,
+      }),
+      mkAccount("codex-a", { providerId: "openai-codex", priority: 1 }),
+      mkAccount("codex-b", { providerId: "openai-codex", priority: 0 }),
+      mkAccount("zai-a", { providerId: "zai-api", priority: 1 }),
+      mkAccount("zai-b", { providerId: "zai-api", priority: 0 }),
+    ]);
+    const pool = new AccountPool(deps);
+
+    await expect(
+      pool.select({ providerId: "anthropic-subscription" }),
+    ).resolves.toMatchObject({ id: "claude-b" });
+    await expect(
+      pool.select({ providerId: "openai-codex" }),
+    ).resolves.toMatchObject({ id: "codex-b" });
+    await expect(pool.select({ providerId: "zai-api" })).resolves.toMatchObject(
+      { id: "zai-b" },
+    );
+  });
+
   it("returns null when no eligible accounts exist", async () => {
     const deps = mkDeps([]);
     const pool = new AccountPool(deps);
@@ -85,6 +113,33 @@ describe("AccountPool selection", () => {
       if (picked) picks.push(picked.id);
     }
     expect(picks).toEqual(["a", "b", "c", "a", "b"]);
+  });
+
+  it("round-robin cursor persists across account reloads from deps", async () => {
+    const deps = mkDeps([
+      mkAccount("a", { priority: 0 }),
+      mkAccount("b", { priority: 1 }),
+      mkAccount("c", { priority: 2 }),
+    ]);
+    const pool = new AccountPool(deps);
+
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "round-robin",
+      }),
+    ).resolves.toMatchObject({ id: "a" });
+
+    // Simulate a storage reload that returns fresh object identities between
+    // calls. The pool cursor should continue from the previous pick.
+    await deps.writeAccount({ ...deps.current()["anthropic-subscription:b"] });
+
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "round-robin",
+      }),
+    ).resolves.toMatchObject({ id: "b" });
   });
 
   it("least-used picks lowest sessionPct, treating undefined as 0", async () => {
@@ -130,6 +185,25 @@ describe("AccountPool selection", () => {
     expect(picked?.id).toBe("b");
   });
 
+  it("quota-aware falls back to the priority winner when every account is exhausted", async () => {
+    const deps = mkDeps([
+      mkAccount("a", {
+        priority: 1,
+        usage: { refreshedAt: 1, sessionPct: 100 },
+      }),
+      mkAccount("b", {
+        priority: 0,
+        usage: { refreshedAt: 1, sessionPct: 98 },
+      }),
+    ]);
+    const pool = new AccountPool(deps);
+    const picked = await pool.select({
+      providerId: "anthropic-subscription",
+      strategy: "quota-aware",
+    });
+    expect(picked?.id).toBe("b");
+  });
+
   it("respects exclude", async () => {
     const deps = mkDeps([
       mkAccount("a", { priority: 0 }),
@@ -165,6 +239,42 @@ describe("AccountPool selection", () => {
     const pool = new AccountPool(deps);
     const picked = await pool.select({ providerId: "anthropic-subscription" });
     expect(picked?.id).toBe("b");
+  });
+
+  it("returns null when all explicit route accounts are disabled or actively rate-limited", async () => {
+    const deps = mkDeps([
+      mkAccount("disabled", { enabled: false }),
+      mkAccount("exhausted", {
+        health: "rate-limited",
+        healthDetail: { until: Date.now() + 60_000 },
+      }),
+      mkAccount("fallback", { priority: 99 }),
+    ]);
+    const pool = new AccountPool(deps);
+    const picked = await pool.select({
+      providerId: "anthropic-subscription",
+      accountIds: ["disabled", "exhausted"],
+      strategy: "quota-aware",
+    });
+    expect(picked).toBeNull();
+  });
+
+  it("skips exhausted route accounts but still uses an eligible explicit fallback", async () => {
+    const deps = mkDeps([
+      mkAccount("exhausted", {
+        priority: 0,
+        health: "rate-limited",
+        healthDetail: { until: Date.now() + 60_000 },
+      }),
+      mkAccount("fallback", { priority: 10 }),
+      mkAccount("outside-route", { priority: 1 }),
+    ]);
+    const pool = new AccountPool(deps);
+    const picked = await pool.select({
+      providerId: "anthropic-subscription",
+      accountIds: ["exhausted", "fallback"],
+    });
+    expect(picked?.id).toBe("fallback");
   });
 
   it("filters out provider mismatch", async () => {
@@ -419,6 +529,10 @@ describe("AccountPool refreshUsage", () => {
 });
 
 describe("default account-pool selection config", () => {
+  beforeEach(() => {
+    configureDefaultAccountPoolSelection();
+  });
+
   it("normalizes provider strategy and llmText route account pool", () => {
     configureDefaultAccountPoolSelection({
       accountStrategies: {
@@ -455,6 +569,68 @@ describe("default account-pool selection config", () => {
 
     expect(__getDefaultAccountPoolSelectionForTests("openai-codex")).toEqual({
       strategy: "round-robin",
+    });
+  });
+
+  it("lets service-routing override provider strategy for Anthropic subscription accounts", () => {
+    configureDefaultAccountPoolSelection({
+      accountStrategies: {
+        "anthropic-subscription": "round-robin",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "anthropic",
+          accountId: "claude-route",
+          strategy: "quota-aware",
+        },
+      },
+    });
+
+    expect(
+      __getDefaultAccountPoolSelectionForTests("anthropic-subscription"),
+    ).toEqual({
+      accountIds: ["claude-route"],
+      strategy: "quota-aware",
+    });
+  });
+
+  it("lets service-routing override provider strategy for Z.AI direct accounts", () => {
+    configureDefaultAccountPoolSelection({
+      accountStrategies: {
+        "zai-api": "priority",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "zai",
+          accountIds: ["zai-a", "zai-b"],
+          strategy: "round-robin",
+        },
+      },
+    });
+
+    expect(__getDefaultAccountPoolSelectionForTests("zai-api")).toEqual({
+      accountIds: ["zai-a", "zai-b"],
+      strategy: "round-robin",
+    });
+  });
+
+  it("ignores invalid strategy config while keeping sanitized route account IDs", () => {
+    configureDefaultAccountPoolSelection({
+      accountStrategies: {
+        "openai-codex": "bogus",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "openai",
+          accountIds: [" codex-a ", "", "codex-b"],
+          strategy: "not-a-strategy",
+        },
+      },
+    });
+
+    expect(__getDefaultAccountPoolSelectionForTests("openai-codex")).toEqual({
+      accountIds: ["codex-a", "codex-b"],
+      strategy: undefined,
     });
   });
 });

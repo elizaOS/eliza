@@ -5,7 +5,7 @@
  * On a fresh clone, the companion plugin's public/vrms/ and animations/
  * may be empty or contain only Git LFS pointers.  This script clones the
  * elizaos/avatars repository (org-owned) into a temp directory and copies
- * the assets into eliza/apps/app-companion/public/.
+ * the assets into eliza/plugins/app-companion/public/.
  *
  * Run automatically via the `postinstall` hook, or manually:
  *   node scripts/ensure-avatars.mjs
@@ -31,7 +31,7 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
-const PUBLIC = join(ROOT, "eliza", "apps", "app-companion", "public");
+const PUBLIC = join(ROOT, "eliza", "plugins", "app-companion", "public");
 const VRMS_DIR = join(PUBLIC, "vrms");
 const ANIMATIONS_DIR = join(PUBLIC, "animations");
 const BUNDLED_VRM_SOURCE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];

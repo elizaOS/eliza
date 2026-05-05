@@ -1,7 +1,7 @@
 /**
  * Phone-companion surface — the iOS-paired-handset experience.
  *
- * Originally shipped as a standalone `apps/app-ios-companion` Capacitor app;
+ * Originally shipped as a standalone top-level app Capacitor project;
  * folded into the main Eliza iOS bundle so one binary handles both the full
  * Eliza UI and the pairing / chat-mirror / remote-session flow.
  */

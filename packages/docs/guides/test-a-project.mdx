@@ -132,21 +132,22 @@ export const ProjectStarterTestSuite: TestSuite = {
 
 ```bash Terminal
 # Run all tests
-elizaos test
+bun run test
 
-# Run only component tests
-elizaos test --type component
+# Run only component tests when the project defines this script
+bun run test:component
 
-# Run only E2E tests
-elizaos test --type e2e
+# Run only E2E tests when the project defines this script
+bun run test:e2e
 
-# Run specific test suite (case sensitive)
-elizaos test --name "multi-agent"
+# Run type and lint checks
+bun run typecheck
+bun run lint
 ```
 
 ### Verify test results
 
-For complete test runner options, see the [CLI Test Reference](/cli-reference/test).
+For complete test runner options, inspect the generated `package.json`.
 
 ## See Also
 

@@ -5,7 +5,6 @@
     "packages/native-plugins/*",
     "packages/app-core/platforms/*",
     "plugins/*",
-    "apps/*",
     "cloud/packages/sdk"
   ],
   "npmClient": "bun",

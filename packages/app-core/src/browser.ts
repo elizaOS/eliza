@@ -40,7 +40,7 @@ export {
 } from "./components/config-ui/ui-renderer.tsx";
 export { getExplorerTokenUrl } from "./components/inventory/chainConfig.ts";
 // Explicit named re-exports for the wallet helpers that renderer-side
-// modules (e.g. apps/app-companion/.../walletUtils.ts) reach for. The
+// modules (e.g. plugins/app-companion/.../walletUtils.ts) reach for. The
 // wildcard re-export above should carry these, but Vite's dev-time module
 // graph has been observed to miss symbols across nested `export *` chains
 // under HMR, so naming them directly guarantees the binding.

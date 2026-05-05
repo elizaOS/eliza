@@ -1,15 +1,15 @@
 ---
 title: Redemptions
-description: Redeem earnings on elizaOS Cloud.
+description: Redeem earnings for elizaOS tokens.
 ---
 
-import { Callout, Tabs } from "@/docs/components";
+import { Callout } from "@/docs/components";
 
 # Redemptions
 
 <div className="status-badge status-stable">Stable</div>
 
-Redeem your earnings from agent usage.
+Redeem creator earnings for elizaOS tokens. Earnings balances are tracked in USD; redemption requests use integer `pointsAmount`, where 100 points equals $1.00.
 
 ## Get Redemption Balance
 
@@ -18,16 +18,35 @@ Redeem your earnings from agent usage.
   <span className="path">/api/v1/redemptions/balance</span>
 </div>
 
-Get your available balance for redemption.
+Get your redeemable earnings balance and eligibility.
 
 ### Response
 
 ```json
 {
-  "available": 125.5,
-  "pending": 24.0,
-  "lifetime": 500.0,
-  "currency": "USD"
+  "success": true,
+  "balance": {
+    "totalEarned": 500,
+    "availableBalance": 125.5,
+    "pendingBalance": 24,
+    "totalRedeemed": 100,
+    "totalPending": 24,
+    "totalConvertedToCredits": 12.25
+  },
+  "bySource": [
+    { "source": "miniapp", "totalEarned": 300, "count": 42 },
+    { "source": "agent", "totalEarned": 200, "count": 10 }
+  ],
+  "limits": {
+    "minRedemptionUsd": 1,
+    "maxSingleRedemptionUsd": 1000,
+    "userDailyLimitUsd": 1000,
+    "userHourlyLimitUsd": 250
+  },
+  "eligibility": {
+    "canRedeem": true,
+    "dailyLimitRemaining": 1000
+  }
 }
 ```
 
@@ -42,21 +61,75 @@ Get your available balance for redemption.
 
 Get redemption history.
 
+### Query Parameters
+
+| Parameter | Description |
+| --------- | ----------- |
+| `limit` | Maximum records to return, capped at 100. Default: 20. |
+
 ### Response
 
 ```json
 {
+  "success": true,
   "redemptions": [
     {
       "id": "red_abc123",
-      "amount": 100.0,
+      "pointsAmount": 10000,
+      "usdValue": 100,
+      "elizaAmount": 1234.5,
+      "elizaPriceUsd": 0.081,
+      "network": "base",
+      "payoutAddress": "0x1234...abcd",
       "status": "completed",
-      "method": "crypto",
-      "address": "0x...",
-      "createdAt": "2024-01-15T10:30:00Z",
-      "completedAt": "2024-01-15T11:00:00Z"
+      "txHash": "0x...",
+      "createdAt": "2026-05-05T10:30:00Z",
+      "completedAt": "2026-05-05T11:00:00Z",
+      "requiresReview": false
     }
-  ]
+  ],
+  "paused": false
+}
+```
+
+---
+
+## Get Redemption Quote
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/redemptions/quote</span>
+</div>
+
+Get a token quote before creating a redemption.
+
+### Query Parameters
+
+| Parameter | Required | Description |
+| --------- | -------- | ----------- |
+| `network` | yes | One of `ethereum`, `base`, `bnb`, `solana`. |
+| `pointsAmount` | no | Integer points to redeem. Defaults to 100. |
+
+### Response
+
+```json
+{
+  "success": true,
+  "quote": {
+    "network": "base",
+    "tokenAddress": "0x...",
+    "pointsAmount": 10000,
+    "usdValue": 100,
+    "twapPriceUsd": 0.081,
+    "spotPriceUsd": 0.08,
+    "priceMethod": "TWAP",
+    "elizaAmount": 1234.5,
+    "safetySpreadPercent": 5,
+    "validUntil": "2026-05-05T10:35:00Z",
+    "validitySeconds": 300,
+    "requiresAdminApproval": false
+  },
+  "canRedeem": true
 }
 ```
 
@@ -69,58 +142,40 @@ Get redemption history.
   <span className="path">/api/v1/redemptions</span>
 </div>
 
-Request a redemption.
+Create a redemption request.
 
 ### Request
 
 ```json
 {
-  "amount": 100.0,
-  "method": "crypto",
-  "address": "0x1234..."
+  "pointsAmount": 10000,
+  "network": "base",
+  "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678",
+  "idempotencyKey": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+| Field | Description |
+| ----- | ----------- |
+| `appId` | Optional app UUID for attribution. |
+| `pointsAmount` | Required integer, 100-100000. 100 points equals $1.00. |
+| `network` | Required: `ethereum`, `base`, `bnb`, or `solana`. |
+| `payoutAddress` | Required wallet address. |
+| `signature` | Optional wallet signature. |
+| `idempotencyKey` | Optional UUID for safe retries. |
 
 ### Response
 
 ```json
 {
-  "id": "red_abc123",
-  "amount": 100.0,
-  "status": "pending",
-  "estimatedCompletion": "2024-01-16T10:30:00Z"
-}
-```
-
----
-
-## Get Redemption Quote
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/redemptions/quote</span>
-</div>
-
-Get a quote for redemption.
-
-### Request
-
-```json
-{
-  "amount": 100.0,
-  "method": "crypto"
-}
-```
-
-### Response
-
-```json
-{
-  "amount": 100.0,
-  "fee": 2.5,
-  "netAmount": 97.5,
-  "rate": 1.0,
-  "expiresAt": "2024-01-15T10:35:00Z"
+  "success": true,
+  "redemptionId": "red_abc123",
+  "quote": {
+    "usdValue": 100,
+    "elizaAmount": 1234.5,
+    "requiresReview": false
+  },
+  "message": "Redemption created and will be processed shortly."
 }
 ```
 
@@ -133,18 +188,7 @@ Get a quote for redemption.
   <span className="path">/api/v1/redemptions/status</span>
 </div>
 
-Check overall redemption status.
-
-### Response
-
-```json
-{
-  "eligible": true,
-  "minAmount": 10.0,
-  "maxAmount": 10000.0,
-  "methods": ["crypto", "bank"]
-}
-```
+Check payout network availability.
 
 ---
 
@@ -157,13 +201,6 @@ Check overall redemption status.
 
 Get details about a specific redemption.
 
-<Callout type="info">Redemptions are processed within 24-48 hours.</Callout>
-
----
-
-## Minimum Redemption
-
-| Method | Minimum |
-| ------ | ------- |
-| Crypto | $10     |
-| Bank   | $100    |
+<Callout type="info">
+  Large redemptions may require admin approval. Quote and create responses include review flags when applicable.
+</Callout>

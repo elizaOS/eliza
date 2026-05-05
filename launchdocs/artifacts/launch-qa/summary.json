@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "suite": "quick",
+  "artifactsDir": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa",
+  "results": [
+    {
+      "id": "mobile-artifacts",
+      "status": "passed",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 98,
+      "logPath": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa/mobile-artifacts.log"
+    },
+    {
+      "id": "model-data",
+      "status": "passed",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 103,
+      "logPath": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa/model-data.log"
+    },
+    {
+      "id": "app-core-focused",
+      "status": "passed",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 10061,
+      "logPath": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa/app-core-focused.log"
+    },
+    {
+      "id": "agent-focused",
+      "status": "passed",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 12365,
+      "logPath": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa/agent-focused.log"
+    },
+    {
+      "id": "lifeops-focused",
+      "status": "passed",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 8522,
+      "logPath": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa/lifeops-focused.log"
+    },
+    {
+      "id": "training-focused",
+      "status": "passed",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 3837,
+      "logPath": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa/training-focused.log"
+    },
+    {
+      "id": "cloud-api-key-client",
+      "status": "passed",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 126,
+      "logPath": "/Users/shawwalters/eliza-workspace/milady/eliza/launchdocs/artifacts/launch-qa/cloud-api-key-client.log"
+    }
+  ]
+}

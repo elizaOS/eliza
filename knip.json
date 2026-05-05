@@ -5,15 +5,12 @@
     "packages/**/index.ts",
     "plugins/**/src/index.ts",
     "plugins/**/index.ts",
-    "apps/**/src/index.ts",
-    "apps/**/index.ts",
     "!**/examples/**",
     "!**/scripts/**"
   ],
   "project": [
     "packages/**/*.{ts,tsx,js,jsx}",
     "plugins/**/*.{ts,tsx,js,jsx}",
-    "apps/**/*.{ts,tsx,js,jsx}",
     "!**/examples/**",
     "!**/scripts/**",
     "!**/*.test.{ts,tsx,js,jsx}",
@@ -191,9 +188,6 @@
       "entry": ["src/index.ts", "index.ts"]
     },
     "plugins/*": {
-      "entry": ["src/index.ts", "index.ts"]
-    },
-    "apps/*": {
       "entry": ["src/index.ts", "index.ts"]
     }
   },

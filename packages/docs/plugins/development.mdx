@@ -7,8 +7,9 @@ description: "Build plugins for elizaOS in TypeScript, Python, or Rust"
 
 <Tabs>
   <Tab title="TypeScript">
-    1. **Scaffold** - `elizaos create my-plugin --type plugin` 2. **Build** -
-    Add actions, providers, or services 3. **Test** - `elizaos test`
+    1. **Scaffold** - `elizaos create my-plugin --template plugin` 2.
+    **Build** - Add actions, providers, or services 3. **Test** - `bun run
+    test`
   </Tab>
   <Tab title="Python">
     1. **Create** - `mkdir plugin-my-plugin && cd plugin-my-plugin` 2. **Build**
@@ -40,7 +41,7 @@ The CLI offers two plugin templates to get you started quickly:
 elizaos create
 
 # Or specify the name directly
-elizaos create my-plugin --type plugin
+elizaos create my-plugin --template plugin
 ```
 
 When creating a plugin, you'll be prompted to choose between:
@@ -108,14 +109,11 @@ cd plugin-my-plugin
 # Install dependencies (automatically done by CLI)
 bun install
 
-# Start development mode with hot reloading
-elizaos dev
-
-# Or start in production mode
-elizaos start
-
 # Build your plugin for distribution
 bun run build
+
+# Run tests
+bun run test
 ```
 
 The scaffolded plugin includes:
@@ -823,8 +821,8 @@ npx vitest --coverage
 # Watch mode with hot reloading
 bun run dev
 
-# Or with elizaOS CLI
-elizaos dev
+# Run the generated development script when present
+bun run dev
 ```
 
 ### 2. Building for Production

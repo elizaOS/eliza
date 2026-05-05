@@ -15,7 +15,7 @@ import type { AppManagerLike, AppsRouteContext } from "./apps-routes.js";
 import { handleAppsRoutes } from "./apps-routes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const upstreamAppsDir = path.resolve(here, "../../../../apps");
+const upstreamAppPluginsDir = path.resolve(here, "../../../../plugins");
 
 interface RecordedResponse {
   status: number;
@@ -112,17 +112,22 @@ function makeRegistryEntry({
   };
 }
 
-function readUpstreamHeroAppPackages(): Array<{
+function readUpstreamHeroAppPluginPackages(): Array<{
   dir: string;
   heroImage: string;
   name: string;
   slug: string;
 }> {
   return fs
-    .readdirSync(upstreamAppsDir)
+    .readdirSync(upstreamAppPluginsDir)
     .sort()
     .flatMap((entry) => {
-      const packageJsonPath = path.join(upstreamAppsDir, entry, "package.json");
+      if (!entry.startsWith("app-")) return [];
+      const packageJsonPath = path.join(
+        upstreamAppPluginsDir,
+        entry,
+        "package.json",
+      );
       if (!fs.existsSync(packageJsonPath)) return [];
       const packageJson = JSON.parse(
         fs.readFileSync(packageJsonPath, "utf8"),
@@ -226,7 +231,7 @@ function makeRouteContext(
 
 describe("GET /api/apps/hero/:slug", () => {
   it("serves a workspace hero asset even when the registry localPath is stale", async () => {
-    const packageDir = path.resolve(upstreamAppsDir, "app-browser");
+    const packageDir = path.resolve(upstreamAppPluginsDir, "app-browser");
     const heroPath = path.join(packageDir, "assets/hero.png");
     const expected = fs.readFileSync(heroPath);
 
@@ -250,7 +255,7 @@ describe("GET /api/apps/hero/:slug", () => {
   });
 
   it("serves every package-local upstream app hero asset", async () => {
-    const appPackages = readUpstreamHeroAppPackages();
+    const appPackages = readUpstreamHeroAppPluginPackages();
     expect(appPackages.length).toBeGreaterThan(0);
     const pluginManager = makePluginManager(
       appPackages.map((app) =>

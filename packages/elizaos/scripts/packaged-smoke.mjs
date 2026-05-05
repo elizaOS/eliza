@@ -129,38 +129,38 @@ function main() {
 
     runCli(smokeDir, workspaceDir, [
       "create",
-      "fullstack-demo",
+      "project-demo",
       "--template",
-      "fullstack-app",
+      "project",
       "--yes",
     ]);
-    const fullstackDir = path.join(workspaceDir, "fullstack-demo");
-    assertPathExists(path.join(fullstackDir, "package.json"));
-    assertPathExists(path.join(fullstackDir, ".elizaos", "template.json"));
-    assertPathExists(path.join(fullstackDir, "apps", "app", "package.json"));
-    assertPathExists(path.join(fullstackDir, "eliza"));
+    const projectDir = path.join(workspaceDir, "project-demo");
+    assertPathExists(path.join(projectDir, "package.json"));
+    assertPathExists(path.join(projectDir, ".elizaos", "template.json"));
+    assertPathExists(path.join(projectDir, "apps", "app", "package.json"));
+    assertPathExists(path.join(projectDir, "eliza"));
     if (shouldInstallGeneratedFullstack) {
-      run("bun", ["install"], { cwd: fullstackDir, env: fullstackInstallEnv });
+      run("bun", ["install"], { cwd: projectDir, env: fullstackInstallEnv });
       run("bun", ["run", "typecheck"], {
-        cwd: fullstackDir,
+        cwd: projectDir,
         env: fullstackInstallEnv,
       });
       run("bun", ["run", "build"], {
-        cwd: fullstackDir,
+        cwd: projectDir,
         env: fullstackInstallEnv,
       });
     }
-    runCli(smokeDir, fullstackDir, ["upgrade", "--check"]);
+    runCli(smokeDir, projectDir, ["upgrade", "--check"]);
 
     runCli(smokeDir, workspaceDir, [
       "create",
-      "deferred-fullstack",
+      "deferred-project",
       "--template",
       "fullstack-app",
       "--yes",
       "--skip-upstream",
     ]);
-    const deferredDir = path.join(workspaceDir, "deferred-fullstack");
+    const deferredDir = path.join(workspaceDir, "deferred-project");
     assertPathMissing(path.join(deferredDir, "eliza"));
     runCli(smokeDir, deferredDir, ["upgrade"]);
     assertPathExists(path.join(deferredDir, "eliza"));

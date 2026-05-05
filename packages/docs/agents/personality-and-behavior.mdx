@@ -696,7 +696,7 @@ LOAD_DOCS_ON_STARTUP=true           # Auto-load all docs on startup
 **4. Start Your Agent**
 
 ```bash
-elizaos start
+bun run dev
 ```
 
 The agent will automatically process all documents in the `docs` folder, creating embeddings and making the knowledge searchable.
@@ -837,7 +837,7 @@ Verify your knowledge is working:
 
 ```bash
 # Start your agent
-elizaos start
+bun run dev
 
 # Check logs for confirmation
 # You should see: "[INFO] Loaded 15 documents from docs folder on startup"

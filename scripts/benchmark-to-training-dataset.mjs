@@ -6,7 +6,7 @@
  * JSONL dataset that the native training backend accepts.
  *
  * Output shape (one per line — matches `GeminiTuningExample` expected by
- * apps/app-training/src/backends/native.ts `parseJsonlDataset`):
+ * plugins/app-training/src/backends/native.ts `parseJsonlDataset`):
  *   {
  *     "messages": [
  *       { "role": "system", "content": "<optional> " },
@@ -39,7 +39,7 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 
 const CASES_DIR = join(REPO_ROOT, "action-benchmark-report", "cases");
-const OUT_DIR = join(REPO_ROOT, "apps", "app-training", "datasets");
+const OUT_DIR = join(REPO_ROOT, "plugins", "app-training", "datasets");
 const OUT_JSONL = join(OUT_DIR, "action_planner_from_benchmark.jsonl");
 const OUT_META = join(OUT_DIR, "action_planner_from_benchmark.meta.json");
 

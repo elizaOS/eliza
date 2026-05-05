@@ -11,9 +11,10 @@ import {
   getFullstackReplacementEntries,
   getPluginReplacementEntries,
   renderTemplateTree,
+  resolveTemplateSourceDir,
   updateManagedFiles,
 } from "../scaffold.js";
-import type { ProjectTemplateMetadata } from "../types.js";
+import type { ProjectTemplateMetadata, TemplateDefinition } from "../types.js";
 
 const tempDirs: string[] = [];
 
@@ -63,6 +64,25 @@ describe("template value builders", () => {
           to === "cool-app-electrobun",
       ),
     ).toBe(true);
+  });
+
+  test("resolves the canonical project template to the fullstack source tree", () => {
+    const template: TemplateDefinition = {
+      aliases: ["fullstack-app"],
+      description: "Project",
+      id: "project",
+      kind: "project",
+      languages: ["typescript"],
+      name: "project",
+      version: 1,
+    };
+
+    expect(
+      resolveTemplateSourceDir({
+        template,
+        templatesDir: "/templates",
+      }),
+    ).toBe(path.join("/templates", "fullstack-app"));
   });
 });
 

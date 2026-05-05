@@ -1,58 +1,15 @@
 ---
 title: Containers
-description: Deploy and manage containers on elizaOS Cloud.
+description: Deploy and manage containers on Eliza Cloud.
 ---
 
-import { Callout, Tabs } from "@/docs/components";
+import { Callout } from "@/docs/components";
 
 # Containers
 
 <div className="status-badge status-stable">Stable</div>
 
-Deploy and manage containerized applications on AWS ECS.
-
-<Callout type="info">
-  Container deployments use AWS CloudFormation to provision dedicated EC2
-  instances. Deployments typically take 8-12 minutes to complete.
-</Callout>
-
-## Prerequisites
-
-Before deploying a container, you need to:
-
-1. Build and push your Docker image to ECR
-2. Get ECR credentials from `/api/v1/containers/credentials`
-
----
-
-## Get ECR Credentials
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/containers/credentials</span>
-</div>
-
-Get temporary ECR credentials to push your Docker image.
-
-### Response
-
-```json
-{
-  "success": true,
-  "credentials": {
-    "username": "AWS",
-    "password": "eyJwYXlsb2FkIjoiLi4uIiwiZGF0YWtleSI6Ii4uLiJ9",
-    "proxyEndpoint": "https://123456789.dkr.ecr.us-east-1.amazonaws.com",
-    "expiresAt": "2024-01-15T22:30:00Z"
-  },
-  "repository": {
-    "uri": "123456789.dkr.ecr.us-east-1.amazonaws.com/eliza-user-images",
-    "name": "eliza-user-images"
-  }
-}
-```
-
----
+Deploy and manage Docker containers. The current public API accepts a generic image reference in `image`; it is not limited to ECR images.
 
 ## List Containers
 
@@ -71,15 +28,17 @@ Get all containers for your organization.
   "data": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "my-agent-runtime",
-      "project_name": "my-project",
+      "name": "my-app",
+      "project_name": "my-app",
       "status": "running",
-      "url": "https://my-project.containers.elizacloud.ai",
-      "cpu": 1792,
-      "memory": 1792,
+      "image_tag": "ghcr.io/acme/my-app:latest",
+      "load_balancer_url": "https://my-app.example.com",
+      "cpu": 256,
+      "memory": 512,
       "port": 3000,
-      "architecture": "arm64",
-      "created_at": "2024-01-15T10:30:00Z"
+      "desired_count": 1,
+      "billing_status": "active",
+      "created_at": "2026-05-05T10:30:00Z"
     }
   ]
 }
@@ -94,69 +53,66 @@ Get all containers for your organization.
   <span className="path">/api/v1/containers</span>
 </div>
 
-Deploy a new container to AWS ECS. Returns immediately with a 202 Accepted status while deployment proceeds asynchronously.
+Deploy a new container. Returns a container record and polling instructions.
 
 ### Request
 
 ```json
 {
-  "name": "My Agent Runtime",
-  "project_name": "my-project",
-  "ecr_image_uri": "123456789.dkr.ecr.us-east-1.amazonaws.com/eliza-user-images:my-tag",
+  "name": "My App",
+  "project_name": "my-app",
+  "image": "ghcr.io/acme/my-app:latest",
   "port": 3000,
-  "cpu": 1792,
-  "memory": 1792,
+  "cpu": 256,
+  "memory": 512,
   "desired_count": 1,
-  "architecture": "arm64",
   "health_check_path": "/health",
   "environment_vars": {
-    "NODE_ENV": "production",
-    "LOG_LEVEL": "info"
+    "PORT": "3000",
+    "ELIZA_APP_ID": "uuid-abc123"
   }
 }
 ```
 
 ### Parameters
 
-| Parameter           | Type    | Required | Description                                         |
-| ------------------- | ------- | -------- | --------------------------------------------------- |
-| `name`              | string  | ✓        | Display name (max 100 chars)                        |
-| `project_name`      | string  | ✓        | Project identifier (max 50 chars, used in URL)      |
-| `ecr_image_uri`     | string  | ✓        | Full ECR image URI with tag                         |
-| `port`              | integer |          | Container port. Default: 3000                       |
-| `cpu`               | integer |          | CPU units (256-2048). Default: 1792                 |
-| `memory`            | integer |          | Memory in MB (256-2048). Default: 1792              |
-| `desired_count`     | integer |          | Number of instances (1-10). Default: 1              |
-| `architecture`      | string  |          | `arm64` or `x86_64`. Default: `arm64`               |
-| `health_check_path` | string  |          | Health check endpoint. Default: `/health`           |
-| `environment_vars`  | object  |          | Environment variables (max 50 vars, 32KB per value) |
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `name` | string | yes | Display name. |
+| `project_name` | string | yes | Stable project identifier. |
+| `image` | string | yes | Full image reference, for example `ghcr.io/owner/repo:tag`. |
+| `port` | integer | no | Container port. Default: 3000. |
+| `cpu` | integer | no | CPU units. Default: 256. |
+| `memory` | integer | no | Memory in MB. Default: 512. |
+| `desired_count` | integer | no | Must be 1 on the current shared Docker pool. |
+| `health_check_path` | string | no | Health check endpoint. Default: `/health`. |
+| `environment_vars` | object | no | String environment variables. |
+| `persist_volume` | boolean | no | Mount project-scoped persistent storage at `/data`. |
+| `use_hetzner_volume` | boolean | no | Use a Hetzner Cloud volume when persistent volumes are enabled and configured. |
+| `volume_size_gb` | integer | no | Declared volume size in GiB. Default: 10. |
 
-### Response (202 Accepted)
+### Response
 
 ```json
 {
   "success": true,
   "data": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "My Agent Runtime",
-    "project_name": "my-project",
-    "status": "pending"
+    "name": "My App",
+    "project_name": "my-app",
+    "status": "deploying",
+    "load_balancer_url": "https://my-app.example.com"
   },
-  "message": "Container deployment started. Poll GET /api/v1/containers/:id to check status.",
-  "creditsDeducted": 0.5,
-  "creditsRemaining": 49.5,
-  "stackName": "eliza-user-abc123-my-project",
   "polling": {
     "endpoint": "/api/v1/containers/550e8400-e29b-41d4-a716-446655440000",
-    "intervalMs": 10000,
-    "expectedDurationMs": 600000
+    "intervalMs": 5000,
+    "expectedDurationMs": 120000
   }
 }
 ```
 
 <Callout type="warning">
-  Container deployments require sufficient credits and are subject to
-  organization quotas.
+  Container deployments require sufficient credits or available earnings and are subject to organization quotas.
 </Callout>
 
 ---
@@ -170,16 +126,31 @@ Deploy a new container to AWS ECS. Returns immediately with a 202 Accepted statu
 
 Get container details and deployment status.
 
-### Container Status Values
+### Status Values
 
-| Status      | Description                             |
-| ----------- | --------------------------------------- |
-| `pending`   | Deployment initiated                    |
-| `building`  | Provisioning EC2 instance               |
-| `deploying` | CloudFormation stack creating           |
-| `running`   | Container is healthy and accessible     |
-| `failed`    | Deployment failed (check error message) |
-| `stopped`   | Container manually stopped              |
+| Status | Description |
+| ------ | ----------- |
+| `pending` | Deployment initiated. |
+| `deploying` | Image pull or container start in progress. |
+| `running` | Container is healthy and accessible. |
+| `failed` | Deployment failed; check `error_message` and logs. |
+| `stopped` | Container stopped. |
+| `suspended` | Billing or policy suspension. |
+
+---
+
+## Update Container
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-patch">PATCH</span>
+  <span className="path">/api/v1/containers/{"{id}"}</span>
+</div>
+
+Patch supports:
+
+- `environment_vars` to replace runtime environment variables.
+- `desired_count` to scale, currently only `1`.
+- `action: "restart"` to restart the container.
 
 ---
 
@@ -190,7 +161,7 @@ Get container details and deployment status.
   <span className="path">/api/v1/containers/{"{id}"}</span>
 </div>
 
-Stop and delete a container. This terminates the EC2 instance and deletes the CloudFormation stack.
+Stop and delete a container.
 
 ---
 
@@ -201,38 +172,13 @@ Stop and delete a container. This terminates the EC2 instance and deletes the Cl
   <span className="path">/api/v1/containers/{"{id}"}/logs</span>
 </div>
 
-Get container logs from CloudWatch.
+Get plain-text container logs.
 
 ### Query Parameters
 
-| Parameter | Type    | Description                    |
-| --------- | ------- | ------------------------------ |
-| `tail`    | integer | Number of lines (default: 100) |
-| `since`   | string  | Start time (ISO 8601)          |
-
-### Response
-
-```json
-{
-  "logs": [
-    {
-      "timestamp": "2024-01-15T10:30:00Z",
-      "message": "Server started on port 3000"
-    }
-  ]
-}
-```
-
----
-
-## Stream Logs
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/containers/{"{id}"}/logs/stream</span>
-</div>
-
-Stream logs in real-time using Server-Sent Events.
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `tail` | integer | Number of lines. Default: 200. |
 
 ---
 
@@ -243,63 +189,26 @@ Stream logs in real-time using Server-Sent Events.
   <span className="path">/api/v1/containers/{"{id}"}/metrics</span>
 </div>
 
-Get container resource metrics.
-
-### Response
-
-```json
-{
-  "cpu": {
-    "usage": 15.5,
-    "limit": 100
-  },
-  "memory": {
-    "usage": 256,
-    "limit": 512,
-    "unit": "MB"
-  },
-  "network": {
-    "rx": 1024000,
-    "tx": 512000
-  }
-}
-```
+Get container metrics.
 
 ---
 
-## Container Health
+## Quota
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/containers/{"{id}"}/health</span>
+  <span className="path">/api/v1/containers/quota</span>
 </div>
 
-Get container health status.
-
-### Response
-
-```json
-{
-  "status": "healthy",
-  "checks": {
-    "http": "passing",
-    "memory": "passing",
-    "disk": "passing"
-  }
-}
-```
+Get organization container quota.
 
 ---
 
-## Deployment Workflow
+## Credentials
 
-1. **Get ECR Credentials**: `GET /api/v1/containers/credentials`
-2. **Push Docker Image**: Use Docker CLI to push to ECR
-3. **Create Container**: `POST /api/v1/containers` with ECR image URI
-4. **Poll for Status**: `GET /api/v1/containers/:id` every 10 seconds
-5. **Access Your App**: Once status is `running`, use the provided URL
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/containers/credentials</span>
+</div>
 
-<Callout type="info">
-  Container logs are retained for 7 days. For production workloads, consider
-  setting up external log aggregation.
-</Callout>
+Create or fetch registry credential helper data when configured. Public container creation can also use any image reference that the target node can pull.

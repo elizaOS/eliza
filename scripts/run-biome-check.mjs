@@ -11,7 +11,7 @@ const BIOME_CRASHER_PATHS = new Set([
   "scripts/type-audit-report.md",
 ]);
 
-const BIOME_ROOTS = ["src", "scripts", "apps"];
+const BIOME_ROOTS = ["src", "scripts", "plugins", "packages/browser-bridge"];
 // Windows shell invocations hit command length limits quickly. Keep chunks
 // smaller there so `bunx biome check` can run reliably in pre-review hooks.
 const BIOME_CHUNK_SIZE = process.platform === "win32" ? 40 : 200;

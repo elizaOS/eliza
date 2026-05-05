@@ -9,6 +9,6 @@ export function version(): void {
   console.log(`  ${pc.dim("Version:")}  ${pc.green(packageJson.version)}`);
   console.log(`  ${pc.dim("Package:")}  ${packageJson.name}`);
   console.log();
-  console.log(pc.dim("  Create and upgrade elizaOS project templates."));
+  console.log(pc.dim("  Create and upgrade elizaOS projects and plugins."));
   console.log();
 }

@@ -4,10 +4,11 @@
   "repoUrl": "https://github.com/elizaos/eliza",
   "templates": [
     {
-      "id": "fullstack-app",
-      "name": "fullstack-app",
-      "description": "Create a Eliza-style fullstack app workspace backed by a local eliza checkout",
-      "kind": "fullstack-app",
+      "id": "project",
+      "name": "project",
+      "aliases": ["fullstack-app"],
+      "description": "Create an elizaOS project backed by a local eliza checkout",
+      "kind": "project",
       "version": 1,
       "languages": ["typescript"],
       "upstream": {

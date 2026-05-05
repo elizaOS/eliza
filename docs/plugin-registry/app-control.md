@@ -6,8 +6,6 @@ description: "Launch, close, and list running Eliza apps from agent chat."
 
 The App Control plugin lets Eliza agents manage apps through conversation.
 
-**Package:** `@elizaos/plugin-app-control`
-
 ## Overview
 
 This plugin exposes app lifecycle management to agents, backed by the `/api/apps` endpoints. Agents can launch installed apps, close running ones, and list what is currently active — all through natural language commands instead of the dashboard UI.
@@ -18,12 +16,6 @@ Key capabilities:
 - **Close apps** — stop a running app.
 - **List running apps** — see which apps are currently active.
 - **Chat-driven control** — manage the app lifecycle without leaving the conversation.
-
-## Installation
-
-```bash
-eliza plugins install app-control
-```
 
 ## Configuration
 

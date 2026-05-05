@@ -121,8 +121,7 @@ The bundling spike showed the agent loads but dies on:
   `assets/agent/` and `ElizaAgentService` extracts them with the right
   parent/child relative path PGlite expects via its `new URL("../X", ...)`
   resolution.
-- **Plugin resolution.** Core plugins (`@elizaos/plugin-shell`,
-  `@elizaos/plugin-app-control`, `@elizaos/plugin-commands`, etc.) are looked up by package name
+- **Plugin resolution.** Core plugins such as shell and command handling are looked up by package name
   at runtime, not bundled. They need to ship as a flattened `node_modules/@elizaos/plugin-*` tree
   next to the bundle, or the runtime needs a mobile-aware loader that imports plugins from a
   manifest.

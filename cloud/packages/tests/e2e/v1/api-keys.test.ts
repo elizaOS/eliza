@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
 
+type CreateApiKeyResponse = {
+  apiKey?: {
+    id?: string;
+    key_prefix?: string;
+    key?: string;
+  };
+  plainKey?: string;
+};
+
+type ListApiKeysResponse = {
+  keys?: Array<Record<string, unknown>>;
+};
+
 /**
  * API Keys E2E Tests
  *
@@ -44,6 +57,53 @@ describe("API Keys API", () => {
     expect(response.status).toBe(400);
     const body = (await response.json()) as any;
     expect(body.error).toBeTruthy();
+  });
+
+  test("POST exposes one-time secret but GET only returns redacted key metadata", async () => {
+    const keyName = `redaction-${Date.now()}`;
+    const createResponse = await api.post(
+      "/api/v1/api-keys",
+      {
+        name: keyName,
+        description: "redaction regression test",
+        permissions: ["test:read"],
+        rate_limit: 100,
+      },
+      { authenticated: true },
+    );
+
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json()) as CreateApiKeyResponse;
+    const createdId = created.apiKey?.id;
+    const plainKey = created.plainKey;
+    const keyPrefix = created.apiKey?.key_prefix;
+
+    expect(typeof createdId).toBe("string");
+    expect(typeof plainKey).toBe("string");
+    expect(plainKey).toStartWith("eliza_");
+    expect(keyPrefix).toBe(plainKey?.slice(0, keyPrefix?.length));
+    expect(created.apiKey).not.toHaveProperty("key");
+
+    try {
+      const listResponse = await api.get("/api/v1/api-keys", {
+        authenticated: true,
+      });
+      expect(listResponse.status).toBe(200);
+
+      const listed = (await listResponse.json()) as ListApiKeysResponse;
+      const listedKey = listed.keys?.find((candidate) => candidate.id === createdId);
+
+      expect(listedKey).toBeDefined();
+      expect(listedKey).not.toHaveProperty("key");
+      expect(listedKey).not.toHaveProperty("plainKey");
+      expect(listedKey).not.toHaveProperty("key_hash");
+      expect(listedKey?.key_prefix).toBe(keyPrefix);
+      expect(JSON.stringify(listedKey)).not.toContain(plainKey!);
+    } finally {
+      if (createdId) {
+        await api.del(`/api/v1/api-keys/${createdId}`, { authenticated: true });
+      }
+    }
   });
 
   test("DELETE /api/v1/api-keys/[id] requires authentication", async () => {

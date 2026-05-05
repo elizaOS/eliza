@@ -1,10 +1,10 @@
 # __APP_NAME__
 
-A Eliza-style fullstack app workspace built on [elizaOS](https://github.com/elizaos/eliza).
+An elizaOS project built on [elizaOS](https://github.com/elizaos/eliza).
 
 ## Layout
 
-- `apps/app` — the branded React + Capacitor + Electrobun shell
+- `apps/app` — the branded React + Capacitor + Electrobun app package
 - `eliza` — upstream elizaOS source, managed as a git submodule
 - `test` — thin test helpers that re-export the upstream app-core harness
 

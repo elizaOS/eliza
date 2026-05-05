@@ -48,7 +48,6 @@ jobs:
             /bunfig.toml
             /tsconfig.json
             /.github/actions/setup-bun-workspace/**
-            apps/
             packages/
             patches/
             scripts/

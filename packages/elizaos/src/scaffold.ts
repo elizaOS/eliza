@@ -279,7 +279,9 @@ export function resolveTemplateSourceDir(options: {
   template: TemplateDefinition;
   templatesDir: string;
 }): string {
-  return path.join(options.templatesDir, options.template.id);
+  const sourceTemplateId =
+    options.template.id === "project" ? "fullstack-app" : options.template.id;
+  return path.join(options.templatesDir, sourceTemplateId);
 }
 
 function copyRenderedTreeInternal(

@@ -663,6 +663,12 @@ function routeTargetsProvider(
   if (!route?.backend) return false;
   const directProvider = DIRECT_PROVIDER_BY_BACKEND[route.backend];
   if (directProvider === providerId) return true;
+  if (
+    providerId === "anthropic-subscription" &&
+    route.backend === "anthropic"
+  ) {
+    return true;
+  }
   return providerId === "openai-codex" && route.backend === "openai";
 }
 

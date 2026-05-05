@@ -29,11 +29,11 @@ const REPO_ROOT = resolve(__dirname, "..");
 // In-benchmark action set: lifeops + agent-level actions wired into the
 // runtime factory the benchmark uses. Other paths are out of scope.
 const IN_SCOPE_ROOTS = [
-  "apps/app-lifeops/src/actions",
-  "apps/app-lifeops/src/travel-time",
-  "apps/app-lifeops/src/dossier",
-  "apps/app-lifeops/src/followup/actions",
-  "apps/app-lifeops/src/website-blocker/chat-integration/actions",
+  "plugins/app-lifeops/src/actions",
+  "plugins/app-lifeops/src/travel-time",
+  "plugins/app-lifeops/src/dossier",
+  "plugins/app-lifeops/src/followup/actions",
+  "plugins/app-lifeops/src/website-blocker/chat-integration/actions",
   "packages/agent/src/actions",
 ];
 

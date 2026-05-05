@@ -57,5 +57,7 @@ export function getTemplates(): TemplateDefinition[] {
 }
 
 export function getTemplateById(id: string): TemplateDefinition | undefined {
-  return loadManifest().templates.find((template) => template.id === id);
+  return loadManifest().templates.find(
+    (template) => template.id === id || template.aliases?.includes(id),
+  );
 }

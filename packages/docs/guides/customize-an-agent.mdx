@@ -187,18 +187,19 @@ Let's give Shakespeare a proper avatar.
 Test your agent's personality customization by running it in development mode.
 
 ```bash Terminal
-elizaos dev
+bun run dev
 ```
 
 <Note>
-  `elizaos dev` is like `elizaos start` but with enhanced logging and hot
-  reload, perfect for debugging and testing changes in real-time.
+  The `elizaos` CLI creates and upgrades workspaces. Running the app is handled
+  by generated package scripts such as `bun run dev`.
 </Note>
 
 Go to `http://localhost:3000` in your browser and start chatting with Shakespeare. You should now get eloquent, Shakespearean responses instead of the default Eliza personality.
 
 <Note>
-  To use a different port, run `elizaos dev --port 8080` (or any port number).
+  To use a different port, use the port option or environment variable supported
+  by your generated project script.
 </Note>
 
 <img
@@ -267,7 +268,7 @@ Need Discord credentials? Follow these steps:
 Restart your agent to load all the changes.
 
 ```bash Terminal
-elizaos start
+bun run dev
 ```
 
 Your Shakespeare bot is now live! Invite it to your Discord server and try chatting.

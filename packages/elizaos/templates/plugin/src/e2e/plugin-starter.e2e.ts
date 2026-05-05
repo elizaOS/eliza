@@ -15,7 +15,7 @@ import type { Content, HandlerCallback, IAgentRuntime, State, TestSuite } from "
  *
  * HOW E2E TESTS WORK:
  * -------------------
- * 1. Tests are executed by the elizaOS test runner using `elizaos test e2e`
+ * 1. Tests are executed by the template test script using `bun run test:e2e`
  * 2. Each test receives a real runtime instance with the plugin loaded
  * 3. Tests can interact with the runtime just like in production
  * 4. Tests throw errors to indicate failure (no assertion library needed)

@@ -439,8 +439,8 @@ Use ngrok or similar tools to expose your local server:
 # Install ngrok
 npm install -g ngrok
 
-# Start your agent
-elizaos start
+# Start your generated project
+bun run dev
 
 # In another terminal, expose port 3000
 ngrok http 3000
@@ -712,20 +712,15 @@ export const webhookPlugin: Plugin = {
 
 #### Running Tests
 
-Use the ElizaOS test command to run your webhook tests:
+Use generated package scripts to run your webhook tests:
 
 ```bash
-# Run component tests only
-elizaos test --type component
-
-# Run e2e tests only
-elizaos test --type e2e
-
 # Run all tests
-elizaos test
+bun run test
 
-# Run tests for specific plugin
-elizaos test --name "Webhook Integration"
+# Run component or e2e scripts when your package defines them
+bun run test:component
+bun run test:e2e
 ```
 
 ## See Also

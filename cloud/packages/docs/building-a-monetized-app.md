@@ -1,11 +1,24 @@
 # Building a monetized app on Eliza Cloud
 
-End-to-end recipe: register an app, set markup, optionally take an
-affiliate cut, deploy as a container, and have the container's hosting
-bill paid out of your accumulated app earnings before any cash credits
-get touched. Cashout to elizaOS tokens whenever you want.
+End-to-end recipe: register an Eliza Cloud app, set creator markup,
+forward user chat through the app-scoped endpoint, deploy as a
+container, and have the container's hosting bill paid out of your
+accumulated app earnings before cash credits are touched. Cashout to
+elizaOS tokens whenever you want.
 
-This is the same loop the [`edad-chat`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) reference app demonstrates. New app builds should use the app-scoped chat endpoint, `/api/v1/apps/<appId>/chat`, so creator markup is tied directly to the registered app.
+This is the same loop the [`edad-chat`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat)
+reference app demonstrates. New app builds should use the app-scoped
+chat endpoint, `/api/v1/apps/<appId>/chat`, so creator markup is tied
+directly to the registered Cloud app.
+
+Terminology:
+
+- **Project**: the deployable product workspace. Containers use
+  `project_name` as the stable deployment identifier.
+- **App plugin**: an `@elizaos/app-*` package loaded inside Eliza.
+- **Eliza Cloud app**: the Cloud app record created by `POST /api/v1/apps`;
+  this is the ID used for hosting, marketplace/domain settings, chat
+  routing, analytics, and monetization.
 
 ---
 
@@ -16,18 +29,19 @@ user chats with your app
   ↓
 eliza cloud charges THE USER's org credit balance for:
   base inference cost
-  + your inference markup %                  → your redeemable_earnings
-  + (optional) affiliate %                   → affiliate's redeemable_earnings
+  + your inference markup %                  -> your redeemable_earnings
   ↓
 your container daily-billing fires:
-  debit your earnings up to the bill         → spent on hosting (free!)
+  debit your earnings up to the bill         -> spent on hosting
   fall through to your org credits if needed
   ↓
 you cashout earnings to elizaOS tokens at /dashboard/earnings any time
 ```
 
-The pay-as-you-go split is automatic — no config, no settings, no
-toggle. Earnings always pay first, credits cover any remainder.
+The pay-as-you-go split is controlled by the organization billing
+setting `payAsYouGoFromEarnings`. It is on by default: earnings pay
+first, credits cover any remainder. When off, hosting comes purely from
+credits and earnings stay available for token cashout.
 
 ---
 
@@ -41,10 +55,11 @@ curl -X POST https://www.elizacloud.ai/api/v1/apps \
   -H "content-type: application/json" \
   -d '{
     "name": "MyApp",
-    "app_url": "https://my.app",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
     "skipGitHubRepo": true
   }'
-# → { "id": "<APP_ID>", ... }
+# -> { "success": true, "app": { "id": "<APP_ID>", ... }, "apiKey": ... }
 ```
 
 Or use the SDK:
@@ -53,54 +68,75 @@ Or use the SDK:
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 
 const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZA_CLOUD_API_KEY });
-const app = await cloud.routes.postApiV1Apps({
-  json: { name: "MyApp", app_url: "https://my.app", skipGitHubRepo: true },
+const { app, apiKey } = await cloud.routes.postApiV1Apps<{
+  app: { id: string };
+  apiKey: unknown;
+}>({
+  json: {
+    name: "MyApp",
+    app_url: "https://placeholder.invalid",
+    allowed_origins: ["https://placeholder.invalid"],
+    skipGitHubRepo: true,
+  },
 });
 ```
 
+Use a placeholder URL if the container is not deployed yet. Patch
+`app_url` and `allowed_origins` to the real container URL after deploy.
+
 ### 2. Set your inference markup %
 
-The markup is the percentage you take on every chat your users send.
-At 100% markup, every dollar of inference your users pay generates a
-dollar of your redeemable earnings.
+The markup is the percentage you take on every app-scoped chat your
+users send. At 100% markup, every dollar of inference your users pay
+generates a dollar of your redeemable earnings.
 
 Set it from the dashboard at `/dashboard/apps/<id>?tab=monetization`,
 or through the API:
 
 ```bash
 curl -X PUT "$ELIZA_CLOUD_BASE_URL/api/v1/apps/<APP_ID>/monetization" \
-  -H "x-api-key: $ELIZAOS_CLOUD_API_KEY" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "content-type: application/json" \
   -d '{"monetizationEnabled":true,"inferenceMarkupPercentage":100,"purchaseSharePercentage":10}'
 ```
+
+Current field names are flat:
+
+- `monetizationEnabled`: enable/disable creator earnings.
+- `inferenceMarkupPercentage`: markup for inference calls, 0-1000.
+- `purchaseSharePercentage`: purchase share percentage, 0-100.
 
 ### 3. (Optional) Create an affiliate code
 
 Create an affiliate code at
 [`/dashboard/affiliates`](https://www.elizacloud.ai/dashboard/affiliates)
-and pass it as `x-affiliate-code` on every request. The affiliate share
-lands in the code holder's redeemable earnings on **every chat**, not
-just for users who signed up via the code — works for new and existing
-users alike (see `packages/lib/services/ai-billing.ts:192,277`).
+and pass it as `X-Affiliate-Code` on implemented generic chat/message
+API requests. The affiliate share lands in the code holder's redeemable
+earnings on those requests, not just for users who signed up via the
+code.
 
 > **Affiliate vs. referral** — these are two different programs:
-> - `x-affiliate-code` (header, per-request) → markup % on every chat,
->   regardless of who the user is. This is what edad-chat uses.
-> - `?ref=CODE` (signup link) → 50/40/10 split on the new user's
->   *purchases* (Stripe / x402) plus signup bonus credits. Doesn't
->   touch per-request earnings. See `docs/referrals.md` for that
->   flow specifically.
+> - `X-Affiliate-Code` (header, per-request) -> affiliate markup on
+>   implemented generic chat/message routes.
+> - `?ref=CODE` (signup link) -> purchase referral split plus signup
+>   bonus credits. It does not touch per-request app earnings. See
+>   `docs/referrals.md` for that flow specifically.
 >
 > Same transaction never runs both — they're separate revenue streams.
 
+Current implementation note: `POST /api/v1/apps/<appId>/chat` does not
+currently read `X-Affiliate-Code`. Forwarding the header is harmless, but
+affiliate earnings on app-scoped chat need product/API confirmation.
+
 ### 4. Forward chats with the app-scoped endpoint
 
-Every chat request your app makes upstream needs:
+Every user-facing chat request your app makes upstream needs the user's
+Eliza Cloud bearer token:
 
 | Header | Value |
 |---|---|
 | `Authorization` | `Bearer <user's Steward JWT>` |
-| `x-affiliate-code` | (optional) the affiliate code from step 3 |
+| `X-Affiliate-Code` | Optional; implemented on generic chat/message routes, app-scoped support needs confirmation |
 
 Hand-rolled fetch:
 
@@ -110,9 +146,9 @@ const res = await fetch(`${CLOUD_URL}/api/v1/apps/${APP_ID}/chat`, {
   headers: {
     "content-type": "application/json",
     authorization: `Bearer ${userToken}`,
-    ...(AFFILIATE_CODE ? { "x-affiliate-code": AFFILIATE_CODE } : {}),
+    ...(AFFILIATE_CODE ? { "X-Affiliate-Code": AFFILIATE_CODE } : {}),
   },
-  body: JSON.stringify({ model, messages }),
+  body: JSON.stringify({ model, messages, stream: false }),
 });
 ```
 
@@ -125,33 +161,35 @@ const cloud = new ElizaCloudClient({
 });
 const res = await cloud.routes.postApiV1AppsByIdChatRaw({
   pathParams: { id: APP_ID },
-  headers: AFFILIATE_CODE ? { "x-affiliate-code": AFFILIATE_CODE } : undefined,
-  json: { model, messages },
+  headers: AFFILIATE_CODE ? { "X-Affiliate-Code": AFFILIATE_CODE } : undefined,
+  json: { model, messages, stream: false },
 });
 ```
 
-The SDK throws `CloudApiError` (with `statusCode` + `errorBody`) on
+The SDK throws `CloudApiError` with `statusCode` and `errorBody` on
 upstream failures. `InsufficientCreditsError` is a subclass thrown when
-the user's org balance is empty — surface a "top up your balance"
-message and link them to `/dashboard/billing`.
+the user's org balance is empty. Surface a "top up your balance" message
+and link them to `/dashboard/billing`.
 
 ### 5. Deploy as a container
 
 The minute you deploy your app on Eliza Cloud's container infra, the
-self-sustaining loop kicks in:
+self-sustaining loop can kick in:
 
 ```bash
 # build + push to GHCR, Docker Hub, or any registry the cloud can pull from
 docker build -t myapp:latest .
 docker push <registry>/myapp:latest
+```
 
-# deploy via the SDK
-const container = await cloud.createContainer({
+```ts
+const { data: container } = await cloud.createContainer({
   name: "myapp",
   project_name: "myapp",
   port: 3000,
   cpu: 256,
   memory: 512,
+  desired_count: 1,
   image: "<registry>/myapp:latest",
   health_check_path: "/health",
   environment_vars: {
@@ -163,22 +201,40 @@ const container = await cloud.createContainer({
 });
 ```
 
+Then patch the Cloud app with the real container URL:
+
+```ts
+await cloud.routes.patchApiV1AppsById({
+  pathParams: { id: app.id },
+  json: {
+    app_url: container.load_balancer_url,
+    allowed_origins: [container.load_balancer_url],
+  },
+});
+```
+
 From here on, daily container billing automatically:
 
-1. Calculates the day's hosting cost (CPU + memory * hourly rate)
-2. Tries to debit it from your accumulated `redeemable_earnings`
-3. Falls through to `organizations.credit_balance` if earnings ran out
-4. Suspends the container only when **both** pools can't cover the bill
-
-That's the full loop. No knobs to turn.
+1. Calculates the day's hosting cost.
+2. Tries to debit it from your accumulated `redeemable_earnings` when
+   `payAsYouGoFromEarnings` is enabled.
+3. Falls through to `organizations.credit_balance` if earnings ran out.
+4. Suspends the container only when the configured funding sources can't
+   cover the bill.
 
 ### 6. Cashout
 
-When you want to convert your earned credits into elizaOS tokens, hit
+When you want to convert your earnings into elizaOS tokens, hit
 `/dashboard/earnings` and click "Redeem for elizaOS". Your wallet
 receives tokens on Base / Solana / Ethereum / BNB.
 
-The "Already Redeemed" card on that page also shows a **"Spent on hosting"** sub-line so you can see, at a glance, how much of your earnings the container loop has consumed vs how much you've withdrawn.
+API cashout uses `POST /api/v1/redemptions` with `pointsAmount`,
+`network`, and `payoutAddress`. `pointsAmount` is an integer where 100
+points equals $1.00.
+
+The "Already Redeemed" card on that page also shows a "Spent on hosting"
+sub-line so you can see how much of your earnings the container loop has
+consumed vs how much you've withdrawn.
 
 ---
 
@@ -188,11 +244,10 @@ The "Already Redeemed" card on that page also shows a **"Spent on hosting"** sub
 endpoint. You get:
 
 - High-level helpers for the common stuff (`createChatCompletion`,
-  `createContainer`, `getCreditsBalance`, ...)
-- Typed `cloud.routes.*` for everything the helpers don't cover yet —
-  generated from the Next.js route tree, so coverage stays in sync
+  `createContainer`, `getCreditsBalance`, ...).
+- Typed `cloud.routes.*` for everything the helpers don't cover yet.
 - Per-request bearer tokens, sticky default headers, automatic JSON
-  parsing, typed errors
+  parsing, typed errors.
 
 For a complete worked example see
 [`apps/edad-chat/server.ts`](https://github.com/elizaOS/cloud-mini-apps/blob/main/apps/edad-chat/server.ts)
@@ -204,9 +259,12 @@ in the cloud-mini-apps repo.
 
 | Concern | File |
 |---|---|
-| App registration + markup config | `app/api/v1/apps/route.ts`, `app/api/v1/apps/[id]/route.ts` |
+| App registration | `apps/api/v1/apps/route.ts` |
+| App update | `apps/api/v1/apps/[id]/route.ts` |
+| Monetization settings | `apps/api/v1/apps/[id]/monetization/route.ts` |
+| App-scoped chat | `apps/api/v1/apps/[id]/chat/route.ts` |
 | Affiliate code creation + lookup | `packages/lib/services/affiliates.ts` |
 | Per-chat earnings ledger entry | `packages/lib/services/redeemable-earnings.ts` |
-| Container daily billing (the pay-as-you-go split) | `app/api/cron/container-billing/route.ts` |
-| Earnings → org credits conversion | `RedeemableEarningsService.convertToCredits` |
-| Token redemption / cashout | `app/api/v1/redemptions/*` |
+| Container daily billing | `apps/api/cron/container-billing/route.ts` |
+| Earnings -> org credits conversion | `RedeemableEarningsService.convertToCredits` |
+| Token redemption / cashout | `apps/api/v1/redemptions/*` |
