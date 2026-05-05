@@ -182,11 +182,11 @@ const nativeStubs = {
 // runtime load set, so they don't try to register at boot.
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
-  // Static `import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge"`
-  // in eliza.ts pulls in puppeteer/Chromium plumbing transitively. Mobile
-  // doesn't run a headless browser, and the runtime's plugin filter strips
-  // browser-bridge from the load set anyway, so a null stub satisfies the
-  // top-level resolution without dragging in 200 MB of native deps.
+  // Browser bridge can still be resolved through workspace/plugin fallback
+  // paths when core plugins are collected. Mobile doesn't run a headless
+  // browser, and the runtime's plugin filter strips browser-bridge from the
+  // load set anyway, so a null stub prevents Chromium plumbing from entering
+  // the bundle if that optional resolution path is reached.
   "@elizaos/plugin-browser-bridge": path.join(stubsDir, "null-plugin.cjs"),
   // Server-side connectors that app-lifeops dynamically imports inside
   // its service mixins. Mobile never reaches the runtime path that

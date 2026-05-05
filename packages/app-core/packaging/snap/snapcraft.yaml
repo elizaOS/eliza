@@ -282,6 +282,23 @@ parts:
       # trying to build the (now-removed) plugin-agent-orchestrator from source.
       bun install --ignore-scripts
 
+      # `bun install --ignore-scripts` skips the npm bun package postinstall,
+      # leaving node_modules/bun/bin/bun as a non-executable JS shim. Turbo
+      # package builds can then fail with "Exec format error" when they spawn
+      # that package binary instead of the staged Bun runtime.
+      install_js=""
+      if [ -f node_modules/bun/install.js ]; then
+        install_js="node_modules/bun/install.js"
+      elif [ -d node_modules/.bun ]; then
+        install_js="$(find node_modules/.bun -maxdepth 4 -path '*/bun@*/node_modules/bun/install.js' -print -quit 2>/dev/null)"
+      fi
+      if [ -n "$install_js" ] && [ -f "$install_js" ]; then
+        echo "Running bun postinstall: $install_js"
+        (cd "$(dirname "$install_js")" && node install.js)
+      else
+        echo "No bun/install.js found; continuing with staged Bun runtime"
+      fi
+
       # Rehydrate published-only workspace deps that Vite and app-core imports
       # still need after the destructive workspace rewrite above.
       if [ -f scripts/install-published-workspace-fallback-deps.sh ]; then

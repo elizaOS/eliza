@@ -84,9 +84,6 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
-import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
-import * as pluginPdf from "@elizaos/plugin-pdf";
 import {
   formatError,
   isElizaSettingsDebugEnabled,
@@ -382,9 +379,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
     : {}),
   ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
   // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
-  "@elizaos/plugin-agent-skills": pluginAgentSkills,
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
-  "@elizaos/plugin-pdf": pluginPdf,
   ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
   ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
@@ -396,7 +391,6 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
   // omitted from the static map — see the comment near the top of this file.
   // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
-  "@elizaos/plugin-browser-bridge": pluginBrowserBridge,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
 });
