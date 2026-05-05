@@ -47,7 +47,7 @@ export const webSearch: Action = {
     ],
     suppressPostActionContinuation: true,
     description: "Perform a web search to find information related to the message.",
-    descriptionCompressed: "perform web search find information relat message",
+    descriptionCompressed: "Search web via Tavily; return ranked links.",
     validate: async (runtime: IAgentRuntime, _message: Memory) => {
         const key = runtime.getSetting("TAVILY_API_KEY");
         return typeof key === "string" && key.length > 0;
@@ -60,9 +60,6 @@ export const webSearch: Action = {
         callback?: HandlerCallback,
         _responses?: Memory[]
     ): Promise<ActionResult | undefined> => {
-        elizaLogger.debug({ messageId: message.id }, "WEB_SEARCH composeState");
-        await runtime.composeState(message);
-
         const userId = runtime.agentId;
         elizaLogger.debug({ userId }, "WEB_SEARCH user");
 
@@ -133,77 +130,6 @@ export const webSearch: Action = {
                 name: "{{agentName}}",
                 content: {
                     text: "Here are the details I found about the iPhone 16 release:",
-                    action: "WEB_SEARCH",
-                },
-            },
-        ],
-        [
-            {
-                name: "{{user1}}",
-                content: {
-                    text: "What is the schedule for the next FIFA World Cup?",
-                },
-            },
-            {
-                name: "{{agentName}}",
-                content: {
-                    text: "Here is the schedule for the next FIFA World Cup:",
-                    action: "WEB_SEARCH",
-                },
-            },
-        ],
-        [
-            {
-                name: "{{user1}}",
-                content: { text: "Check the latest stock price of Tesla." },
-            },
-            {
-                name: "{{agentName}}",
-                content: {
-                    text: "Here is the latest stock price of Tesla I found:",
-                    action: "WEB_SEARCH",
-                },
-            },
-        ],
-        [
-            {
-                name: "{{user1}}",
-                content: {
-                    text: "What are the current trending movies in the US?",
-                },
-            },
-            {
-                name: "{{agentName}}",
-                content: {
-                    text: "Here are the current trending movies in the US:",
-                    action: "WEB_SEARCH",
-                },
-            },
-        ],
-        [
-            {
-                name: "{{user1}}",
-                content: {
-                    text: "What is the latest score in the NBA finals?",
-                },
-            },
-            {
-                name: "{{agentName}}",
-                content: {
-                    text: "Here is the latest score from the NBA finals:",
-                    action: "WEB_SEARCH",
-                },
-            },
-        ],
-        [
-            {
-                name: "{{user1}}",
-                content: { text: "When is the next Apple keynote event?" },
-            },
-            {
-                name: "{{agentName}}",
-                content: {
-                    text: "Here is the information about the next Apple keynote event:",
                     action: "WEB_SEARCH",
                 },
             },
