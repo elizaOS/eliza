@@ -44,8 +44,13 @@ const DEFAULT_AGENT_DIR = join(homedir(), CONFIG_DIR_NAME);
  * @param parentDirName - The parent directory name (should match)
  * @returns Array of validation error messages
  */
-function validateName(name: string, parentDirName: string): string[] {
+export function validateName(name: string, parentDirName: string): string[] {
   const errors: string[] = [];
+
+  if (name.trim() === "") {
+    errors.push("name is required");
+    return errors;
+  }
 
   if (name !== parentDirName) {
     errors.push(
@@ -80,7 +85,7 @@ function validateName(name: string, parentDirName: string): string[] {
  * @param description - The skill description to validate
  * @returns Array of validation error messages
  */
-function validateDescription(description: string | undefined): string[] {
+export function validateDescription(description: string | undefined): string[] {
   const errors: string[] = [];
 
   if (!description || description.trim() === "") {
@@ -101,14 +106,20 @@ function validateDescription(description: string | undefined): string[] {
  * @param source - Source identifier for this skill
  * @returns Loaded skill and diagnostics
  */
-function loadSkillFromFile(
+export function loadSkill(
   filePath: string,
   source: string,
-): { skill: Skill | null; diagnostics: SkillDiagnostic[] } {
+): {
+  skill: Skill | null;
+  frontmatter: SkillFrontmatter;
+  body: string;
+  diagnostics: SkillDiagnostic[];
+} {
   const diagnostics: SkillDiagnostic[] = [];
 
   const rawContent = readFileSync(filePath, "utf-8");
-  const { frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent);
+  const { frontmatter, body } =
+    parseFrontmatter<SkillFrontmatter>(rawContent);
   const skillDir = dirname(filePath);
   const parentDirName = basename(skillDir);
 
@@ -119,7 +130,10 @@ function loadSkillFromFile(
   }
 
   // Use name from frontmatter, or fall back to parent directory name
-  const name = frontmatter.name || parentDirName;
+  const name =
+    frontmatter.name === undefined || frontmatter.name === null
+      ? parentDirName
+      : String(frontmatter.name);
 
   // Validate name
   const nameErrors = validateName(name, parentDirName);
@@ -129,7 +143,7 @@ function loadSkillFromFile(
 
   // Don't load the skill if description is completely missing
   if (!frontmatter.description || frontmatter.description.trim() === "") {
-    return { skill: null, diagnostics };
+    return { skill: null, frontmatter, body, diagnostics };
   }
 
   const provenance = resolveSkillProvenance(frontmatter);
@@ -144,8 +158,18 @@ function loadSkillFromFile(
       disableModelInvocation: frontmatter["disable-model-invocation"] === true,
       ...(provenance ? { provenance } : {}),
     },
+    frontmatter,
+    body,
     diagnostics,
   };
+}
+
+function loadSkillFromFile(
+  filePath: string,
+  source: string,
+): { skill: Skill | null; diagnostics: SkillDiagnostic[] } {
+  const { skill, diagnostics } = loadSkill(filePath, source);
+  return { skill, diagnostics };
 }
 
 /**
