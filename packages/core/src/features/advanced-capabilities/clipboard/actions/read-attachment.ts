@@ -18,7 +18,7 @@ import { maybeStoreTaskClipboardItem } from "../services/taskClipboardPersistenc
 
 const MAX_ATTACHMENT_ANSWER_CHARS = 32_000;
 const ATTACHMENT_REQUEST_PATTERN =
-	/\b(?:attachment|file|document|doc|pdf|image|screenshot|picture|photo|audio|voice|recording|song|video|media|transcript)\b/i;
+	/\b(?:attachment|file|document|doc|pdf|image|screenshot|picture|photo|audio|voice|recording|song|video|media|transcript|url|link|webpage|website|page|article)\b/i;
 type AttachmentRecord = Awaited<ReturnType<typeof readAttachmentRecords>>[number];
 
 function shouldShowAttachmentRecord(messageText: string): boolean {
@@ -155,9 +155,15 @@ async function answerAttachmentRequest(params: {
 
 export const readAttachmentAction: Action = {
 	name: "READ_ATTACHMENT",
-	similes: ["OPEN_ATTACHMENT", "INSPECT_ATTACHMENT"],
+	similes: [
+		"OPEN_ATTACHMENT",
+		"INSPECT_ATTACHMENT",
+		"READ_URL",
+		"OPEN_URL",
+		"READ_WEBPAGE",
+	],
 	description:
-		"Read current or recent attachments using extracted text, transcripts, or media descriptions. Set addToClipboard=true to keep the result in bounded task clipboard state.",
+		"Read current or recent attachments and link previews using extracted text, transcripts, page content, or media descriptions. Set addToClipboard=true to keep the result in bounded task clipboard state.",
 	suppressPostActionContinuation: true,
 	validate: async (runtime, message) => {
 		const isAttachmentRequest =

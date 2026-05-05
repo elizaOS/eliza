@@ -179,6 +179,7 @@ export const transcribeMedia: Action = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
+	suppressPostActionContinuation: true,
 	validate: async (_runtime, message): Promise<boolean> => {
 		if (message.content.source !== "discord") {
 			return false;
