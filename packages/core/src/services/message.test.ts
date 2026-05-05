@@ -143,6 +143,14 @@ describe("extractPlannerActionNames — tolerant of malformed action XML", () =>
 			}),
 		).toEqual(["SPAWN_AGENT", "REPLY"]);
 	});
+
+	it("strips common list bullets from planner action identifiers", () => {
+		expect(
+			extractPlannerActionNames({
+				actions: "- REPLY, 1. READ_ATTACHMENT, 2) TRANSCRIBE_MEDIA",
+			}),
+		).toEqual(["REPLY", "READ_ATTACHMENT", "TRANSCRIBE_MEDIA"]);
+	});
 });
 
 describe("DefaultMessageService action-result cache lifecycle", () => {
@@ -244,24 +252,24 @@ describe("shouldRunMetadataActionRescue", () => {
 });
 
 describe("shouldSkipDocumentProviderRescue", () => {
-	it("skips uploaded-document rescue for fresh URL lookups without attachments", () => {
+	it("does not skip uploaded-document rescue for failed URL lookups without attachments", () => {
 		const message = {
 			content: {
 				text: "open https://example.com/ and tell me the page title only",
 			},
 		} as Memory;
 
-		expect(shouldSkipDocumentProviderRescue(message)).toBe(true);
+		expect(shouldSkipDocumentProviderRescue(message)).toBe(false);
 	});
 
-	it("skips uploaded-document rescue for URL turns even when they mention files", () => {
+	it("does not skip uploaded-document rescue for URL turns until enrichment adds an attachment", () => {
 		const message = {
 			content: {
 				text: "read the uploaded file at https://example.com/file.txt",
 			},
 		} as Memory;
 
-		expect(shouldSkipDocumentProviderRescue(message)).toBe(true);
+		expect(shouldSkipDocumentProviderRescue(message)).toBe(false);
 	});
 
 	it("skips uploaded-document rescue when the current turn has attachments", () => {
@@ -350,6 +358,55 @@ describe("findOwnedActionCorrectionFromMetadata — explicit-intent guard", () =
 			findOwnedActionCorrectionFromMetadata(runtime, message, {
 				actions: ["TRANSCRIBE_MEDIA"],
 			}),
+		).toBeNull();
+	});
+
+	it("returns null for Discord attachment and channel actions when owner-inbox metadata overlaps", () => {
+		const runtimeWithOwnerInbox = {
+			actions: [
+				{
+					name: "OWNER_INBOX",
+					description:
+						"Review all Discord workflow items, attachments, channel mentions, and pending owner inbox decisions.",
+					tags: ["workflow"],
+					similes: ["GET_PENDING_ITEMS", "REVIEW_DISCORD_ATTACHMENTS"],
+				},
+				{
+					name: "CHAT_WITH_ATTACHMENTS",
+					description: "Chat about explicitly referenced Discord attachments.",
+					similes: ["ANALYZE_ATTACHMENTS"],
+				},
+				{
+					name: "READ_CHANNEL",
+					description:
+						"Read or summarize recent messages from the current Discord channel.",
+					similes: ["SUMMARIZE_CHANNEL"],
+				},
+			],
+		} as unknown as Pick<IAgentRuntime, "actions">;
+
+		expect(
+			findOwnedActionCorrectionFromMetadata(
+				runtimeWithOwnerInbox,
+				{
+					content: {
+						text: "look at all three attached images in discord",
+						attachments: [{ id: "image-1", title: "image.png" }],
+					},
+				} as unknown as Pick<Memory, "content">,
+				{ actions: ["CHAT_WITH_ATTACHMENTS"] },
+			),
+		).toBeNull();
+		expect(
+			findOwnedActionCorrectionFromMetadata(
+				runtimeWithOwnerInbox,
+				{
+					content: {
+						text: "summarize the last 20 messages in this discord channel",
+					},
+				} as unknown as Pick<Memory, "content">,
+				{ actions: ["READ_CHANNEL"] },
+			),
 		).toBeNull();
 	});
 

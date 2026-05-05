@@ -1216,7 +1216,10 @@ function normalizeActionIdentifier(actionName: string): string {
 
 function unwrapPlannerIdentifier(value: string): string {
 	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
-	const trimmed = safe.trim().replace(/^["'`]+|["'`]+$/g, "");
+	const trimmed = safe
+		.trim()
+		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
+		.replace(/^["'`]+|["'`]+$/g, "");
 	if (!trimmed) {
 		return "";
 	}
@@ -1380,6 +1383,12 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"READ_ATTACHMENT",
 		"TRANSCRIBE_MEDIA",
 		"DOWNLOAD_MEDIA",
+		"CHAT_WITH_ATTACHMENTS",
+		"READ_CHANNEL",
+		"SEARCH_MESSAGES",
+		"SUMMARIZE_CONVERSATION",
+		"LIST_CHANNELS",
+		"SERVER_INFO",
 		"CREATE_TRIGGER_TASK",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
@@ -2261,14 +2270,8 @@ function shouldAttemptProviderRescue(
 	);
 }
 
-const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')\]]+/i;
-
 export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
-	if ((message.content.attachments?.length ?? 0) > 0) {
-		return true;
-	}
-
-	return HTTP_URL_PATTERN.test(getUserMessageText(message));
+	return (message.content.attachments?.length ?? 0) > 0;
 }
 
 function buildProviderSelectionPrompt(draftReply?: string): string {
