@@ -47,7 +47,9 @@ import {
   consumePendingFocusProvider,
   SETTINGS_FOCUS_CONNECTOR_EVENT,
   type SettingsFocusConnectorDetail,
+  setDeveloperMode,
   useApp,
+  useIsDeveloperMode,
 } from "../../state";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
@@ -321,6 +323,7 @@ function AdvancedSection() {
     handleAgentImport,
     setState,
   } = useApp();
+  const developerMode = useIsDeveloperMode();
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
@@ -399,6 +402,28 @@ function AdvancedSection() {
               </div>
             </div>
           </Button>
+        </div>
+        <div className="border border-border/50 rounded-2xl overflow-hidden bg-bg/40 backdrop-blur-sm">
+          <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="font-medium text-sm">Developer Mode</div>
+                <div className="text-xs text-muted">
+                  Show developer tools (logs, trajectory viewer, prompt
+                  artifacts) and developer-only apps in the nav.
+                </div>
+              </div>
+              <Label className="flex items-center gap-2 font-normal text-muted whitespace-nowrap">
+                <Checkbox
+                  checked={developerMode}
+                  onCheckedChange={(checked: boolean | "indeterminate") =>
+                    setDeveloperMode(!!checked)
+                  }
+                />
+                <span>{developerMode ? "Enabled" : "Disabled"}</span>
+              </Label>
+            </div>
+          </div>
         </div>
         <div className="border border-danger/30 rounded-2xl overflow-hidden bg-bg/40 backdrop-blur-sm">
           <div className="bg-danger/10 px-5 py-3 border-b border-danger/20 flex items-center gap-2">

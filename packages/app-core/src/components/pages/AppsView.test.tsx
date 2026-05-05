@@ -86,6 +86,7 @@ vi.mock("../../state", async () => {
         t: translate,
       };
     },
+    useIsDeveloperMode: () => false,
   };
 });
 

@@ -14,11 +14,11 @@ import {
   shouldUseHashNavigation,
 } from "../../navigation";
 
-import { useApp } from "../../state";
+import { useApp, useIsDeveloperMode } from "../../state";
 import { openExternalUrl } from "../../utils";
-import { readAppsCache, writeAppsCache } from "../apps/apps-cache";
 import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
 import { AppsSidebar } from "../apps/AppsSidebar";
+import { readAppsCache, writeAppsCache } from "../apps/apps-cache";
 import {
   filterAppsForCatalog,
   findAppBySlug,
@@ -191,6 +191,7 @@ export function AppsView() {
     setActionNotice,
     t,
   } = useApp();
+  const developerMode = useIsDeveloperMode();
   const [apps, setApps] = useState<RegistryAppInfo[]>(
     () => readAppsCache() ?? [],
   );
@@ -947,12 +948,13 @@ export function AppsView() {
       activeAppNames,
       searchQuery,
       walletEnabled,
+      developerMode,
     });
-  }, [activeAppNames, apps, searchQuery, walletEnabled]);
+  }, [activeAppNames, apps, searchQuery, walletEnabled, developerMode]);
 
   const browseApps = useMemo(() => {
-    return filterAppsForCatalog(apps, { walletEnabled });
-  }, [apps, walletEnabled]);
+    return filterAppsForCatalog(apps, { walletEnabled, developerMode });
+  }, [apps, walletEnabled, developerMode]);
 
   const handleToggleFavorite = useCallback(
     (appName: string) => {
