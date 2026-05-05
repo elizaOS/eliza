@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  resolveCloudApiKey,
-  resolveCloudConnectionSnapshot,
-} from "./cloud-connection";
+import { resolveCloudApiKey, resolveCloudConnectionSnapshot } from "../lib/cloud-connection";
 
 describe("cloud-connection", () => {
   const cloudInferenceConfig = {
@@ -34,9 +31,7 @@ describe("cloud-connection", () => {
         key === "ELIZAOS_CLOUD_API_KEY" ? "runtime-setting-key" : undefined,
     };
 
-    expect(resolveCloudApiKey(cloudInferenceConfig, runtime)).toBe(
-      "runtime-setting-key",
-    );
+    expect(resolveCloudApiKey(cloudInferenceConfig, runtime)).toBe("runtime-setting-key");
   });
 
   it("marks hasApiKey when the runtime exposes a saved cloud api key", () => {
@@ -46,9 +41,7 @@ describe("cloud-connection", () => {
       getService: () => null,
     };
 
-    expect(
-      resolveCloudConnectionSnapshot(cloudInferenceConfig, runtime as never),
-    ).toMatchObject({
+    expect(resolveCloudConnectionSnapshot(cloudInferenceConfig, runtime as never)).toMatchObject({
       connected: true,
       hasApiKey: true,
       authConnected: false,

@@ -1,29 +1,33 @@
 import type http from "node:http";
-import type { ElizaConfig } from "@elizaos/agent";
 import {
   type CloudRouteState as AutonomousCloudRouteState,
-  applyCanonicalOnboardingConfig,
-  type CloudManager,
-  createIntegrationTelemetrySpan,
   handleCloudRoute as handleAutonomousCloudRoute,
+} from "@elizaos/agent/api/cloud-routes";
+import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
+import {
   normalizeCloudSiteUrl,
-  saveElizaConfig,
-  validateCloudBaseUrl,
-} from "@elizaos/agent";
+} from "@elizaos/agent/cloud/base-url";
+import type { CloudManager } from "@elizaos/agent/cloud/cloud-manager";
+import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
+import { type ElizaConfig, saveElizaConfig } from "@elizaos/agent/config";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared";
-import { isTimeoutError } from "../utils/errors";
+import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
+import { isTimeoutError } from "@elizaos/app-core/utils/errors";
 import {
   clearCloudAuthService,
   disconnectUnifiedCloudConnection,
   getCloudAuth,
   type RuntimeCloudLike,
-} from "./cloud-connection";
-import { clearCloudSecrets, scrubCloudSecretsFromEnv } from "./cloud-secrets";
-import { sendJson, sendJsonError } from "./response";
+} from "../lib/cloud-connection";
+import {
+  clearCloudSecrets,
+  scrubCloudSecretsFromEnv,
+} from "../lib/cloud-secrets";
 
 export interface CloudRouteState {
   config: ElizaConfig;

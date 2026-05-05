@@ -1,11 +1,14 @@
-import type { CloudConfigLike, CloudStatusRouteContext } from "@elizaos/agent";
+import type {
+  CloudConfigLike,
+  CloudStatusRouteContext,
+} from "@elizaos/agent/api/cloud-status-routes";
 import type { ElizaConfig } from "@elizaos/agent/config";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
 import {
   CLOUD_BILLING_URL,
   fetchCloudCredits,
   resolveCloudConnectionSnapshot,
-} from "./cloud-connection";
+} from "../lib/cloud-connection";
 
 export type { CloudConfigLike, CloudStatusRouteContext };
 
