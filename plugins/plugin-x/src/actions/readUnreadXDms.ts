@@ -25,12 +25,7 @@ export const readUnreadXDmsAction: Action = {
       name: "limit",
       description: "Maximum direct messages to scan for unread items.",
       required: false,
-      schema: {
-        type: "number",
-        minimum: 1,
-        maximum: 100,
-        default: DEFAULT_LIMIT,
-      },
+      schema: { type: "number", minimum: 1, maximum: 100, default: DEFAULT_LIMIT },
     },
   ],
   examples: [
