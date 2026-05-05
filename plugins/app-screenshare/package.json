@@ -3,12 +3,24 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./routes": "./src/routes.ts",
-    "./ui": "./src/ui/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./routes": {
+      "types": "./src/routes.ts",
+      "import": "./dist/routes.js",
+      "default": "./dist/routes.js"
+    },
+    "./ui": {
+      "types": "./src/ui/index.ts",
+      "import": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    }
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
@@ -41,7 +53,11 @@
         "remote-support"
       ],
       "runtimePlugin": "@elizaos/app-screenshare",
-      "bridgeExport": "./src/index.ts",
+      "bridgeExport": {
+        "types": "./src/index.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
       "viewer": {
         "url": "/api/apps/screenshare/viewer",
         "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock"
@@ -58,5 +74,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

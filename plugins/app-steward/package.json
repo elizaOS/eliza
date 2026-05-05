@@ -2,20 +2,68 @@
   "name": "@elizaos/app-steward",
   "version": "0.0.0",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./ui": "./src/ui.ts",
-    "./plugin": "./src/plugin.ts",
-    "./types": "./src/types/index.ts",
-    "./types/*": "./src/types/*.ts",
-    "./api/*": "./src/api/*.ts",
-    "./services/*": "./src/services/*.ts",
-    "./security/*": "./src/security/*.ts",
-    "./routes/*": "./src/routes/*.ts",
-    "./actions/*": "./src/actions/*.ts",
-    "./browser-workspace-wallet": "./src/browser-workspace-wallet.ts",
-    "./*": "./src/*"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./src/ui.ts",
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
+    "./plugin": {
+      "types": "./src/plugin.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./types": {
+      "types": "./src/types/index.ts",
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js"
+    },
+    "./types/*": {
+      "types": "./src/types/*.ts",
+      "import": "./dist/types/*.js",
+      "default": "./dist/types/*.js"
+    },
+    "./api/*": {
+      "types": "./src/api/*.ts",
+      "import": "./dist/api/*.js",
+      "default": "./dist/api/*.js"
+    },
+    "./services/*": {
+      "types": "./src/services/*.ts",
+      "import": "./dist/services/*.js",
+      "default": "./dist/services/*.js"
+    },
+    "./security/*": {
+      "types": "./src/security/*.ts",
+      "import": "./dist/security/*.js",
+      "default": "./dist/security/*.js"
+    },
+    "./routes/*": {
+      "types": "./src/routes/*.ts",
+      "import": "./dist/routes/*.js",
+      "default": "./dist/routes/*.js"
+    },
+    "./actions/*": {
+      "types": "./src/actions/*.ts",
+      "import": "./dist/actions/*.js",
+      "default": "./dist/actions/*.js"
+    },
+    "./browser-workspace-wallet": {
+      "types": "./src/browser-workspace-wallet.ts",
+      "import": "./dist/browser-workspace-wallet.js",
+      "default": "./dist/browser-workspace-wallet.js"
+    },
+    "./*": {
+      "types": "./src/*",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
   },
   "dependencies": {
     "@noble/curves": "2.2.0",
@@ -29,10 +77,6 @@
     "lucide-react": "^1.0.0",
     "viem": "^2.48.8"
   },
-  "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*"
-  },
   "elizaos": {
     "app": {
       "heroImage": "assets/hero.png"
@@ -40,5 +84,16 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }

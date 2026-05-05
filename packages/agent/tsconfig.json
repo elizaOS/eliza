@@ -61,12 +61,14 @@
       "@elizaos/app-knowledge/*": ["../../plugins/app-knowledge/src/*"],
       "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
       "@elizaos/app-training/*": ["../../plugins/app-training/src/*"],
+      "@elizaos/app-task-coordinator": [
+        "../../plugins/app-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator/*": [
+        "../../plugins/app-task-coordinator/src/*"
+      ],
       "@elizaos/app-contacts": ["../../plugins/app-contacts/src/index.ts"],
       "@elizaos/app-contacts/*": ["../../plugins/app-contacts/src/*"],
-      "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
-      "@elizaos/app-phone/*": ["../../plugins/app-phone/src/*"],
-      "@elizaos/app-wifi": ["../../plugins/app-wifi/src/index.ts"],
-      "@elizaos/app-wifi/*": ["../../plugins/app-wifi/src/*"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
       "@elizaos/plugin-browser-bridge": [

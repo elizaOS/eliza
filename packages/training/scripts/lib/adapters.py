@@ -44,6 +44,15 @@ from .toon import ToonEncoder
 
 log = logging.getLogger("adapter")
 
+# Regression guard: the literal default-thought strings the legacy adapters
+# injected as a fallback `thought` whenever the upstream record lacked a real
+# reasoning trace are forbidden from re-entering this module as defaults.
+# DEFAULT_THOUGHT_LEAKS is the canonical leak list (see lib/eliza_record.py);
+# this assertion fails fast at import time if anyone re-introduces them as
+# adapter-default constants.
+assert "Reply to the user." in DEFAULT_THOUGHT_LEAKS
+assert "Call the tool to satisfy the request." in DEFAULT_THOUGHT_LEAKS
+
 # Every adapter has the same call signature. `records` is whatever
 # `normalize.py:load_records()` yields — JSONL/JSON/parquet rows decoded
 # into dicts; the `_source_filename` injection lets file-aware adapters
@@ -641,19 +650,20 @@ def _planner_envelope(
     action-driven finalization (e.g. when REPLY runs as the action) MUST
     pass `simple=False`.
 
-    `seed` is used to pick a varied default-thought phrasing from the pool
-    when no real reasoning is provided (caller passes the user message or
-    record id as the seed).
+    `seed` is retained for back-compat but is no longer used to synthesize
+    a default thought — when the upstream record carries no real reasoning
+    trace, the `thought` field is OMITTED from the envelope entirely. The
+    runtime planner parser tolerates a missing `thought:` key, and the
+    student model is therefore not trained to emit a placeholder phrase.
     """
+    del seed  # back-compat only; default-thought synthesis is removed
     raw_thought = _strip_surrogates(thought or "").strip()
     # Defense in depth: if any upstream caller smuggles in one of the
     # canonical leak literals (or wraps it in quotes), treat it as if no
-    # thought was provided and fall back to the varied pool. The literals
-    # are defined once in `lib/eliza_record.DEFAULT_THOUGHT_LEAKS`.
+    # thought was provided and drop the field. The literals are defined
+    # once in `lib/eliza_record.DEFAULT_THOUGHT_LEAKS`.
     if is_default_thought_leak(raw_thought):
         raw_thought = ""
-    safe_thought = raw_thought or _picked_thought(
-        _REPLY_THOUGHT_POOL, seed or text or "")
     safe_text = _strip_surrogates(text or "")
     safe_actions: list[Any] = []
     for a in actions:
@@ -672,13 +682,17 @@ def _planner_envelope(
             else:
                 safe_actions.append({"name": name})
     safe_providers = [str(p) for p in (providers or []) if isinstance(p, str)]
-    return {
-        "thought": safe_thought,
+    envelope: dict[str, Any] = {
         "actions": safe_actions,
         "providers": safe_providers,
         "text": safe_text,
         "simple": bool(simple),
     }
+    if raw_thought:
+        # Insert at the head so encoded TOON keeps the canonical key order
+        # (`thought, actions, providers, text, simple`).
+        envelope = {"thought": raw_thought, **envelope}
+    return envelope
 
 
 def _planner_reply_envelope(
@@ -690,19 +704,19 @@ def _planner_reply_envelope(
     `simple=true` — the planner's `text` IS the final reply (no need to
     re-run REPLY to generate text).
 
-    When `thought` is empty, picks from `_REPLY_THOUGHT_POOL` keyed by
-    `seed` (or `text` if seed is empty) so the corpus distribution rotates
-    across phrasings.
+    If the upstream record carries no real `thought`, the field is omitted
+    from the envelope rather than synthesized. The runtime planner parser
+    tolerates a missing `thought:` line.
     """
-    if not (thought or "").strip() or is_default_thought_leak(thought):
-        thought = _picked_thought(_REPLY_THOUGHT_POOL, seed or text or "")
+    if is_default_thought_leak(thought):
+        thought = ""
+    del seed  # retained for back-compat; default-thought synthesis is removed
     return _planner_envelope(
         thought=thought,
         actions=["REPLY"],
         providers=providers or [],
         text=text,
         simple=True,
-        seed=seed or text or "",
     )
 
 
@@ -748,18 +762,15 @@ def _planner_tool_envelope(
             thought=thought,
             text=text or "",
             providers=providers or [],
-            seed=text,
         )
-    seed = text or (tool_calls[0].get("name") if tool_calls else "") or ""
-    if not (thought or "").strip() or is_default_thought_leak(thought):
-        thought = _picked_thought(_TOOL_THOUGHT_POOL, seed)
+    if is_default_thought_leak(thought):
+        thought = ""
     return _planner_envelope(
         thought=thought,
         actions=actions,
         providers=providers or [],
         text=text or "",
         simple=False,
-        seed=seed,
     )
 
 
@@ -781,33 +792,34 @@ def _planner_shell_envelope(
         params["cwd"] = _strip_surrogates(cwd)
     if explanation:
         params["explanation"] = _strip_surrogates(explanation)
-    seed = command or text or ""
-    if not (thought or "").strip() or is_default_thought_leak(thought):
-        thought = _picked_thought(_SHELL_THOUGHT_POOL, seed)
+    if is_default_thought_leak(thought):
+        thought = ""
     return _planner_envelope(
         thought=thought,
         actions=[{"name": "SHELL_COMMAND", "params": params}],
         providers=providers or [],
         text=text or "",
         simple=False,
-        seed=seed,
     )
 
 
 def _planner_ignore_envelope(
     *, thought: str, text: str = "", seed: str = "",
 ) -> dict[str, Any]:
-    """Planner envelope for an IGNORE decision (no reply, no actions)."""
-    seed = seed or text or ""
-    if not (thought or "").strip() or is_default_thought_leak(thought):
-        thought = _picked_thought(_IGNORE_THOUGHT_POOL, seed)
+    """Planner envelope for an IGNORE decision (no reply, no actions).
+
+    If the upstream record carries no real `thought`, the field is omitted
+    from the envelope rather than synthesized.
+    """
+    if is_default_thought_leak(thought):
+        thought = ""
+    del seed  # retained for back-compat; default-thought synthesis is removed
     return _planner_envelope(
         thought=thought,
         actions=["IGNORE"],
         providers=[],
         text=text or "",
         simple=True,
-        seed=seed,
     )
 
 
@@ -1104,6 +1116,7 @@ _SCAM_DECISION_TO_ELIZA_ACTION = {
     "block": "IGNORE",
     "decline": "IGNORE",
     "decline_to_answer": "IGNORE",
+    "refuse": "IGNORE",
     # REPLY-class decisions
     "reply": "REPLY",
     "respond": "REPLY",
@@ -1114,7 +1127,6 @@ _SCAM_DECISION_TO_ELIZA_ACTION = {
     "request_verification": "REPLY",
     "verify": "REPLY",
     "escalate": "REPLY",
-    "refuse": "REPLY",
     "ask": "REPLY",
     "clarify": "REPLY",
 }
@@ -1147,7 +1159,7 @@ def scambench_passthrough(records, *, slug, license, split, encoder):
         decision = (meta.get("decision_class") or "").strip().lower()
         reasoning = (meta.get("reasoning_trace") or "").strip()
         text = r.get("expectedResponse", "") or ""
-        if decision in ("ignore", "block", "decline_to_answer", "decline"):
+        if decision in ("ignore", "block", "decline_to_answer", "decline", "refuse"):
             target = _planner_ignore_envelope(
                 thought=reasoning,
                 text=text,
@@ -2966,9 +2978,9 @@ def scam_defense_corpus(records, *, slug, license, split, encoder):
 
                 # Map the upstream decision class to a planner-envelope
                 # action (PIPELINE_SCHEMAS.md §9). `block` / `ignore` /
-                # `decline` → IGNORE; everything else → REPLY.
+                # `decline` / `refuse` → IGNORE; everything else → REPLY.
                 norm_action = _normalize_action(chosen_action).lower()
-                if norm_action in ("ignore", "block", "decline_to_answer", "decline"):
+                if norm_action in ("ignore", "block", "decline_to_answer", "decline", "refuse"):
                     target = _planner_ignore_envelope(
                         thought=reasoning,
                         text=final_response,
