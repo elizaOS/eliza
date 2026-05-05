@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -1071,11 +1072,11 @@ export class PTYService {
       agentType: resolvedAgentType,
       initialTask: resolvedInitialTask,
     });
-    const codexExecOutputFile = codexExecMode
-      ? join(
-          await mkdtemp(join(tmpdir(), `eliza-codex-${sessionId}-`)),
-          "last-message.txt",
-        )
+    const codexExecOutputDir = codexExecMode
+      ? await mkdtemp(join(tmpdir(), `eliza-codex-${sessionId}-`))
+      : undefined;
+    const codexExecOutputFile = codexExecOutputDir
+      ? join(codexExecOutputDir, "last-message.txt")
       : undefined;
     const resolvedMetadata = {
       ...metadataWithoutModelPrefs,
@@ -1083,6 +1084,7 @@ export class PTYService {
       agentType: resolvedAgentType,
       coordinatorManaged: !!options.skipAdapterAutoResponse,
       ...(codexExecMode ? { codexExecMode: true } : {}),
+      ...(codexExecOutputDir ? { codexExecOutputDir } : {}),
       ...(codexExecOutputFile ? { codexExecOutputFile } : {}),
       ...(resolvedModelPrefs ? { modelPrefs: resolvedModelPrefs } : {}),
     };
@@ -1110,6 +1112,14 @@ export class PTYService {
     try {
       session = await this.manager.spawn(spawnConfig);
     } catch (error) {
+      if (codexExecOutputDir) {
+        await rm(codexExecOutputDir, { recursive: true, force: true }).catch(
+          (cleanupError) =>
+            this.log(
+              `Failed to remove Codex exec output dir ${codexExecOutputDir}: ${cleanupError}`,
+            ),
+        );
+      }
       this.sessionMetadata.delete(sessionId);
       throw error;
     }
