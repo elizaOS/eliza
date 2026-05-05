@@ -3,7 +3,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import { resolveCloudApiKey } from "./wallet-rpc.js";
+import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 
 // ---------------------------------------------------------------------------
 // Types

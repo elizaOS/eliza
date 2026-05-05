@@ -14,7 +14,7 @@ import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { ElizaConfig } from "../config/config.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
 import { sendJson, sendJsonError } from "./http-helpers.js";
-import { resolveCloudApiKey } from "./wallet-rpc.js";
+import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 
 interface XRelayRuntime {
   getService(serviceType: string): Service | null;
