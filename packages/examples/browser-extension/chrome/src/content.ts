@@ -68,7 +68,7 @@ const EXCLUDED_CLASSES = [
   // because they filter out too much on social media sites like Twitter/X
 ];
 
-const CONTENT_TAGS = new Set([
+const _CONTENT_TAGS = new Set([
   "p",
   "h1",
   "h2",
@@ -307,8 +307,7 @@ function cropToTokenLimit(
   content: ExtractedContent,
   maxChars = 400000,
 ): string {
-  const { fullText, visibleText, viewportStart, viewportEnd, totalLength } =
-    content;
+  const { fullText, visibleText } = content;
 
   if (fullText.length <= maxChars) {
     // Add viewport markers if content fits
@@ -334,7 +333,7 @@ function cropToTokenLimit(
   const visibleIndex = fullText.indexOf(visibleText.substring(0, 100));
   if (visibleIndex < 0) {
     // Can't find visible text, just take first chunk
-    return fullText.substring(0, maxChars) + "\n\n[Content truncated...]";
+    return `${fullText.substring(0, maxChars)}\n\n[Content truncated...]`;
   }
 
   const startIndex = Math.max(0, visibleIndex - paddingChars);
@@ -365,7 +364,7 @@ function cropToTokenLimit(
 }
 
 // Screenshot capture
-async function captureScreenshot(): Promise<string | null> {
+async function _captureScreenshot(): Promise<string | null> {
   try {
     // Request screenshot from background script
     return new Promise((resolve) => {

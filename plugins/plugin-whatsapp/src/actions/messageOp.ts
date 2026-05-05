@@ -64,6 +64,7 @@ async function postToWhatsApp(
   payload: Record<string, unknown>
 ): Promise<{ messages?: Array<{ id: string }> }> {
   const url = `https://graph.facebook.com/${creds.apiVersion}/${creds.phoneNumberId}/messages`;
+  // @duplicate-component-audit-allow WhatsApp Graph messages API is not an LLM generation call.
   const response = await fetch(url, {
     method: "POST",
     headers: {

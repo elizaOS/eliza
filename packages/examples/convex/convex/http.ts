@@ -7,8 +7,8 @@
  */
 
 import { httpRouter } from "convex/server";
+import { api, internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
-import { internal, api } from "./_generated/api";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

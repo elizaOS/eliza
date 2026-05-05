@@ -1,49 +1,35 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { manageBrowserBridgeAction } from "./action.ts";
-import {
-  approveRequestAction,
-  rejectRequestAction,
-} from "./actions/approval.js";
-import {
-  addAutofillWhitelistAction,
-  listAutofillWhitelistAction,
-  requestFieldFillAction,
-} from "./actions/autofill.js";
-import { bookTravelAction } from "./actions/book-travel.js";
-import { chatThreadControlAction } from "./actions/chat-thread-control.js";
-import {
-  runMorningCheckinAction,
-  runNightCheckinAction,
-} from "./actions/checkin.js";
-import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
-import { dossierAction } from "./actions/dossier.js";
 import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
-import { healthAction } from "./actions/health.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
-import { lifeAction } from "./actions/life.js";
-import { lifeOpsConnectorAction } from "./actions/lifeops-connector.js";
 import { lifeOpsMutateAction } from "./actions/lifeops-mutate.js";
 import { ownerAppBlockAction } from "./actions/owner-app-block.js";
+import { ownerAutofillAction } from "./actions/owner-autofill.js";
+import { bookTravelAction } from "./actions/owner-book-travel.js";
 import { ownerCalendarAction } from "./actions/owner-calendar.js";
+import { chatThreadControlAction } from "./actions/owner-chat-thread.js";
+import { ownerCheckinAction } from "./actions/owner-checkin.js";
+import { lifeOpsComputerUseAction } from "./actions/owner-computer-use.js";
+import { lifeOpsConnectorAction } from "./actions/owner-connector.js";
+import { dossierAction } from "./actions/owner-dossier.js";
+import { healthAction } from "./actions/owner-health.js";
 import { ownerInboxAction } from "./actions/owner-inbox.js";
+import { lifeAction } from "./actions/owner-life.js";
+import { passwordManagerAction } from "./actions/owner-password-manager.js";
+import { paymentsAction } from "./actions/owner-payments.js";
+import { updateOwnerProfileAction } from "./actions/owner-profile.js";
+import { relationshipAction } from "./actions/owner-relationship.js";
 import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
+import { ownerResolveRequestAction } from "./actions/owner-resolve-request.js";
 import { ownerScheduleAction } from "./actions/owner-schedule.js";
 import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
+import { subscriptionsAction } from "./actions/owner-subscriptions.js";
+import { ownerVoiceCallAction } from "./actions/owner-voice-call.js";
 import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
-import { passwordManagerAction } from "./actions/password-manager.js";
-import { paymentsAction } from "./actions/payments.js";
-import { relationshipAction } from "./actions/relationships.js";
+import { xReadAction } from "./actions/owner-x.js";
 import { scheduleXDmReplyAction } from "./actions/schedule-x-dm-reply.js";
 import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
-import { subscriptionsAction } from "./actions/subscriptions.js";
-import {
-  callExternalAction,
-  callUserAction,
-  twilioCallAction,
-} from "./actions/twilio-call.js";
-import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
-import { xReadAction } from "./actions/x-read.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -221,18 +207,14 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerInboxAction,
     xReadAction,
     scheduleXDmReplyAction,
-    approveRequestAction,
-    rejectRequestAction,
+    ownerResolveRequestAction,
     lifeAction,
     bookTravelAction,
     updateOwnerProfileAction,
-    runMorningCheckinAction,
-    runNightCheckinAction,
+    ownerCheckinAction,
     relationshipAction,
     ownerScreenTimeAction,
-    twilioCallAction,
-    callUserAction,
-    callExternalAction,
+    ownerVoiceCallAction,
     ownerRemoteDesktopAction,
     lifeOpsComputerUseAction,
     ownerScheduleAction,
@@ -240,9 +222,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     searchAcrossChannelsAction,
     intentSyncAction,
     passwordManagerAction,
-    requestFieldFillAction,
-    addAutofillWhitelistAction,
-    listAutofillWhitelistAction,
+    ownerAutofillAction,
     dossierAction,
     healthAction,
     subscriptionsAction,
@@ -407,21 +387,18 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
-export { calendarAction } from "./actions/calendar.js";
-export {
-  runMorningCheckinAction,
-  runNightCheckinAction,
-} from "./actions/checkin.js";
 export { gmailAction } from "./actions/gmail.js";
 export { inboxAction } from "./actions/inbox.js";
-export { lifeAction } from "./actions/life.js";
 // App blocker exports
 export { ownerAppBlockAction } from "./actions/owner-app-block.js";
 // LifeOps core exports
 export { ownerCalendarAction } from "./actions/owner-calendar.js";
+export { ownerCheckinAction } from "./actions/owner-checkin.js";
 export { ownerInboxAction } from "./actions/owner-inbox.js";
+export { lifeAction } from "./actions/owner-life.js";
+export { updateOwnerProfileAction } from "./actions/owner-profile.js";
+export { ownerResolveRequestAction } from "./actions/owner-resolve-request.js";
 export { ownerScheduleAction } from "./actions/owner-schedule.js";
-export { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
 export {
   getAppBlockerPermissionState,
   getAppBlockerStatus,

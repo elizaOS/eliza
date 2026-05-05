@@ -14,10 +14,11 @@
     "secret": "wrangler secret put OPENAI_API_KEY",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "echo 'Cloudflare Workers use wrangler for type checking'"
+    "typecheck": "echo 'Cloudflare Workers use wrangler for type checking'",
+    "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "beta",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "uuid": "^14.0.0"
   },

@@ -28,8 +28,8 @@ function findCreateTaskAction(
     ? (runtime.actions as CreateTaskActionLike[])
     : [];
   return (
-    actions.find((action) => action.name === "CREATE_TASK") ??
     actions.find((action) => action.name === "START_CODING_TASK") ??
+    actions.find((action) => action.name === "CREATE_TASK") ??
     null
   );
 }
@@ -57,7 +57,7 @@ function buildSyntheticTaskMemory(
 }
 
 /**
- * Executes coding tasks by delegating to the CREATE_TASK / START_CODING_TASK
+ * Executes coding tasks by delegating to the START_CODING_TASK / CREATE_TASK
  * action registered by the orchestrator plugin.
  */
 export class CodingTaskExecutor implements TaskExecutor {

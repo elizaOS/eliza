@@ -316,4 +316,4 @@ process.on("SIGTERM", () => {
   });
 });
 
-export { handleRequest, handleChat, handleHealth, handleInfo };
+export { handleChat, handleHealth, handleInfo, handleRequest };

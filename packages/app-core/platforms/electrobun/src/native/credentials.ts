@@ -250,6 +250,7 @@ async function scanOllamaLocal(): Promise<DetectedProvider | null> {
 	// Check if Ollama is running by hitting its API
 	try {
 		const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+		// @duplicate-component-audit-allow: Ollama tags is local credential discovery, not generation.
 		const res = await fetch(`${baseUrl}/api/tags`, {
 			signal: AbortSignal.timeout(2000),
 		});

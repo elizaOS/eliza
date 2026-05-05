@@ -134,32 +134,40 @@ async function buildStatusReport(
 	lines.push(`**Agent:** ${runtime.character.name ?? runtime.agentId}`);
 	lines.push(`**Room:** ${roomId}`);
 
-	const directiveService = runtime.getService(
-		"directive-parser",
-	) as DirectiveParserService | null;
-	if (directiveService) {
-		const state = directiveService.getSessionState?.(roomId);
-		if (state) {
-			lines.push(`\n**Directives:**`);
-			lines.push(`• Thinking: ${state.thinking}`);
-			lines.push(`• Verbose: ${state.verbose}`);
-			lines.push(`• Reasoning: ${state.reasoning}`);
-			lines.push(`• Elevated: ${state.elevated}`);
-			if (state.model?.provider || state.model?.model) {
-				const modelStr = state.model.provider
-					? `${state.model.provider}/${state.model.model}`
-					: state.model.model;
-				lines.push(`• Model: ${modelStr}`);
+	try {
+		const directiveService = runtime.getService(
+			"directive-parser",
+		) as DirectiveParserService | null;
+		if (directiveService) {
+			const state = directiveService.getSessionState?.(roomId);
+			if (state) {
+				lines.push(`\n**Directives:**`);
+				lines.push(`• Thinking: ${state.thinking}`);
+				lines.push(`• Verbose: ${state.verbose}`);
+				lines.push(`• Reasoning: ${state.reasoning}`);
+				lines.push(`• Elevated: ${state.elevated}`);
+				if (state.model?.provider || state.model?.model) {
+					const modelStr = state.model.provider
+						? `${state.model.provider}/${state.model.model}`
+						: state.model.model;
+					lines.push(`• Model: ${modelStr}`);
+				}
 			}
 		}
+	} catch {
+		// Directive plugin not available.
 	}
 
-	const tasks = await runtime.getTasks({
-		roomId,
-		agentIds: [runtime.agentId],
-	});
-	if (tasks.length > 0) {
-		lines.push(`\n**Tasks:** ${tasks.length} pending`);
+	try {
+		const tasks = await runtime.getTasks({
+			roomId,
+			agentIds: [runtime.agentId],
+		});
+		if (tasks.length > 0) {
+			lines.push(`\n**Tasks:** ${tasks.length} pending`);
+		}
+	} catch {
+		// Task retrieval may not be available.
 	}
 
 	return lines.join("\n");
@@ -192,9 +200,13 @@ function formatModels(runtime: IAgentRuntime): string {
 	for (const modelType of Object.values(ModelType)) {
 		if (seen.has(modelType)) continue;
 		seen.add(modelType);
-		const handler = runtime.getModel(modelType);
-		if (handler) {
-			registeredTypes.push(modelType);
+		try {
+			const handler = runtime.getModel(modelType);
+			if (handler) {
+				registeredTypes.push(modelType);
+			}
+		} catch {
+			// Model type not registered.
 		}
 	}
 

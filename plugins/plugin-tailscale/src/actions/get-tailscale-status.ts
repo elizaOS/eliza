@@ -17,17 +17,35 @@ function formatUptime(startedAt: Date): string {
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
+function readVerbose(options: unknown): boolean {
+  const direct = options && typeof options === 'object' ? (options as Record<string, unknown>) : {};
+  const params =
+    direct.parameters && typeof direct.parameters === 'object'
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  const raw = params.verbose ?? direct.verbose;
+  return raw === true || raw === 'true';
+}
+
 export const getTailscaleStatusAction: Action = {
   name: 'GET_TAILSCALE_STATUS',
   similes: ['TAILSCALE_STATUS', 'CHECK_TUNNEL', 'TUNNEL_INFO'],
   description: 'Get the current status of the Tailscale tunnel',
   descriptionCompressed: 'get current status Tailscale tunnel',
+  parameters: [
+    {
+      name: 'verbose',
+      description: 'When true, include backend provider details in the status text.',
+      required: false,
+      schema: { type: 'boolean', default: false },
+    },
+  ],
   validate: async (runtime: IAgentRuntime) => Boolean(getTunnelService(runtime)),
   handler: async (
     runtime: IAgentRuntime,
     _message,
     _state,
-    _options,
+    options,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const tunnelService = getTunnelService(runtime);
@@ -42,16 +60,18 @@ export const getTailscaleStatusAction: Action = {
     const status = tunnelService.getStatus();
     const uptime = status.startedAt ? formatUptime(status.startedAt) : 'N/A';
 
+    const providerLine = readVerbose(options) ? `\nProvider: ${status.provider}` : '';
     const responseText = status.active
       ? `✅ tailscale tunnel is active.\n\nURL: ${status.url}\nLocal port: ${status.port}\nUptime: ${uptime}`
       : '❌ No active tailscale tunnel. To start a tunnel, say "start tailscale tunnel on port [PORT]".';
+    const responseTextWithDetails = `${responseText}${providerLine}`;
 
     if (callback) {
-      await callback({ text: responseText });
+      await callback({ text: responseTextWithDetails });
     }
     return {
       success: true,
-      text: responseText,
+      text: responseTextWithDetails,
       data: {
         action: 'tunnel_status',
         active: status.active,

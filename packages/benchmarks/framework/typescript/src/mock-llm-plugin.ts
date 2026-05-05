@@ -6,12 +6,17 @@
  * overhead from LLM latency for accurate performance measurement.
  */
 
-import type { Provider } from "../../../../core/src/types/components";
-import type { Memory } from "../../../../core/src/types/memory";
-import { ModelType } from "../../../../core/src/types/model";
-import type { Plugin } from "../../../../core/src/types/plugin";
-import type { IAgentRuntime } from "../../../../core/src/types/runtime";
-import type { State } from "../../../../core/src/types/state";
+import {
+  type GenerateTextParams,
+  type IAgentRuntime,
+  type JsonValue,
+  type Memory,
+  ModelType,
+  type ObjectGenerationParams,
+  type Plugin,
+  type Provider,
+  type State,
+} from "@elizaos/core";
 
 // ─── Mock response constants ───────────────────────────────────────────────
 
@@ -59,7 +64,7 @@ const ZERO_EMBEDDING: readonly number[] = Object.freeze(
  */
 function detectAndRespondTextLarge(
   _runtime: IAgentRuntime,
-  params: Record<string, unknown>,
+  params: GenerateTextParams,
 ): string {
   const prompt = String(params.prompt ?? "");
 
@@ -98,7 +103,7 @@ function detectAndRespondTextLarge(
 
 function detectAndRespondTextSmall(
   _runtime: IAgentRuntime,
-  params: Record<string, unknown>,
+  params: GenerateTextParams,
 ): string {
   const prompt = String(params.prompt ?? "");
 
@@ -158,14 +163,14 @@ export const mockLlmPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (
       runtime: IAgentRuntime,
-      params: Record<string, unknown>,
+      params: GenerateTextParams,
     ): Promise<string> => {
       return detectAndRespondTextSmall(runtime, params);
     },
 
     [ModelType.TEXT_LARGE]: async (
       runtime: IAgentRuntime,
-      params: Record<string, unknown>,
+      params: GenerateTextParams,
     ): Promise<string> => {
       return detectAndRespondTextLarge(runtime, params);
     },
@@ -179,22 +184,22 @@ export const mockLlmPlugin: Plugin = {
 
     [ModelType.TEXT_COMPLETION]: async (
       runtime: IAgentRuntime,
-      params: Record<string, unknown>,
+      params: GenerateTextParams,
     ): Promise<string> => {
       return detectAndRespondTextLarge(runtime, params);
     },
 
     [ModelType.OBJECT_SMALL]: async (
       _runtime: IAgentRuntime,
-      _params: Record<string, unknown>,
-    ): Promise<Record<string, string>> => {
+      _params: ObjectGenerationParams,
+    ): Promise<Record<string, JsonValue>> => {
       return { result: "benchmark_object" };
     },
 
     [ModelType.OBJECT_LARGE]: async (
       _runtime: IAgentRuntime,
-      _params: Record<string, unknown>,
-    ): Promise<Record<string, string>> => {
+      _params: ObjectGenerationParams,
+    ): Promise<Record<string, JsonValue>> => {
       return { result: "benchmark_object" };
     },
   },

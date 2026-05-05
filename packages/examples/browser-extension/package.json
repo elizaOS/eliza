@@ -11,6 +11,8 @@
     "build:chrome": "cd chrome && npm run build",
     "build:safari": "cd safari && npm run build",
     "dev": "cd chrome && npm run dev",
-    "clean": "rm -rf chrome/dist safari/Chat\\ with\\ Webpage"
+    "clean": "rm -rf chrome/dist safari/Chat\\ with\\ Webpage",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'"
   }
 }

@@ -14,6 +14,26 @@ import type { MusicLibraryService } from "../services/musicLibraryService";
 
 const MUSIC_LIBRARY_SERVICE_NAME = "musicLibrary";
 
+function readLimit(options: unknown, fallback: number): number {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const params =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  const raw = params.limit ?? direct.limit;
+  const parsed =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number.parseInt(raw, 10)
+        : fallback;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(1, Math.floor(parsed)), 50);
+}
+
 export const listPlaylists: Action = {
   name: "LIST_PLAYLISTS",
   similes: [
@@ -25,6 +45,14 @@ export const listPlaylists: Action = {
   description:
     "List all saved playlists for the user. Works best in DMs to avoid flooding group chats.",
   descriptionCompressed: "List all saved playlists.",
+  parameters: [
+    {
+      name: "limit",
+      description: "Maximum playlists to show.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 50 },
+    },
+  ],
   validate: async (
     _runtime: IAgentRuntime,
     message: Memory,
@@ -40,7 +68,7 @@ export const listPlaylists: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: Record<string, unknown>,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     if (!callback) {
@@ -86,9 +114,13 @@ export const listPlaylists: Action = {
       const isDM = room?.type === ChannelType.DM;
 
       let text = `**Your Playlists (${sortedPlaylists.length}):**\n\n`;
-      for (const playlist of sortedPlaylists) {
+      const limit = readLimit(options, sortedPlaylists.length);
+      for (const playlist of sortedPlaylists.slice(0, limit)) {
         const date = new Date(playlist.updatedAt).toLocaleDateString();
         text += `• **${playlist.name}** - ${playlist.tracks.length} track${playlist.tracks.length !== 1 ? "s" : ""} (updated ${date})\n`;
+      }
+      if (sortedPlaylists.length > limit) {
+        text += `\n... and ${sortedPlaylists.length - limit} more playlist${sortedPlaylists.length - limit === 1 ? "" : "s"}\n`;
       }
 
       if (!isDM) {

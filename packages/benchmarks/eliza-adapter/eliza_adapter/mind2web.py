@@ -109,9 +109,14 @@ class ElizaMind2WebAgent:
                 return m.group(1).strip() if m else ""
 
             # Try params first, then fall back to XML tags in text
-            operation_str = str(response.params.get("operation", "")).upper()
-            element_id = str(response.params.get("element_id", ""))
-            value = str(response.params.get("value", ""))
+            params = response.params
+            bench_params = params.get("BENCHMARK_ACTION")
+            if isinstance(bench_params, dict):
+                params = {**params, **bench_params}
+
+            operation_str = str(params.get("operation", "")).upper()
+            element_id = str(params.get("element_id", ""))
+            value = str(params.get("value", ""))
 
             if not operation_str and response.text:
                 operation_str = _xtag(response.text, "operation").upper()

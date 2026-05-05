@@ -85,6 +85,7 @@ export async function sendWhatsAppMessage(
     payload.context = { message_id: req.replyToMessageId };
   }
 
+  // @duplicate-component-audit-allow: WhatsApp Graph API send, not model generation.
   const response = await fetch(url, {
     method: "POST",
     headers: {

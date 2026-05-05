@@ -15,6 +15,11 @@ import type { LinearService } from "../services/linear";
 import { getRecordValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
+type GetIssueParams = {
+  issueId?: string;
+  query?: string;
+};
+
 export const getIssueAction: Action = {
   name: "GET_LINEAR_ISSUE",
   description: "Get details of a specific Linear issue",
@@ -25,6 +30,20 @@ export const getIssueAction: Action = {
     "view-linear-issue",
     "check-linear-issue",
     "find-linear-issue",
+  ],
+  parameters: [
+    {
+      name: "issueId",
+      description: "Linear issue identifier or id, e.g. ENG-123.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "query",
+      description: "Search text when the exact Linear issue identifier is unknown.",
+      required: false,
+      schema: { type: "string" as const },
+    },
   ],
 
   examples: [
@@ -94,7 +113,8 @@ export const getIssueAction: Action = {
         throw new Error("Linear service not available");
       }
 
-      const content = message.content.text;
+      const params = (_options?.parameters ?? {}) as GetIssueParams;
+      const content = params.query ?? params.issueId ?? message.content.text;
       if (!content) {
         const errorMessage = "Please specify which issue you want to see.";
         await callback?.({
@@ -105,6 +125,11 @@ export const getIssueAction: Action = {
           text: errorMessage,
           success: false,
         };
+      }
+
+      if (params.issueId) {
+        const issue = await linearService.getIssue(params.issueId);
+        return await formatIssueResponse(issue, callback, message);
       }
 
       const prompt = getIssueTemplate.replace("{{userMessage}}", content);

@@ -1,11 +1,21 @@
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import type { BirdeyeProvider } from "./birdeye";
 import {
   BIRDEYE_SEARCH_CATEGORIES,
   BIRDEYE_TOKEN_SEARCH_CATEGORY,
   registerBirdeyeSearchCategories,
   searchBirdeyeTokens,
 } from "./search-category";
+
+type BirdeyeTokenSearchProvider = Pick<
+  BirdeyeProvider,
+  | "fetchSearchTokenMarketData"
+  | "fetchTokenOverview"
+  | "fetchTokenMarketData"
+  | "fetchTokenSecurityByAddress"
+  | "fetchTokenTradeDataSingle"
+>;
 
 function createRuntime() {
   const categories = new Map<string, SearchCategoryRegistration>();
@@ -104,7 +114,7 @@ describe("Birdeye search categories", () => {
         filters: { mode: "symbol", chain: "all" },
         limit: 3,
       },
-      provider as any,
+      provider as BirdeyeTokenSearchProvider,
     );
 
     expect(provider.fetchSearchTokenMarketData).toHaveBeenCalledWith(
@@ -119,6 +129,10 @@ describe("Birdeye search categories", () => {
       mode: "symbol",
       resultCount: 1,
     });
+    expect(result.mode).toBe("symbol");
+    if (result.mode !== "symbol") {
+      throw new Error("Expected symbol search result");
+    }
     expect(result.results[0].tokens).toHaveLength(1);
     expect(result.text).toContain("birdeye_token_search:");
     expect(result.text).toContain("mode: symbol");
@@ -162,7 +176,7 @@ describe("Birdeye search categories", () => {
           includeSecurity: false,
         },
       },
-      provider as any,
+      provider as BirdeyeTokenSearchProvider,
     );
 
     expect(provider.fetchTokenOverview).toHaveBeenCalledWith(
@@ -182,6 +196,10 @@ describe("Birdeye search categories", () => {
       mode: "address",
       resultCount: 1,
     });
+    expect(result.mode).toBe("address");
+    if (result.mode !== "address") {
+      throw new Error("Expected address search result");
+    }
     expect(result.results[0].chain).toBe("base");
     expect(result.text).toContain("mode: address");
     expect(result.text).toContain("Aave");

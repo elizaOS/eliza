@@ -17,11 +17,39 @@ const formatDuration = (seconds?: number): string => {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
 
+function readLimit(options: unknown): number {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const params =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  const raw = params.limit ?? direct.limit;
+  const parsed =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number.parseInt(raw, 10)
+        : 10;
+  if (!Number.isFinite(parsed)) return 10;
+  return Math.min(Math.max(1, Math.floor(parsed)), 25);
+}
+
 export const showQueue: Action = {
   name: "SHOW_QUEUE",
   similes: ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"],
   description: "Show the current music queue",
   descriptionCompressed: "show current music queue",
+  parameters: [
+    {
+      name: "limit",
+      description: "Maximum queued tracks to display, from 1 to 25.",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 25, default: 10 },
+    },
+  ],
   validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     if (message.content.source !== "discord") {
       return false;
@@ -32,7 +60,7 @@ export const showQueue: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
+    options: any,
     callback: HandlerCallback,
   ) => {
     const musicService = runtime.getService(
@@ -73,13 +101,15 @@ export const showQueue: Action = {
       text += `**Now Playing:** ${currentTrack.title} (${formatDuration(currentTrack.duration)})\n\n`;
     }
 
+    const limit = readLimit(options);
+
     if (queue.length > 0) {
       text += `**Queue (${queue.length}):**\n`;
-      queue.slice(0, 10).forEach((track, index) => {
+      queue.slice(0, limit).forEach((track, index) => {
         text += `${index + 1}. ${track.title} (${formatDuration(track.duration)})\n`;
       });
-      if (queue.length > 10) {
-        text += `\n... and ${queue.length - 10} more`;
+      if (queue.length > limit) {
+        text += `\n... and ${queue.length - limit} more`;
       }
     } else {
       text += "Queue is empty.";

@@ -538,6 +538,7 @@ async function pollForAttestation(
   for (let attempt = 0; attempt < MAX_ATTESTATION_POLLS; attempt++) {
     let response: { status: string; attestation?: Hex | null; error?: string };
     try {
+      // @duplicate-component-audit-allow Circle attestation polling is not an LLM generation call.
       const res = await fetch(url, { headers: { Accept: "application/json" } });
       if (!res.ok) {
         if (res.status === 404) {

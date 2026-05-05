@@ -113,6 +113,81 @@ function createBenchmarkActionToon(prompt: string): string {
   }
 
   if (
+    /Benchmark:\*{0,2}\s*mind2web/i.test(prompt) ||
+    /Mind2Web benchmark/i.test(prompt)
+  ) {
+    const elementId =
+      /backend_node_id["'=:\s]+([A-Za-z0-9_-]+)/i.exec(prompt)?.[1] ??
+      /"backend_node_id"\s*:\s*"([^"]+)"/i.exec(prompt)?.[1] ??
+      "node-1";
+    return buildToonResponse({
+      thought: "Clicking the most relevant Mind2Web element.",
+      actions: "BENCHMARK_ACTION",
+      text: "Selected a web element.",
+      params: `BENCHMARK_ACTION:\n  operation: CLICK\n  element_id: ${elementId}\n  value:`,
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*(terminal-bench|terminal_bench)/i.test(prompt) ||
+    /Terminal-Bench/i.test(prompt)
+  ) {
+    return buildToonResponse({
+      thought: "Running a safe terminal smoke command.",
+      actions: "BENCHMARK_ACTION",
+      text: "Running terminal command.",
+      params: "BENCHMARK_ACTION:\n  command: echo terminal-bench-smoke",
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*osworld/i.test(prompt) ||
+    /OSWorld|pyautogui/i.test(prompt)
+  ) {
+    return buildToonResponse({
+      thought: "Clicking a safe desktop coordinate for OSWorld smoke.",
+      actions: "BENCHMARK_ACTION",
+      text: "Running pyautogui action.",
+      params: "BENCHMARK_ACTION:\n  command: pyautogui.click(10, 10)",
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*webshop/i.test(prompt) ||
+    /WebShop|simulated webstore|webstore/i.test(prompt)
+  ) {
+    return buildToonResponse({
+      thought: "Searching for the requested product.",
+      actions: "BENCHMARK_ACTION",
+      text: "Searching WebShop.",
+      params:
+        "BENCHMARK_ACTION:\n  command: search[wireless bluetooth headphones]",
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*gauntlet/i.test(prompt) ||
+    /Solana DeFi safety analyzer/i.test(prompt)
+  ) {
+    return buildToonResponse({
+      thought: "Returning a conservative Solana safety decision.",
+      actions: "REPLY",
+      text: "<decision>refuse</decision><reason>Conservative mock safety refusal.</reason><confidence>0.7</confidence>",
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*openclaw/i.test(prompt) ||
+    /OpenClaw|Node\.js project with TypeScript/i.test(prompt)
+  ) {
+    return buildToonResponse({
+      thought: "Returning a deterministic OpenClaw conceptual response.",
+      actions: "REPLY",
+      text: "Initialize the project with npm init, add TypeScript and a tsconfig, create src/ and tests/ directories, add package scripts, and initialize git with a useful .gitignore.",
+    });
+  }
+
+  if (
     /Benchmark:\*{0,2}\s*clawbench/i.test(prompt) ||
     /ClawBench|Review my inbox/i.test(prompt)
   ) {
@@ -120,6 +195,53 @@ function createBenchmarkActionToon(prompt: string): string {
       thought: "Returning deterministic ClawBench inbox triage.",
       actions: "REPLY",
       text: "Inbox triage complete. Boss Q4 report is urgent and needs an EOD draft response. HR benefits enrollment is action-required before January 20. BigCorp client email needs scheduling for the project timeline call. Newsletter is low priority and the shopping promo should be archived. Draft replies are ready for review; please approve before I send anything.",
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*(swe_bench|swe-bench)/i.test(prompt) ||
+    /SWE-bench|Respond with a SINGLE unified diff|Repository: mock\/repo/i.test(
+      prompt,
+    )
+  ) {
+    return buildToonResponse({
+      thought: "Returning a deterministic SWE-bench patch.",
+      actions: "REPLY",
+      text: [
+        "diff --git a/hello.py b/hello.py",
+        "--- a/hello.py",
+        "+++ b/hello.py",
+        "@@ -1 +1 @@",
+        "-print('hello')",
+        "+print('hello swe-bench')",
+        "",
+      ].join("\n"),
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*experience/i.test(prompt) ||
+    /RECORD_EXPERIENCE|learns from experience|Recall any relevant past experiences/i.test(
+      prompt,
+    )
+  ) {
+    if (
+      /phase(?:\\?":|\s*:)\s*"?learning/i.test(prompt) ||
+      /RECORD_EXPERIENCE/i.test(prompt)
+    ) {
+      return buildToonResponse({
+        thought: "Recording the shared learning for later retrieval.",
+        actions: "BENCHMARK_ACTION",
+        providers: "ELIZA_BENCHMARK",
+        text: "RECORD_EXPERIENCE recorded the learning.",
+        params: "BENCHMARK_ACTION:\n  command: RECORD_EXPERIENCE",
+      });
+    }
+    return buildToonResponse({
+      thought: "Recalling the most relevant stored experience.",
+      actions: "REPLY",
+      providers: "ELIZA_BENCHMARK",
+      text: "I remember the relevant prior learning.",
     });
   }
 
@@ -172,6 +294,77 @@ function createBenchmarkActionToon(prompt: string): string {
       providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
       text: `Selected ${action}`,
       params: `BENCHMARK_ACTION:\n  command: ${action}`,
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*trust/i.test(prompt) ||
+    /security analysis agent|prompt_injection|credential_theft/i.test(prompt)
+  ) {
+    const message =
+      /## Message to Analyze\s*"""([\s\S]*?)"""/i.exec(prompt)?.[1] ??
+      /"message"\s*:\s*"([^"]*)"/i.exec(prompt)?.[1] ??
+      prompt;
+    const lower = message.toLowerCase();
+    const promptInjection =
+      /ignore|disregard|previous instructions|new instructions|system override|system command|dan|bypass|jailbreak/.test(
+        lower,
+      );
+    const privilege = /admin|owner|root|privilege|permissions|elevate/.test(
+      lower,
+    );
+    return buildToonResponse({
+      thought: "Returning deterministic Trust benchmark analysis.",
+      actions: "REPLY",
+      text: JSON.stringify({
+        prompt_injection: {
+          detected: promptInjection,
+          confidence: promptInjection ? 0.95 : 0.05,
+        },
+        social_engineering: { detected: false, confidence: 0.05 },
+        credential_theft: { detected: false, confidence: 0.05 },
+        privilege_escalation: {
+          detected: privilege,
+          confidence: privilege ? 0.8 : 0.05,
+        },
+        data_exfiltration: { detected: false, confidence: 0.05 },
+        resource_abuse: { detected: false, confidence: 0.05 },
+        content_policy: { detected: false, confidence: 0.05 },
+      }),
+    });
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*(social_alpha|social-alpha)/i.test(prompt) ||
+    /Social-Alpha benchmark|crypto trading signal extraction engine/i.test(
+      prompt,
+    )
+  ) {
+    const message =
+      /Message:\s*([\s\S]*?)(?:\n\nBENCHMARK CONTEXT|\n\nRespond|$)/i.exec(
+        prompt,
+      )?.[1] ?? prompt;
+    const lower = message.toLowerCase();
+    const ticker = /\$([A-Z][A-Z0-9]{1,12})/.exec(message)?.[1] ?? "";
+    const sell = /sell|dump|short|avoid|bearish|rug|scam/.test(lower);
+    const buy = /buy|moon|pump|bullish|long|ape|gem|alpha|100x/.test(lower);
+    const recommendation_type =
+      buy && !sell ? "BUY" : sell && !buy ? "SELL" : "NOISE";
+    const is_recommendation = recommendation_type !== "NOISE";
+    const conviction = is_recommendation
+      ? /100x|moon|ape|strong|high|gem|alpha/.test(lower)
+        ? "HIGH"
+        : "MEDIUM"
+      : "NONE";
+    return buildToonResponse({
+      thought: "Returning deterministic Social Alpha extraction.",
+      actions: "REPLY",
+      text: JSON.stringify({
+        is_recommendation,
+        recommendation_type,
+        conviction,
+        token_mentioned: ticker,
+      }),
     });
   }
 

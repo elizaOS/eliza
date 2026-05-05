@@ -143,7 +143,7 @@ export const spawnAgentAction: Action = {
   // unanswered (ActionResult.text is intentionally empty to avoid the
   // workspace-path leak: see the text:"" on success above) and invokes
   // SPAWN_AGENT again, producing a duplicate subagent per user prompt.
-  // Matches CREATE_TASK, which already has this for the same reason.
+  // Matches START_CODING_TASK, which already has this for the same reason.
   suppressPostActionContinuation: true,
 
   examples: [
@@ -241,11 +241,11 @@ export const spawnAgentAction: Action = {
 
     // SPAWN_AGENT spawns a single PTY session and has no `agents` parameter,
     // so a multi-intent prompt routed here would single-task and silently
-    // drop the other items. The swarm path (CREATE_TASK + `agents:` pipe)
+    // drop the other items. The swarm path (START_CODING_TASK + `agents:` pipe)
     // is the correct route. Probe the raw user text, not just `task`, since
     // the action-selector LLM tends to rewrite multi-ask prompts into a
     // single-item `task` before the handler sees them. Delegate directly
-    // to CREATE_TASK so the swarm coordinator manages the parallel run;
+    // to START_CODING_TASK so the swarm coordinator manages the parallel run;
     // returning a failure here would just leave the user with no reply
     // because the bootstrap runtime fires one action per turn and does
     // not auto-retry on action failure.
@@ -258,13 +258,13 @@ export const spawnAgentAction: Action = {
         );
       } else {
         logger.info(
-          `[SPAWN_AGENT] redirecting multi-intent prompt with ${splitProbe.length} distinct asks to CREATE_TASK swarm path`,
+          `[SPAWN_AGENT] redirecting multi-intent prompt with ${splitProbe.length} distinct asks to START_CODING_TASK swarm path`,
         );
         return createTaskHandler(runtime, message, state, options, callback);
       }
     }
 
-    // Shared guard with CREATE_TASK: reject shell/pi/bash agentType hints when
+    // Shared guard with START_CODING_TASK: reject shell/pi/bash agentType hints when
     // the task text is prose so the LLM-supplied shortcut doesn't crash the
     // subagent. Helper lives next to looksLikeProseTask in start-coding-task.
     const explicitRawType = coerceShellAgentTypeForProse(

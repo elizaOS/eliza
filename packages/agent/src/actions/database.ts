@@ -33,6 +33,11 @@ interface ListTablesResponse {
   tables: TableInfoShape[];
 }
 
+interface ListDatabaseTablesParams {
+  filter?: string;
+  includeEmpty?: boolean;
+}
+
 interface TableRowsResponse {
   rows: Array<Record<string, unknown>>;
   total?: number;
@@ -59,7 +64,7 @@ export const listDatabaseTablesAction: Action = {
   descriptionCompressed:
     "list table agent database, w/ row count column metadata available",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message): Promise<ActionResult> => {
+  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,
@@ -78,7 +83,21 @@ export const listDatabaseTablesAction: Action = {
         };
       }
       const data = (await resp.json()) as ListTablesResponse;
-      const tables = data.tables ?? [];
+      const params = (options as HandlerOptions | undefined)?.parameters as
+        | ListDatabaseTablesParams
+        | undefined;
+      const filter = params?.filter?.trim().toLowerCase() ?? "";
+      const includeEmpty = params?.includeEmpty ?? true;
+      const tables = (data.tables ?? []).filter((table) => {
+        if (filter && !table.name.toLowerCase().includes(filter)) return false;
+        if (
+          !includeEmpty &&
+          typeof table.rowCount === "number" &&
+          table.rowCount === 0
+        )
+          return false;
+        return true;
+      });
       const lines = tables.map((table) => {
         const cols = table.columns?.length ?? 0;
         const rows = table.rowCount ?? "?";
@@ -90,7 +109,7 @@ export const listDatabaseTablesAction: Action = {
           ? `Found ${tables.length} table(s):\n${lines.join("\n")}`
           : "No tables found.",
         values: { count: tables.length },
-        data: { actionName: "LIST_DATABASE_TABLES", tables },
+        data: { actionName: "LIST_DATABASE_TABLES", tables, filter },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -98,7 +117,21 @@ export const listDatabaseTablesAction: Action = {
       return { success: false, text: `Failed to list tables: ${msg}` };
     }
   },
-  parameters: [],
+  parameters: [
+    {
+      name: "filter",
+      description: "Optional case-insensitive substring to match table names.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "includeEmpty",
+      description:
+        "When false, omit tables with zero rows when row counts are available.",
+      required: false,
+      schema: { type: "boolean" as const, default: true },
+    },
+  ],
   examples: [
     [
       {

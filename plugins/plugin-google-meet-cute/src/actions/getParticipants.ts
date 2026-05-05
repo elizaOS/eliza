@@ -9,6 +9,16 @@ import {
 } from "@elizaos/core";
 import { GoogleMeetAPIService } from "../services/googleMeetAPIService";
 
+function getParams(params?: unknown): Record<string, unknown> {
+  const direct =
+    params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+  const nested =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...nested };
+}
+
 export const getParticipantsAction: Action = {
   name: "GET_PARTICIPANTS",
   description: "Get the list of participants in a Google Meet conference",
@@ -18,6 +28,15 @@ export const getParticipantsAction: Action = {
     "list participants",
     "attendees",
     "who joined",
+  ],
+  parameters: [
+    {
+      name: "conferenceRecordName",
+      description:
+        "Optional Google Meet conference record name, for example conferenceRecords/abc123. Omit to list the current active meeting participants.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   examples: [
     [
@@ -85,8 +104,7 @@ export const getParticipantsAction: Action = {
         throw new Error("Google Meet API service not found");
       }
 
-      const options =
-        params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+      const options = getParams(params);
       const text = typeof message.content?.text === "string" ? message.content.text : "";
       const conferenceRecordName =
         typeof options.conferenceRecordName === "string"

@@ -10,5 +10,10 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^6.0.0"
+  },
+  "scripts": {
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
   }
 }

@@ -192,10 +192,10 @@ export const integrationScenarios: Scenario[] = [
         name: "Large secret stored correctly",
         severity: "major",
         evaluate: (r: ScenarioOutcome): CheckVerdict => ({
-          passed: r.secretsInStorage["LARGE_SECRET"] === "A".repeat(500),
+          passed: r.secretsInStorage.LARGE_SECRET === "A".repeat(500),
           expected: `LARGE_SECRET = ${"A".repeat(20)}... (500 chars)`,
-          actual: r.secretsInStorage["LARGE_SECRET"]
-            ? `${r.secretsInStorage["LARGE_SECRET"].substring(0, 20)}... (${r.secretsInStorage["LARGE_SECRET"].length} chars)`
+          actual: r.secretsInStorage.LARGE_SECRET
+            ? `${r.secretsInStorage.LARGE_SECRET.substring(0, 20)}... (${r.secretsInStorage.LARGE_SECRET.length} chars)`
             : "not found",
         }),
       },

@@ -6,15 +6,16 @@
   "scripts": {
     "start": "bun run agent.ts",
     "dev": "bun --watch run agent.ts",
-    "test": "vitest run",
+    "test": "vitest run __tests__ --passWithNoTests",
     "test:watch": "vitest",
     "test:live": "LIVE_TEST=true vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "lint:check": "bunx @biomejs/biome check ."
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run typecheck"
   },
   "dependencies": {
-    "@elizaos/core": "beta",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-bluesky": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",

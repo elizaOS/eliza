@@ -1,8 +1,8 @@
-import path from "path";
+import path from "node:path";
 import { defineConfig } from "tsup";
 
 // Monorepo paths
-const monorepoRoot = path.resolve(__dirname, "../../..");
+const monorepoRoot = path.resolve(__dirname, "../../../..");
 const packagesDir = path.join(monorepoRoot, "packages");
 const pluginsDir = path.join(monorepoRoot, "plugins");
 
@@ -14,17 +14,16 @@ function resolvePackage(pkg: string, browserPath?: string): string {
   let basePath: string;
   if (pkgName === "core") {
     // Core package is at packages/core
-    basePath = path.join(packagesDir, "typescript");
+    basePath = path.join(packagesDir, "core");
   } else {
-    // Plugins have a typescript/ subdirectory
-    basePath = path.join(pluginsDir, pkgName, "typescript");
+    basePath = path.join(pluginsDir, pkgName);
   }
 
   return browserPath ? path.join(basePath, browserPath) : basePath;
 }
 
 // Node.js packages that should not be bundled for browser
-const nodeExternals = [
+const _nodeExternals = [
   "@vercel/oidc",
   "sharp",
   "fs",
@@ -74,6 +73,10 @@ export default defineConfig([
           "@elizaos/plugin-eliza-classic",
         ),
         "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb"),
+        "@elizaos/plugin-inmemorydb": resolvePackage(
+          "@elizaos/plugin-inmemorydb",
+          "index.browser.ts",
+        ),
       };
     },
   },
@@ -127,11 +130,15 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
         ),
         "@elizaos/plugin-eliza-classic": resolvePackage(
           "@elizaos/plugin-eliza-classic",
-          "dist/browser/index.browser.js",
+          "index.browser.ts",
         ),
         "@elizaos/plugin-localdb": resolvePackage(
           "@elizaos/plugin-localdb",
-          "dist/browser/index.browser.js",
+          "index.browser.ts",
+        ),
+        "@elizaos/plugin-inmemorydb": resolvePackage(
+          "@elizaos/plugin-inmemorydb",
+          "index.browser.ts",
         ),
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
         dotenv: path.join(__dirname, "src/stubs/empty.js"),
@@ -203,11 +210,15 @@ console.log("[ElizaOS] Bundle starting...");`,
         ),
         "@elizaos/plugin-eliza-classic": resolvePackage(
           "@elizaos/plugin-eliza-classic",
-          "dist/browser/index.browser.js",
+          "index.browser.ts",
         ),
         "@elizaos/plugin-localdb": resolvePackage(
           "@elizaos/plugin-localdb",
-          "dist/browser/index.browser.js",
+          "index.browser.ts",
+        ),
+        "@elizaos/plugin-inmemorydb": resolvePackage(
+          "@elizaos/plugin-inmemorydb",
+          "index.browser.ts",
         ),
         // Stub Node.js packages
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),

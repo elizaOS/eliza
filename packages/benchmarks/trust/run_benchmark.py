@@ -40,6 +40,25 @@ _MESSAGE_CATEGORIES = (
 _OPENAI_COMPATIBLE_PROVIDERS = ("openai", "groq", "openrouter")
 
 
+def _configure_bridge_model_env(model_name: str | None) -> None:
+    model = (model_name or os.environ.get("BENCHMARK_MODEL_NAME") or "openai/gpt-oss-120b").strip()
+    if not model:
+        return
+    for key in (
+        "BENCHMARK_MODEL_NAME",
+        "MODEL_NAME",
+        "SMALL_MODEL",
+        "LARGE_MODEL",
+        "GROQ_SMALL_MODEL",
+        "GROQ_LARGE_MODEL",
+        "OPENAI_SMALL_MODEL",
+        "OPENAI_LARGE_MODEL",
+        "OPENROUTER_SMALL_MODEL",
+        "OPENROUTER_LARGE_MODEL",
+    ):
+        os.environ.setdefault(key, model)
+
+
 def _parse_detection_entry(raw: dict[str, object]) -> dict[str, bool | float]:
     detected_raw = raw.get("detected", False)
     if isinstance(detected_raw, str):
@@ -365,20 +384,33 @@ Handler descriptions:
         output_path=args.output,
     )
 
-    # Create the handler on demand (eliza handler is expensive to instantiate)
-    print(f"[TrustBench] Creating handler: {args.handler}")
-    handler = _create_handler(
-        args.handler,
-        model_provider=args.model_provider,
-        model_name=args.model,
-    )
+    server_manager = None
+    handler = None
+    try:
+        if args.handler in {"eliza", "eliza-bridge"}:
+            _configure_bridge_model_env(args.model)
+            if not os.environ.get("ELIZA_BENCH_URL"):
+                from eliza_adapter.server_manager import ElizaServerManager
 
-    runner = TrustBenchmarkRunner(config)
-    result = runner.run_and_report(handler, output_path=args.output)
+                server_manager = ElizaServerManager()
+                server_manager.start()
 
-    # Clean up eliza handler resources if it was used
-    if hasattr(handler, "close") and callable(handler.close):
-        handler.close()  # type: ignore[union-attr]
+        # Create the handler on demand (eliza handler is expensive to instantiate)
+        print(f"[TrustBench] Creating handler: {args.handler}")
+        handler = _create_handler(
+            args.handler,
+            model_provider=args.model_provider,
+            model_name=args.model,
+        )
+
+        runner = TrustBenchmarkRunner(config)
+        result = runner.run_and_report(handler, output_path=args.output)
+    finally:
+        # Clean up eliza handler resources if it was used
+        if handler is not None and hasattr(handler, "close") and callable(handler.close):
+            handler.close()  # type: ignore[union-attr]
+        if server_manager is not None:
+            server_manager.stop()
 
     # Exit code based on overall quality
     if result.overall_f1 < args.threshold:

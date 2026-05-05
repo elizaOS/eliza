@@ -39,12 +39,39 @@ async function saveExecutionRecord(
   await runtime.createMemory(memory, "messages");
 }
 
+function readActionParams(
+  options?: Record<string, unknown>,
+): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
 export const describeSceneAction: Action = {
   name: "DESCRIBE_SCENE",
   similes: ["ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND"],
   description:
     "Analyzes the current visual scene and provides a detailed description of what the agent sees through the camera. Returns scene analysis data including people count, objects, and camera info for action chaining.",
   descriptionCompressed: "Describe what camera sees as natural language.",
+  parameters: [
+    {
+      name: "detailLevel",
+      description:
+        "Scene description detail level. Use summary to omit object/person breakdowns from the spoken response.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["summary", "detailed"],
+        default: "detailed",
+      },
+    },
+  ],
   validate: async (
     runtime: any,
     message: any,
@@ -184,11 +211,15 @@ export const describeSceneAction: Action = {
       const peopleCount = scene.people.length;
       const objectCount = scene.objects.length;
       const timestamp = new Date(scene.timestamp).toLocaleString();
+      const detailLevel =
+        readActionParams(_options).detailLevel === "summary"
+          ? "summary"
+          : "detailed";
 
       let description = `Looking through ${cameraInfo?.name || "the camera"}, `;
       description += scene.description;
 
-      if (peopleCount > 0) {
+      if (detailLevel === "detailed" && peopleCount > 0) {
         description += `\n\nI can see ${peopleCount} ${peopleCount === 1 ? "person" : "people"}`;
         const facingData = scene.people.reduce(
           (acc, person) => {
@@ -209,7 +240,7 @@ export const describeSceneAction: Action = {
         description += ".";
       }
 
-      if (objectCount > 0) {
+      if (detailLevel === "detailed" && objectCount > 0) {
         const objectTypes = scene.objects.reduce(
           (acc, obj) => {
             acc[obj.type] = (acc[obj.type] || 0) + 1;
@@ -224,7 +255,11 @@ export const describeSceneAction: Action = {
         description += `\n\nObjects detected: ${objectDescriptions.join(", ")}.`;
       }
 
-      if (scene.sceneChanged && scene.changePercentage) {
+      if (
+        detailLevel === "detailed" &&
+        scene.sceneChanged &&
+        scene.changePercentage
+      ) {
         description += `\n\n(Scene changed by ${scene.changePercentage.toFixed(1)}% since last analysis)`;
       }
 
@@ -254,6 +289,7 @@ export const describeSceneAction: Action = {
           cameraName: cameraInfo?.name || undefined,
           sceneChanged: scene.sceneChanged,
           changePercentage: scene.changePercentage,
+          detailLevel,
         },
         data: {
           actionName: "DESCRIBE_SCENE",

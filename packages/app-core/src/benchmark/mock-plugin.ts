@@ -9,13 +9,39 @@ import {
 } from "@elizaos/core";
 
 function extractPrompt(
-  input: GenerateTextParams | string | null | undefined,
+  input:
+    | GenerateTextParams
+    | string
+    | null
+    | undefined
+    | Record<string, unknown>,
 ): string {
   if (typeof input === "string") {
     return input;
   }
   if (input && typeof input === "object" && typeof input.prompt === "string") {
     return input.prompt;
+  }
+  if (input && typeof input === "object" && Array.isArray(input.messages)) {
+    return input.messages
+      .map((message) => {
+        if (typeof message === "string") return message;
+        if (message && typeof message === "object" && "content" in message) {
+          const content = (message as { content?: unknown }).content;
+          return typeof content === "string"
+            ? content
+            : JSON.stringify(content);
+        }
+        return JSON.stringify(message);
+      })
+      .join("\n");
+  }
+  if (input && typeof input === "object") {
+    try {
+      return JSON.stringify(input);
+    } catch {
+      return "";
+    }
   }
   return "";
 }
@@ -149,6 +175,46 @@ function buildClawBenchReplyToon(): string {
   );
 }
 
+function buildSweBenchReplyToon(): string {
+  return buildReplyToon(
+    [
+      "diff --git a/hello.py b/hello.py",
+      "--- a/hello.py",
+      "+++ b/hello.py",
+      "@@ -1 +1 @@",
+      "-print('hello')",
+      "+print('hello swe-bench')",
+      "",
+    ].join("\n"),
+  );
+}
+
+function buildExperienceToon(prompt: string): string {
+  if (
+    /phase(?:\\?":|\s*:)\s*"?learning/i.test(prompt) ||
+    /RECORD_EXPERIENCE/i.test(prompt)
+  ) {
+    return buildToonResponse(prompt, {
+      thought: "Recording the shared learning for later retrieval.",
+      actions: "BENCHMARK_ACTION",
+      providers: "ELIZA_BENCHMARK",
+      text: "RECORD_EXPERIENCE recorded the learning.",
+      params: "BENCHMARK_ACTION:\n  command: RECORD_EXPERIENCE",
+    });
+  }
+
+  const expectedLearning =
+    /expected_learning(?:\\?":|\s*:)\s*"?([^"\n]+)/i
+      .exec(prompt)?.[1]
+      ?.trim() ?? "the relevant prior learning";
+  return buildToonResponse(prompt, {
+    thought: "Recalling the most relevant stored experience.",
+    actions: "REPLY",
+    providers: "ELIZA_BENCHMARK",
+    text: `I remember ${expectedLearning}.`,
+  });
+}
+
 function extractAdhdAction(prompt: string): string {
   const lower = prompt.toLowerCase();
   const messageMatch = /Current user message:\s*([\s\S]*?)(?:\n\n|$)/i.exec(
@@ -205,6 +271,139 @@ function buildAdhdBenchToon(prompt: string): string {
     providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
     text,
     params: `BENCHMARK_ACTION:\n  command: ${action}`,
+  });
+}
+
+function extractMind2WebElementId(prompt: string): string {
+  return (
+    /backend_node_id["'=:\s]+([A-Za-z0-9_-]+)/i.exec(prompt)?.[1] ??
+    /"backend_node_id"\s*:\s*"([^"]+)"/i.exec(prompt)?.[1] ??
+    "node-1"
+  );
+}
+
+function buildMind2WebActionToon(prompt: string): string {
+  return buildToonResponse(prompt, {
+    thought: "Clicking the most relevant Mind2Web element.",
+    actions: "BENCHMARK_ACTION",
+    providers: "",
+    text: "Selected a web element.",
+    params: `BENCHMARK_ACTION:\n  operation: CLICK\n  element_id: ${extractMind2WebElementId(prompt)}\n  value:`,
+  });
+}
+
+function buildTerminalCommandToon(prompt: string): string {
+  return buildToonResponse(prompt, {
+    thought: "Running a safe terminal smoke command.",
+    actions: "BENCHMARK_ACTION",
+    providers: "",
+    text: "Running terminal command.",
+    params: "BENCHMARK_ACTION:\n  command: echo terminal-bench-smoke",
+  });
+}
+
+function buildOSWorldActionToon(prompt: string): string {
+  return buildToonResponse(prompt, {
+    thought: "Clicking a safe desktop coordinate for OSWorld smoke.",
+    actions: "BENCHMARK_ACTION",
+    providers: "",
+    text: "Running pyautogui action.",
+    params: "BENCHMARK_ACTION:\n  command: pyautogui.click(10, 10)",
+  });
+}
+
+function buildWebShopActionToon(prompt: string): string {
+  return buildToonResponse(prompt, {
+    thought: "Searching for the requested product.",
+    actions: "BENCHMARK_ACTION",
+    providers: "",
+    text: "Searching WebShop.",
+    params:
+      "BENCHMARK_ACTION:\n  command: search[wireless bluetooth headphones]",
+  });
+}
+
+function buildGauntletDecisionToon(prompt: string): string {
+  return buildToonResponse(prompt, {
+    thought: "Returning a conservative Solana safety decision.",
+    actions: "REPLY",
+    providers: "",
+    text: "<decision>refuse</decision><reason>Conservative mock safety refusal.</reason><confidence>0.7</confidence>",
+  });
+}
+
+function buildOpenClawReplyToon(prompt: string): string {
+  return buildToonResponse(prompt, {
+    thought: "Returning a deterministic OpenClaw conceptual response.",
+    actions: "REPLY",
+    providers: "",
+    text: "Initialize the project with npm init, add TypeScript and a tsconfig, create src/ and tests/ directories, add package scripts, and initialize git with a useful .gitignore.",
+  });
+}
+
+function buildTrustAnalysisToon(prompt: string): string {
+  const message =
+    /## Message to Analyze\s*"""([\s\S]*?)"""/i.exec(prompt)?.[1] ??
+    /"message"\s*:\s*"([^"]*)"/i.exec(prompt)?.[1] ??
+    prompt;
+  const lower = message.toLowerCase();
+  const promptInjection =
+    /ignore|disregard|previous instructions|new instructions|system override|system command|dan|bypass|jailbreak/.test(
+      lower,
+    );
+  const privilege = /admin|owner|root|privilege|permissions|elevate/.test(
+    lower,
+  );
+  const analysis = {
+    prompt_injection: {
+      detected: promptInjection,
+      confidence: promptInjection ? 0.95 : 0.05,
+    },
+    social_engineering: { detected: false, confidence: 0.05 },
+    credential_theft: { detected: false, confidence: 0.05 },
+    privilege_escalation: {
+      detected: privilege,
+      confidence: privilege ? 0.8 : 0.05,
+    },
+    data_exfiltration: { detected: false, confidence: 0.05 },
+    resource_abuse: { detected: false, confidence: 0.05 },
+    content_policy: { detected: false, confidence: 0.05 },
+  };
+  return buildToonResponse(prompt, {
+    thought: "Returning deterministic Trust benchmark analysis.",
+    actions: "REPLY",
+    providers: "",
+    text: JSON.stringify(analysis),
+  });
+}
+
+function buildSocialAlphaExtractionToon(prompt: string): string {
+  const message =
+    /Message:\s*([\s\S]*?)(?:\n\nBENCHMARK CONTEXT|\n\nRespond|$)/i.exec(
+      prompt,
+    )?.[1] ?? prompt;
+  const lower = message.toLowerCase();
+  const ticker = /\$([A-Z][A-Z0-9]{1,12})/.exec(message)?.[1] ?? "";
+  const sell = /sell|dump|short|avoid|bearish|rug|scam/.test(lower);
+  const buy = /buy|moon|pump|bullish|long|ape|gem|alpha|100x/.test(lower);
+  const recommendation_type =
+    buy && !sell ? "BUY" : sell && !buy ? "SELL" : "NOISE";
+  const is_recommendation = recommendation_type !== "NOISE";
+  const conviction = is_recommendation
+    ? /100x|moon|ape|strong|high|gem|alpha/.test(lower)
+      ? "HIGH"
+      : "MEDIUM"
+    : "NONE";
+  return buildToonResponse(prompt, {
+    thought: "Returning deterministic Social Alpha extraction.",
+    actions: "REPLY",
+    providers: "",
+    text: JSON.stringify({
+      is_recommendation,
+      recommendation_type,
+      conviction,
+      token_mentioned: ticker,
+    }),
   });
 }
 
@@ -319,6 +518,48 @@ function buildCompletion(prompt: string): string {
   }
 
   if (
+    /Benchmark:\*{0,2}\s*mind2web/i.test(prompt) ||
+    /Mind2Web benchmark/i.test(prompt)
+  ) {
+    return buildMind2WebActionToon(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*(terminal-bench|terminal_bench)/i.test(prompt) ||
+    /Terminal-Bench/i.test(prompt)
+  ) {
+    return buildTerminalCommandToon(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*osworld/i.test(prompt) ||
+    /OSWorld|pyautogui/i.test(prompt)
+  ) {
+    return buildOSWorldActionToon(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*webshop/i.test(prompt) ||
+    /WebShop|simulated webstore|webstore/i.test(prompt)
+  ) {
+    return buildWebShopActionToon(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*gauntlet/i.test(prompt) ||
+    /Solana DeFi safety analyzer/i.test(prompt)
+  ) {
+    return buildGauntletDecisionToon(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*openclaw/i.test(prompt) ||
+    /OpenClaw|Node\.js project with TypeScript/i.test(prompt)
+  ) {
+    return buildOpenClawReplyToon(prompt);
+  }
+
+  if (
     /Benchmark:\*{0,2}\s*clawbench/i.test(prompt) ||
     /ClawBench|Review my inbox/i.test(prompt)
   ) {
@@ -326,10 +567,44 @@ function buildCompletion(prompt: string): string {
   }
 
   if (
+    /Benchmark:\*{0,2}\s*(swe_bench|swe-bench)/i.test(prompt) ||
+    /SWE-bench|Respond with a SINGLE unified diff|Repository: mock\/repo/i.test(
+      prompt,
+    )
+  ) {
+    return buildSweBenchReplyToon();
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*experience/i.test(prompt) ||
+    /RECORD_EXPERIENCE|learns from experience|Recall any relevant past experiences/i.test(
+      prompt,
+    )
+  ) {
+    return buildExperienceToon(prompt);
+  }
+
+  if (
     /Benchmark:\*{0,2}\s*adhdbench/i.test(prompt) ||
     /ADHDBench/i.test(prompt)
   ) {
     return buildAdhdBenchToon(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*trust/i.test(prompt) ||
+    /security analysis agent|prompt_injection|credential_theft/i.test(prompt)
+  ) {
+    return buildTrustAnalysisToon(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*(social_alpha|social-alpha)/i.test(prompt) ||
+    /Social-Alpha benchmark|crypto trading signal extraction engine/i.test(
+      prompt,
+    )
+  ) {
+    return buildSocialAlphaExtractionToon(prompt);
   }
 
   return buildToonResponse(prompt, {
@@ -361,8 +636,32 @@ function mockObjectModel(
   _runtime: IAgentRuntime,
   params: ObjectGenerationParams,
 ): Record<string, JsonValue> {
-  const prompt = extractPrompt(params.prompt ?? "");
+  const prompt = extractPrompt(params.prompt ?? params);
   const command = extractCommand(prompt);
+  const replyToon =
+    /Benchmark:\*{0,2}\s*trust/i.test(prompt) ||
+    /security analysis agent|prompt_injection|credential_theft/i.test(prompt)
+      ? buildTrustAnalysisToon(prompt)
+      : /Benchmark:\*{0,2}\s*(social_alpha|social-alpha)/i.test(prompt) ||
+          /Social-Alpha benchmark|crypto trading signal extraction engine/i.test(
+            prompt,
+          )
+        ? buildSocialAlphaExtractionToon(prompt)
+        : null;
+  if (replyToon) {
+    const text = /^text:\s*(.*)$/m.exec(replyToon)?.[1] ?? "";
+    const thought = /^thought:\s*(.*)$/m.exec(replyToon)?.[1] ?? "";
+    return {
+      thought,
+      reasoning: thought,
+      actions: ["REPLY"],
+      name: "REPLY",
+      action: "REPLY",
+      params: {},
+      text,
+      isFinish: true,
+    };
+  }
   const schemaProps =
     params.schema && typeof params.schema.properties === "object"
       ? params.schema.properties

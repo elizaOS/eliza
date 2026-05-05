@@ -172,7 +172,7 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
   agentConfig: ["system"],
   pluginList: ["system"],
   elizaChannelProfile: ["general"],
-  elizaSessionKey: ["general", "system"],
+  elizaSessionBridge: ["general", "system"],
   roleBackfill: ["social", "system"],
   "activity-profile": ["general", "social"],
   elizaAdminTrust: ["social", "system"],

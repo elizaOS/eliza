@@ -1,5 +1,6 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import type { WalletPortfolioResponse } from "../types/api/wallet";
 import {
   createBirdeyePortfolioProvider,
   formatPortfolio,
@@ -48,7 +49,11 @@ describe("Birdeye portfolio provider factory", () => {
       descriptionCompressed: "test birdeye portfolio",
     });
 
-    const result = await provider.get(createRuntime(service), {} as any);
+    const result = await provider.get(
+      createRuntime(service),
+      {} as Memory,
+      {} as State,
+    );
 
     expect(service.fetchWalletTokenList).toHaveBeenCalledWith(
       "solana",
@@ -88,7 +93,11 @@ describe("Birdeye portfolio provider factory", () => {
       includeTrades: true,
     });
 
-    const result = await provider.get(createRuntime(service), {} as any);
+    const result = await provider.get(
+      createRuntime(service),
+      {} as Memory,
+      {} as State,
+    );
 
     expect(service.fetchWalletTokenList).toHaveBeenCalledTimes(1);
     expect(service.fetchWalletTxList).toHaveBeenCalledWith("solana", WALLET, {
@@ -105,22 +114,22 @@ describe("Birdeye portfolio provider factory", () => {
   });
 
   it("formats legacy portfolio wrappers as TOON holdings", () => {
-    expect(
-      formatPortfolio({
-        data: {
-          items: [
-            {
-              symbol: "ETH",
-              address: "0x0000000000000000000000000000000000000000",
-              uiAmount: 2,
-              priceUsd: 100,
-              valueUsd: 200,
-              chainId: "ethereum",
-            },
-          ],
-        },
-      } as any),
-    ).toContain(
+    const legacy: WalletPortfolioResponse = {
+      success: true,
+      data: {
+        items: [
+          {
+            symbol: "ETH",
+            address: "0x0000000000000000000000000000000000000000",
+            uiAmount: 2,
+            priceUsd: 100,
+            valueUsd: 200,
+            chainId: "ethereum",
+          },
+        ],
+      },
+    };
+    expect(formatPortfolio(legacy)).toContain(
       "holdings[1]{symbol,address,amount,priceUsd,valueUsd,chainId}:",
     );
   });

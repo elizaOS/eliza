@@ -41,7 +41,7 @@ export async function runBenchmark(
   for (const handler of handlers) {
     const progress = options.progressCallback
       ? (id: string, idx: number, total: number) =>
-          options.progressCallback!(handler.name, id, idx, total)
+          options.progressCallback?.(handler.name, id, idx, total)
       : undefined;
     const outcomes = await runHandler(handler, scenarios, progress);
     handlerResults.push(scoreHandler(handler.name, scenarios, outcomes));

@@ -12,7 +12,7 @@ interface Props {
 
 type SortKey = "reward" | "model" | "programs";
 
-const TrajectoryList: React.FC<Props> = ({ runs, loading, benchmark }) => {
+const TrajectoryList: React.FC<Props> = ({ runs, loading }) => {
   const [sortBy, setSortBy] = useState<SortKey>("reward");
   const [filterModel, setFilterModel] = useState<string>("all");
 

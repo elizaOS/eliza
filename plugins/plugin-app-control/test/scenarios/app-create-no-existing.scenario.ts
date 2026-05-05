@@ -48,8 +48,8 @@ export default scenario({
 		{
 			type: "judgeRubric",
 			name: "scaffold-or-dispatch-acknowledgement",
-			rubric:
-				"The assistant should acknowledge starting the create flow — mentioning that it scaffolded an app, spawned a coding agent, or that template/scaffolding is unavailable. It must NOT claim the app is already running. (CREATE_TASK is not registered in this test runtime, so a 'could not dispatch' style failure is acceptable.)",
+				rubric:
+					"The assistant should acknowledge starting the create flow — mentioning that it scaffolded an app, spawned a coding agent, or that template/scaffolding is unavailable. It must NOT claim the app is already running. (START_CODING_TASK is not registered in this test runtime, so a 'could not dispatch' style failure is acceptable.)",
 			minimumScore: 0.6,
 		},
 	],

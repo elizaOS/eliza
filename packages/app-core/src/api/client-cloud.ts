@@ -212,6 +212,24 @@ function parseDirectCloudJson(data: unknown): unknown {
   return JSON.parse(data);
 }
 
+function parseDirectCloudJsonSafe(data: unknown): unknown {
+  try {
+    return parseDirectCloudJson(data);
+  } catch {
+    return data;
+  }
+}
+
+function directCloudResponseText(data: unknown): string {
+  if (data === null || data === undefined) return "";
+  if (typeof data === "string") return data;
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+}
+
 function directCloudBodyData(body: BodyInit | null | undefined): unknown {
   if (body == null) return undefined;
   if (typeof body !== "string") return body;
@@ -222,6 +240,47 @@ function directCloudBodyData(body: BodyInit | null | undefined): unknown {
   } catch {
     return body;
   }
+}
+
+async function directCloudJsonResponse<T>(
+  url: string,
+  init?: RequestInit,
+): Promise<{ ok: boolean; status: number; data: T; text: string }> {
+  const method = init?.method ?? "GET";
+  const headers: Record<string, string> = {};
+  new Headers(init?.headers).forEach((value, key) => {
+    headers[key] = value;
+  });
+
+  if (shouldUseNativeCloudHttp()) {
+    const data = directCloudBodyData(init?.body);
+    const res = await CapacitorHttp.request({
+      url,
+      method,
+      headers,
+      ...(data !== undefined ? { data } : {}),
+      responseType: "json",
+      connectTimeout: 10_000,
+      readTimeout: 10_000,
+    });
+    const parsed = parseDirectCloudJsonSafe(res.data) as T;
+    return {
+      ok: res.status >= 200 && res.status < 300,
+      status: res.status,
+      data: parsed,
+      text: directCloudResponseText(res.data),
+    };
+  }
+
+  const res = await fetch(url, { ...init, method, headers });
+  const text = await res.text().catch(() => res.statusText);
+  const parsed = parseDirectCloudJsonSafe(text) as T;
+  return {
+    ok: res.ok,
+    status: res.status,
+    data: parsed,
+    text,
+  };
 }
 
 async function directCloudRequest<T>(
@@ -1654,7 +1713,10 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   onProgress?.("creating", "Creating agent...");
 
   // Step 1: Create agent
-  const createRes = await fetch(`${resolvedCloudApiBase}/api/v1/eliza/agents`, {
+  const createRes = await directCloudJsonResponse<{
+    data?: { id?: string };
+    id?: string;
+  }>(`${resolvedCloudApiBase}/api/v1/eliza/agents`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -1669,13 +1731,10 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     }),
   });
   if (!createRes.ok) {
-    const err = await createRes.text().catch(() => "Unknown error");
+    const err = createRes.text || "Unknown error";
     throw new Error(`Failed to create cloud agent: ${err}`);
   }
-  const createData = (await createRes.json()) as {
-    data?: { id?: string };
-    id?: string;
-  };
+  const createData = createRes.data;
   const agentId = createData.data?.id ?? createData.id;
   if (!agentId) {
     throw new Error("Failed to create cloud agent: missing agent id");
@@ -1684,22 +1743,22 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   onProgress?.("provisioning", "Provisioning sandbox environment...");
 
   // Step 2: Start provisioning
-  const provisionRes = await fetch(
-    `${resolvedCloudApiBase}/api/v1/eliza/agents/${agentId}/provision`,
-    { method: "POST", headers },
-  );
-  if (!provisionRes.ok) {
-    const err = await provisionRes.text().catch(() => "Unknown error");
-    throw new Error(`Failed to start provisioning: ${err}`);
-  }
-  const provisionData = (await provisionRes.json()) as {
+  const provisionRes = await directCloudJsonResponse<{
     data?: {
       jobId?: string;
       bridgeUrl?: string | null;
     };
     jobId?: string;
     bridgeUrl?: string | null;
-  };
+  }>(`${resolvedCloudApiBase}/api/v1/eliza/agents/${agentId}/provision`, {
+    method: "POST",
+    headers,
+  });
+  if (!provisionRes.ok) {
+    const err = provisionRes.text || "Unknown error";
+    throw new Error(`Failed to start provisioning: ${err}`);
+  }
+  const provisionData = provisionRes.data;
   const immediateBridgeUrl =
     provisionData.data?.bridgeUrl ?? provisionData.bridgeUrl ?? null;
   if (immediateBridgeUrl) {
@@ -1716,12 +1775,7 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 2000));
 
-    const jobRes = await fetch(`${resolvedCloudApiBase}/api/v1/jobs/${jobId}`, {
-      headers,
-    });
-    if (!jobRes.ok) continue;
-
-    const jobData = (await jobRes.json()) as {
+    const jobRes = await directCloudJsonResponse<{
       data?: {
         status?: string;
         result?: { bridgeUrl?: string };
@@ -1730,7 +1784,10 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
       status?: string;
       result?: { bridgeUrl?: string };
       error?: string;
-    };
+    }>(`${resolvedCloudApiBase}/api/v1/jobs/${jobId}`, { headers });
+    if (!jobRes.ok) continue;
+
+    const jobData = jobRes.data;
     const status = jobData.data?.status ?? jobData.status;
     const result = jobData.data?.result ?? jobData.result;
     const error = jobData.data?.error ?? jobData.error;

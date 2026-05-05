@@ -58,7 +58,7 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
     '- Recurring prompt or schedule (e.g. "every morning summarize my inbox") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n' +
-    '- Goal to work toward until done (e.g. "figure out the onboarding refactor") → CREATE_TASK with name and description.\n' +
+    '- Goal to work toward until done (e.g. "figure out the onboarding refactor") → START_CODING_TASK with name and description.\n' +
     '- Deterministic pipeline of integration steps (e.g. "when a Slack message matches X, post to Discord") → create an n8n workflow via the n8n actions.\n' +
     "Ask one short clarifying question only if the shape is genuinely ambiguous; otherwise create immediately. After creation, briefly confirm what you made and how to run it.",
 };

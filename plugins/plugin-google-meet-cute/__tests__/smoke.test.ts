@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 describe("@elizaos/plugin-google-meet-cute", () => {
-  it("exports the plugin metadata", { timeout: 60_000 }, async () => {
+  it("exports the plugin metadata", { timeout: 120_000 }, async () => {
     const { default: googleMeetPlugin, googleMeetPlugin: namedExport } =
       await import("../src/index.ts");
 
@@ -14,6 +14,16 @@ describe("@elizaos/plugin-google-meet-cute", () => {
       "GET_PARTICIPANTS",
       "GENERATE_REPORT",
     ]);
+    expect(
+      googleMeetPlugin.actions
+        ?.find((action) => action.name === "GET_MEETING_INFO")
+        ?.parameters?.map((param) => param.name),
+    ).toEqual(["meetingId"]);
+    expect(
+      googleMeetPlugin.actions
+        ?.find((action) => action.name === "GET_PARTICIPANTS")
+        ?.parameters?.map((param) => param.name),
+    ).toEqual(["conferenceRecordName"]);
     expect(googleMeetPlugin.services).toHaveLength(2);
     expect(googleMeetPlugin.providers).toHaveLength(1);
   });

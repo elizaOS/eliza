@@ -13,24 +13,23 @@ export type SamOptions = {
  * SAM only supports basic ASCII characters.
  */
 function sanitizeForSam(text: string): string {
-  return (
-    text
-      // Replace em/en dashes with regular hyphen
-      .replace(/[—–]/g, "-")
-      // Replace smart quotes with regular quotes
-      .replace(/[""]/g, '"')
-      .replace(/['']/g, "'")
-      // Replace ellipsis with three dots
-      .replace(/…/g, "...")
-      // Replace other common Unicode punctuation
-      .replace(/[•·]/g, "-")
-      .replace(/[«»]/g, '"')
-      // Remove any remaining non-ASCII characters
-      .replace(/[^\x00-\x7F]/g, "")
-      // Collapse multiple spaces
-      .replace(/\s+/g, " ")
-      .trim()
-  );
+  const normalized = text
+    // Replace em/en dashes with regular hyphen
+    .replace(/[—–]/g, "-")
+    // Replace smart quotes with regular quotes
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
+    // Replace ellipsis with three dots
+    .replace(/…/g, "...")
+    // Replace other common Unicode punctuation
+    .replace(/[•·]/g, "-")
+    .replace(/[«»]/g, '"');
+
+  return Array.from(normalized)
+    .filter((char) => char.charCodeAt(0) <= 0x7f)
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function synthesizeSamWav(

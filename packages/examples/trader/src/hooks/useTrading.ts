@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
 import type { AgentRuntime } from "@elizaos/core";
 import type { AutoTradingManager } from "@elizaos/plugin-auto-trader";
+import { useCallback, useEffect, useState } from "react";
 
 interface StatusPosition {
   id: string;

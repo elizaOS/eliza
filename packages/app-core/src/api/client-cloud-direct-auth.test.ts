@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorMocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -19,12 +19,42 @@ vi.mock("@capacitor/core", () => ({
 
 import { ElizaClient } from "./client-base";
 import "./client-cloud";
+import { setBootConfig } from "../config/boot-config";
+
+function calledNativeUrls(): string[] {
+  return [
+    ...capacitorMocks.get.mock.calls,
+    ...capacitorMocks.post.mock.calls,
+    ...capacitorMocks.request.mock.calls,
+  ]
+    .map(([request]) => request?.url)
+    .filter((url): url is string => typeof url === "string");
+}
+
+function expectNoLocalPersistOrStatusProbe(): void {
+  for (const url of calledNativeUrls()) {
+    expect(url).not.toContain("localhost");
+    expect(url).not.toContain("/api/cloud/login/persist");
+    expect(url).not.toBe("https://api.elizacloud.ai/api/status");
+  }
+}
 
 describe("ElizaClient direct Cloud auth on native", () => {
   beforeEach(() => {
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://www.elizacloud.ai",
+    });
+    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
     capacitorMocks.get.mockReset();
     capacitorMocks.post.mockReset();
     capacitorMocks.request.mockReset();
+  });
+
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("creates native CLI sessions through the Cloud API host and opens the web auth host", async () => {
@@ -48,6 +78,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         ),
       }),
     );
+    expectNoLocalPersistOrStatusProbe();
   });
 
   it("polls native CLI sessions through the Cloud API host", async () => {
@@ -78,6 +109,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       token: "cloud-api-key",
       userId: "user-1",
     });
+    expectNoLocalPersistOrStatusProbe();
   });
 
   it("checks direct Cloud status through the Cloud API user endpoint", async () => {
@@ -107,6 +139,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         organizationId: "org-1",
       }),
     );
+    expectNoLocalPersistOrStatusProbe();
   });
 
   it("checks direct Cloud credits through the Cloud API credits endpoint", async () => {
@@ -132,6 +165,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         balance: 12.5,
       }),
     );
+    expectNoLocalPersistOrStatusProbe();
   });
 
   it("lists Cloud agents directly on native without a runtime base URL", async () => {
@@ -173,6 +207,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         }),
       ],
     });
+    expectNoLocalPersistOrStatusProbe();
   });
 
   it("creates and provisions Cloud agents directly on native", async () => {
@@ -225,6 +260,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         data: expect.objectContaining({ jobId: "job-1" }),
       }),
     );
+    expectNoLocalPersistOrStatusProbe();
   });
 
   it("polls direct Cloud provision jobs on native", async () => {
@@ -260,5 +296,246 @@ describe("ElizaClient direct Cloud auth on native", () => {
         }),
       }),
     );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("uses an injected native dev bearer token for Cloud login and agent provisioning without localhost persistence", async () => {
+    setBootConfig({
+      branding: {},
+      apiBase: "http://localhost:31337",
+      cloudApiBase: "https://www.elizacloud.ai",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(
+        new Error("native direct Cloud auth must not use fetch"),
+      );
+
+    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+    capacitorMocks.get.mockResolvedValue({
+      status: 200,
+      data: {
+        status: "authenticated",
+        apiKey: "dev-js-bearer",
+        organizationId: "org-dev",
+        userId: "user-dev",
+      },
+    });
+    capacitorMocks.request.mockImplementation(async ({ url, method }) => {
+      if (url === "https://api.elizacloud.ai/api/v1/user") {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            data: { id: "user-dev", organization_id: "org-dev" },
+          },
+        };
+      }
+      if (
+        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        method === "GET"
+      ) {
+        return { status: 200, data: { success: true, data: [] } };
+      }
+      if (
+        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        method === "POST"
+      ) {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            data: {
+              id: "agent-dev",
+              agentName: "Dev Agent",
+              status: "pending",
+            },
+          },
+        };
+      }
+      if (
+        url ===
+          "https://api.elizacloud.ai/api/v1/eliza/agents/agent-dev/provision" &&
+        method === "POST"
+      ) {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            data: { jobId: "job-dev", status: "queued", agentId: "agent-dev" },
+          },
+        };
+      }
+      if (url === "https://api.elizacloud.ai/api/v1/jobs/job-dev") {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            data: {
+              id: "job-dev",
+              type: "agent_provision",
+              status: "completed",
+              result: { bridgeUrl: "https://agent-dev.example.test" },
+              createdAt: "2026-05-05T00:00:00.000Z",
+              completedAt: "2026-05-05T00:01:00.000Z",
+            },
+          },
+        };
+      }
+      throw new Error(`Unexpected native Cloud request: ${method} ${url}`);
+    });
+
+    const client = new ElizaClient("http://localhost:31337");
+    const login = await client.cloudLoginDirect("https://www.elizacloud.ai");
+    const poll = await client.cloudLoginPollDirect(
+      login.apiBase ?? "https://api.elizacloud.ai",
+      login.sessionId ?? "missing-session",
+    );
+    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+      poll.token;
+
+    const status = await client.getCloudStatus();
+    const agents = await client.getCloudCompatAgents();
+    const create = await client.createCloudCompatAgent({
+      agentName: "Dev Agent",
+    });
+    const provision = await client.provisionCloudCompatAgent("agent-dev");
+    const job = await client.getCloudCompatJobStatus("job-dev");
+
+    expect(status).toEqual(
+      expect.objectContaining({
+        connected: true,
+        userId: "user-dev",
+        organizationId: "org-dev",
+      }),
+    );
+    expect(agents).toEqual({ success: true, data: [] });
+    expect(create.data.agentId).toBe("agent-dev");
+    expect(provision.data.jobId).toBe("job-dev");
+    expect(job.data).toEqual(
+      expect.objectContaining({
+        jobId: "job-dev",
+        status: "completed",
+      }),
+    );
+
+    expect(capacitorMocks.request).toHaveBeenCalledTimes(5);
+    for (const [request] of capacitorMocks.request.mock.calls) {
+      expect(request.headers).toEqual(
+        expect.objectContaining({ Authorization: "Bearer dev-js-bearer" }),
+      );
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(calledNativeUrls()).toEqual(
+      expect.arrayContaining([
+        "https://api.elizacloud.ai/api/auth/cli-session",
+        expect.stringMatching(
+          /^https:\/\/api\.elizacloud\.ai\/api\/auth\/cli-session\//,
+        ),
+        "https://api.elizacloud.ai/api/v1/user",
+        "https://api.elizacloud.ai/api/v1/eliza/agents",
+        "https://api.elizacloud.ai/api/v1/eliza/agents/agent-dev/provision",
+        "https://api.elizacloud.ai/api/v1/jobs/job-dev",
+      ]),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("provisions Cloud sandboxes through native HTTP with an injected dev token", async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(
+        new Error("native Cloud provisioning must not use fetch"),
+      );
+    capacitorMocks.request.mockImplementation(async ({ url, method }) => {
+      if (
+        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        method === "POST"
+      ) {
+        return {
+          status: 200,
+          data: { success: true, data: { id: "sandbox-agent" } },
+        };
+      }
+      if (
+        url ===
+          "https://api.elizacloud.ai/api/v1/eliza/agents/sandbox-agent/provision" &&
+        method === "POST"
+      ) {
+        return {
+          status: 200,
+          data: { success: true, data: { jobId: "sandbox-job" } },
+        };
+      }
+      if (url === "https://api.elizacloud.ai/api/v1/jobs/sandbox-job") {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            data: {
+              status: "completed",
+              result: { bridgeUrl: "https://sandbox-agent.example.test" },
+            },
+          },
+        };
+      }
+      throw new Error(`Unexpected sandbox request: ${method} ${url}`);
+    });
+
+    const client = new ElizaClient("http://localhost:31337");
+    const resultPromise = client.provisionCloudSandbox({
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "dev-js-bearer",
+      name: "Sandbox Agent",
+      bio: ["Native package-mode test agent."],
+    });
+
+    await vi.waitFor(() =>
+      expect(capacitorMocks.request).toHaveBeenCalledTimes(2),
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await expect(resultPromise).resolves.toEqual({
+      agentId: "sandbox-agent",
+      bridgeUrl: "https://sandbox-agent.example.test",
+    });
+    expect(capacitorMocks.request).toHaveBeenCalledTimes(3);
+    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer dev-js-bearer",
+        }),
+        data: expect.objectContaining({
+          agentName: "Sandbox Agent",
+          agentConfig: { bio: ["Native package-mode test agent."] },
+        }),
+      }),
+    );
+    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/sandbox-agent/provision",
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer dev-js-bearer",
+        }),
+      }),
+    );
+    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/jobs/sandbox-job",
+        method: "GET",
+        headers: expect.objectContaining({
+          authorization: "Bearer dev-js-bearer",
+        }),
+      }),
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expectNoLocalPersistOrStatusProbe();
   });
 });

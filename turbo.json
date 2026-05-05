@@ -33,6 +33,17 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
+    "@elizaos/example-browser-extension#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-anthropic#build",
+        "@elizaos/plugin-google-genai#build",
+        "@elizaos/plugin-groq#build",
+        "@elizaos/plugin-inmemorydb#build",
+        "@elizaos/plugin-openai#build"
+      ],
+      "outputs": ["chrome/dist/**", "safari/Chat with Webpage/**"]
+    },
     "@elizaos/core#build": {
       "dependsOn": ["@elizaos/schemas#build"],
       "env": ["LOG_LEVEL"],
@@ -159,7 +170,13 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-groq#build",
+        "@elizaos/plugin-inmemorydb#build",
+        "@elizaos/plugin-sql#build",
+        "@elizaos/plugin-video#build"
+      ],
       "outputs": []
     },
     "@elizaos/app-core#typecheck": {

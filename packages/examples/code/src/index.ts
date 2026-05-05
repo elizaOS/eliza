@@ -159,4 +159,4 @@ main().catch((error) => {
 // Exports for Testing
 // ============================================================================
 
-export { shouldRunInteractive, runInteractive };
+export { runInteractive, shouldRunInteractive };

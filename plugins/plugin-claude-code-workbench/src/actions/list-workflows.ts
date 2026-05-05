@@ -8,8 +8,13 @@ import type {
 } from "@elizaos/core";
 import type { ClaudeCodeWorkbenchService } from "../services/workbench-service.ts";
 
-function toText(service: ClaudeCodeWorkbenchService): string {
-  const workflows = service.listWorkflows();
+function toText(
+  service: ClaudeCodeWorkbenchService,
+  includeDisabled: boolean,
+): string {
+  const workflows = service
+    .listWorkflows()
+    .filter((workflow) => includeDisabled || workflow.enabled);
   if (workflows.length === 0) {
     return "workbench_workflows[0]:";
   }
@@ -44,7 +49,7 @@ export const claudeCodeWorkbenchListAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: Record<string, unknown> = {},
+    options: Record<string, unknown> = {},
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const service = runtime.getService(
@@ -60,7 +65,15 @@ export const claudeCodeWorkbenchListAction: Action = {
       return { success: false, error };
     }
 
-    const text = toText(service);
+    const params =
+      options.parameters && typeof options.parameters === "object"
+        ? (options.parameters as { includeDisabled?: unknown })
+        : (options as { includeDisabled?: unknown });
+    const includeDisabled = params.includeDisabled !== false;
+    const workflows = service
+      .listWorkflows()
+      .filter((workflow) => includeDisabled || workflow.enabled);
+    const text = toText(service, includeDisabled);
 
     if (callback) {
       await callback({ text, source: message.content.source });
@@ -69,9 +82,19 @@ export const claudeCodeWorkbenchListAction: Action = {
     return {
       success: true,
       text,
-      data: { workflows: service.listWorkflows() },
+      data: { workflows },
     };
   },
+
+  parameters: [
+    {
+      name: "includeDisabled",
+      description:
+        "Whether to include disabled workbench workflows. Defaults to true.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+  ],
 
   examples: [
     [

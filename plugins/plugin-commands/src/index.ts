@@ -30,11 +30,7 @@ import {
 	type State,
 } from "@elizaos/core";
 // Import actions
-import { commandsListAction } from "./actions/commands-list";
-import { helpAction } from "./actions/help";
-import { modelsAction } from "./actions/models";
-import { statusAction } from "./actions/status";
-import { stopAction } from "./actions/stop";
+import { commandAction } from "./actions/command";
 import { detectCommand, hasCommand, normalizeCommandBody } from "./parser";
 import {
 	findCommandByAlias,
@@ -163,13 +159,7 @@ export const commandsPlugin: Plugin = {
 
 	providers: [commandRegistryProvider],
 
-	actions: [
-		helpAction,
-		statusAction,
-		stopAction,
-		modelsAction,
-		commandsListAction,
-	],
+	actions: [commandAction],
 
 	config: {
 		COMMANDS_ENABLED: "true",

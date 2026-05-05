@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import express, { type Request, type Response } from "express";
 import {
   ChannelType,
   type Content,
@@ -11,8 +10,9 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
 import type { RobloxService } from "@elizaos/plugin-roblox";
+import express, { type Request, type Response } from "express";
+import { v4 as uuidv4 } from "uuid";
 
 const ROBLOX_SERVICE_NAME = "roblox";
 
@@ -37,7 +37,7 @@ export type HeaderReader = {
 
 export type RuntimeLike = {
   agentId: UUID;
-  character: { name: string };
+  character: { name?: string };
   ensureConnection: (args: {
     entityId: UUID;
     roomId: UUID;
@@ -227,7 +227,7 @@ export function createRobloxBridgeApp(
 
         const response: RobloxChatResponseBody = {
           reply: reply.trim() || "(no response)",
-          agentName: runtime.character.name,
+          agentName: runtime.character.name ?? "Agent",
         };
         if (debugEnabled) {
           res.json({

@@ -28,7 +28,7 @@ export function VrmViewer(props: VrmViewerProps) {
 
     // Create engine only if we don't have one or it was disposed
     let engine = engineRef.current;
-    if (!engine || !engine.isInitialized()) {
+    if (!engine?.isInitialized()) {
       engine = new VrmEngine();
       engineRef.current = engine;
     }
@@ -103,7 +103,10 @@ export function VrmViewer(props: VrmViewerProps) {
         }
       }, 100);
     };
-  }, []);
+  }, [
+    props.onEngineState, // Notify parent that engine is ready
+    props.onEngineReady,
+  ]);
 
   return <canvas ref={canvasRef} className="vrm-canvas-fullpage" />;
 }

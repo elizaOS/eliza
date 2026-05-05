@@ -19,6 +19,21 @@ function getMessageText(
   return typeof message?.content?.text === "string" ? message.content.text : "";
 }
 
+interface ListActiveBlocksParams {
+  includeLiveStatus?: unknown;
+  includeManagedRules?: unknown;
+}
+
+function coerceBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "1", "on"].includes(normalized)) return true;
+    if (["false", "no", "0", "off"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
 function formatLiveWebsiteBlockStatus(
   status: Awaited<ReturnType<typeof getSelfControlStatus>>,
 ): string {
@@ -53,13 +68,33 @@ export const listActiveBlocksAction: Action = {
     "List live website blocker status and active block rules.",
   validate: async (_runtime, message) =>
     BLOCK_STATUS_INTENT_RE.test(getMessageText(message)),
-  handler: async (runtime: IAgentRuntime): Promise<ActionResult> => {
+  handler: async (
+    runtime: IAgentRuntime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
+    const params = (options?.parameters ?? {}) as ListActiveBlocksParams;
+    const includeLiveStatus = coerceBoolean(params.includeLiveStatus, true);
+    const includeManagedRules = coerceBoolean(params.includeManagedRules, true);
     const reader = new BlockRuleReader(runtime);
     const [rules, liveStatus] = await Promise.all([
-      reader.listActiveBlocks(),
-      getSelfControlStatus(),
+      includeManagedRules ? reader.listActiveBlocks() : Promise.resolve([]),
+      includeLiveStatus
+        ? getSelfControlStatus()
+        : Promise.resolve(
+            null as Awaited<ReturnType<typeof getSelfControlStatus>> | null,
+          ),
     ]);
-    const sections = [formatLiveWebsiteBlockStatus(liveStatus)];
+    const sections = liveStatus ? [formatLiveWebsiteBlockStatus(liveStatus)] : [];
+
+    if (!includeManagedRules) {
+      return {
+        success: true,
+        text: sections.join("\n") || "Managed block rule listing was not requested.",
+        data: { rules: [], liveStatus },
+      };
+    }
 
     if (rules.length === 0) {
       sections.push("No managed website block rules are active.");
@@ -94,7 +129,22 @@ export const listActiveBlocksAction: Action = {
       data: { rules, liveStatus },
     };
   },
-  parameters: [],
+  parameters: [
+    {
+      name: "includeLiveStatus",
+      description:
+        "Whether to include the current hosts-file/SelfControl live block state.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "includeManagedRules",
+      description:
+        "Whether to include managed LifeOps block rules and gate metadata.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+  ],
   examples: [
     [
       {

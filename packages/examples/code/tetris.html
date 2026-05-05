@@ -110,7 +110,7 @@
     <div id="gameOver" class="game-over">
         <h2>Game Over!</h2>
         <div>Final Score: <span id="finalScore">0</span></div>
-        <button onclick="restartGame()">Play Again</button>
+        <button onclick="restartGame()" type="button">Play Again</button>
     </div>
 
     <script>
@@ -390,7 +390,7 @@
         }
         
         // Restart game
-        function restartGame() {
+        function _restartGame() {
             initBoard();
             currentPiece = createPiece();
             nextPiece = createPiece();
@@ -430,12 +430,13 @@
                     score += 1;
                     updateUI();
                     break;
-                case 'ArrowUp':
+                case 'ArrowUp': {
                     const rotated = rotatePiece(currentPiece);
                     if (isValidPosition(currentPiece, 0, 0, rotated)) {
                         currentPiece.shape = rotated;
                     }
                     break;
+                }
                 case 'Space':
                     e.preventDefault();
                     hardDrop();

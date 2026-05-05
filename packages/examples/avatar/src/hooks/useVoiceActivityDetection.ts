@@ -221,7 +221,9 @@ export function useVoiceActivityDetection(
       animationFrameRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
       streamRef.current = null;
     }
     if (audioContextRef.current) {

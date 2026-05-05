@@ -92,9 +92,14 @@ def _parse_decision_from_response(
       2. <decision>/<reason>/<confidence> XML in the response text
       3. Falls back to a simple keyword scan, defaulting to 'refuse' for safety
     """
-    raw_decision = params.get("decision")
-    raw_reason = params.get("reason")
-    raw_confidence = params.get("confidence")
+    source_params = params
+    nested = params.get("BENCHMARK_ACTION")
+    if isinstance(nested, dict):
+        source_params = {**params, **nested}
+
+    raw_decision = source_params.get("decision")
+    raw_reason = source_params.get("reason")
+    raw_confidence = source_params.get("confidence")
 
     decision = ""
     reason = ""

@@ -51,11 +51,16 @@ export function SettingsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div
+        aria-labelledby="settings-title"
+        aria-modal="true"
+        className="modal-content"
+        role="dialog"
+      >
         <div className="modal-header">
-          <h2>Settings</h2>
-          <button className="modal-close" onClick={onClose}>
+          <h2 id="settings-title">Settings</h2>
+          <button className="modal-close" onClick={onClose} type="button">
             <svg
               width="20"
               height="20"
@@ -64,6 +69,7 @@ export function SettingsModal({
               stroke="currentColor"
               strokeWidth="2"
             >
+              <title>Close settings</title>
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -73,8 +79,9 @@ export function SettingsModal({
           <div className="settings-section">
             <h3>Provider</h3>
             <div className="field">
-              <label>Active Mode</label>
+              <label htmlFor="settings-active-mode">Active Mode</label>
               <select
+                id="settings-active-mode"
                 value={config.mode}
                 onChange={(e) => {
                   const mode = e.currentTarget.value as DemoMode;
@@ -103,8 +110,9 @@ export function SettingsModal({
             <div className="settings-section">
               <h3>OpenAI Settings</h3>
               <div className="field">
-                <label>API Key</label>
+                <label htmlFor="settings-openai-api-key">API Key</label>
                 <input
+                  id="settings-openai-api-key"
                   type="password"
                   value={config.provider.openaiApiKey}
                   onChange={(e) => {
@@ -124,8 +132,9 @@ export function SettingsModal({
             <div className="settings-section">
               <h3>Anthropic Settings</h3>
               <div className="field">
-                <label>API Key</label>
+                <label htmlFor="settings-anthropic-api-key">API Key</label>
                 <input
+                  id="settings-anthropic-api-key"
                   type="password"
                   value={config.provider.anthropicApiKey}
                   onChange={(e) => {
@@ -145,8 +154,9 @@ export function SettingsModal({
             <div className="settings-section">
               <h3>xAI Settings</h3>
               <div className="field">
-                <label>API Key</label>
+                <label htmlFor="settings-xai-api-key">API Key</label>
                 <input
+                  id="settings-xai-api-key"
                   type="password"
                   value={config.provider.xaiApiKey}
                   onChange={(e) => {
@@ -165,8 +175,9 @@ export function SettingsModal({
             <div className="settings-section">
               <h3>Gemini Settings</h3>
               <div className="field">
-                <label>API Key</label>
+                <label htmlFor="settings-gemini-api-key">API Key</label>
                 <input
+                  id="settings-gemini-api-key"
                   type="password"
                   value={config.provider.googleGenaiApiKey}
                   onChange={(e) => {
@@ -185,8 +196,9 @@ export function SettingsModal({
             <div className="settings-section">
               <h3>Groq Settings</h3>
               <div className="field">
-                <label>API Key</label>
+                <label htmlFor="settings-groq-api-key">API Key</label>
                 <input
+                  id="settings-groq-api-key"
                   type="password"
                   value={config.provider.groqApiKey}
                   onChange={(e) => {
@@ -219,8 +231,11 @@ export function SettingsModal({
             {config.voiceOutputEnabled && (
               <div className="sam-tuning">
                 <div className="field">
-                  <label>Voice Provider</label>
+                  <label htmlFor="settings-voice-provider">
+                    Voice Provider
+                  </label>
                   <select
+                    id="settings-voice-provider"
                     value={config.voiceOutputProvider}
                     onChange={(e) => {
                       const value = e.currentTarget
@@ -238,8 +253,11 @@ export function SettingsModal({
 
                 {config.voiceOutputProvider === "elevenlabs" && (
                   <div className="field">
-                    <label>ElevenLabs API Key</label>
+                    <label htmlFor="settings-elevenlabs-api-key">
+                      ElevenLabs API Key
+                    </label>
                     <input
+                      id="settings-elevenlabs-api-key"
                       type="password"
                       value={config.provider.elevenlabsApiKey}
                       onChange={(e) => {
@@ -256,8 +274,11 @@ export function SettingsModal({
 
                 <div className="field-row">
                   <div className="field">
-                    <label>Speed ({config.sam.speed})</label>
+                    <label htmlFor="settings-sam-speed">
+                      Speed ({config.sam.speed})
+                    </label>
                     <input
+                      id="settings-sam-speed"
                       type="range"
                       min={20}
                       max={200}
@@ -272,8 +293,11 @@ export function SettingsModal({
                     />
                   </div>
                   <div className="field">
-                    <label>Pitch ({config.sam.pitch})</label>
+                    <label htmlFor="settings-sam-pitch">
+                      Pitch ({config.sam.pitch})
+                    </label>
                     <input
+                      id="settings-sam-pitch"
                       type="range"
                       min={0}
                       max={255}
@@ -290,8 +314,11 @@ export function SettingsModal({
                 </div>
                 <div className="field-row">
                   <div className="field">
-                    <label>Throat ({config.sam.throat})</label>
+                    <label htmlFor="settings-sam-throat">
+                      Throat ({config.sam.throat})
+                    </label>
                     <input
+                      id="settings-sam-throat"
                       type="range"
                       min={0}
                       max={255}
@@ -306,8 +333,11 @@ export function SettingsModal({
                     />
                   </div>
                   <div className="field">
-                    <label>Mouth ({config.sam.mouth})</label>
+                    <label htmlFor="settings-sam-mouth">
+                      Mouth ({config.sam.mouth})
+                    </label>
                     <input
+                      id="settings-sam-mouth"
                       type="range"
                       min={0}
                       max={255}
@@ -331,6 +361,7 @@ export function SettingsModal({
             <button
               className="reset-conversation-button"
               onClick={onResetConversation}
+              type="button"
             >
               Reset conversation
             </button>

@@ -171,6 +171,28 @@ def _parse_action_from_response(
     return chosen_action, action_line
 
 
+def _looks_like_webshop_action(action_line: str) -> bool:
+    return bool(
+        re.search(
+            r"^(search\[[^\]]+\]|click\[[^\]]+\]|"
+            r"select_option\[[^,\]]+,\s*[^\]]+\]|back|buy)$",
+            action_line.strip(),
+            re.IGNORECASE,
+        )
+    )
+
+
+def _fallback_action(task: "WebShopTask", observation: "PageObservation") -> str:
+    for available in observation.available_actions:
+        if available == "search[query]":
+            query = " ".join(task.instruction.split()[:6]).strip() or "product"
+            return f"search[{query}]"
+        if _looks_like_webshop_action(available):
+            return available
+    query = " ".join(task.instruction.split()[:6]).strip() or "product"
+    return f"search[{query}]"
+
+
 class ElizaBridgeWebShopAgent:
     """WebShop agent driven by the eliza TS bridge (no Python AgentRuntime)."""
 
@@ -288,6 +310,16 @@ class ElizaBridgeWebShopAgent:
                 )
                 action_history.append("[invalid action]")
                 continue
+
+            if not _looks_like_webshop_action(action_line):
+                fallback = _fallback_action(task, observation)
+                logger.warning(
+                    "[webshop-bridge] turn %d: replacing invalid action %r with %r",
+                    turn,
+                    action_line,
+                    fallback,
+                )
+                action_line = fallback
 
             outcome = self.env.step(action_line)
             steps.append(

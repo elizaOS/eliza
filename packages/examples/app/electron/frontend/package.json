@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write --unsafe ."
   },
   "dependencies": {
     "react": "19.2.3",

@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.0",
-    "@elizaos/core": "beta",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-eliza-classic": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "react": "19.2.3",

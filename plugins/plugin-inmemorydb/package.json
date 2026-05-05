@@ -13,15 +13,15 @@
   "publishConfig": {
     "access": "public"
   },
-  "browser": "dist/browser/index.js",
+  "browser": "dist/browser/index.browser.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
       "browser": {
         "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.js",
-        "default": "./dist/browser/index.js"
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
       },
       "node": {
         "types": "./dist/node/index.d.ts",

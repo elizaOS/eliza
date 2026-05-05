@@ -1,4 +1,4 @@
-import { ModelType } from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { embed, generateObject, generateText } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,6 +28,22 @@ function createRuntime(settings: Record<string, string> = {}) {
     fetch: vi.fn(),
     getSetting: vi.fn((key: string) => settings[key] ?? null),
   };
+}
+
+function createTrajectoryRuntime(settings: Record<string, string> = {}) {
+  const llmCalls: Record<string, unknown>[] = [];
+  const trajectoryLogger = {
+    isEnabled: () => true,
+    logLlmCall: vi.fn((call: Record<string, unknown>) => {
+      llmCalls.push(call);
+    }),
+  };
+  const runtime = {
+    ...createRuntime(settings),
+    getService: vi.fn((name: string) => (name === "trajectories" ? trajectoryLogger : null)),
+    getServicesByType: vi.fn((type: string) => (type === "trajectories" ? [trajectoryLogger] : [])),
+  };
+  return { runtime, llmCalls };
 }
 
 describe("ollama MODEL_USED events", () => {
@@ -118,5 +134,33 @@ describe("ollama MODEL_USED events", () => {
         tokens: { prompt: 6, completion: 0, total: 6 },
       })
     );
+  });
+
+  it("records object generation in active trajectories", async () => {
+    const { default: plugin } = await import("../index");
+    const { runtime, llmCalls } = createTrajectoryRuntime({
+      OLLAMA_API_ENDPOINT: "http://localhost:11434/api",
+      OLLAMA_SMALL_MODEL: "small-ollama",
+    });
+
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: { ok: true },
+      usage: { inputTokens: 5, outputTokens: 4, totalTokens: 9 },
+    } as never);
+
+    await runWithTrajectoryContext({ trajectoryStepId: "step-ollama" }, async () => {
+      await plugin.models?.[ModelType.OBJECT_SMALL]?.(runtime as never, {
+        prompt: "object prompt",
+      });
+    });
+
+    expect(llmCalls).toHaveLength(1);
+    expect(llmCalls[0]).toMatchObject({
+      stepId: "step-ollama",
+      actionType: "ai.generateObject",
+      response: '{"ok":true}',
+      promptTokens: 5,
+      completionTokens: 4,
+    });
   });
 });

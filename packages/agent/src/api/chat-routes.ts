@@ -1172,9 +1172,13 @@ export async function generateChatResponse(
             if (contentMetadata?.intent === "create_task") {
               const coordinator = runtime.getService("SWARM_COORDINATOR");
               if (coordinator) {
-                const createTaskAction = runtime.actions.find(
-                  (a) => a?.name?.toUpperCase() === "CREATE_TASK",
-                );
+                const createTaskAction =
+                  runtime.actions.find(
+                    (a) => a?.name?.toUpperCase() === "START_CODING_TASK",
+                  ) ??
+                  runtime.actions.find(
+                    (a) => a?.name?.toUpperCase() === "CREATE_TASK",
+                  );
                 if (createTaskAction) {
                   runtime.logger?.info(
                     {
@@ -1182,7 +1186,7 @@ export async function generateChatResponse(
                       agentType: contentMetadata.agentType,
                       intent: "create_task",
                     },
-                    "[eliza-api] Direct dispatch CREATE_TASK from UI intent",
+                    "[eliza-api] Direct dispatch START_CODING_TASK from UI intent",
                   );
                   let actionResponseText = "";
                   await createTaskAction.handler(

@@ -65,6 +65,18 @@ def _signals_complete(text: str, params: dict) -> bool:
     return "TASK_COMPLETE" in upper or "TASK COMPLETE" in upper
 
 
+def _command_from_params(params: dict) -> Optional[str]:
+    raw = params.get("command")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    nested = params.get("BENCHMARK_ACTION")
+    if isinstance(nested, dict):
+        raw = nested.get("command")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
+
+
 class ElizaBridgeTerminalAgent:
     """Terminal-Bench agent that routes its decision loop through the
     elizaOS TypeScript benchmark bridge instead of building a local
@@ -168,8 +180,8 @@ class ElizaBridgeTerminalAgent:
                     continue
 
                 command = _extract_command(response.text or "")
-                if isinstance(response.params.get("command"), str) and not command:
-                    command = str(response.params["command"]).strip()
+                if not command:
+                    command = _command_from_params(response.params)
 
                 if not command:
                     last_feedback = (

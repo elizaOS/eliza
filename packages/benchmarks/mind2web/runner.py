@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 _ELIZA_BRIDGE_PROVIDERS = {"eliza", "eliza-bridge", "eliza-ts"}
 
 
+class _ExternalBridgeManager:
+    def __init__(self, client: Any) -> None:
+        self.client = client
+
+    def stop(self) -> None:
+        return None
+
+
 class Mind2WebRunner:
     """Runner for Mind2Web benchmark."""
 
@@ -109,11 +117,18 @@ class Mind2WebRunner:
 
     def _ensure_bridge_manager(self) -> Any:
         if self._bridge_manager is None:
-            from eliza_adapter.server_manager import ElizaServerManager
-
             self._configure_bridge_model_env()
-            self._bridge_manager = ElizaServerManager()
-            self._bridge_manager.start()
+            if os.environ.get("ELIZA_BENCH_URL"):
+                from eliza_adapter.client import ElizaClient
+
+                client = ElizaClient()
+                client.wait_until_ready(timeout=120)
+                self._bridge_manager = _ExternalBridgeManager(client)
+            else:
+                from eliza_adapter.server_manager import ElizaServerManager
+
+                self._bridge_manager = ElizaServerManager()
+                self._bridge_manager.start()
             logger.info("[Mind2WebRunner] Running with Eliza TypeScript bridge")
         return self._bridge_manager
 

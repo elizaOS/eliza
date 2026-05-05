@@ -127,6 +127,8 @@ RULES:
 - Always use BENCHMARK_ACTION (not the raw action name) for action-based benchmarks
 - For pure Q&A benchmarks (context-bench, rlm-bench, gaia), use REPLY with the answer in text
 - For hyperliquid_bench and vending-bench, use REPLY with the exact JSON payload in text
+- For swe_bench, use REPLY with a single unified diff in text
+- For experience learning turns, use BENCHMARK_ACTION with command RECORD_EXPERIENCE
 - Never use REPLY for benchmarks that need tool/command execution
 - Output TOON only. Do not output XML tags or markdown fences.
 - Be precise and decisive — choose the best action immediately
@@ -155,6 +157,8 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     benchmark,
   );
   const isAdhdBenchmark = benchmark === "adhdbench";
+  const isSweBench = benchmark === "swe_bench" || benchmark === "swe-bench";
+  const isExperienceBenchmark = benchmark === "experience";
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -196,6 +200,17 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   } else if (isJsonActionBenchmark) {
     sections.push(
       `Return only one Vending-Bench JSON action in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isSweBench) {
+    sections.push(
+      `Return only one unified diff in the response text. Use REPLY, not BENCHMARK_ACTION.`,
+    );
+  } else if (isExperienceBenchmark) {
+    sections.push(
+      `For experience learning turns, use BENCHMARK_ACTION with params.BENCHMARK_ACTION.command set to RECORD_EXPERIENCE.`,
+    );
+    sections.push(
+      `For experience retrieval turns, use REPLY with a concise answer that recalls the relevant learning.`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {
     const toolLines = ctx.tools.map((t) => {
@@ -286,6 +301,17 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     );
     sections.push(
       `For every other selected action, use BENCHMARK_ACTION and set params.BENCHMARK_ACTION.command to the selected action name exactly.`,
+    );
+  } else if (isSweBench) {
+    sections.push(
+      `Respond with actions: REPLY and put the unified diff in text. Do not call BENCHMARK_ACTION.`,
+    );
+  } else if (isExperienceBenchmark) {
+    sections.push(
+      `If the phase is learning, call BENCHMARK_ACTION with command RECORD_EXPERIENCE and acknowledge it in text.`,
+    );
+    sections.push(
+      `If the phase is retrieval, use REPLY and include any expected learning keywords from the context when relevant.`,
     );
   } else {
     sections.push(
