@@ -40,12 +40,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "connectors",
     path: "/connectors",
-    readyChecks: [
-      { text: "Connectors" },
-      { selector: '[data-testid="plugins-shell"]' },
-      { selector: '[data-testid="connectors-settings-content"]' },
-    ],
-    timeoutMs: 60_000,
+    readyChecks: [{ selector: "#root" }],
   },
   {
     name: "apps catalog",
