@@ -1,7 +1,7 @@
 name: NPM Release
 
 # Consolidated workflow for all NPM releases:
-# - Beta: On v*-beta.* tags or beta GitHub releases
+# - Beta: On v*-beta.* tag pushes
 # - Production: On stable GitHub release creation
 #
 # Version Management:
@@ -13,7 +13,7 @@ name: NPM Release
 on:
   push:
     tags:
-      - "v*"
+      - "v*-beta.*"
   release:
     types: [created]
   workflow_dispatch:
@@ -37,11 +37,12 @@ jobs:
   release:
     runs-on: ubuntu-latest
     # Skip if commit message contains [skip ci]. Alpha releases are disabled;
-    # beta prereleases are published from tags/releases with the beta dist-tag.
+    # prerelease GitHub-release events are skipped so tag pushes are the single
+    # npm publication path for beta versions.
     if: >-
       ${{
         !contains(github.event.head_commit.message || '', '[skip ci]') &&
-        !(github.event_name == 'release' && contains(github.event.release.tag_name || '', '-alpha')) &&
+        !(github.event_name == 'release' && contains(github.event.release.tag_name || '', '-')) &&
         !(github.ref_type == 'tag' && contains(github.ref_name || '', '-alpha'))
       }}
 
