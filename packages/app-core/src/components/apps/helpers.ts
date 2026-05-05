@@ -137,6 +137,11 @@ interface AppsCatalogFilterOptions {
   showAllApps?: boolean;
   showActiveOnly?: boolean;
   walletEnabled?: boolean;
+  /**
+   * When false (or omitted), apps marked `developerOnly: true` are hidden.
+   * Pass the current value from `useIsDeveloperMode()` to opt in.
+   */
+  developerMode?: boolean;
 }
 
 function parseBooleanEnvValue(value: unknown): boolean {
@@ -240,6 +245,7 @@ export function filterAppsForCatalog(
     showAllApps,
     showActiveOnly = false,
     walletEnabled,
+    developerMode = false,
   }: AppsCatalogFilterOptions = {},
 ): RegistryAppInfo[] {
   const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -272,6 +278,18 @@ export function filterAppsForCatalog(
 
   return sortedApps.filter((app) => {
     if (!shouldShowAppInAppsView(app, { isProd, showAllApps, walletEnabled })) {
+      return false;
+    }
+    // Developer-only apps are hidden unless Developer Mode is on.
+    // TODO: server-side population pending — `developerOnly` is declared in
+    // PluginApp but not yet plumbed through `RegistryAppInfo` API responses.
+    if (app.developerOnly && !developerMode) {
+      return false;
+    }
+    // Apps that opt out of the catalog are always hidden, regardless of
+    // Developer Mode (use deep-link / auto-install paths instead).
+    // TODO: server-side population pending — see `developerOnly` note above.
+    if (app.visibleInAppStore === false) {
       return false;
     }
     const sectionLabel = getAppCatalogSectionLabel(app).toLowerCase();
