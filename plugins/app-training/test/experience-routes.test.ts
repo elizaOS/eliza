@@ -1,7 +1,7 @@
 import type http from "node:http";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { handleExperienceRoutes } from "./experience-routes.js";
+import { handleExperienceRoutes } from "../src/routes/experience-routes.js";
 
 interface RecordedResponse {
   status: number;

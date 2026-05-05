@@ -1899,31 +1899,86 @@ const ANDROID_SPLASH_SIZES = {
   "drawable-land-xxxhdpi": [1920, 1280],
 };
 
-async function generateAndroidBrandAssets() {
-  const resDir = path.join(androidDir, "app", "src", "main", "res");
-  if (!fs.existsSync(resDir)) return;
-
-  const iconSource = firstExisting([
-    path.join(appDir, "public", "android-chrome-512x512.png"),
-    path.join(appDir, "public", "apple-touch-icon.png"),
-    path.join(appDir, "public", "favicon-256x256.png"),
-  ]);
-  const splashSource = firstExisting([
-    path.join(appDir, "public", "splash-bg.png"),
-    path.join(appDir, "public", "splash-bg.jpg"),
-  ]);
-  if (!iconSource && !splashSource) return;
-
-  let sharp;
+async function loadSharpForBrandAssets(platform) {
   try {
-    sharp = (await import("sharp")).default;
+    return (await import("sharp")).default;
   } catch (error) {
     throw new Error(
-      `sharp is required to generate Android brand assets for ${APP.appName}: ${
+      `sharp is required to generate ${platform} brand assets for ${APP.appName}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
   }
+}
+
+function resolveBrandSources() {
+  return {
+    iconSource: firstExisting([
+      path.join(appDir, "public", "android-chrome-512x512.png"),
+      path.join(appDir, "public", "apple-touch-icon.png"),
+      path.join(appDir, "public", "favicon-256x256.png"),
+    ]),
+    splashSource: firstExisting([
+      path.join(appDir, "public", "splash-bg.png"),
+      path.join(appDir, "public", "splash-bg.jpg"),
+    ]),
+  };
+}
+
+async function generateIosBrandAssets() {
+  const assetDir = path.join(iosDir, "App", "Assets.xcassets");
+  if (!fs.existsSync(assetDir)) return;
+
+  const { iconSource, splashSource } = resolveBrandSources();
+  if (!iconSource && !splashSource) return;
+
+  const sharp = await loadSharpForBrandAssets("iOS");
+
+  if (iconSource) {
+    const iconSetDir = path.join(assetDir, "AppIcon.appiconset");
+    const contentsPath = path.join(iconSetDir, "Contents.json");
+    if (fs.existsSync(contentsPath)) {
+      const contents = JSON.parse(fs.readFileSync(contentsPath, "utf8"));
+      for (const image of contents.images ?? []) {
+        if (!image.filename || !image.size || !image.scale) continue;
+        const [width] = String(image.size).split("x");
+        const scale = Number.parseFloat(String(image.scale));
+        const pixels = Math.round(Number.parseFloat(width) * scale);
+        if (!Number.isFinite(pixels) || pixels <= 0) continue;
+        await sharp(iconSource)
+          .resize(pixels, pixels, { fit: "cover" })
+          .png()
+          .toFile(path.join(iconSetDir, image.filename));
+      }
+    }
+  }
+
+  if (splashSource) {
+    const splashSetDir = path.join(assetDir, "Splash.imageset");
+    const contentsPath = path.join(splashSetDir, "Contents.json");
+    if (fs.existsSync(contentsPath)) {
+      const contents = JSON.parse(fs.readFileSync(contentsPath, "utf8"));
+      for (const image of contents.images ?? []) {
+        if (!image.filename) continue;
+        await sharp(splashSource)
+          .resize(2732, 2732, { fit: "cover", position: "center" })
+          .png()
+          .toFile(path.join(splashSetDir, image.filename));
+      }
+    }
+  }
+
+  console.log(`[mobile-build] Generated iOS brand assets for ${APP.appName}.`);
+}
+
+async function generateAndroidBrandAssets() {
+  const resDir = path.join(androidDir, "app", "src", "main", "res");
+  if (!fs.existsSync(resDir)) return;
+
+  const { iconSource, splashSource } = resolveBrandSources();
+  if (!iconSource && !splashSource) return;
+
+  const sharp = await loadSharpForBrandAssets("Android");
 
   if (iconSource) {
     for (const [dir, size] of Object.entries(ANDROID_LAUNCHER_ICON_SIZES)) {
@@ -2202,6 +2257,7 @@ async function buildIos() {
     `[mobile-build] iOS build target: ${buildTarget.destination} (${buildTarget.sdk}; ${buildTarget.reason})`,
   );
   const syncedFiles = prepareIosOverlay({ buildTarget });
+  await generateIosBrandAssets();
 
   // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
   if (
@@ -2257,6 +2313,7 @@ export async function main(argv = process.argv.slice(2)) {
     await buildIos();
   } else {
     prepareIosOverlay();
+    await generateIosBrandAssets();
   }
 }
 
