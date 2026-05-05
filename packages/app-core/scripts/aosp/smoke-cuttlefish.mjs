@@ -234,13 +234,35 @@ export async function runSmoke({
     });
     return results;
   }
-  if (onlineDevices.length > 1) {
+  // Honor ANDROID_SERIAL when set — picking arbitrarily from a multi-
+  // device list on a developer machine (cvd + physical phone) silently
+  // ran the smoke against the wrong target. If the env var names a
+  // device that isn't online, fail loudly so the operator can fix it
+  // rather than falling back to whichever device sorted first.
+  const requestedSerial =
+    typeof process.env.ANDROID_SERIAL === "string" &&
+    process.env.ANDROID_SERIAL.trim().length > 0
+      ? process.env.ANDROID_SERIAL.trim()
+      : null;
+  if (requestedSerial) {
+    if (!onlineDevices.includes(requestedSerial)) {
+      results.push({
+        step: 1,
+        label: "cvd / device reachable",
+        ok: false,
+        detail: `ANDROID_SERIAL=${requestedSerial} but that device is not online. adb devices: ${onlineDevices.join(", ")}`,
+      });
+      return results;
+    }
+    serial = requestedSerial;
+    results.push({ step: 1, label: "cvd / device reachable", ok: true });
+  } else if (onlineDevices.length > 1) {
     serial = onlineDevices[0];
     results.push({
       step: 1,
       label: "cvd / device reachable",
       ok: true,
-      detail: `multiple devices, using ${serial}`,
+      detail: `multiple devices, using ${serial} (set ANDROID_SERIAL to pin)`,
     });
   } else {
     serial = onlineDevices[0];
