@@ -600,6 +600,19 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setElizaCloudUserId(null);
           setElizaCloudStatusReason(null);
           setElizaCloudLoginError(null);
+          // Clear the global cloud token so directCloudRequest stops firing
+          // against api.elizacloud.ai with a stale key after reset. Without
+          // this, the renderer keeps making direct cloud calls even though
+          // the UI shows disconnected.
+          if (typeof globalThis !== "undefined") {
+            try {
+              delete (globalThis as Record<string, unknown>)
+                .__ELIZA_CLOUD_AUTH_TOKEN__;
+            } catch {
+              (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+                undefined;
+            }
+          }
         },
         markOnboardingReset: () => {
           onboardingCompletionCommittedRef.current = false;
