@@ -60,8 +60,8 @@ This pattern is shared with the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill; 
 
 Some old/local apps are static frontends served by an existing host instead of
 Cloud containers. They are still real Eliza Cloud apps when they use AI
-inference, but this is not the production default for Nubilio builds. New
-production apps should deploy as their own Eliza Cloud container.
+inference, but this is not the production default for agent-built Cloud apps.
+New production apps should deploy as their own Eliza Cloud container.
 
 For a static-hosted AI app:
 

@@ -1,6 +1,7 @@
 export interface ViteHmrConfig {
   host?: string;
   port: number;
+  clientPort?: number;
   protocol?: "ws" | "wss";
 }
 
@@ -53,6 +54,20 @@ function resolveOriginPort(origin: URL, fallbackPort: number): number {
   return fallbackPort;
 }
 
+function withPublicClientPort(
+  hmr: ViteHmrConfig,
+  publicPort: number,
+): ViteHmrConfig {
+  if (publicPort === hmr.port) {
+    return hmr;
+  }
+
+  return {
+    ...hmr,
+    clientPort: publicPort,
+  };
+}
+
 /**
  * Resolve the Vite dev-server origin/HMR runtime configuration from env.
  *
@@ -77,11 +92,14 @@ export function resolveViteDevServerRuntime(
   if (explicitOrigin) {
     return {
       origin: explicitOrigin.origin,
-      hmr: {
-        host: explicitHmrHost || explicitOrigin.hostname,
-        port: resolveOriginPort(explicitOrigin, uiPort),
-        protocol: explicitOrigin.protocol === "https:" ? "wss" : "ws",
-      },
+      hmr: withPublicClientPort(
+        {
+          host: explicitHmrHost || explicitOrigin.hostname,
+          port: uiPort,
+          protocol: explicitOrigin.protocol === "https:" ? "wss" : "ws",
+        },
+        resolveOriginPort(explicitOrigin, uiPort),
+      ),
     };
   }
 
