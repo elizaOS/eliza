@@ -82,23 +82,34 @@ jobs:
             eliza-training-cpu:ci \
             -c "python -c 'from training.model_registry import REGISTRY; print(list(REGISTRY))'"
 
-      - name: Run pure-python tests (best effort)
-        # test_reward_fn.py is the DPOGRPOAgent's deliverable and may
-        # not exist yet; degrade gracefully so this lane stays green
-        # while that lane lands.
+      - name: Run pure-python test suite
+        # All pytest files in scripts/ that don't need GPU. test_reward_fn
+        # may be a no-op in some branches; we still surface its result.
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/packages/training:/workspace" \
             -e PYTHONPATH=/workspace/scripts \
             eliza-training-cpu:ci \
             -c "set -e; \
-                if [ -f /workspace/scripts/test_reward_fn.py ]; then \
-                  echo '[cpu-smoke] running scripts/test_reward_fn.py'; \
-                  pytest -xvs /workspace/scripts/test_reward_fn.py; \
-                else \
-                  echo '[cpu-smoke] scripts/test_reward_fn.py absent — running model_registry probe instead'; \
-                  python -c 'from training.model_registry import REGISTRY; assert REGISTRY, \"empty registry\"; print(\"registry OK:\", list(REGISTRY))'; \
-                fi"
+                cd /workspace; \
+                pytest -xvs \
+                  scripts/test_default_thought_leak.py \
+                  scripts/test_eliza_record.py \
+                  scripts/test_cap_distribution.py \
+                  scripts/test_reward_fn.py \
+                  scripts/test_tier_caps.py"
+
+      - name: Corpus-quality chain end-to-end smoke
+        # Synthesizer dry-runs → classifier → audit --strict-phases →
+        # reasoning_cot + claude_distill transforms. Catches drift in
+        # the runtime-phase enforcement chain (RUNTIME_PHASES.md /
+        # COVERAGE_AUDIT.md) on every PR.
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/packages/training:/workspace" \
+            -e PYTHONPATH=/workspace/scripts \
+            eliza-training-cpu:ci \
+            -c "set -e; cd /workspace; bash scripts/ci_smoke_e2e.sh"
 
       - name: Upload logs on failure
         if: failure()
