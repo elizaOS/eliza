@@ -96,6 +96,92 @@ def test_configbench_adapter_command_forwards_limit(tmp_path: Path) -> None:
     assert "--eliza" not in command
 
 
+def test_scambench_registry_command_and_score_contract(tmp_path: Path) -> None:
+    registry = {entry.id: entry for entry in get_benchmark_registry(_workspace_root())}
+    entry = registry["scambench"]
+    dataset = tmp_path / "scambench.jsonl"
+    dataset.write_text("{}", encoding="utf-8")
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="vllm", model="local-scam-model"),
+        {
+            "dataset": str(dataset),
+            "max_examples": 2,
+            "max_new_tokens": 32,
+            "temperature": 0.25,
+            "vllm_base_url": "http://127.0.0.1:9999/v1",
+        },
+    )
+
+    assert command[:3] == [command[0], "-m", "benchmarks.scambench.cli"]
+    assert command[command.index("--provider") + 1] == "vllm"
+    assert command[command.index("--model") + 1] == "local-scam-model"
+    assert command[command.index("--out") + 1] == str(tmp_path)
+    assert command[command.index("--dataset") + 1] == str(dataset)
+    assert command[command.index("--base-url") + 1] == "http://127.0.0.1:9999/v1"
+    assert command[command.index("--max-examples") + 1] == "2"
+    assert command[command.index("--max-new-tokens") + 1] == "32"
+    assert command[command.index("--temperature") + 1] == "0.25"
+
+    result_path = tmp_path / "scambench-results.json"
+    result_path.write_text(
+        '{"metrics":{"score":0.75,"scam_refuse_rate":1.0,"legit_help_rate":0.5,"n_scam":1,"n_legit":2}}',
+        encoding="utf-8",
+    )
+    assert entry.locate_result(tmp_path) == result_path
+
+    score = entry.extract_score(
+        {
+            "metrics": {
+                "score": 0.75,
+                "scam_refuse_rate": 1.0,
+                "legit_help_rate": 0.5,
+                "n_scam": 1,
+                "n_legit": 2,
+            }
+        }
+    )
+    assert score.score == 0.75
+    assert score.unit == "ratio"
+    assert score.higher_is_better is True
+    assert score.metrics["n_scam"] == 1
+
+
+def test_scambench_adapter_command_uses_vllm_base_url(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["scambench"]
+    dataset = tmp_path / "scambench.jsonl"
+    dataset.write_text("{}", encoding="utf-8")
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("scambench",),
+            agent="mock",
+            provider="vllm",
+            model="local-scam-model",
+            extra_config={
+                "dataset": str(dataset),
+                "max_examples": 2,
+                "vllm_base_url": "http://127.0.0.1:9999/v1",
+            },
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[:3] == [command[0], "-m", "benchmarks.scambench.cli"]
+    assert command[command.index("--out") + 1] == str(tmp_path / "out")
+    assert command[command.index("--dataset") + 1] == str(dataset)
+    assert command[command.index("--base-url") + 1] == "http://127.0.0.1:9999/v1"
+
+
 def test_app_eval_score_normalizes_ten_point_summary(tmp_path: Path) -> None:
     result_path = tmp_path / "summary.json"
     result_path.write_text(

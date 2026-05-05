@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any
 
@@ -174,10 +175,18 @@ async def _run(args: argparse.Namespace) -> None:
         return
 
     # Build runner
+    server_manager = None
     if args.agent == "eliza":
+        client = None
+        if not os.environ.get("ELIZA_BENCH_URL"):
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            server_manager = ElizaServerManager()
+            server_manager.start()
+            client = server_manager.client
         from eliza_adapter.woobench import build_eliza_bridge_agent_fn
 
-        agent_fn = build_eliza_bridge_agent_fn()
+        agent_fn = build_eliza_bridge_agent_fn(client=client)
     else:
         agent_fn = _create_dummy_agent
     runner = WooBenchRunner(
@@ -199,6 +208,8 @@ async def _run(args: argparse.Namespace) -> None:
     filepath = WooBenchRunner.save_results(result, output_dir=args.output)
     WooBenchRunner.print_summary(result)
     print(f"Full results saved to: {filepath}")
+    if server_manager is not None:
+        server_manager.stop()
 
 
 def main() -> None:

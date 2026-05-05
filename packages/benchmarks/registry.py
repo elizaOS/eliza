@@ -1856,6 +1856,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if model.model:
             args.extend(["--model", model.model])
         base_url = extra.get("base_url")
+        if not isinstance(base_url, str) or not base_url.strip():
+            base_url = extra.get("vllm_base_url")
         if isinstance(base_url, str) and base_url.strip():
             args.extend(["--base-url", base_url.strip()])
         api_key_env = extra.get("api_key_env")
@@ -1888,7 +1890,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         if model.model:
             args.extend(["--model", model.model])
-        base_url = extra.get("base_url")
+        base_url = extra.get("base_url") or extra.get("vllm_base_url")
         if isinstance(base_url, str) and base_url.strip():
             args.extend(["--base-url", base_url.strip()])
         api_key_env = extra.get("api_key_env")
@@ -1904,6 +1906,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_examples = extra.get("max_examples")
         if isinstance(max_examples, int) and max_examples > 0:
             args.extend(["--max-examples", str(max_examples)])
+        max_new_tokens = extra.get("max_new_tokens")
+        if isinstance(max_new_tokens, int) and max_new_tokens > 0:
+            args.extend(["--max-new-tokens", str(max_new_tokens)])
+        temperature = extra.get("temperature")
+        if isinstance(temperature, int | float) and not isinstance(temperature, bool):
+            args.extend(["--temperature", str(float(temperature))])
         return args
 
     def _scambench_result(output_dir: Path) -> Path:
@@ -1973,6 +1981,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--max-examples", str(max_examples)])
         else:
             args.extend(["--max-examples", "100"])
+        max_new_tokens = extra.get("max_new_tokens")
+        if isinstance(max_new_tokens, int) and max_new_tokens > 0:
+            args.extend(["--max-new-tokens", str(max_new_tokens)])
+        temperature = extra.get("temperature")
+        if isinstance(temperature, int | float) and temperature >= 0:
+            args.extend(["--temperature", str(float(temperature))])
         return args
 
     def _action_calling_result(output_dir: Path) -> Path:
@@ -2480,7 +2494,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("../../training/data/final/test.jsonl",),
+                paths=("training/data/final/test.jsonl",),
                 notes=(
                     "Samples planner-style records (message_handler/agent_trace/tool_call/mcp_tool_call). "
                     "Asserts TOON parse, action-name match, args JSON parse, and required-arg presence. "
