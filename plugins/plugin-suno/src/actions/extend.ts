@@ -5,6 +5,7 @@ import type { ExtendParams } from '../types';
 const extendAudio: Action = {
     name: 'extend-audio',
     description: 'Extend the duration of an existing audio generation',
+    descriptionCompressed: "extend duration exist audio generation",
     similes: ['LENGTHEN_AUDIO', 'PROLONG_AUDIO', 'INCREASE_DURATION', 'MAKE_AUDIO_LONGER'],
 
     validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {

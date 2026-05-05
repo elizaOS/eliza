@@ -11,6 +11,7 @@ export const stopTailscaleAction: Action = {
   name: 'STOP_TAILSCALE',
   similes: ['STOP_TUNNEL', 'CLOSE_TUNNEL', 'TAILSCALE_DOWN'],
   description: 'Stop the running Tailscale tunnel',
+  descriptionCompressed: "stop run Tailscale tunnel",
   validate: async (runtime: IAgentRuntime) => Boolean(getTunnelService(runtime)),
   handler: async (
     runtime: IAgentRuntime,

@@ -42,6 +42,7 @@ export const publishProfile: Action = {
   name: "NOSTR_PUBLISH_PROFILE",
   similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
   description: "Publish or update the bot's Nostr profile (kind:0 metadata)",
+  descriptionCompressed: "publish update bot Nostr profile (kind: 0 metadata)",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "nostr";
   },

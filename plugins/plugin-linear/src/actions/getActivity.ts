@@ -16,6 +16,7 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 export const getActivityAction: Action = {
   name: "GET_LINEAR_ACTIVITY",
   description: "Get recent Linear activity log with optional filters",
+  descriptionCompressed: "get recent Linear activity log w/ optional filter",
   similes: [
     "get-linear-activity",
     "show-linear-activity",

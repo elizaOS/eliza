@@ -48,6 +48,7 @@ export const sendDm: Action = {
   name: "NOSTR_SEND_DM",
   similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
   description: "Send an encrypted direct message via Nostr (NIP-04)",
+  descriptionCompressed: "send encrypt direct message via Nostr (NIP-04)",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "nostr";
   },

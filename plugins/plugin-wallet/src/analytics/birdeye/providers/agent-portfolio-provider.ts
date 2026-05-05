@@ -18,6 +18,7 @@ import { extractChain } from "../utils";
 export const agentPortfolioProvider: Provider = {
   name: "BIRDEYE_WALLET_PORTFOLIO",
   description: "Birdeye intel on agent's walllet",
+  descriptionCompressed: "birdeye intel agent walllet",
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     try {

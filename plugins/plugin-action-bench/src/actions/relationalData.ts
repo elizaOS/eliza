@@ -55,6 +55,7 @@ const createEntityAction: Action = {
   similes: ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
   description:
     "Create a new entity with a type and name. Entities are the nodes in our relational graph.",
+  descriptionCompressed: "create new entity w/ type name entity node relational graph",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -146,6 +147,7 @@ const createRelationshipAction: Action = {
   similes: ["LINK", "CONNECT", "RELATE"],
   description:
     "Create a relationship between two entities. Relationships are the edges in our relational graph.",
+  descriptionCompressed: "create relationship between two entity relationship edge relational graph",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -266,6 +268,7 @@ const setAttributeAction: Action = {
   similes: ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
   description:
     "Set an attribute on the current entity. Attributes store additional data on entities.",
+  descriptionCompressed: "set attribute current entity attribute store additional data entity",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -395,6 +398,7 @@ const queryRelationshipsAction: Action = {
   similes: ["FIND_RELATIONSHIPS", "GET_CONNECTIONS", "SHOW_LINKS"],
   description:
     "Query relationships of a specific type or for a specific entity.",
+  descriptionCompressed: "query relationship specific type specific entity",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -497,6 +501,7 @@ const queryEntitiesAction: Action = {
   name: "QUERY_ENTITIES",
   similes: ["FIND_ENTITIES", "SEARCH_ENTITIES", "LIST_ENTITIES"],
   description: "Query entities by type or attribute values.",
+  descriptionCompressed: "query entity type attribute value",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -601,6 +606,7 @@ const selectEntityAction: Action = {
   name: "SELECT_ENTITY",
   similes: ["CHOOSE_ENTITY", "FOCUS_ENTITY", "SET_CURRENT_ENTITY"],
   description: "Select an entity as the current entity for operations.",
+  descriptionCompressed: "select entity current entity operation",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -687,6 +693,7 @@ const deleteEntityAction: Action = {
   name: "DELETE_ENTITY",
   similes: ["REMOVE_ENTITY", "DESTROY_ENTITY"],
   description: "Delete the current entity and all its relationships.",
+  descriptionCompressed: "delete current entity relationship",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -784,6 +791,7 @@ const countStatisticsAction: Action = {
   name: "COUNT_STATISTICS",
   similes: ["STATS", "STATISTICS", "COUNT"],
   description: "Get statistics about the current relational data graph.",
+  descriptionCompressed: "get statistic current relational data graph",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -869,6 +877,7 @@ const clearGraphAction: Action = {
   name: "CLEAR_GRAPH",
   similes: ["RESET_GRAPH", "CLEAR_ALL", "DELETE_ALL"],
   description: "Clear all entities and relationships from the graph.",
+  descriptionCompressed: "clear entity relationship graph",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
@@ -921,6 +930,7 @@ const findPathAction: Action = {
   similes: ["PATH", "ROUTE", "CONNECTION_PATH"],
   description:
     "Find the shortest path between two entities in the relationship graph.",
+  descriptionCompressed: "find shortest path between two entity relationship graph",
   validate: async (
     _runtime: IAgentRuntime,
     _message: Memory,

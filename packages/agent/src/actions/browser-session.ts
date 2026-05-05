@@ -165,6 +165,7 @@ export const browserSessionAction: Action = {
   ],
   description:
     "Control the Eliza browser workspace through one session surface. Uses the real desktop browser bridge or hosted Eliza Cloud browser when available, and falls back to the limited embedded web mode only when no real browser session backend is configured.",
+  descriptionCompressed: "control Eliza browser workspace through one session surface use real desktop browser bridge host Eliza Cloud browser available, fall back limit embedd web mode real browser session backend configur",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

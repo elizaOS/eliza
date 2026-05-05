@@ -14,6 +14,7 @@ export function createSelfStatusProvider(
     name: "agentSelfStatus",
     description:
       "Agent self-awareness status summary (wallet, permissions, plugins, etc.)",
+    descriptionCompressed: "agent self-awareness status summary (wallet, permission, plugin, etc)",
     dynamic: true,
     position: 12,
     async get(

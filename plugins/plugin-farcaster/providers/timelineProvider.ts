@@ -17,6 +17,7 @@ const spec = requireProviderSpec("farcasterTimeline");
 export const farcasterTimelineProvider: Provider = {
   name: spec.name,
   description: "Provides recent casts from the agent's Farcaster timeline",
+  descriptionCompressed: "provide recent cast agent Farcaster timeline",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {

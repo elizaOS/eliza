@@ -86,6 +86,7 @@ export const sendFlexMessage: Action = {
   name: "LINE_SEND_FLEX_MESSAGE",
   similes: ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"],
   description: "Send a rich flex message/card via LINE",
+  descriptionCompressed: "send rich flex message/card via LINE",
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> =>
     isLineOutboundActionContext(

@@ -21,7 +21,7 @@ export const showQueue: Action = {
   name: "SHOW_QUEUE",
   similes: ["QUEUE", "LIST_QUEUE", "SHOW_PLAYLIST", "QUEUE_LIST"],
   description: "Show the current music queue",
-  descriptionCompressed: "Show current music queue.",
+  descriptionCompressed: "show current music queue",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     if (message.content.source !== "discord") {
       return false;

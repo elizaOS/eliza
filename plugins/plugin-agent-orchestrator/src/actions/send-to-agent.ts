@@ -37,6 +37,7 @@ export const sendToAgentAction: Action = {
   description:
     "Send text input or key presses to a running task-agent session. " +
     "Use this to respond to agent prompts, provide feedback, continue a task, or assign a fresh tracked task to an existing agent.",
+  descriptionCompressed: "send text input key press run task-agent session use respond agent prompt, provide feedback, continue task, assign fresh track task exist agent",
 
   examples: [
     [

@@ -20,6 +20,7 @@ import type { InstagramService } from "../service";
 export const sendDmAction: Action = {
   name: "SEND_INSTAGRAM_DM",
   description: "Send a direct message to an Instagram user",
+  descriptionCompressed: "send direct message Instagram user",
   similes: [
     "instagram_dm",
     "instagram_message",

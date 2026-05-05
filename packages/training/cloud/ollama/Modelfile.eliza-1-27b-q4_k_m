@@ -1,0 +1,41 @@
+# Eliza-1 27B (Q4_K_M GGUF) — cloud-tier fine-tune.
+#
+# Build:
+#   ollama create eliza-1-27b -f Modelfile.eliza-1-27b-q4_k_m
+#
+# Pulls from the published HF sibling. push_model_to_hf.py uploads each
+# K-quant level to its own repo (`-gguf-q4_k_m`, `-gguf-q5_k_m`,
+# `-gguf-q6_k`).
+#
+# Sized for 32+ GB consumer/server cards (RTX 5090 32 GB,
+# RTX Pro 5000 Blackwell 48 GB, datacenter Hopper):
+#   - weights:  ~16.5 GB on disk (Q4_K_M)
+#   - 32k KV:   ~3 GB
+#   - resident: ~22 GB at --parallel 2 on 32 GB cards
+#
+# For the absolute best quality on the 27B at consumer-GPU sizes, the
+# Q6_K sibling is also published (~22 GB on disk). Build with:
+#   FROM hf.co/elizaos/eliza-1-27b-gguf-q6_k
+#
+# Availability: requires `scripts/publish_all_eliza1.sh --filter-size 27b
+# --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
+# checkpoint. The HF repo does not exist before that runs.
+FROM hf.co/elizaos/eliza-1-27b-gguf-q4_k_m
+
+SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
+
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
+
+# 27B at 32k is the safe default for 32 GB cards; push to 64k on 48 GB+.
+PARAMETER num_ctx 32768
+
+# 27B is the model people will use for long agent reasoning chains; bump
+# the output budget accordingly.
+PARAMETER num_predict 12288
+
+# Slightly lower temperature suits the larger, more confident model.
+PARAMETER temperature 0.6
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.03

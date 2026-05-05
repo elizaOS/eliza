@@ -9,6 +9,7 @@ import { NOSTR_SERVICE_NAME } from "../types.js";
 export const identityContextProvider: Provider = {
   name: "nostrIdentityContext",
   description: "Provides information about the bot's Nostr identity",
+  descriptionCompressed: "provide information bot Nostr identity",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     // Only provide context for Nostr messages

@@ -60,6 +60,11 @@ export const providersProvider: Provider = {
 			(provider) => provider.dynamic === true,
 		);
 
+		const renderDescription = (provider: Provider): string =>
+			provider.descriptionCompressed ||
+			provider.description ||
+			"No description available";
+
 		const formatProviders = (providers: typeof allProviders, title: string) =>
 			[
 				title,
@@ -67,7 +72,7 @@ export const providersProvider: Provider = {
 				...(providers.length > 0
 					? providers.map(
 							(provider) =>
-								`- ${provider.name}: ${provider.description || "No description available"}`,
+								`- ${provider.name}: ${renderDescription(provider)}`,
 						)
 					: ["- none"]),
 				`provider_hints[${selectionHints.length}]:`,
@@ -84,11 +89,11 @@ export const providersProvider: Provider = {
 		const data = {
 			dynamicProviders: dynamicProviders.map((provider) => ({
 				name: provider.name,
-				description: provider.description || "",
+				description: renderDescription(provider),
 			})),
 			allProviders: visibleProviders.map((provider) => ({
 				name: provider.name,
-				description: provider.description || "",
+				description: renderDescription(provider),
 				dynamic: provider.dynamic === true,
 			})),
 		};

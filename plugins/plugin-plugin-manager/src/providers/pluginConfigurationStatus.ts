@@ -42,6 +42,7 @@ export const pluginConfigurationStatusProvider: Provider & {
 } = {
   name: "pluginConfigurationStatus",
   description: "Provides plugin configuration status based on actual plugin config schemas",
+  descriptionCompressed: "provide plugin configuration status base actual plugin config schema",
 
   dynamic: true,
   relevanceKeywords: PLUGIN_CONFIGURATION_STATUS_KEYWORDS,

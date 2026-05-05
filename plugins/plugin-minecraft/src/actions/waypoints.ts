@@ -21,6 +21,7 @@ export const minecraftWaypointSetAction: Action = {
   name: "MC_WAYPOINT_SET",
   similes: ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"],
   description: "Save the bot's current position as a named waypoint (message text is the name).",
+  descriptionCompressed: "save bot current position name waypoint (message text name)",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["waypoint", "set"],
@@ -79,6 +80,7 @@ export const minecraftWaypointDeleteAction: Action = {
   name: "MC_WAYPOINT_DELETE",
   similes: ["MINECRAFT_WAYPOINT_DELETE", "DELETE_WAYPOINT", "REMOVE_WAYPOINT"],
   description: "Delete a named waypoint (message text is the name).",
+  descriptionCompressed: "delete name waypoint (message text name)",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["waypoint", "delete"],
@@ -114,6 +116,7 @@ export const minecraftWaypointListAction: Action = {
   name: "MC_WAYPOINT_LIST",
   similes: ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"],
   description: "List saved waypoints.",
+  descriptionCompressed: "list save waypoint",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["waypoint", "list"],
@@ -159,6 +162,7 @@ export const minecraftWaypointGotoAction: Action = {
   name: "MC_WAYPOINT_GOTO",
   similes: ["MINECRAFT_WAYPOINT_GOTO", "GOTO_WAYPOINT", "NAVIGATE_WAYPOINT"],
   description: "Pathfind to a named waypoint (message text is the name).",
+  descriptionCompressed: "pathfind name waypoint (message text name)",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["waypoint", "goto"],

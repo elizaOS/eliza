@@ -27,6 +27,7 @@ import { extractChain } from "../utils";
 export const tradePortfolioProvider: Provider = {
   name: "BIRDEYE_TRADE_PORTFOLIO",
   description: "A list of your trades",
+  descriptionCompressed: "list trade",
   dynamic: true,
   //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {

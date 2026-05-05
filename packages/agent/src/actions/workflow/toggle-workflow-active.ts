@@ -60,6 +60,7 @@ export const toggleWorkflowActiveAction: Action = {
   ],
   description:
     "Activate or deactivate an n8n workflow by id. Set active=true to enable, active=false to pause it without deleting.",
+  descriptionCompressed: "activate deactivate n8n workflow id set active true enable, active false pause wo/ delet",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

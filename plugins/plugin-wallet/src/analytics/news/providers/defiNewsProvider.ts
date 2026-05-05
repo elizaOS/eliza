@@ -28,6 +28,7 @@ export const defiNewsProvider: Provider = {
   name: "DEFI_NEWS",
   description:
     "Provides DeFi market data, global crypto statistics, token information, and real-world crypto news",
+  descriptionCompressed: "provide DeFi market data, global crypto statistic, token information, real-world crypto new",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("DEFI_NEWS provider called");

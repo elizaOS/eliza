@@ -57,6 +57,7 @@ export const minecraftScanAction: Action = {
   similes: ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"],
   description:
     'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"],"radius":16,"maxResults":32}. If omitted, scans for any non-air blocks.',
+  descriptionCompressed: "scan nearby block optional JSON input: block: oak_log, radius: 16, maxresult: 32 omitt, scan non-air block",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     matchPlannerValidateGate(runtime, message, state, {
       keywords: ["scan"],

@@ -50,6 +50,7 @@ export const manageIssuesAction: Action = {
     "Manage GitHub issues for a repository. " +
     "Supports creating issues, listing issues, getting issue details, " +
     "adding comments, updating, closing, and reopening issues.",
+  descriptionCompressed: "manage GitHub issue repository support create issue, list issue, get issue detail, add comment, updat, close, reopen issue",
 
   examples: [
     [

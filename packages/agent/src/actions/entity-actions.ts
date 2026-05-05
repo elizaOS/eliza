@@ -160,6 +160,7 @@ export const searchEntityAction: Action = {
     "Search the Rolodex for a person by name, handle, or platform. " +
     "Returns matching contacts with their cross-platform identities. " +
     "Results include line numbers for copying to clipboard.",
+  descriptionCompressed: "search Rolodex person name, handle, platform return match contact w/ cross-platform identity result include line number copy clipboard",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;
@@ -347,6 +348,7 @@ export const readEntityAction: Action = {
     "Read full details about a person: identity, all facts, recent conversations, and relationships. " +
     "Look up by entity ID (from SEARCH_ENTITY results) or by name. " +
     "Full output can be saved to clipboard.",
+  descriptionCompressed: "read full detail person: identity, fact, recent conversation, relationship look up entity ID (SEARCH_ENTITY result) name full output save clipboard",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;
@@ -618,6 +620,7 @@ export const linkEntityAction: Action = {
     "Propose (and optionally confirm) a merge of two rolodex entities that " +
     "represent the same person on different platforms. Requires owner/admin " +
     "access. Works in any language — intent is extracted by LLM.",
+  descriptionCompressed: "propose (optionally confirm) merge two rolodex entity represent same person different platform require owner/admin access work language intent extract LLM",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;
@@ -863,6 +866,7 @@ export const resolveMergeCandidateAction: Action = {
   ],
   description:
     "Accept or reject a pending identity-merge candidate by id. Owner/admin only.",
+  descriptionCompressed: "accept reject pend identity-merge candidate id owner/admin",
 
   validate: async (runtime, message) => {
     return hasAdminAccess(runtime, message);
@@ -1043,6 +1047,7 @@ export const getRelationshipActivityAction: Action = {
   ],
   description:
     "Return the recent relationship/identity/fact activity timeline, paginated. Mirrors the Relationships activity feed in the desktop app.",
+  descriptionCompressed: "return recent relationship/identity/fact activity timeline, paginat mirror Relationships activity feed desktop app",
 
   validate: async (runtime, message) => {
     return hasAdminAccess(runtime, message);

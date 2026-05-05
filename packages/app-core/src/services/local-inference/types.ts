@@ -22,6 +22,7 @@ export interface CatalogModel {
     | "360M"
     | "1B"
     | "1.7B"
+    | "2B"
     | "3B"
     | "7B"
     | "8B"

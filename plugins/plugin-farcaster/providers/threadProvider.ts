@@ -18,6 +18,7 @@ export const farcasterThreadProvider: Provider = {
   name: spec.name,
   description:
     "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
+  descriptionCompressed: "provide thread context Farcaster cast agent reference full conversation",
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {

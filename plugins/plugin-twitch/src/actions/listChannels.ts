@@ -21,6 +21,7 @@ export const listChannels: Action = {
     "CURRENT_CHANNELS",
   ],
   description: "List all Twitch channels the bot is currently in",
+  descriptionCompressed: "list Twitch channel bot",
 
   validate: async (
     runtime: any,

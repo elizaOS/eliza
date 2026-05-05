@@ -14,6 +14,7 @@ import { validateLinearActionIntent } from "./validate-linear-intent";
 export const clearActivityAction: Action = {
   name: "CLEAR_LINEAR_ACTIVITY",
   description: "Clear the Linear activity log",
+  descriptionCompressed: "clear Linear activity log",
   similes: ["clear-linear-activity", "reset-linear-activity", "delete-linear-activity"],
 
   examples: [

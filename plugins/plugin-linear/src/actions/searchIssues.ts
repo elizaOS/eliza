@@ -19,6 +19,7 @@ const searchTemplate = searchIssuesTemplate;
 export const searchIssuesAction: Action = {
   name: "SEARCH_LINEAR_ISSUES",
   description: "Search for issues in Linear with various filters",
+  descriptionCompressed: "search issue Linear w/ various filter",
   similes: [
     "search-linear-issues",
     "find-linear-issues",

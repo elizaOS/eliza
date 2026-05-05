@@ -11,6 +11,7 @@ import { GoogleMeetAPIService } from "../services/googleMeetAPIService";
 export const getParticipantsAction: Action = {
   name: "GET_PARTICIPANTS",
   description: "Get the list of participants in a Google Meet conference",
+  descriptionCompressed: "get list participant Google Meet conference",
   similes: [
     "who's in the meeting",
     "list participants",

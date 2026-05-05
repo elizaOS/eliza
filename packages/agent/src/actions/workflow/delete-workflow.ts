@@ -42,6 +42,7 @@ export const deleteWorkflowAction: Action = {
   ],
   description:
     "Permanently delete an n8n workflow by id. Use when the user wants to remove a workflow entirely. Attached trigger schedules are not cascaded — handle those separately.",
+  descriptionCompressed: "permanently delete n8n workflow id use user want remove workflow entirely attach trigger schedule cascad handle separately",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,

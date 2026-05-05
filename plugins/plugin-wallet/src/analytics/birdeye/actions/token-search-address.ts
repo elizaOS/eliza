@@ -71,6 +71,7 @@ export const tokenSearchAddressAction = {
   ],
   description:
     "Search for detailed token information including security and trade data by address (base58 (32-44 chars) or hex (40 or 64 chars) strings)",
+  descriptionCompressed: "search detail token information includ security trade data address (base58 (32 - 44 char) hex (40 64 char) string)",
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

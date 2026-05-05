@@ -11,6 +11,7 @@ export const kaminoPoolProvider: Provider = {
   name: "KAMINO_POOL",
   description:
     "Provides detailed information about specific Kamino liquidity pools by pool address",
+  descriptionCompressed: "provide detail information specific Kamino liquidity pool pool address",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     console.log("KAMINO_POOL provider called");

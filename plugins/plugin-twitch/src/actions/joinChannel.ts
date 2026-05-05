@@ -37,6 +37,7 @@ export const joinChannel: Action = {
   name: "TWITCH_JOIN_CHANNEL",
   similes: ["JOIN_TWITCH_CHANNEL", "ENTER_CHANNEL", "CONNECT_CHANNEL"],
   description: "Join a Twitch channel to listen and send messages",
+  descriptionCompressed: "join Twitch channel listen send message",
 
   validate: async (
     runtime: any,

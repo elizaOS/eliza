@@ -31,7 +31,7 @@ import type { Skill, SkillCatalogEntry } from "../types";
 export const skillsSummaryProvider: Provider = {
 	name: "agent_skills",
 	description: "Medium-res list of installed Agent Skills with descriptions",
-	descriptionCompressed: "Installed Agent Skills with descriptions (med-res).",
+	descriptionCompressed: "medium-re list install Agent Skills w/ description",
 	position: -10,
 
 	dynamic: true,
@@ -113,8 +113,7 @@ ${xml}${scanSection}
 export const skillInstructionsProvider: Provider = {
 	name: "agent_skill_instructions",
 	description: "High-res instructions from the most relevant skill",
-	descriptionCompressed:
-		"Full instructions from most relevant skill (high-res).",
+	descriptionCompressed: "high-re instruction most relevant skill",
 	position: 5,
 
 	dynamic: true,

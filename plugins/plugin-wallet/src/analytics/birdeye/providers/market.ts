@@ -47,6 +47,7 @@ export async function getCacheTimed<T>(
 export const marketProvider: Provider = {
   name: "BIRDEYE_CRYPTOCURRENCY_MARKET_DATA",
   description: "Birdeye get latest cryptocurrencies overview",
+  descriptionCompressed: "birdeye get latest cryptocurrency overview",
   dynamic: true,
   //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {

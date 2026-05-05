@@ -65,6 +65,7 @@ export const manageWindowAction: Action = {
     "- restore: Restore a minimized or maximized window.\n" +
     "- close: Close a window. Requires windowId.\n\n" +
     "Use 'list' first to discover window IDs, then use other actions to manage them.",
+  descriptionCompressed: "manage desktop window list visible window, bring window front, arrange move window, minimize, maximize, restore, close window available action: - list: list visible window w/ IDs, title, app name - focus: bring window front require windowid - switch: Switch window ID, title, app name - arrange: Arrange visible window use tile, cascade, vertical, horizontal layout - move: move window screen coordinate require windowid/windowtitle x/y - minimize: Minimize window require windowid - maximize: Maximize window require windowid - restore: Restore minimize maximize window - close: close window require windowid use list first discover window IDs, use other action manage",
 
   parameters: [
     {

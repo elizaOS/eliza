@@ -30,6 +30,7 @@ export const claudeCodeWorkbenchListAction: Action = {
   name: "CLAUDE_CODE_WORKBENCH_LIST",
   similes: ["LIST_WORKBENCH_WORKFLOWS", "WORKBENCH_LIST", "CCW_LIST"],
   description: "List available Claude Code workbench workflows.",
+  descriptionCompressed: "list available Claude Code workbench workflow",
 
   validate: async (
     runtime: IAgentRuntime,

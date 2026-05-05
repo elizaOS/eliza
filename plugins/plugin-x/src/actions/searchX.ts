@@ -21,6 +21,7 @@ export const searchXAction: Action = {
   similes: ["SEARCH_TWITTER", "SEARCH_TWEETS", "X_SEARCH"],
   description:
     "Search X recent tweets using the v2 recent search endpoint. Parameters: query (required), maxResults (optional, default 10).",
+  descriptionCompressed: "search x recent tweet use v2 recent search endpoint parameter: query (require), maxresult (optional, default 10)",
   parameters: [
     {
       name: "query",

@@ -56,6 +56,7 @@ export const getExecutionsAction: Action = {
   ],
   description:
     'Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.',
+  descriptionCompressed: "get execution history n8n workflow show status, start time, error message identify workflow ID, name, semantic description language",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);

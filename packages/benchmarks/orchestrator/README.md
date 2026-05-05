@@ -189,6 +189,66 @@ Default behavior only recovers runs older than 300 seconds:
 
 `show-runs` is sorted by `(agent, run_id)` and is useful for quick auditing.
 
+## Comparing models (A vs B)
+
+Run any benchmark suite against two models and print a side-by-side delta
+table. Each side is a separate run group in SQLite, but both runs share a
+``comparison_id`` so the comparison can be re-rendered later.
+
+Spec format for ``--a`` / ``--b``: ``<provider>:<model>[@<base_url>]``.
+The optional ``@<base_url>`` is forwarded to the provider as an OpenAI-
+compatible base URL; for the ``vllm`` provider this points the orchestrator at
+a self-hosted vLLM endpoint started via ``vllm serve``.
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator compare \
+  --a "vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1" \
+  --b "vllm:Qwen/Qwen3.5-2B@http://127.0.0.1:8002/v1" \
+  --benchmarks eliza-format,bfcl,realm,context-bench
+```
+
+Optional flags:
+
+- ``--max-examples N`` caps work per benchmark (forwarded as
+  ``max_examples`` / ``max_tasks`` / ``sample`` so individual adapters pick it
+  up however they natively wire sampling).
+- ``--temperature 0.0`` (default).
+- ``--out <dir>`` — directory for ``compare-<comparison_id>.json``. Defaults
+  to ``benchmarks/benchmark_results/comparisons/``.
+
+Output:
+
+```
+Comparison ID: cmp_20260504T120000Z_a1b2c3d4
+A: vllm:elizaos/eliza-1-2b @ http://127.0.0.1:8001/v1
+B: vllm:Qwen/Qwen3.5-2B @ http://127.0.0.1:8002/v1
+Benchmarks: eliza-format, bfcl, realm, context-bench
+
+benchmark      | A: vllm:elizaos/eliza-1-2b | B: vllm:Qwen/Qwen3.5-2B | delta (B-A) | winner
+---------------+----------------------------+-------------------------+-------------+-------
+eliza-format   | 0.9120                     | 0.7430                  | -0.1690     | A
+bfcl           | 0.6840                     | 0.6920                  | +0.0080     | B
+realm          | 0.5510                     | 0.5310                  | -0.0200     | A
+context-bench  | 0.7400                     | 0.7250                  | -0.0150     | A
+
+Wrote benchmarks/benchmark_results/comparisons/compare-cmp_20260504T120000Z_a1b2c3d4.json
+```
+
+Re-render a stored comparison:
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator view-comparison \
+  cmp_20260504T120000Z_a1b2c3d4
+```
+
+The ``vllm`` provider name is registered alongside ``openai`` / ``groq`` /
+``anthropic``: every benchmark CLI that already accepts ``--provider``
+accepts ``--provider vllm``, and the orchestrator forwards
+``OPENAI_BASE_URL`` to the per-benchmark subprocess so OpenAI-compatible
+clients hit the vLLM endpoint without code changes. Override the default
+``http://127.0.0.1:8001/v1`` either via ``@<base_url>`` in the spec, the
+``VLLM_BASE_URL`` env var, or the per-run ``vllm_base_url`` extra config.
+
 ## Stored metadata per run
 
 Each run stores:
