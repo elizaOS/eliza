@@ -9,6 +9,8 @@ import {
   createMockService,
   createMockState,
   createTestMemory,
+  type DexScreenerBoostMockMethods,
+  type DexScreenerBoostMockService,
   describe,
   expect,
   it,
@@ -17,11 +19,11 @@ import {
 
 describe("DexScreener Actions - Additional Coverage", () => {
   let mockRuntime: IAgentRuntime;
-  let mockService: any;
+  let mockService: DexScreenerBoostMockService;
 
   beforeEach(() => {
     // Create mock service
-    mockService = createMockService({
+    mockService = createMockService<DexScreenerBoostMockMethods>({
       getTopBoostedTokens: mock(),
       getLatestBoostedTokens: mock(),
       getLatestTokenProfiles: mock(),

@@ -21,8 +21,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

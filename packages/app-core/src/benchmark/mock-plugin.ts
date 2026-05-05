@@ -28,7 +28,9 @@ function extractPrompt(
         if (typeof message === "string") return message;
         if (message && typeof message === "object" && "content" in message) {
           const content = (message as { content?: unknown }).content;
-          return typeof content === "string" ? content : JSON.stringify(content);
+          return typeof content === "string"
+            ? content
+            : JSON.stringify(content);
         }
         return JSON.stringify(message);
       })
@@ -316,7 +318,8 @@ function buildWebShopActionToon(prompt: string): string {
     actions: "BENCHMARK_ACTION",
     providers: "",
     text: "Searching WebShop.",
-    params: "BENCHMARK_ACTION:\n  command: search[wireless bluetooth headphones]",
+    params:
+      "BENCHMARK_ACTION:\n  command: search[wireless bluetooth headphones]",
   });
 }
 
@@ -348,8 +351,9 @@ function buildTrustAnalysisToon(prompt: string): string {
     /ignore|disregard|previous instructions|new instructions|system override|system command|dan|bypass|jailbreak/.test(
       lower,
     );
-  const privilege =
-    /admin|owner|root|privilege|permissions|elevate/.test(lower);
+  const privilege = /admin|owner|root|privilege|permissions|elevate/.test(
+    lower,
+  );
   const analysis = {
     prompt_injection: {
       detected: promptInjection,
@@ -382,7 +386,8 @@ function buildSocialAlphaExtractionToon(prompt: string): string {
   const ticker = /\$([A-Z][A-Z0-9]{1,12})/.exec(message)?.[1] ?? "";
   const sell = /sell|dump|short|avoid|bearish|rug|scam/.test(lower);
   const buy = /buy|moon|pump|bullish|long|ape|gem|alpha|100x/.test(lower);
-  const recommendation_type = buy && !sell ? "BUY" : sell && !buy ? "SELL" : "NOISE";
+  const recommendation_type =
+    buy && !sell ? "BUY" : sell && !buy ? "SELL" : "NOISE";
   const is_recommendation = recommendation_type !== "NOISE";
   const conviction = is_recommendation
     ? /100x|moon|ape|strong|high|gem|alpha/.test(lower)
@@ -512,27 +517,45 @@ function buildCompletion(prompt: string): string {
     return buildVendingActionToon(prompt);
   }
 
-  if (/Benchmark:\*{0,2}\s*mind2web/i.test(prompt) || /Mind2Web benchmark/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*mind2web/i.test(prompt) ||
+    /Mind2Web benchmark/i.test(prompt)
+  ) {
     return buildMind2WebActionToon(prompt);
   }
 
-  if (/Benchmark:\*{0,2}\s*(terminal-bench|terminal_bench)/i.test(prompt) || /Terminal-Bench/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*(terminal-bench|terminal_bench)/i.test(prompt) ||
+    /Terminal-Bench/i.test(prompt)
+  ) {
     return buildTerminalCommandToon(prompt);
   }
 
-  if (/Benchmark:\*{0,2}\s*osworld/i.test(prompt) || /OSWorld|pyautogui/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*osworld/i.test(prompt) ||
+    /OSWorld|pyautogui/i.test(prompt)
+  ) {
     return buildOSWorldActionToon(prompt);
   }
 
-  if (/Benchmark:\*{0,2}\s*webshop/i.test(prompt) || /WebShop|simulated webstore|webstore/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*webshop/i.test(prompt) ||
+    /WebShop|simulated webstore|webstore/i.test(prompt)
+  ) {
     return buildWebShopActionToon(prompt);
   }
 
-  if (/Benchmark:\*{0,2}\s*gauntlet/i.test(prompt) || /Solana DeFi safety analyzer/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*gauntlet/i.test(prompt) ||
+    /Solana DeFi safety analyzer/i.test(prompt)
+  ) {
     return buildGauntletDecisionToon(prompt);
   }
 
-  if (/Benchmark:\*{0,2}\s*openclaw/i.test(prompt) || /OpenClaw|Node\.js project with TypeScript/i.test(prompt)) {
+  if (
+    /Benchmark:\*{0,2}\s*openclaw/i.test(prompt) ||
+    /OpenClaw|Node\.js project with TypeScript/i.test(prompt)
+  ) {
     return buildOpenClawReplyToon(prompt);
   }
 
@@ -613,7 +636,7 @@ function mockObjectModel(
   _runtime: IAgentRuntime,
   params: ObjectGenerationParams,
 ): Record<string, JsonValue> {
-  const prompt = extractPrompt(params.prompt ?? "");
+  const prompt = extractPrompt(params.prompt ?? params);
   const command = extractCommand(prompt);
   const replyToon =
     /Benchmark:\*{0,2}\s*trust/i.test(prompt) ||

@@ -22,14 +22,6 @@ type OffscreenSendChatRequest = {
   pageContent: PageContent | null;
 };
 
-type OffscreenPingRequest = { type: "OFFSCREEN_PING" };
-type OffscreenResetRequest = { type: "OFFSCREEN_RESET" };
-
-type OffscreenRequest =
-  | OffscreenSendChatRequest
-  | OffscreenPingRequest
-  | OffscreenResetRequest;
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

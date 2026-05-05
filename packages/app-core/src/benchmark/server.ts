@@ -312,10 +312,9 @@ export async function startBenchmarkServer() {
         elizaLogger.warn(
           `[bench] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${fallbackPath}`,
         );
-        pluginModule = (await import(pathToFileURL(fallbackPath).href)) as Record<
-          string,
-          unknown
-        >;
+        pluginModule = (await import(
+          pathToFileURL(fallbackPath).href
+        )) as Record<string, unknown>;
       }
       const plugin =
         pluginModule.default ?? pluginModule[Object.keys(pluginModule)[0]];

@@ -27,16 +27,16 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  loadAospVariantConfig,
+  resolveAppConfigPath,
+} from "./aosp/lib/load-variant-config.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import {
   isCapacitorPlatformReady as isCapacitorPlatformReadyImpl,
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
-import {
-  loadAospVariantConfig,
-  resolveAppConfigPath,
-} from "./aosp/lib/load-variant-config.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
@@ -1659,7 +1659,10 @@ end
 
 // ── Phase 5: Platform patches ───────────────────────────────────────────
 
-function stripSpmPlugins(pluginNames, { reason = "incompatible SPM plugin" } = {}) {
+function stripSpmPlugins(
+  pluginNames,
+  { reason = "incompatible SPM plugin" } = {},
+) {
   const pkgPath = path.join(
     appDir,
     "ios",
@@ -2127,9 +2130,7 @@ async function generateAndroidBrandAssets() {
   }
 
   if (splashSource) {
-    for (const [dir, [width, height]] of Object.entries(
-      ANDROID_SPLASH_SIZES,
-    )) {
+    for (const [dir, [width, height]] of Object.entries(ANDROID_SPLASH_SIZES)) {
       const out = path.join(resDir, dir);
       fs.mkdirSync(out, { recursive: true });
       await sharp(splashSource)
@@ -2139,7 +2140,9 @@ async function generateAndroidBrandAssets() {
     }
   }
 
-  console.log(`[mobile-build] Generated Android brand assets for ${APP.appName}.`);
+  console.log(
+    `[mobile-build] Generated Android brand assets for ${APP.appName}.`,
+  );
 }
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
