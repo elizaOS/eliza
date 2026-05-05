@@ -22,9 +22,6 @@
     "@elizaos/core": "workspace:*",
     "ethers": "^6.15.0"
   },
-  "peerDependencies": {
-    "@elizaos/agent": "workspace:*"
-  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}

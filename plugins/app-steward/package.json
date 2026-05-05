@@ -29,10 +29,6 @@
     "lucide-react": "^1.0.0",
     "viem": "^2.48.8"
   },
-  "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*"
-  },
   "elizaos": {
     "app": {
       "heroImage": "assets/hero.png"
