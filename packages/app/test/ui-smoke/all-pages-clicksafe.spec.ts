@@ -384,6 +384,79 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/training/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        runningJobs: 0,
+        queuedJobs: 0,
+        completedJobs: 0,
+        failedJobs: 0,
+        modelCount: 0,
+        datasetCount: 0,
+        runtimeAvailable: false,
+      }),
+    });
+  });
+
+  await page.route("**/api/training/trajectories**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        available: false,
+        reason: "ui-smoke",
+        total: 0,
+        trajectories: [],
+      }),
+    });
+  });
+
+  await page.route("**/api/training/datasets", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ datasets: [] }),
+    });
+  });
+
+  await page.route("**/api/training/jobs", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ jobs: [] }),
+    });
+  });
+
+  await page.route("**/api/training/models", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ models: [] }),
+    });
+  });
+
   await page.route(
     "**/api/lifeops/connectors/google/status**",
     async (route) => {
