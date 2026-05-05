@@ -299,6 +299,22 @@ parts:
         echo "No bun/install.js found; continuing with staged Bun runtime"
       fi
 
+      # Snapcraft's isolated Bun install can keep @types packages only in
+      # node_modules/.bun without the root @types symlinks that tsc checks for
+      # while compiling package declarations.
+      mkdir -p node_modules/@types
+      for type_pkg in node bun; do
+        type_target=""
+        if [ -d "node_modules/.bun/node_modules/@types/$type_pkg" ]; then
+          type_target="node_modules/.bun/node_modules/@types/$type_pkg"
+        elif [ -d node_modules/.bun ]; then
+          type_target="$(find node_modules/.bun -maxdepth 5 -path "*/@types+$type_pkg@*/node_modules/@types/$type_pkg" -type d -print -quit 2>/dev/null)"
+        fi
+        if [ -n "$type_target" ] && [ -d "$type_target" ] && [ ! -e "node_modules/@types/$type_pkg" ]; then
+          ln -s "../${type_target#node_modules/}" "node_modules/@types/$type_pkg"
+        fi
+      done
+
       # Rehydrate published-only workspace deps that Vite and app-core imports
       # still need after the destructive workspace rewrite above.
       if [ -f scripts/install-published-workspace-fallback-deps.sh ]; then
