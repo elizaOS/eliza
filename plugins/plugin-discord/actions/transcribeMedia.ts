@@ -21,7 +21,9 @@ function messageText(message: Memory): string {
 	return typeof message.content.text === "string" ? message.content.text : "";
 }
 
-function isMediaAttachment(attachment: Media | null | undefined): attachment is Media {
+function isMediaAttachment(
+	attachment: Media | null | undefined,
+): attachment is Media {
 	if (!attachment) {
 		return false;
 	}
@@ -43,7 +45,9 @@ function requestedAttachmentMatches(text: string, attachment: Media): boolean {
 	const values = [attachment.id, attachment.title, attachment.url]
 		.filter((value): value is string => Boolean(value?.trim()))
 		.map((value) => value.toLowerCase());
-	return values.some((value) => value.length >= 4 && normalizedText.includes(value));
+	return values.some(
+		(value) => value.length >= 4 && normalizedText.includes(value),
+	);
 }
 
 async function collectMediaCandidates(
@@ -80,7 +84,10 @@ async function collectMediaCandidates(
 				if (existing && (existing._createdAt ?? 0) >= createdAt) {
 					continue;
 				}
-				candidatesById.set(attachment.id, { ...attachment, _createdAt: createdAt });
+				candidatesById.set(attachment.id, {
+					...attachment,
+					_createdAt: createdAt,
+				});
 			}
 		}
 	}
@@ -145,10 +152,18 @@ function formatTranscript(attachments: MediaCandidate[]): string {
 }
 
 function mediaKind(attachments: MediaCandidate[]): "audio" | "video" | "media" {
-	if (attachments.every((attachment) => attachment.contentType === ContentType.AUDIO)) {
+	if (
+		attachments.every(
+			(attachment) => attachment.contentType === ContentType.AUDIO,
+		)
+	) {
 		return "audio";
 	}
-	if (attachments.every((attachment) => attachment.contentType === ContentType.VIDEO)) {
+	if (
+		attachments.every(
+			(attachment) => attachment.contentType === ContentType.VIDEO,
+		)
+	) {
 		return "video";
 	}
 	return "media";

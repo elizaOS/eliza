@@ -101,8 +101,7 @@ export const sendReaction: Action = {
       });
 
       const parsedResponse =
-        parseKeyValueXml<Record<string, unknown>>(response) ??
-        parseJSONObjectFromText(response);
+        parseKeyValueXml<Record<string, unknown>>(response) ?? parseJSONObjectFromText(response);
       if (
         parsedResponse?.emoji &&
         parsedResponse?.targetTimestamp &&

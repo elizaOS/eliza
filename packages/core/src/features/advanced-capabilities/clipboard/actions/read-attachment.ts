@@ -19,7 +19,9 @@ import { maybeStoreTaskClipboardItem } from "../services/taskClipboardPersistenc
 const MAX_ATTACHMENT_ANSWER_CHARS = 32_000;
 const ATTACHMENT_REQUEST_PATTERN =
 	/\b(?:attachment|file|document|doc|pdf|image|screenshot|picture|photo|audio|voice|recording|song|video|media|transcript|url|link|webpage|website|page|article)\b/i;
-type AttachmentRecord = Awaited<ReturnType<typeof readAttachmentRecords>>[number];
+type AttachmentRecord = Awaited<
+	ReturnType<typeof readAttachmentRecords>
+>[number];
 
 function shouldShowAttachmentRecord(messageText: string): boolean {
 	return /\b(?:attachment|file)\s+(?:id|ids|metadata|details|info|record)\b/i.test(
@@ -87,7 +89,9 @@ function hasReadableContent(records: AttachmentRecord[]): boolean {
 	return records.some((record) => record.content.trim().length > 0);
 }
 
-function attachmentSourceType(records: AttachmentRecord[]): "attachment" | "image_attachment" {
+function attachmentSourceType(
+	records: AttachmentRecord[],
+): "attachment" | "image_attachment" {
 	return records.every(
 		(record) => record.attachment.contentType === ContentType.IMAGE,
 	)
@@ -136,7 +140,7 @@ async function answerAttachmentRequest(params: {
 	const prompt = [
 		"You are answering a user request about an attachment.",
 		"Use only the attachment content, extracted text, transcript, or media description below.",
-		"Follow explicit formatting instructions from the user, including requests such as \"only\" or \"keep it short\".",
+		'Follow explicit formatting instructions from the user, including requests such as "only" or "keep it short".',
 		"If the requested answer is not in the attachment content, say that briefly.",
 		"Do not include attachment metadata, IDs, source labels, or implementation details.",
 		"",
@@ -224,7 +228,9 @@ export const readAttachmentAction: Action = {
 					sourceId: records.map((record) => record.attachment.id).join(","),
 					sourceLabel: records.map(titleForRecord).join(", "),
 					mimeType:
-						records.length === 1 ? records[0]?.attachment.contentType : undefined,
+						records.length === 1
+							? records[0]?.attachment.contentType
+							: undefined,
 				},
 			);
 			let clipboardStatusText = "";

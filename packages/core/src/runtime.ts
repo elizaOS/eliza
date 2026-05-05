@@ -5851,8 +5851,11 @@ ${section_end}`;
 				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
 				// re-accumulating from deltas — which broke when two extractors ran
 				// concurrently (the dual-extractor garbling bug).
-				const onChunk = (chunk: string, _field?: string, accumulated?: string) =>
-					options.onStreamChunk?.(chunk, streamMessageId, accumulated);
+				const onChunk = (
+					chunk: string,
+					_field?: string,
+					accumulated?: string,
+				) => options.onStreamChunk?.(chunk, streamMessageId, accumulated);
 				const onEvent = options.onStreamEvent
 					? (event: StreamEvent) =>
 							options.onStreamEvent?.(event, streamMessageId)

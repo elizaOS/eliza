@@ -34,17 +34,20 @@ function discordMessage(content: string): DiscordMessage {
 
 function managerFor(testRuntime: IAgentRuntime): MessageManager {
 	const manager = Object.create(MessageManager.prototype) as MessageManager;
-	Object.assign(manager as unknown as {
-		runtime: IAgentRuntime;
-		attachmentManager: {
-			processAttachments: () => Promise<[]>;
-		};
-	}, {
-		runtime: testRuntime,
-		attachmentManager: {
-			processAttachments: vi.fn(async () => []),
+	Object.assign(
+		manager as unknown as {
+			runtime: IAgentRuntime;
+			attachmentManager: {
+				processAttachments: () => Promise<[]>;
+			};
 		},
-	});
+		{
+			runtime: testRuntime,
+			attachmentManager: {
+				processAttachments: vi.fn(async () => []),
+			},
+		},
+	);
 	return manager;
 }
 
