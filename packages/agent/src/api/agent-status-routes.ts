@@ -183,6 +183,10 @@ export async function handleAgentStatusRoutes(
       "chrome-extension",
     ]);
     const COMPUTER_PLUGIN_IDS = new Set(["computeruse", "computer-use"]);
+    const COMPUTER_PLUGIN_PACKAGE_IDS = new Set([
+      "@elizaos/plugin-computeruse",
+      "@elizaos/plugin-computer-use",
+    ]);
     let hasBrowserPlugin = false;
     let hasComputerPlugin = false;
 
@@ -212,7 +216,12 @@ export async function handleAgentStatusRoutes(
           connectorNames.push(name);
         }
         if (BROWSER_PLUGIN_IDS.has(lower)) hasBrowserPlugin = true;
-        if (COMPUTER_PLUGIN_IDS.has(lower)) hasComputerPlugin = true;
+        if (
+          COMPUTER_PLUGIN_IDS.has(lower) ||
+          COMPUTER_PLUGIN_PACKAGE_IDS.has(lower)
+        ) {
+          hasComputerPlugin = true;
+        }
       }
     }
 

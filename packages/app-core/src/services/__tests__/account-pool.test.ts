@@ -5,7 +5,12 @@
 
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AccountPool, type AccountPoolDeps } from "../account-pool";
+import {
+  __getDefaultAccountPoolSelectionForTests,
+  AccountPool,
+  type AccountPoolDeps,
+  configureDefaultAccountPoolSelection,
+} from "../account-pool";
 
 function accountKey(account: LinkedAccountConfig): string {
   return `${account.providerId}:${account.id}`;
@@ -410,5 +415,46 @@ describe("AccountPool refreshUsage", () => {
     await expect(pool.refreshUsage("a", "tok")).rejects.toThrow(
       /organizationId/,
     );
+  });
+});
+
+describe("default account-pool selection config", () => {
+  it("normalizes provider strategy and llmText route account pool", () => {
+    configureDefaultAccountPoolSelection({
+      accountStrategies: {
+        "openai-codex": "round-robin",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "openai",
+          accountIds: ["codex-a", "codex-b"],
+          strategy: "least-used",
+        },
+      },
+    });
+
+    expect(__getDefaultAccountPoolSelectionForTests("openai-codex")).toEqual({
+      accountIds: ["codex-a", "codex-b"],
+      strategy: "least-used",
+    });
+  });
+
+  it("falls back to provider strategy when the route targets another provider", () => {
+    configureDefaultAccountPoolSelection({
+      accountStrategies: {
+        "openai-codex": "round-robin",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "anthropic",
+          accountIds: ["anthropic-a"],
+          strategy: "least-used",
+        },
+      },
+    });
+
+    expect(__getDefaultAccountPoolSelectionForTests("openai-codex")).toEqual({
+      strategy: "round-robin",
+    });
   });
 });

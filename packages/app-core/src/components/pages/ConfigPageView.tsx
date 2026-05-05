@@ -48,6 +48,32 @@ function areCloudRpcSelections(selections: WalletRpcSelections) {
   );
 }
 
+function firstCustomRpcProvider<T extends string>(
+  options: readonly RpcProviderOption<T>[],
+  fallback: T,
+): T {
+  return options.find((option) => option.id !== "eliza-cloud")?.id ?? fallback;
+}
+
+function resolveCustomRpcSelections(
+  current: WalletRpcSelections,
+): WalletRpcSelections {
+  return {
+    evm:
+      current.evm === "eliza-cloud"
+        ? firstCustomRpcProvider(EVM_RPC_OPTIONS, current.evm)
+        : current.evm,
+    bsc:
+      current.bsc === "eliza-cloud"
+        ? firstCustomRpcProvider(BSC_RPC_OPTIONS, current.bsc)
+        : current.bsc,
+    solana:
+      current.solana === "eliza-cloud"
+        ? firstCustomRpcProvider(SOLANA_RPC_OPTIONS, current.solana)
+        : current.solana,
+  };
+}
+
 export function ConfigPageView({
   embedded = false,
   onWalletSaveSuccess,
@@ -124,15 +150,27 @@ export function ConfigPageView({
   }, [initialBscRpc, initialEvmRpc, initialSolanaRpc]);
 
   /* When switching to cloud mode, set all providers to eliza-cloud */
-  const handleModeChange = useCallback((mode: "cloud" | "custom") => {
-    manualRpcModeSelection.current = true;
-    setRpcMode(mode);
-    if (mode === "cloud") {
-      setSelectedEvmRpc(CLOUD_RPC_SELECTIONS.evm);
-      setSelectedBscRpc(CLOUD_RPC_SELECTIONS.bsc);
-      setSelectedSolanaRpc(CLOUD_RPC_SELECTIONS.solana);
-    }
-  }, []);
+  const handleModeChange = useCallback(
+    (mode: "cloud" | "custom") => {
+      manualRpcModeSelection.current = true;
+      setRpcMode(mode);
+      if (mode === "cloud") {
+        setSelectedEvmRpc(CLOUD_RPC_SELECTIONS.evm);
+        setSelectedBscRpc(CLOUD_RPC_SELECTIONS.bsc);
+        setSelectedSolanaRpc(CLOUD_RPC_SELECTIONS.solana);
+      } else {
+        const customSelections = resolveCustomRpcSelections({
+          evm: selectedEvmRpc,
+          bsc: selectedBscRpc,
+          solana: selectedSolanaRpc,
+        });
+        setSelectedEvmRpc(customSelections.evm);
+        setSelectedBscRpc(customSelections.bsc);
+        setSelectedSolanaRpc(customSelections.solana);
+      }
+    },
+    [selectedBscRpc, selectedEvmRpc, selectedSolanaRpc],
+  );
 
   const handleWalletSaveAll = useCallback(async () => {
     const config = buildWalletRpcUpdateRequest({

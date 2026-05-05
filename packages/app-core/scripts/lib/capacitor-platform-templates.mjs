@@ -55,6 +55,12 @@ const SKIPPED_TEMPLATE_EXTENSIONS = new Set([
   ".log",
 ]);
 
+const PLATFORM_OVERRIDE_DIRS = ["native-overrides", "platform-overrides"];
+const REPLACED_ASSET_CATALOG_DIRS = [
+  path.join("App", "App", "Assets.xcassets", "AppIcon.appiconset"),
+  path.join("App", "App", "Assets.xcassets", "Splash.imageset"),
+];
+
 function hasSkippedPrefix(relPath) {
   return SKIPPED_TEMPLATE_PREFIXES.some(
     (prefix) =>
@@ -155,6 +161,79 @@ export function resolvePlatformTemplateRoot(
   return null;
 }
 
+function resolvePlatformOverrideRoots(platform, { appDirValue }) {
+  return PLATFORM_OVERRIDE_DIRS.map((dirName) =>
+    path.join(appDirValue, dirName, platform),
+  ).filter((candidate) => fs.existsSync(candidate));
+}
+
+function copyPlatformFiles({ files, platform, sourceRoot, targetRoot }) {
+  removeStaleAssetCatalogImages({ sourceRoot, targetRoot });
+  const copied = [];
+  for (const relPath of files.sort((a, b) =>
+    templateFilePriority(platform, a).localeCompare(
+      templateFilePriority(platform, b),
+    ),
+  )) {
+    const source = path.join(sourceRoot, relPath);
+    const targetPath = path.join(targetRoot, relPath);
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.copyFileSync(source, targetPath);
+    fs.chmodSync(targetPath, fs.statSync(source).mode & 0o777);
+    copied.push(relPath);
+  }
+  return copied;
+}
+
+function removeStaleAssetCatalogImages({ sourceRoot, targetRoot }) {
+  for (const relDir of REPLACED_ASSET_CATALOG_DIRS) {
+    const sourceDir = path.join(sourceRoot, relDir);
+    const targetDir = path.join(targetRoot, relDir);
+    if (!fs.existsSync(sourceDir) || !fs.existsSync(targetDir)) continue;
+
+    const sourcePngs = new Set(
+      fs
+        .readdirSync(sourceDir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".png"))
+        .map((entry) => entry.name),
+    );
+    for (const entry of fs.readdirSync(targetDir, { withFileTypes: true })) {
+      if (
+        entry.isFile() &&
+        entry.name.endsWith(".png") &&
+        !sourcePngs.has(entry.name)
+      ) {
+        fs.rmSync(path.join(targetDir, entry.name));
+      }
+    }
+  }
+}
+
+function syncPlatformOverrideFiles(
+  platform,
+  { appDirValue, targetRoot, log = console.log },
+) {
+  const copied = [];
+  for (const overrideRoot of resolvePlatformOverrideRoots(platform, {
+    appDirValue,
+  })) {
+    copied.push(
+      ...copyPlatformFiles({
+        files: collectTemplateFiles(overrideRoot),
+        platform,
+        sourceRoot: overrideRoot,
+        targetRoot,
+      }),
+    );
+  }
+  if (copied.length > 0) {
+    log(
+      `[mobile-build] Applied ${copied.length} ${platform} app override file(s).`,
+    );
+  }
+  return copied;
+}
+
 /**
  * @param {"ios"|"android"} platform
  * @param {{ repoRootValue: string, appDirValue: string, log?: (msg: string) => void }} options
@@ -167,26 +246,25 @@ export function syncPlatformTemplateFiles(
   const templateRoot = resolvePlatformTemplateRoot(platform, { repoRootValue });
   if (!templateRoot) return [];
   const targetRoot = path.join(appDirValue, platform);
-  const files = collectTemplateFiles(templateRoot).sort((a, b) =>
-    templateFilePriority(platform, a).localeCompare(
-      templateFilePriority(platform, b),
-    ),
-  );
-  const copied = [];
-  for (const relPath of files) {
-    const source = path.join(templateRoot, relPath);
-    const targetPath = path.join(targetRoot, relPath);
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.copyFileSync(source, targetPath);
-    fs.chmodSync(targetPath, fs.statSync(source).mode & 0o777);
-    copied.push(relPath);
-  }
+  const copied = copyPlatformFiles({
+    files: collectTemplateFiles(templateRoot),
+    platform,
+    sourceRoot: templateRoot,
+    targetRoot,
+  });
   if (copied.length > 0) {
     log(
       `[mobile-build] Synced ${copied.length} ${platform} platform template file(s).`,
     );
   }
-  return copied;
+  return [
+    ...copied,
+    ...syncPlatformOverrideFiles(platform, {
+      appDirValue,
+      targetRoot,
+      log,
+    }),
+  ];
 }
 
 /**

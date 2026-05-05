@@ -798,19 +798,29 @@ function writeHtml(
           window.opener.postMessage(payload, "*");
         }
         if (typeof BroadcastChannel === "function") {
-          const channel = new BroadcastChannel("eliza:lifeops:google-connector");
-          channel.postMessage(payload);
-          channel.close();
+          for (const channelName of [
+            "elizaos:lifeops:google-connector",
+            "eliza:lifeops:google-connector",
+          ]) {
+            const channel = new BroadcastChannel(channelName);
+            channel.postMessage(payload);
+            channel.close();
+          }
         }
         if (typeof localStorage !== "undefined") {
-          localStorage.setItem(
+          for (const storageKey of [
+            "elizaos:lifeops:google-connector-refresh",
             "eliza:lifeops:google-connector-refresh",
-            JSON.stringify({
-              ...payload,
-              at: Date.now(),
-            }),
-          );
-          localStorage.removeItem("eliza:lifeops:google-connector-refresh");
+          ]) {
+            localStorage.setItem(
+              storageKey,
+              JSON.stringify({
+                ...payload,
+                at: Date.now(),
+              }),
+            );
+            localStorage.removeItem(storageKey);
+          }
         }
       })();
     </script>`

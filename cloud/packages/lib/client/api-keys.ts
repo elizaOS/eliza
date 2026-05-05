@@ -6,7 +6,6 @@ export interface ClientApiKey {
   id: string;
   name: string;
   description: string | null;
-  key: string;
   key_prefix: string;
   permissions: string[];
   rate_limit: number;
@@ -36,14 +35,8 @@ export async function listClientApiKeys(): Promise<ClientApiKey[]> {
 }
 
 export async function getClientApiKeySecret(id: string): Promise<string> {
-  const keys = await listClientApiKeys();
-  const key = keys.find((item) => item.id === id);
-
-  if (!key?.key) {
-    throw new Error("Full API key not available");
-  }
-
-  return key.key;
+  void id;
+  throw new Error("Full API keys are only available immediately after creation.");
 }
 
 export async function copyApiKeyToClipboard(apiKey: string): Promise<void> {

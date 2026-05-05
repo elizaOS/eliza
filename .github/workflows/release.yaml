@@ -3,7 +3,6 @@ name: NPM Release
 # Consolidated workflow for all NPM releases:
 # - Beta: On merge to main branch
 # - Production: On GitHub release creation
-# - Alpha: handled by publish-alpha.yml on alpha version tag pushes
 #
 # Version Management:
 # - Uses lerna version and publish commands with consistent patterns

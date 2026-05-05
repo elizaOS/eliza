@@ -90,6 +90,16 @@ env:
 jobs:
   prepare:
     name: Prepare Release
+    if: >-
+      ${{
+        github.event_name != 'push' ||
+        (
+          !contains(github.ref_name, '-alpha') &&
+          !contains(github.ref_name, '-beta') &&
+          !contains(github.ref_name, '-rc') &&
+          !contains(github.ref_name, '-nightly')
+        )
+      }}
     runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -1574,7 +1584,12 @@ jobs:
 
   release:
     name: Create Release
-    if: ${{ (inputs.platform == '' || inputs.platform == 'all') && (github.event_name != 'workflow_call' || inputs.publish_release) }}
+    if: >-
+      ${{
+        (inputs.platform == '' || inputs.platform == 'all') &&
+        (github.event_name != 'workflow_call' || inputs.publish_release) &&
+        (github.event_name != 'push' || needs.prepare.outputs.env != 'canary')
+      }}
     needs: [prepare, build]
     runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
     timeout-minutes: 10

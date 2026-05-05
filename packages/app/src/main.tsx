@@ -51,11 +51,13 @@ import {
   isAppWindowRoute,
   isDetachedWindowShell,
   isElectrobunRuntime,
+  isElizaOS,
   loadUiTheme,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   normalizeMobileRuntimeMode,
   PhoneCompanionApp,
+  preSeedAndroidLocalRuntimeIfFresh,
   resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
   type ShareTargetPayload,
@@ -190,6 +192,18 @@ function isDesktopPlatform(): boolean {
 
 const windowShellRoute = resolveWindowShellRoute();
 
+function hasRuntimePickerOverride(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const search = window.location?.search ?? "";
+    const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+    const params = new URLSearchParams(search || hashSearch);
+    return params.get("runtime") === "picker";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Adds `eliza-electrobun-frameless` for CSS `-webkit-app-region` (Chromium/CEF).
  * macOS WKWebView move/resize are still driven by native overlays in
@@ -215,6 +229,10 @@ if (shouldInstallMainWindowOnboardingPatches(windowShellRoute)) {
 }
 installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
+
+if (isElizaOS() && !hasRuntimePickerOverride()) {
+  preSeedAndroidLocalRuntimeIfFresh();
+}
 
 // Register custom character editor for app-core's ViewRouter to pick up
 window.__ELIZA_APP_CHARACTER_EDITOR__ = CharacterEditor;

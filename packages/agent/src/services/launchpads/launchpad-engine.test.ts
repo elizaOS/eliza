@@ -32,11 +32,17 @@ const sampleProfile: LaunchpadProfile = {
   network: { evmChainId: 56 },
   steps: [
     { kind: "navigate", url: "https://example.com" },
+    {
+      kind: "connectWallet",
+      chain: "evm",
+      connectButton: "button.connect",
+      providerOption: "button.metamask",
+    },
     { kind: "fillField", field: "name", selector: "input[name=name]" },
     { kind: "fillField", field: "symbol", selector: "input[name=symbol]" },
     { kind: "fillField", field: "description", selector: "textarea" },
     { kind: "uploadImage", selector: "input[type=file]" },
-    { kind: "click", text: "Launch" },
+    { kind: "click", text: "Launch", triggersTransaction: true },
     { kind: "confirmTx", chain: "evm" },
     { kind: "awaitTxResult", explorerUrlPattern: "bscscan.com" },
   ],
@@ -79,9 +85,13 @@ describe("runLaunchpad", () => {
 
     // Each non-confirmTx step dispatches exactly one command — confirmTx is
     // a narration-only pause.
-    const dispatchedKinds = sampleProfile.steps.filter(
-      (s) => s.kind !== "confirmTx",
-    ).length;
+    const dispatchedKinds = sampleProfile.steps.reduce((count, step) => {
+      if (step.kind === "confirmTx") return count;
+      if (step.kind === "connectWallet" && step.providerOption) {
+        return count + 2;
+      }
+      return count + 1;
+    }, 0);
     expect(commands.length).toBe(dispatchedKinds);
 
     // Narration fires for every step (including confirmTx), in order.
@@ -99,6 +109,12 @@ describe("runLaunchpad", () => {
         c.subaction === "realistic-fill" && c.selector === "input[name=name]",
     );
     expect(nameFill?.value).toBe("Test Token");
+
+    const providerOption = commands.find(
+      (c) =>
+        c.subaction === "realistic-click" && c.selector === "button.metamask",
+    );
+    expect(providerOption).toBeDefined();
 
     const symbolFill = commands.find(
       (c) =>
@@ -132,8 +148,11 @@ describe("runLaunchpad", () => {
 
     expect(result.ok).toBe(true);
     expect(result.reason).toMatch(/dry-run/i);
-    // confirmTx is the 7th step (index 6); the engine stops there.
+    // The transaction-triggering Launch click is step index 6.
     expect(result.stoppedAtStep).toBe(6);
+    expect(
+      mockExecute.mock.calls.some(([command]) => command.text === "Launch"),
+    ).toBe(false);
     // The dry-run narration line is appended.
     const last = narrated[narrated.length - 1];
     expect(last).toMatch(/dry-run/i);

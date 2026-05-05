@@ -1,4 +1,11 @@
-import type { IAgentRuntime, JsonValue, Memory, UUID } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  Task,
+  TaskMetadata,
+  UUID,
+} from "@elizaos/core";
 import {
   createUniqueUuid,
   logger,
@@ -77,6 +84,20 @@ function resolveTrackerNowMs(options: Record<string, unknown> = {}): number {
     }
   }
   return Date.now();
+}
+
+function isFollowupTrackerTask(task: Task): boolean {
+  return task.name === FOLLOWUP_TRACKER_TASK_NAME;
+}
+
+function buildFollowupTrackerMetadata(
+  previous?: TaskMetadata | null,
+): TaskMetadata {
+  const metadata: TaskMetadata = {
+    ...(isRecord(previous) ? previous : {}),
+    updateInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
+  };
+  return metadata;
 }
 
 export interface OverdueFollowup {
@@ -352,6 +373,44 @@ export async function executeFollowupTrackerTick(
     nextInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
     digest,
   };
+}
+
+type AutonomyServiceLike = {
+  getAutonomousRoomId?: () => UUID;
+};
+
+export async function ensureFollowupTrackerTask(
+  runtime: IAgentRuntime,
+): Promise<UUID> {
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [...FOLLOWUP_TRACKER_TASK_TAGS],
+  });
+  const existing = tasks.find(isFollowupTrackerTask);
+  const metadata = buildFollowupTrackerMetadata(
+    isRecord(existing?.metadata) ? existing.metadata : null,
+  );
+  if (existing?.id) {
+    await runtime.updateTask(existing.id, {
+      description: "Reconcile overdue LifeOps follow-ups",
+      metadata,
+    });
+    return existing.id;
+  }
+
+  const autonomy = runtime.getService("AUTONOMY") as AutonomyServiceLike | null;
+  const roomId =
+    autonomy?.getAutonomousRoomId?.() ??
+    stringToUuid(`followup-tracker-room-${runtime.agentId}`);
+
+  return runtime.createTask({
+    name: FOLLOWUP_TRACKER_TASK_NAME,
+    description: "Reconcile overdue LifeOps follow-ups",
+    roomId,
+    tags: [...FOLLOWUP_TRACKER_TASK_TAGS],
+    metadata,
+    dueAt: Date.now(),
+  });
 }
 
 /**

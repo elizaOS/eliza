@@ -20,11 +20,29 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
+function toClientApiKey(
+  apiKey: Awaited<ReturnType<typeof apiKeysService.listByOrganization>>[number],
+) {
+  return {
+    id: apiKey.id,
+    name: apiKey.name,
+    description: apiKey.description,
+    key_prefix: apiKey.key_prefix,
+    permissions: apiKey.permissions,
+    rate_limit: apiKey.rate_limit,
+    is_active: apiKey.is_active,
+    usage_count: apiKey.usage_count,
+    last_used_at: apiKey.last_used_at,
+    created_at: apiKey.created_at,
+    expires_at: apiKey.expires_at,
+  };
+}
+
 app.get("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
     const keys = await apiKeysService.listByOrganization(user.organization_id);
-    return c.json({ keys });
+    return c.json({ keys: keys.map(toClientApiKey) });
   } catch (error) {
     logger.error("Error fetching API keys:", error);
     return failureResponse(c, error);

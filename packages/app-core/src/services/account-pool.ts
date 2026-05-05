@@ -94,6 +94,20 @@ interface AffinityEntry {
   attempts: number;
 }
 
+interface AccountPoolSelectionRoute {
+  backend?: string;
+  accountId?: string;
+  accountIds?: string[];
+  strategy?: string;
+}
+
+interface AccountPoolSelectionConfig {
+  accountStrategies?: Partial<Record<PoolProviderId, unknown>>;
+  serviceRouting?: {
+    llmText?: AccountPoolSelectionRoute;
+  } | null;
+}
+
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
@@ -614,6 +628,80 @@ interface SubscriptionSelectorShim {
 }
 
 let cachedDefaultPool: AccountPool | null = null;
+let defaultSelectionConfig: AccountPoolSelectionConfig = {};
+
+function normalizeStrategy(value: unknown): Strategy | undefined {
+  return value === "priority" ||
+    value === "round-robin" ||
+    value === "least-used" ||
+    value === "quota-aware"
+    ? value
+    : undefined;
+}
+
+function normalizeAccountIdsFromRoute(
+  route: AccountPoolSelectionRoute | undefined,
+): string[] | undefined {
+  if (!route) return undefined;
+  const fromList = Array.isArray(route.accountIds)
+    ? route.accountIds
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean)
+    : [];
+  const single =
+    typeof route.accountId === "string" && route.accountId.trim()
+      ? [route.accountId.trim()]
+      : [];
+  const ids = fromList.length > 0 ? fromList : single;
+  return ids.length > 0 ? ids : undefined;
+}
+
+function routeTargetsProvider(
+  route: AccountPoolSelectionRoute | undefined,
+  providerId: PoolProviderId,
+): boolean {
+  if (!route?.backend) return false;
+  const directProvider = DIRECT_PROVIDER_BY_BACKEND[route.backend];
+  if (directProvider === providerId) return true;
+  return providerId === "openai-codex" && route.backend === "openai";
+}
+
+function selectionForProvider(providerId: PoolProviderId): {
+  strategy?: Strategy;
+  accountIds?: string[];
+} {
+  const route = defaultSelectionConfig.serviceRouting?.llmText;
+  const routeSelection = routeTargetsProvider(route, providerId)
+    ? {
+        strategy: normalizeStrategy(route?.strategy),
+        accountIds: normalizeAccountIdsFromRoute(route),
+      }
+    : {};
+  return {
+    strategy:
+      routeSelection.strategy ??
+      normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId]),
+    accountIds: routeSelection.accountIds,
+  };
+}
+
+export function __getDefaultAccountPoolSelectionForTests(
+  providerId: PoolProviderId,
+): {
+  strategy?: Strategy;
+  accountIds?: string[];
+} {
+  return selectionForProvider(providerId);
+}
+
+export function configureDefaultAccountPoolSelection(
+  config: AccountPoolSelectionConfig = {},
+): void {
+  defaultSelectionConfig = {
+    accountStrategies: config.accountStrategies ?? {},
+    serviceRouting: config.serviceRouting ?? null,
+  };
+}
 
 /**
  * Module-level singleton for the default pool wired against WS1's
@@ -638,8 +726,16 @@ export function getDefaultAccountPool(): AccountPool {
 }
 
 export async function applyAccountPoolApiCredentials(
-  opts: { activeBackend?: string | null } = {},
+  opts: {
+    activeBackend?: string | null;
+    accountStrategies?: AccountPoolSelectionConfig["accountStrategies"];
+    serviceRouting?: AccountPoolSelectionConfig["serviceRouting"];
+  } = {},
 ): Promise<void> {
+  configureDefaultAccountPoolSelection({
+    accountStrategies: opts.accountStrategies,
+    serviceRouting: opts.serviceRouting,
+  });
   const pool = getDefaultAccountPool();
   const activeProvider = opts.activeBackend
     ? DIRECT_PROVIDER_BY_BACKEND[opts.activeBackend]
@@ -654,6 +750,7 @@ export async function applyAccountPoolApiCredentials(
       (await pool.select({
         providerId,
         sessionKey: `env:${providerId}`,
+        ...selectionForProvider(providerId),
       })) ?? accounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
     if (!account) continue;
 
@@ -812,6 +909,7 @@ function installAnthropicShim(pool: AccountPool): void {
         providerId: "anthropic-subscription",
         sessionKey: opts?.sessionKey,
         exclude: opts?.exclude,
+        ...selectionForProvider("anthropic-subscription"),
       });
       if (!account) return null;
       // expiresAt is sourced from the underlying credential blob via
@@ -836,6 +934,7 @@ function installOrchestratorShim(pool: AccountPool): void {
       const account = await pool.select({
         providerId: "anthropic-subscription",
         sessionKey,
+        ...selectionForProvider("anthropic-subscription"),
       });
       if (!account) return null;
       const token = await getAccountAccessToken(
@@ -862,7 +961,10 @@ function installSubscriptionSelectorShim(pool: AccountPool): void {
   if (typeof globalThis === "undefined") return;
   const shim: SubscriptionSelectorShim = {
     pickAccountId: async (providerId) => {
-      const account = await pool.select({ providerId });
+      const account = await pool.select({
+        providerId,
+        ...selectionForProvider(providerId),
+      });
       return account?.id ?? null;
     },
   };

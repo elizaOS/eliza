@@ -52,6 +52,7 @@ import {
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
 import {
+  ensureFollowupTrackerTask,
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
@@ -307,6 +308,14 @@ const rawAppLifeOpsPlugin: Plugin = {
 
     // Register the follow-up tracker worker.
     registerFollowupTrackerWorker(runtime);
+    scheduleTaskEnsureAfterRuntimeInit({
+      runtime,
+      prefix: "[followup-tracker]",
+      label: "task",
+      ensure: async () => {
+        await ensureFollowupTrackerTask(runtime);
+      },
+    });
 
     registerBlockRuleReconcilerWorker(runtime);
     scheduleTaskEnsureAfterRuntimeInit({
