@@ -122,20 +122,28 @@ export async function handleImageDescription(
       });
       if (response.status !== 429 || attemptedRetry) break;
 
-      const headerRetryAfter = Number(response.headers.get("retry-after"));
+      // `Number(null) === 0`, so guard against a missing header before
+      // calling `Number(...)` — otherwise the header path always wins with a
+      // bogus `0` and the body fallback becomes unreachable.
+      const headerValue = response.headers.get("retry-after");
+      const headerRetryAfter =
+        headerValue !== null && Number.isFinite(Number(headerValue))
+          ? Number(headerValue)
+          : undefined;
       let bodyRetryAfter: number | undefined;
       try {
         const peek = (await response.clone().json()) as {
           retryAfter?: unknown;
         };
         bodyRetryAfter =
-          typeof peek?.retryAfter === "number" ? peek.retryAfter : undefined;
+          typeof peek?.retryAfter === "number" &&
+          Number.isFinite(peek.retryAfter)
+            ? peek.retryAfter
+            : undefined;
       } catch {
         // Body wasn't JSON — fall through to header value.
       }
-      const retryAfter = Number.isFinite(headerRetryAfter)
-        ? headerRetryAfter
-        : (bodyRetryAfter ?? 0);
+      const retryAfter = headerRetryAfter ?? bodyRetryAfter ?? 0;
 
       if (retryAfter > 0 && retryAfter <= 5) {
         logger.warn(
