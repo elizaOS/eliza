@@ -19,9 +19,66 @@ import { defineConfig, type Plugin, transformWithEsbuild } from "vite";
 const _require = createRequire(import.meta.url);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const elizaRoot = path.resolve(here, "../../eliza");
+const projectRoot = path.resolve(here, "../..");
+const elizaRoot = path.resolve(projectRoot, "eliza");
 const nativePluginsRoot = path.join(elizaRoot, "packages", "native-plugins");
-const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
+const nativePluginStubEntry = path.join(here, "src/native-plugin-stubs.ts");
+
+function readSourceModeMarker(): string | null {
+  try {
+    const raw = fs
+      .readFileSync(path.join(projectRoot, ".elizaos/source-mode"), "utf8")
+      .trim()
+      .toLowerCase();
+    if (["local", "source", "workspace"].includes(raw)) return "local";
+    if (["packages", "package", "published", "npm", "registry"].includes(raw))
+      return "packages";
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function shouldUseLocalElizaSource(): boolean {
+  const sourceMode = (
+    process.env.ELIZA_SOURCE ??
+    readSourceModeMarker() ??
+    "packages"
+  ).toLowerCase();
+  return (
+    ["local", "source", "workspace"].includes(sourceMode) ||
+    process.env.ELIZA_FORCE_LOCAL_UPSTREAMS === "1"
+  );
+}
+
+function requireResolve(id: string): string {
+  try {
+    return _require.resolve(id, { paths: [here, projectRoot] });
+  } catch (cause) {
+    const detail = cause instanceof Error ? ` ${cause.message}` : "";
+    throw new Error(
+      `[eliza][vite] Could not resolve ${id}.${detail} Run bun install so the published elizaOS package is available.`,
+    );
+  }
+}
+
+const hasLocalElizaWorkspace =
+  shouldUseLocalElizaSource() &&
+  fs.existsSync(path.join(elizaRoot, "package.json"));
+const publishedAppCoreRoot = path.dirname(
+  requireResolve("@elizaos/app-core/package.json"),
+);
+const appCoreSrcRoot = hasLocalElizaWorkspace
+  ? path.join(elizaRoot, "packages/app-core/src")
+  : fs.existsSync(path.join(publishedAppCoreRoot, "packages/app-core/src"))
+    ? path.join(publishedAppCoreRoot, "packages/app-core/src")
+    : path.join(publishedAppCoreRoot, "src");
+const appCoreNativePluginEntrypoints = hasLocalElizaWorkspace
+  ? path.join(appCoreSrcRoot, "platform/native-plugin-entrypoints.ts")
+  : requireResolve("@elizaos/app-core/platform/native-plugin-entrypoints");
+const emptyNodeModuleEntry = hasLocalElizaWorkspace
+  ? path.join(appCoreSrcRoot, "platform/empty-node-module.ts")
+  : requireResolve("@elizaos/app-core/platform/empty-node-module");
 
 /**
  * Pinned @elizaos/core from the repo root (must match the agent/runtime lock).

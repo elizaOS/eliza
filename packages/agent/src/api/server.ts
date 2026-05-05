@@ -170,7 +170,6 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
-import { handleExperienceRoutes } from "./experience-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
   readJsonBody as parseJsonBody,
@@ -1702,21 +1701,8 @@ async function handleRequest(
     return;
   }
 
-  if (
-    await handleExperienceRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime,
-      url,
-      readJsonBody,
-      json,
-      error,
-    })
-  ) {
-    return;
-  }
+  // Experience routes (/api/experiences/*, /api/character/experiences/*) are
+  // served by the @elizaos/app-training plugin via Plugin.routes.
 
   // Compatibility route used by legacy health probes and desktop name lookup.
   if (method === "GET" && pathname === "/api/agents") {
