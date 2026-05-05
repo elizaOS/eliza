@@ -63,7 +63,6 @@ class PerpOrder:
             "px": self.px,
             "tif": self.tif.value,
             "reduceOnly": self.reduce_only,
-            "trigger": {"kind": "none"},
         }
         if self.builder_code is not None:
             d["builderCode"] = self.builder_code

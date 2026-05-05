@@ -649,9 +649,24 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--provider", model.provider])
         if model.model:
             args.extend(["--model", model.model])
+        if extra.get("mock") is True:
+            args.append("--mock")
         sample = extra.get("sample")
         if isinstance(sample, int) and sample > 0:
             args.extend(["--sample", str(sample)])
+        max_per_category = extra.get("max_per_category")
+        if isinstance(max_per_category, int) and max_per_category > 0:
+            args.extend(["--max-per-category", str(max_per_category)])
+        categories = extra.get("categories")
+        if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
+            args.extend(["--categories", ",".join(cast(list[str], categories))])
+        local_data = extra.get("local_data")
+        if isinstance(local_data, str) and local_data.strip():
+            args.extend(["--local-data", local_data])
+        if extra.get("no_report") is True:
+            args.append("--no-report")
+        if extra.get("no_exec") is True:
+            args.append("--no-exec")
         return args
 
     def _bfcl_result(output_dir: Path) -> Path:
@@ -704,22 +719,33 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _agentbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [
             python,
-            repo("benchmarks/agentbench/run_benchmark.py"),
+            "-m",
+            "elizaos_agentbench.cli",
+            "run",
             "--output",
             str(output_dir),
         ]
         envs = extra.get("env")
         if isinstance(envs, list) and all(isinstance(x, str) for x in envs):
-            args.extend(["--env", *cast(list[str], envs)])
+            env_aliases = {
+                "db": "database",
+                "kg": "kg",
+                "lt": "lateral",
+                "os": "os",
+                "ws": "webshop",
+                "all": "all",
+            }
+            mapped_envs = [env_aliases.get(env, env) for env in cast(list[str], envs)]
+            args.extend(["--env", *mapped_envs])
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
         # Agent runtime selection
         agent = extra.get("agent")
-        if agent == "eliza":
-            args.append("--eliza")
-        elif extra.get("elizaos") is True:
-            args.append("--elizaos")
+        if agent == "eliza" or extra.get("elizaos") is True:
+            args.extend(["--runtime", "elizaos"])
+        else:
+            args.extend(["--runtime", "mock"])
         _ = model
         return args
 
@@ -1147,6 +1173,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         headless = extra.get("headless")
         if headless is True:
             args.append("--headless")
+        dry_run = extra.get("dry_run")
+        if dry_run is True:
+            args.append("--dry_run")
         _ = model
         return args
 
@@ -1307,7 +1336,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(score_data, dict):
             score_val = expect_float(get_optional(score_data, "score") or 0.0, ctx="clawbench:score")
             passed = get_optional(score_data, "passed") or 0
-            total = get_optional(score_data, "total") or 0
+            total = get_optional(score_data, "total_checks") or get_optional(score_data, "total") or 0
         else:
             score_val = 0.0
             passed = 0
@@ -1393,6 +1422,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--eliza")
         elif extra.get("eliza") is True:
             args.append("--eliza")
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
         if extra.get("verbose") is True:
             args.append("--verbose")
         return args
@@ -1605,7 +1637,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="agentbench",
             display_name="AgentBench",
             description="AgentBench environments (sample tasks in this repo)",
-            cwd_rel=".",
+            cwd_rel="benchmarks/agentbench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),

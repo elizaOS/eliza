@@ -124,7 +124,11 @@ pub fn hash_prompt(model: &str, system: &str, user: &str, temperature: f32, top_
     hasher.update(top_p.to_le_bytes());
     hasher.update(system.as_bytes());
     hasher.update(user.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub fn cache_filename(hash: &str) -> String {

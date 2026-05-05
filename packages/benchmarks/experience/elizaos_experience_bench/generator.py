@@ -312,6 +312,8 @@ class ExperienceGenerator:
 
         valid_clusters = [(c, indices) for c, indices in cluster_map.items() if len(indices) >= 2]
         if not valid_clusters:
+            valid_clusters = [(c, indices) for c, indices in cluster_map.items() if indices]
+        if not valid_clusters:
             return []
 
         # Allocate query types

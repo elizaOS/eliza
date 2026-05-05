@@ -16,7 +16,11 @@ import logging
 import sys
 
 # Ensure the parent directory is importable
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
+_BENCHMARK_DIR = __import__("pathlib").Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_BENCHMARK_DIR))
+_ELIZA_ADAPTER_DIR = _BENCHMARK_DIR.parent / "eliza-adapter"
+if _ELIZA_ADAPTER_DIR.is_dir():
+    sys.path.insert(0, str(_ELIZA_ADAPTER_DIR))
 
 from elizaos_adhdbench.baselines import (
     BOOTSTRAP_ACTION_NAMES,
@@ -86,6 +90,8 @@ def cmd_run(args: argparse.Namespace) -> None:
             run_basic=True,
             run_full=False,
             levels=(0,),
+            tags=tuple(args.tags),
+            scenario_ids=tuple(args.ids),
             model_name=args.model,
             model_provider=args.provider,
             output_dir=args.output,
