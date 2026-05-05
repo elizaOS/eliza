@@ -18,17 +18,34 @@ const MAX_REDIRECTS = 4;
  * crypto/status changes rarely (it advertises whether crypto top-ups are
  * enabled and which networks). Caching it amortises the second upstream call
  * `forwardSummary` makes per dashboard refresh against the per-key rate limit.
+ *
+ * Keyed by `(baseUrl, Authorization header)` so multi-account hosts (or hosts
+ * that switch keys via re-login) never serve one account's cached status to
+ * another. The Authorization header is already present in process memory at
+ * the time of caching, so this introduces no new exposure.
  */
 const CRYPTO_STATUS_CACHE_MS = 60_000;
-let cachedCryptoStatus: { value: unknown; expiresAt: number } | null = null;
+const cryptoStatusCache = new Map<
+  string,
+  { value: unknown; expiresAt: number }
+>();
+
+function cryptoStatusCacheKey(
+  baseUrl: string,
+  headers: Record<string, string>,
+): string {
+  return `${baseUrl}|${headers.Authorization ?? ""}`;
+}
 
 async function fetchCryptoStatusCached(
   baseUrl: string,
   headers: Record<string, string>,
 ): Promise<unknown> {
   const now = Date.now();
-  if (cachedCryptoStatus && cachedCryptoStatus.expiresAt > now) {
-    return cachedCryptoStatus.value;
+  const cacheKey = cryptoStatusCacheKey(baseUrl, headers);
+  const cached = cryptoStatusCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
   }
   const response = await fetchUpstream(
     `${baseUrl}/api/crypto/status`,
@@ -37,10 +54,13 @@ async function fetchCryptoStatusCached(
     undefined,
   ).catch(() => null);
   if (!response || !response.ok) {
-    return cachedCryptoStatus?.value ?? null;
+    return cached?.value ?? null;
   }
   const value = await readJsonResponse(response).catch(() => ({}));
-  cachedCryptoStatus = { value, expiresAt: now + CRYPTO_STATUS_CACHE_MS };
+  cryptoStatusCache.set(cacheKey, {
+    value,
+    expiresAt: now + CRYPTO_STATUS_CACHE_MS,
+  });
   return value;
 }
 
