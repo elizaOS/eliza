@@ -137,18 +137,17 @@ class MINTRunner:
 
         logger.info(f"[MINTRunner] Loaded {len(tasks)} tasks")
 
-        # Run baseline (no tools, no feedback)
-        logger.info("[MINTRunner] Running baseline configuration (no tools, no feedback)")
-        baseline_results = await self._run_configuration(
-            tasks, enable_tools=False, enable_feedback=False, name="baseline"
-        )
-
-        # Optional ablation configurations
+        baseline_results: Optional[ConfigurationResult] = None
         tools_only_results: Optional[ConfigurationResult] = None
         feedback_only_results: Optional[ConfigurationResult] = None
         full_results: Optional[ConfigurationResult] = None
 
         if self.config.run_ablation:
+            logger.info("[MINTRunner] Running baseline configuration (no tools, no feedback)")
+            baseline_results = await self._run_configuration(
+                tasks, enable_tools=False, enable_feedback=False, name="baseline"
+            )
+
             if self.config.enable_tools:
                 logger.info("[MINTRunner] Running tools-only configuration")
                 tools_only_results = await self._run_configuration(
@@ -167,13 +166,39 @@ class MINTRunner:
                     tasks, enable_tools=True, enable_feedback=True, name="full"
                 )
 
-        elif self.config.enable_tools or self.config.enable_feedback:
-            # Single configuration run
-            full_results = await self._run_configuration(
+        else:
+            name = (
+                "full"
+                if self.config.enable_tools and self.config.enable_feedback
+                else "tools_only"
+                if self.config.enable_tools
+                else "feedback_only"
+                if self.config.enable_feedback
+                else "baseline"
+            )
+            logger.info("[MINTRunner] Running single configuration: %s", name)
+            selected_results = await self._run_configuration(
                 tasks,
                 enable_tools=self.config.enable_tools,
                 enable_feedback=self.config.enable_feedback,
-                name="full",
+                name=name,
+            )
+            if name == "baseline":
+                baseline_results = selected_results
+            elif name == "tools_only":
+                tools_only_results = selected_results
+            elif name == "feedback_only":
+                feedback_only_results = selected_results
+            else:
+                full_results = selected_results
+
+        if baseline_results is None:
+            baseline_results = ConfigurationResult(
+                config_name="baseline",
+                enable_tools=False,
+                enable_feedback=False,
+                metrics=self.metrics_calculator.calculate([]),
+                results=[],
             )
 
         # Calculate comparisons
@@ -368,15 +393,17 @@ class MINTRunner:
         recommendations: list[str] = []
 
         # Determine best configuration
-        configs = [
-            ("baseline", baseline.metrics.overall_success_rate),
-        ]
+        configs: list[tuple[str, float]] = []
+        if baseline.metrics.total_tasks > 0:
+            configs.append(("baseline", baseline.metrics.overall_success_rate))
         if tools_only:
             configs.append(("tools", tools_only.metrics.overall_success_rate))
         if feedback_only:
             configs.append(("feedback", feedback_only.metrics.overall_success_rate))
         if full:
             configs.append(("full", full.metrics.overall_success_rate))
+        if not configs:
+            configs.append(("baseline", baseline.metrics.overall_success_rate))
 
         best_config = max(configs, key=lambda x: x[1])
         best_rate = best_config[1]
