@@ -1082,7 +1082,49 @@ function normalizeActionIdentifier(actionName: string): string {
 
 function unwrapPlannerIdentifier(value: string): string {
 	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
-	const trimmed = safe.trim().replace(/^["'`]+|["'`]+$/g, "");
+	const trimmed = safe
+		.trim()
+		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
+		.replace(/^["'`]+|["'`]+$/g, "");
+	if (!trimmed) {
+		return "";
+	}
+
+	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
+	if (nameMatch) {
+		return nameMatch[1].trim();
+	}
+
+	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
+	if (actionMatch) {
+		const inner = actionMatch[1].trim();
+		if (!inner) {
+			return "";
+		}
+
+		const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+		if (nestedNameMatch) {
+			return nestedNameMatch[1].trim();
+		}
+
+		return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+	}
+
+	// Tolerate malformed planner output where the closing </action> is missing
+	// or extra content trails the action body. Symptom in prod logs:
+	//   "Dropping unknown planner action (actionName=<action><name>REPLY</name>)"
+	// The planner LLM occasionally emits an unclosed <action> wrapper around a
+	// well-formed <name>X</name>. Falling through to "return trimmed" treats
+	// the whole XML chunk as the action identifier, which then fails to match
+	// any registered action and the bot goes silent. If the input begins with
+	// <action> and contains a <name>X</name>, prefer that name.
+	if (/^<action\b[^>]*>/i.test(trimmed)) {
+		const looseNameMatch = trimmed.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+		if (looseNameMatch) {
+			return looseNameMatch[1].trim();
+		}
+	}
+
 	return trimmed;
 }
 
@@ -1204,6 +1246,15 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",
 		"CREATE_TASK",
+		"READ_ATTACHMENT",
+		"TRANSCRIBE_MEDIA",
+		"DOWNLOAD_MEDIA",
+		"CHAT_WITH_ATTACHMENTS",
+		"READ_CHANNEL",
+		"SEARCH_MESSAGES",
+		"SUMMARIZE_CONVERSATION",
+		"LIST_CHANNELS",
+		"SERVER_INFO",
 		"CREATE_TRIGGER_TASK",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
@@ -2097,6 +2148,10 @@ function shouldAttemptProviderRescue(
 	);
 }
 
+export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
+	return (message.content.attachments?.length ?? 0) > 0;
+}
+
 function buildProviderSelectionPrompt(draftReply?: string): string {
 	const trimmedDraftReply = draftReply?.trim() ?? "";
 	const draftReplySection =
@@ -2143,10 +2198,15 @@ Examples:
 
 async function recoverProvidersForTurn(args: {
 	runtime: IAgentRuntime;
+	message: Memory;
 	state: State;
 	draftReply?: string;
 	attachments?: GenerateTextAttachment[];
 }): Promise<string[]> {
+	if (shouldSkipDocumentProviderRescue(args.message)) {
+		return [];
+	}
+
 	try {
 		const parsed = await args.runtime.dynamicPromptExecFromState({
 			state: args.state,
@@ -5720,6 +5780,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 		) {
 			const rescuedProviders = await recoverProvidersForTurn({
 				runtime,
+				message,
 				state,
 				draftReply: String(responseContent.text || ""),
 				attachments: promptAttachments,
@@ -6271,6 +6332,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 		let groundedState = state;
 		const selectedProviders = await recoverProvidersForTurn({
 			runtime,
+			message,
 			state,
 			attachments: promptAttachments,
 		});
