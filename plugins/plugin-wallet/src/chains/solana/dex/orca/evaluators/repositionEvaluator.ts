@@ -1,6 +1,6 @@
 // @ts-nocheck — legacy export kept for direct Orca plugin imports
 import { createLpRepositionEvaluator } from "../../../../../lp/evaluators/repositionEvaluator.ts";
-import { extractAndValidateConfiguration } from "../actions/managePositions";
+import { extractManageLpConfig } from "../../manage-lp-positions";
 
 export const managePositionActionRetriggerEvaluator = createLpRepositionEvaluator({
   name: "DEGEN_LP_REPOSITION_EVALUATOR",
@@ -9,5 +9,5 @@ export const managePositionActionRetriggerEvaluator = createLpRepositionEvaluato
     "Schedules and monitors ongoing repositioning actions to ensure continuous operation.",
   logLabel: "Orca",
   memoryType: "reposition_message",
-  extractConfiguration: extractAndValidateConfiguration,
+  extractConfiguration: (text, runtime) => extractManageLpConfig(runtime, text),
 });
