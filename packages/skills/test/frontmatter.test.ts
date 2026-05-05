@@ -50,6 +50,20 @@ Body`;
     assert.deepStrictEqual(result.frontmatter, {});
   });
 
+  it("does not parse frontmatter when opening delimiter is not alone", () => {
+    const content = "---not-frontmatter\nname: test\n---\nBody";
+    const result = parseFrontmatter(content);
+    assert.deepStrictEqual(result.frontmatter, {});
+    assert.strictEqual(result.body, content);
+  });
+
+  it("does not close frontmatter on delimiter prefixes", () => {
+    const content = "---\nname: test\n---not-a-delimiter\nBody";
+    const result = parseFrontmatter(content);
+    assert.deepStrictEqual(result.frontmatter, {});
+    assert.strictEqual(result.body, content);
+  });
+
   it("parses complex frontmatter with arrays", () => {
     const content = `---
 name: complex-skill

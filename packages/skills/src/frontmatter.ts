@@ -33,18 +33,18 @@ function extractFrontmatter(content: string): {
 } {
   const normalized = normalizeNewlines(content);
 
-  if (!normalized.startsWith("---")) {
+  if (!normalized.startsWith("---\n")) {
     return { yamlString: null, body: normalized };
   }
 
-  const endIndex = normalized.indexOf("\n---", 3);
-  if (endIndex === -1) {
+  const match = /^---\n([\s\S]*?)^---(?:\n|$)/m.exec(normalized);
+  if (!match || match.index !== 0) {
     return { yamlString: null, body: normalized };
   }
 
   return {
-    yamlString: normalized.slice(4, endIndex),
-    body: normalized.slice(endIndex + 4).trim(),
+    yamlString: match[1].replace(/\n$/, ""),
+    body: normalized.slice(match[0].length).trim(),
   };
 }
 
