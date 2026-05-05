@@ -166,7 +166,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response.",
+				"Reply in current chat only; use connector actions for external-channel sends.",
 		},
 		{
 			name: "IGNORE",
@@ -378,7 +378,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["telegram", "discord"],
-					descriptionCompressed: "Platform (telegram, discord, x).",
+					descriptionCompressed: "Platform/source (telegram, discord, x).",
 				},
 				{
 					name: "target",
@@ -582,7 +582,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["notes: prefers email; tags: friend"],
-					descriptionCompressed: "Structured fields to update.",
+					descriptionCompressed:
+						"Structured fields to update: notes, tags, categories, preferences.",
 				},
 			],
 			examples: [
@@ -1413,7 +1414,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response.",
+				"Reply in current chat only; use connector actions for external-channel sends.",
 		},
 		{
 			name: "IGNORE",
@@ -1625,7 +1626,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["telegram", "discord"],
-					descriptionCompressed: "Platform (telegram, discord, x).",
+					descriptionCompressed: "Platform/source (telegram, discord, x).",
 				},
 				{
 					name: "target",
@@ -1829,7 +1830,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["notes: prefers email; tags: friend"],
-					descriptionCompressed: "Structured fields to update.",
+					descriptionCompressed:
+						"Structured fields to update: notes, tags, categories, preferences.",
 				},
 			],
 			examples: [
@@ -2885,7 +2887,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Chromium browser control router: open/connect/close/navigate/click/type/scroll/screenshot/dom/clickables/execute/wait/tabs; provider has passive state.",
+				"Chromium browser router: open/connect/navigate/click/type/read DOM/execute/wait/tabs; live state is provider-read-only.",
 			similes: [
 				"CONTROL_BROWSER",
 				"WEB_BROWSER",
@@ -4464,13 +4466,13 @@ export const allActionsSpec = {
 				{
 					name: "intent",
 					description:
-						"Free-form user intent used to infer subaction when not explicitly set.",
+						"Free-form user intent for inferring subaction when not explicitly set.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Free-form user intent used to infer subaction when not explicitly set.",
+						"Free-form user intent for inferring subaction when not explicitly set.",
 				},
 				{
 					name: "metric",
@@ -5754,7 +5756,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Suno music generation router: generate, custom, extend.",
+				"Suno music generation router; subaction generate, custom, or extend.",
 			similes: [
 				"GENERATE_MUSIC",
 				"CREATE_MUSIC",
@@ -5805,7 +5807,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Library router: download music into local library.",
+				"Music library router; subaction download into local library.",
 			similes: ["DOWNLOAD_MUSIC", "FETCH_MUSIC", "GET_MUSIC", "SAVE_MUSIC"],
 			exampleCalls: [
 				{
@@ -5869,7 +5871,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Music metadata/search: YouTube links, Wikipedia metadata, resolve complex query and queue.",
+				"Music metadata/search subactions: YouTube links, Wikipedia metadata, resolve and queue.",
 			similes: [
 				"SEARCH_YOUTUBE",
 				"FIND_YOUTUBE",
@@ -5921,7 +5923,8 @@ export const allActionsSpec = {
 						"Must be true for state-changing playlist operations.",
 				},
 			],
-			descriptionCompressed: "Playlist router: save, load, list, delete, add.",
+			descriptionCompressed:
+				"Playlist router; subaction save, load, list, delete, or add.",
 			similes: [
 				"SAVE_PLAYLIST",
 				"LOAD_PLAYLIST",
@@ -6366,7 +6369,7 @@ export const allActionsSpec = {
 			description:
 				"Check Polymarket public-read and trading readiness for the local app.",
 			parameters: [],
-			descriptionCompressed: "Check Polymarket readiness.",
+			descriptionCompressed: "Check Polymarket public-read and trading readiness.",
 			similes: ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"],
 		},
 		{
@@ -7136,7 +7139,7 @@ export const allActionsSpec = {
 				"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
 			parameters: [],
 			descriptionCompressed:
-				"Search skill registry; returns action chips per result.",
+				"Search skill registry by keyword or category; returns action chips.",
 			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
 		},
 		{
@@ -8490,7 +8493,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Search text used to find the relevant thread.",
+						"Search text for finding the relevant thread.",
 				},
 				{
 					name: "note",
@@ -8683,11 +8686,11 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Search text used to find the task thread to share.",
+						"Search text for finding the task thread to share.",
 				},
 			],
 			descriptionCompressed:
-				"Find best way to view/share task result: artifacts, URLs, paths.",
+				"Find best task result share path: artifacts, live preview URLs, workspace paths.",
 			similes: [
 				"SHARE_TASK_RESULT",
 				"SHOW_TASK_ARTIFACT",
@@ -8799,7 +8802,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "Alias for timeout.",
 				},
 			],
-			descriptionCompressed: "Execute terminal commands or manage sessions.",
+			descriptionCompressed:
+				"Execute, read, type, clear, or close terminal sessions.",
 			similes: [
 				"RUN_COMMAND",
 				"EXECUTE_COMMAND",
@@ -9333,7 +9337,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"public X/Twitter post router; subaction post|reply, no DMs",
+				"Public X/Twitter post router; subaction post|reply, no DMs; use DM connector for direct messages.",
 			similes: [
 				"POST_TWEET",
 				"SEND_X_POST",

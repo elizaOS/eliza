@@ -666,6 +666,7 @@ export const healthAction: Action = {
       name: "intent",
       description:
         "Free-form user intent used to infer subaction when not explicitly set.",
+      descriptionCompressed: "Free-form user intent for inferring subaction.",
       schema: { type: "string" as const },
     },
     {
