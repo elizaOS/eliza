@@ -4787,6 +4787,61 @@ export const allActionsSpec = {
 				"Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first...",
 		},
 		{
+			name: "POLYMARKET_GET_MARKET",
+			description: "Fetch a single Polymarket market by market id or slug.",
+			parameters: [],
+			similes: ["POLYMARKET_MARKET", "POLYMARKET_MARKET_DETAILS"],
+			descriptionCompressed:
+				"Fetch a single Polymarket market by market id or slug.",
+		},
+		{
+			name: "POLYMARKET_GET_MARKETS",
+			description:
+				"List active Polymarket markets. Supports limit and offset parameters.",
+			parameters: [],
+			similes: ["POLYMARKET_MARKETS", "SEARCH_POLYMARKET_MARKETS"],
+			descriptionCompressed:
+				"List active Polymarket markets. Supports limit and offset parameters.",
+		},
+		{
+			name: "POLYMARKET_GET_ORDERBOOK",
+			description:
+				"Fetch a token orderbook and derive true best bid/ask from all CLOB levels.",
+			parameters: [],
+			similes: [
+				"POLYMARKET_QUOTE",
+				"POLYMARKET_ORDERBOOK",
+				"POLYMARKET_TOKEN_INFO",
+			],
+			descriptionCompressed:
+				"Fetch a token orderbook and derive true best bid/ask from all CLOB levels.",
+		},
+		{
+			name: "POLYMARKET_GET_POSITIONS",
+			description: "Fetch Polymarket positions for a wallet address.",
+			parameters: [],
+			similes: ["POLYMARKET_POSITIONS", "POLYMARKET_WALLET_POSITIONS"],
+			descriptionCompressed: "Fetch Polymarket positions for a wallet address.",
+		},
+		{
+			name: "POLYMARKET_PLACE_ORDER",
+			description:
+				"Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
+			parameters: [],
+			similes: ["POLYMARKET_TRADE", "POLYMARKET_BUY", "POLYMARKET_SELL"],
+			descriptionCompressed:
+				"Explain Polymarket order placement readiness. Signed trading is disabled in this app scaffold.",
+		},
+		{
+			name: "POLYMARKET_STATUS",
+			description:
+				"Check Polymarket public-read and trading readiness for the local app.",
+			parameters: [],
+			similes: ["POLYMARKET_READINESS", "POLYMARKET_HEALTH"],
+			descriptionCompressed:
+				"Check Polymarket public-read and trading readiness for the local app.",
+		},
+		{
 			name: "POST_INSTAGRAM_COMMENT",
 			description: "Post a comment on an Instagram post or media",
 			parameters: [

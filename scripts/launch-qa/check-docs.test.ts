@@ -104,4 +104,42 @@ describe("docs gate", () => {
     expect(result.ok).toBe(true);
     expect(result.checkedFiles).toEqual(["packages/docs/launchdocs/review.md"]);
   });
+
+  it("resolves docs-site absolute links under packages/docs", async () => {
+    const repoRoot = await makeRepo();
+    await fs.mkdir(path.join(repoRoot, "packages", "docs", "apps"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(repoRoot, "packages", "docs", "apps", "desktop.md"),
+      "# Desktop\n",
+    );
+    await fs.writeFile(
+      path.join(repoRoot, "packages", "docs", "index.md"),
+      "# Docs\n\nSee [desktop](/apps/desktop).\n",
+    );
+
+    const result = checkDocs({ repoRoot, scope: "docs" });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("resolves moved relative docs links under packages/docs", async () => {
+    const repoRoot = await makeRepo();
+    await fs.mkdir(path.join(repoRoot, "packages", "docs", "guides"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(repoRoot, "packages", "docs", "guides", "onboarding.md"),
+      "# Onboarding\n",
+    );
+    await fs.writeFile(
+      path.join(repoRoot, "packages", "demo", "README.md"),
+      "# Demo\n\nSee [onboarding](../../docs/guides/onboarding.md).\n",
+    );
+
+    const result = checkDocs({ repoRoot });
+
+    expect(result.ok).toBe(true);
+  });
 });

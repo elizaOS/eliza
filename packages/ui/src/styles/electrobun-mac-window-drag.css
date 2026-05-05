@@ -9,9 +9,10 @@
  *   without duplicating policy only in native code.
  *
  * html.eliza-electrobun-frameless is toggled from apps/app/src/main.tsx
- * (main macOS Electrobun shell only; detached shells skip it).
+ * and html.eliza-electrobun-custom-titlebar is toggled by Header when the
+ * main macOS Electrobun shell renders its custom titlebar.
  */
-html.eliza-electrobun-frameless {
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) {
   /**
    * Leading inset so the header nav (Chat, Apps, ...) clears the traffic-light
    * cluster while staying on the same vertical row. hiddenInset draws controls
@@ -26,22 +27,34 @@ html.eliza-electrobun-frameless:not(.eliza-electrobun-custom-titlebar) body {
   -webkit-app-region: drag;
 }
 
-html.eliza-electrobun-frameless [data-window-titlebar="true"] {
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-window-titlebar="true"] {
   -webkit-app-region: drag;
 }
 
-html.eliza-electrobun-frameless [data-no-window-drag="true"],
-html.eliza-electrobun-frameless [data-no-window-drag="true"] *,
-html.eliza-electrobun-frameless [data-no-window-drag="true"]::before,
-html.eliza-electrobun-frameless [data-no-window-drag="true"]::after,
-html.eliza-electrobun-frameless [data-no-camera-drag="true"],
-html.eliza-electrobun-frameless [data-no-camera-drag="true"] *,
-html.eliza-electrobun-frameless [data-no-camera-drag="true"]::before,
-html.eliza-electrobun-frameless [data-no-camera-drag="true"]::after {
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-window-drag="true"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-window-drag="true"]
+  *,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-window-drag="true"]::before,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-window-drag="true"]::after,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-camera-drag="true"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-camera-drag="true"]
+  *,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-camera-drag="true"]::before,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-no-camera-drag="true"]::after {
   -webkit-app-region: no-drag;
 }
 
-html.eliza-electrobun-frameless [data-window-titlebar-padding] {
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-window-titlebar-padding] {
   padding-inline-start: max(
     env(safe-area-inset-left, 0px),
     var(--eliza-macos-frame-left-inset)
@@ -53,38 +66,59 @@ html.eliza-electrobun-frameless [data-window-titlebar-padding] {
   );
 }
 
-html.eliza-electrobun-frameless a,
-html.eliza-electrobun-frameless button,
-html.eliza-electrobun-frameless input,
-html.eliza-electrobun-frameless textarea,
-html.eliza-electrobun-frameless select,
-html.eliza-electrobun-frameless option,
-html.eliza-electrobun-frameless label,
-html.eliza-electrobun-frameless summary,
-html.eliza-electrobun-frameless iframe,
-html.eliza-electrobun-frameless canvas,
-html.eliza-electrobun-frameless video,
-html.eliza-electrobun-frameless audio,
-html.eliza-electrobun-frameless electrobun-wgpu,
-html.eliza-electrobun-frameless [role="button"],
-html.eliza-electrobun-frameless [role="link"],
-html.eliza-electrobun-frameless [role="menuitem"],
-html.eliza-electrobun-frameless [role="menuitemcheckbox"],
-html.eliza-electrobun-frameless [role="menuitemradio"],
-html.eliza-electrobun-frameless [role="option"],
-html.eliza-electrobun-frameless [role="radio"],
-html.eliza-electrobun-frameless [role="checkbox"],
-html.eliza-electrobun-frameless [role="switch"],
-html.eliza-electrobun-frameless [role="tab"],
-html.eliza-electrobun-frameless [role="slider"],
-html.eliza-electrobun-frameless [role="listbox"],
-html.eliza-electrobun-frameless [role="combobox"],
-html.eliza-electrobun-frameless [role="spinbutton"],
-html.eliza-electrobun-frameless [role="textbox"],
-html.eliza-electrobun-frameless [role="searchbox"],
-html.eliza-electrobun-frameless [contenteditable="true"],
-html.eliza-electrobun-frameless [aria-haspopup],
-html.eliza-electrobun-frameless [data-shell-scroll-region="true"] {
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) a,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) button,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) input,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  textarea,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) select,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) option,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) label,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) summary,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) iframe,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) canvas,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) video,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar) audio,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  electrobun-wgpu,
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="button"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="link"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="menuitem"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="menuitemcheckbox"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="menuitemradio"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="option"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="radio"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="checkbox"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="switch"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="tab"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="slider"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="listbox"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="combobox"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="spinbutton"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="textbox"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [role="searchbox"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [contenteditable="true"],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [aria-haspopup],
+html:is(.eliza-electrobun-frameless, .eliza-electrobun-custom-titlebar)
+  [data-shell-scroll-region="true"] {
   -webkit-app-region: no-drag;
 }
 

@@ -1,6 +1,10 @@
 import { Button } from "@elizaos/ui";
 import { ChevronRight, ListTodo, Settings } from "lucide-react";
-import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  ReactNode,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useMediaQuery } from "../../hooks";
@@ -71,6 +75,13 @@ const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
   "text-accent after:opacity-100";
 const ACCESS_BADGE_CLASSNAME =
   "inline-flex h-[2.375rem] max-w-[15rem] shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-bg/45 px-2 text-[11px] font-medium leading-none text-muted shadow-none";
+const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
+  paddingInlineStart:
+    "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 78px))",
+  paddingInlineEnd: "0.75rem",
+  paddingTop:
+    "max(env(safe-area-inset-top, 0px), var(--eliza-macos-frame-top-inset, 0px))",
+};
 
 interface AccessBadgeContent {
   primary: "Local" | "Remote";
@@ -167,6 +178,9 @@ export function Header({
     DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY,
   );
   const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
+  const titlebarPaddingStyle = showMacDesktopTitleBar
+    ? MAC_TITLEBAR_PADDING_STYLE
+    : undefined;
   const showCloudStatus = !hideCloudCredits && !isMobileViewport;
   const accessBadgeContent = useMemo(
     () => resolveAccessBadgeContent(authStatusState),
@@ -585,6 +599,7 @@ export function Header({
             data-window-titlebar-padding={
               showMacDesktopTitleBar ? "true" : undefined
             }
+            style={titlebarPaddingStyle}
           >
             {isMobileViewport ? (
               <>

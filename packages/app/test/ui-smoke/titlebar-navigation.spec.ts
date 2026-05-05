@@ -75,10 +75,18 @@ test("desktop titlebar keeps navigation clickable and title area draggable", asy
   const appsButton = page.getByTestId("header-nav-button-apps");
   await expect(appsButton).toBeVisible();
   const titlebarBox = await titlebar.boundingBox();
+  const chatBox = await page
+    .getByTestId("header-nav-button-chat")
+    .boundingBox();
   const appsBox = await appsButton.boundingBox();
   expect(titlebarBox, "Expected titlebar bounds").not.toBeNull();
+  expect(chatBox, "Expected chat nav button bounds").not.toBeNull();
   expect(appsBox, "Expected app nav button bounds").not.toBeNull();
-  if (!titlebarBox || !appsBox) return;
+  if (!titlebarBox || !chatBox || !appsBox) return;
+  expect(
+    chatBox.x - titlebarBox.x,
+    "Desktop nav should reserve left space for macOS traffic lights",
+  ).toBeGreaterThanOrEqual(70);
   expect(
     appsBox.y - titlebarBox.y,
     "Desktop nav should share the traffic-light titlebar row",
