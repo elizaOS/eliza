@@ -299,25 +299,6 @@ parts:
         echo "No bun/install.js found; continuing with staged Bun runtime"
       fi
 
-      # Snapcraft's isolated Bun install can keep @types packages only in
-      # node_modules/.bun without root @types package directories that tsc checks
-      # while compiling package declarations.
-      mkdir -p node_modules/@types
-      for type_pkg in node bun; do
-        type_target=""
-        if [ -d "node_modules/.bun/node_modules/@types/$type_pkg" ]; then
-          type_target="node_modules/.bun/node_modules/@types/$type_pkg"
-        elif [ -d node_modules/.bun ]; then
-          type_target="$(find node_modules/.bun -maxdepth 5 -path "*/@types+$type_pkg@*/node_modules/@types/$type_pkg" -type d -print -quit 2>/dev/null)"
-        fi
-        if [ -z "$type_target" ] || [ ! -d "$type_target" ]; then
-          echo "Failed to locate @types/$type_pkg after bun install" >&2
-          exit 1
-        fi
-        rm -rf "node_modules/@types/$type_pkg"
-        cp -aL "$type_target" "node_modules/@types/$type_pkg"
-      done
-
       # Rehydrate published-only workspace deps that Vite and app-core imports
       # still need after the destructive workspace rewrite above.
       if [ -f scripts/install-published-workspace-fallback-deps.sh ]; then
@@ -357,6 +338,26 @@ parts:
       # Run only the safe postinstall steps (patch deps, link browser server)
       node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
       node "$APP_CORE_SCRIPTS_DIR/link-browser-server.mjs" || true
+
+      # patch-deps intentionally removes @types from the runtime install so Bun
+      # never tries to execute .d.ts files. Rehydrate just the type packages tsc
+      # needs for the build, then remove them again before copying node_modules
+      # into the snap runtime payload.
+      mkdir -p node_modules/@types
+      for type_pkg in node bun; do
+        type_target=""
+        if [ -d "node_modules/.bun/node_modules/@types/$type_pkg" ]; then
+          type_target="node_modules/.bun/node_modules/@types/$type_pkg"
+        elif [ -d node_modules/.bun ]; then
+          type_target="$(find node_modules/.bun -maxdepth 5 -path "*/@types+$type_pkg@*/node_modules/@types/$type_pkg" -type d -print -quit 2>/dev/null)"
+        fi
+        if [ -z "$type_target" ] || [ ! -d "$type_target" ]; then
+          echo "Failed to locate @types/$type_pkg after patch-deps" >&2
+          exit 1
+        fi
+        rm -rf "node_modules/@types/$type_pkg"
+        cp -aL "$type_target" "node_modules/@types/$type_pkg"
+      done
 
       # The snap rewrite removes plugin/native workspaces from disk. Turbo
       # validates explicit package-task dependencies before filtering, so drop
@@ -417,6 +418,7 @@ parts:
 
       # Full monorepo build via Turborepo (`eliza/package.json` → `turbo run build`).
       bun run build
+      rm -rf node_modules/@types
 
       # Install into snap
       mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app"
