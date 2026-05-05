@@ -390,7 +390,7 @@ function literalValue(expression, constants, options = {}) {
     return unwrapped.text;
   }
   if (ts.isIdentifier(unwrapped)) {
-    return constants.get(unwrapped.text) ?? unwrapped.text;
+    return constants.get(unwrapped.text) ?? (options.allowSymbolic ? unwrapped.text : null);
   }
   if (ts.isPropertyAccessExpression(unwrapped)) {
     const text = unwrapped.getText();

@@ -30,7 +30,7 @@ export const taskShareAction: Action = {
   description:
     "Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.",
   descriptionCompressed:
-    "Find best way to view/share task result: artifacts, URLs, paths.",
+    "Find best way to view/share live task result: artifacts, URLs, paths.",
   examples: [
     [
       {
@@ -193,6 +193,7 @@ export const taskShareAction: Action = {
     {
       name: "search",
       description: "Search text used to find the task thread to share.",
+      descriptionCompressed: "Search text for finding task thread to share.",
       required: false,
       schema: { type: "string" as const },
     },
