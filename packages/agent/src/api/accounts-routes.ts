@@ -72,13 +72,16 @@ import type { RouteRequestContext } from "./route-helpers.js";
 
 interface PoolFacade {
   list(providerId?: string): LinkedAccountConfig[];
-  get(accountId: string): LinkedAccountConfig | null;
+  get(
+    accountId: string,
+    providerId?: LinkedAccountProviderId,
+  ): LinkedAccountConfig | null;
   upsert(account: LinkedAccountConfig): Promise<void>;
   deleteMetadata(providerId: string, accountId: string): Promise<void>;
   refreshUsage(
     accountId: string,
     accessToken: string,
-    opts?: { codexAccountId?: string },
+    opts?: { codexAccountId?: string; providerId?: LinkedAccountProviderId },
   ): Promise<void>;
 }
 
@@ -847,7 +850,7 @@ async function handlePatchAccount(
     return true;
   }
   const pool = await getPool();
-  const existing = pool.get(accountId);
+  const existing = pool.get(accountId, providerId);
   if (!existing || existing.providerId !== providerId) {
     error(res, "Account not found", 404);
     return true;
@@ -915,7 +918,7 @@ async function handleTestAccount(
     return true;
   }
   const pool = await getPool();
-  const linked = pool.get(accountId);
+  const linked = pool.get(accountId, providerId);
   const codexAccountId =
     linked?.providerId === "openai-codex" ? linked.organizationId : undefined;
   const probe = direct
@@ -950,7 +953,7 @@ async function handleRefreshUsage(
     return true;
   }
   const pool = await getPool();
-  const linked = pool.get(accountId);
+  const linked = pool.get(accountId, providerId);
   if (!linked || linked.providerId !== providerId) {
     error(res, "Account not found", 404);
     return true;
@@ -989,11 +992,12 @@ async function handleRefreshUsage(
   // failure to the provider's usage endpoint, etc.).
   try {
     await pool.refreshUsage(accountId, accessToken, {
+      providerId,
       ...(linked.organizationId
         ? { codexAccountId: linked.organizationId }
         : {}),
     });
-    const refreshed = pool.get(accountId);
+    const refreshed = pool.get(accountId, providerId);
     if (refreshed) {
       json(res, { account: refreshed, source: "pool" });
       return true;

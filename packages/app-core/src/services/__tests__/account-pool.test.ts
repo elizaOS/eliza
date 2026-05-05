@@ -472,6 +472,58 @@ describe("AccountPool health mutations", () => {
     await pool.recordCall("a", { ok: true, tokens: 10 });
     expect(deps.writes.at(-1)?.lastUsedAt ?? 0).toBeGreaterThan(0);
   });
+
+  it("scopes health mutations by provider when account IDs collide", async () => {
+    const deps = mkDeps([
+      mkAccount("default", {
+        providerId: "openai-codex",
+        priority: 0,
+      }),
+      mkAccount("default", {
+        providerId: "anthropic-subscription",
+        priority: 1,
+      }),
+    ]);
+    const pool = new AccountPool(deps);
+    const reset = Date.now() + 60_000;
+
+    await pool.markRateLimited(
+      "default",
+      reset,
+      "anthropic 429",
+      "anthropic-subscription",
+    );
+
+    const written = deps.writes.at(-1);
+    expect(written?.providerId).toBe("anthropic-subscription");
+    expect(written?.health).toBe("rate-limited");
+    expect(deps.current()["openai-codex:default"]?.health).toBe("ok");
+  });
+
+  it("scopes recordCall by provider when account IDs collide", async () => {
+    const deps = mkDeps([
+      mkAccount("default", {
+        providerId: "openai-codex",
+        lastUsedAt: 0,
+      }),
+      mkAccount("default", {
+        providerId: "anthropic-subscription",
+        lastUsedAt: 0,
+      }),
+    ]);
+    const pool = new AccountPool(deps);
+
+    await pool.recordCall(
+      "default",
+      { ok: true, tokens: 10 },
+      { providerId: "anthropic-subscription" },
+    );
+
+    const written = deps.writes.at(-1);
+    expect(written?.providerId).toBe("anthropic-subscription");
+    expect(written?.lastUsedAt ?? 0).toBeGreaterThan(0);
+    expect(deps.current()["openai-codex:default"]?.lastUsedAt).toBe(0);
+  });
 });
 
 describe("AccountPool reprobeFlagged", () => {
@@ -517,6 +569,30 @@ describe("AccountPool refreshUsage", () => {
     const written = deps.writes.at(-1);
     expect(written?.usage?.sessionPct).toBeCloseTo(40, 5);
     expect(written?.health).toBe("ok");
+  });
+
+  it("scopes refreshUsage by provider when account IDs collide", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ five_hour: { utilization: 0.25 } }),
+    } as unknown as Response);
+
+    const deps = mkDeps([
+      mkAccount("default", { providerId: "openai-codex" }),
+      mkAccount("default", { providerId: "anthropic-subscription" }),
+    ]);
+    const pool = new AccountPool(deps);
+
+    await pool.refreshUsage("default", "tok", {
+      fetch: fetchMock,
+      providerId: "anthropic-subscription",
+    });
+
+    const written = deps.writes.at(-1);
+    expect(written?.providerId).toBe("anthropic-subscription");
+    expect(written?.usage?.sessionPct).toBeCloseTo(25, 5);
+    expect(deps.current()["openai-codex:default"]?.usage).toBeUndefined();
   });
 
   it("Codex probe requires organizationId; throws otherwise", async () => {
