@@ -44,6 +44,7 @@ export type FetchMediaOptions = {
 	filePathHint?: string;
 	maxBytes?: number;
 	maxRedirects?: number;
+	timeoutMs?: number;
 	ssrfPolicy?: SsrfPolicy;
 	lookupFn?: LookupFn;
 };
@@ -122,6 +123,7 @@ export async function fetchRemoteMedia(
 		filePathHint,
 		maxBytes,
 		maxRedirects,
+		timeoutMs,
 		ssrfPolicy,
 		lookupFn,
 	} = options;
@@ -134,6 +136,7 @@ export async function fetchRemoteMedia(
 			url,
 			fetchImpl,
 			maxRedirects,
+			timeoutMs,
 			policy: ssrfPolicy,
 			lookupFn,
 		});

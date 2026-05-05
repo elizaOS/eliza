@@ -40,29 +40,6 @@ import {
   readCodexModelProviderPriority,
 } from "./services/codex-model-provider.js";
 
-const codexModelProviderModels = {
-  [ModelType.TEXT_NANO]: codexCliTextModel,
-  [ModelType.TEXT_SMALL]: codexCliTextModel,
-  [ModelType.TEXT_MEDIUM]: codexCliTextModel,
-  [ModelType.TEXT_LARGE]: codexCliTextModel,
-  [ModelType.TEXT_MEGA]: codexCliTextModel,
-  [ModelType.IMAGE_DESCRIPTION]: codexCliImageDescriptionModel,
-  [ModelType.RESPONSE_HANDLER]: codexCliTextModel,
-  [ModelType.ACTION_PLANNER]: codexCliTextModel,
-  [ModelType.TEXT_COMPLETION]: codexCliTextModel,
-} satisfies Plugin["models"];
-
-function configureCodexModelProvider(runtime: IAgentRuntime): void {
-  if (!isCodexModelProviderEnabled(runtime)) {
-    delete taskAgentPlugin.priority;
-    delete taskAgentPlugin.models;
-    return;
-  }
-
-  taskAgentPlugin.priority = readCodexModelProviderPriority(runtime);
-  taskAgentPlugin.models = codexModelProviderModels;
-}
-
 export const taskAgentPlugin: Plugin = {
   name: "@elizaos/plugin-agent-orchestrator",
   description:
@@ -70,7 +47,39 @@ export const taskAgentPlugin: Plugin = {
     "manage workspaces, track current task status, and keep background work moving while the main agent stays in conversation",
 
   init(_config, runtime) {
-    configureCodexModelProvider(runtime);
+    if (!isCodexModelProviderEnabled(runtime)) {
+      return;
+    }
+
+    const priority = readCodexModelProviderPriority(runtime);
+    const textHandler = codexCliTextModel as unknown as Parameters<
+      IAgentRuntime["registerModel"]
+    >[1];
+    for (const modelType of [
+      ModelType.TEXT_NANO,
+      ModelType.TEXT_SMALL,
+      ModelType.TEXT_MEDIUM,
+      ModelType.TEXT_LARGE,
+      ModelType.TEXT_MEGA,
+      ModelType.RESPONSE_HANDLER,
+      ModelType.ACTION_PLANNER,
+      ModelType.TEXT_COMPLETION,
+    ]) {
+      runtime.registerModel(
+        modelType,
+        textHandler,
+        taskAgentPlugin.name,
+        priority,
+      );
+    }
+    runtime.registerModel(
+      ModelType.IMAGE_DESCRIPTION,
+      codexCliImageDescriptionModel as unknown as Parameters<
+        IAgentRuntime["registerModel"]
+      >[1],
+      taskAgentPlugin.name,
+      priority,
+    );
   },
 
   // SwarmCoordinator and auth callback wiring is done in PTYService.start()

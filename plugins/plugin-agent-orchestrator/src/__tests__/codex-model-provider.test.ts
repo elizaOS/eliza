@@ -1,11 +1,12 @@
 import { ModelType, type IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { taskAgentPlugin } from "../index.js";
 import {
   buildCodexExecArgs,
   buildCodexImageDescriptionPrompt,
   buildCodexModelPrompt,
   codexCliImageDescriptionModel,
+  codexCliTextModel,
   isCodexModelProviderEnabled,
   parseCodexImageDescriptionResult,
   promptFromGenerateTextParams,
@@ -17,22 +18,11 @@ function runtimeWithSettings(settings: Record<string, string>): IAgentRuntime {
     getSetting(key: string) {
       return settings[key];
     },
+    registerModel: vi.fn(),
   } as IAgentRuntime;
 }
 
 describe("codex model provider", () => {
-  const originalModels = taskAgentPlugin.models;
-  const originalPriority = taskAgentPlugin.priority;
-
-  afterEach(() => {
-    taskAgentPlugin.models = originalModels;
-    if (originalPriority === undefined) {
-      delete taskAgentPlugin.priority;
-    } else {
-      taskAgentPlugin.priority = originalPriority;
-    }
-  });
-
   it("uses codex exec in read-only non-interactive output-file mode", () => {
     const args = buildCodexExecArgs("/tmp/out.txt", {
       binary: "codex",
@@ -73,20 +63,24 @@ describe("codex model provider", () => {
   });
 
   it("registers Codex models during plugin init", () => {
-    taskAgentPlugin.models = undefined;
-    delete taskAgentPlugin.priority;
+    const runtime = runtimeWithSettings({
+      PARALLAX_CODEX_MODEL_PROVIDER: "true",
+      PARALLAX_CODEX_MODEL_PRIORITY: "77",
+    });
 
-    taskAgentPlugin.init?.(
-      {},
-      runtimeWithSettings({
-        PARALLAX_CODEX_MODEL_PROVIDER: "true",
-        PARALLAX_CODEX_MODEL_PRIORITY: "77",
-      }),
-    );
+    taskAgentPlugin.init?.({}, runtime);
 
-    expect(taskAgentPlugin.priority).toBe(77);
-    expect(taskAgentPlugin.models?.[ModelType.IMAGE_DESCRIPTION]).toBe(
+    expect(runtime.registerModel).toHaveBeenCalledWith(
+      ModelType.IMAGE_DESCRIPTION,
       codexCliImageDescriptionModel,
+      taskAgentPlugin.name,
+      77,
+    );
+    expect(runtime.registerModel).toHaveBeenCalledWith(
+      ModelType.TEXT_LARGE,
+      codexCliTextModel,
+      taskAgentPlugin.name,
+      77,
     );
   });
 
