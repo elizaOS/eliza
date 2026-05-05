@@ -337,19 +337,17 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
 
 
 def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    handler = str(ctx.request.extra_config.get("handler", "eliza"))
+    handler = str(ctx.request.extra_config.get("handler", "oracle"))
     args = [
         "python",
         "run_benchmark.py",
         "--handler",
         handler,
-        "--model-provider",
-        ctx.request.provider,
-        "--model",
-        ctx.request.model,
         "--output",
         str(ctx.output_root / "trust-results.json"),
     ]
+    if handler == "eliza":
+        args.extend(["--model-provider", ctx.request.provider, "--model", ctx.request.model])
     categories = ctx.request.extra_config.get("categories")
     if isinstance(categories, list) and categories:
         args.extend(["--categories", *[str(item) for item in categories]])
@@ -741,7 +739,17 @@ def _score_from_trust(path: Path) -> ScoreSummary:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
     raw = data.get("overall_f1")
     score = float(raw) if isinstance(raw, (int, float)) else None
-    return ScoreSummary(score=score, unit="ratio", higher_is_better=True, metrics={"overall_f1": raw})
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_f1": raw,
+            "false_positive_rate": data.get("false_positive_rate"),
+            "total_tests": data.get("total_tests"),
+            "handler_name": data.get("handler_name"),
+        },
+    )
 
 
 def _score_from_woobench(path: Path) -> ScoreSummary:
@@ -1007,10 +1015,15 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="Trust/security benchmark",
             cwd=str((benchmarks_root / "trust").resolve()),
             command_builder=_command_trust,
+            env_builder=lambda ctx, adapter: {
+                "PYTHONPATH": os.pathsep.join(
+                    [str((ctx.benchmarks_root / "eliza-adapter").resolve()), ctx.env.get("PYTHONPATH", "")]
+                ).rstrip(os.pathsep)
+            },
             result_patterns=["trust-results.json", "*.json"],
             score_extractor=_score_from_trust,
             default_extra_config={
-                "handler": "eliza",
+                "handler": "oracle",
                 "categories": ["prompt_injection"],
                 "difficulty": ["easy"],
                 "threshold": 0.0,

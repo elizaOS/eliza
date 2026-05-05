@@ -35,7 +35,7 @@ Effects (all idempotent):
 2. `overlayIos()` —
    - Merges Milady-specific permission strings into `Info.plist`
      (camera, microphone, location, contacts, etc.).
-   - Rewrites `App.entitlements` to use `group.com.miladyai.milady` as
+   - Rewrites `App.entitlements` to use `group.ai.elizaos.eliza` as
      the App Group ID.
    - Patches xcconfigs to include the Pods xcconfig.
 3. `generatePodfile()` — emits `apps/app/ios/App/Podfile` referencing
@@ -43,8 +43,8 @@ Effects (all idempotent):
    `eliza/packages/native-plugins/`, and `LlamaCppCapacitor` from the
    workspace.
 4. `applyIosAppIdentity()` — rewrites bundle IDs in
-   `App.xcodeproj/project.pbxproj` to `com.miladyai.milady` (and
-   `com.miladyai.milady.WebsiteBlockerContentExtension` for the
+   `App.xcodeproj/project.pbxproj` to `ai.elizaos.eliza` (and
+   `ai.elizaos.eliza.WebsiteBlockerContentExtension` for the
    content-blocker extension).
 
 After the overlay completes (Linux-friendly, pure file ops), the

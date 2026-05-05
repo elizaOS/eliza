@@ -108,21 +108,10 @@ import {
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
-import {
-  clearTelegramAccountAuthState,
-  clearTelegramAccountSession,
-  TelegramAccountAuthSession,
-  telegramAccountAuthStateExists,
-  telegramAccountSessionExists,
-} from "../services/telegram-account-auth.js";
-import {
-  sanitizeAccountId as sanitizeWhatsAppAccountId,
-  WhatsAppPairingSession,
-  whatsappAuthExists,
-  whatsappLogout,
-} from "../services/whatsapp-pairing.js";
-// Telegram account auth: moved to @elizaos/plugin-telegram (account-setup-routes + account-auth-service).
-// WhatsApp pairing: route handlers moved to @elizaos/plugin-whatsapp.
+// telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
+// WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
+// whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
+// the route dispatch lives there too.
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -152,10 +141,10 @@ import { handleAppPackageRoutes } from "./app-package-routes.js";
 import { handleAppsRoutes } from "./apps-routes.js";
 import { handleAuthRoutes } from "./auth-routes.js";
 import { handleAvatarRoutes } from "./avatar-routes.js";
-import {
-  handleBlueBubblesRoute,
-  resolveBlueBubblesWebhookPath,
-} from "./bluebubbles-routes.js";
+// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
+// resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
+// before the runtime plugin route dispatcher runs.
+import { resolveBlueBubblesWebhookPath } from "./bluebubbles-routes.js";
 import { handleBrowserWorkspaceRoutes } from "./browser-workspace-routes.js";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
@@ -226,7 +215,7 @@ import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
-import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
+// Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { handleUpdateRoutes } from "./update-routes.js";
@@ -245,10 +234,9 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-import {
-  applyWhatsAppQrOverride,
-  handleWhatsAppRoute,
-} from "./whatsapp-routes.js";
+// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
+// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
+import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 import { handleXRelayRoute } from "./x-relay-routes.js";
 
@@ -2125,29 +2113,13 @@ async function handleRequest(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
 
+  // ── BlueBubbles routes (/api/bluebubbles/*, /webhooks/bluebubbles) ──
+  // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
+
   // ── Inbox routes (/api/inbox/*) ───────────────────────────────
   // Cross-channel read-only feed that merges connector messages
   // (imessage, telegram, discord, whatsapp, etc.) into a single
   // time-ordered view. See api/inbox-routes.ts for details.
-  const blueBubblesHandled = await handleBlueBubblesRoute(
-    req,
-    res,
-    pathname,
-    method,
-    {
-      runtime: state.runtime
-        ? {
-            getService: (type: string) =>
-              (
-                state.runtime as { getService: (t: string) => unknown }
-              ).getService(type),
-          }
-        : undefined,
-    },
-    { json, error, readJsonBody },
-  );
-  if (blueBubblesHandled) return;
-
   if (pathname.startsWith("/api/inbox")) {
     const handled = await handleInboxRoute(
       req,
@@ -2186,49 +2158,11 @@ async function handleRequest(
     if (handled) return;
   }
 
-  // Telegram setup routes: now handled by @elizaos/plugin-telegram via
-  // runtime plugin routes (rawPath: true). See plugin-telegram/src/setup-routes.ts.
+  // ── Telegram setup routes (/api/telegram-setup/*) ────────────────────
+  // Extracted to @elizaos/plugin-telegram setup-routes.ts (Plugin.routes).
 
   // ── Telegram account routes (/api/telegram-account/*) ────────────────
-  if (pathname.startsWith("/api/telegram-account")) {
-    const routeState = {
-      config: state.config,
-      saveConfig: () => saveElizaConfig(state.config),
-      runtime: state.runtime
-        ? {
-            getService: (type: string) =>
-              (
-                state.runtime as { getService: (t: string) => unknown }
-              ).getService(type),
-            getSetting: (key: string) =>
-              (
-                state.runtime as {
-                  getSetting: (k: string) => string | undefined;
-                }
-              ).getSetting(key),
-          }
-        : undefined,
-      telegramAccountAuthSession: state.telegramAccountAuthSession,
-    };
-    const handled = await handleTelegramAccountRoute(
-      req,
-      res,
-      pathname,
-      method,
-      routeState,
-      { json, error, readJsonBody },
-      {
-        createAuthSession: (options) => new TelegramAccountAuthSession(options),
-        authStateExists: telegramAccountAuthStateExists,
-        sessionExists: telegramAccountSessionExists,
-        clearAuthState: clearTelegramAccountAuthState,
-        clearSession: clearTelegramAccountSession,
-      },
-    );
-    state.telegramAccountAuthSession =
-      routeState.telegramAccountAuthSession ?? null;
-    if (handled) return;
-  }
+  // Extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
 
   // ── Discord Local routes (/api/discord-local/*) — extracted to @elizaos/plugin-discord (setup-routes.ts) ──
 
@@ -2866,31 +2800,8 @@ async function handleRequest(
     return;
   }
 
-  if (
-    await handleWhatsAppRoute(
-      req,
-      res,
-      pathname,
-      method,
-      {
-        whatsappPairingSessions: state.whatsappPairingSessions ?? new Map(),
-        broadcastWs: state.broadcastWs ?? undefined,
-        config: state.config,
-        runtime: state.runtime ?? undefined,
-        saveConfig: () => saveElizaConfig(state.config),
-        workspaceDir: resolveDefaultAgentWorkspaceDir(),
-      },
-      {
-        sanitizeAccountId: sanitizeWhatsAppAccountId,
-        whatsappAuthExists,
-        whatsappLogout,
-        createWhatsAppPairingSession: (options) =>
-          new WhatsAppPairingSession(options),
-      },
-    )
-  ) {
-    return;
-  }
+  // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
+  // Extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
 
   // ── elizaOS plugin HTTP routes (runtime.routes, e.g. /music-player/*) ───
   if (
