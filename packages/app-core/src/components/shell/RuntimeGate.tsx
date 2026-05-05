@@ -465,8 +465,12 @@ export function RuntimeGate() {
 
   const finishAsCloud = useCallback(
     (agent: CloudCompatAgent) => {
-      setCloudStage("connecting");
-
+      // Refuse to complete cloud onboarding without a usable agent URL —
+      // persisting an active server with no apiBase puts the next boot
+      // into an infinite loopback poll (`https://localhost/api/auth/status`)
+      // because client.getBaseUrl() falls back to window.location.origin
+      // when nothing is set. Surface the failure so the user can retry
+      // instead of silently writing a broken active-server record.
       const apiBase = resolveCloudAgentApiBase(agent);
       if (!apiBase) {
         setError(
@@ -478,6 +482,7 @@ export function RuntimeGate() {
         setCloudStage("agent-list");
         return;
       }
+      setCloudStage("connecting");
 
       const accessToken = client.getRestAuthToken() ?? undefined;
 
@@ -673,15 +678,46 @@ export function RuntimeGate() {
       }
       const jobId = provRes.data?.jobId;
 
+      // Poll the agent record until it has a connectable URL. The provision
+      // job can report "completed" before the cloud surface attaches a
+      // web_ui_url / bridge_url to the agent (the URL is provisioned after
+      // the container reaches "running"). Calling finishAsCloud with no URL
+      // persists a broken active-server record and dead-ends the next boot
+      // in a https://localhost/api/auth/status loop. Cap the wait so a
+      // genuinely stuck provision still surfaces an error.
+      const AGENT_URL_WAIT_DEADLINE_MS = 90_000;
+      const fetchAgentWithUrl = async (
+        deadlineMs: number,
+      ): Promise<CloudCompatAgent | null> => {
+        while (Date.now() < deadlineMs) {
+          const agentRes = await client.getCloudCompatAgent(agentId);
+          if (agentRes.success) {
+            const agent = agentRes.data;
+            if (agent.web_ui_url || agent.webUiUrl || agent.bridge_url) {
+              return agent;
+            }
+          }
+          await new Promise<void>((r) => setTimeout(r, 2500));
+        }
+        return null;
+      };
+
       if (!jobId) {
         setProvisionStatus(
           t("runtimegate.connecting", { defaultValue: "Connecting..." }),
         );
-        const agentRes = await client.getCloudCompatAgent(agentId);
-        if (agentRes.success) {
-          finishAsCloud(agentRes.data);
+        const ready = await fetchAgentWithUrl(
+          Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
+        );
+        if (ready) {
+          finishAsCloud(ready);
         } else {
-          setError("Provisioning completed but agent not found");
+          setError(
+            t("runtimegate.agentNotReady", {
+              defaultValue:
+                "Agent created but isn't ready yet (no connectable URL). Try again in a moment.",
+            }),
+          );
           setCloudStage("agent-list");
         }
         return;
@@ -733,11 +769,18 @@ export function RuntimeGate() {
           setProvisionStatus(
             t("runtimegate.connecting", { defaultValue: "Connecting..." }),
           );
-          const agentRes = await client.getCloudCompatAgent(agentId);
-          if (agentRes.success) {
-            finishAsCloud(agentRes.data);
+          const ready = await fetchAgentWithUrl(
+            Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
+          );
+          if (ready) {
+            finishAsCloud(ready);
           } else {
-            setError("Agent provisioned but not found");
+            setError(
+              t("runtimegate.agentNotReady", {
+                defaultValue:
+                  "Agent created but isn't ready yet (no connectable URL). Try again in a moment.",
+              }),
+            );
             setCloudStage("agent-list");
           }
         } else if (job.status === "failed") {

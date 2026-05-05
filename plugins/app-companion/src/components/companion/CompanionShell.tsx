@@ -1,5 +1,10 @@
-import { type ActionNotice, type Tab, useRenderGuard } from "@elizaos/app-core";
-import { memo, useEffect } from "react";
+import {
+  type ActionNotice,
+  LoadingScreen,
+  type Tab,
+  useRenderGuard,
+} from "@elizaos/app-core";
+import { memo, useEffect, useState } from "react";
 import { getVrmCount, getVrmUrl, VRM_COUNT } from "../../vrm-assets";
 import { prefetchVrmToCache } from "../avatar/VrmEngine";
 import { CompanionView } from "./CompanionView";
@@ -18,16 +23,33 @@ export const CompanionShell = memo(function CompanionShell(
 ) {
   useRenderGuard("CompanionShell");
 
-  // Warm the in-memory VRM buffer cache as soon as the companion shell
-  // mounts. Fire-and-forget — VrmEngine swallows errors. This used to
-  // run during global startup-phase-hydrate, but VRM downloads only
-  // matter when the companion scene is actually about to render.
+  // The first time the companion mounts, VRM buffers may not be in cache
+  // yet — render the LoadingScreen until every prefetch settles so the
+  // user doesn't see a flash of empty stage before the avatar can parse.
+  // Prefetch is best-effort (network errors are swallowed by VrmEngine);
+  // we await Promise.allSettled so a single failed asset doesn't block
+  // the rest of the UI from coming up.
+  const [vrmsReady, setVrmsReady] = useState(false);
   useEffect(() => {
+    let cancelled = false;
     const total = getVrmCount() || VRM_COUNT;
+    const work: Array<Promise<void>> = [];
     for (let i = 1; i <= total; i++) {
-      void prefetchVrmToCache(getVrmUrl(i));
+      work.push(prefetchVrmToCache(getVrmUrl(i)));
     }
+    Promise.allSettled(work).then(() => {
+      if (!cancelled) setVrmsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  if (!vrmsReady) {
+    // Prime the loader's staged-fetch UI with the first VRM so users see
+    // a real percentage instead of an empty bar.
+    return <LoadingScreen phase="ready" vrmUrl={getVrmUrl(1)} />;
+  }
 
   return (
     <div
