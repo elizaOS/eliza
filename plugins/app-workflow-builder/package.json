@@ -1,0 +1,29 @@
+{
+  "name": "@elizaos/app-workflow-builder",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check src",
+    "test": "vitest run"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./register": "./src/register.ts"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Workflow Builder",
+      "category": "productivity",
+      "heroImage": "assets/hero.png"
+    }
+  },
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.0",
+    "vitest": "^2.1.9"
+  }
+}

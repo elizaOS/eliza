@@ -1,0 +1,56 @@
+// Privileged system import of the Eliza APK (built by `bun run build:android:system`).
+//
+// dex_preopt is disabled because:
+//   1. The APK is mostly a Capacitor WebView shell — dexpreopt buys
+//      basically nothing for its small Java surface.
+//   2. The Capacitor manifest declares optional uses-libraries
+//      (androidx.camera.extensions.impl, androidx.window.extensions,
+//      androidx.window.sidecar) that AOSP's manifest_check requires
+//      the build system to also declare. Disabling dexpreopt skips
+//      that check.
+//
+// Update validate.mjs's APK marker list together with any change to
+// the optional_uses_libs / dex_preopt fields here.
+android_app_import {
+    name: "Eliza",
+    apk: "Eliza.apk",
+    certificate: "platform",
+    privileged: true,
+    dex_preopt: {
+        enabled: false,
+    },
+    // Soong-level overrides remove these packages from the product image
+    // even when they were added via PRODUCT_PACKAGES upstream of our
+    // strip list. PRODUCT_PACKAGES -= only strips entries added in the
+    // same inherit chain or earlier; entries from inherited makefiles
+    // (e.g. aosp_product.mk → messaging) need this mechanism instead.
+    //
+    // Names must match the Soong module names exactly. `Messaging`
+    // (capital M) is wrong — packages/apps/Messaging/Android.bp declares
+    // `name: "messaging"` (lowercase). Same caveat for any future addition.
+    overrides: [
+        // Role apps Eliza takes over.
+        "Launcher3",
+        "Launcher3QuickStep",
+        "Trebuchet",
+        "Dialer",
+        "messaging",
+        "Messaging",
+        "Contacts",
+        // Stripped AOSP defaults that ship via /product/app/. Without an
+        // override here, /product/app/Browser2/Browser2.apk and friends
+        // leak in even when our PRODUCT_PACKAGES -= line lists them —
+        // the strip is only honored within the same product-inherit chain.
+        "Browser2",
+        "Calendar",
+        "Camera2",
+        "DeskClock",
+        "Email",
+        "Gallery2",
+        "Music",
+        "QuickSearchBox",
+        "Provision",
+        "ManagedProvisioning",
+        "SetupWizard",
+    ],
+}

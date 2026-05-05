@@ -1,0 +1,27 @@
+{
+  "id": "project",
+  "name": "project",
+  "aliases": ["fullstack-app"],
+  "description": "Create an elizaOS project backed by a local eliza checkout",
+  "kind": "project",
+  "version": 1,
+  "languages": ["typescript"],
+  "upstream": {
+    "path": "eliza",
+    "repo": "https://github.com/elizaos/eliza.git",
+    "branch": "develop",
+    "mode": "git-submodule",
+    "requiredSubmodules": [
+      "plugins/plugin-local-ai",
+      "plugins/plugin-ollama",
+      "plugins/plugin-sql",
+      "plugins/plugin-elizacloud"
+    ],
+    "requiredWorkspaces": [
+      "plugins/plugin-local-ai",
+      "plugins/plugin-ollama",
+      "plugins/plugin-sql",
+      "plugins/plugin-elizacloud"
+    ]
+  }
+}

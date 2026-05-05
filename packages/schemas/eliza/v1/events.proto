@@ -1,0 +1,235 @@
+// events.proto - Event types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/environment.proto";
+import "eliza/v1/memory.proto";
+import "eliza/v1/model.proto";
+import "eliza/v1/primitives.proto";
+import "google/protobuf/struct.proto";
+
+// Standard event types across all platforms
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+
+  // World events
+  EVENT_TYPE_WORLD_JOINED = 1;
+  EVENT_TYPE_WORLD_CONNECTED = 2;
+  EVENT_TYPE_WORLD_LEFT = 3;
+
+  // Entity events
+  EVENT_TYPE_ENTITY_JOINED = 4;
+  EVENT_TYPE_ENTITY_LEFT = 5;
+  EVENT_TYPE_ENTITY_UPDATED = 6;
+
+  // Room events
+  EVENT_TYPE_ROOM_JOINED = 7;
+  EVENT_TYPE_ROOM_LEFT = 8;
+
+  // Message events
+  EVENT_TYPE_MESSAGE_RECEIVED = 9;
+  EVENT_TYPE_MESSAGE_SENT = 10;
+  EVENT_TYPE_MESSAGE_DELETED = 11;
+
+  // Channel events
+  EVENT_TYPE_CHANNEL_CLEARED = 12;
+
+  // Voice events
+  EVENT_TYPE_VOICE_MESSAGE_RECEIVED = 13;
+  EVENT_TYPE_VOICE_MESSAGE_SENT = 14;
+
+  // Interaction events
+  EVENT_TYPE_REACTION_RECEIVED = 15;
+  EVENT_TYPE_POST_GENERATED = 16;
+  EVENT_TYPE_INTERACTION_RECEIVED = 17;
+
+  // Run events
+  EVENT_TYPE_RUN_STARTED = 18;
+  EVENT_TYPE_RUN_ENDED = 19;
+  EVENT_TYPE_RUN_TIMEOUT = 20;
+
+  // Action events
+  EVENT_TYPE_ACTION_STARTED = 21;
+  EVENT_TYPE_ACTION_COMPLETED = 22;
+
+  // Evaluator events
+  EVENT_TYPE_EVALUATOR_STARTED = 23;
+  EVENT_TYPE_EVALUATOR_COMPLETED = 24;
+
+  // Model events
+  EVENT_TYPE_MODEL_USED = 25;
+
+  // Embedding events
+  EVENT_TYPE_EMBEDDING_GENERATION_REQUESTED = 26;
+  EVENT_TYPE_EMBEDDING_GENERATION_COMPLETED = 27;
+  EVENT_TYPE_EMBEDDING_GENERATION_FAILED = 28;
+
+  // Control events
+  EVENT_TYPE_CONTROL_MESSAGE = 29;
+}
+
+// Platform-specific event type prefix
+enum PlatformPrefix {
+  PLATFORM_PREFIX_UNSPECIFIED = 0;
+  PLATFORM_PREFIX_DISCORD = 1;
+  PLATFORM_PREFIX_TELEGRAM = 2;
+  PLATFORM_PREFIX_X = 3;
+}
+
+// Base payload interface for all events
+message EventPayload {
+  string source = 1;
+}
+
+// Payload for world-related events
+message WorldPayload {
+  string source = 1;
+  World world = 2;
+  repeated Room rooms = 3;
+  repeated Entity entities = 4;
+}
+
+// Payload for entity-related events
+message EntityPayload {
+  string source = 1;
+  string entity_id = 2;
+  optional string world_id = 3;
+  optional string room_id = 4;
+  optional EntityMetadata metadata = 5;
+}
+
+// Entity metadata for events
+message EntityMetadata {
+  string original_id = 1;
+  string username = 2;
+  optional string display_name = 3;
+  google.protobuf.Struct extra = 4;
+}
+
+// Payload for message-related events
+message MessagePayload {
+  string source = 1;
+  Memory message = 2;
+}
+
+// Payload for channel cleared events
+message ChannelClearedPayload {
+  string source = 1;
+  string room_id = 2;
+  string channel_id = 3;
+  int32 memory_count = 4;
+}
+
+// Payload for events invoked without a message
+message InvokePayload {
+  string source = 1;
+  string world_id = 2;
+  string user_id = 3;
+  string room_id = 4;
+}
+
+// Run status enumeration
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_STARTED = 1;
+  RUN_STATUS_COMPLETED = 2;
+  RUN_STATUS_TIMEOUT = 3;
+}
+
+// Payload for run events
+message RunEventPayload {
+  string source = 1;
+  string run_id = 2;
+  string message_id = 3;
+  string room_id = 4;
+  string entity_id = 5;
+  int64 start_time = 6;
+  RunStatus status = 7;
+  optional int64 end_time = 8;
+  optional int64 duration = 9;
+  optional string error = 10;
+}
+
+// Payload for action events
+message ActionEventPayload {
+  string source = 1;
+  string room_id = 2;
+  string world_id = 3;
+  Content content = 4;
+  optional string message_id = 5;
+}
+
+// Payload for evaluator events
+message EvaluatorEventPayload {
+  string source = 1;
+  string evaluator_id = 2;
+  string evaluator_name = 3;
+  optional int64 start_time = 4;
+  optional bool completed = 5;
+  optional string error = 6;
+}
+
+// Token usage for model events
+message ModelTokenUsage {
+  int32 prompt = 1;
+  int32 completion = 2;
+  int32 total = 3;
+}
+
+// Payload for model events
+message ModelEventPayload {
+  string source = 1;
+  string provider = 2;
+  ModelType type = 3;
+  string prompt = 4;
+  optional ModelTokenUsage tokens = 5;
+}
+
+// Embedding priority enumeration
+enum EmbeddingPriority {
+  EMBEDDING_PRIORITY_UNSPECIFIED = 0;
+  EMBEDDING_PRIORITY_HIGH = 1;
+  EMBEDDING_PRIORITY_NORMAL = 2;
+  EMBEDDING_PRIORITY_LOW = 3;
+}
+
+// Payload for embedding generation events
+message EmbeddingGenerationPayload {
+  string source = 1;
+  Memory memory = 2;
+  EmbeddingPriority priority = 3;
+  optional int32 retry_count = 4;
+  optional int32 max_retries = 5;
+  repeated float embedding = 6;
+  optional string error = 7;
+  optional string run_id = 8;
+}
+
+// Control message action enumeration
+enum ControlMessageAction {
+  CONTROL_MESSAGE_ACTION_UNSPECIFIED = 0;
+  CONTROL_MESSAGE_ACTION_DISABLE_INPUT = 1;
+  CONTROL_MESSAGE_ACTION_ENABLE_INPUT = 2;
+}
+
+// UI control payload
+message UIControlPayload {
+  ControlMessageAction action = 1;
+  optional string target = 2;
+  optional string reason = 3;
+  optional int32 duration = 4;
+}
+
+// Control message
+message ControlMessage {
+  string type = 1; // Always "control"
+  UIControlPayload payload = 2;
+  string room_id = 3;
+}
+
+// Payload for control message events
+message ControlMessagePayload {
+  string source = 1;
+  ControlMessage message = 2;
+}

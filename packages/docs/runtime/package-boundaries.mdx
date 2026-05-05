@@ -1,0 +1,73 @@
+---
+title: "Package Boundaries"
+description: "How @elizaos/agent and @elizaos/app-core fit into generated projects"
+---
+
+Generated projects include a local elizaOS checkout so the project app can use shared runtime and app-shell packages without copying framework internals into the project.
+
+## Boundary Summary
+
+| Package | Owns | Use it for | Do not use it for |
+| --- | --- | --- | --- |
+| `@elizaos/agent` | Backend agent server, API routes, runtime orchestration, services, auth, plugin loading, triggers, and server-side integrations. | Running agents, serving REST/WebSocket APIs, loading runtime plugins, exposing server capabilities. | Product shell UI, mobile/desktop bridge code, or brand-specific app layout. |
+| `@elizaos/app-core` | Shared project app shell, React components, app state, app config types, bridge APIs, platform scripts, Capacitor/Electrobun integration helpers, and styling. | Building branded web, desktop, and mobile project apps. | Agent runtime business logic or plugin capability execution. |
+
+## `@elizaos/agent`
+
+`@elizaos/agent` is the backend package. It contains:
+
+- HTTP and WebSocket server code.
+- Runtime startup and lifecycle coordination.
+- API route modules for agents, messaging, memory, apps, plugins, models, and platform capabilities.
+- Runtime services such as plugin management, app sessions, streams, browser workspace, sandbox execution, and update checks.
+- Server-side middleware, auth, diagnostics, and security helpers.
+
+App code should call its APIs or use project-provided clients. Keep direct backend changes inside `@elizaos/agent` when changing server behavior for all projects.
+
+## `@elizaos/app-core`
+
+`@elizaos/app-core` is the shared frontend and platform core for generated project apps. It contains:
+
+- App shell components and routes.
+- Shared React state and hooks.
+- Branding and app config types.
+- API client helpers.
+- Native bridge utilities for Capacitor and Electrobun.
+- Platform scripts for web, desktop, mobile, and packaging workflows.
+- Shared styles and theme assets.
+
+Generated project apps import `@elizaos/app-core` from `apps/app/src/main.tsx` and related config files, then layer product-specific identity, branding, default app plugins, and custom registrations on top.
+
+## Generated Project Placement
+
+```bash
+my-agent-app/
+├── apps/app/                       # Product-specific app shell
+└── eliza/
+    └── packages/
+        ├── agent/                  # @elizaos/agent
+        └── app-core/               # @elizaos/app-core
+```
+
+Put product-specific app code in `apps/app`. Put reusable runtime capability code in plugins. Change `@elizaos/agent` or `@elizaos/app-core` only when the framework boundary itself needs to change.
+
+## Decision Guide
+
+| Change | Where it belongs |
+| --- | --- |
+| Add a new agent action or provider | Plugin |
+| Add a branded screen or app plugin registration for one project | Project app `apps/app` |
+| Add shared app shell behavior for every generated project | `@elizaos/app-core` |
+| Add or change server API behavior for the runtime | `@elizaos/agent` |
+| Change bundle ID, app name, env prefix, or desktop URL scheme | Project `apps/app/app.config.ts` |
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Customize a Generated Project" icon="sliders" href="/projects/customize-generated-project">
+    See project-level config examples.
+  </Card>
+  <Card title="Project Taxonomy" icon="sitemap" href="/projects/taxonomy">
+    Clarify project and app plugin terminology.
+  </Card>
+</CardGroup>

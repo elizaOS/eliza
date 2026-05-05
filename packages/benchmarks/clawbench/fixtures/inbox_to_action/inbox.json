@@ -1,0 +1,182 @@
+[
+  {
+    "id": "msg_201",
+    "sender": "elena.rodriguez@techcorp.com",
+    "subject": "Product roadmap update for all-hands — need by Friday",
+    "body": "Alex, I'm doing the all-hands next Wednesday and want to include a 5-min product roadmap update. Can you put together 3-5 slides covering: (1) what shipped in Q4, (2) Q1 priorities, (3) one customer win story. I'd like a draft by Friday EOD so I can review over the weekend. Thanks, Elena",
+    "received_ts": "2026-02-05T21:00:00-08:00",
+    "labels": ["inbox", "important"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_202",
+    "sender": "mike.stevens@acmecorp.com",
+    "subject": "Can we move Thursday's call to Friday?",
+    "body": "Hi Alex, something came up on our end — would it be possible to move our Thursday 1pm call to Friday at the same time? Jennifer will also need to join. Let me know if that works. Best, Mike",
+    "received_ts": "2026-02-05T19:30:00-08:00",
+    "labels": ["inbox", "client"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_203",
+    "sender": "sarah.kim@techcorp.com",
+    "subject": "Heads up: layoffs rumor — keep confidential",
+    "body": "Alex, heads up — there's a rumor going around about layoffs. It's NOT true, but I want you to know in case your team asks. Elena is doing an all-hands next week to address it. Please don't share this email or discuss it until then. If anyone asks, redirect to me. — Sarah",
+    "received_ts": "2026-02-05T22:15:00-08:00",
+    "labels": ["inbox", "confidential"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_204",
+    "sender": "james.liu@techcorp.com",
+    "subject": "Quick question: should we use GraphQL or REST for the new API?",
+    "body": "Hey Alex, Marcus and I are going back and forth on whether the new dashboard API should be GraphQL or REST. I'm leaning GraphQL because the frontend needs flexible queries, but Marcus thinks REST is simpler and we don't have GraphQL expertise. Can you make the call? We're blocked on starting the implementation. — James",
+    "received_ts": "2026-02-05T23:00:00-08:00",
+    "labels": ["inbox", "engineering"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_205",
+    "sender": "priya.patel@techcorp.com",
+    "subject": "User research findings — Dashboard V2",
+    "body": "Hi Alex, attached are the findings from last week's user research sessions (5 interviews with enterprise customers). Key insights: (1) Users want a customizable default view, (2) Export to PDF is the #1 requested feature, (3) Loading time >3s is the #1 complaint, (4) Most users ignore the sidebar navigation entirely. I've updated the Figma with annotations. Let's discuss at the design review. — Priya",
+    "received_ts": "2026-02-05T17:00:00-08:00",
+    "labels": ["inbox", "research"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_206",
+    "sender": "tom.anderson@techcorp.com",
+    "subject": "Maintenance window tonight 2-4am PST — staging environment",
+    "body": "Team, staging environment will be down tonight 2-4am PST for database migration. This does NOT affect production. If you need staging access tonight, let me know and I can schedule around it. — Tom",
+    "received_ts": "2026-02-05T16:00:00-08:00",
+    "labels": ["inbox", "ops"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_207",
+    "sender": "noreply@linear.app",
+    "subject": "[TechCorp] 3 issues moved to 'Ready for Review'",
+    "body": "The following issues were moved to 'Ready for Review': TC-891 Add rate limiting to public API (Marcus Johnson), TC-903 Fix timezone bug in scheduler (James Liu), TC-912 Update error messages for auth flow (Marcus Johnson). View in Linear: linear.app/techcorp/board",
+    "received_ts": "2026-02-05T20:00:00-08:00",
+    "labels": ["inbox", "automated"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_208",
+    "sender": "conference@qcon2026.com",
+    "subject": "Your QCon 2026 talk proposal has been accepted!",
+    "body": "Dear Alex, congratulations! Your talk 'From AGENTS.md to Production: How We Shipped AI-Powered Product Management' has been accepted for QCon 2026 San Francisco (April 7-9). Please confirm your attendance by February 20 and submit your final abstract by March 1. Speaker benefits: full conference pass, travel stipend up to $2,000, speaker dinner. Reply to this email to confirm. — QCon Program Committee",
+    "received_ts": "2026-02-05T14:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_209",
+    "sender": "newsletter@pragmaticengineer.com",
+    "subject": "The Pragmatic Engineer: Building effective platform teams",
+    "body": "This week's issue: How Stripe, Datadog, and Linear structure their platform teams for maximum leverage. Plus: why 'platform as a product' is harder than it sounds, and the metrics that actually matter for internal developer platforms. Read at pragmaticengineer.com/newsletter/456",
+    "received_ts": "2026-02-06T04:00:00-08:00",
+    "labels": ["inbox", "newsletter"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_210",
+    "sender": "vendor@saasmetrics.io",
+    "subject": "Special offer: 40% off annual plan — expires Friday",
+    "body": "Hi Alex, your trial of SaaSMetrics Pro expires soon. Get 40% off the annual plan if you subscribe by Friday. Don't lose your dashboards! Features: cohort analysis, predictive churn, revenue forecasting. Use code SAVE40 at checkout.",
+    "received_ts": "2026-02-05T12:00:00-08:00",
+    "labels": ["inbox", "promotions"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_211",
+    "sender": "jennifer.walsh@acmecorp.com",
+    "subject": "Re: SSO integration — technical requirements",
+    "body": "Hi Alex, following up on the SSO requirement we added to the revised SOW. Our security team needs to know: (1) Do you support SAML 2.0 or just OIDC? (2) Can we use our existing Okta instance? (3) What's the timeline for SSO availability? If your engineering team could put together a brief technical spec, that would help us get internal approval faster. Thanks, Jennifer",
+    "received_ts": "2026-02-05T18:45:00-08:00",
+    "labels": ["inbox", "client"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_212",
+    "sender": "marcus.johnson@techcorp.com",
+    "subject": "Vacation request — Feb 17-21",
+    "body": "Hey Alex, want to give you a heads up — I'm planning to take Feb 17-21 off (President's Day week). I'll make sure the auth migration PR is up and the rate limiting feature is in review before I go. Let me know if there are any concerns with the timing. — Marcus",
+    "received_ts": "2026-02-05T15:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_213",
+    "sender": "noreply@sentry.io",
+    "subject": "[RESOLVED] High error rate on /api/v2/analytics",
+    "body": "The issue 'High error rate on /api/v2/analytics' has been automatically resolved. Error rate dropped from 12% to 0.3% after deploy v2.14.7. This issue affected 847 users over 3 hours. Root cause: nil pointer in the caching layer introduced in v2.14.6.",
+    "received_ts": "2026-02-06T01:30:00-08:00",
+    "labels": ["inbox", "automated"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_214",
+    "sender": "rachel.green@techcorp.com",
+    "subject": "Team birthday — Priya turns 30 on Feb 14!",
+    "body": "Hi Alex, Priya's 30th birthday is coming up on Feb 14 (Valentine's Day!). I'm organizing a small team celebration. Can you: (1) contribute $25 to the gift fund (Venmo @rachel-green-tc), (2) write a note for the card, and (3) let me know if you can make a quick gathering at 3pm on the 14th? Thanks! — Rachel",
+    "received_ts": "2026-02-05T11:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_215",
+    "sender": "investor.updates@sequoia.com",
+    "subject": "Sequoia Q1 2026 Market Map: AI Infrastructure",
+    "body": "The AI Infrastructure market is evolving rapidly. In our Q1 2026 market map, we identify the key players across inference, fine-tuning, evaluation, and agent orchestration. Your company TechCorp is mentioned in the 'Emerging' category for agent tooling. View the full report at sequoia.com/market-maps/ai-infra-q1-2026",
+    "received_ts": "2026-02-05T10:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_216",
+    "sender": "david.park@techcorp.com",
+    "subject": "FYI: New security policy — MFA required for all internal tools by March 1",
+    "body": "Team, starting March 1, MFA will be required for all internal tools (Linear, GitHub, Slack, Google Workspace). IT will be rolling out setup instructions next week. If you haven't set up your hardware key yet, grab one from the IT desk. This is company-wide, no exceptions. — David",
+    "received_ts": "2026-02-05T13:00:00-08:00",
+    "labels": ["inbox", "policy"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_217",
+    "sender": "alex.mentor@gmail.com",
+    "subject": "Coffee next week?",
+    "body": "Hey Alex! Long time. I'm going to be in SF next Wednesday for a board meeting. Want to grab coffee? I'd love to hear about what you're building at TechCorp. I'm free 3-5pm. Let me know! — Ben",
+    "received_ts": "2026-02-05T09:00:00-08:00",
+    "labels": ["inbox", "personal"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_218",
+    "sender": "support@notion.so",
+    "subject": "Your Notion workspace is at 90% storage capacity",
+    "body": "Hi Alex, your TechCorp workspace is approaching its storage limit (90% used, 45GB of 50GB). Consider upgrading to the Business plan or cleaning up old files. Large files: Meeting recordings (12GB), Design assets (8GB), Archive (6GB).",
+    "received_ts": "2026-02-05T08:00:00-08:00",
+    "labels": ["inbox", "automated"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_219",
+    "sender": "sarah.kim@techcorp.com",
+    "subject": "Re: Headcount — got 2 approved, need role descriptions by Feb 14",
+    "body": "Great news — Elena approved 2 headcount for our team. I need you to write up the role descriptions and leveling by Feb 14 so recruiting can post them. Thinking: 1 senior frontend (for Dashboard V2) and 1 mid-level backend (for the API platform). Sound right? If so, I'll tell recruiting to expect the JDs by Valentine's Day. Let's finalize in our 1:1.",
+    "received_ts": "2026-02-05T20:30:00-08:00",
+    "labels": ["inbox", "important"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_220",
+    "sender": "noreply@calendar.google.com",
+    "subject": "Invitation: Product Sync with Sales Team — Feb 10, 2pm PST",
+    "body": "You've been invited to: Product Sync with Sales Team. When: Tuesday, Feb 10 at 2:00pm–3:00pm PST. Where: Zoom. Organizer: Lisa Wang. Note: Monthly product-sales alignment. Lisa wants to discuss customer feedback themes and upcoming feature requests from the sales pipeline.",
+    "received_ts": "2026-02-05T16:30:00-08:00",
+    "labels": ["inbox", "calendar"],
+    "is_urgent": false
+  }
+]

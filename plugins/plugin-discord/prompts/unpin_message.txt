@@ -1,0 +1,21 @@
+# Unpinning a Discord message
+{{recentMessages}}
+
+# Instructions: {{senderName}} wants to unpin a message. Extract which message they want to unpin.
+
+Examples:
+- "unpin that message" -> messageRef: "last_pinned"
+- "unpin the last pinned message" -> messageRef: "last_pinned"
+- "unpin john's message" -> messageRef: "john"
+- "unpin message about the meeting" -> messageRef: "meeting"
+
+Your response must be formatted as a JSON block:
+```json
+{
+  "messageRef": "<last_pinned|message-id|search-text>"
+}
+```
+
+
+
+

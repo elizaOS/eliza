@@ -1,0 +1,11 @@
+{
+  "extends": ["@ionic/eslint-config"],
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/",
+    "android/",
+    "ios/",
+    "coverage/",
+    "electrobun/src/**/*.bak"
+  ]
+}

@@ -1,0 +1,33 @@
+# Local Postgres for Eliza using Supabase's Postgres image.
+#
+# Eliza only needs a PostgreSQL database (plugin-sql). You do NOT need the
+# full Supabase stack (auth/rest/realtime/storage) unless you want Studio.
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.supabase-db.yml up -d
+#   # then set in ~/.eliza/eliza.json:
+#   #   database.provider = "postgres"
+#   #   database.postgres.connectionString = "postgresql://postgres:postgres@localhost:54322/eliza"
+#
+services:
+  eliza-db:
+    # If this tag ever fails to pull, try: supabase/postgres:latest
+    image: supabase/postgres:17.6.1.113
+    container_name: eliza-db
+    restart: unless-stopped
+    ports:
+      - "54322:5432"
+    environment:
+      POSTGRES_DB: eliza
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - eliza-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d eliza"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  eliza-db-data:

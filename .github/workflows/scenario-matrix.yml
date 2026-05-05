@@ -1,0 +1,263 @@
+name: Scenario Matrix (develop)
+
+# Runs the full scenario matrix against real sandboxed external services.
+# - Disabled by default on `develop` pushes; set repository variable
+#   `ELIZA_SCENARIO_MATRIX_ENABLED=true` or use workflow_dispatch with
+#   `enabled=true` to run it.
+# - NOT run on PRs — PRs run a smaller scenario-critical-subset job.
+# - All credentials are ELIZA_E2E_* GitHub Actions secrets sourced from the
+#   `eliza-e2e` 1Password vault.
+#
+# 1Password vault: the `eliza-e2e` vault must exist in 1Password and the
+# corresponding `ELIZA_E2E_*` GitHub Actions secrets must be configured on
+# the `elizaOS/eliza` repo before this workflow can run successfully.
+#
+# Sharding: 8 shards total. Apple-ecosystem shards (iMessage, BlueBubbles) run on a
+# self-hosted macOS runner tagged `eliza-e2e-macos`; everything else runs on
+# GitHub-hosted `ubuntu-24.04`.
+# TODO: the `eliza-e2e-macos` self-hosted runner must be registered on the
+# `elizaOS/eliza` repo settings (Settings → Actions → Runners) before any
+# Apple-ecosystem shard can execute.
+#
+# This workflow remains opt-in until the scenario catalog is stable enough to be
+# a develop gate.
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      enabled:
+        description: "Enable the scenario matrix run (false = no-op)"
+        required: false
+        default: "false"
+      shards:
+        description: "Comma-separated shard names to run (empty = all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: scenario-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "22.20.0"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+  ELIZA_LIVE_TEST: "1"
+  ELIZA_LIVE_SCENARIO_TEST: "1"
+
+jobs:
+  disabled:
+    name: Scenario Matrix Disabled
+    if: ${{ inputs.enabled != 'true' && vars.ELIZA_SCENARIO_MATRIX_ENABLED != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Explain disabled state
+        run: |
+          echo "Scenario Matrix is disabled for this run."
+          echo "Set repository variable ELIZA_SCENARIO_MATRIX_ENABLED=true or dispatch with enabled=true to run it."
+
+  matrix:
+    name: "scenario-matrix: ${{ matrix.shard.name }}"
+    if: ${{ inputs.enabled == 'true' || vars.ELIZA_SCENARIO_MATRIX_ENABLED == 'true' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard:
+          - name: messaging
+            runs-on: ubuntu-24.04
+            globs: "eliza/test/scenarios/messaging.*/**/*.scenario.ts"
+          - name: messaging-apple
+            runs-on: [self-hosted, eliza-e2e-macos]
+            globs: "eliza/test/scenarios/messaging.imessage/**/*.scenario.ts eliza/test/scenarios/messaging.signal/**/*.scenario.ts"
+          - name: todos-reminders
+            runs-on: ubuntu-24.04
+            globs: "eliza/test/scenarios/todos/**/*.scenario.ts eliza/test/scenarios/reminders/**/*.scenario.ts"
+          - name: calendar
+            runs-on: ubuntu-24.04
+            globs: "eliza/test/scenarios/calendar/**/*.scenario.ts"
+          - name: relationships
+            runs-on: ubuntu-24.04
+            globs: "eliza/test/scenarios/relationships/**/*.scenario.ts"
+          - name: selfcontrol-activity
+            runs-on: [self-hosted, eliza-e2e-macos]
+            globs: "eliza/test/scenarios/selfcontrol/**/*.scenario.ts eliza/test/scenarios/activity/**/*.scenario.ts"
+          - name: browser-social
+            runs-on: ubuntu-24.04
+            globs: "eliza/test/scenarios/browser.*/**/*.scenario.ts eliza/test/scenarios/social.*/**/*.scenario.ts"
+          - name: cross-cutting-gateway
+            runs-on: ubuntu-24.04
+            globs: "eliza/test/scenarios/cross-cutting/**/*.scenario.ts eliza/test/scenarios/gateway/**/*.scenario.ts eliza/test/scenarios/remote/**/*.scenario.ts eliza/test/scenarios/lifeops.*/**/*.scenario.ts eliza/test/scenarios/goals/**/*.scenario.ts eliza/test/scenarios/convo/**/*.scenario.ts"
+          - name: lifeops-app
+            runs-on: ubuntu-24.04
+            root: plugins/app-lifeops/test/scenarios
+            globs: "**/*.scenario.ts"
+    runs-on: ${{ matrix.shard.runs-on }}
+    timeout-minutes: 60
+
+    env:
+      # LLM providers under upstream `ELIZA_E2E_*` alias names that the
+      # scenario-runner's live-provider helper checks. Falls back to plain
+      # repo-level provider keys when the eliza-e2e vault entries are absent.
+      ELIZA_E2E_GROQ_API_KEY: ${{ secrets.ELIZA_E2E_GROQ_API_KEY || secrets.GROQ_API_KEY }}
+      ELIZA_E2E_OPENAI_API_KEY: ${{ secrets.ELIZA_E2E_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}
+      ELIZA_E2E_ANTHROPIC_API_KEY: ${{ secrets.ELIZA_E2E_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}
+      ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY || secrets.GOOGLE_GENERATIVE_AI_API_KEY || secrets.GOOGLE_API_KEY }}
+      ELIZA_E2E_OPENROUTER_API_KEY: ${{ secrets.ELIZA_E2E_OPENROUTER_API_KEY || secrets.OPENROUTER_API_KEY }}
+
+      # Gmail / Google Workspace
+      ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID }}
+      ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET }}
+      ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN }}
+      ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS }}
+      ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID }}
+      ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET }}
+      ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN }}
+      ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS }}
+
+      # Calendly
+      ELIZA_E2E_CALENDLY_ACCESS_TOKEN: ${{ secrets.ELIZA_E2E_CALENDLY_ACCESS_TOKEN }}
+      ELIZA_E2E_CALENDLY_HOST_URI: ${{ secrets.ELIZA_E2E_CALENDLY_HOST_URI }}
+      ELIZA_E2E_CALENDLY_EVENT_TYPE_URI: ${{ secrets.ELIZA_E2E_CALENDLY_EVENT_TYPE_URI }}
+
+      # Discord
+      ELIZA_E2E_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_E2E_DISCORD_BOT_TOKEN }}
+      ELIZA_E2E_DISCORD_CLIENT_ID: ${{ secrets.ELIZA_E2E_DISCORD_CLIENT_ID }}
+      ELIZA_E2E_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_DISCORD_CLIENT_SECRET }}
+      ELIZA_E2E_DISCORD_QA_GUILD_ID: ${{ secrets.ELIZA_E2E_DISCORD_QA_GUILD_ID }}
+      ELIZA_E2E_DISCORD_QA_CHANNEL_ID: ${{ secrets.ELIZA_E2E_DISCORD_QA_CHANNEL_ID }}
+      ELIZA_E2E_DISCORD_USER_RELAY_TOKEN: ${{ secrets.ELIZA_E2E_DISCORD_USER_RELAY_TOKEN }}
+
+      # Telegram
+      ELIZA_E2E_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_E2E_TELEGRAM_BOT_TOKEN }}
+      ELIZA_E2E_TELEGRAM_APP_ID: ${{ secrets.ELIZA_E2E_TELEGRAM_APP_ID }}
+      ELIZA_E2E_TELEGRAM_APP_HASH: ${{ secrets.ELIZA_E2E_TELEGRAM_APP_HASH }}
+      ELIZA_E2E_TELEGRAM_USERBOT_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_TELEGRAM_USERBOT_PHONE_NUMBER }}
+      ELIZA_E2E_TELEGRAM_USERBOT_SESSION_STRING: ${{ secrets.ELIZA_E2E_TELEGRAM_USERBOT_SESSION_STRING }}
+      ELIZA_E2E_TELEGRAM_CHAT_ID: ${{ secrets.ELIZA_E2E_TELEGRAM_CHAT_ID }}
+
+      # Twitter / X
+      ELIZA_E2E_TWITTER_CLIENT_ID: ${{ secrets.ELIZA_E2E_TWITTER_CLIENT_ID }}
+      ELIZA_E2E_TWITTER_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_TWITTER_CLIENT_SECRET }}
+      ELIZA_E2E_TWITTER_USER_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_TWITTER_USER_REFRESH_TOKEN }}
+      ELIZA_E2E_TWITTER_FRIEND_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_TWITTER_FRIEND_REFRESH_TOKEN }}
+      ELIZA_E2E_TWITTER_USER_HANDLE: ${{ secrets.ELIZA_E2E_TWITTER_USER_HANDLE }}
+      ELIZA_E2E_TWITTER_FRIEND_HANDLE: ${{ secrets.ELIZA_E2E_TWITTER_FRIEND_HANDLE }}
+
+      # Signal
+      ELIZA_E2E_SIGNAL_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_SIGNAL_PHONE_NUMBER }}
+      ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER }}
+      ELIZA_E2E_SIGNAL_DATA_DIR: ${{ secrets.ELIZA_E2E_SIGNAL_DATA_DIR }}
+
+      # WhatsApp
+      ELIZA_E2E_WHATSAPP_ACCESS_TOKEN: ${{ secrets.ELIZA_E2E_WHATSAPP_ACCESS_TOKEN }}
+      ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID }}
+      ELIZA_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ secrets.ELIZA_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID }}
+      ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
+      ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER }}
+
+      # Twilio
+      ELIZA_E2E_TWILIO_ACCOUNT_SID: ${{ secrets.ELIZA_E2E_TWILIO_ACCOUNT_SID }}
+      ELIZA_E2E_TWILIO_API_KEY_SID: ${{ secrets.ELIZA_E2E_TWILIO_API_KEY_SID }}
+      ELIZA_E2E_TWILIO_API_KEY_SECRET: ${{ secrets.ELIZA_E2E_TWILIO_API_KEY_SECRET }}
+      ELIZA_E2E_TWILIO_SMS_FROM: ${{ secrets.ELIZA_E2E_TWILIO_SMS_FROM }}
+      ELIZA_E2E_TWILIO_VOICE_FROM: ${{ secrets.ELIZA_E2E_TWILIO_VOICE_FROM }}
+      ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID: ${{ secrets.ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID }}
+      ELIZA_E2E_TWILIO_RECIPIENT: ${{ secrets.ELIZA_E2E_TWILIO_RECIPIENT }}
+
+      # BlueBubbles
+      ELIZA_E2E_BLUEBUBBLES_SERVER_URL: ${{ secrets.ELIZA_E2E_BLUEBUBBLES_SERVER_URL }}
+      ELIZA_E2E_BLUEBUBBLES_PASSWORD: ${{ secrets.ELIZA_E2E_BLUEBUBBLES_PASSWORD }}
+      ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE: ${{ secrets.ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE }}
+
+      # GitHub
+      ELIZA_E2E_GITHUB_USER_PAT: ${{ secrets.ELIZA_E2E_GITHUB_USER_PAT }}
+      ELIZA_E2E_GITHUB_AGENT_PAT: ${{ secrets.ELIZA_E2E_GITHUB_AGENT_PAT }}
+      ELIZA_E2E_GITHUB_ORG: ${{ secrets.ELIZA_E2E_GITHUB_ORG }}
+      ELIZA_E2E_GITHUB_TEMPLATE_REPO: ${{ secrets.ELIZA_E2E_GITHUB_TEMPLATE_REPO }}
+
+      # 1Password autofill vault
+      ELIZA_E2E_ONEPASS_SA_TOKEN: ${{ secrets.ELIZA_E2E_ONEPASS_SA_TOKEN }}
+      ELIZA_E2E_ONEPASS_VAULT_ID: ${{ secrets.ELIZA_E2E_ONEPASS_VAULT_ID }}
+
+      # Eliza Cloud
+      ELIZA_E2E_ELIZACLOUD_API_KEY: ${{ secrets.ELIZA_E2E_ELIZACLOUD_API_KEY }}
+      ELIZA_E2E_ELIZACLOUD_BASE_URL: ${{ secrets.ELIZA_E2E_ELIZACLOUD_BASE_URL }}
+
+      # Apple
+      ELIZA_E2E_APPLE_TEAM_ID: ${{ secrets.ELIZA_E2E_APPLE_TEAM_ID }}
+      ELIZA_E2E_APPLE_APNS_KEY_ID: ${{ secrets.ELIZA_E2E_APPLE_APNS_KEY_ID }}
+      ELIZA_E2E_APPLE_APNS_KEY_P8: ${{ secrets.ELIZA_E2E_APPLE_APNS_KEY_P8 }}
+      ELIZA_E2E_APPLE_APNS_TOPIC: ${{ secrets.ELIZA_E2E_APPLE_APNS_TOPIC }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Run scenario shard
+        id: run
+        # TODO: scenario-runner CLI bin is still named `eliza-scenarios` in
+        # packages/scenario-runner/package.json. Rename to `eliza-scenarios`
+        # in a follow-up and update the command below.
+        run: |
+          set -f
+          bun run eliza-scenarios run \
+            ${{ matrix.shard.root || 'eliza/test/scenarios' }} \
+            --report-dir reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }} \
+            --runId "${{ github.run_id }}-${{ matrix.shard.name }}" \
+            ${{ matrix.shard.globs }}
+        continue-on-error: false
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scenario-report-${{ matrix.shard.name }}
+          path: reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }}/
+
+  summary:
+    name: Matrix summary
+    needs: [matrix]
+    if: ${{ always() && needs.matrix.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download all shard reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: scenario-report-*
+          path: reports/scenarios/all
+          merge-multiple: true
+
+      - name: Aggregate
+        run: bun run scripts/aggregate-scenario-reports.mjs reports/scenarios/all >> "$GITHUB_STEP_SUMMARY"

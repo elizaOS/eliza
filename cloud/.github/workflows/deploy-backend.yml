@@ -1,0 +1,429 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - '.github/workflows/deploy-backend.yml'
+      - 'apps/api/**'
+      - 'apps/frontend/**'
+      - 'packages/config/**'
+      - 'packages/content/**'
+      - 'packages/lib/**'
+      - 'packages/db/**'
+      - 'packages/scripts/**'
+      - 'packages/services/**'
+      - 'packages/types/**'
+      - 'packages/ui/**'
+      - 'public/**'
+      - 'services/**'
+      - 'drizzle.config.ts'
+      - 'package.json'
+      - 'postcss.config.mjs'
+      - 'bun.lock'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      deploy_legacy_vps:
+        description: 'Run the legacy VPS deploy after migrations'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "1.3.9"
+
+jobs:
+  determine-env:
+    name: Determine Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      branch: ${{ steps.env.outputs.branch }}
+    steps:
+      - name: Set environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "branch=${{ github.event.inputs.environment == 'production' && 'main' || 'develop' }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "branch=main" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "branch=develop" >> $GITHUB_OUTPUT
+          fi
+
+  migrate-db:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    needs: determine-env
+    environment: ${{ needs.determine-env.outputs.environment }}
+    timeout-minutes: 10
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if [ "$attempt" -eq 3 ]; then
+              bun install --frozen-lockfile --verbose && exit 0
+            else
+              bun install --frozen-lockfile && exit 0
+            fi
+
+            echo "bun install attempt $attempt failed; retrying in 10s..."
+            sleep 10
+          done
+
+          exit 1
+
+      - name: Skip migrations when database secret is unavailable
+        if: ${{ env.MIGRATION_DATABASE_URL == '' }}
+        run: |
+          echo "DATABASE_URL/RAILWAY_DATABASE_URL/NEON_DATABASE_URL is not configured for the ${{ needs.determine-env.outputs.environment }} environment; skipping database migrations." >> $GITHUB_STEP_SUMMARY
+
+      - name: Run migrations
+        if: ${{ env.MIGRATION_DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+        run: bun run db:migrate
+
+      - name: Notify Discord (Success)
+        if: success() && env.MIGRATION_DATABASE_URL != ''
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "🗄️ Database Migrated"
+          nodetail: true
+          description: |
+            Environment: ${{ needs.determine-env.outputs.environment }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0x00ff00
+
+      - name: Notify Discord (Failure)
+        if: failure() && env.MIGRATION_DATABASE_URL != ''
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "❌ Database Migration Failed"
+          nodetail: true
+          description: |
+            Environment: ${{ needs.determine-env.outputs.environment }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0xff0000
+
+  deploy:
+    name: Deploy to agent VPS
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_legacy_vps }}
+    runs-on: ubuntu-latest
+    needs: [determine-env, migrate-db]
+    environment: ${{ needs.determine-env.outputs.environment }}
+    timeout-minutes: 45
+    env:
+      DEPLOY_VPS_HOST: ${{ secrets.AGENT_VPS_HOST || secrets.ELIZA_VPS_HOST }}
+      DEPLOY_VPS_SSH_KEY: ${{ secrets.AGENT_VPS_SSH_KEY || secrets.ELIZA_VPS_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if [ "$attempt" -eq 3 ]; then
+              bun install --frozen-lockfile --verbose && exit 0
+            else
+              bun install --frozen-lockfile && exit 0
+            fi
+
+            echo "bun install attempt $attempt failed; retrying in 10s..."
+            sleep 10
+          done
+
+          exit 1
+
+      - name: Build backend artifact
+        run: bun run build:deploy
+
+      - name: Prepare SSH access
+        run: |
+          if [ -z "$DEPLOY_VPS_HOST" ] || [ -z "$DEPLOY_VPS_SSH_KEY" ]; then
+            echo "::error::Missing VPS deploy secrets. Configure AGENT_VPS_HOST/AGENT_VPS_SSH_KEY or ELIZA_VPS_HOST/ELIZA_VPS_SSH_KEY for the GitHub environment."
+            exit 1
+          fi
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -H "$DEPLOY_VPS_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Prepare VPS checkout
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.DEPLOY_VPS_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_VPS_SSH_KEY }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            echo "=== Deploying eliza-cloud backend ==="
+
+            sudo chown -R deploy:deploy /opt/eliza-cloud
+            cd /opt/eliza-cloud
+            # Use env-based config to avoid writing ~/.gitconfig (lock file failures)
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0=safe.directory
+            export GIT_CONFIG_VALUE_0=/opt/eliza-cloud
+
+            # --- Disk cleanup (prevents "Out of diskspace" failures) ---
+            echo "Disk before cleanup:"
+            df -h / | tail -1
+
+            # Remove stale index.lock FIRST (previous failed git op leaves this)
+            rm -f .git/index.lock
+
+            # Remove previous build output and local build caches.
+            # Keep node_modules in place so bun install can reuse the existing
+            # tree instead of redownloading the full dependency graph onto a
+            # nearly-full VPS.
+            rm -rf .next-build .next .turbo node_modules/.cache
+
+            # Drop all accumulated deploy stashes
+            git stash clear 2>/dev/null || true
+
+            # Prune loose git objects
+            git prune 2>/dev/null || true
+
+            # Trim Bun/Turbo caches aggressively
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+            rm -rf "$HOME/.bun/install/cache" "$HOME/.cache/bun" "$HOME/.cache/turbo"
+            if command -v bun >/dev/null 2>&1; then
+              bun pm cache rm 2>/dev/null || true
+            fi
+
+            # Free host-level disk before touching the checkout. The root
+            # filesystem fills up outside /opt/eliza-cloud too, especially with
+            # old Docker layers, package caches, and journals.
+            sudo apt-get clean 2>/dev/null || true
+            sudo journalctl --vacuum-size=500M 2>/dev/null || true
+            sudo docker system prune -af 2>/dev/null || true
+            sudo rm -rf /root/.bun/install/cache /root/.cache/bun /root/.cache/turbo 2>/dev/null || true
+
+            # Discard local checkout drift before fetch. Cleaning untracked
+            # files first frees space for git to rewrite tracked files.
+            # Preserve the server's environment file and keep dependency trees
+            # if there is enough free disk to reuse them.
+            echo "Discarding local checkout drift..."
+            git clean -fdx \
+              -e .env \
+              -e .env.local \
+              -e .env.* \
+              -e node_modules \
+              -e services/gateway-discord/node_modules \
+              -e services/gateway-webhook/node_modules \
+              -e packages/ui/node_modules \
+              -e services/agent-server/node_modules 2>/dev/null || true
+            rm -f .git/index.lock
+            git checkout -- . 2>/dev/null || true
+            rm -f .git/index.lock
+
+            # The systemd unit on the VPS expects a repo-local env file, but the
+            # exact filename can vary across older hosts. Preserve all root env
+            # files and recreate the common aliases from whichever one survived.
+            ENV_SOURCE=""
+            for candidate in .env.local .env.production .env.staging .env; do
+              if [ -f "$candidate" ]; then
+                ENV_SOURCE="$candidate"
+                break
+              fi
+            done
+
+            if [ -n "$ENV_SOURCE" ]; then
+              for alias in .env .env.local .env.production .env.staging; do
+                if [ ! -e "$alias" ]; then
+                  ln -s "$ENV_SOURCE" "$alias"
+                fi
+              done
+            fi
+
+            echo "Env files available on VPS checkout:"
+            ls -la .env* 2>/dev/null || true
+
+            AVAILABLE_KB="$(df --output=avail -k / | tail -1 | tr -d ' ')"
+            if [ "${AVAILABLE_KB:-0}" -lt 5000000 ]; then
+              echo "Still under 5GB free; removing workspace node_modules as a fallback..."
+              rm -rf \
+                node_modules \
+                services/gateway-discord/node_modules \
+                services/gateway-webhook/node_modules \
+                packages/ui/node_modules \
+                services/agent-server/node_modules
+            fi
+
+            echo "Disk after cleanup:"
+            df -h / | tail -1
+            # --- End disk cleanup ---
+
+            # Fetch and checkout
+            BRANCH="${{ needs.determine-env.outputs.branch }}"
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+
+            # Install runtime dependencies and regenerate lightweight assets.
+            if ! command -v bun >/dev/null 2>&1; then
+              curl -fsSL https://bun.sh/install | bash
+              export PATH="$BUN_INSTALL/bin:$PATH"
+            fi
+            for attempt in 1 2 3; do
+              if bun install --frozen-lockfile; then
+                break
+              fi
+
+              if [ "$attempt" -eq 3 ]; then
+                exit 1
+              fi
+
+              echo "bun install attempt $attempt failed; retrying in 10s..."
+              sleep 10
+            done
+
+            bun run generate:llms
+
+            # The build now runs on GitHub Actions to avoid ENOSPC during
+            # `next build` on the VPS. Clear any stale output and leave an empty
+            # destination for the streamed artifact.
+            rm -rf "$HOME/.bun/install/cache" "$HOME/.cache/bun"
+            rm -rf node_modules/.cache
+            rm -rf .next-build
+            mkdir -p .next-build
+
+      - name: Upload prebuilt Next output
+        run: |
+          # Only ship the runtime output. The webpack cache dominates .next-build
+          # size locally but is not needed by `next start` on the VPS.
+          tar -C .next-build -czf - \
+            BUILD_ID \
+            app-path-routes-manifest.json \
+            build-manifest.json \
+            export-marker.json \
+            images-manifest.json \
+            next-minimal-server.js.nft.json \
+            next-server.js.nft.json \
+            package.json \
+            prerender-manifest.json \
+            react-loadable-manifest.json \
+            required-server-files.js \
+            required-server-files.json \
+            routes-manifest.json \
+            server \
+            static | ssh -i "$HOME/.ssh/id_ed25519" \
+            deploy@"$DEPLOY_VPS_HOST" \
+            'set -e; cd /opt/eliza-cloud; rm -rf .next .next-build/*; tar -xzf - -C .next-build; ln -sfn .next-build .next'
+
+      - name: Restart services
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.DEPLOY_VPS_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd /opt/eliza-cloud
+            rm -rf .next
+            ln -sfn .next-build .next
+
+            if ! sudo systemctl restart eliza-cloud; then
+              sudo systemctl cat eliza-cloud || true
+              sudo systemctl show eliza-cloud \
+                --property=FragmentPath,EnvironmentFiles,ExecStart,WorkingDirectory || true
+              ls -la /opt/eliza-cloud/.env* 2>/dev/null || true
+              sudo systemctl status eliza-cloud --no-pager || true
+              sudo journalctl -u eliza-cloud -n 100 --no-pager || true
+              exit 1
+            fi
+
+            sudo systemctl restart agent-provisioning-worker
+            echo "=== Deploy complete ==="
+
+      - name: Health Check
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.DEPLOY_VPS_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            echo "Checking eliza-cloud health..."
+            for attempt in $(seq 1 18); do
+              for url in http://localhost:3000/api/health http://localhost:3334/api/health; do
+                if curl -sf "$url" > /dev/null; then
+                  echo "Health check passed on attempt $attempt via $url."
+                  exit 0
+                fi
+              done
+
+              echo "Health check attempt $attempt/18 failed; retrying in 5s..."
+              sleep 5
+            done
+
+            echo "eliza-cloud failed health checks after 90s. Collecting diagnostics..."
+            sudo ss -ltnp | grep -E ':(3000|3334)\\s' || true
+            sudo systemctl status eliza-cloud --no-pager || true
+            sudo journalctl -u eliza-cloud -n 100 --no-pager || true
+            exit 1
+
+      - name: Notify Discord
+        if: success()
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "🚀 Backend Deployed"
+          description: |
+            Environment: ${{ needs.determine-env.outputs.environment }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0x00ff00
+
+      - name: Notify Discord (Failure)
+        if: failure()
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "❌ Backend Deploy Failed"
+          description: |
+            Environment: ${{ needs.determine-env.outputs.environment }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0xff0000

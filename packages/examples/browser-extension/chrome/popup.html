@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat with Webpage - ElizaOS</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">🤖</div>
+        <div class="title-section">
+          <h1>Chat with Webpage</h1>
+          <div class="status">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">Initializing...</span>
+          </div>
+        </div>
+      </div>
+      <button class="settings-btn" id="settingsBtn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Page Info Banner -->
+    <div class="page-info" id="pageInfo">
+      <div class="page-icon">📄</div>
+      <div class="page-details">
+        <div class="page-title" id="pageTitle">Loading page...</div>
+        <div class="page-url" id="pageUrl"></div>
+        <div class="context-indicators" id="contextIndicators">
+          <span class="context-badge" id="selectionBadge" style="display: none;" title="Selected text included">
+            ✂️ Selection
+          </span>
+          <span class="context-badge" id="screenshotBadge" style="display: none;" title="Screenshot included">
+            📷 Screenshot
+          </span>
+        </div>
+      </div>
+      <button class="screenshot-btn" id="screenshotBtn" title="Include screenshot">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21,15 16,10 5,21"></polyline>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Chat Messages -->
+    <div class="chat-container" id="chatContainer">
+      <div class="messages" id="messages">
+        <!-- Messages will be inserted here -->
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="input-area">
+      <form id="messageForm" class="message-form">
+        <input
+          type="text"
+          id="messageInput"
+          placeholder="Ask about this webpage..."
+          autocomplete="off"
+          disabled
+        >
+        <button type="submit" id="sendBtn" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+          </svg>
+        </button>
+      </form>
+      <div class="input-hint">
+        Press Enter to send • <button class="link-btn" id="clearChatBtn">Clear chat</button>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="close-btn" id="closeSettingsBtn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- Provider Selection -->
+          <div class="settings-section">
+            <h3>AI Provider</h3>
+            <div class="field">
+              <label for="providerSelect">Active Provider</label>
+              <select id="providerSelect">
+                <option value="elizaClassic">ELIZA (offline)</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="xai">xAI (Grok)</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="groq">Groq</option>
+              </select>
+            </div>
+            <div class="field-note" id="providerNote">
+              <span class="dot"></span>
+              <span class="note-text"></span>
+            </div>
+          </div>
+
+          <!-- OpenAI Settings -->
+          <div class="settings-section provider-settings" id="openaiSettings">
+            <h3>OpenAI Settings</h3>
+            <div class="field">
+              <label for="openaiApiKey">API Key</label>
+              <input type="password" id="openaiApiKey" placeholder="sk-...">
+            </div>
+          </div>
+
+          <!-- Anthropic Settings -->
+          <div class="settings-section provider-settings" id="anthropicSettings">
+            <h3>Anthropic Settings</h3>
+            <div class="field">
+              <label for="anthropicApiKey">API Key</label>
+              <input type="password" id="anthropicApiKey" placeholder="sk-ant-...">
+            </div>
+          </div>
+
+          <!-- xAI Settings -->
+          <div class="settings-section provider-settings" id="xaiSettings">
+            <h3>xAI (Grok) Settings</h3>
+            <div class="field">
+              <label for="xaiApiKey">API Key</label>
+              <input type="password" id="xaiApiKey" placeholder="xai-...">
+            </div>
+          </div>
+
+          <!-- Gemini Settings -->
+          <div class="settings-section provider-settings" id="geminiSettings">
+            <h3>Google Gemini Settings</h3>
+            <div class="field">
+              <label for="geminiApiKey">API Key</label>
+              <input type="password" id="geminiApiKey" placeholder="AI...">
+            </div>
+          </div>
+
+          <!-- Groq Settings -->
+          <div class="settings-section provider-settings" id="groqSettings">
+            <h3>Groq Settings</h3>
+            <div class="field">
+              <label for="groqApiKey">API Key</label>
+              <input type="password" id="groqApiKey" placeholder="gsk_...">
+            </div>
+          </div>
+
+          <!-- Screenshot Settings -->
+          <div class="settings-section">
+            <h3>Vision Settings</h3>
+            <div class="field checkbox-field">
+              <label>
+                <input type="checkbox" id="includeScreenshots">
+                Include screenshots with messages (for vision-capable models)
+              </label>
+            </div>
+            <p class="settings-note-small">Screenshots help AI understand visual content. Works best with GPT-4o, Claude 3, and Gemini.</p>
+          </div>
+
+          <div class="settings-note">
+            <strong>Note:</strong> API keys are stored locally in your browser and never sent to our servers.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="dist/popup.js"></script>
+</body>
+</html>

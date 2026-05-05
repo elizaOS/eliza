@@ -1,0 +1,444 @@
+---
+title: App Domains
+description: Configure custom domains for your multi-tenant applications on elizaOS Cloud. Add wildcard subdomains and bring your own custom domains.
+---
+
+import { Callout, Steps, Tabs, Cards } from "@/docs/components";
+
+# App Domains
+
+Configure custom domains for your multi-tenant applications with automatic SSL and DNS management.
+
+<div className="status-badge status-stable">Stable</div>
+
+## Overview
+
+Domain management in elizaOS Cloud supports:
+
+- **Wildcard Subdomains**: Automatic `*.apps.elizacloud.ai` subdomains for every app
+- **Custom Domains**: Bring your own domain like `myapp.com` or `app.example.com`
+- **Automatic SSL**: Free TLS certificates provisioned automatically
+- **DNS Verification**: Easy domain ownership verification
+- **Multi-tenant Routing**: Route traffic to the correct app based on domain
+
+## Quick Start
+
+### Dashboard
+
+Navigate to [Dashboard → Apps](/dashboard/apps) and select an app to manage its domains.
+
+### API
+
+```bash
+# Add a custom domain to your app
+curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "myapp.example.com"
+  }'
+```
+
+## How Domain Routing Works
+
+<Steps>
+### App Deployment
+
+When you deploy an app, it automatically receives a subdomain like `myapp.apps.elizacloud.ai`.
+
+### Custom Domain (Optional)
+
+Add your own domain and configure DNS records.
+
+### SSL Provisioning
+
+Vercel automatically provisions SSL certificates for all domains.
+
+### Traffic Routing
+
+Requests are routed to your app based on the incoming domain.
+
+</Steps>
+
+## Using Wildcard Subdomains
+
+Every deployed app automatically gets a subdomain under `apps.elizacloud.ai`:
+
+```
+https://myapp.apps.elizacloud.ai
+```
+
+This works immediately with no DNS configuration required.
+
+### Subdomain Rules
+
+| Rule                        | Example                | Valid          |
+| --------------------------- | ---------------------- | -------------- |
+| Min 3 characters            | `ab`                   | ❌             |
+| Max 63 characters           | `my-long-subdomain...` | ✅             |
+| Alphanumeric + hyphens      | `my-app-v2`            | ✅             |
+| No leading/trailing hyphens | `-myapp-`              | ❌             |
+| Lowercase only              | `MyApp` → `myapp`      | Auto-converted |
+
+### Reserved Subdomains
+
+The following subdomains are reserved and cannot be used:
+
+- System: `www`, `api`, `admin`, `dashboard`, `app`, `apps`
+- Auth: `auth`, `login`, `signup`, `register`, `account`
+- Infrastructure: `cdn`, `static`, `assets`, `media`, `webhook`
+- Development: `staging`, `dev`, `test`, `demo`, `preview`, `beta`
+
+## Adding Custom Domains
+
+Custom domains let you use your own branded URLs like `myapp.com` or `app.company.com`.
+
+### Add Domain via API
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "myapp.example.com"
+  }'
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "domain": "myapp.example.com",
+  "verified": false,
+  "verificationRecords": [
+    {
+      "type": "TXT",
+      "name": "_vercel.myapp.example.com",
+      "value": "vc-domain-verify=abc123..."
+    }
+  ],
+  "dnsInstructions": [
+    {
+      "type": "CNAME",
+      "name": "myapp",
+      "value": "cname.vercel-dns.com"
+    }
+  ],
+  "isApexDomain": false
+}
+```
+
+## DNS Configuration
+
+### Subdomains (CNAME)
+
+For subdomains like `app.example.com`:
+
+| Type  | Name  | Value                  |
+| ----- | ----- | ---------------------- |
+| CNAME | `app` | `cname.vercel-dns.com` |
+
+### Root/Apex Domains (A Record)
+
+For apex domains like `example.com`:
+
+| Type | Name | Value         |
+| ---- | ---- | ------------- |
+| A    | `@`  | `76.76.21.21` |
+
+<Callout type="info">
+  DNS changes can take 5 minutes to 48 hours to propagate worldwide. You can
+  check propagation status at [whatsmydns.net](https://www.whatsmydns.net/).
+</Callout>
+
+## Verifying Domain Ownership
+
+If your domain is already registered elsewhere on Vercel, you'll need to add a TXT record to verify ownership.
+
+### Verify via API
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/verify" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "myapp.example.com"
+  }'
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "verified": true,
+  "status": {
+    "domain": "myapp.example.com",
+    "status": "valid",
+    "configured": true,
+    "verified": true,
+    "sslStatus": "provisioning",
+    "configuredBy": "CNAME",
+    "isApexDomain": false
+  }
+}
+```
+
+## Checking Domain Status
+
+Monitor your domain's DNS and SSL status:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/status" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "myapp.example.com"
+  }'
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "domain": "myapp.example.com",
+  "status": "valid",
+  "configured": true,
+  "verified": true,
+  "sslStatus": "active",
+  "sslExpiresAt": "2025-04-15T00:00:00Z",
+  "configuredBy": "CNAME",
+  "records": [],
+  "isApexDomain": false,
+  "dnsInstructions": [
+    {
+      "type": "CNAME",
+      "name": "myapp",
+      "value": "cname.vercel-dns.com"
+    }
+  ]
+}
+```
+
+### Status Values
+
+| Status    | Description                      |
+| --------- | -------------------------------- |
+| `pending` | DNS records not yet detected     |
+| `valid`   | Domain properly configured       |
+| `invalid` | DNS misconfigured, check records |
+| `unknown` | Domain not found in project      |
+
+### SSL Status Values
+
+| SSL Status     | Description                             |
+| -------------- | --------------------------------------- |
+| `pending`      | Awaiting DNS verification               |
+| `provisioning` | Certificate being issued                |
+| `active`       | Certificate active and valid            |
+| `error`        | Certificate issue (check configuration) |
+
+## Syncing Domain Status
+
+Refresh all domain statuses for an app:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/sync" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "domains": [
+    {
+      "id": "dom_abc123",
+      "subdomain": "myapp",
+      "subdomainUrl": "https://myapp.apps.elizacloud.ai",
+      "customDomain": "myapp.example.com",
+      "customDomainUrl": "https://myapp.example.com",
+      "customDomainVerified": true,
+      "sslStatus": "active",
+      "isPrimary": true
+    }
+  ],
+  "syncedAt": "2025-01-05T12:00:00Z"
+}
+```
+
+## Removing Custom Domains
+
+Remove a custom domain from your app:
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "myapp.example.com"
+  }'
+```
+
+<Callout type="warning">
+  After removing a domain, users will no longer be able to access your app via
+  that URL. The subdomain at `*.apps.elizacloud.ai` remains active.
+</Callout>
+
+## Apex and WWW Redirects
+
+For the best user experience, configure both apex and www versions:
+
+### Both Versions
+
+1. Add both `example.com` and `www.example.com` to your app
+2. Configure one to redirect to the other for consistent URLs
+
+### Recommended DNS Setup
+
+| Domain            | Type  | Value                  |
+| ----------------- | ----- | ---------------------- |
+| `example.com`     | A     | `76.76.21.21`          |
+| `www.example.com` | CNAME | `cname.vercel-dns.com` |
+
+## Avoiding Duplicate Content
+
+If the same app is accessible via both subdomain and custom domain:
+
+<Tabs items={["Canonical Tags", "Redirects"]}>
+<Tabs.Tab>
+Add canonical tags to your HTML `<head>`:
+
+```html
+<link rel="canonical" href="https://myapp.example.com/page" />
+```
+
+</Tabs.Tab>
+
+<Tabs.Tab>
+Configure redirects from subdomain to custom domain:
+
+```json
+{
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://myapp.example.com/:path*",
+      "permanent": true
+    }
+  ]
+}
+```
+
+</Tabs.Tab>
+</Tabs>
+
+## Troubleshooting
+
+### DNS Propagation Delays
+
+**Problem**: Domain not working after adding DNS records.
+
+**Solution**:
+
+- DNS changes can take 24-48 hours to propagate globally
+- Use [whatsmydns.net](https://www.whatsmydns.net/) to check propagation
+- Try clearing your local DNS cache
+
+### Domain Verification Failed
+
+**Problem**: TXT record verification not working.
+
+**Solution**:
+
+- Ensure the TXT record value is exactly as provided (no extra spaces)
+- TXT record name should include `_vercel` prefix
+- Wait 5-10 minutes after adding the record before verifying
+
+### SSL Certificate Not Provisioning
+
+**Problem**: SSL status stuck on "pending" or "provisioning".
+
+**Solution**:
+
+- Verify DNS records are correctly configured
+- Ensure no CAA records are blocking certificate issuance
+- Check that the domain is not using a CDN that might intercept SSL
+
+### Domain Already In Use
+
+**Problem**: Error saying domain is already connected to another project.
+
+**Solution**:
+
+- Add a TXT verification record to prove ownership
+- Or remove the domain from the other Vercel project first
+
+### Subdomain Length Limit
+
+**Problem**: Preview URLs fail due to length.
+
+**Solution**:
+
+- Each DNS label has a 63-character limit
+- Keep branch names and subdomain identifiers concise
+- Total domain length must be under 253 characters
+
+## Domain Security
+
+### Homograph Attack Prevention
+
+elizaOS Cloud blocks domains with:
+
+- Punycode characters (`xn--` prefixes)
+- Non-ASCII characters
+- Lookalike characters (Cyrillic, Greek homoglyphs)
+
+This prevents phishing attacks using visually similar domain names.
+
+### Domain Validation
+
+All domains are validated for:
+
+- Proper format (alphanumeric with hyphens and dots)
+- Minimum/maximum length constraints
+- Reserved subdomain conflicts
+- Existing domain conflicts with other apps
+
+## API Reference
+
+### Endpoints
+
+| Method | Endpoint                           | Description              |
+| ------ | ---------------------------------- | ------------------------ |
+| GET    | `/api/v1/apps/{id}/domains`        | List all domains         |
+| POST   | `/api/v1/apps/{id}/domains`        | Add custom domain        |
+| DELETE | `/api/v1/apps/{id}/domains`        | Remove custom domain     |
+| POST   | `/api/v1/apps/{id}/domains/verify` | Verify domain ownership  |
+| POST   | `/api/v1/apps/{id}/domains/status` | Check domain status      |
+| POST   | `/api/v1/apps/{id}/domains/sync`   | Sync all domain statuses |
+
+## Best Practices
+
+- **Use Subdomains First** — Test with `*.apps.elizacloud.ai` before adding custom domains
+- **Add Both Apex + WWW** — Configure both versions with redirects for consistency
+- **Monitor SSL Expiry** — Check `sslExpiresAt` in status responses (auto-renewed)
+- **Canonical URLs** — Set canonical tags to avoid duplicate content issues
+- **Test DNS Changes** — Use DNS lookup tools to verify records before waiting
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Apps" href="/docs/apps">
+    Create and configure apps
+  </Cards.Card>
+  <Cards.Card title="Containers" href="/docs/containers">
+    Deploy custom containers
+  </Cards.Card>
+  <Cards.Card title="API Reference" href="/docs/api/apps">
+    Complete Apps API documentation
+  </Cards.Card>
+</Cards>

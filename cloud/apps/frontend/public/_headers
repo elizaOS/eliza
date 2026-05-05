@@ -1,0 +1,25 @@
+# Cloudflare Pages headers for eliza-cloud frontend
+# Format: https://developers.cloudflare.com/pages/configuration/headers/
+#
+# Cloudflare Pages drops headers larger than ~2000 bytes silently. Keep the
+# CSP under 1900 bytes; verify with `wc -c < public/_headers`.
+# Auth is Steward-only (see cloud/AUTH_MIGRATION_NOTES.md).
+# Hosting is Cloudflare; Vercel origins are intentionally not allowlisted.
+#
+# /api/* is proxied to the Workers API by the Pages Function at
+# functions/api/[[path]].ts (true same-origin, no CORS preflight). The
+# api.elizacloud.ai entry in connect-src is kept as a fallback for direct
+# cross-origin calls but the canonical path is /api/* through the Function.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://raw.githubusercontent.com https://*.fbcdn.net https://*.cdninstagram.com https://images.unsplash.com https://pbs.twimg.com https://abs.twimg.com https://cdn.discordapp.com; font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self' https://oauth.telegram.org; frame-ancestors 'self'; child-src 'self' https://elizacloud.ai https://*.steward.fi https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://oauth.telegram.org https://www.youtube.com https://youtube.com; frame-src 'self' https://elizacloud.ai https://*.steward.fi https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://oauth.telegram.org https://www.youtube.com https://youtube.com; connect-src 'self' https://elizacloud.ai https://api.elizacloud.ai https://*.walletconnect.com https://*.walletconnect.org wss://*.walletconnect.com wss://*.walletconnect.org https://challenges.cloudflare.com https://*.steward.fi https://*.helius-rpc.com https://*.alchemy.com https://*.coinbase.com wss://*.coinbase.com https://*.web3modal.org https://*.web3modal.com https://*.reown.com https://*.phantom.app https://*.solflare.com; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://video-placeholder.eliza.ai
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-XSS-Protection: 1; mode=block
+  Permissions-Policy: camera=(), microphone=(self), geolocation=()
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
+# OAuth/popup callback pages need a relaxed COOP so window.closed works
+/app-auth/*
+  Cross-Origin-Opener-Policy: same-origin-allow-popups

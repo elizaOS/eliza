@@ -1,0 +1,129 @@
+# Deploy packages/homepage to elizaOS/elizaos.github.io (org GitHub Pages site).
+#
+# What this does:
+#   1. Builds packages/homepage (Vite static site) — the `prebuild` script in
+#      packages/homepage/package.json regenerates
+#      src/generated/release-data.ts from the GitHub Releases API before vite
+#      runs, so download buttons always reflect the latest published assets.
+#   2. Writes a CNAME file (`eliza.app`) into dist/ so GitHub Pages serves the
+#      static output at https://eliza.app/. The org-pages URL
+#      https://elizaos.github.io/ also serves the same content (it redirects to
+#      eliza.app once the CNAME is in place).
+#   3. Adds `.nojekyll` so GitHub Pages serves files/dirs that begin with `_`.
+#   4. Pushes the built site to the `gh-pages` branch of
+#      elizaOS/elizaos.github.io using a deploy key. We deliberately push to
+#      `gh-pages` (not `main`) so the leaderboard source code on `main` stays
+#      untouched in git history.
+#
+# Required secret on this repo (elizaOS/eliza):
+#   HOMEPAGE_DEPLOY_KEY
+#     - SSH private key (PEM, e.g. `ssh-keygen -t ed25519 -C "homepage-deploy" -f homepage-deploy -N ""`).
+#     - The corresponding PUBLIC key must be registered as a Deploy Key with
+#       write access on the target repo elizaOS/elizaos.github.io.
+#
+# One-time setup on elizaOS/elizaos.github.io (the leaderboard repo):
+#   - In Settings → Pages, set source to:
+#       "Deploy from a branch" → Branch: `gh-pages` / `(root)`.
+#     This switches Pages off the leaderboard's old "GitHub Actions" source.
+#   - Disable or delete the leaderboard's existing `.github/workflows/deploy.yml`
+#     so it does not race with this workflow (its `actions/deploy-pages` calls
+#     become no-ops once Pages source is changed, but disabling it removes the
+#     spurious failed-run noise).
+#
+# DNS for eliza.app:
+#   - Add A records for the apex (eliza.app) pointing at GitHub Pages IPs:
+#       185.199.108.153, 185.199.109.153, 185.199.110.153, 185.199.111.153
+#   - Or a CNAME record for www.eliza.app → elizaos.github.io.
+#   - In elizaos.github.io repo Settings → Pages, set Custom domain = eliza.app
+#     and enable "Enforce HTTPS" once the cert is provisioned.
+
+name: Deploy Homepage
+
+concurrency:
+  group: deploy-homepage
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "packages/homepage/**"
+      - "packages/app-core/scripts/write-homepage-release-data.mjs"
+      - "packages/app-core/scripts/lib/asset-cdn.mjs"
+      - ".github/workflows/deploy-homepage.yml"
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build the homepage from (defaults to the calling workflow ref)"
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build the homepage from"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install homepage dependencies
+        working-directory: packages/homepage
+        run: bun install --frozen-lockfile
+
+      - name: Refresh homepage release data
+        working-directory: packages/homepage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node ../app-core/scripts/write-homepage-release-data.mjs
+
+      - name: Build homepage
+        working-directory: packages/homepage
+        run: bun run build
+
+      - name: Write CNAME and .nojekyll
+        run: |
+          echo "eliza.app" > packages/homepage/dist/CNAME
+          touch packages/homepage/dist/.nojekyll
+
+      - name: Check deploy key availability
+        id: deploy_key_check
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.HOMEPAGE_DEPLOY_KEY }}
+        run: |
+          if [ -n "$DEPLOY_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::HOMEPAGE_DEPLOY_KEY secret not configured. Skipping deploy step. The site was built successfully but will not be published. To enable publishing, register an SSH deploy key on elizaOS/elizaos.github.io and add the private key as HOMEPAGE_DEPLOY_KEY on this repo (see workflow header for details)."
+          fi
+
+      - name: Deploy to elizaOS/elizaos.github.io (gh-pages branch)
+        if: steps.deploy_key_check.outputs.available == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.HOMEPAGE_DEPLOY_KEY }}
+          external_repository: elizaOS/elizaos.github.io
+          publish_branch: gh-pages
+          publish_dir: ./packages/homepage/dist
+          force_orphan: true
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "deploy: homepage from elizaOS/eliza@${{ github.sha }}"

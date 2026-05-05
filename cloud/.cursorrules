@@ -1,0 +1,66 @@
+# Cursor Rules for cloud
+
+## Package Management
+- Always use `bun` for package management operations (install, add, remove, run scripts)
+- Never use `npm`, `yarn`, or `pnpm` commands
+- Use `bun install` instead of `npm install`
+- Use `bun add` instead of `npm install <package>`
+- Use `bun remove` instead of `npm uninstall`
+- Use `bun run` instead of `npm run`
+
+## Git Operations
+- For git operations and links use GitHub CLI (`gh`)
+- Never make comments on PR
+
+## TypeScript
+- Never use `any` or `unknown` types, always look for the actual types
+- Always use explicit type definitions, search for existing shared types before creating new ones
+
+## AI/ML Libraries
+- Prefer to use Vercel AI SDK wherever possible for AI-related functionality
+- Use AI SDK elements for AI-related UI elements whenever possible (e.g., message components, reasoning displays, artifacts, etc.)
+
+## Documentation
+- Use Context7 MCP for library documentation whenever needed
+
+Do not use try { } catch { } blocks unless they are absolutely necessary or handling user supplied data. Avoid defensive programming and implement clean code with fail-fast patterns.
+
+IMPORTANT: After you have finished a task, go through again and review for slop, unnecessary comments, fallbacks and overly complex state management
+
+It is very important that you ALWAYS review your work after you've completed it to make sure that it is as clean, tight, compact as possible, with strong types and fail fast where it makes sense
+
+If you are expecting something, you can use an expect/throw pattern. Always aim to catch errors and throw instead of hiding errors and falling back.
+
+## Database Migrations
+
+**CRITICAL: Never use `db:push` - it bypasses migration tracking and breaks production deployments.**
+
+### Schema Changes Workflow
+1. Modify TypeScript schema in `db/schemas/`
+2. Generate migration: `bun run db:generate`
+3. Review generated SQL in `db/migrations/`
+4. Test locally: `bun run db:migrate`
+5. Commit both schema and migration files
+
+### Custom Migrations (triggers, functions, complex constraints)
+```bash
+npx drizzle-kit generate --custom --name=descriptive_name
+```
+
+### Migration File Rules
+- Never use `CREATE INDEX CONCURRENTLY` - drizzle runs in transactions
+- Use `IF NOT EXISTS` / `IF EXISTS` for idempotency
+- Never duplicate statements from other migrations
+- Never modify already-applied migrations - create new ones instead
+
+### Commands
+| Command | Use |
+|---------|-----|
+| `bun run db:generate` | Generate migration from schema changes |
+| `bun run db:migrate` | Apply pending migrations |
+| `bun run db:studio` | Open Drizzle Studio |
+
+### DO NOT
+- Use `db:push` (deprecated, no migration tracking)
+- Create migration files manually (use `db:generate`)
+- Edit applied migrations (hashes won't match)

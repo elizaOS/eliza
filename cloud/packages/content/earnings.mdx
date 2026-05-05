@@ -1,0 +1,105 @@
+---
+title: Earnings
+description: Track creator earnings and redeem them for elizaOS tokens.
+---
+
+import { Callout, Cards } from "@/docs/components";
+
+# Earnings
+
+Monetize Eliza Cloud apps, agents, and MCPs. App creator markup lands in redeemable earnings and can be used for container hosting or redeemed for elizaOS tokens.
+
+<div className="status-badge status-new">New</div>
+
+## Overview
+
+Earn from:
+
+- **Eliza Cloud apps**: App-scoped chat creator markup.
+- **Agents**: Published agent usage.
+- **MCPs**: Monetized MCP usage.
+- **Affiliates**: Affiliate markup on implemented generic chat/message routes.
+
+## Earnings Dashboard
+
+View balances, hosting spend, and redemptions at [Dashboard -> Earnings](/dashboard/earnings).
+
+```bash
+curl "https://www.elizacloud.ai/api/v1/redemptions/balance" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
+```
+
+```json
+{
+  "success": true,
+  "balance": {
+    "totalEarned": 500,
+    "availableBalance": 125.5,
+    "pendingBalance": 24,
+    "totalRedeemed": 100,
+    "totalConvertedToCredits": 12.25
+  },
+  "eligibility": {
+    "canRedeem": true,
+    "dailyLimitRemaining": 1000
+  }
+}
+```
+
+`totalConvertedToCredits` is the amount of earnings converted into organization credits by earnings-first hosting billing.
+
+## Earnings-First Hosting
+
+Daily container billing can debit redeemable earnings before organization credits when `payAsYouGoFromEarnings` is enabled. This setting is on by default. When disabled, container hosting uses credits only and earnings remain untouched for cashout.
+
+The Earnings dashboard shows "Spent on hosting" separately from token redemptions.
+
+## Redeem for elizaOS Tokens
+
+Redemptions use `pointsAmount`, where 100 points equals $1.00.
+
+1. Check `/api/v1/redemptions/balance`.
+2. Quote `/api/v1/redemptions/quote?network=base&pointsAmount=10000`.
+3. Create `POST /api/v1/redemptions`.
+
+```bash
+curl -X POST "https://www.elizacloud.ai/api/v1/redemptions" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pointsAmount": 10000,
+    "network": "base",
+    "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678"
+  }'
+```
+
+Supported networks are `ethereum`, `base`, `bnb`, and `solana`, subject to payout availability.
+
+<Callout type="info">
+  Large redemptions can require admin approval, and network availability can change with hot-wallet balances. Always request a quote immediately before creating a redemption.
+</Callout>
+
+## App Earnings
+
+For per-app earnings, call:
+
+```bash
+curl "https://www.elizacloud.ai/api/v1/apps/$APP_ID/earnings?days=30" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
+```
+
+The response includes summary totals, breakdowns, chart data, recent transactions, and monetization settings.
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Monetized Apps" href="/docs/monetized-apps">
+    Create an earning Cloud app
+  </Cards.Card>
+  <Cards.Card title="Redemptions API" href="/docs/api/redemptions">
+    Redeem earnings programmatically
+  </Cards.Card>
+  <Cards.Card title="Billing" href="/docs/billing">
+    Manage credits and hosting billing
+  </Cards.Card>
+</Cards>
