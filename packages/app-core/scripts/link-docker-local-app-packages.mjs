@@ -121,7 +121,7 @@ function linkPackageContents(packageDir, target) {
 }
 
 function linkPackageTarget({ packageDir, pkg, rewroteExports, target }) {
-  fs.rmSync(target, { force: true, recursive: true });
+  removePath(target);
   if (!rewroteExports) {
     fs.symlinkSync(
       path.relative(path.dirname(target), packageDir),
@@ -148,6 +148,22 @@ function pathExists(filePath) {
   }
 }
 
+function removePath(filePath) {
+  try {
+    const stat = fs.lstatSync(filePath);
+    if (stat.isSymbolicLink()) {
+      fs.unlinkSync(filePath);
+      return;
+    }
+    fs.rmSync(filePath, { force: true, recursive: stat.isDirectory() });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+}
+
 function resolveRootPackageDir(packageName) {
   const packageDir = path.join(
     repoRoot,
@@ -158,6 +174,22 @@ function resolveRootPackageDir(packageName) {
     return packageDir;
   }
 
+  const bunStoreDir = path.join(repoRoot, "node_modules", ".bun");
+  if (pathExists(bunStoreDir)) {
+    const packageSegments = packageName.split("/");
+    for (const entry of fs.readdirSync(bunStoreDir).sort()) {
+      const candidate = path.join(
+        bunStoreDir,
+        entry,
+        "node_modules",
+        ...packageSegments,
+      );
+      if (fs.existsSync(path.join(candidate, "package.json"))) {
+        return candidate;
+      }
+    }
+  }
+
   throw new Error(
     `Missing root package manifest: node_modules/${packageName}/package.json`,
   );
@@ -166,7 +198,7 @@ function resolveRootPackageDir(packageName) {
 function linkRootDependency({ packageName, target }) {
   const packageDir = resolveRootPackageDir(packageName);
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.rmSync(target, { force: true, recursive: true });
+  removePath(target);
   fs.symlinkSync(
     path.relative(path.dirname(target), packageDir),
     target,
