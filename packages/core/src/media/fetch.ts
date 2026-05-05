@@ -107,6 +107,120 @@ async function readErrorBodySnippet(
 	}
 }
 
+async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
+	response: Response;
+	finalUrl: string;
+	release: () => Promise<void>;
+}> {
+	try {
+		return await fetchWithSsrfGuard({
+			url: options.url,
+			fetchImpl: options.fetchImpl,
+			maxRedirects: options.maxRedirects,
+			timeoutMs: options.timeoutMs,
+			policy: options.ssrfPolicy,
+			lookupFn: options.lookupFn,
+		});
+	} catch (err) {
+		throw new MediaFetchError(
+			"fetch_failed",
+			`Failed to fetch media from ${options.url}: ${String(err)}`,
+		);
+	}
+}
+
+async function throwIfHttpError(
+	res: Response,
+	url: string,
+	finalUrl: string,
+): Promise<void> {
+	if (res.ok) {
+		return;
+	}
+
+	const statusText = res.statusText ? ` ${res.statusText}` : "";
+	const redirected = finalUrl !== url ? ` (redirected to ${finalUrl})` : "";
+	let detail = `HTTP ${res.status}${statusText}`;
+	if (!res.body) {
+		detail = `HTTP ${res.status}${statusText}; empty response body`;
+	} else {
+		const snippet = await readErrorBodySnippet(res);
+		if (snippet) {
+			detail += `; body: ${snippet}`;
+		}
+	}
+	throw new MediaFetchError(
+		"http_error",
+		`Failed to fetch media from ${url}${redirected}: ${detail}`,
+	);
+}
+
+function enforceContentLengthLimit(
+	res: Response,
+	url: string,
+	maxBytes?: number,
+): void {
+	const contentLength = res.headers.get("content-length");
+	if (!maxBytes || !contentLength) {
+		return;
+	}
+
+	const length = Number(contentLength);
+	if (Number.isFinite(length) && length > maxBytes) {
+		throw new MediaFetchError(
+			"max_bytes",
+			`Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
+		);
+	}
+}
+
+function fileNameFromUrl(url: string): string | undefined {
+	try {
+		const parsed = new URL(url);
+		const base = getBasename(parsed.pathname);
+		return base || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+async function resolveMediaMetadata(params: {
+	res: Response;
+	buffer: Buffer;
+	finalUrl: string;
+	filePathHint?: string;
+}): Promise<Pick<FetchMediaResult, "contentType" | "fileName">> {
+	const { res, buffer, finalUrl, filePathHint } = params;
+	const headerFileName = parseContentDispositionFileName(
+		res.headers.get("content-disposition"),
+	);
+	let fileName =
+		headerFileName ||
+		fileNameFromUrl(finalUrl) ||
+		(filePathHint ? getBasename(filePathHint) : undefined);
+
+	const filePathForMime =
+		headerFileName && getExtname(headerFileName)
+			? headerFileName
+			: (filePathHint ?? finalUrl);
+	const contentType = await detectMime({
+		buffer,
+		headerMime: res.headers.get("content-type"),
+		filePath: filePathForMime,
+	});
+	if (fileName && !getExtname(fileName) && contentType) {
+		const ext = extensionForMime(contentType);
+		if (ext) {
+			fileName = `${fileName}${ext}`;
+		}
+	}
+
+	return {
+		contentType: contentType ?? undefined,
+		fileName,
+	};
+}
+
 /**
  * Fetch remote media with SSRF protection.
  *
@@ -117,114 +231,28 @@ async function readErrorBodySnippet(
 export async function fetchRemoteMedia(
 	options: FetchMediaOptions,
 ): Promise<FetchMediaResult> {
-	const {
-		url,
-		fetchImpl,
-		filePathHint,
-		maxBytes,
-		maxRedirects,
-		timeoutMs,
-		ssrfPolicy,
-		lookupFn,
-	} = options;
-
-	let res: Response;
-	let finalUrl = url;
-	let release: (() => Promise<void>) | null = null;
-	try {
-		const result = await fetchWithSsrfGuard({
-			url,
-			fetchImpl,
-			maxRedirects,
-			timeoutMs,
-			policy: ssrfPolicy,
-			lookupFn,
-		});
-		res = result.response;
-		finalUrl = result.finalUrl;
-		release = result.release;
-	} catch (err) {
-		throw new MediaFetchError(
-			"fetch_failed",
-			`Failed to fetch media from ${url}: ${String(err)}`,
-		);
-	}
+	const { response: res, finalUrl, release } = await fetchGuardedMedia(options);
 
 	try {
-		if (!res.ok) {
-			const statusText = res.statusText ? ` ${res.statusText}` : "";
-			const redirected = finalUrl !== url ? ` (redirected to ${finalUrl})` : "";
-			let detail = `HTTP ${res.status}${statusText}`;
-			if (!res.body) {
-				detail = `HTTP ${res.status}${statusText}; empty response body`;
-			} else {
-				const snippet = await readErrorBodySnippet(res);
-				if (snippet) {
-					detail += `; body: ${snippet}`;
-				}
-			}
-			throw new MediaFetchError(
-				"http_error",
-				`Failed to fetch media from ${url}${redirected}: ${detail}`,
-			);
-		}
+		await throwIfHttpError(res, options.url, finalUrl);
+		enforceContentLengthLimit(res, options.url, options.maxBytes);
 
-		const contentLength = res.headers.get("content-length");
-		if (maxBytes && contentLength) {
-			const length = Number(contentLength);
-			if (Number.isFinite(length) && length > maxBytes) {
-				throw new MediaFetchError(
-					"max_bytes",
-					`Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
-				);
-			}
-		}
-
-		const buffer = maxBytes
-			? await readResponseWithLimit(res, maxBytes)
+		const buffer = options.maxBytes
+			? await readResponseWithLimit(res, options.maxBytes)
 			: Buffer.from(await res.arrayBuffer());
-		let fileNameFromUrl: string | undefined;
-		try {
-			const parsed = new URL(finalUrl);
-			const base = getBasename(parsed.pathname);
-			fileNameFromUrl = base || undefined;
-		} catch {
-			// ignore parse errors; leave undefined
-		}
-
-		const headerFileName = parseContentDispositionFileName(
-			res.headers.get("content-disposition"),
-		);
-		let fileName =
-			headerFileName ||
-			fileNameFromUrl ||
-			(filePathHint ? getBasename(filePathHint) : undefined);
-
-		const filePathForMime =
-			headerFileName && getExtname(headerFileName)
-				? headerFileName
-				: (filePathHint ?? finalUrl);
-		const contentType = await detectMime({
+		const metadata = await resolveMediaMetadata({
+			res,
 			buffer,
-			headerMime: res.headers.get("content-type"),
-			filePath: filePathForMime,
+			finalUrl,
+			filePathHint: options.filePathHint,
 		});
-		if (fileName && !getExtname(fileName) && contentType) {
-			const ext = extensionForMime(contentType);
-			if (ext) {
-				fileName = `${fileName}${ext}`;
-			}
-		}
 
 		return {
 			buffer,
-			contentType: contentType ?? undefined,
-			fileName,
+			...metadata,
 		};
 	} finally {
-		if (release) {
-			await release();
-		}
+		await release();
 	}
 }
 
