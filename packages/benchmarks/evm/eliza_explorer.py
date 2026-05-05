@@ -440,8 +440,8 @@ return JSON.stringify({{ results, error: null }});
 
     def _save_checkpoint(self) -> None:
         """Save current metrics to file."""
-        d = BENCH_DIR / "metrics"
-        d.mkdir(exist_ok=True)
+        d = Path(os.getenv("METRICS_DIR", str(BENCH_DIR / "metrics")))
+        d.mkdir(parents=True, exist_ok=True)
         mc = dict(self.metrics)
 
         # Deduplicate selectors

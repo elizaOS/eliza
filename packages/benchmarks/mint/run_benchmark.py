@@ -32,6 +32,7 @@ from pathlib import Path
 benchmark_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(benchmark_root))
 sys.path.insert(0, str(benchmark_root / "packages" / "python"))
+sys.path.insert(0, str(benchmark_root / "benchmarks" / "eliza-adapter"))
 # Add local plugin paths for optional runtime-backed runs
 sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-openai" / "python"))
 sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-vercel-ai-gateway" / "python"))
@@ -142,6 +143,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Generate feedback using the selected model provider (costly; default: rule-based)",
     )
+    parser.add_argument(
+        "--provider",
+        choices=["mock", "eliza"],
+        default="mock",
+        help="Agent provider to use: local mock or eliza TS benchmark bridge (default: mock)",
+    )
 
     parser.add_argument(
         "--no-trajectory-logging",
@@ -221,10 +228,12 @@ async def run_benchmark(
     dotenv_path: str | None,
     verbose: bool,
     *,
+    provider: str,
     enable_trajectory_logging: bool,
     trajectory_dataset: str,
 ) -> int:
     """Run the benchmark via the eliza TS bridge and return exit code."""
+    runtime = None
     try:
         # Load .env (if provided or if repo-root .env exists)
         if dotenv_path:
@@ -240,18 +249,21 @@ async def run_benchmark(
             trajectory_dataset=trajectory_dataset,
         )
 
-        # The bridge agent forwards every multi-turn LLM call to the TS bench
-        # server; MINTRunner reuses runner.executor and runner.feedback_generator.
-        from eliza_adapter.mint import ElizaMINTAgent
+        if provider == "eliza":
+            # The bridge agent forwards every multi-turn LLM call to the TS bench
+            # server; MINTRunner reuses runner.executor and runner.feedback_generator.
+            from eliza_adapter.mint import ElizaMINTAgent
 
-        runner.agent = ElizaMINTAgent(
-            tool_executor=runner.executor,
-            feedback_generator=runner.feedback_generator,
-            temperature=config.temperature,
-        )
-        logging.getLogger(__name__).info(
-            "[mint] using ElizaMINTAgent (eliza TS benchmark bridge)"
-        )
+            runner.agent = ElizaMINTAgent(
+                tool_executor=runner.executor,
+                feedback_generator=runner.feedback_generator,
+                temperature=config.temperature,
+            )
+            logging.getLogger(__name__).info(
+                "[mint] using ElizaMINTAgent (eliza TS benchmark bridge)"
+            )
+        else:
+            logging.getLogger(__name__).info("[mint] using local mock MINTAgent")
         _ = enable_trajectory_logging  # trajectory logging now lives in the bridge
         results = await runner.run_benchmark()
 
@@ -308,7 +320,7 @@ def main() -> int:
     config = create_config(args)
 
     print("Configuration:")
-    print("  Provider: eliza-ts-bridge")
+    print(f"  Provider: {args.provider}")
     print(f"  Categories: {[c.value for c in (config.categories or list(MINTCategory))]}")
     print(f"  Max tasks per category: {config.max_tasks_per_category or 'all'}")
     print(f"  Max turns: {config.max_turns}")
@@ -324,6 +336,7 @@ def main() -> int:
             config,
             args.dotenv,
             args.verbose,
+            provider=str(args.provider),
             enable_trajectory_logging=not bool(args.no_trajectory_logging),
             trajectory_dataset=str(args.trajectory_dataset),
         )

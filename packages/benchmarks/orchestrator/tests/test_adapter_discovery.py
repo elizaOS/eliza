@@ -28,6 +28,7 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["openclaw_bench"].directory == "openclaw-benchmark"
     assert adapters["hyperliquid_bench"].directory == "HyperliquidBench"
     assert adapters["eliza_replay"].directory == "eliza-adapter"
+    assert adapters["gaia_orchestrated"].directory == "gaia"
 
 
 def test_openclaw_registry_command_and_result_locator(tmp_path: Path) -> None:

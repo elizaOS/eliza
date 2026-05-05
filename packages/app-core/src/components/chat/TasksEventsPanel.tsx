@@ -245,7 +245,7 @@ export function TasksEventsPanel({
                 onClick={() => setEditOpen(true)}
               >
                 <Pencil className="h-3 w-3" aria-hidden />
-                <span>Edit</span>
+                <span>Widgets</span>
               </button>
               {showCollapseButton ? (
                 <button

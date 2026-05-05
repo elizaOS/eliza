@@ -12,16 +12,14 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter";
+import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter";
 // Direct source imports — Bun transpiles TS at runtime, no build step needed
-import { AgentRuntime } from "../../../../packages/core/src/runtime";
-import type { Character } from "../../../../packages/core/src/types/agent";
-import type { Memory } from "../../../../packages/core/src/types/memory";
-import type { Plugin } from "../../../../packages/core/src/types/plugin";
-import type {
-  Content,
-  UUID,
-} from "../../../../packages/core/src/types/primitives";
+import { AgentRuntime } from "../../../../core/src/runtime";
+import type { Character } from "../../../../core/src/types/agent";
+import type { Memory } from "../../../../core/src/types/memory";
+import type { Plugin } from "../../../../core/src/types/plugin";
+import type { Content, UUID } from "../../../../core/src/types/primitives";
+import { ChannelType as ChannelTypes } from "../../../../core/src/types/primitives";
 import {
   type BenchmarkResult,
   computeLatencyStats,
@@ -193,36 +191,36 @@ async function createBenchmarkRuntime(
   await runtime.initialize();
 
   // Set up world, room, entities, participants
-  await adapter.createWorld({
+  await runtime.createWorld({
     id: WORLD_ID,
     name: "BenchmarkWorld",
     agentId: AGENT_ID,
     messageServerId: "benchmark",
   });
 
-  await adapter.createRoom({
+  await runtime.createRoom({
     id: ROOM_ID,
     name: "BenchmarkRoom",
     agentId: AGENT_ID,
     source: "benchmark",
-    type: "GROUP",
+    type: ChannelTypes.GROUP,
     worldId: WORLD_ID,
-  } as Parameters<typeof adapter.createRoom>[0]);
+  } as Parameters<typeof runtime.createRoom>[0]);
 
-  await adapter.createEntities([
+  await runtime.createEntities([
     {
       id: AGENT_ID,
       names: ["BenchmarkAgent"],
       agentId: AGENT_ID,
-    } as Parameters<typeof adapter.createEntities>[0][number],
+    } as Parameters<typeof runtime.createEntities>[0][number],
     {
       id: USER_ENTITY_ID,
       names: ["BenchmarkUser"],
       agentId: AGENT_ID,
-    } as Parameters<typeof adapter.createEntities>[0][number],
+    } as Parameters<typeof runtime.createEntities>[0][number],
   ]);
 
-  await adapter.addParticipantsRoom([USER_ENTITY_ID, AGENT_ID], ROOM_ID);
+  await runtime.createRoomParticipants([USER_ENTITY_ID, AGENT_ID], ROOM_ID);
 
   return runtime;
 }
@@ -248,7 +246,7 @@ async function prePopulateHistory(
       },
       createdAt: baseTime + i * 1000,
     };
-    await adapter.createMemory(memory, "messages");
+      await runtime.createMemory(memory, "messages");
   }
 }
 
@@ -323,21 +321,19 @@ function instrumentRuntime(
     return result;
   };
 
-  // Wrap adapter.createMemory
-  const adapter = runtime.adapter;
-  if (adapter && "createMemory" in adapter) {
-    const origCreate = adapter.createMemory.bind(adapter);
-    (adapter as Record<string, Function>).createMemory = async (
-      ...args: unknown[]
-    ) => {
-      const start = performance.now();
-      const result = await origCreate(...args);
-      pipelineTimer.record("memory_create", performance.now() - start);
-      return result;
-    };
-  }
+  // Wrap runtime.createMemory. The current database adapter is batch-first;
+  // runtime.createMemory is the supported single-message write path.
+  const origCreateMemory = runtime.createMemory.bind(runtime);
+  (runtime as Record<string, Function>).createMemory = async (
+    ...args: unknown[]
+  ) => {
+    const start = performance.now();
+    const result = await origCreateMemory(...args);
+    pipelineTimer.record("memory_create", performance.now() - start);
+    return result;
+  };
 
-  // Wrap adapter.getMemories
+  const adapter = runtime.adapter;
   if (adapter && "getMemories" in adapter) {
     const origGet = adapter.getMemories.bind(adapter);
     (adapter as Record<string, Function>).getMemories = async (
@@ -457,7 +453,7 @@ async function runDbBenchmark(
           },
           createdAt: Date.now(),
         };
-        await adapter.createMemory(memory, "messages");
+        await runtime.createMemory(memory, "messages");
       }
 
       timings.push(timer.stop());
@@ -721,7 +717,7 @@ async function main(): Promise<void> {
   try {
     const corePkg = resolve(
       __dirname,
-      "../../../packages/core/dist/node/index.node.js",
+      "../../../../core/dist/node/index.node.js",
     );
     const stat = statSync(corePkg);
     results.binary_size_bytes = stat.size;

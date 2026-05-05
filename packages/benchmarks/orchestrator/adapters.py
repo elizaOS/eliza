@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -268,9 +269,15 @@ def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
 
 
 def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    flags = str(ctx.request.extra_config.get("flags", "")).split()
-    output_path = ctx.output_root / "framework-python-results.json"
-    return ["python", "-m", "src.bench", f"--output={output_path}", *flags]
+    flags = shlex.split(str(ctx.request.extra_config.get("flags", "")))
+    output_path = ctx.output_root / "framework-results.json"
+    return [
+        "bun",
+        "run",
+        "benchmarks/framework/typescript/src/bench.ts",
+        f"--output={output_path}",
+        *flags,
+    ]
 
 
 def _command_rolodex(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -397,6 +404,7 @@ def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]
     env.update({
         "MODEL_NAME": model_name,
         "MAX_MESSAGES": str(int(ctx.request.extra_config.get("max_messages", 50))),
+        "METRICS_DIR": str(ctx.output_root / "metrics"),
     })
 
     passthrough = {
@@ -723,6 +731,59 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
     )
 
 
+def _score_from_framework(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    scenarios = data.get("scenarios", {}) if isinstance(data, dict) else {}
+    if not isinstance(scenarios, dict) or not scenarios:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+
+    total_messages = 0.0
+    total_time_ms = 0.0
+    latency_values: list[float] = []
+    for result in scenarios.values():
+        if not isinstance(result, dict):
+            continue
+        throughput = result.get("throughput", {})
+        if isinstance(throughput, dict):
+            messages = throughput.get("total_messages")
+            elapsed = throughput.get("total_time_ms")
+            if isinstance(messages, (int, float)) and isinstance(elapsed, (int, float)):
+                total_messages += float(messages)
+                total_time_ms += float(elapsed)
+        latency = result.get("latency", {})
+        avg_ms = latency.get("avg_ms") if isinstance(latency, dict) else None
+        if isinstance(avg_ms, (int, float)):
+            latency_values.append(float(avg_ms))
+
+    if total_messages > 0 and total_time_ms > 0:
+        score = (total_messages / total_time_ms) * 1000.0
+        unit = "messages_per_second"
+    elif latency_values:
+        mean_latency = sum(latency_values) / len(latency_values)
+        score = 1000.0 / mean_latency if mean_latency > 0 else None
+        unit = "operations_per_second"
+    else:
+        score = None
+        unit = None
+
+    return ScoreSummary(
+        score=score,
+        unit=unit,
+        higher_is_better=True,
+        metrics={
+            "runtime": data.get("runtime"),
+            "scenario_count": len(scenarios),
+            "total_messages": total_messages,
+            "total_time_ms": total_time_ms,
+            "mean_latency_ms": sum(latency_values) / len(latency_values)
+            if latency_values
+            else None,
+        },
+    )
+
+
 def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     benchmarks_root = workspace_root / "benchmarks"
     benchmark_dirs = sorted(
@@ -878,10 +939,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         _make_extra_adapter(
             adapter_id="framework",
             directory="framework",
-            description="Cross-runtime framework benchmark suite",
-            cwd=str((benchmarks_root / "framework" / "python").resolve()),
+            description="Eliza TypeScript framework benchmark suite",
+            cwd=str(workspace_root.resolve()),
             command_builder=_command_framework,
-            result_patterns=["*.json", "results/*.json"],
+            result_patterns=["framework-results.json", "typescript-*.json", "results/*.json"],
+            score_extractor=_score_from_framework,
         ),
         _make_extra_adapter(
             adapter_id="rolodex",

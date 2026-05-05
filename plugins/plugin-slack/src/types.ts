@@ -6,6 +6,7 @@ import type {
   WorldPayload,
 } from "@elizaos/core";
 import type { App as BoltApp } from "@slack/bolt";
+
 type WebClient = BoltApp["client"];
 
 /**

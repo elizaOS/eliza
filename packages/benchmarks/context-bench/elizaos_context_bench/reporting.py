@@ -23,6 +23,13 @@ class ContextBenchReporter:
         self.results = results
         self.metrics = results.metrics
 
+    @staticmethod
+    def _format_length(length: int) -> str:
+        """Format token lengths without rounding sub-1K values to zero."""
+        if length < 1024:
+            return str(length)
+        return f"{length // 1024}K"
+
     def generate_ascii_heatmap(self) -> str:
         """Generate ASCII heatmap of position vs context length accuracy.
 
@@ -67,7 +74,9 @@ class ContextBenchReporter:
         lines.append("")
 
         # Header row with length labels
-        header = "         " + "".join(f"{length//1024:>5}K" for length in lengths)
+        header = "         " + "".join(
+            f"{self._format_length(length):>5}" for length in lengths
+        )
         lines.append(header)
         lines.append("         " + "-" * (len(lengths) * 6))
 
@@ -126,7 +135,7 @@ class ContextBenchReporter:
         lines.append("    +" + "-" * (width * 5))
         lines.append(
             "     "
-            + "".join(f"{length//1024:>4}K " for length, _ in sorted_items)
+            + "".join(f"{self._format_length(length):>4} " for length, _ in sorted_items)
         )
         lines.append("")
 
@@ -222,7 +231,7 @@ class ContextBenchReporter:
         for length in sorted(self.metrics.length_accuracies.keys()):
             len_acc = self.metrics.length_accuracies[length]
             lines.append(
-                f"| {length//1024}K | {len_acc.total_tasks} | {len_acc.accuracy:.1%} | "
+                f"| {self._format_length(length)} | {len_acc.total_tasks} | {len_acc.accuracy:.1%} | "
                 f"{len_acc.avg_semantic_similarity:.3f} |"
             )
         lines.append("")

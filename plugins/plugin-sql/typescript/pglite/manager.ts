@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
 import { vector } from "@electric-sql/pglite/vector";
@@ -20,9 +20,12 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private shuttingDown = false;
   private initialized = false;
   private initializePromise: Promise<void> | null = null;
+  private lockFd: number | null = null;
+  private lockPath: string | null = null;
 
   constructor(options: PGliteOptions) {
     this.options = options;
+    this.acquireDataDirLockIfNeeded();
     this.client = this.createClient(options);
     this.setupShutdownHandlers();
   }
@@ -60,6 +63,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
         await this.client.close();
       } catch {}
     }
+    this.releaseDataDirLock();
   }
 
   private setupShutdownHandlers() {}
@@ -99,6 +103,95 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     }
 
     return true;
+  }
+
+  private getDataDirLockPath(dataDir: string): string {
+    return `${dataDir}/eliza-pglite.lock`;
+  }
+
+  private getLockPid(lockPath: string): number | null {
+    try {
+      const raw = readFileSync(lockPath, "utf-8");
+      const parsed = JSON.parse(raw) as { pid?: unknown };
+      return typeof parsed.pid === "number" && parsed.pid > 0 ? parsed.pid : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private isPidRunning(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code !== "ESRCH";
+    }
+  }
+
+  private acquireDataDirLockIfNeeded(): void {
+    const dataDir = this.getDataDir();
+    if (!this.isFileBackedDataDir(dataDir)) {
+      return;
+    }
+
+    const lockPath = this.getDataDirLockPath(dataDir);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const fd = openSync(lockPath, "wx");
+        writeFileSync(
+          fd,
+          `${JSON.stringify({
+            pid: process.pid,
+            createdAt: new Date().toISOString(),
+            dataDir,
+          })}\n`
+        );
+        this.lockFd = fd;
+        this.lockPath = lockPath;
+        return;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== "EEXIST") {
+          throw this.createActiveLockError(dataDir, err);
+        }
+
+        const pid = this.getLockPid(lockPath);
+        if (pid && this.isPidRunning(pid)) {
+          throw this.createActiveLockError(
+            dataDir,
+            new Error(`PGlite lock file is held by running process ${pid}`)
+          );
+        }
+
+        try {
+          unlinkSync(lockPath);
+          logger.info(
+            { src: "plugin:sql", dataDir, lockPath, pid },
+            "Removed stale PGlite lock file"
+          );
+        } catch (unlinkErr) {
+          throw this.createActiveLockError(dataDir, unlinkErr);
+        }
+      }
+    }
+
+    throw this.createActiveLockError(dataDir, new Error("Could not acquire PGlite lock file"));
+  }
+
+  private releaseDataDirLock(): void {
+    if (this.lockFd !== null) {
+      try {
+        closeSync(this.lockFd);
+      } catch {}
+      this.lockFd = null;
+    }
+
+    if (this.lockPath) {
+      try {
+        unlinkSync(this.lockPath);
+      } catch {}
+      this.lockPath = null;
+    }
   }
 
   private getErrorText(error: unknown): string {
