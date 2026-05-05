@@ -1,6 +1,6 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { N8nWorkflowService, N8nCredentialStore } from "./services/index";
-import * as dbSchema from "./db/index";
+import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
+import { N8nWorkflowService, N8nCredentialStore } from './services/index';
+import * as dbSchema from './db/index';
 import {
   createWorkflowAction,
   getExecutionsAction,
@@ -8,13 +8,13 @@ import {
   deactivateWorkflowAction,
   deleteWorkflowAction,
   modifyExistingWorkflowAction,
-} from "./actions/index";
+} from './actions/index';
 import {
   workflowStatusProvider,
   activeWorkflowsProvider,
   pendingDraftProvider,
-} from "./providers/index";
-import { n8nRoutes } from "./routes/index";
+} from './providers/index';
+import { n8nRoutes } from './routes/index';
 
 /**
  * n8n Workflow Plugin for ElizaOS
@@ -48,11 +48,11 @@ import { n8nRoutes } from "./routes/index";
  * ```
  */
 export const n8nWorkflowPlugin: Plugin = {
-  name: "n8n-workflow",
+  name: 'n8n-workflow',
   description:
-    "Generate and deploy n8n workflows from natural language. " +
-    "Supports 450+ native n8n nodes (Gmail, Slack, Stripe, etc.) with intelligent " +
-    "credential resolution and workflow management.",
+    'Generate and deploy n8n workflows from natural language. ' +
+    'Supports 450+ native n8n nodes (Gmail, Slack, Stripe, etc.) with intelligent ' +
+    'credential resolution and workflow management.',
 
   services: [N8nWorkflowService, N8nCredentialStore],
 
@@ -67,36 +67,29 @@ export const n8nWorkflowPlugin: Plugin = {
     deleteWorkflowAction,
   ],
 
-  providers: [
-    workflowStatusProvider,
-    activeWorkflowsProvider,
-    pendingDraftProvider,
-  ],
+  providers: [workflowStatusProvider, activeWorkflowsProvider, pendingDraftProvider],
 
   routes: n8nRoutes,
 
-  init: async (
-    _config: Record<string, string>,
-    runtime: IAgentRuntime,
-  ): Promise<void> => {
-    const apiKey = runtime.getSetting("N8N_API_KEY");
-    const host = runtime.getSetting("N8N_HOST");
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+    const apiKey = runtime.getSetting('N8N_API_KEY');
+    const host = runtime.getSetting('N8N_HOST');
 
     logger.info(
-      `n8n Workflow Plugin - API Key: ${apiKey ? "configured" : "not configured"}, Host: ${host || "not set"}`,
+      `n8n Workflow Plugin - API Key: ${apiKey ? 'configured' : 'not configured'}, Host: ${host || 'not set'}`
     );
 
     if (!apiKey) {
       logger.warn(
-        "N8N_API_KEY not provided - plugin will not be functional. " +
-          "Please set N8N_API_KEY in your environment or character settings.",
+        'N8N_API_KEY not provided - plugin will not be functional. ' +
+          'Please set N8N_API_KEY in your environment or character settings.'
       );
     }
 
     if (!host) {
       logger.warn(
-        "N8N_HOST not provided - plugin will not be functional. " +
-          "Please set N8N_HOST to your n8n instance URL (e.g., https://your.n8n.cloud).",
+        'N8N_HOST not provided - plugin will not be functional. ' +
+          'Please set N8N_HOST to your n8n instance URL (e.g., https://your.n8n.cloud).'
       );
     }
 
@@ -107,17 +100,17 @@ export const n8nWorkflowPlugin: Plugin = {
       | undefined;
     if (workflowSettings?.credentials) {
       const credCount = Object.keys(workflowSettings.credentials).filter(
-        (k) => workflowSettings.credentials![k],
+        (k) => workflowSettings.credentials![k]
       ).length;
       logger.info(
-        { src: "plugin:n8n-workflow:plugin:init" },
-        `Pre-configured credentials: ${credCount} credential types`,
+        { src: 'plugin:n8n-workflow:plugin:init' },
+        `Pre-configured credentials: ${credCount} credential types`
       );
     }
 
     logger.info(
-      { src: "plugin:n8n-workflow:plugin:init" },
-      "n8n Workflow Plugin initialized successfully",
+      { src: 'plugin:n8n-workflow:plugin:init' },
+      'n8n Workflow Plugin initialized successfully'
     );
   },
 };
