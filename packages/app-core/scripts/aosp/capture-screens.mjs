@@ -271,7 +271,10 @@ export async function captureScreens({
   // pass it directly, otherwise we read from the host's app.config.ts.
   let resolvedPackage = packageName;
   if (!resolvedPackage) {
-    const cfgPath = resolveAppConfigPath({ repoRoot, flagValue: appConfigPath });
+    const cfgPath = resolveAppConfigPath({
+      repoRoot,
+      flagValue: appConfigPath,
+    });
     if (fs.existsSync(cfgPath)) {
       const variant = loadAospVariantConfig({ appConfigPath: cfgPath });
       if (variant?.packageName) resolvedPackage = variant.packageName;

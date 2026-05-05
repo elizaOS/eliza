@@ -216,10 +216,7 @@ function stopRunningCvd() {
 function runAospBuild(aospRoot, lunchTarget, jobs) {
   run(
     "bash",
-    [
-      "-lc",
-      `source build/envsetup.sh && lunch ${lunchTarget} && m -j${jobs}`,
-    ],
+    ["-lc", `source build/envsetup.sh && lunch ${lunchTarget} && m -j${jobs}`],
     { cwd: aospRoot },
   );
 }

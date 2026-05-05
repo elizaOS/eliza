@@ -10,21 +10,21 @@
  *   babylon document   Generate markdown reference from system metadata
  */
 
-import { defineCommand, runMain } from 'citty';
+import { defineCommand, runMain } from "citty";
 
 const main = defineCommand({
   meta: {
-    name: 'babylon',
-    version: '0.1.0',
+    name: "babylon",
+    version: "0.1.0",
     description:
-      'Babylon Runtime — standalone system engine for the Babylon simulation',
+      "Babylon Runtime — standalone system engine for the Babylon simulation",
   },
   subCommands: {
-    dev: () => import('./commands/dev').then((m) => m.default),
-    build: () => import('./commands/build').then((m) => m.default),
-    tick: () => import('./commands/tick').then((m) => m.default),
-    info: () => import('./commands/info').then((m) => m.default),
-    document: () => import('./commands/document').then((m) => m.default),
+    dev: () => import("./commands/dev").then((m) => m.default),
+    build: () => import("./commands/build").then((m) => m.default),
+    tick: () => import("./commands/tick").then((m) => m.default),
+    info: () => import("./commands/info").then((m) => m.default),
+    document: () => import("./commands/document").then((m) => m.default),
   },
 });
 

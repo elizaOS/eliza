@@ -186,7 +186,10 @@ function ModelsTable({
         </thead>
         <tbody>
           {models.map((model: TrainingModel) => (
-            <tr key={model.short_name} className="border-b border-border hover:bg-card/50">
+            <tr
+              key={model.short_name}
+              className="border-b border-border hover:bg-card/50"
+            >
               <td className="px-3 py-2">
                 <div className="font-semibold text-txt-strong">
                   {model.short_name}
@@ -202,7 +205,9 @@ function ModelsTable({
                 <div className="text-xs text-txt">{model.max_context}k</div>
               </td>
               <td className="px-3 py-2">
-                <div className="text-xs text-muted">{model.recommended_gpu}</div>
+                <div className="text-xs text-muted">
+                  {model.recommended_gpu}
+                </div>
               </td>
               <td className="px-3 py-2 text-center">
                 <Button
@@ -223,10 +228,16 @@ function ModelsTable({
 }
 
 export function TrainingDashboard() {
-  const { data: jobs, loading: jobsLoading, error: jobsError } =
-    useTrainingJobs();
-  const { data: models, loading: modelsLoading, error: modelsError } =
-    useTrainingModels();
+  const {
+    data: jobs,
+    loading: jobsLoading,
+    error: jobsError,
+  } = useTrainingJobs();
+  const {
+    data: models,
+    loading: modelsLoading,
+    error: modelsError,
+  } = useTrainingModels();
   const { create, loading: createLoading } = useCreateTrainingJob();
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -365,14 +376,21 @@ export function TrainingDashboard() {
                 disabled={createLoading}
                 className="flex-1"
               >
-                {createLoading && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                {createLoading && (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                )}
                 Start Training
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  setCreateModal({ open: false, model: null, epochs: "3", runName: "" })
+                  setCreateModal({
+                    open: false,
+                    model: null,
+                    epochs: "3",
+                    runName: "",
+                  })
                 }
                 className="flex-1"
               >

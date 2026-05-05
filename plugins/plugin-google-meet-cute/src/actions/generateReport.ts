@@ -15,7 +15,8 @@ export const generateReportAction: Action = {
   name: "GENERATE_REPORT",
   description:
     "Generate a comprehensive report from Google Meet artifacts (transcripts, recordings)",
-  descriptionCompressed: "generate comprehensive report Google Meet artifact (transcript, recording)",
+  descriptionCompressed:
+    "generate comprehensive report Google Meet artifact (transcript, recording)",
   similes: [
     "create report",
     "meeting summary",

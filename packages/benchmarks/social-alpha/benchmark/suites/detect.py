@@ -21,7 +21,7 @@ from sklearn.metrics import (
 )
 
 from ..protocol import SocialAlphaSystem
-from ..utils import replay_calls
+from ..utils import replay_calls, safe_float
 
 
 @dataclass
@@ -117,8 +117,10 @@ class DetectSuite:
                 arch_labels_set.add("low_info")
 
         arch_labels = sorted(arch_labels_set)
-        arch_macro_f1 = f1_score(
-            y_true_arch, y_pred_arch, labels=arch_labels, average="macro", zero_division=0
+        arch_macro_f1 = (
+            safe_float(f1_score(y_true_arch, y_pred_arch, labels=arch_labels, average="macro", zero_division=0))
+            if y_true_arch
+            else 0.0
         )
         arch_acc = sum(1 for a, b in zip(y_true_arch, y_pred_arch) if a == b) / len(y_true_arch) if y_true_arch else 0
 

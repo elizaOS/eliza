@@ -36,7 +36,8 @@ export const stopAgentAction: Action = {
   description:
     "Stop a running task-agent session. " +
     "Terminates the PTY session and cleans up resources.",
-  descriptionCompressed: "stop run task-agent session terminate PTY session clean up resource",
+  descriptionCompressed:
+    "stop run task-agent session terminate PTY session clean up resource",
 
   examples: [
     [

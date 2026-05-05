@@ -113,7 +113,11 @@ function formatBedtimeHour(hour: number | null): string | null {
 }
 
 function formatDurationMinutes(durationMin: number | null): string | null {
-  if (durationMin === null || !Number.isFinite(durationMin) || durationMin <= 0) {
+  if (
+    durationMin === null ||
+    !Number.isFinite(durationMin) ||
+    durationMin <= 0
+  ) {
     return null;
   }
   const hours = Math.floor(durationMin / 60);
@@ -165,13 +169,7 @@ export function buildCheckinSummaryPrompt(
     );
   }
 
-  lines.push(
-    "",
-    "Report JSON:",
-    JSON.stringify(report),
-    "",
-    "Summary:",
-  );
+  lines.push("", "Report JSON:", JSON.stringify(report), "", "Summary:");
   return lines.join("\n");
 }
 

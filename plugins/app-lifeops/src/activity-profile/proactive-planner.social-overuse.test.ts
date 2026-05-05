@@ -10,7 +10,9 @@ import type { ActivityProfile, FiredActionsLog } from "./types.js";
 const NOW = new Date("2026-05-03T16:00:00.000Z");
 const TZ = "America/Los_Angeles";
 
-function makeProfile(overrides: Partial<ActivityProfile> = {}): ActivityProfile {
+function makeProfile(
+  overrides: Partial<ActivityProfile> = {},
+): ActivityProfile {
   return {
     ownerEntityId: "00000000-0000-0000-0000-000000000001",
     analyzedAt: NOW.getTime() - 60_000,
@@ -132,13 +134,7 @@ describe("planSocialOveruseCheck", () => {
     ).toBeNull();
 
     expect(
-      planSocialOveruseCheck(
-        makeProfile(),
-        makeSummary(45),
-        null,
-        TZ,
-        NOW,
-      ),
+      planSocialOveruseCheck(makeProfile(), makeSummary(45), null, TZ, NOW),
     ).toBeNull();
   });
 
@@ -181,7 +177,10 @@ describe("planSocialOveruseCheck", () => {
   it("falls back to a generic label when no service buckets are present", () => {
     const action = planSocialOveruseCheck(
       makeProfile(),
-      { totalSeconds: (SOCIAL_OVERUSE_THRESHOLD_MINUTES + 5) * 60, services: [] },
+      {
+        totalSeconds: (SOCIAL_OVERUSE_THRESHOLD_MINUTES + 5) * 60,
+        services: [],
+      },
       null,
       TZ,
       NOW,

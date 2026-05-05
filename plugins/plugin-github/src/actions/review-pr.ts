@@ -56,7 +56,8 @@ export const reviewPrAction: Action = {
   similes: ["APPROVE_PR", "REQUEST_CHANGES", "COMMENT_ON_PR"],
   description:
     "Submits a review on a GitHub PR (approve, request-changes, or comment). Approve and request-changes require confirmed:true.",
-  descriptionCompressed: "submit review GitHub PR (approve, request-change, comment) approve request-change require confirm: true",
+  descriptionCompressed:
+    "submit review GitHub PR (approve, request-change, comment) approve request-change require confirm: true",
 
   validate: async (
     runtime: IAgentRuntime,

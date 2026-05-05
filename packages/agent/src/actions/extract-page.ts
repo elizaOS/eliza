@@ -50,7 +50,8 @@ export const extractPageAction: Action = {
   similes: ["SCRAPE_PAGE", "FETCH_PAGE", "READ_WEB_PAGE", "EXTRACT_WEB_PAGE"],
   description:
     "Extract page content through Eliza Cloud hosted tools. Returns cleaned markdown plus optional HTML, links, screenshot data, and page metadata.",
-  descriptionCompressed: "extract page content through Eliza Cloud host tool return clean markdown plus optional HTML, link, screenshot data, page metadata",
+  descriptionCompressed:
+    "extract page content through Eliza Cloud host tool return clean markdown plus optional HTML, link, screenshot data, page metadata",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

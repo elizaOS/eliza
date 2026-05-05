@@ -69,7 +69,11 @@ export const SHIM_ABI_TARGETS = [
 ];
 
 const SHIM_SOURCE_PATH = path.join(here, "seccomp-shim", "sigsys-handler.c");
-const LOADER_WRAP_SOURCE_PATH = path.join(here, "seccomp-shim", "loader-wrap.c");
+const LOADER_WRAP_SOURCE_PATH = path.join(
+  here,
+  "seccomp-shim",
+  "loader-wrap.c",
+);
 
 export function parseArgs(argv) {
   const args = {

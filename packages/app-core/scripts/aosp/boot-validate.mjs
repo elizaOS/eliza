@@ -101,10 +101,7 @@ export function buildLogcatFailurePatterns({ packageName, vendorDir }) {
   return [
     new RegExp(`FATAL EXCEPTION[^\\n]*${escPkg}`, "i"),
     new RegExp(`Process: ${escPkg}`, "i"),
-    new RegExp(
-      `SecurityException[^\\n]*(${classPrefix}|${escPkg})`,
-      "i",
-    ),
+    new RegExp(`SecurityException[^\\n]*(${classPrefix}|${escPkg})`, "i"),
     new RegExp(`${classPrefix}[A-Za-z]*Receiver[^\\n]*SecurityException`, "i"),
     new RegExp(
       `avc:\\s+denied[^\\n]*(scontext|tcontext)=u:[a-z_]*:${vendorDir}`,
@@ -509,7 +506,9 @@ export async function validateBootedDevice(options) {
     roles: validateRoles(adb, serial, variant),
     appOps: validateAppOps(adb, serial, variant),
     forbiddenPackages: validateForbiddenPackages(adb, serial),
-    logcat: options.skipLogcat ? "skipped" : validateLogcat(adb, serial, variant),
+    logcat: options.skipLogcat
+      ? "skipped"
+      : validateLogcat(adb, serial, variant),
   };
 
   validatePackageFlagsAndPermissions(adb, serial, variant);

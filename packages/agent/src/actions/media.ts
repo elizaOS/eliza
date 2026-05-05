@@ -63,7 +63,8 @@ export const generateImageAction: Action = {
   description:
     "Generate an image from a text prompt using AI image generation. " +
     "Supports various styles, sizes, and quality settings.",
-  descriptionCompressed: "generate image text prompt use AI image generation support various style, size, quality setting",
+  descriptionCompressed:
+    "generate image text prompt use AI image generation support various style, size, quality setting",
 
   validate: async (_runtime: IAgentRuntime) => true,
 
@@ -217,7 +218,8 @@ export const generateVideoAction: Action = {
   description:
     "Generate a video from a text prompt using AI video generation. " +
     "Can optionally use an input image for image-to-video generation.",
-  descriptionCompressed: "generate video text prompt use AI video generation optionally use input image image-to-video generation",
+  descriptionCompressed:
+    "generate video text prompt use AI video generation optionally use input image image-to-video generation",
 
   validate: async (_runtime: IAgentRuntime) => true,
 
@@ -358,7 +360,8 @@ export const generateAudioAction: Action = {
   description:
     "Generate audio or music from a text prompt using AI audio generation. " +
     "Can create songs, sound effects, or instrumental music.",
-  descriptionCompressed: "generate audio music text prompt use AI audio generation create song, sound effect, instrumental music",
+  descriptionCompressed:
+    "generate audio music text prompt use AI audio generation create song, sound effect, instrumental music",
 
   validate: async (_runtime: IAgentRuntime) => true,
 
@@ -504,7 +507,8 @@ export const analyzeImageAction: Action = {
   description:
     "Analyze an image using AI vision to describe its contents, identify objects, " +
     "read text, or answer questions about the image.",
-  descriptionCompressed: "analyze image use AI vision describe content, identify object, read text, answer question image",
+  descriptionCompressed:
+    "analyze image use AI vision describe content, identify object, read text, answer question image",
 
   validate: async (_runtime: IAgentRuntime) => true,
 

@@ -307,11 +307,7 @@ export class VastTrainingService {
   }> {
     const job = await this.store.get(jobId);
     if (!job) throw new VastServiceError("Job not found", 404);
-    const evalScript = join(
-      this.trainingRoot,
-      "scripts",
-      "eval_checkpoint.py",
-    );
+    const evalScript = join(this.trainingRoot, "scripts", "eval_checkpoint.py");
     if (!existsSync(evalScript)) {
       throw new VastServiceError(
         `eval_checkpoint.py not found at ${evalScript} — CheckpointSyncAgent has not landed it yet`,
@@ -539,11 +535,7 @@ export class VastTrainingService {
   // ── Internals ─────────────────────────────────────────────────────────
 
   private async dispatchJob(record: VastJobRecord): Promise<void> {
-    const trainScript = join(
-      this.trainingRoot,
-      "scripts",
-      "train_vast.sh",
-    );
+    const trainScript = join(this.trainingRoot, "scripts", "train_vast.sh");
     if (!existsSync(trainScript)) {
       logger.error(
         `[VastTrainingService] train_vast.sh not found at ${trainScript}`,

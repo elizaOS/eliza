@@ -519,6 +519,7 @@ class TauBenchRunner:
             "turns_used": result.turns_used,
             "tool_calls_made": [tc.to_dict() for tc in result.tool_calls_made],
             "policy_violations": result.policy_violations,
+            "metrics": result.metrics,
             "error": result.error,
         }
 

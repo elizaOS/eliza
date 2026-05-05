@@ -36,7 +36,8 @@ export const archiveCodingTaskAction: Action = {
   similes: ["CLOSE_CODING_TASK", "ARCHIVE_TASK_THREAD"],
   description:
     "Archive a coding-agent task thread by id. The thread becomes hidden from the active list but remains in history.",
-  descriptionCompressed: "archive coding-agent task thread id thread become hidden active list remain history",
+  descriptionCompressed:
+    "archive coding-agent task thread id thread become hidden active list remain history",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -117,7 +118,8 @@ export const reopenCodingTaskAction: Action = {
   similes: ["UNARCHIVE_CODING_TASK", "RESUME_CODING_TASK"],
   description:
     "Reopen a previously-archived coding-agent task thread by id, returning it to the active list.",
-  descriptionCompressed: "reopen previously-archive coding-agent task thread id, return active list",
+  descriptionCompressed:
+    "reopen previously-archive coding-agent task thread id, return active list",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

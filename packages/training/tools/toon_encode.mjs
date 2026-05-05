@@ -38,8 +38,7 @@ import { createInterface } from "node:readline";
 // matches: [indent](- )?<unquoted_key>: "<value>"
 // where <unquoted_key> is identifier-shaped (encoder leaves these unquoted)
 // and <value> is a fully-quoted string (encoder always quotes when value has structural chars).
-const RISKY_LINE_RE =
-  /^([ \t]*)(- )?([A-Za-z_][A-Za-z0-9_.\-]*): (".*")$/;
+const RISKY_LINE_RE = /^([ \t]*)(- )?([A-Za-z_][A-Za-z0-9_.\-]*): (".*")$/;
 
 // Matches a line whose KEY is a TOON-quoted string ending in `:` (followed by
 // the structural colon-space-value). The upstream decoder's
@@ -56,8 +55,7 @@ const RISKY_LINE_RE =
 // applied only to keys that would otherwise crash the decoder. The decoded
 // JSON's key string changes from "X:" to "Xː" — acceptable for the n8n
 // `params.body.<question>:` field where the key is a free-form question label.
-const QUOTED_KEY_TRAILING_COLON_RE =
-  /^([ \t]*)(- )?"((?:[^"\\]|\\.)*?):":\s/;
+const QUOTED_KEY_TRAILING_COLON_RE = /^([ \t]*)(- )?"((?:[^"\\]|\\.)*?):":\s/;
 
 function patchEncoded(encoded) {
   const hasBracket = encoded.includes("[");

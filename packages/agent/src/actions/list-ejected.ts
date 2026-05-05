@@ -27,7 +27,8 @@ export const listEjectedAction: Action = {
     "plugins have I ejected', 'show my forked plugins', or 'list local plugin " +
     "customizations'. Pairs with EJECT_PLUGIN, REINJECT_PLUGIN, and " +
     "SYNC_PLUGIN for managing the lifecycle of forked plugins.",
-  descriptionCompressed: "list every plugin eject npm upstream local fork agent workspace, together w/ fork upstream name, version, local path use owner ask plugin eject, show fork plugin, list local plugin customization pair w/ EJECT_PLUGIN, REINJECT_PLUGIN, SYNC_PLUGIN manage lifecycle fork plugin",
+  descriptionCompressed:
+    "list every plugin eject npm upstream local fork agent workspace, together w/ fork upstream name, version, local path use owner ask plugin eject, show fork plugin, list local plugin customization pair w/ EJECT_PLUGIN, REINJECT_PLUGIN, SYNC_PLUGIN manage lifecycle fork plugin",
 
   validate: async () => true,
 

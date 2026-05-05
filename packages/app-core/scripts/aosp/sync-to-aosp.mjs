@@ -95,8 +95,11 @@ export function syncToAosp({ aospRoot, sourceVendor, vendorDir, appName }) {
 }
 
 export function main(argv = process.argv.slice(2)) {
-  const { aospRoot, sourceVendor: sourceVendorArg, appConfigPath: appConfigArg } =
-    parseArgs(argv);
+  const {
+    aospRoot,
+    sourceVendor: sourceVendorArg,
+    appConfigPath: appConfigArg,
+  } = parseArgs(argv);
 
   const appConfigPath = resolveAppConfigPath({
     repoRoot,

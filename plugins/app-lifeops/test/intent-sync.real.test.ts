@@ -351,22 +351,32 @@ describe("intent-sync — real PGLite", () => {
     const cutoffTime = new Date(Date.now() - 10 * 60_000).toISOString();
     await runtime.databaseAdapter.db.execute(
       `UPDATE life_intents SET created_at = $1 WHERE id = $2`,
-      [cutoffTime, intent.id]
+      [cutoffTime, intent.id],
     );
 
     // 3. Trigger escalation
-    const { escalateUnacknowledgedIntents } = await import("../src/lifeops/intent-sync.js");
-    const result = await escalateUnacknowledgedIntents(runtime, { thresholdMinutes: 5 });
-    
+    const { escalateUnacknowledgedIntents } = await import(
+      "../src/lifeops/intent-sync.js"
+    );
+    const result = await escalateUnacknowledgedIntents(runtime, {
+      thresholdMinutes: 5,
+    });
+
     expect(result.escalated).toBeGreaterThanOrEqual(1);
 
     // 4. Verify that the desktop intent is now acknowledged
-    const pendingDesktop = await receivePendingIntents(runtime, { device: "desktop" });
-    expect(pendingDesktop.find(i => i.id === intent.id)).toBeFalsy();
+    const pendingDesktop = await receivePendingIntents(runtime, {
+      device: "desktop",
+    });
+    expect(pendingDesktop.find((i) => i.id === intent.id)).toBeFalsy();
 
     // 5. Verify that a mobile intent was created
-    const pendingMobile = await receivePendingIntents(runtime, { device: "mobile" });
-    const escalatedIntent = pendingMobile.find(i => i.metadata?.escalatedFrom === intent.id);
+    const pendingMobile = await receivePendingIntents(runtime, {
+      device: "mobile",
+    });
+    const escalatedIntent = pendingMobile.find(
+      (i) => i.metadata?.escalatedFrom === intent.id,
+    );
     expect(escalatedIntent).toBeTruthy();
     expect(escalatedIntent?.title).toContain("[Escalated]");
     expect(escalatedIntent?.priority).toBe("high");

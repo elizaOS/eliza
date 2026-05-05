@@ -64,17 +64,15 @@ describe("extractTaskCreatePlanWithLlm", () => {
 
   it("issues a repair pass when the first response is unparseable", async () => {
     const calls: string[] = [];
-    const useModel = vi.fn(
-      async (_type: string, opts: { prompt: string }) => {
-        calls.push(opts.prompt);
-        return calls.length === 1
-          ? "still thinking..."
-          : JSON.stringify({
-              mode: "respond",
-              response: "What should I track?",
-            });
-      },
-    );
+    const useModel = vi.fn(async (_type: string, opts: { prompt: string }) => {
+      calls.push(opts.prompt);
+      return calls.length === 1
+        ? "still thinking..."
+        : JSON.stringify({
+            mode: "respond",
+            response: "What should I track?",
+          });
+    });
 
     const plan = await extractTaskCreatePlanWithLlm({
       runtime: { useModel } as unknown as IAgentRuntime,
@@ -114,12 +112,10 @@ describe("extractReminderIntensityWithLlm", () => {
 
   it("issues a repair pass when the first response is unparseable", async () => {
     const calls: string[] = [];
-    const useModel = vi.fn(
-      async (_type: string, opts: { prompt: string }) => {
-        calls.push(opts.prompt);
-        return calls.length === 1 ? "uhh maybe" : '{"intensity":"persistent"}';
-      },
-    );
+    const useModel = vi.fn(async (_type: string, opts: { prompt: string }) => {
+      calls.push(opts.prompt);
+      return calls.length === 1 ? "uhh maybe" : '{"intensity":"persistent"}';
+    });
 
     const plan = await extractReminderIntensityWithLlm({
       runtime: { useModel } as unknown as IAgentRuntime,

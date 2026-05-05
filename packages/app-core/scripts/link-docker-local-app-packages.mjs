@@ -283,12 +283,7 @@ for (const packagePath of localPackages) {
       });
       linkRootDependency({
         packageName: rootDep,
-        target: path.join(
-          packageDir,
-          "typescript",
-          "node_modules",
-          rootDep,
-        ),
+        target: path.join(packageDir, "typescript", "node_modules", rootDep),
       });
     }
   }

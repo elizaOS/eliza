@@ -7,10 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
-import type {
-  LiveProviderConfig,
-  LiveProviderName,
-} from "./live-provider";
+import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
 

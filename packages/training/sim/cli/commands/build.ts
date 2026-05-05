@@ -2,86 +2,86 @@
  * `babylon build` — Bundle the runtime and discovered systems into a standalone output.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, relative, resolve } from 'node:path';
-import { defineCommand } from 'citty';
-import consola from 'consola';
-import { loadBabylonConfig } from '../../core/config';
-import { scanSystems } from '../../core/scanner';
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, relative, resolve } from "node:path";
+import { defineCommand } from "citty";
+import consola from "consola";
+import { loadBabylonConfig } from "../../core/config";
+import { scanSystems } from "../../core/scanner";
 
 export default defineCommand({
   meta: {
-    name: 'build',
-    description: 'Build the runtime and systems into a standalone bundle',
+    name: "build",
+    description: "Build the runtime and systems into a standalone bundle",
   },
   args: {
     rootDir: {
-      type: 'string',
-      description: 'Project root directory',
-      default: '.',
+      type: "string",
+      description: "Project root directory",
+      default: ".",
     },
     outDir: {
-      type: 'string',
-      description: 'Output directory',
-      default: '.output',
+      type: "string",
+      description: "Output directory",
+      default: ".output",
     },
     minify: {
-      type: 'boolean',
-      description: 'Minify the output',
+      type: "boolean",
+      description: "Minify the output",
       default: false,
     },
     sourcemap: {
-      type: 'string',
-      description: 'Sourcemap mode (none, inline, external)',
-      default: 'none',
+      type: "string",
+      description: "Sourcemap mode (none, inline, external)",
+      default: "none",
     },
     target: {
-      type: 'string',
-      description: 'Build target (bun, node)',
-      default: 'bun',
+      type: "string",
+      description: "Build target (bun, node)",
+      default: "bun",
     },
   },
   async run({ args }) {
     const rootDir = resolve(args.rootDir);
     const outDir = resolve(rootDir, args.outDir);
 
-    consola.box('Babylon Runtime — build');
+    consola.box("Babylon Runtime — build");
 
     const { config, configFile } = await loadBabylonConfig(rootDir);
-    consola.info(`Config: ${configFile ?? 'defaults'}`);
+    consola.info(`Config: ${configFile ?? "defaults"}`);
 
     // Discover systems
     const { systems, files } = await scanSystems(
-      config.systemsDir ?? './systems',
-      rootDir
+      config.systemsDir ?? "./systems",
+      rootDir,
     );
     consola.info(
-      `Discovered ${systems.length} system(s) from ${files.length} file(s)`
+      `Discovered ${systems.length} system(s) from ${files.length} file(s)`,
     );
 
     if (systems.length === 0 && files.length === 0) {
-      consola.warn('No systems found — building entry only');
+      consola.warn("No systems found — building entry only");
     }
 
     // Resolve import paths relative to outDir
     const enginePath = relative(
       outDir,
-      resolve(rootDir, 'core/engine.ts')
-    ).replace(/\\/g, '/');
+      resolve(rootDir, "core/engine.ts"),
+    ).replace(/\\/g, "/");
 
     const systemImports = files.map((f, i) => {
-      const rel = relative(outDir, f).replace(/\\/g, '/');
+      const rel = relative(outDir, f).replace(/\\/g, "/");
       return `import * as _sys${i} from '${rel}';`;
     });
 
     const systemRegistrations = files.map(
-      (_, i) => `  registerScanned(_sys${i});`
+      (_, i) => `  registerScanned(_sys${i});`,
     );
 
     const configPath = relative(
       outDir,
-      resolve(rootDir, 'core/config.ts')
-    ).replace(/\\/g, '/');
+      resolve(rootDir, "core/config.ts"),
+    ).replace(/\\/g, "/");
 
     const entrySource = `#!/usr/bin/env bun
 /**
@@ -92,7 +92,7 @@ export default defineCommand({
 import { BabylonEngine } from '${enginePath}';
 import { loadBabylonConfig } from '${configPath}';
 
-${systemImports.join('\n')}
+${systemImports.join("\n")}
 
 interface BabylonSystemLike {
   id: string;
@@ -169,7 +169,7 @@ const engine = new BabylonEngine({
 
 const _disabled = new Set(disabledSystems ?? []);
 const _phaseOverrides: Record<string, unknown> = systemPhases ?? {};
-${systemRegistrations.join('\n')}
+${systemRegistrations.join("\n")}
 
 await engine.boot();
 
@@ -202,44 +202,44 @@ if (once) {
 
     await mkdir(outDir, { recursive: true });
 
-    const entryPath = resolve(outDir, 'server.ts');
-    await writeFile(entryPath, entrySource, 'utf-8');
+    const entryPath = resolve(outDir, "server.ts");
+    await writeFile(entryPath, entrySource, "utf-8");
     consola.success(`Entry written: ${relative(rootDir, entryPath)}`);
 
     // Bundle with bun build — externalize native and heavy deps
     const externals = [
-      'pg-native',
-      'better-sqlite3',
-      'mysql2',
-      'oracledb',
-      'tedious',
-      'pg-query-stream',
-      'node-fetch-native',
-      'node-fetch-native/*',
-      '@solana/*',
+      "pg-native",
+      "better-sqlite3",
+      "mysql2",
+      "oracledb",
+      "tedious",
+      "pg-query-stream",
+      "node-fetch-native",
+      "node-fetch-native/*",
+      "@solana/*",
     ];
 
     const buildArgs = [
-      'build',
+      "build",
       entryPath,
-      '--outdir',
+      "--outdir",
       outDir,
-      '--target',
+      "--target",
       args.target,
-      ...externals.flatMap((e) => ['--external', e]),
+      ...externals.flatMap((e) => ["--external", e]),
     ];
 
-    if (args.minify) buildArgs.push('--minify');
-    if (args.sourcemap === 'inline') buildArgs.push('--sourcemap=inline');
-    else if (args.sourcemap === 'external')
-      buildArgs.push('--sourcemap=external');
+    if (args.minify) buildArgs.push("--minify");
+    if (args.sourcemap === "inline") buildArgs.push("--sourcemap=inline");
+    else if (args.sourcemap === "external")
+      buildArgs.push("--sourcemap=external");
 
     consola.start(`Bundling with bun build (target: ${args.target})...`);
 
-    const proc = Bun.spawn(['bun', ...buildArgs], {
+    const proc = Bun.spawn(["bun", ...buildArgs], {
       cwd: rootDir,
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdout: "pipe",
+      stderr: "pipe",
     });
 
     const [stdout, stderr] = await Promise.all([
@@ -249,7 +249,7 @@ if (once) {
     const exitCode = await proc.exited;
 
     if (exitCode !== 0) {
-      consola.error('Build failed');
+      consola.error("Build failed");
       if (stdout) consola.log(stdout);
       if (stderr) consola.error(stderr);
       throw new Error(`bun build exited with code ${exitCode}`);
@@ -268,21 +268,21 @@ if (once) {
         phase: m.phase,
         file:
           files.find(
-            (f) => basename(f).replace(/\.(ts|js|mts|mjs)$/, '') === m.id
+            (f) => basename(f).replace(/\.(ts|js|mts|mjs)$/, "") === m.id,
           ) ?? null,
       })),
       config: {
         budgetMs: config.budgetMs ?? 60_000,
-        systemsDir: config.systemsDir ?? './systems',
+        systemsDir: config.systemsDir ?? "./systems",
       },
     };
 
-    const manifestPath = resolve(outDir, 'manifest.json');
-    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+    const manifestPath = resolve(outDir, "manifest.json");
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 
     consola.success(`Build complete → ${relative(rootDir, outDir)}/`);
     consola.info(
-      `  Run with: bun ${relative(rootDir, resolve(outDir, 'server.js'))}`
+      `  Run with: bun ${relative(rootDir, resolve(outDir, "server.js"))}`,
     );
     process.exit(0);
   },

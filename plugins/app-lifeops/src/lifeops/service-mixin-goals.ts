@@ -188,10 +188,8 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalString(request.description) ?? "";
       const requestSuccessCriteria = (() => {
         const criteria =
-          normalizeOptionalRecord(
-            request.successCriteria,
-            "successCriteria",
-          ) ?? {};
+          normalizeOptionalRecord(request.successCriteria, "successCriteria") ??
+          {};
         if (Array.isArray(criteria)) {
           fail(400, "successCriteria must be an object, not an array");
         }

@@ -3,15 +3,15 @@
  * All interfaces for the system engine, contexts, and runtime.
  */
 
-import type { DrizzleClient } from '@babylon/db';
-import type { PromptDefinition } from '@babylon/engine/prompts/define-prompt';
-import type { Logger } from '@babylon/shared';
+import type { DrizzleClient } from "@babylon/db";
+import type { PromptDefinition } from "@babylon/engine/prompts/define-prompt";
+import type { Logger } from "@babylon/shared";
 import type {
   BabylonConfig,
   BabylonHooks,
   BabylonServices,
   BabylonSharedData,
-} from './augments';
+} from "./augments";
 
 // ---------------------------------------------------------------------------
 // Utility: check if an interface has been augmented (has at least one key)
@@ -54,7 +54,7 @@ export interface SystemTickResult {
 interface TypedServiceContainer {
   register<K extends keyof BabylonServices>(
     token: K,
-    instance: BabylonServices[K]
+    instance: BabylonServices[K],
   ): void;
   register<T>(token: string, instance: T): void;
 
@@ -100,13 +100,13 @@ export interface TickMetrics {
 /** Typed overloads when BabylonSharedData has been augmented. */
 interface TypedTickSharedData {
   get<K extends keyof BabylonSharedData>(
-    key: K
+    key: K,
   ): BabylonSharedData[K] | undefined;
   get<T>(key: string): T | undefined;
 
   set<K extends keyof BabylonSharedData>(
     key: K,
-    value: BabylonSharedData[K]
+    value: BabylonSharedData[K],
   ): void;
   set(key: string, value: unknown): void;
 
@@ -160,7 +160,7 @@ export interface RuntimeHookable {
   hook<T extends keyof RuntimeHooks>(name: T, fn: RuntimeHooks[T]): () => void;
   hookOnce<T extends keyof RuntimeHooks>(
     name: T,
-    fn: RuntimeHooks[T]
+    fn: RuntimeHooks[T],
   ): () => void;
 }
 
@@ -215,30 +215,30 @@ export interface BabylonSystem {
 
 export type RuntimeHooks = {
   /** Called after the engine has booted and all systems are registered. */
-  'engine:boot': (ctx: EngineContext) => void | Promise<void>;
+  "engine:boot": (ctx: EngineContext) => void | Promise<void>;
   /** Called before the engine shuts down. */
-  'engine:shutdown': () => void | Promise<void>;
+  "engine:shutdown": () => void | Promise<void>;
 
   /** Called at the start of each tick, before any systems run. */
-  'tick:before': (ctx: TickContext) => void | Promise<void>;
+  "tick:before": (ctx: TickContext) => void | Promise<void>;
   /** Called after all systems have run for a tick. */
-  'tick:after': (
+  "tick:after": (
     ctx: TickContext,
-    metrics: Record<string, number | string | boolean>
+    metrics: Record<string, number | string | boolean>,
   ) => void | Promise<void>;
 
   /** Called before a specific system's onTick runs. */
-  'system:before': (systemId: string, ctx: TickContext) => void | Promise<void>;
+  "system:before": (systemId: string, ctx: TickContext) => void | Promise<void>;
   /** Called after a specific system's onTick completes. */
-  'system:after': (
+  "system:after": (
     systemId: string,
     ctx: TickContext,
-    result: SystemTickResult
+    result: SystemTickResult,
   ) => void | Promise<void>;
   /** Called when a system throws during onTick. */
-  'system:error': (
+  "system:error": (
     systemId: string,
     error: Error,
-    ctx: TickContext
+    ctx: TickContext,
   ) => void | Promise<void>;
 } & (IsEmpty<BabylonHooks> extends true ? Record<string, never> : BabylonHooks);

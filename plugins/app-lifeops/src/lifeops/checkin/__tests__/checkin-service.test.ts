@@ -418,7 +418,9 @@ describe("CheckinService", () => {
         sri: 82,
         regularityClass: "regular",
       };
-      const prompt = buildCheckinSummaryPrompt(emptyReportFor("morning", recap));
+      const prompt = buildCheckinSummaryPrompt(
+        emptyReportFor("morning", recap),
+      );
       expect(prompt).not.toContain("Sleep recap");
       expect(prompt).not.toContain("sleep regularity index");
     });

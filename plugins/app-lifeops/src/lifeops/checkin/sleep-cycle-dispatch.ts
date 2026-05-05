@@ -4,10 +4,7 @@ import type {
   LifeOpsRegularityClass,
   LifeOpsScheduleRegularity,
 } from "@elizaos/shared";
-import {
-  buildUtcDateFromLocalParts,
-  getZonedDateParts,
-} from "../time.js";
+import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
 import { parseIsoMs } from "../time-util.js";
 import type { SleepRecap } from "./types.js";
 

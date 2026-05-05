@@ -11,9 +11,10 @@ import { LifeOpsServiceError } from "./service-types.js";
 // audit recording) without making network calls. Other exports pass through
 // so existing tests keep their real implementations.
 vi.mock("./google-gmail.js", async () => {
-  const actual = await vi.importActual<typeof import("./google-gmail.js")>(
-    "./google-gmail.js",
-  );
+  const actual =
+    await vi.importActual<typeof import("./google-gmail.js")>(
+      "./google-gmail.js",
+    );
   return {
     ...actual,
     modifyGoogleGmailMessages: vi.fn(async () => undefined),
@@ -21,9 +22,10 @@ vi.mock("./google-gmail.js", async () => {
 });
 
 vi.mock("./google-oauth.js", async () => {
-  const actual = await vi.importActual<typeof import("./google-oauth.js")>(
-    "./google-oauth.js",
-  );
+  const actual =
+    await vi.importActual<typeof import("./google-oauth.js")>(
+      "./google-oauth.js",
+    );
   return {
     ...actual,
     ensureFreshGoogleAccessToken: vi.fn(async () => ({

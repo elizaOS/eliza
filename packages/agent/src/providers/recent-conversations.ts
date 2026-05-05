@@ -28,7 +28,8 @@ export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
   description:
     "Recent messages from the user's conversations across all connected platforms.",
-  descriptionCompressed: "recent message user conversation across connect platform",
+  descriptionCompressed:
+    "recent message user conversation across connect platform",
   dynamic: true,
   position: 5,
   relevanceKeywords: getValidationKeywordTerms(

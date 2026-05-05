@@ -246,7 +246,7 @@ async function prePopulateHistory(
       },
       createdAt: baseTime + i * 1000,
     };
-      await runtime.createMemory(memory, "messages");
+    await runtime.createMemory(memory, "messages");
   }
 }
 

@@ -205,7 +205,10 @@ export async function recordBrowserFocusWindow(
       },
     ],
   });
-  await evaluateProactiveBlockOnBrowserFocus(runtime, { domain, deviceId: args.deviceId });
+  await evaluateProactiveBlockOnBrowserFocus(runtime, {
+    domain,
+    deviceId: args.deviceId,
+  });
   return true;
 }
 

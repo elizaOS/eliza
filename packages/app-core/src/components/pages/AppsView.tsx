@@ -16,6 +16,7 @@ import {
 
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
+import { readAppsCache, writeAppsCache } from "../apps/apps-cache";
 import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
 import { AppsSidebar } from "../apps/AppsSidebar";
 import {
@@ -24,15 +25,11 @@ import {
   getAppSlug,
 } from "../apps/helpers";
 import {
-  getInternalToolApps,
   getInternalToolAppTargetTab,
   getInternalToolAppWindowPath,
 } from "../apps/internal-tool-apps";
-import {
-  getAllOverlayApps,
-  isOverlayApp,
-  overlayAppToRegistryInfo,
-} from "../apps/overlay-app-registry";
+import { loadAppsCatalog } from "../apps/load-apps-catalog";
+import { isOverlayApp } from "../apps/overlay-app-registry";
 import { RunningAppsRow } from "../apps/RunningAppsRow";
 import {
   resolveEmbeddedViewerUrl,
@@ -194,8 +191,10 @@ export function AppsView() {
     setActionNotice,
     t,
   } = useApp();
-  const [apps, setApps] = useState<RegistryAppInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [apps, setApps] = useState<RegistryAppInfo[]>(
+    () => readAppsCache() ?? [],
+  );
+  const [loading, setLoading] = useState(() => readAppsCache() === null);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, _setSearchQuery] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
@@ -424,66 +423,14 @@ export function AppsView() {
   }, [appWindows.length, refreshRuns]);
 
   const loadApps = useCallback(async () => {
-    setLoading(true);
     setError(null);
     void refreshRuns().catch((err: unknown) => {
       console.warn("[AppsView] Failed to list app runs:", err);
     });
     try {
-      const serverAppsResult = await client
-        .listApps()
-        .then((apps) => ({
-          status: "fulfilled" as const,
-          value: apps,
-        }))
-        .catch((reason) => ({
-          status: "rejected" as const,
-          reason,
-        }));
-      const serverApps =
-        serverAppsResult.status === "fulfilled" ? serverAppsResult.value : [];
-      if (serverAppsResult.status === "rejected") {
-        console.warn(
-          "[AppsView] Failed to list apps:",
-          serverAppsResult.reason,
-        );
-      }
-      // Internal tool apps are client-owned navigation surfaces. The registry
-      // augments them with curated apps, but it must not be able to hide them.
-      let catalogApps: RegistryAppInfo[];
-      try {
-        catalogApps = [
-          ...getInternalToolApps(),
-          ...(await client.listCatalogApps()),
-        ];
-      } catch (catalogErr) {
-        console.warn(
-          "[AppsView] Failed to load catalog apps; using internal tools:",
-          catalogErr,
-        );
-        catalogApps = getInternalToolApps();
-      }
-      // Inject registered overlay apps (e.g. companion) if not already from server
-      const overlayDescriptors = getAllOverlayApps()
-        .filter((oa) => !serverApps.some((a) => a.name === oa.name))
-        .filter((oa) => !catalogApps.some((a) => a.name === oa.name))
-        .map(overlayAppToRegistryInfo);
-      // Internal-tool entries (first in `catalogApps`) own the canonical
-      // metadata (heroImage, category, descriptions). Server runtime data is
-      // joined onto them via app-runs elsewhere; we must NOT let bare
-      // `serverApps` entries clobber the heroImage by winning the dedup.
-      // Keep the FIRST occurrence so internal tools stay authoritative.
-      const seen = new Set<string>();
-      const list = [
-        ...catalogApps,
-        ...overlayDescriptors,
-        ...serverApps,
-      ].filter((app: RegistryAppInfo) => {
-        if (seen.has(app.name)) return false;
-        seen.add(app.name);
-        return true;
-      });
+      const list = await loadAppsCatalog();
       setApps(list);
+      writeAppsCache(list);
     } catch (err) {
       setError(
         t("appsview.LoadError", {

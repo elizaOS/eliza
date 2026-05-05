@@ -84,7 +84,8 @@ export function createAdminPanelProvider(): Provider {
     name: "adminPanel",
     description:
       "Surfaces the owner's recent Eliza app chat so the agent has context across platforms.",
-    descriptionCompressed: "surface owner recent Eliza app chat agent context across platform",
+    descriptionCompressed:
+      "surface owner recent Eliza app chat agent context across platform",
     dynamic: true,
     position: 14,
     async get(

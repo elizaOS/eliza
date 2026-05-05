@@ -2,7 +2,7 @@
   "name": "24GB GPU (RTX 4090/A5000)",
   "description": "High-end consumer/prosumer - can use Qwen3.5-4B",
   "model": "Qwen/Qwen3.5-4B",
-  "vllm_gpu_memory": 0.40,
+  "vllm_gpu_memory": 0.4,
   "batch_size": 2,
   "max_token_length": 4096,
   "group_size": 4,

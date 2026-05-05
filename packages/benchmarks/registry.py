@@ -385,17 +385,22 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_solana_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from Solana benchmark results."""
     root = expect_dict(data, ctx="solana:root")
-    final_reward = expect_float(
-        get_required(root, "final_reward", ctx="solana:root"),
-        ctx="solana:final_reward",
-    )
+    final_reward_raw = get_optional(root, "final_reward")
+    if final_reward_raw is None:
+        cumulative = get_optional(root, "cumulative_rewards")
+        if isinstance(cumulative, list) and cumulative:
+            final_reward_raw = cumulative[-1]
+    final_reward = expect_float(final_reward_raw, ctx="solana:final_reward")
+    final_programs = root.get("final_programs")
+    if final_programs is None and isinstance(root.get("programs_discovered"), dict):
+        final_programs = len(root["programs_discovered"])
     return ScoreExtraction(
         score=final_reward,
         unit="unique_instructions",
         higher_is_better=True,
         metrics={
             "final_reward": final_reward,
-            "final_programs": root.get("final_programs") or 0,
+            "final_programs": final_programs or 0,
             "model": root.get("model") or "",
             "run_id": root.get("run_id") or "",
         },
@@ -803,6 +808,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             # picked by the in-process elizaOS Python runtime (default) or by the
             # TS bridge (when --provider eliza is set).
             args.extend(["--model", model.model])
+        if extra.get("mock") is True:
+            args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
         # caller asks for the eliza agent (either via model.provider or the
         # explicit "agent": "eliza" extra).
@@ -989,9 +996,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--real-llm", "--model-provider", "eliza"])
         else:
             real = extra.get("real_llm")
-            if real is True:
+            mock = extra.get("mock")
+            mock_mode = not (real is True or mock is False)
+            if mock_mode:
+                args.append("--mock")
+            else:
                 args.append("--real-llm")
-            if model.provider:
+            if not mock_mode and model.provider:
                 args.extend(["--model-provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
@@ -1051,6 +1062,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         no_docker = extra.get("no_docker")
         if no_docker is True:
             args.append("--no-docker")
+        if extra.get("mock") is True:
+            args.append("--mock")
         return args
 
     def _swe_orchestrated_cmd(
@@ -1086,6 +1099,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--max-steps", str(max_steps)])
         if extra.get("no_docker") is True:
             args.append("--no-docker")
+        if extra.get("mock") is True:
+            args.append("--mock")
 
         execution_mode = extra.get("execution_mode")
         if isinstance(execution_mode, str) and execution_mode in {

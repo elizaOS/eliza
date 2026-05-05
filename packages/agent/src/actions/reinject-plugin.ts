@@ -22,7 +22,8 @@ export const reinjectPluginAction: Action = {
 
   description:
     "Remove an ejected plugin copy so runtime falls back to the npm package.",
-  descriptionCompressed: "remove eject plugin copy runtime fall back npm package",
+  descriptionCompressed:
+    "remove eject plugin copy runtime fall back npm package",
 
   validate: async () => true,
 

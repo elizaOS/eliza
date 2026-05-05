@@ -17,9 +17,9 @@
  * so it works across async boundaries without build-time transforms.
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks';
-import type { DrizzleClient } from '@babylon/db';
-import { createContext } from 'unctx';
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { DrizzleClient } from "@babylon/db";
+import { createContext } from "unctx";
 import type {
   EngineContext,
   LLMOrchestrator,
@@ -28,7 +28,7 @@ import type {
   TickContext,
   TickMetrics,
   TickSharedData,
-} from './types';
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Contexts (with AsyncLocalStorage for async safety)

@@ -46,8 +46,7 @@ export const OS_PLATFORMS = new Set(["darwin", "linux", "win32"]);
  * @returns {boolean}
  */
 export function shouldBuildPluginForHost(pkg, hostPlatform) {
-  const platforms =
-    pkg && typeof pkg === "object" && pkg.elizaos?.platforms;
+  const platforms = pkg && typeof pkg === "object" && pkg.elizaos?.platforms;
   if (Array.isArray(platforms) && platforms.length > 0) {
     const isPureOsAllowlist = platforms.every((p) => OS_PLATFORMS.has(p));
     if (!isPureOsAllowlist) {

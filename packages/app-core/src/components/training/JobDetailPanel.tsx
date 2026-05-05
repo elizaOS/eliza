@@ -31,9 +31,7 @@ function ProgressChart({
   const chartHeight = height - padding;
 
   const points = data.map((d, i) => ({
-    x:
-      padding +
-      (i / Math.max(data.length - 1, 1)) * chartWidth,
+    x: padding + (i / Math.max(data.length - 1, 1)) * chartWidth,
     y: padding + chartHeight / 2,
     formatOk: d.format_ok,
     contentOk: d.content_ok,
@@ -79,7 +77,12 @@ function ProgressChart({
       <text x={width - 35} y={padding - 5} fontSize="10" fill="currentColor">
         Format OK
       </text>
-      <text x={width - 35} y={padding + chartHeight + 15} fontSize="10" fill="currentColor">
+      <text
+        x={width - 35}
+        y={padding + chartHeight + 15}
+        fontSize="10"
+        fill="currentColor"
+      >
         Content OK
       </text>
     </svg>
@@ -101,7 +104,8 @@ function CheckpointsList({
         <div key={cp.step} className="text-xs border border-border rounded p-2">
           <div className="font-mono text-txt-strong">Step {cp.step}</div>
           <div className="text-muted">
-            {cp.size_mb.toFixed(1)} MB · {new Date(cp.pulled_at).toLocaleString()}
+            {cp.size_mb.toFixed(1)} MB ·{" "}
+            {new Date(cp.pulled_at).toLocaleString()}
           </div>
         </div>
       ))}
@@ -153,10 +157,7 @@ function JobLogs({ jobId }: { jobId: string }) {
   );
 }
 
-export function JobDetailPanel({
-  jobId,
-  onClose,
-}: JobDetailPanelProps) {
+export function JobDetailPanel({ jobId, onClose }: JobDetailPanelProps) {
   const { data: job, loading, error } = useTrainingJobDetail(jobId);
   const { cancel, loading: cancelLoading } = useCancelTrainingJob();
   const { eval: evalJob, loading: evalLoading } = useEvalTrainingJob();
@@ -239,7 +240,9 @@ export function JobDetailPanel({
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
             <div className="text-muted">Registry Key</div>
-            <div className="font-mono text-txt break-all">{job.registry_key}</div>
+            <div className="font-mono text-txt break-all">
+              {job.registry_key}
+            </div>
           </div>
           <div>
             <div className="text-muted">Started</div>
@@ -253,7 +256,9 @@ export function JobDetailPanel({
           </div>
           <div>
             <div className="text-muted">Format OK</div>
-            <div className={job.last_format_ok ? "text-green-500" : "text-red-500"}>
+            <div
+              className={job.last_format_ok ? "text-green-500" : "text-red-500"}
+            >
               {job.last_format_ok ? "Yes" : "No"}
             </div>
           </div>

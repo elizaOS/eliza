@@ -278,7 +278,8 @@ export const sendMessageAction: Action = {
     "Do NOT use this when the OWNER asks the agent to send a message on the " +
     "OWNER's behalf using the OWNER's accounts — that is OWNER_SEND_MESSAGE " +
     "(which drafts first and requires confirmed: true to dispatch).",
-  descriptionCompressed: "AGENT-scoped message send: AGENT, initiative, send message person, room, admin/owner use agent connect account use recipient w/ person name resolve via Rolodex agent find right platform handle automatically admin message, set target admin owner explicit rout, provide source + target + targettype directly support urgency level admin message (normal, important, urgent) use OWNER ask agent send message OWNER's behalf use OWNER's account OWNER_SEND_MESSAGE (draft first require confirm: true dispatch)",
+  descriptionCompressed:
+    "AGENT-scoped message send: AGENT, initiative, send message person, room, admin/owner use agent connect account use recipient w/ person name resolve via Rolodex agent find right platform handle automatically admin message, set target admin owner explicit rout, provide source + target + targettype directly support urgency level admin message (normal, important, urgent) use OWNER ask agent send message OWNER's behalf use OWNER's account OWNER_SEND_MESSAGE (draft first require confirm: true dispatch)",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;

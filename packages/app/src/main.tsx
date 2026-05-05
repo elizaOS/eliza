@@ -12,7 +12,6 @@ import {
   createVectorBrowserRenderer,
   GlobalEmoteOverlay,
   InferenceCloudAlertButton,
-  prefetchVrmToCache,
   resolveCompanionInferenceNotice,
   THREE,
   useCompanionSceneStatus,
@@ -262,7 +261,6 @@ const appBootConfig: AppBootConfig = {
   companionInferenceAlertButton: InferenceCloudAlertButton,
   companionGlobalOverlay: GlobalEmoteOverlay,
   useCompanionSceneStatus,
-  prefetchVrmToCache,
   companionVectorBrowser: {
     THREE,
     createVectorBrowserRenderer,

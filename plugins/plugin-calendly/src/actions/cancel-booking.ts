@@ -92,7 +92,8 @@ export const cancelBookingAction: Action = {
   similes: ["CANCEL_CALENDLY", "CANCEL_CALENDLY_EVENT"],
   description:
     "Cancels a scheduled Calendly event after confirmed:true. Extracts the scheduled_events/{uuid} handle and an optional 'because <reason>' suffix from the message.",
-  descriptionCompressed: "cancel schedule Calendly event after confirm: true extract scheduled_events/ uuid handle optional bc reason suffix message",
+  descriptionCompressed:
+    "cancel schedule Calendly event after confirm: true extract scheduled_events/ uuid handle optional bc reason suffix message",
   parameters: [
     {
       name: "confirmed",

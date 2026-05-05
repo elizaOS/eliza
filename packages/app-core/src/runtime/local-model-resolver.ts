@@ -25,21 +25,17 @@ export type ElizaOneSize = "eliza-1-2b" | "eliza-1-9b" | "eliza-1-27b";
 
 /** Quant flavors published per size. Mirrors `quantization_after` in
  *  `training/scripts/training/model_registry.py`. */
-export type QuantFlavor =
-  | "bf16"
-  | "polarquant"
-  | "gguf-q4_k_m"
-  | "fp8";
+export type QuantFlavor = "bf16" | "polarquant" | "gguf-q4_k_m" | "fp8";
 
 /** Recommended runtime that should host the chosen quant. The local-AI
  *  loader uses this hint to either start ollama or to launch the vLLM
  *  serve script. */
 export type LocalBackend =
-  | "ollama"          // gguf-q4_k_m — llama.cpp / ollama
-  | "vllm-bf16"       // bf16 weights — datacenter Hopper full-precision
-  | "vllm-fp8"        // fp8 weights — sm_90+ servers
+  | "ollama" // gguf-q4_k_m — llama.cpp / ollama
+  | "vllm-bf16" // bf16 weights — datacenter Hopper full-precision
+  | "vllm-fp8" // fp8 weights — sm_90+ servers
   | "vllm-polarquant" // 4-bit W via the vLLM PolarQuant plugin
-  | "cpu-gguf";       // gguf-q4_k_m on CPU only — fallback when no GPU
+  | "cpu-gguf"; // gguf-q4_k_m on CPU only — fallback when no GPU
 
 /** Per-size canonical metadata. The base `repoId` is the fp16/bf16
  *  release; quant siblings live at `${repoId}-${suffix}` (matching the

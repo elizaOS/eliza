@@ -30,9 +30,7 @@ const reflectOnAutoReply = vi.hoisted(() =>
 const reflectOnSendConfirmation = vi.hoisted(() =>
   vi.fn(async () => ({ approved: true, reasoning: "ok to send" })),
 );
-const enqueueSpy = vi.hoisted(() =>
-  vi.fn(async () => ({ id: "approval-1" })),
-);
+const enqueueSpy = vi.hoisted(() => vi.fn(async () => ({ id: "approval-1" })));
 
 vi.mock("@elizaos/agent/actions/send-message", () => ({
   resolveAdminEntityId: vi.fn(async () => null),

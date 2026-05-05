@@ -8,4 +8,3 @@
   "group_size": 4,
   "notes": "Training uses ~12GB with gradient checkpointing, vLLM uses ~4GB"
 }
-

@@ -47,7 +47,11 @@ function EndpointStats({ label }: { label: string }) {
       <StatsCard label="p95 TPOT" value={stats.p95_tpot_ms} unit="ms" />
       <StatsCard label="KV Cache" value={stats.kv_usage_pct} unit="%" />
       <StatsCard label="Peak VRAM" value={stats.peak_vram_mb} unit="MB" />
-      <StatsCard label="Spec Decode" value={stats.spec_decode_accept_rate} unit="%" />
+      <StatsCard
+        label="Spec Decode"
+        value={stats.spec_decode_accept_rate}
+        unit="%"
+      />
       <StatsCard label="APC Hit" value={stats.apc_hit_rate} unit="%" />
     </div>
   );
@@ -55,8 +59,11 @@ function EndpointStats({ label }: { label: string }) {
 
 export function InferenceEndpointPanel() {
   const { data: endpoints, loading, error, refetch } = useInferenceEndpoints();
-  const { create, loading: createLoading, error: createError } =
-    useCreateInferenceEndpoint();
+  const {
+    create,
+    loading: createLoading,
+    error: createError,
+  } = useCreateInferenceEndpoint();
   const { delete: deleteEndpoint, loading: deleteLoading } =
     useDeleteInferenceEndpoint();
 
@@ -155,7 +162,9 @@ export function InferenceEndpointPanel() {
               disabled={createLoading}
               className="flex-1"
             >
-              {createLoading && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+              {createLoading && (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              )}
               Create
             </Button>
             <Button
@@ -195,7 +204,9 @@ export function InferenceEndpointPanel() {
                   <div className="text-xs text-muted font-mono">
                     {endpoint.base_url}
                   </div>
-                  <div className="text-xs text-muted">Model: {endpoint.model}</div>
+                  <div className="text-xs text-muted">
+                    Model: {endpoint.model}
+                  </div>
                 </div>
                 <Button
                   variant="ghost"
@@ -215,9 +226,7 @@ export function InferenceEndpointPanel() {
               <button
                 type="button"
                 onClick={() =>
-                  setExpandedId(
-                    expandedId === endpoint.id ? null : endpoint.id,
-                  )
+                  setExpandedId(expandedId === endpoint.id ? null : endpoint.id)
                 }
                 className="text-xs text-accent hover:underline"
               >

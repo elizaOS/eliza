@@ -32,7 +32,8 @@ export const createIssueAction: Action = {
   similes: ["OPEN_ISSUE", "FILE_ISSUE", "GITHUB_CREATE_ISSUE"],
   description:
     "Creates a GitHub issue in the target repo. Requires confirmed:true.",
-  descriptionCompressed: "create GitHub issue target repo require confirm: true",
+  descriptionCompressed:
+    "create GitHub issue target repo require confirm: true",
 
   validate: async (
     runtime: IAgentRuntime,

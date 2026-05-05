@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'bun:test';
-import type { DrizzleClient } from '@babylon/db';
-import { BabylonEngine } from '../core/engine';
-import { CircularDependencyError, FrameworkError } from '../core/errors';
-import { defineSystem } from '../core/system';
-import type { BabylonSystem } from '../core/types';
-import { TickPhase } from '../core/types';
+import { describe, expect, it } from "bun:test";
+import type { DrizzleClient } from "@babylon/db";
+import { BabylonEngine } from "../core/engine";
+import { CircularDependencyError, FrameworkError } from "../core/errors";
+import { defineSystem } from "../core/system";
+import type { BabylonSystem } from "../core/types";
+import { TickPhase } from "../core/types";
 
 function makeTestEngine(budgetMs = 60000) {
   return new BabylonEngine({
@@ -15,13 +15,13 @@ function makeTestEngine(budgetMs = 60000) {
       warn: () => {},
       error: () => {},
       debug: () => {},
-    } as unknown as import('@babylon/shared').Logger,
+    } as unknown as import("@babylon/shared").Logger,
     config: { budgetMs },
   });
 }
 
 function makeSystem(
-  overrides: Partial<BabylonSystem> & { id: string; phase: TickPhase }
+  overrides: Partial<BabylonSystem> & { id: string; phase: TickPhase },
 ): BabylonSystem {
   return {
     name: overrides.id,
@@ -30,47 +30,47 @@ function makeSystem(
   };
 }
 
-describe('circular dependency detection', () => {
-  it('detects 3-node cycle (a -> b -> c -> a)', () => {
+describe("circular dependency detection", () => {
+  it("detects 3-node cycle (a -> b -> c -> a)", () => {
     const engine = makeTestEngine();
     engine.use(
-      makeSystem({ id: 'a', phase: TickPhase.Events, dependencies: ['c'] })
+      makeSystem({ id: "a", phase: TickPhase.Events, dependencies: ["c"] }),
     );
     engine.use(
-      makeSystem({ id: 'b', phase: TickPhase.Events, dependencies: ['a'] })
+      makeSystem({ id: "b", phase: TickPhase.Events, dependencies: ["a"] }),
     );
     engine.use(
-      makeSystem({ id: 'c', phase: TickPhase.Events, dependencies: ['b'] })
+      makeSystem({ id: "c", phase: TickPhase.Events, dependencies: ["b"] }),
     );
 
     expect(engine.boot()).rejects.toThrow(CircularDependencyError);
   });
 
-  it('detects 4-node cycle', () => {
+  it("detects 4-node cycle", () => {
     const engine = makeTestEngine();
     engine.use(
-      makeSystem({ id: 'w', phase: TickPhase.Events, dependencies: ['z'] })
+      makeSystem({ id: "w", phase: TickPhase.Events, dependencies: ["z"] }),
     );
     engine.use(
-      makeSystem({ id: 'x', phase: TickPhase.Events, dependencies: ['w'] })
+      makeSystem({ id: "x", phase: TickPhase.Events, dependencies: ["w"] }),
     );
     engine.use(
-      makeSystem({ id: 'y', phase: TickPhase.Events, dependencies: ['x'] })
+      makeSystem({ id: "y", phase: TickPhase.Events, dependencies: ["x"] }),
     );
     engine.use(
-      makeSystem({ id: 'z', phase: TickPhase.Events, dependencies: ['y'] })
+      makeSystem({ id: "z", phase: TickPhase.Events, dependencies: ["y"] }),
     );
 
     expect(engine.boot()).rejects.toThrow(CircularDependencyError);
   });
 });
 
-describe('interval validation', () => {
-  it('warns and skips interval with every=0', async () => {
+describe("interval validation", () => {
+  it("warns and skips interval with every=0", async () => {
     const engine = makeTestEngine();
     engine.use(
       makeSystem({
-        id: 'bad-interval',
+        id: "bad-interval",
         phase: TickPhase.Bootstrap,
         intervals: {
           broken: {
@@ -78,7 +78,7 @@ describe('interval validation', () => {
             handler: async () => ({ metrics: { shouldNotRun: true } }),
           },
         },
-      })
+      }),
     );
 
     await engine.boot();
@@ -88,11 +88,11 @@ describe('interval validation', () => {
     await engine.shutdown();
   });
 
-  it('warns and skips interval with negative everyMs', async () => {
+  it("warns and skips interval with negative everyMs", async () => {
     const engine = makeTestEngine();
     engine.use(
       makeSystem({
-        id: 'neg-interval',
+        id: "neg-interval",
         phase: TickPhase.Bootstrap,
         intervals: {
           broken: {
@@ -100,7 +100,7 @@ describe('interval validation', () => {
             handler: async () => ({ metrics: { shouldNotRun: true } }),
           },
         },
-      })
+      }),
     );
 
     await engine.boot();
@@ -110,12 +110,12 @@ describe('interval validation', () => {
     await engine.shutdown();
   });
 
-  it('runs interval with every=1 on every tick', async () => {
+  it("runs interval with every=1 on every tick", async () => {
     const runs: number[] = [];
     const engine = makeTestEngine();
     engine.use(
       makeSystem({
-        id: 'every-tick',
+        id: "every-tick",
         phase: TickPhase.Bootstrap,
         intervals: {
           always: {
@@ -126,7 +126,7 @@ describe('interval validation', () => {
             },
           },
         },
-      })
+      }),
     );
 
     await engine.boot();
@@ -139,94 +139,94 @@ describe('interval validation', () => {
   });
 });
 
-describe('register failures', () => {
-  it('throws FrameworkError when register() fails', () => {
+describe("register failures", () => {
+  it("throws FrameworkError when register() fails", () => {
     const engine = makeTestEngine();
     engine.use(
       defineSystem({
-        id: 'bad-register',
-        name: 'Bad Register',
+        id: "bad-register",
+        name: "Bad Register",
         phase: TickPhase.Bootstrap,
         register: async () => {
-          throw new Error('db not available');
+          throw new Error("db not available");
         },
         onTick: async () => ({}),
-      })
+      }),
     );
 
     expect(engine.boot()).rejects.toThrow(FrameworkError);
   });
 });
 
-describe('multiple system failures in one tick', () => {
-  it('continues running all systems even when multiple fail', async () => {
+describe("multiple system failures in one tick", () => {
+  it("continues running all systems even when multiple fail", async () => {
     const engine = makeTestEngine();
     const errors: string[] = [];
 
-    engine.hook('system:error', (id, err) => {
+    engine.hook("system:error", (id, err) => {
       errors.push(`${id}:${err.message}`);
     });
 
     engine.use(
       makeSystem({
-        id: 'fail1',
+        id: "fail1",
         phase: TickPhase.Bootstrap,
         onTick: async () => {
-          throw new Error('boom1');
+          throw new Error("boom1");
         },
-      })
+      }),
     );
     engine.use(
       makeSystem({
-        id: 'fail2',
+        id: "fail2",
         phase: TickPhase.Questions,
         onTick: async () => {
-          throw new Error('boom2');
+          throw new Error("boom2");
         },
-      })
+      }),
     );
     engine.use(
       makeSystem({
-        id: 'ok',
+        id: "ok",
         phase: TickPhase.Events,
         onTick: async () => ({ metrics: { survived: true } }),
-      })
+      }),
     );
 
     await engine.boot();
     const result = await engine.tick();
 
-    expect(errors).toEqual(['fail1:boom1', 'fail2:boom2']);
+    expect(errors).toEqual(["fail1:boom1", "fail2:boom2"]);
     expect(result.survived).toBe(true);
     await engine.shutdown();
   });
 });
 
-describe('empty engine', () => {
-  it('boots and ticks with zero systems', async () => {
+describe("empty engine", () => {
+  it("boots and ticks with zero systems", async () => {
     const engine = makeTestEngine();
     await engine.boot();
     const result = await engine.tick();
 
-    expect(typeof result._tickDurationMs).toBe('number');
+    expect(typeof result._tickDurationMs).toBe("number");
     await engine.shutdown();
   });
 });
 
-describe('tick before boot', () => {
-  it('throws FrameworkError', () => {
+describe("tick before boot", () => {
+  it("throws FrameworkError", () => {
     const engine = makeTestEngine();
     expect(engine.tick()).rejects.toThrow(FrameworkError);
   });
 });
 
-describe('shutdown cleans up lastIntervalRun', () => {
-  it('interval state resets across boot cycles', async () => {
+describe("shutdown cleans up lastIntervalRun", () => {
+  it("interval state resets across boot cycles", async () => {
     const runs: number[] = [];
     const engine = makeTestEngine();
     engine.use(
       makeSystem({
-        id: 'interval-sys',
+        id: "interval-sys",
         phase: TickPhase.Bootstrap,
         intervals: {
           check: {
@@ -237,7 +237,7 @@ describe('shutdown cleans up lastIntervalRun', () => {
             },
           },
         },
-      })
+      }),
     );
 
     await engine.boot();
@@ -250,34 +250,34 @@ describe('shutdown cleans up lastIntervalRun', () => {
   });
 });
 
-describe('destroy order matches reverse registration', () => {
-  it('destroys in reverse registration order regardless of phase', async () => {
+describe("destroy order matches reverse registration", () => {
+  it("destroys in reverse registration order regardless of phase", async () => {
     const order: string[] = [];
     const engine = makeTestEngine();
 
     engine.use(
       makeSystem({
-        id: 'z-finalize',
+        id: "z-finalize",
         phase: TickPhase.Finalize,
         destroy: async () => {
-          order.push('z');
+          order.push("z");
         },
-      })
+      }),
     );
     engine.use(
       makeSystem({
-        id: 'a-bootstrap',
+        id: "a-bootstrap",
         phase: TickPhase.Bootstrap,
         destroy: async () => {
-          order.push('a');
+          order.push("a");
         },
-      })
+      }),
     );
 
     await engine.boot();
     await engine.shutdown();
 
     // Reverse of registration order: a, then z
-    expect(order).toEqual(['a', 'z']);
+    expect(order).toEqual(["a", "z"]);
   });
 });

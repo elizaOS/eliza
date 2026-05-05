@@ -53,7 +53,8 @@ export const sendAdminMessageAction: Action = {
   ],
   description:
     "Send a message to the owner/admin via their Eliza app. Use when you need to notify, alert, or communicate with the owner.",
-  descriptionCompressed: "send message owner/admin via Eliza app use need notify, alert, communicate w/ owner",
+  descriptionCompressed:
+    "send message owner/admin via Eliza app use need notify, alert, communicate w/ owner",
 
   validate: async (runtime, message, state) => {
     if (!(await hasAdminAccess(runtime, message))) return false;

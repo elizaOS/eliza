@@ -234,7 +234,11 @@ function resolveBuildTarget(value) {
   }
 }
 
-function resolveTargetPaths(upstreamPackageDir, installedElectrobunDir, target) {
+function resolveTargetPaths(
+  upstreamPackageDir,
+  installedElectrobunDir,
+  target,
+) {
   return {
     BUILD_BINARY: path.join(
       upstreamPackageDir,

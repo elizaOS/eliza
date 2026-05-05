@@ -134,8 +134,7 @@ export function resolveValidationContext({ args }) {
   // Build variant suffix is the rest of the lunch target after the
   // first dash, e.g. "trunk_staging-userdebug".
   const dash = variant.productLunch.indexOf("-");
-  const buildVariant =
-    dash < 0 ? "" : variant.productLunch.slice(dash + 1);
+  const buildVariant = dash < 0 ? "" : variant.productLunch.slice(dash + 1);
   // Last path segment of `commonMk`, used in error messages and
   // filename references (e.g. "acme_common.mk").
   const commonMkBasename = path.basename(variant.commonMk);
@@ -421,7 +420,9 @@ export function validateProductLayer(ctx) {
   if (buildVariant) {
     assertMatches(
       androidProducts,
-      new RegExp(`${escapeRegExp(productFullName)}-${escapeRegExp(buildVariant)}`),
+      new RegExp(
+        `${escapeRegExp(productFullName)}-${escapeRegExp(buildVariant)}`,
+      ),
       "AndroidProducts.mk",
       `${variant.productLunch} lunch choice`,
     );
@@ -650,17 +651,13 @@ export function validateSepolicy(ctxOrVendorDir, maybeVariant) {
   // call has labels to apply.
   assertMatches(
     fileContexts,
-    new RegExp(
-      `/data/data/${escPkg}/files/agent/x86_64.*${agentExecType}`,
-    ),
+    new RegExp(`/data/data/${escPkg}/files/agent/x86_64.*${agentExecType}`),
     `${sepolicyLabel}/file_contexts`,
     "x86_64 binary tree label entry",
   );
   assertMatches(
     fileContexts,
-    new RegExp(
-      `/data/data/${escPkg}/files/agent/arm64-v8a.*${agentExecType}`,
-    ),
+    new RegExp(`/data/data/${escPkg}/files/agent/arm64-v8a.*${agentExecType}`),
     `${sepolicyLabel}/file_contexts`,
     "arm64-v8a binary tree label entry",
   );

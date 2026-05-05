@@ -1,68 +1,68 @@
-import { describe, expect, it } from 'bun:test';
-import type { DrizzleClient } from '@babylon/db';
+import { describe, expect, it } from "bun:test";
+import type { DrizzleClient } from "@babylon/db";
 import {
   useDB,
   useEngine,
   useMetrics,
   useServices,
   useTick,
-} from '../core/composables';
-import { BabylonEngine } from '../core/engine';
-import { defineSystem } from '../core/system';
-import type { EngineContext, TickContext } from '../core/types';
-import { TickPhase } from '../core/types';
+} from "../core/composables";
+import { BabylonEngine } from "../core/engine";
+import { defineSystem } from "../core/system";
+import type { EngineContext, TickContext } from "../core/types";
+import { TickPhase } from "../core/types";
 
 function makeTestEngine(budgetMs = 60000) {
   return new BabylonEngine({
-    db: { _marker: 'integration-db' } as unknown as DrizzleClient,
+    db: { _marker: "integration-db" } as unknown as DrizzleClient,
     llm: {
       execute: async () => ({ generated: true }) as never,
-      getClient: () => ({ _marker: 'integration-client' }),
+      getClient: () => ({ _marker: "integration-client" }),
     },
     logger: {
       info: () => {},
       warn: () => {},
       error: () => {},
       debug: () => {},
-    } as unknown as import('@babylon/shared').Logger,
+    } as unknown as import("@babylon/shared").Logger,
     config: { budgetMs },
   });
 }
 
-describe('Integration: full engine lifecycle', () => {
-  it('boot → register services → tick with shared data → hooks → composables → shutdown', async () => {
+describe("Integration: full engine lifecycle", () => {
+  it("boot → register services → tick with shared data → hooks → composables → shutdown", async () => {
     const lifecycle: string[] = [];
     const engine = makeTestEngine();
 
     // Hook lifecycle tracking
-    engine.hook('engine:boot', () => {
-      lifecycle.push('hook:boot');
+    engine.hook("engine:boot", () => {
+      lifecycle.push("hook:boot");
     });
-    engine.hook('engine:shutdown', () => {
-      lifecycle.push('hook:shutdown');
+    engine.hook("engine:shutdown", () => {
+      lifecycle.push("hook:shutdown");
     });
-    engine.hook('tick:before', () => {
-      lifecycle.push('hook:tick:before');
+    engine.hook("tick:before", () => {
+      lifecycle.push("hook:tick:before");
     });
-    engine.hook('tick:after', () => {
-      lifecycle.push('hook:tick:after');
+    engine.hook("tick:after", () => {
+      lifecycle.push("hook:tick:after");
     });
 
     // Module A: registers a service, produces shared data
     engine.use(
       defineSystem({
-        id: 'setup',
-        name: 'Setup',
+        id: "setup",
+        name: "Setup",
         phase: TickPhase.Bootstrap,
         register: async (ctx: EngineContext) => {
-          lifecycle.push('register:setup');
-          ctx.services.register('cache', new Map<string, string>());
+          lifecycle.push("register:setup");
+          ctx.services.register("cache", new Map<string, string>());
         },
         onTick: async () => {
-          lifecycle.push('tick:setup');
+          lifecycle.push("tick:setup");
           const services = useServices();
-          const cache = services.get<Map<string, string>>('cache');
-          cache.set('hello', 'world');
+          const cache = services.get<Map<string, string>>("cache");
+          cache.set("hello", "world");
 
           return {
             sharedData: { bootstrapDone: true },
@@ -70,65 +70,65 @@ describe('Integration: full engine lifecycle', () => {
           };
         },
         destroy: async () => {
-          lifecycle.push('destroy:setup');
+          lifecycle.push("destroy:setup");
         },
-      })
+      }),
     );
 
     // Module B: depends on A, reads shared data, uses composables
     engine.use(
       defineSystem({
-        id: 'processor',
-        name: 'Processor',
+        id: "processor",
+        name: "Processor",
         phase: TickPhase.Events,
-        dependencies: ['setup'],
+        dependencies: ["setup"],
         register: async () => {
-          lifecycle.push('register:processor');
+          lifecycle.push("register:processor");
         },
         onTick: async () => {
-          lifecycle.push('tick:processor');
+          lifecycle.push("tick:processor");
 
           // Composables work
           const tick = useTick();
           expect(tick.tickNumber).toBe(1);
-          expect(tick.shared.get<boolean>('bootstrapDone')).toBe(true);
+          expect(tick.shared.get<boolean>("bootstrapDone")).toBe(true);
 
           const eng = useEngine();
           expect(eng.config.budgetMs).toBe(60000);
 
           const db = useDB();
           expect((db as unknown as { _marker: string })._marker).toBe(
-            'integration-db'
+            "integration-db",
           );
 
           const metrics = useMetrics();
-          metrics.increment('processed', 10);
+          metrics.increment("processed", 10);
 
           return { metrics: { processorRan: true } };
         },
         destroy: async () => {
-          lifecycle.push('destroy:processor');
+          lifecycle.push("destroy:processor");
         },
-      })
+      }),
     );
 
     // Module C: finalize phase, always runs
     engine.use(
       defineSystem({
-        id: 'finalize',
-        name: 'Finalize',
+        id: "finalize",
+        name: "Finalize",
         phase: TickPhase.Finalize,
         register: async () => {
-          lifecycle.push('register:finalize');
+          lifecycle.push("register:finalize");
         },
         onTick: async () => {
-          lifecycle.push('tick:finalize');
+          lifecycle.push("tick:finalize");
           return { metrics: { finalized: true } };
         },
         destroy: async () => {
-          lifecycle.push('destroy:finalize');
+          lifecycle.push("destroy:finalize");
         },
-      })
+      }),
     );
 
     // Boot
@@ -136,21 +136,21 @@ describe('Integration: full engine lifecycle', () => {
 
     // Verify register order (phase-sorted)
     expect(lifecycle).toEqual([
-      'register:setup',
-      'register:processor',
-      'register:finalize',
-      'hook:boot',
+      "register:setup",
+      "register:processor",
+      "register:finalize",
+      "hook:boot",
     ]);
 
     // Run tick
     const result = await engine.tick();
 
     expect(lifecycle.slice(4)).toEqual([
-      'hook:tick:before',
-      'tick:setup',
-      'tick:processor',
-      'tick:finalize',
-      'hook:tick:after',
+      "hook:tick:before",
+      "tick:setup",
+      "tick:processor",
+      "tick:finalize",
+      "hook:tick:after",
     ]);
 
     // Verify aggregated metrics
@@ -158,35 +158,35 @@ describe('Integration: full engine lifecycle', () => {
     expect(result.processorRan).toBe(true);
     expect(result.finalized).toBe(true);
     expect(result.processed).toBe(10);
-    expect(typeof result._tickDurationMs).toBe('number');
+    expect(typeof result._tickDurationMs).toBe("number");
 
     // Shutdown
     await engine.shutdown();
 
     // Destroy in reverse order
-    const destroyEvents = lifecycle.filter((e) => e.startsWith('destroy:'));
+    const destroyEvents = lifecycle.filter((e) => e.startsWith("destroy:"));
     expect(destroyEvents).toEqual([
-      'destroy:finalize',
-      'destroy:processor',
-      'destroy:setup',
+      "destroy:finalize",
+      "destroy:processor",
+      "destroy:setup",
     ]);
   });
 
-  it('multi-tick state isolation: shared data resets each tick', async () => {
+  it("multi-tick state isolation: shared data resets each tick", async () => {
     const engine = makeTestEngine();
     const sharedValues: (string | undefined)[] = [];
 
     engine.use(
       defineSystem({
-        id: 'writer',
-        name: 'Writer',
+        id: "writer",
+        name: "Writer",
         phase: TickPhase.Bootstrap,
         onTick: async (ctx: TickContext) => {
           // Check if previous tick's data leaked
-          sharedValues.push(ctx.shared.get<string>('tick-data'));
-          return { sharedData: { 'tick-data': `from-tick-${ctx.tickNumber}` } };
+          sharedValues.push(ctx.shared.get<string>("tick-data"));
+          return { sharedData: { "tick-data": `from-tick-${ctx.tickNumber}` } };
         },
-      })
+      }),
     );
 
     await engine.boot();
@@ -199,16 +199,16 @@ describe('Integration: full engine lifecycle', () => {
     await engine.shutdown();
   });
 
-  it('multi-tick metric isolation: metrics reset each tick', async () => {
+  it("multi-tick metric isolation: metrics reset each tick", async () => {
     const engine = makeTestEngine();
 
     engine.use(
       defineSystem({
-        id: 'counter',
-        name: 'Counter',
+        id: "counter",
+        name: "Counter",
         phase: TickPhase.Bootstrap,
         onTick: async () => ({ metrics: { count: 1 } }),
-      })
+      }),
     );
 
     await engine.boot();
@@ -221,173 +221,173 @@ describe('Integration: full engine lifecycle', () => {
     await engine.shutdown();
   });
 
-  it('error in one module does not prevent subsequent modules', async () => {
+  it("error in one module does not prevent subsequent modules", async () => {
     const engine = makeTestEngine();
     const errors: string[] = [];
 
-    engine.hook('system:error', (id, err) => {
+    engine.hook("system:error", (id, err) => {
       errors.push(`${id}:${err.message}`);
     });
 
     engine
       .use(
         defineSystem({
-          id: 'bad',
-          name: 'Bad',
+          id: "bad",
+          name: "Bad",
           phase: TickPhase.Bootstrap,
           onTick: async () => {
-            throw new Error('kaboom');
+            throw new Error("kaboom");
           },
-        })
+        }),
       )
       .use(
         defineSystem({
-          id: 'good',
-          name: 'Good',
+          id: "good",
+          name: "Good",
           phase: TickPhase.Questions,
           onTick: async () => ({ metrics: { survived: true } }),
-        })
+        }),
       );
 
     await engine.boot();
     const result = await engine.tick();
 
-    expect(errors).toEqual(['bad:kaboom']);
+    expect(errors).toEqual(["bad:kaboom"]);
     expect(result.survived).toBe(true);
     await engine.shutdown();
   });
 
-  it('deadline skipping with Finalize always running', async () => {
+  it("deadline skipping with Finalize always running", async () => {
     const engine = makeTestEngine(-1); // immediately past deadline
     const ran: string[] = [];
 
     engine
       .use(
         defineSystem({
-          id: 'skipped',
-          name: 'Skipped',
+          id: "skipped",
+          name: "Skipped",
           phase: TickPhase.Bootstrap,
           onTick: async () => {
-            ran.push('skipped');
+            ran.push("skipped");
             return {};
           },
-        })
+        }),
       )
       .use(
         defineSystem({
-          id: 'critical',
-          name: 'Critical',
+          id: "critical",
+          name: "Critical",
           phase: TickPhase.Markets,
           skipDeadlineCheck: true,
           onTick: async () => {
-            ran.push('critical');
+            ran.push("critical");
             return {};
           },
-        })
+        }),
       )
       .use(
         defineSystem({
-          id: 'final',
-          name: 'Final',
+          id: "final",
+          name: "Final",
           phase: TickPhase.Finalize,
           onTick: async () => {
-            ran.push('final');
+            ran.push("final");
             return {};
           },
-        })
+        }),
       );
 
     await engine.boot();
     await engine.tick();
 
-    expect(ran).toEqual(['critical', 'final']);
+    expect(ran).toEqual(["critical", "final"]);
     await engine.shutdown();
   });
 
-  it('complex dependency graph with multi-phase modules', async () => {
+  it("complex dependency graph with multi-phase modules", async () => {
     const order: string[] = [];
     const engine = makeTestEngine();
 
     // Phase Bootstrap: a, b (b depends on a)
     engine.use(
       defineSystem({
-        id: 'a',
-        name: 'A',
+        id: "a",
+        name: "A",
         phase: TickPhase.Bootstrap,
         onTick: async () => {
-          order.push('a');
+          order.push("a");
           return {};
         },
-      })
+      }),
     );
     engine.use(
       defineSystem({
-        id: 'b',
-        name: 'B',
+        id: "b",
+        name: "B",
         phase: TickPhase.Bootstrap,
-        dependencies: ['a'],
+        dependencies: ["a"],
         onTick: async () => {
-          order.push('b');
+          order.push("b");
           return {};
         },
-      })
+      }),
     );
 
     // Phase Markets: c depends on d (both in same phase)
     engine.use(
       defineSystem({
-        id: 'c',
-        name: 'C',
+        id: "c",
+        name: "C",
         phase: TickPhase.Markets,
-        dependencies: ['d'],
+        dependencies: ["d"],
         onTick: async () => {
-          order.push('c');
+          order.push("c");
           return {};
         },
-      })
+      }),
     );
     engine.use(
       defineSystem({
-        id: 'd',
-        name: 'D',
+        id: "d",
+        name: "D",
         phase: TickPhase.Markets,
         onTick: async () => {
-          order.push('d');
+          order.push("d");
           return {};
         },
-      })
+      }),
     );
 
     // Phase Finalize: e depends on b (cross-phase, b already ran)
     engine.use(
       defineSystem({
-        id: 'e',
-        name: 'E',
+        id: "e",
+        name: "E",
         phase: TickPhase.Finalize,
-        dependencies: ['b'],
+        dependencies: ["b"],
         onTick: async () => {
-          order.push('e');
+          order.push("e");
           return {};
         },
-      })
+      }),
     );
 
     await engine.boot();
     await engine.tick();
 
     // a before b (dep), then d before c (dep), then e
-    expect(order).toEqual(['a', 'b', 'd', 'c', 'e']);
+    expect(order).toEqual(["a", "b", "d", "c", "e"]);
     await engine.shutdown();
   });
 
-  it('intervals with defineSystem', async () => {
+  it("intervals with defineSystem", async () => {
     const engine = makeTestEngine();
     const intervalRuns: number[] = [];
 
     engine.use(
       defineSystem({
-        id: 'with-interval',
-        name: 'With Interval',
+        id: "with-interval",
+        name: "With Interval",
         phase: TickPhase.Bootstrap,
         intervals: {
           periodic: {
@@ -399,7 +399,7 @@ describe('Integration: full engine lifecycle', () => {
           },
         },
         onTick: async () => ({}),
-      })
+      }),
     );
 
     await engine.boot();
@@ -412,44 +412,44 @@ describe('Integration: full engine lifecycle', () => {
     await engine.shutdown();
   });
 
-  it('modules communicate through shared data across phases', async () => {
+  it("modules communicate through shared data across phases", async () => {
     const engine = makeTestEngine();
     let finalResult: unknown;
 
     engine.use(
       defineSystem({
-        id: 'phase1',
-        name: 'Phase 1',
+        id: "phase1",
+        name: "Phase 1",
         phase: TickPhase.Bootstrap,
         onTick: async () => ({
           sharedData: { items: [1, 2, 3] },
         }),
-      })
+      }),
     );
 
     engine.use(
       defineSystem({
-        id: 'phase2',
-        name: 'Phase 2',
+        id: "phase2",
+        name: "Phase 2",
         phase: TickPhase.Events,
         onTick: async (ctx) => {
-          const items = ctx.shared.get<number[]>('items') ?? [];
+          const items = ctx.shared.get<number[]>("items") ?? [];
           const doubled = items.map((i) => i * 2);
           return { sharedData: { items: doubled } };
         },
-      })
+      }),
     );
 
     engine.use(
       defineSystem({
-        id: 'phase3',
-        name: 'Phase 3',
+        id: "phase3",
+        name: "Phase 3",
         phase: TickPhase.Finalize,
         onTick: async (ctx) => {
-          finalResult = ctx.shared.get<number[]>('items');
+          finalResult = ctx.shared.get<number[]>("items");
           return {};
         },
-      })
+      }),
     );
 
     await engine.boot();
@@ -460,29 +460,29 @@ describe('Integration: full engine lifecycle', () => {
     await engine.shutdown();
   });
 
-  it('warnings from modules and intervals are collected', async () => {
+  it("warnings from modules and intervals are collected", async () => {
     const engine = makeTestEngine();
 
     engine.use(
       defineSystem({
-        id: 'warn-mod',
-        name: 'Warn Module',
+        id: "warn-mod",
+        name: "Warn Module",
         phase: TickPhase.Bootstrap,
         onTick: async () => ({
-          warnings: ['manual warning'],
+          warnings: ["manual warning"],
         }),
-      })
+      }),
     );
 
     engine.use(
       defineSystem({
-        id: 'error-mod',
-        name: 'Error Module',
+        id: "error-mod",
+        name: "Error Module",
         phase: TickPhase.Questions,
         onTick: async () => {
-          throw new Error('oops');
+          throw new Error("oops");
         },
-      })
+      }),
     );
 
     await engine.boot();
@@ -490,7 +490,7 @@ describe('Integration: full engine lifecycle', () => {
 
     // Check that metrics snapshot includes the warning-related info
     // The tick should still complete
-    expect(typeof result._tickDurationMs).toBe('number');
+    expect(typeof result._tickDurationMs).toBe("number");
     await engine.shutdown();
   });
 });

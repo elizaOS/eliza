@@ -2,59 +2,59 @@
  * `babylon dev` — Start the runtime in development mode with hot-reload.
  */
 
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { watch } from 'chokidar';
-import { defineCommand } from 'citty';
-import consola from 'consola';
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { watch } from "chokidar";
+import { defineCommand } from "citty";
+import consola from "consola";
 import {
   type BabylonRuntimeConfig,
   loadBabylonConfig,
   watchBabylonConfig,
-} from '../../core/config';
-import { buildEngine, parseInterval } from '../shared';
+} from "../../core/config";
+import { buildEngine, parseInterval } from "../shared";
 
 interface SystemsWatcher {
   on(
-    event: 'all',
-    listener: (event: string, path: string) => void
+    event: "all",
+    listener: (event: string, path: string) => void,
   ): SystemsWatcher;
   close(): Promise<void>;
 }
 
 export default defineCommand({
   meta: {
-    name: 'dev',
+    name: "dev",
     description:
-      'Start Babylon Runtime in development mode with watch & hot-reload',
+      "Start Babylon Runtime in development mode with watch & hot-reload",
   },
   args: {
     rootDir: {
-      type: 'string',
-      description: 'Project root directory',
-      default: '.',
+      type: "string",
+      description: "Project root directory",
+      default: ".",
     },
     interval: {
-      type: 'string',
-      description: 'Tick interval in seconds (0 = single tick)',
-      default: '60',
+      type: "string",
+      description: "Tick interval in seconds (0 = single tick)",
+      default: "60",
     },
     legacy: {
-      type: 'boolean',
-      description: 'Include legacy game-tick bridge system',
+      type: "boolean",
+      description: "Include legacy game-tick bridge system",
       default: false,
     },
   },
   async run({ args }) {
     const rootDir = resolve(args.rootDir);
-    consola.box('Babylon Runtime — dev mode');
+    consola.box("Babylon Runtime — dev mode");
 
     const loaded = await loadBabylonConfig(rootDir);
     let currentConfig: BabylonRuntimeConfig = loaded.config;
-    consola.info(`Config: ${loaded.configFile ?? 'defaults'}`);
+    consola.info(`Config: ${loaded.configFile ?? "defaults"}`);
 
     let engine = await buildEngine(currentConfig, rootDir, args.legacy);
-    const intervalSec = parseInterval(args.interval, 'interval');
+    const intervalSec = parseInterval(args.interval, "interval");
 
     // Serialize ticks + reloads to avoid shutdown() racing tick()
     let op = Promise.resolve<void>(undefined);
@@ -76,9 +76,9 @@ export default defineCommand({
           const prev = engine;
           engine = next;
           await prev.shutdown();
-          consola.success('Engine reloaded');
+          consola.success("Engine reloaded");
         } catch (err) {
-          consola.error('Reload failed:', err);
+          consola.error("Reload failed:", err);
         }
       });
     };
@@ -91,7 +91,7 @@ export default defineCommand({
     const resetSystemsWatcher = async () => {
       const watchEnabled = currentConfig.dev?.watch !== false;
       const nextDir = watchEnabled
-        ? resolve(rootDir, currentConfig.systemsDir ?? './systems')
+        ? resolve(rootDir, currentConfig.systemsDir ?? "./systems")
         : null;
 
       if (nextDir === watchState.watchedSystemsDir) return;
@@ -101,13 +101,13 @@ export default defineCommand({
       watchState.watchedSystemsDir = null;
 
       if (!nextDir) {
-        consola.info('System watcher disabled by config');
+        consola.info("System watcher disabled by config");
         return;
       }
 
       if (!existsSync(nextDir)) {
         consola.info(
-          `No systems directory at ${nextDir} — skipping file watcher`
+          `No systems directory at ${nextDir} — skipping file watcher`,
         );
         return;
       }
@@ -118,9 +118,9 @@ export default defineCommand({
         awaitWriteFinish: { stabilityThreshold: 200 },
       }) as unknown as SystemsWatcher;
 
-      watchState.systemsWatcher.on('all', (event, path) => {
+      watchState.systemsWatcher.on("all", (event, path) => {
         consola.info(`System ${event}: ${path}`);
-        queueReload('systems changed');
+        queueReload("systems changed");
       });
 
       consola.success(`Watching ${nextDir} for changes`);
@@ -134,7 +134,7 @@ export default defineCommand({
         : await watchBabylonConfig(rootDir, (nextConfig) => {
             currentConfig = nextConfig;
             void enqueue(resetSystemsWatcher);
-            queueReload('config changed');
+            queueReload("config changed");
           });
 
     // Tick loop
@@ -144,7 +144,7 @@ export default defineCommand({
     const cleanup = async () => {
       if (!running) return;
       running = false;
-      consola.info('Shutting down...');
+      consola.info("Shutting down...");
       if (configWatcher) await configWatcher.unwatch();
       if (watchState.systemsWatcher) await watchState.systemsWatcher.close();
       await engine.shutdown();
@@ -152,8 +152,8 @@ export default defineCommand({
       process.exit(0);
     };
 
-    process.once('SIGINT', cleanup);
-    process.once('SIGTERM', cleanup);
+    process.once("SIGINT", cleanup);
+    process.once("SIGTERM", cleanup);
 
     if (intervalSec <= 0) {
       // Single tick mode
@@ -161,9 +161,9 @@ export default defineCommand({
       await enqueue(async () => {
         try {
           const metrics = await engine.tick();
-          consola.success('Tick completed', metrics);
+          consola.success("Tick completed", metrics);
         } catch (err) {
-          consola.error('Tick failed:', err);
+          consola.error("Tick failed:", err);
         }
       });
       if (configWatcher) await configWatcher.unwatch();

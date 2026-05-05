@@ -20,7 +20,8 @@ export const replyXDmAction: Action = {
   similes: ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
   description:
     "Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
-  descriptionCompressed: "reply Twitter/X direct message two-stage: wo/ confirm: true return preview require confirmation; w/ confirm: true DM send",
+  descriptionCompressed:
+    "reply Twitter/X direct message two-stage: wo/ confirm: true return preview require confirmation; w/ confirm: true DM send",
   suppressPostActionContinuation: true,
   parameters: [
     {

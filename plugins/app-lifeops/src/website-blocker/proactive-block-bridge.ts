@@ -250,7 +250,8 @@ export async function evaluateProactiveBlockOnBrowserFocus(
     };
   }
 
-  const sendAlert = deps.sendAlert ?? ((alert) => defaultSendAlert(runtime, alert));
+  const sendAlert =
+    deps.sendAlert ?? ((alert) => defaultSendAlert(runtime, alert));
   await sendAlert({
     text: alertText,
     domain: focusedDomain,
