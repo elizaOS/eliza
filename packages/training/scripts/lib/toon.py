@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -21,6 +22,16 @@ ENCODER_JS = ROOT / "tools" / "toon_encode.mjs"
 DECODER_JS = ROOT / "tools" / "toon_decode.mjs"
 
 log = logging.getLogger("toon")
+
+
+def _node_cwd() -> Path:
+    override = os.environ.get("TOON_NODE_CWD")
+    if override:
+        return Path(override)
+    for candidate in (ROOT, ROOT.parent, ROOT.parent.parent, Path("/workspace")):
+        if (candidate / "node_modules" / "@toon-format" / "toon").exists():
+            return candidate
+    return ROOT.parent
 
 
 class ToonEncoder:
@@ -42,7 +53,7 @@ class ToonEncoder:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            cwd=str(ROOT.parent),  # so bun resolves @toon-format from milady/node_modules
+            cwd=str(_node_cwd()),
         )
         # surface bun startup errors quickly
         if self._proc.poll() is not None:
@@ -119,7 +130,7 @@ class ToonDecoder:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            cwd=str(ROOT.parent),
+            cwd=str(_node_cwd()),
         )
         if self._proc.poll() is not None:
             err = (self._proc.stderr.read() if self._proc.stderr else "")
