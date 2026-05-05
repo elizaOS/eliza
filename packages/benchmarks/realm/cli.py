@@ -185,6 +185,18 @@ Examples:
         help="Output results as JSON",
     )
     parser.add_argument(
+        "--provider",
+        type=str,
+        choices=["eliza", "mock", "local"],
+        default="eliza",
+        help="Agent provider to use (default: eliza)",
+    )
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use the deterministic local mock agent for smoke tests",
+    )
+    parser.add_argument(
         "--leaderboard",
         action="store_true",
         help="Show leaderboard scores and exit",
@@ -286,8 +298,8 @@ def check_environment() -> dict[str, bool]:
         print("   ✅ At least one LLM provider key detected — ready for live runs.")
     else:
         print("   ⚠️  No LLM provider keys detected. Set GROQ_API_KEY/OPENAI_API_KEY/ANTHROPIC_API_KEY.")
-    else:
-        print("   ⚠️  ElizaOS not available - will use heuristic/mock mode")
+    if not results["eliza_bench_url"]:
+        print("   ℹ️  ELIZA_BENCH_URL is unset; live runs will try to auto-spawn the TS bridge.")
     
     print()
     return results
@@ -388,36 +400,44 @@ async def run_benchmark(
     config: REALMConfig,
     verbose: bool = False,
     enable_trajectory_logging: bool = True,
+    provider: str = "eliza",
 ) -> REALMReport:
     """Run the benchmark via the eliza TS bridge."""
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    from eliza_adapter import ElizaREALMAgent, ElizaServerManager
-
     eliza_server = None
-    if not os.environ.get("ELIZA_BENCH_URL"):
-        eliza_server = ElizaServerManager()
-        eliza_server.start()
-        client = eliza_server.client
+    if provider in {"mock", "local"}:
+        runner = REALMRunner(
+            config,
+            use_mock=True,
+            enable_trajectory_logging=enable_trajectory_logging,
+        )
     else:
-        from eliza_adapter import ElizaClient
+        from eliza_adapter import ElizaREALMAgent, ElizaServerManager
 
-        client = ElizaClient()
-        client.wait_until_ready(timeout=120)
+        if not os.environ.get("ELIZA_BENCH_URL"):
+            eliza_server = ElizaServerManager()
+            eliza_server.start()
+            client = eliza_server.client
+        else:
+            from eliza_adapter import ElizaClient
 
-    agent = ElizaREALMAgent(
-        client=client,
-        max_steps=config.max_steps,
-        execution_model=config.execution_model,
-        enable_adaptation=config.enable_adaptation,
-    )
+            client = ElizaClient()
+            client.wait_until_ready(timeout=120)
 
-    runner = REALMRunner(
-        config,
-        agent=agent,
-        enable_trajectory_logging=enable_trajectory_logging,
-    )
+        agent = ElizaREALMAgent(
+            client=client,
+            max_steps=config.max_steps,
+            execution_model=config.execution_model,
+            enable_adaptation=config.enable_adaptation,
+        )
+
+        runner = REALMRunner(
+            config,
+            agent=agent,
+            enable_trajectory_logging=enable_trajectory_logging,
+        )
 
     try:
         report = await runner.run_benchmark()
@@ -468,10 +488,12 @@ def main() -> int:
 
     try:
         enable_traj_logging = not args.no_trajectory_logging
+        provider = "mock" if args.mock else args.provider
         report = asyncio.run(run_benchmark(
             config,
             args.verbose,
             enable_trajectory_logging=enable_traj_logging,
+            provider=provider,
         ))
 
         if args.json:

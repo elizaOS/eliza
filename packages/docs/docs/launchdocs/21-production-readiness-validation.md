@@ -8,6 +8,7 @@ Date: 2026-05-05
 - Updated the docs gate so `--scope=launchdocs` includes the docs-site `docs/launchdocs` directory and fails if the scope resolves to zero markdown files.
 - Revalidated the real built app through the deterministic stub-stack Playwright UI smoke runner.
 - Revalidated the macOS titlebar navigation/drag-area smoke after the traffic-light inset change.
+- Fixed a titlebar regression where the current CSS inset was 80px while the smoke requires at least 100px of traffic-light clearance; the final value is 112px.
 - Revalidated benchmark adapter discovery and score extraction for the new benchmark adapter coverage.
 - Revalidated the benchmark smoke paths for ADHDBench, BFCL, and HyperliquidBench.
 
@@ -35,9 +36,11 @@ PYTHONPATH=packages/benchmarks/adhdbench python packages/benchmarks/adhdbench/sc
 - Docs gate: passed, 22 launchdocs markdown files checked, 0 errors.
 - Docs gate tests: passed, 6 tests.
 - Built-app UI smoke: passed, 35 route entries plus the visible safe app tiles/button click-safety test. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-vxSi7X`.
+- Built-app UI smoke after titlebar inset fix: passed, 35 route entries plus the visible safe app tiles/button click-safety test.
 - Launch runner docs task after docs-site move: passed. Artifact directory: `/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/launch-qa-ej5kda`.
 - Titlebar navigation smoke: passed, 1 Playwright test.
-- Benchmark adapter discovery: passed, 4 pytest tests.
+- Benchmark adapter discovery: passed, 6 pytest tests.
+- Orchestrator lifecycle dataset/evaluator/runner tests: passed, 4 pytest tests.
 - Python benchmark compile smoke: passed.
 - ADHDBench test suite: passed, 142 tests.
 - ADHDBench quick filtered smoke: passed, 2 scenario results.

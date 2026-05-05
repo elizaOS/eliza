@@ -25,7 +25,6 @@ from .protocol import ExtractionResult, SocialAlphaSystem, UserTrustScore
 from .systems.oracle import OracleSystem
 from .systems.smart_baseline import SmartBaselineSystem
 from .systems.full_system import FullSystem
-from .systems.eliza_system import ElizaSystem
 from .suites import ExtractSuite, RankSuite, DetectSuite, ProfitSuite
 
 console = Console()
@@ -403,6 +402,12 @@ def main(
         cache_dir = data_path / ".." / ".benchmark_cache"
         console.print(f"\n[bold blue]System: ElizaSystem (Eliza AgentRuntime + social-alpha plugin)[/]")
         console.print(f"  Cache dir: {cache_dir.resolve()}")
+        try:
+            from .systems.eliza_system import ElizaSystem
+        except ImportError as exc:
+            console.print(f"[red]ElizaSystem is not available: {exc}[/]")
+            console.print("[yellow]Use --system eliza-bridge for the TypeScript bridge or a local baseline system.[/]")
+            sys.exit(1)
         from dotenv import load_dotenv
         load_dotenv(Path(__file__).resolve().parents[3] / ".env")  # load from workspace root
         if api_base:
