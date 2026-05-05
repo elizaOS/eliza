@@ -91,6 +91,18 @@ def _make_registry_adapter(
         workspace_root.resolve(),
     ]
     cwd_value = str(next((candidate for candidate in cwd_candidates if candidate.exists()), workspace_root.resolve()))
+    env_builder = None
+    if benchmark_id in {"gaia", "gaia_orchestrated"}:
+        adapter_pythonpath = str((benchmarks_root / "eliza-adapter").resolve())
+
+        def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+            existing = ctx.env.get("PYTHONPATH", "")
+            pythonpath = (
+                os.pathsep.join([adapter_pythonpath, existing])
+                if existing
+                else adapter_pythonpath
+            )
+            return {"PYTHONPATH": pythonpath}
 
     return BenchmarkAdapter(
         id=benchmark_id,
@@ -102,6 +114,7 @@ def _make_registry_adapter(
         score_extractor=score_extractor_factory.for_benchmark(benchmark_id),
         required_env=tuple(requirements_env),
         default_extra_config=dict(default_extra_config or {}),
+        env_builder=env_builder,
     )
 
 
@@ -294,7 +307,13 @@ def _command_rolodex(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
 
 
 def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    system = str(ctx.request.extra_config.get("system", "eliza"))
+    system_raw = ctx.request.extra_config.get("system")
+    if isinstance(system_raw, str) and system_raw.strip():
+        system = system_raw.strip()
+    elif ctx.request.provider.strip().lower() in {"eliza", "eliza-bridge", "eliza-ts"}:
+        system = "eliza-bridge" if ctx.request.provider.strip().lower() != "eliza" else "eliza"
+    else:
+        system = "baseline"
     data_dir = str(ctx.request.extra_config.get("data_dir", "trenches-chat-dataset/data"))
     output_dir = str(ctx.output_root)
     args = [
@@ -692,12 +711,26 @@ def _score_from_social_alpha(path: Path) -> ScoreSummary:
     if not isinstance(data, dict):
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
     composite = data.get("COMPOSITE")
+    suite_scores: dict[str, float] = {}
+    for key, value in data.items():
+        if key == "COMPOSITE" or not isinstance(value, dict):
+            continue
+        suite_score = value.get("suite_score")
+        if isinstance(suite_score, (int, float)):
+            suite_scores[key] = float(suite_score)
     score = None
     if isinstance(composite, dict):
         raw = composite.get("trust_marketplace_score")
         if isinstance(raw, (int, float)):
             score = float(raw) / 100.0
-    return ScoreSummary(score=score, unit="ratio", higher_is_better=True, metrics={"composite": composite})
+    if score is None and suite_scores:
+        score = (sum(suite_scores.values()) / len(suite_scores)) / 100.0
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={"composite": composite, "suite_scores": suite_scores},
+    )
 
 
 def _score_from_trust(path: Path) -> ScoreSummary:
@@ -883,7 +916,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             cwd_rel=entry.cwd_rel,
             build_command=entry.build_command,
             locate_result=entry.locate_result,
-            requirements_env=entry.requirements.env_vars,
+            requirements_env=() if entry.id == "mind2web" else entry.requirements.env_vars,
             default_extra_config=registry_default_extra.get(entry.id, {}),
         )
 

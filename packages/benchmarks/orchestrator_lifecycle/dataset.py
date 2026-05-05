@@ -10,7 +10,7 @@ from .types import Scenario, ScenarioTurn
 
 class LifecycleDataset:
     def __init__(self, scenario_dir: str) -> None:
-        self.scenario_dir = Path(scenario_dir)
+        self.scenario_dir = self._resolve_scenario_dir(Path(scenario_dir))
 
     def load(self) -> list[Scenario]:
         if not self.scenario_dir.exists():
@@ -51,3 +51,16 @@ class LifecycleDataset:
                 )
             )
         return scenarios
+
+    def _resolve_scenario_dir(self, scenario_dir: Path) -> Path:
+        if scenario_dir.exists() or scenario_dir.is_absolute():
+            return scenario_dir
+
+        package_dir = Path(__file__).resolve().parent
+        packages_root = package_dir.parents[1]
+        candidates = [
+            packages_root / scenario_dir,
+            package_dir / scenario_dir,
+            package_dir / scenario_dir.name,
+        ]
+        return next((candidate for candidate in candidates if candidate.exists()), scenario_dir)

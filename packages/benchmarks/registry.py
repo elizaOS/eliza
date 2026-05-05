@@ -1056,6 +1056,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
+        mock = extra.get("mock")
+        if mock is True:
+            args.append("--mock")
         return args
 
     def _mind2web_result(output_dir: Path) -> Path:
@@ -1362,6 +1365,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output-dir",
             str(output_dir),
         ]
+        mode = extra.get("mode")
+        if isinstance(mode, str) and mode.strip() in {"execution", "conceptual"}:
+            args.extend(["--mode", mode.strip()])
+        else:
+            args.extend(["--mode", "conceptual"])
         task = extra.get("task")
         if isinstance(task, str) and task.strip():
             args.extend(["--task", task.strip()])
@@ -1369,9 +1377,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--all")
         else:
             args.extend(["--task", "setup"])
+        if model.model:
+            args.extend(["--model", model.model])
+        if extra.get("docker") is True:
+            args.append("--docker")
         if extra.get("start_server") is True:
             args.append("--start-server")
-        _ = model
         return args
 
     def _openclaw_bench_result(output_dir: Path) -> Path:
