@@ -141,6 +141,10 @@ function ensureTypeEntryPoint(targetDir, packageName) {
 
 function ensureBunTypesAlias(targetTypesDir) {
   const bunTypesDir = path.join(targetTypesDir, "bun");
+  // Create the parent @types dir explicitly. On Windows, mkdirSync with
+  // `recursive: true` has been observed to fail with ENOENT when the
+  // immediate parent doesn't exist (Node 24, MS-DOS path semantics).
+  mkdirSync(targetTypesDir, { recursive: true });
   mkdirSync(bunTypesDir, { recursive: true });
   writeFileSync(
     path.join(bunTypesDir, "index.d.ts"),
