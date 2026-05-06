@@ -320,7 +320,8 @@ const INSUFFICIENT_CREDITS_CHAT_REPLY =
 // Used by paths #1-#3: planner picked IGNORE/NONE/empty REPLY, action ran but
 // emitted no text callback, or normalized text became a placeholder. None of
 // these are provider failures, so the message must not blame the provider.
-const NO_RESPONSE_FALLBACK_REPLY = "I don't have a reply for that — try rephrasing?";
+const NO_RESPONSE_FALLBACK_REPLY =
+  "I don't have a reply for that — try rephrasing?";
 // Routed-model errors raised by the model router when no provider plugin is
 // loaded for a requested model class (e.g. TEXT_SMALL). Identifies the OOB
 // "no provider configured" case so chat routes can return a structured 503
