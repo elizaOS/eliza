@@ -72,13 +72,14 @@ export function canRunLocal(): boolean {
 
 /**
  * True when the platform might host a local agent that the UI can reach over
- * loopback. Used to decide whether the RuntimeGate's "Local Agent" tile
+ * the app. Used to decide whether the RuntimeGate's "Local Agent" tile
  * should run a liveness probe before being shown. Desktop and dev mode
- * always qualify; Android qualifies because Phase B's `ElizaAgentService`
- * starts the bundled agent on `127.0.0.1:31337`.
+ * always qualify; Android qualifies because `ElizaAgentService` starts the
+ * bundled agent on `127.0.0.1:31337`; iOS qualifies because app-core handles
+ * the same route shape through an in-process ITTP transport.
  */
 export function canHostLocalAgent(): boolean {
-  return canRunLocal() || isAndroid;
+  return canRunLocal() || isAndroid || isIOS;
 }
 
 export function isWebPlatform(): boolean {

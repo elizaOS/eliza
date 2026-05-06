@@ -20,6 +20,11 @@ export type {
   SetOptions,
   Vault,
 } from "./vault.js";
+export {
+  PgliteVaultImpl,
+  defaultPgliteVaultDataDir,
+} from "./pglite-vault.js";
+export type { PgliteVaultOptions } from "./pglite-vault.js";
 
 export {
   defaultMasterKey,

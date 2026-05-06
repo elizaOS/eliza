@@ -10,7 +10,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: "Version to update to (e.g. 2.0.0-alpha.84)"
+        description: "Version to update to (e.g. 2.0.0-beta.0)"
         required: true
         type: string
     secrets:
@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to update to (e.g. 2.0.0-alpha.84)"
+        description: "Version to update to (e.g. 2.0.0-beta.0)"
         required: true
         type: string
 

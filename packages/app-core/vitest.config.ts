@@ -21,12 +21,12 @@ const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-skills/src",
 );
-const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
-const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const pluginBrowserBridgeSrc = path.join(
   monorepoRoot,
   "plugins/plugin-browser-bridge/src",
 );
+const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
+const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
@@ -41,6 +41,17 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 120_000,
     maxWorkers: 2,
+    // Bootstrap-token tests spin up a real PGlite database + jose-signed
+    // RS256 key material per test, and have intermittently exited the
+    // vitest worker fork unexpectedly on CI (Worker exited unexpectedly /
+    // Worker forks emitted error). Forcing a single fork serializes the
+    // heavy native + WASM init across the file boundary and removes the
+    // class of crash.
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
@@ -139,6 +150,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-agent-skills\/(.+)$/,
         replacement: path.join(pluginAgentSkillsSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-browser-bridge$/,
+        replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-browser-bridge\/(.+)$/,
+        replacement: path.join(pluginBrowserBridgeSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-pdf$/,

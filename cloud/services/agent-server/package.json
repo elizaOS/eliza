@@ -13,8 +13,8 @@
     "test:integration": "bun test __tests__/integration/"
   },
   "dependencies": {
-    "@elizaos/core": "alpha",
-    "@elizaos/plugin-elizacloud": "^2.0.0-alpha.8",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-openai": "^1.6.0",
     "@elizaos/plugin-sql": "^1.7.1",
     "elysia": "^1.1.0",

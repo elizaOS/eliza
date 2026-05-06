@@ -1,8 +1,8 @@
 name: NPM Release
 
 # Consolidated workflow for all NPM releases:
-# - Beta: On merge to main branch
-# - Production: On GitHub release creation
+# - Beta: On v*-beta.* tag pushes
+# - Production: On stable GitHub release creation
 #
 # Version Management:
 # - Uses lerna version and publish commands with consistent patterns
@@ -12,21 +12,10 @@ name: NPM Release
 
 on:
   push:
-    branches:
-      - main # Triggers beta releases
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "packages/docs/**"
-      - ".github/**/*.md"
-      - "LICENSE"
-      - ".gitignore"
-      - ".dockerignore"
-      - "**/*.example"
-      - ".vscode/**"
-      - ".devcontainer/**"
+    tags:
+      - "v*-beta.*"
   release:
-    types: [created] # Triggers production releases
+    types: [created]
   workflow_dispatch:
     inputs:
       release_type:
@@ -47,12 +36,14 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Skip if commit message contains [skip ci], and keep prerelease tags
-    # out of the production/latest GitHub Release path.
+    # Skip if commit message contains [skip ci]. Alpha releases are disabled;
+    # prerelease GitHub-release events are skipped so tag pushes are the single
+    # npm publication path for beta versions.
     if: >-
       ${{
         !contains(github.event.head_commit.message || '', '[skip ci]') &&
-        !(github.event_name == 'release' && contains(github.event.release.tag_name || '', '-'))
+        !(github.event_name == 'release' && contains(github.event.release.tag_name || '', '-')) &&
+        !(github.ref_type == 'tag' && contains(github.ref_name || '', '-alpha'))
       }}
 
     permissions:
@@ -153,20 +144,33 @@ jobs:
         id: release_type
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "type=latest" >> $GITHUB_OUTPUT
-            echo "dist_tag=latest" >> $GITHUB_OUTPUT
             # Extract version from tag (remove 'v' prefix if present)
             VERSION="${{ github.event.release.tag_name }}"
             VERSION="${VERSION#v}"
+            if [[ "${VERSION}" == *"-beta."* ]]; then
+              echo "type=beta" >> $GITHUB_OUTPUT
+              echo "dist_tag=beta" >> $GITHUB_OUTPUT
+            else
+              echo "type=latest" >> $GITHUB_OUTPUT
+              echo "dist_tag=latest" >> $GITHUB_OUTPUT
+            fi
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "is_release_event=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            if [[ "${VERSION}" == *"-beta."* ]]; then
+              echo "type=beta" >> $GITHUB_OUTPUT
+              echo "dist_tag=beta" >> $GITHUB_OUTPUT
+            else
+              echo "type=latest" >> $GITHUB_OUTPUT
+              echo "dist_tag=latest" >> $GITHUB_OUTPUT
+            fi
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "is_release_event=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "type=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
             echo "dist_tag=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
-            echo "is_release_event=false" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "type=beta" >> $GITHUB_OUTPUT
-            echo "dist_tag=beta" >> $GITHUB_OUTPUT
             echo "is_release_event=false" >> $GITHUB_OUTPUT
           fi
 
@@ -214,10 +218,10 @@ jobs:
           }
 
           # Determine version strategy based on release type and current version
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            # Production release from GitHub release tag
+          if [[ "${{ steps.release_type.outputs.is_release_event }}" == "true" ]]; then
+            # Tagged release from git tag or GitHub release tag
             VERSION="${{ steps.release_type.outputs.version }}"
-            echo "📦 Production release: Setting exact version to ${VERSION}"
+            echo "📦 Tagged release: Setting exact version to ${VERSION}"
             bunx lerna version ${VERSION} \
               --force-publish \
               --yes \
@@ -290,7 +294,7 @@ jobs:
           # so we must detect collisions here and bump again if needed.
           VERSION=$(node -p "require('./lerna.json').version")
 
-          if [[ "${RELEASE_TYPE}" == "beta" ]]; then
+          if [[ "${RELEASE_TYPE}" == "beta" && "${{ steps.release_type.outputs.is_release_event }}" != "true" ]]; then
             MAX_RETRIES=3
             for i in $(seq 1 $MAX_RETRIES); do
               # Check if this version already exists on npm
@@ -316,6 +320,8 @@ jobs:
               echo "❌ Version ${VERSION} still exists on npm after ${MAX_RETRIES} bumps — aborting"
               exit 1
             fi
+          elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
+            echo "Tagged beta release uses exact version ${VERSION}; not auto-bumping on npm collision."
           fi
 
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -734,16 +740,16 @@ jobs:
 
           # Compare versions and auto-advance if needed
           if [[ "$DEVELOP_BASE" < "$BASE_VERSION" ]]; then
-            # Develop is behind - update it to match production with alpha suffix
-            NEXT_ALPHA="${BASE_VERSION}-alpha.0"
+            # Develop is behind - update it to match production with beta suffix
+            NEXT_BETA="${BASE_VERSION}-beta.0"
             
-            echo "Develop is behind: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
+            echo "Develop is behind: ${DEVELOP_VERSION} → ${NEXT_BETA}"
             
             # Create a branch for the sync (using release/ prefix for lerna)
             git checkout -b release/sync-develop-${BASE_VERSION} origin/develop
             
-            # Update version to match production base with alpha suffix
-            bunx lerna version ${NEXT_ALPHA} \
+            # Update version to match production base with beta suffix
+            bunx lerna version ${NEXT_BETA} \
               --force-publish \
               --yes \
               --no-private \
@@ -756,12 +762,12 @@ jobs:
             
             # Commit
             git add -A
-            git commit -m "chore: sync to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]" \
+            git commit -m "chore: sync to v${NEXT_BETA} after v${BASE_VERSION} release [skip ci]" \
               -m "Automated version sync from production release"
             
             # Push to develop
             if git push origin HEAD:develop; then
-              echo "✅ Successfully synced develop to ${NEXT_ALPHA}"
+              echo "✅ Successfully synced develop to ${NEXT_BETA}"
             else
               echo "⚠️ Could not push to develop (may be protected or already updated)"
             fi
@@ -772,15 +778,15 @@ jobs:
             # Calculate next patch version
             IFS='.' read -r major minor patch <<< "$BASE_VERSION"
             NEXT_PATCH="${major}.${minor}.$((patch + 1))"
-            NEXT_ALPHA="${NEXT_PATCH}-alpha.0"
+            NEXT_BETA="${NEXT_PATCH}-beta.0"
             
-            echo "Auto-advancing: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
+            echo "Auto-advancing: ${DEVELOP_VERSION} → ${NEXT_BETA}"
             
             # Create a branch for the sync (using release/ prefix for lerna)
             git checkout -b release/sync-develop-${BASE_VERSION} origin/develop
             
-            # Update version to next patch with alpha suffix
-            bunx lerna version ${NEXT_ALPHA} \
+            # Update version to next patch with beta suffix
+            bunx lerna version ${NEXT_BETA} \
               --force-publish \
               --yes \
               --no-private \
@@ -793,12 +799,12 @@ jobs:
             
             # Commit
             git add -A
-            git commit -m "chore: bump to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]" \
+            git commit -m "chore: bump to v${NEXT_BETA} after v${BASE_VERSION} release [skip ci]" \
               -m "Automated patch version bump from production release"
             
             # Push to develop
             if git push origin HEAD:develop; then
-              echo "✅ Successfully auto-advanced develop to ${NEXT_ALPHA}"
+              echo "✅ Successfully auto-advanced develop to ${NEXT_BETA}"
             else
               echo "⚠️ Could not push to develop (may be protected or already updated)"
             fi
@@ -837,7 +843,7 @@ jobs:
 
           if [[ -z "${NEW_DEVELOP_BASE}" ]]; then
             git checkout origin/develop -- lerna.json 2>/dev/null || true
-            NEW_DEVELOP_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "${BASE_VERSION}-alpha.0")
+            NEW_DEVELOP_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "${BASE_VERSION}-beta.0")
             NEW_DEVELOP_BASE=$(echo "$NEW_DEVELOP_VERSION" | sed 's/-.*$//')
             git checkout HEAD -- lerna.json
           fi

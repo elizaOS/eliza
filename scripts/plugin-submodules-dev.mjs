@@ -68,7 +68,7 @@ const PLUGIN_SUBMODULES = [
 ];
 
 /** Registry dist-tag when these packages are not linked from submodules. */
-const PLUGIN_REGISTRY_TAG = "alpha";
+const PLUGIN_REGISTRY_TAG = "beta";
 
 const ROOT_AND_AGENT_PKG = [
   join(ROOT, "package.json"),

@@ -1,6 +1,6 @@
 {
   "name": "eliza-app",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "predev": "node ../app-core/scripts/write-homepage-release-data.mjs",
@@ -8,7 +8,7 @@
     "prebuild": "node ../app-core/scripts/write-homepage-release-data.mjs",
     "build": "vite build",
     "test": "vitest run",
-    "typecheck": "tsc -b",
+    "typecheck": "node ../app-core/scripts/write-homepage-release-data.mjs && tsc -b",
     "preview": "vite preview --port 4444",
     "lint": "eslint ."
   },

@@ -87,7 +87,7 @@ Copy-Item -Path "$assetsSource\*" -Destination $assetsDest -Recurse -Force
 $manifestSource = Join-Path $msixDir "AppxManifest.xml"
 $manifestDest = Join-Path $msixStaging "AppxManifest.xml"
 
-# Convert semver (2.0.0-alpha.84) to Windows quad version (2.0.84.0)
+# Convert semver (2.0.0-beta.0) to Windows quad version (2.0.0.0)
 $parts = $Version -split '[-.]'
 $major = $parts[0]
 $minor = $parts[1]

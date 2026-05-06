@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../eliza/test/helpers/real-runtime";
+} from "../../../test/helpers/real-runtime";
 import { intentSyncAction } from "../src/actions/intent-sync.js";
 import {
   acknowledgeIntent,

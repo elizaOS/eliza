@@ -339,7 +339,7 @@ export async function authMe(): Promise<AuthMeResult> {
 export async function authListSessions(): Promise<AuthSessionsResult> {
   let res: Response;
   try {
-    res = await fetch(`${authBase()}/api/auth/sessions`, {
+    res = await fetchWithCsrf(`${authBase()}/api/auth/sessions`, {
       credentials: "include",
     });
   } catch {

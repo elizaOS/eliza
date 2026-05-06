@@ -39,15 +39,15 @@ import {
   type WalletTradingProfileWindow,
   type WorkbenchOverview,
 } from "../api";
+import type { UiLanguage } from "../i18n";
+import { normalizeOwnerName } from "../utils/owner-name";
 import {
   type AutonomyRunHealthMap,
   buildAutonomyGapReplayRequests,
   hasPendingAutonomyGaps,
   markPendingAutonomyGapsPartial,
   mergeAutonomyEvents,
-} from "../autonomy";
-import type { UiLanguage } from "../i18n";
-import { normalizeOwnerName } from "../utils/owner-name";
+} from "./autonomy";
 import { normalizeConversationList } from "./chat-conversation-guards";
 import type { LoadConversationMessagesResult } from "./internal";
 

@@ -69,7 +69,7 @@ const SUBACTIONS: SubactionsMap<AutofillSubaction> = {
 
 interface RuntimeCacheLike {
   getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | void>;
+  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
 }
 
 function hasRuntimeCache(runtime: unknown): runtime is RuntimeCacheLike {
@@ -153,7 +153,7 @@ function failure(error: string, extra?: Record<string, unknown>): ActionResult {
       actionName: ACTION_NAME,
       error,
       ...(needsInput ? { requiresConfirmation: true } : {}),
-      ...(extra ?? {}),
+      ...extra,
     },
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-bluesky",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Full-featured Bluesky AI agent using elizaOS",
   "type": "module",
   "scripts": {

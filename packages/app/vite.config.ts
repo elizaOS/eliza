@@ -315,12 +315,12 @@ function getPinnedElizaCoreVersion(): string {
   } catch {
     /* fall through */
   }
-  return "2.0.0-alpha.109";
+  return "2.0.0-beta.0";
 }
 
-/** Bun cache dir names look like `@elizaos+core@2.0.0-alpha.109+<hash>`. */
-function elizaCoreAlphaPrerelease(dir: string): number {
-  const m = dir.match(/@elizaos\+core@[\d.]+-alpha\.(\d+)/);
+/** Bun cache dir names look like `@elizaos+core@2.0.0-beta.0+<hash>`. */
+function elizaCoreBetaPrerelease(dir: string): number {
+  const m = dir.match(/@elizaos\+core@[\d.]+-beta\.(\d+)/);
   return m?.[1] ? parseInt(m[1], 10) : -1;
 }
 
@@ -346,7 +346,7 @@ function resolveExistingUiSourceModule(id: string) {
  * Bun stores a full npm tarball under node_modules/.bun even when the workspace
  * symlink for @elizaos/core points at an unbuilt local eliza checkout.
  *
- * **WHY sort:** `readdir` order is arbitrary; picking `alpha.12` over `alpha.109`
+ * **WHY sort:** `readdir` order is arbitrary; picking `beta.0` over a later beta
  * mismatches the API and tends to blank the Electrobun webview.
  */
 function findElizaCoreBundleInBunStore(
@@ -378,7 +378,7 @@ function findElizaCoreBundleInBunStore(
   if (withDist.length === 0) return null;
 
   withDist.sort(
-    (a, b) => elizaCoreAlphaPrerelease(b) - elizaCoreAlphaPrerelease(a),
+    (a, b) => elizaCoreBetaPrerelease(b) - elizaCoreBetaPrerelease(a),
   );
   const best = withDist[0];
   return best ? path.join(bunDir, best, rel) : null;
@@ -1907,6 +1907,7 @@ export default defineConfig({
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: true,
+        xfwd: true,
         configure: (proxy) => {
           proxy.on("error", (_err, _req, res) => {
             if (!res.headersSent) {

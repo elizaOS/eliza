@@ -47,8 +47,8 @@ import {
   remainderAfter,
   splitFirstSentence,
   toSpeakableText,
-} from "./voice-chat-playback";
-import { mergeTranscriptWindows } from "./voice-chat-recording";
+} from "../voice/voice-chat-playback";
+import { mergeTranscriptWindows } from "../voice/voice-chat-recording";
 import {
   ASSISTANT_TTS_DEBOUNCE_MS,
   ASSISTANT_TTS_FINAL_ONLY,
@@ -79,18 +79,18 @@ import {
   type VoicePlaybackStartEvent,
   type VoiceTranscriptPreviewEvent,
   webSpeechVoiceDebugFields,
-} from "./voice-chat-types";
+} from "../voice/voice-chat-types";
 
 // ── Re-exports (public API) ──────────────────────────────────────────
 
-export { nextIdleMouthOpen } from "./voice-chat-playback";
+export { nextIdleMouthOpen } from "../voice/voice-chat-playback";
 export type {
   VoiceCaptureMode,
   VoiceChatOptions,
   VoiceChatState,
   VoicePlaybackStartEvent,
   VoiceTranscriptPreviewEvent,
-} from "./voice-chat-types";
+} from "../voice/voice-chat-types";
 
 // ── Shared mutable state ─────────────────────────────────────────────
 

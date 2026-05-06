@@ -42,15 +42,15 @@ export interface InstalledPluginInfo {
   name: string;
   version?: string;
   installedAt?: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   requestedVersion?: string;
   latestVersion?: string | null;
-  alphaVersion?: string | null;
+  betaVersion?: string | null;
 }
 
 export interface PluginInstallOptionsLike {
   version?: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
 }
 
 export interface InstallProgressLike {
@@ -66,9 +66,9 @@ export interface PluginInstallResult {
   installPath: string;
   requiresRestart: boolean;
   requestedVersion?: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   latestVersion?: string | null;
-  alphaVersion?: string | null;
+  betaVersion?: string | null;
   error?: string;
 }
 
