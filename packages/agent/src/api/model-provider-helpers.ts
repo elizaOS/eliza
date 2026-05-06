@@ -515,13 +515,16 @@ export async function fetchOpenRouterModels(
   return deduped;
 }
 
-/** Fetch Vercel AI Gateway models — no auth required, response has `type` field. */
+/** Fetch Vercel AI Gateway models, whose REST catalog uses bearer auth. */
 export async function fetchVercelGatewayModels(
   baseUrl: string,
+  apiKey?: string,
 ): Promise<CachedModel[]> {
   try {
     const url = `${baseUrl.replace(/\/+$/, "")}/models`;
-    const res = await fetch(url);
+    const headers: Record<string, string> = {};
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const res = await fetch(url, { headers });
     if (!res.ok) return [];
     const data = (await res.json()) as {
       data?: Array<{ id: string; name?: string; type?: string }>;
@@ -594,6 +597,7 @@ export async function fetchProviderModels(
     case "vercel-ai-gateway":
       return fetchVercelGatewayModels(
         baseUrl ?? "https://ai-gateway.vercel.sh/v1",
+        apiKey,
       );
     default:
       return [];
