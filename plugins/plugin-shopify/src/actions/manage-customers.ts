@@ -8,11 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -61,8 +57,7 @@ User message: "${text}"
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(response);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(response);
     const action = parsed?.action;
     const query =
       typeof parsed?.query === "string" &&

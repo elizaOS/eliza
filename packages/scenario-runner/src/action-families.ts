@@ -85,70 +85,22 @@ const ACTION_UMBRELLA_DELEGATES = new Map<string, ReadonlySet<string>>([
       "LIST_AUTOFILL_WHITELIST",
     ]),
   ],
-  [
-    "OWNER_CHECKIN",
-    new Set(["RUN_MORNING_CHECKIN", "RUN_NIGHT_CHECKIN"]),
-  ],
-  [
-    "OWNER_RESOLVE_REQUEST",
-    new Set(["APPROVE_REQUEST", "REJECT_REQUEST"]),
-  ],
-  [
-    "OWNER_DEVICE_INTENT",
-    new Set(["PUBLISH_DEVICE_INTENT", "INTENT_SYNC"]),
-  ],
-  [
-    "OWNER_LIFE",
-    new Set(["LIFE"]),
-  ],
-  [
-    "OWNER_HEALTH",
-    new Set(["HEALTH"]),
-  ],
-  [
-    "OWNER_PAYMENTS",
-    new Set(["PAYMENTS"]),
-  ],
-  [
-    "OWNER_SUBSCRIPTIONS",
-    new Set(["SUBSCRIPTIONS"]),
-  ],
-  [
-    "OWNER_PASSWORD_MANAGER",
-    new Set(["PASSWORD_MANAGER"]),
-  ],
-  [
-    "OWNER_DOSSIER",
-    new Set(["DOSSIER", "GENERATE_DOSSIER"]),
-  ],
-  [
-    "OWNER_X",
-    new Set(["X_READ"]),
-  ],
-  [
-    "OWNER_BOOK_TRAVEL",
-    new Set(["BOOK_TRAVEL"]),
-  ],
-  [
-    "OWNER_PROFILE",
-    new Set(["UPDATE_OWNER_PROFILE"]),
-  ],
-  [
-    "OWNER_CONNECTOR",
-    new Set(["LIFEOPS_CONNECTOR"]),
-  ],
-  [
-    "OWNER_COMPUTER_USE",
-    new Set(["LIFEOPS_COMPUTER_USE"]),
-  ],
-  [
-    "OWNER_TOGGLE_FEATURE",
-    new Set(["TOGGLE_LIFEOPS_FEATURE"]),
-  ],
-  [
-    "OWNER_CHAT_THREAD",
-    new Set(["CHAT_THREAD_CONTROL"]),
-  ],
+  ["OWNER_CHECKIN", new Set(["RUN_MORNING_CHECKIN", "RUN_NIGHT_CHECKIN"])],
+  ["OWNER_RESOLVE_REQUEST", new Set(["APPROVE_REQUEST", "REJECT_REQUEST"])],
+  ["OWNER_DEVICE_INTENT", new Set(["PUBLISH_DEVICE_INTENT", "INTENT_SYNC"])],
+  ["OWNER_LIFE", new Set(["LIFE"])],
+  ["OWNER_HEALTH", new Set(["HEALTH"])],
+  ["OWNER_PAYMENTS", new Set(["PAYMENTS"])],
+  ["OWNER_SUBSCRIPTIONS", new Set(["SUBSCRIPTIONS"])],
+  ["OWNER_PASSWORD_MANAGER", new Set(["PASSWORD_MANAGER"])],
+  ["OWNER_DOSSIER", new Set(["DOSSIER", "GENERATE_DOSSIER"])],
+  ["OWNER_X", new Set(["X_READ"])],
+  ["OWNER_BOOK_TRAVEL", new Set(["BOOK_TRAVEL"])],
+  ["OWNER_PROFILE", new Set(["UPDATE_OWNER_PROFILE"])],
+  ["OWNER_CONNECTOR", new Set(["LIFEOPS_CONNECTOR"])],
+  ["OWNER_COMPUTER_USE", new Set(["LIFEOPS_COMPUTER_USE"])],
+  ["OWNER_TOGGLE_FEATURE", new Set(["TOGGLE_LIFEOPS_FEATURE"])],
+  ["OWNER_CHAT_THREAD", new Set(["CHAT_THREAD_CONTROL"])],
   [
     "OWNER_RELATIONSHIP",
     new Set([

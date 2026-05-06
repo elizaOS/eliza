@@ -175,8 +175,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
   },
   {
     name: "SHOP_OP",
-    description:
-      "Route 2004scape shop operations: open, close, buy, sell.",
+    description: "Route 2004scape shop operations: open, close, buy, sell.",
     descriptionCompressed: "Shop ops: open, close, buy, sell.",
     subactions: [
       {
@@ -213,8 +212,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
     name: "COMBAT_OP",
     description:
       "Route 2004scape combat operations: attack, cast-spell, set-style, eat.",
-    descriptionCompressed:
-      "Combat ops: attack, cast-spell, set-style, eat.",
+    descriptionCompressed: "Combat ops: attack, cast-spell, set-style, eat.",
     subactions: [
       {
         name: "attack",

@@ -269,8 +269,7 @@ async function extractBookTravelPlanWithLlm(args: {
       () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     const rawText = typeof raw === "string" ? raw : "";
-    parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawText);
+    parsed = parseToonKeyValue<Record<string, unknown>>(rawText);
   } catch {
     parsed = null;
   }

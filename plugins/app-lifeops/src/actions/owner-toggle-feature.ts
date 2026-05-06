@@ -115,8 +115,7 @@ async function extractToggleWithLlm(args: {
     () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
   );
   const rawText = typeof raw === "string" ? raw : "";
-  const parsed =
-    parseToonKeyValue<Record<string, unknown>>(rawText);
+  const parsed = parseToonKeyValue<Record<string, unknown>>(rawText);
 
   const featureKeyRaw = parsed?.featureKey;
   const featureKey = isLifeOpsFeatureKey(featureKeyRaw) ? featureKeyRaw : null;

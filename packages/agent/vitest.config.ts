@@ -30,7 +30,10 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/app-core\/account-pool$/,
-        replacement: path.join(monorepoRoot, "packages/app-core/src/account-pool.ts"),
+        replacement: path.join(
+          monorepoRoot,
+          "packages/app-core/src/account-pool.ts",
+        ),
       },
       {
         find: /^@elizaos\/plugin-cli$/,

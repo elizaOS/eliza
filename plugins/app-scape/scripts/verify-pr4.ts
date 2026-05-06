@@ -81,7 +81,9 @@ function mockRuntime(perception: PerceptionSnapshot | null): IAgentRuntime {
 }
 
 function makeDummyMemory(): Memory {
-  return { content: { text: "action: WALK_TO\nx: 3225\nz: 3220" } } as unknown as Memory;
+  return {
+    content: { text: "action: WALK_TO\nx: 3225\nz: 3220" },
+  } as unknown as Memory;
 }
 
 function makeSamplePerception(): PerceptionSnapshot {

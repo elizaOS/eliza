@@ -289,9 +289,7 @@ export function shouldKeepPackageRelativePath(
     return false;
   }
   if (
-    normalizedPath.includes(
-      "resources/studio/resources/projects/resources/",
-    )
+    normalizedPath.includes("resources/studio/resources/projects/resources/")
   ) {
     return false;
   }

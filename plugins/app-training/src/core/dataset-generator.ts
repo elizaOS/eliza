@@ -528,9 +528,9 @@ function stripOutputFences(raw: string): string {
     .trim();
 }
 
-function parseTeacherToonMessages(
-  raw: string,
-): { messages: Array<{ name: string; content: string }> } {
+function parseTeacherToonMessages(raw: string): {
+  messages: Array<{ name: string; content: string }>;
+} {
   const text = stripOutputFences(raw);
   const lines = text.split(/\r?\n/);
   const messages: Array<{ name: string; content: string }> = [];
@@ -590,9 +590,9 @@ function parseTeacherToonMessages(
   return { messages };
 }
 
-function parseTeacherJsonMessages(
-  raw: string,
-): { messages: Array<{ name: string; content: string }> } {
+function parseTeacherJsonMessages(raw: string): {
+  messages: Array<{ name: string; content: string }>;
+} {
   const cleaned = stripOutputFences(raw);
   return JSON.parse(cleaned) as {
     messages: Array<{ name: string; content: string }>;
