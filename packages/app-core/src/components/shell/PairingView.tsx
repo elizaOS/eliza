@@ -8,15 +8,17 @@ import {
   Input,
   Label,
 } from "@elizaos/ui";
+import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useApp } from "../../state";
+import { PairingCommandHint } from "./PairingCommandHint";
 
 const SCREEN_SHELL_CLASS =
-  "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
+  "relative flex min-h-screen w-full items-center justify-center overflow-y-auto bg-bg px-4 py-6 font-body text-txt sm:px-6";
 const SCREEN_CARD_CLASS =
   "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-xl";
 const SURFACE_PANEL_CLASS =
-  "rounded-2xl border border-border/50 bg-bg/40 p-4 shadow-sm sm:p-5";
+  "rounded-lg border border-border/50 bg-bg/40 p-4 shadow-sm sm:p-5";
 
 export function PairingView() {
   const {
@@ -102,6 +104,9 @@ export function PairingView() {
                   >
                     {t("pairingview.PairingCode")}
                   </Label>
+                </div>
+                <div className="mb-4">
+                  <PairingCommandHint remoteUrl={client.getBaseUrl()} />
                 </div>
                 <Input
                   id="pairing-code"
