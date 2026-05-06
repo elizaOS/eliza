@@ -439,8 +439,21 @@ export function applyIosAppIdentity({
 
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-async function buildWeb() {
-  await run("bun", ["run", "build"], { cwd: appDir });
+async function buildWeb(platform) {
+  const capacitorTarget =
+    platform === "android-system"
+      ? "android"
+      : platform === "ios-overlay"
+        ? "ios"
+        : platform;
+  await run("bun", ["run", "build"], {
+    cwd: appDir,
+    env: {
+      ...process.env,
+      ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
+      MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    },
+  });
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
@@ -2184,7 +2197,7 @@ async function buildAndroid() {
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
-  await buildWeb();
+  await buildWeb("android");
   await ensurePlatform("android");
   await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
 
@@ -2290,7 +2303,7 @@ async function buildAndroidSystem() {
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
-  await buildWeb();
+  await buildWeb("android-system");
   await ensurePlatform("android");
   await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
 
@@ -2343,7 +2356,7 @@ async function buildIos() {
     "prepare-ios-cocoapods.sh",
   );
 
-  await buildWeb();
+  await buildWeb("ios");
   await ensurePlatform("ios");
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });

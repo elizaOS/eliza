@@ -736,9 +736,7 @@ function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
     const mode = normalizeMobileRuntimeMode(
       window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
     );
-    // MobileRuntimeMode includes "local" but IosRuntimeConfig.mode does not -
-    // the local-agent runtime is Android-only. Drop "local" before assigning.
-    if (!mode || mode === "local") return IOS_RUNTIME_ENV_CONFIG;
+    if (!mode) return IOS_RUNTIME_ENV_CONFIG;
     return { ...IOS_RUNTIME_ENV_CONFIG, mode };
   } catch {
     return IOS_RUNTIME_ENV_CONFIG;

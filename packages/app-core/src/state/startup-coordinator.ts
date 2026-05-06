@@ -326,6 +326,21 @@ export function createMobilePolicy(): PlatformPolicy {
 }
 
 /**
+ * Stock Android APKs can also host the bundled on-device agent when the user
+ * picks Local. Keep the picker behaviour cloud-first for fresh installs, but
+ * give restored local-agent sessions the same cold-start budget as ElizaOS.
+ */
+export function createAndroidPolicy(): PlatformPolicy {
+  return {
+    supportsLocalRuntime: true,
+    backendTimeoutMs: 180_000,
+    agentReadyTimeoutMs: 300_000,
+    probeForExistingInstall: false,
+    defaultTarget: "cloud-managed",
+  };
+}
+
+/**
  * ElizaOS variant — the bundled APK runs the on-device agent on
  * loopback. Cold-boot timing observed on cuttlefish: ~30s PGlite
  * migration + ~30s agent registration + plugin load before

@@ -95,6 +95,16 @@ function fingerprintSignal(
   ]);
 }
 
+function toIsoOrNull(value: unknown): string | null {
+  if (value == null) return null;
+  const date = new Date(value as string | number | Date);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function toIsoOrNow(value: unknown): string {
+  return toIsoOrNull(value) ?? new Date().toISOString();
+}
+
 function mapMobileSignal(
   signal: MobileSignalsSignal,
 ): CaptureLifeOpsActivitySignalRequest {
@@ -102,7 +112,7 @@ function mapMobileSignal(
     source: signal.source,
     platform: signal.platform,
     state: signal.state,
-    observedAt: new Date(signal.observedAt).toISOString(),
+    observedAt: toIsoOrNow(signal.observedAt),
     idleState: signal.idleState,
     idleTimeSeconds: signal.idleTimeSeconds ?? undefined,
     onBattery: signal.onBattery ?? undefined,
@@ -114,22 +124,13 @@ function mapMobileSignal(
             sleep: {
               available: signal.sleep.available,
               isSleeping: signal.sleep.isSleeping,
-              asleepAt:
-                signal.sleep.asleepAt !== null
-                  ? new Date(signal.sleep.asleepAt).toISOString()
-                  : null,
-              awakeAt:
-                signal.sleep.awakeAt !== null
-                  ? new Date(signal.sleep.awakeAt).toISOString()
-                  : null,
+              asleepAt: toIsoOrNull(signal.sleep.asleepAt),
+              awakeAt: toIsoOrNull(signal.sleep.awakeAt),
               durationMinutes: signal.sleep.durationMinutes,
               stage: signal.sleep.stage,
             },
             biometrics: {
-              sampleAt:
-                signal.biometrics.sampleAt !== null
-                  ? new Date(signal.biometrics.sampleAt).toISOString()
-                  : null,
+              sampleAt: toIsoOrNull(signal.biometrics.sampleAt),
               heartRateBpm: signal.biometrics.heartRateBpm,
               restingHeartRateBpm: signal.biometrics.restingHeartRateBpm,
               heartRateVariabilityMs: signal.biometrics.heartRateVariabilityMs,

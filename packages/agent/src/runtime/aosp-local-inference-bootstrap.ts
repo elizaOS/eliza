@@ -42,6 +42,7 @@ import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
 
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
+const registeredRuntimes = new WeakSet<AgentRuntime>();
 
 /**
  * Same priority band as cloud / direct provider plugins. Routing-policy
@@ -367,6 +368,10 @@ export async function ensureAospLocalInferenceHandlers(
     );
     return false;
   }
+  if (registeredRuntimes.has(runtime)) {
+    console.log("[aosp-local-inference] handlers already registered");
+    return true;
+  }
 
   const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
   if (
@@ -455,5 +460,6 @@ export async function ensureAospLocalInferenceHandlers(
   logger.info(
     `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING at priority ${LOCAL_INFERENCE_PRIORITY}`,
   );
+  registeredRuntimes.add(runtime);
   return true;
 }

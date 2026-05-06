@@ -325,7 +325,11 @@ public class ElizaAgentService extends Service {
             File[] abiContents = abiDir.listFiles();
             if (abiContents != null) {
                 for (File f : abiContents) {
-                    if (f.isFile() && !f.delete()) Log.w(TAG, "Could not delete " + f.getName());
+                    try {
+                        java.nio.file.Files.deleteIfExists(f.toPath());
+                    } catch (IOException | SecurityException error) {
+                        Log.w(TAG, "Could not delete stale ABI asset " + f.getName() + ": " + error.getMessage());
+                    }
                 }
             }
         }
@@ -377,7 +381,15 @@ public class ElizaAgentService extends Service {
             throw new IOException("APK is missing assets/" + abiAssetDir + " for runtime ABI " + abi);
         }
         for (String name : abiFiles) {
-            copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(abiDir, name));
+            try {
+                copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(abiDir, name));
+            } catch (java.io.FileNotFoundException error) {
+                if ("libgcc_s.so.1".equals(name)) {
+                    Log.w(TAG, "Optional runtime library missing from APK assets: " + abiAssetDir + "/" + name);
+                    continue;
+                }
+                throw error;
+            }
         }
 
         File bun = new File(abiDir, BUN_BINARY);
@@ -415,12 +427,17 @@ public class ElizaAgentService extends Service {
                 if (name.startsWith("libstdc++.so.6.")) {
                     File realPath = new File(abiDir, name);
                     File symlink = new File(abiDir, "libstdc++.so.6");
-                    if (realPath.exists() && !symlink.exists()) {
+                    if (realPath.exists()) {
                         try {
-                            java.nio.file.Files.createSymbolicLink(
-                                symlink.toPath(),
-                                java.nio.file.Paths.get(name)
-                            );
+                            if (java.nio.file.Files.isSymbolicLink(symlink.toPath()) && !symlink.exists()) {
+                                java.nio.file.Files.deleteIfExists(symlink.toPath());
+                            }
+                            if (!symlink.exists() && !java.nio.file.Files.isSymbolicLink(symlink.toPath())) {
+                                java.nio.file.Files.createSymbolicLink(
+                                    symlink.toPath(),
+                                    java.nio.file.Paths.get(name)
+                                );
+                            }
                         } catch (IOException error) {
                             Log.w(TAG, "Could not symlink libstdc++.so.6 → " + name + ": " + error.getMessage());
                         }
@@ -514,12 +531,7 @@ public class ElizaAgentService extends Service {
         if (!packaged.exists() || packaged.length() <= 0) return false;
         File symlink = new File(abiDir, soname);
         try {
-            if (symlink.exists()) {
-                if (!symlink.delete()) {
-                    Log.w(TAG, "Could not replace " + soname + " symlink");
-                    return false;
-                }
-            }
+            java.nio.file.Files.deleteIfExists(symlink.toPath());
             java.nio.file.Files.createSymbolicLink(
                 symlink.toPath(),
                 packaged.toPath()

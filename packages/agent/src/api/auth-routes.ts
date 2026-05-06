@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { resolveApiToken } from "@elizaos/shared";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import type { RouteRequestContext } from "./route-helpers.js";
+import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.js";
 
 function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;
@@ -36,6 +37,49 @@ export async function handleAuthRoutes(
   } = ctx;
 
   if (!pathname.startsWith("/api/auth/")) return false;
+
+  if (method === "GET" && pathname === "/api/auth/me") {
+    const authorized = isAuthorized(req);
+    const localAccess =
+      process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" ||
+      isTrustedLocalRequest(req);
+    if (!authorized) {
+      json(
+        res,
+        {
+          reason: getConfiguredApiToken()
+            ? "remote_auth_required"
+            : "remote_password_not_configured",
+          access: {
+            mode: localAccess ? "local" : "remote",
+            passwordConfigured: Boolean(getConfiguredApiToken()),
+            ownerConfigured: false,
+          },
+        },
+        401,
+      );
+      return true;
+    }
+
+    json(res, {
+      identity: {
+        id: localAccess ? "local-agent" : "bearer-agent",
+        displayName: localAccess ? "Local Agent" : "API User",
+        kind: "machine",
+      },
+      session: {
+        id: localAccess ? "local" : "bearer",
+        kind: localAccess ? "local" : "machine",
+        expiresAt: null,
+      },
+      access: {
+        mode: localAccess ? "local" : "bearer",
+        passwordConfigured: !localAccess && Boolean(getConfiguredApiToken()),
+        ownerConfigured: false,
+      },
+    });
+    return true;
+  }
 
   if (method === "GET" && pathname === "/api/auth/status") {
     if (isCloudProvisionedContainer()) {
