@@ -36,6 +36,7 @@ import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
+import { appendCoalescedDiscordMetadata } from "./message-coalesce";
 import { stripReasoningTags } from "./reasoning-tags";
 import {
 	createStatusReactionController,
@@ -513,7 +514,7 @@ export class MessageManager {
 										: "none",
 						},
 					},
-					extraMetadata: {
+					extraMetadata: appendCoalescedDiscordMetadata(message, {
 						// Reply attribution for cross-agent filtering
 						// WHY: When user replies to another bot's message, we need to know
 						// so other agents can ignore it (only the replied-to agent should respond)
@@ -536,7 +537,7 @@ export class MessageManager {
 							message.mentions.repliedUser?.globalName ??
 							message.mentions.repliedUser?.username,
 						replyToSenderUserName: message.mentions.repliedUser?.username,
-					},
+					}),
 				},
 			);
 
