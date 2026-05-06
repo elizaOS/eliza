@@ -2,10 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  clearTokenCache,
-  getClaudeOAuthToken,
-} from "../utils/credential-store.js";
+import { clearTokenCache, getClaudeOAuthToken } from "../utils/credential-store.js";
 
 describe("Anthropic credential store", () => {
   let stateDir: string;
@@ -49,11 +46,7 @@ describe("Anthropic credential store", () => {
   });
 
   it("prefers refreshed app-managed subscription credentials over stale env tokens", () => {
-    const credentialsDir = join(
-      stateDir,
-      "auth",
-      "anthropic-subscription",
-    );
+    const credentialsDir = join(stateDir, "auth", "anthropic-subscription");
     mkdirSync(credentialsDir, { recursive: true });
     writeFileSync(
       join(credentialsDir, "default.json"),
@@ -63,7 +56,7 @@ describe("Anthropic credential store", () => {
           refresh: "refresh-token",
           expires: Date.now() + 60 * 60 * 1000,
         },
-      }),
+      })
     );
 
     expect(getClaudeOAuthToken().accessToken).toBe("fresh-app-token");

@@ -2,11 +2,9 @@
  * Output schema utilities for validating expressions between nodes.
  * Uses pre-crawled schemaIndex.json with full schema content.
  */
-import type { ExpressionRef, SchemaContent } from "../types/index";
-import schemaIndex from "../data/schemaIndex.json" with { type: "json" };
-import triggerSchemaIndex from "../data/triggerSchemaIndex.json" with {
-  type: "json",
-};
+import type { ExpressionRef, SchemaContent } from '../types/index';
+import schemaIndex from '../data/schemaIndex.json' with { type: 'json' };
+import triggerSchemaIndex from '../data/triggerSchemaIndex.json' with { type: 'json' };
 
 type SchemasByResource = Record<string, Record<string, SchemaContent>>;
 
@@ -45,10 +43,7 @@ export function getAvailableResources(nodeType: string): string[] {
   return Object.keys(entry.schemas);
 }
 
-export function getAvailableOperations(
-  nodeType: string,
-  resource: string,
-): string[] {
+export function getAvailableOperations(nodeType: string, resource: string): string[] {
   const entry = SCHEMA_INDEX.nodeTypes[nodeType];
   if (!entry) {
     return [];
@@ -63,7 +58,7 @@ export function getAvailableOperations(
 export function loadOutputSchema(
   nodeType: string,
   resource: string,
-  operation: string,
+  operation: string
 ): OutputSchemaResult | null {
   const entry = SCHEMA_INDEX.nodeTypes[nodeType];
   if (!entry) {
@@ -88,16 +83,13 @@ export function loadOutputSchema(
 
 export function loadTriggerOutputSchema(
   nodeType: string,
-  parameters?: Record<string, unknown>,
+  parameters?: Record<string, unknown>
 ): OutputSchemaResult | null {
   if (parameters?.simple === false) {
     return null;
   }
   const entry = TRIGGER_SCHEMAS[nodeType];
-  if (
-    !entry?.outputSchema?.properties ||
-    Object.keys(entry.outputSchema.properties).length === 0
-  ) {
+  if (!entry?.outputSchema?.properties || Object.keys(entry.outputSchema.properties).length === 0) {
     return null;
   }
   return {
@@ -114,14 +106,14 @@ export function getTopLevelFields(schema: SchemaContent): string[] {
 }
 
 /** Returns all field paths including nested (e.g., "from.value[0].address") */
-export function getAllFieldPaths(schema: SchemaContent, prefix = ""): string[] {
+export function getAllFieldPaths(schema: SchemaContent, prefix = ''): string[] {
   return getAllFieldPathsTyped(schema, prefix).map((f) => f.path);
 }
 
 /** Returns field paths with their types (e.g., "snippet: string", "payload: object"). */
 export function getAllFieldPathsTyped(
   schema: SchemaContent,
-  prefix = "",
+  prefix = ''
 ): { path: string; type: string }[] {
   const fields: { path: string; type: string }[] = [];
   const properties = schema.properties;
@@ -133,17 +125,17 @@ export function getAllFieldPathsTyped(
   for (const [key, value] of Object.entries(properties)) {
     const currentPath = prefix ? `${prefix}.${key}` : key;
 
-    if (typeof value === "object" && value !== null) {
+    if (typeof value === 'object' && value !== null) {
       const propSchema = value as SchemaContent;
-      fields.push({ path: currentPath, type: propSchema.type || "unknown" });
+      fields.push({ path: currentPath, type: propSchema.type || 'unknown' });
 
-      if (propSchema.type === "object" && propSchema.properties) {
+      if (propSchema.type === 'object' && propSchema.properties) {
         fields.push(...getAllFieldPathsTyped(propSchema, currentPath));
       }
 
-      if (propSchema.type === "array" && propSchema.items) {
+      if (propSchema.type === 'array' && propSchema.items) {
         const items = propSchema.items as SchemaContent;
-        if (items.type === "object" && items.properties) {
+        if (items.type === 'object' && items.properties) {
           fields.push(...getAllFieldPathsTyped(items, `${currentPath}[0]`));
         }
       }
@@ -155,44 +147,34 @@ export function getAllFieldPathsTyped(
 
 export function parseExpressions(
   parameters: Record<string, unknown>,
-  parentPath = "",
+  parentPath = ''
 ): ExpressionRef[] {
   const refs: ExpressionRef[] = [];
 
   for (const [key, value] of Object.entries(parameters)) {
     const currentPath = parentPath ? `${parentPath}.${key}` : key;
 
-    if (typeof value === "string") {
+    if (typeof value === 'string') {
       refs.push(...extractExpressionsFromString(value, currentPath));
     } else if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
-        if (typeof value[i] === "string") {
+        if (typeof value[i] === 'string') {
+          refs.push(...extractExpressionsFromString(value[i], `${currentPath}[${i}]`));
+        } else if (typeof value[i] === 'object' && value[i] !== null) {
           refs.push(
-            ...extractExpressionsFromString(value[i], `${currentPath}[${i}]`),
-          );
-        } else if (typeof value[i] === "object" && value[i] !== null) {
-          refs.push(
-            ...parseExpressions(
-              value[i] as Record<string, unknown>,
-              `${currentPath}[${i}]`,
-            ),
+            ...parseExpressions(value[i] as Record<string, unknown>, `${currentPath}[${i}]`)
           );
         }
       }
-    } else if (typeof value === "object" && value !== null) {
-      refs.push(
-        ...parseExpressions(value as Record<string, unknown>, currentPath),
-      );
+    } else if (typeof value === 'object' && value !== null) {
+      refs.push(...parseExpressions(value as Record<string, unknown>, currentPath));
     }
   }
 
   return refs;
 }
 
-function extractExpressionsFromString(
-  str: string,
-  paramPath: string,
-): ExpressionRef[] {
+function extractExpressionsFromString(str: string, paramPath: string): ExpressionRef[] {
   const refs: ExpressionRef[] = [];
 
   // Match every $json.field reference, even inside compound expressions like {{ $json.a || $json.b }}
@@ -247,22 +229,22 @@ function extractExpressionsFromString(
  */
 function parseFieldPath(field: string): string[] {
   const path: string[] = [];
-  let current = "";
+  let current = '';
   let i = 0;
 
   while (i < field.length) {
     const char = field[i];
 
-    if (char === ".") {
+    if (char === '.') {
       if (current) {
         path.push(current);
-        current = "";
+        current = '';
       }
       i++;
-    } else if (char === "[") {
+    } else if (char === '[') {
       if (current) {
         path.push(current);
-        current = "";
+        current = '';
       }
       i++;
       if (i >= field.length) {
@@ -277,14 +259,14 @@ function parseFieldPath(field: string): string[] {
         }
         i++;
       } else {
-        while (i < field.length && field[i] !== "]") {
+        while (i < field.length && field[i] !== ']') {
           current += field[i];
           i++;
         }
       }
       if (current) {
         path.push(current);
-        current = "";
+        current = '';
       }
       i++;
     } else {
@@ -300,10 +282,7 @@ function parseFieldPath(field: string): string[] {
   return path;
 }
 
-export function fieldExistsInSchema(
-  path: string[],
-  schema: SchemaContent,
-): boolean {
+export function fieldExistsInSchema(path: string[], schema: SchemaContent): boolean {
   if (path.length === 0) {
     return false;
   }
@@ -313,7 +292,7 @@ export function fieldExistsInSchema(
   for (let i = 0; i < path.length; i++) {
     const segment = path[i];
 
-    if (!current || typeof current !== "object") {
+    if (!current || typeof current !== 'object') {
       return false;
     }
 
@@ -331,9 +310,9 @@ export function fieldExistsInSchema(
       return true;
     }
 
-    if (prop.type === "object") {
+    if (prop.type === 'object') {
       current = prop;
-    } else if (prop.type === "array" && prop.items) {
+    } else if (prop.type === 'array' && prop.items) {
       const nextSegment = path[i + 1];
       if (/^\d+$/.test(nextSegment)) {
         i++;
@@ -349,10 +328,7 @@ export function fieldExistsInSchema(
   return false;
 }
 
-export function formatSchemaForPrompt(
-  schema: SchemaContent,
-  maxDepth = 2,
-): string {
+export function formatSchemaForPrompt(schema: SchemaContent, maxDepth = 2): string {
   const lines: string[] = [];
 
   function format(obj: SchemaContent, depth: number, prefix: string) {
@@ -366,23 +342,23 @@ export function formatSchemaForPrompt(
       const type = prop.type as string;
       const path = prefix ? `${prefix}.${key}` : key;
 
-      if (type === "object" && prop.properties) {
+      if (type === 'object' && prop.properties) {
         lines.push(`${path}: object`);
         format(prop, depth + 1, path);
-      } else if (type === "array" && prop.items) {
+      } else if (type === 'array' && prop.items) {
         const items = prop.items as SchemaContent;
-        if (items.type === "object" && items.properties) {
+        if (items.type === 'object' && items.properties) {
           lines.push(`${path}: array of objects`);
           format(items, depth + 1, `${path}[0]`);
         } else {
-          lines.push(`${path}: array of ${items.type || "unknown"}`);
+          lines.push(`${path}: array of ${items.type || 'unknown'}`);
         }
       } else {
-        lines.push(`${path}: ${type || "unknown"}`);
+        lines.push(`${path}: ${type || 'unknown'}`);
       }
     }
   }
 
-  format(schema, 0, "");
-  return lines.join("\n");
+  format(schema, 0, '');
+  return lines.join('\n');
 }

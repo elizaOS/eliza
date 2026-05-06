@@ -242,26 +242,18 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
   const { homedir } = require("node:os") as typeof import("node:os");
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
   const namespace = getEnvVar("ELIZA_NAMESPACE")?.trim() || "eliza";
-  const stateDir =
-    getEnvVar("ELIZA_STATE_DIR")?.trim() || join(homedir(), `.${namespace}`);
-  const accountId =
-    getEnvVar("ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID")?.trim() || "default";
+  const stateDir = getEnvVar("ELIZA_STATE_DIR")?.trim() || join(homedir(), `.${namespace}`);
+  const accountId = getEnvVar("ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID")?.trim() || "default";
   const paths = [
     join(stateDir, "auth", "anthropic-subscription", `${accountId}.json`),
-    join(
-      homedir(),
-      ".eliza",
-      "auth",
-      "anthropic-subscription",
-      `${accountId}.json`,
-    ),
+    join(homedir(), ".eliza", "auth", "anthropic-subscription", `${accountId}.json`),
     join(homedir(), ".eliza", "auth", "anthropic-subscription.json"),
   ];
 
   for (const credentialPath of paths) {
     try {
       const parsed = JSON.parse(
-        readFileSync(credentialPath, "utf-8"),
+        readFileSync(credentialPath, "utf-8")
       ) as AppSubscriptionCredentials;
       const access = parsed.credentials?.access?.trim();
       if (!access) continue;
