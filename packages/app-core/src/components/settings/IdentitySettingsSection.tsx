@@ -411,7 +411,7 @@ export function IdentitySettingsSection() {
           <div className="flex items-center gap-2">
             <Select
               value={visibleVoicePresetId ?? undefined}
-              onValueChange={(value) => handleVoiceSelect(value as string)}
+              onValueChange={(value) => handleVoiceSelect(value)}
             >
               <SelectTrigger
                 aria-labelledby="settings-identity-voice-label"
@@ -430,7 +430,11 @@ export function IdentitySettingsSection() {
                       {group.label}
                     </SelectLabel>
                     {group.items.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
+                      <SelectItem
+                        key={item.id}
+                        value={item.id}
+                        textValue={item.text}
+                      >
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="font-semibold">{item.text}</span>
                           {item.hint ? (
