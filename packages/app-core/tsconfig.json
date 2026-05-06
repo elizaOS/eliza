@@ -37,6 +37,8 @@
       "@elizaos/app-core/*": ["./src/*"],
       "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
       "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
       "@elizaos/app-training/*": ["../../plugins/app-training/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
