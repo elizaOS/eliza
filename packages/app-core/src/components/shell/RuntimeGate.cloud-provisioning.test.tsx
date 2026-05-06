@@ -33,6 +33,7 @@ const {
     createCloudCompatAgent: vi.fn(),
     provisionCloudCompatAgent: vi.fn(),
     getCloudCompatJobStatus: vi.fn(),
+    getCloudCompatAgentStatus: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
     switchProvider: vi.fn(),
     setBaseUrl: vi.fn(),
@@ -325,6 +326,15 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
         completed_on: "2026-01-01T00:00:02.000Z",
       },
     });
+    clientMock.getCloudCompatAgentStatus.mockResolvedValue({
+      success: true,
+      data: {
+        status: "running",
+        bridgeUrl: "https://agent-1.elizacloud.ai",
+        webUiUrl: null,
+        suspendedReason: null,
+      },
+    });
     clientMock.switchProvider.mockResolvedValue({
       success: true,
       provider: "elizacloud",
@@ -443,5 +453,127 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(clientMock.getCloudCompatJobStatus).toHaveBeenCalledTimes(3);
     expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
     expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces 'hosting unavailable' when create returns nodeId=null and skips provision", async () => {
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    clientMock.createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { agentId: "agent-1", nodeId: null, status: "queued" },
+    });
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Select Cloud"));
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(clientMock.provisionCloudCompatAgent).not.toHaveBeenCalled();
+    expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("times out async provisioning that stays queued past PROVISION_JOB_DEADLINE_MS", async () => {
+    vi.useFakeTimers();
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    clientMock.createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { agentId: "agent-1", nodeId: "node-1", status: "queued" },
+    });
+    clientMock.provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-1", agentId: "agent-1", status: "queued" },
+    });
+    clientMock.getCloudCompatJobStatus.mockResolvedValue({
+      success: true,
+      data: {
+        id: "job-1",
+        jobId: "job-1",
+        type: "agent_provision",
+        status: "queued",
+        data: {},
+        result: null,
+        error: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        startedAt: null,
+        completedAt: null,
+        retryCount: 0,
+        name: "agent_provision",
+        state: "queued",
+        created_on: "2026-01-01T00:00:00.000Z",
+        completed_on: null,
+      },
+    });
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Select Cloud"));
+    });
+
+    await vi.waitFor(() =>
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(125_000);
+    });
+
+    await vi.waitFor(() =>
+      expect(
+        screen.getByText(
+          "Cloud agent provisioning is taking too long. The hosting service may be unavailable.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("re-provisions an existing agent whose /api/health probe fails", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("Network unreachable");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [RUNNING_AGENT],
+    });
+    clientMock.provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "", agentId: "agent-1", status: "running" },
+    });
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Select Cloud"));
+    });
+
+    await vi.waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://agent-1.elizacloud.ai/api/health",
+        expect.objectContaining({ method: "GET" }),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+
+    vi.unstubAllGlobals();
   });
 });
