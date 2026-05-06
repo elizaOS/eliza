@@ -3,7 +3,7 @@
   "name": "Edge Tts",
   "description": "Free text-to-speech using Microsoft Edge TTS - no API key required",
   "npmName": "@elizaos/plugin-edge-tts",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["edge-tts", "edge", "text-to-speech"],
   "config": {

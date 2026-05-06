@@ -3,7 +3,7 @@
   "name": "Eliza Classic",
   "description": "Compatibility plugin referencing the original ELIZA-style patterns alongside legacy elizaOS agent workflows.",
   "npmName": "@elizaos/plugin-eliza-classic",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["compatibility", "legacy", "agents", "eliza-classic", "classic"],
   "config": {},

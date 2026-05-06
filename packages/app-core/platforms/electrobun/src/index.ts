@@ -8,24 +8,20 @@ import Electrobun, {
 	BrowserView,
 	BrowserWindow,
 	BuildConfig,
-	Session,
 	Updater,
 	Utils,
 	WGPU,
 	webgpu,
 } from "electrobun/bun";
 import {
-	pushApiBaseToRenderer,
 	resolveDesktopRuntimeMode,
 	resolveInitialApiBase,
 	resolveRendererFacingApiBase,
 } from "./api-base";
 import {
 	buildApplicationMenu,
-	EMPTY_HEARTBEAT_MENU_SNAPSHOT,
 	findAppMenuEntryBySlug,
 	getAppMenuEntries,
-	type HeartbeatMenuSnapshot,
 	parseSettingsWindowAction,
 } from "./application-menu";
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
@@ -36,6 +32,11 @@ import { readNavigationEventUrl } from "./cloud-auth-window";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { getFloatingChatManager } from "./floating-chat-window";
+import * as apiBaseOwner from "./lifecycle/api-base-owner";
+import {
+	markDesktopSessionStale,
+	primeDesktopSessionAuth,
+} from "./lifecycle/desktop-session-prime";
 import {
 	resolveBootstrapShellRenderer,
 	resolveBootstrapViewRenderer,
@@ -55,11 +56,6 @@ import {
 	getStartupDiagnosticsSnapshot,
 	getStartupStatusPath,
 } from "./native/agent";
-import {
-	type DesktopSession,
-	installDesktopSessionCookies,
-	loadOrCreateDesktopSession,
-} from "./native/auth-bridge";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
@@ -94,27 +90,10 @@ import {
 	shouldWriteWindowsCefProfileMarker,
 } from "./windows-cef-profile";
 
-type HeartbeatMenuTriggerSummary = {
-	enabled: boolean;
-	nextRunAtMs?: number;
-	lastRunAtIso?: string;
-};
-
-type HeartbeatMenuHealthResponse = {
-	activeTriggers?: number;
-	totalExecutions?: number;
-	totalFailures?: number;
-	lastExecutionAt?: number;
-};
-
-const HEARTBEAT_MENU_REFRESH_MS = 30_000;
 const BRAND = getBrandConfig();
 const CONFIG_EXPORT_FILE_NAME = BRAND.configExportFileName;
 const STARTUP_CRASH_REPORT_FILE = "startup-crash-report-latest.md";
 const STARTUP_CRASH_PROMPT_MARKER_FILE = "startup-crash-last-prompted.txt";
-let heartbeatMenuSnapshot: HeartbeatMenuSnapshot =
-	EMPTY_HEARTBEAT_MENU_SNAPSHOT;
-let heartbeatMenuRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 import {
 	isAgentReady,
@@ -154,7 +133,6 @@ function setupApplicationMenu(): void {
 	const menu = buildApplicationMenu({
 		isMac,
 		browserEnabled: false,
-		heartbeatSnapshot: heartbeatMenuSnapshot,
 		detachedWindows: surfaceWindowManager?.listWindows() ?? [],
 		agentReady: isAgentReady(),
 	});
@@ -170,10 +148,6 @@ function summarizeDesktopActionError(error: unknown, fallback: string): string {
 	const trimmed = message.trim();
 	if (!trimmed) return fallback;
 	return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
-}
-
-function summarizeHeartbeatMenuError(error: unknown): string {
-	return summarizeDesktopActionError(error, "Heartbeat status unavailable");
 }
 
 function buildApiRequestHeaders(contentType?: string): Record<string, string> {
@@ -198,7 +172,7 @@ function buildApiRequestHeaders(contentType?: string): Record<string, string> {
 	return headers;
 }
 
-function resolveHeartbeatMenuApiBase(): string | null {
+function resolveLoopbackApiBase(): string | null {
 	const port = getAgentManager().getStatus().port;
 	if (typeof port === "number" && port > 0) {
 		return `http://127.0.0.1:${port}`;
@@ -209,7 +183,7 @@ function resolveHeartbeatMenuApiBase(): string | null {
 /**
  * Picks a loopback API base the main process can actually reach.
  *
- * **WHY:** `resolveHeartbeatMenuApiBase()` falls back to `resolveInitialApiBase`,
+ * **WHY:** `resolveLoopbackApiBase()` falls back to `resolveInitialApiBase`,
  * which in **external** mode is `ELIZA_DESKTOP_API_BASE` (often :31337). If that
  * dev server is down but the **embedded** agent is still running on a dynamic
  * port, menu Reset must not blindly POST to the dead env URL.
@@ -321,13 +295,13 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 								process.env as Record<string, string | undefined>,
 								port,
 							)
-						: (resolveHeartbeatMenuApiBase() ??
+						: (resolveLoopbackApiBase() ??
 							resolveInitialApiBase(
 								process.env as Record<string, string | undefined>,
 							) ??
 							apiBase);
 					if (base) {
-						pushApiBaseToRenderer(currentWindow, base, apiToken);
+						apiBaseOwner.notifyChange(currentWindow, base, apiToken);
 					}
 				}
 			},
@@ -342,8 +316,7 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 					/* 409 / race while restarting — poll below */
 				}
 			},
-			resolveApiBaseForStatusPoll: () =>
-				resolveHeartbeatMenuApiBase() ?? apiBase,
+			resolveApiBaseForStatusPoll: () => resolveLoopbackApiBase() ?? apiBase,
 			sendMenuResetAppliedToRenderer: (payload) => {
 				sendToActiveRenderer("desktopTrayMenuClick", payload);
 			},
@@ -358,118 +331,6 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
 			body: summarizeDesktopActionError(err, "Reset failed"),
 		});
 	}
-}
-
-async function fetchHeartbeatMenuSnapshot(
-	apiBase: string,
-): Promise<HeartbeatMenuSnapshot> {
-	const headers = buildApiRequestHeaders();
-
-	const [triggersResponse, healthResponse] = await Promise.all([
-		fetch(`${apiBase}/api/triggers`, { headers }),
-		fetch(`${apiBase}/api/triggers/health`, { headers }),
-	]);
-
-	if (!triggersResponse.ok) {
-		throw new Error(`Trigger list failed (${triggersResponse.status})`);
-	}
-	if (!healthResponse.ok) {
-		throw new Error(`Trigger health failed (${healthResponse.status})`);
-	}
-
-	const triggersPayload = (await triggersResponse.json()) as {
-		triggers?: HeartbeatMenuTriggerSummary[];
-	};
-	const healthPayload =
-		(await healthResponse.json()) as HeartbeatMenuHealthResponse;
-
-	const triggers = Array.isArray(triggersPayload.triggers)
-		? triggersPayload.triggers
-		: [];
-	const enabledTriggers = triggers.filter((trigger) => trigger.enabled);
-
-	const nextRunCandidates = enabledTriggers
-		.map((trigger) =>
-			typeof trigger.nextRunAtMs === "number" ? trigger.nextRunAtMs : null,
-		)
-		.filter((value): value is number => typeof value === "number");
-
-	const lastRunCandidates = triggers
-		.map((trigger) => {
-			if (!trigger.lastRunAtIso) return null;
-			const parsed = Date.parse(trigger.lastRunAtIso);
-			return Number.isNaN(parsed) ? null : parsed;
-		})
-		.filter((value): value is number => typeof value === "number");
-
-	return {
-		loading: false,
-		error: null,
-		totalHeartbeats: triggers.length,
-		activeHeartbeats:
-			typeof healthPayload.activeTriggers === "number"
-				? healthPayload.activeTriggers
-				: enabledTriggers.length,
-		totalExecutions:
-			typeof healthPayload.totalExecutions === "number"
-				? healthPayload.totalExecutions
-				: 0,
-		totalFailures:
-			typeof healthPayload.totalFailures === "number"
-				? healthPayload.totalFailures
-				: 0,
-		lastRunAtMs:
-			typeof healthPayload.lastExecutionAt === "number"
-				? healthPayload.lastExecutionAt
-				: lastRunCandidates.length > 0
-					? Math.max(...lastRunCandidates)
-					: null,
-		nextRunAtMs:
-			nextRunCandidates.length > 0 ? Math.min(...nextRunCandidates) : null,
-	};
-}
-let heartbeatRefreshInProgress = false;
-
-async function refreshHeartbeatMenuSnapshot(): Promise<void> {
-	if (heartbeatRefreshInProgress) {
-		return;
-	}
-	heartbeatRefreshInProgress = true;
-
-	try {
-		const apiBase = resolveHeartbeatMenuApiBase();
-		if (!apiBase) {
-			heartbeatMenuSnapshot = {
-				...heartbeatMenuSnapshot,
-				loading: false,
-				error: "Agent unavailable",
-			};
-			setupApplicationMenu();
-			return;
-		}
-
-		try {
-			heartbeatMenuSnapshot = await fetchHeartbeatMenuSnapshot(apiBase);
-		} catch (error) {
-			heartbeatMenuSnapshot = {
-				...heartbeatMenuSnapshot,
-				loading: false,
-				error: summarizeHeartbeatMenuError(error),
-			};
-		}
-
-		setupApplicationMenu();
-	} finally {
-		heartbeatRefreshInProgress = false;
-	}
-}
-
-function startHeartbeatMenuRefresh(): void {
-	if (heartbeatMenuRefreshTimer) return;
-	void refreshHeartbeatMenuSnapshot();
-	heartbeatMenuRefreshTimer = setInterval(() => {
-		void refreshHeartbeatMenuSnapshot();
-	}, HEARTBEAT_MENU_REFRESH_MS);
 }
 
 const MAC_TRAFFIC_LIGHTS_X = 14;
@@ -606,13 +467,12 @@ function loadWindowState(statePath: string): PersistedWindowState {
 			}
 		}
 	} catch {}
-	// No saved state → first launch. Open maximized so the user gets a
-	// usable workspace immediately instead of a small window in the
-	// corner they have to resize themselves.
-	return {
-		...DEFAULT_WINDOW_STATE,
-		shouldMaximize: MAXIMIZE_ON_LAUNCH_SENTINEL,
-	};
+	// No saved state → first launch. Open at the default 1440×900 window
+	// size (centered-ish near top-left) instead of maximizing. Maximizing on
+	// first launch buries the welcome content in a vast empty workspace and
+	// gives a "this is overwhelming" impression. The user can always
+	// maximize themselves; subsequent launches restore their last size.
+	return { ...DEFAULT_WINDOW_STATE };
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -821,11 +681,12 @@ async function startRendererServer(): Promise<string> {
 		".vrm": "model/gltf-binary",
 	};
 
-	// Determine the expected agent API base URL so we can inject it into the
-	// HTML before the renderer JS runs. This prevents a 404 fatal-error loop
-	// where the renderer fetches /api/auth/status relative to the static server.
-	// If the agent falls back to a dynamic port, apiBaseUpdate messages will
-	// update window.__ELIZA_API_BASE__ and the client will pick it up lazily.
+	// Seed the api-base-owner singleton with the initial value so the
+	// HTML-inject path and the RPC push path both read the same source of
+	// truth. Without this seeding, the static server would inject one value
+	// into HTML before the renderer mounts and the RPC bridge would push a
+	// different value moments later — the renderer racing two answers is
+	// what produced the port-shift disconnect documented in MASTER.md §0.
 	const initialApiBase = resolveInitialApiBase(
 		process.env as Record<string, string | undefined>,
 	);
@@ -834,42 +695,7 @@ async function startRendererServer(): Promise<string> {
 			.mode === "local"
 			? configureDesktopLocalApiAuth()
 			: (resolveApiToken(process.env) ?? "");
-
-	// Inject the API base into index.html so it's available before React mounts.
-	// Two surfaces both must be set: `__ELIZA_API_BASE__` (legacy global the
-	// appClient reads) and `__ELIZA_APP_BOOT_CONFIG__.apiBase` (typed boot
-	// config the SettingsView reads). Without the second one, the same renderer
-	// loaded via a regular browser at this static-server's origin falls back to
-	// `pageOrigin` for apiBase and every /api/* call returns SPA HTML.
-
-	// JSON.stringify does not escape "</" sequences, so `</script>` embedded in a
-	// JSON string value would terminate the surrounding <script> block in HTML.
-	// Replace "</" with "<\/" which is valid JSON/JS but is safe in HTML context.
-	function safeJsonForHtml(value: unknown): string {
-		return JSON.stringify(value).replace(/<\//g, "<\\/");
-	}
-
-	function injectApiBaseIntoHtml(html: string): string {
-		if (!initialApiBase) {
-			return html;
-		}
-		const baseLiteral = safeJsonForHtml(initialApiBase);
-		const tokenLiteral = initialApiToken
-			? safeJsonForHtml(initialApiToken)
-			: "";
-		const tokenInject = tokenLiteral
-			? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
-			: "";
-		const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
-		const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${tokenInject}${bootConfigInject}</script>`;
-		if (html.includes("</head>")) {
-			return html.replace("</head>", `${script}</head>`);
-		}
-		if (html.includes("<body")) {
-			return html.replace("<body", `${script}<body`);
-		}
-		return script + html;
-	}
+	apiBaseOwner.setCurrent(initialApiBase, initialApiToken);
 
 	const resolveRendererCacheControl = (
 		pathname: string,
@@ -965,7 +791,7 @@ async function startRendererServer(): Promise<string> {
 				const content = fs.readFileSync(filePath);
 				// Inject API base into HTML responses
 				if (mimeExt === ".html" || filePath.endsWith("index.html")) {
-					const html = injectApiBaseIntoHtml(content.toString("utf8"));
+					const html = apiBaseOwner.injectIntoHtml(content.toString("utf8"));
 					return new Response(html, {
 						headers: {
 							"Content-Type": "text/html; charset=utf-8",
@@ -1271,7 +1097,7 @@ function resolveDefaultDialogPath(): string {
 }
 
 async function exportConfigFromMenu(): Promise<void> {
-	const apiBase = resolveHeartbeatMenuApiBase();
+	const apiBase = resolveLoopbackApiBase();
 	if (!apiBase) {
 		Utils.showNotification({
 			title: "Config Export Failed",
@@ -1317,7 +1143,7 @@ async function exportConfigFromMenu(): Promise<void> {
 }
 
 async function importConfigFromMenu(): Promise<void> {
-	const apiBase = resolveHeartbeatMenuApiBase();
+	const apiBase = resolveLoopbackApiBase();
 	if (!apiBase) {
 		Utils.showNotification({
 			title: "Config Import Failed",
@@ -1512,10 +1338,10 @@ function injectApiBase(win: BrowserWindow): void {
 		runtimeResolution.mode === "external" &&
 		runtimeResolution.externalApi.base
 	) {
-		pushApiBaseToRenderer(
+		apiBaseOwner.notifyChange(
 			win,
 			runtimeResolution.externalApi.base,
-			resolveApiToken(process.env) ?? undefined,
+			resolveApiToken(process.env) ?? "",
 		);
 		setAgentReady(true);
 		return;
@@ -1524,7 +1350,7 @@ function injectApiBase(win: BrowserWindow): void {
 	const agent = getAgentManager();
 	const port = agent.getPort() ?? resolveDesktopApiPort(process.env);
 	const apiToken = configureDesktopLocalApiAuth();
-	pushApiBaseToRenderer(
+	apiBaseOwner.notifyChange(
 		win,
 		resolveRendererFacingApiBase(
 			process.env as Record<string, string | undefined>,
@@ -1555,68 +1381,6 @@ async function syncPermissionsToRestApi(
 		});
 	} catch (err) {
 		console.warn("[Main] Permission sync failed:", err);
-	}
-}
-
-// Tracks whether the desktop loopback session has already been primed for the
-// current process lifetime. The bridge is idempotent on disk, but cookie jar
-// writes are cheap and we don't need to repeat them on every status tick.
-let desktopSessionPrimed = false;
-
-/**
- * Best-effort: mint (or reuse) a loopback-only desktop session and install the
- * cookies into the main window's session jar so the renderer's first /api
- * request is already authenticated. Failure is silent — the renderer falls
- * back to the standard login flow.
- *
- * Loopback-only enforcement is implemented server-side: the auth-context
- * resolver MUST refuse a session marked loopback-only on a non-loopback
- * request. The bridge does not — and cannot — be that boundary.
- */
-async function primeDesktopSessionAuth(
-	apiBase: string,
-	rendererOrigin: string,
-): Promise<void> {
-	if (desktopSessionPrimed) return;
-	let session: DesktopSession | null;
-	try {
-		session = await loadOrCreateDesktopSession({ apiBase });
-	} catch (err) {
-		console.warn(
-			"[Main] Desktop auth bridge failed:",
-			err instanceof Error ? err.message : err,
-		);
-		return;
-	}
-	if (!session) {
-		console.log(
-			"[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
-		);
-		return;
-	}
-
-	try {
-		const partition = resolveMainWindowPartition(process.env);
-		const electrobunSession =
-			partition !== null
-				? Session.fromPartition(partition)
-				: Session.defaultSession;
-		const installer = electrobunSession.cookies as {
-			set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
-		};
-		const touched = installDesktopSessionCookies(installer, session, {
-			apiOrigin: apiBase,
-			rendererOrigin,
-		});
-		desktopSessionPrimed = true;
-		console.log(
-			`[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
-		);
-	} catch (err) {
-		console.warn(
-			"[Main] Desktop auth cookie install failed:",
-			err instanceof Error ? err.message : err,
-		);
 	}
 }
 
@@ -1655,8 +1419,8 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
 			// the bridge succeeds, the renderer skips the login UI; if it fails,
 			// the renderer behaves like a remote browser (password-required).
 			await primeDesktopSessionAuth(apiBase, rendererBase);
-			const apiToken = resolveApiToken(process.env) ?? undefined;
-			pushApiBaseToRenderer(win, rendererBase, apiToken);
+			const apiToken = resolveApiToken(process.env) ?? "";
+			apiBaseOwner.notifyChange(win, rendererBase, apiToken);
 			setAgentReady(true);
 			// Sync real OS permission states to the REST API so the renderer
 			// can display them and capability toggles can unlock.
@@ -1765,8 +1529,6 @@ async function setupUpdater(): Promise<void> {
 				void importConfigFromMenu();
 			} else if (action === "toggle-devtools") {
 				toggleFocusedWindowDevTools();
-			} else if (action === "refresh-heartbeats") {
-				void refreshHeartbeatMenuSnapshot();
 			} else if (action === "relaunch") {
 				void getDesktopManager().relaunch();
 			} else if (action === "reset-app") {
@@ -1906,8 +1668,6 @@ async function setupUpdater(): Promise<void> {
 		Electrobun.events.on("context-menu-clicked", (action: string) => {
 			if (action === "check-for-updates") {
 				triggerManualUpdateCheck();
-			} else if (action === "refresh-heartbeats") {
-				void refreshHeartbeatMenuSnapshot();
 			} else if (action === "relaunch") {
 				void getDesktopManager().relaunch();
 			}
@@ -2091,6 +1851,9 @@ async function main(): Promise<void> {
 		bundle_path: resolveStartupBundlePath(process.execPath),
 	});
 	await loadTheAppEnvFilesForMain();
+	recordStartupPhase("env_loaded", {
+		pid: process.pid,
+	});
 	console.log(`[Main] Starting ${BRAND.appName} (Electrobun)`);
 	const normalizedModuleDir = import.meta.dir.replaceAll("\\", "/");
 	const runtimeResolution = resolveDesktopRuntimeMode(
@@ -2111,6 +1874,9 @@ async function main(): Promise<void> {
 	);
 
 	await maybePromptStartupCrashReport();
+	recordStartupPhase("crash_prompt_checked", {
+		pid: process.pid,
+	});
 	// On Windows (CEF renderer), clear stale CEF profile data when the app
 	// version changes.  A leftover Partitions/default profile from a previous
 	// install causes "Cannot create profile at path" errors that cascade into
@@ -2164,10 +1930,19 @@ async function main(): Promise<void> {
 	}
 
 	initializeBundledWebGPU();
+	recordStartupPhase("webgpu_initialized", {
+		pid: process.pid,
+	});
 	checkWebGpuBrowserSupport();
 	cleanupFns.length = 0;
 	cleanupFns.push(await startBrowserWorkspaceBridgeServer());
+	recordStartupPhase("browser_workspace_bridge_ready", {
+		pid: process.pid,
+	});
 	const stopDesktopTestBridgeServer = await startDesktopTestBridgeServer();
+	recordStartupPhase("desktop_test_bridge_ready", {
+		pid: process.pid,
+	});
 	if (stopDesktopTestBridgeServer) {
 		cleanupFns.push(stopDesktopTestBridgeServer);
 	}
@@ -2183,7 +1958,7 @@ async function main(): Promise<void> {
 				// crash) — the cookies we installed during _startAgent were scoped to
 				// the old origin. Re-prime so the renderer's next /api request stays
 				// authenticated.
-				desktopSessionPrimed = false;
+				markDesktopSessionStale();
 				const apiBase = `http://127.0.0.1:${status.port}`;
 				const rendererBase = resolveRendererFacingApiBase(
 					process.env as Record<string, string | undefined>,
@@ -2197,13 +1972,15 @@ async function main(): Promise<void> {
 					injectApiBase(w as BrowserWindow);
 				});
 			}
-			void refreshHeartbeatMenuSnapshot();
 		}),
 	);
 
 	// Create window first — on Windows (CEF) the UI message loop must be
 	// running before any synchronous FFI calls like setApplicationMenu().
 	// Calling setupApplicationMenu() before createMainWindow() deadlocks.
+	recordStartupPhase("creating_window", {
+		pid: process.pid,
+	});
 	const mainWin = attachMainWindow(await createMainWindow());
 	recordStartupPhase("window_ready", {
 		pid: process.pid,
@@ -2244,13 +2021,6 @@ async function main(): Promise<void> {
 	if (stopScreenshotDevServer) {
 		cleanupFns.push(stopScreenshotDevServer);
 	}
-	startHeartbeatMenuRefresh();
-	cleanupFns.push(() => {
-		if (heartbeatMenuRefreshTimer) {
-			clearInterval(heartbeatMenuRefreshTimer);
-			heartbeatMenuRefreshTimer = null;
-		}
-	});
 
 	// Wire detached window callbacks so menus and RPC can open them.
 	getDesktopManager().setOpenSettingsCallback((tabHint) => {
@@ -2374,11 +2144,12 @@ async function main(): Promise<void> {
 		}
 	}
 
-	// Agent startup: in external mode, push the API base via injectApiBase
-	// (the agent is already running externally). In local mode, start the
-	// embedded agent first — injectApiBaseIntoHtml already set the initial
-	// window.__ELIZA_API_BASE__ but _startAgent will push the actual port
-	// once the agent reports it.
+	// Agent startup: in external mode, push the API base via the
+	// api-base-owner (the agent is already running externally). In local
+	// mode, start the embedded agent first — apiBaseOwner.injectIntoHtml()
+	// already set the initial window.__ELIZA_API_BASE__ from the seed value
+	// in main(), but _startAgent will push the actual port once the agent
+	// reports it.
 	if (currentWindow) {
 		const rt = resolveDesktopRuntimeMode(
 			process.env as Record<string, string | undefined>,
@@ -2494,6 +2265,13 @@ function markStartupCrashPrompted(updatedAt: string): void {
 }
 
 async function maybePromptStartupCrashReport(): Promise<void> {
+	if (
+		process.env.ELIZA_DESKTOP_SKIP_STARTUP_CRASH_PROMPT === "1" ||
+		process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1"
+	) {
+		return;
+	}
+
 	const diagnostics = getStartupDiagnosticsSnapshot();
 	const looksLikeStartupFailure =
 		diagnostics.state === "error" &&

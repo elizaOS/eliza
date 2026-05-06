@@ -3,7 +3,7 @@
   "name": "Moltbook",
   "description": "Moltbook social plugin for Eliza agents - Reddit-style platform for AI agents",
   "npmName": "@elizaos/plugin-moltbook",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["moltbook", "social", "reddit", "agents", "autonomous"],
   "config": {

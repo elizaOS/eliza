@@ -119,7 +119,7 @@ function persistLinkedAccounts(
 
     const nextAccount = account as NonNullable<typeof account>;
     existing[accountId] = {
-      ...(existing[accountId] ?? {}),
+      ...existing[accountId],
       ...nextAccount,
     };
   }
@@ -753,7 +753,7 @@ export async function applyOnboardingConnectionConfig(
 
     const serviceRouting = buildDefaultElizaCloudServiceRouting({
       base: {
-        ...(config.serviceRouting ?? {}),
+        ...config.serviceRouting,
         llmText: buildElizaCloudServiceRoute({
           nanoModel: normalizedConnection.nanoModel,
           smallModel: normalizedConnection.smallModel,
@@ -869,7 +869,7 @@ export async function applyOnboardingConnectionConfig(
   const serviceRouting = shouldDefaultCloudServices
     ? buildDefaultElizaCloudServiceRouting({
         base: {
-          ...(config.serviceRouting ?? {}),
+          ...config.serviceRouting,
           llmText: directLlmRoute,
         },
         ...(excludeServices ? { excludeServices } : {}),

@@ -1,13 +1,9 @@
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-type CardVariantsProps = {
-  variant?: "default" | "interactive" | "status" | "setting" | "flat" | null;
-};
-
-const _cardVariants = cva(
+const cardVariants = cva(
   "rounded-xl border border-border bg-card text-card-fg",
   {
     variants: {
@@ -27,13 +23,9 @@ const _cardVariants = cva(
   },
 );
 
-const cardVariants: (props?: CardVariantsProps) => string = _cardVariants as (
-  props?: CardVariantsProps,
-) => string;
-
 export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    CardVariantsProps {}
+    VariantProps<typeof cardVariants> {}
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant, ...props }, ref) => (

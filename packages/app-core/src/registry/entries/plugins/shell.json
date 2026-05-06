@@ -3,7 +3,7 @@
   "name": "Shell",
   "description": "A shell plugin for ElizaOS. USE AT YOUR OWN RISK. THIS GIVES AI FULL ACCESS TO THE HOST MACHINE",
   "npmName": "@elizaos/plugin-shell",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["shell", "terminal", "command", "history"],
   "config": {

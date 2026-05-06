@@ -62,6 +62,10 @@ export function shouldBundleDiscoveredPackage(
   packageName: string,
   alwaysBundled: ReadonlySet<string>,
 ): boolean {
+  if (packageName === "@elizaos/plugin-n8n-workflow") {
+    return true;
+  }
+
   if (!isRuntimePluginPackage(packageName)) {
     return true;
   }

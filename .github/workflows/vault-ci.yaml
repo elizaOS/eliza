@@ -127,9 +127,8 @@ jobs:
 
   app-core-wiring:
     # Verifies the app-core consumer code that wires @elizaos/vault into
-    # the secrets-manager routes, plugins-compat routes, settings hooks,
-    # and the cloud-disconnect orphan-route patch. These tests are
-    # platform-agnostic (no OS keyring access — the vault is mocked at
+    # cloud direct auth, active-server persistence, and startup integration drift.
+    # These tests are platform-agnostic (no OS keyring access — the vault is mocked at
     # the boundary), so we only run them on ubuntu-latest.
     name: app-core wiring tests
     runs-on: ubuntu-latest
@@ -159,8 +158,6 @@ jobs:
         working-directory: packages/app-core
         run: |
           bunx vitest run --config vitest.config.ts \
-            src/api/secrets-manager-routes.test.ts \
-            src/services/vault-mirror.test.ts \
-            src/state/usePluginsSkillsState.heuristic.test.ts \
-            src/hooks/useSecretsManagerShortcut.test.ts \
-            src/api/server.cloud-disconnect.test.ts
+            src/api/client-cloud-direct-auth.test.ts \
+            src/state/persistence-cloud-active-server.test.ts \
+            scripts/startup-integration-script-drift.test.ts

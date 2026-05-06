@@ -19,7 +19,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { itIf } from "../../../test/helpers/conditional-tests.ts";
 import {
   pullXInboundDms,
   readXDmCredentialsFromEnv,

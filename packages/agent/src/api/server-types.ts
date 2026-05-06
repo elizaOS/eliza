@@ -186,10 +186,10 @@ export interface PluginEntry {
   validationWarnings: Array<{ field: string; message: string }>;
   npmName?: string;
   version?: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   requestedVersion?: string;
   latestVersion?: string | null;
-  alphaVersion?: string | null;
+  betaVersion?: string | null;
   pluginDeps?: string[];
   /** Whether this plugin is currently active in the runtime. */
   isActive?: boolean;

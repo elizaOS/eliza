@@ -14,6 +14,55 @@ export interface CloudBillingRouteState {
 const PROXY_TIMEOUT_MS = 15_000;
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_REDIRECTS = 4;
+/**
+ * crypto/status changes rarely (it advertises whether crypto top-ups are
+ * enabled and which networks). Caching it amortises the second upstream call
+ * `forwardSummary` makes per dashboard refresh against the per-key rate limit.
+ *
+ * Keyed by `(baseUrl, Authorization header)` so multi-account hosts (or hosts
+ * that switch keys via re-login) never serve one account's cached status to
+ * another. The Authorization header is already present in process memory at
+ * the time of caching, so this introduces no new exposure.
+ */
+const CRYPTO_STATUS_CACHE_MS = 60_000;
+const cryptoStatusCache = new Map<
+  string,
+  { value: unknown; expiresAt: number }
+>();
+
+function cryptoStatusCacheKey(
+  baseUrl: string,
+  headers: Record<string, string>,
+): string {
+  return `${baseUrl}|${headers.Authorization ?? ""}`;
+}
+
+async function fetchCryptoStatusCached(
+  baseUrl: string,
+  headers: Record<string, string>,
+): Promise<unknown> {
+  const now = Date.now();
+  const cacheKey = cryptoStatusCacheKey(baseUrl, headers);
+  const cached = cryptoStatusCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+  const response = await fetchUpstream(
+    `${baseUrl}/api/crypto/status`,
+    "GET",
+    headers,
+    undefined,
+  ).catch(() => null);
+  if (!response?.ok) {
+    return cached?.value ?? null;
+  }
+  const value = await readJsonResponse(response).catch(() => ({}));
+  cryptoStatusCache.set(cacheKey, {
+    value,
+    expiresAt: now + CRYPTO_STATUS_CACHE_MS,
+  });
+  return value;
+}
 
 interface CloudAuthApiKeyService {
   isAuthenticated: () => boolean;
@@ -339,34 +388,45 @@ async function forwardSummary(
   baseUrl: string,
   headers: Record<string, string>,
 ): Promise<{ status: number; payload: Record<string, unknown> | unknown }> {
-  const [summaryResponse, cryptoStatusResponse] = await Promise.all([
-    fetchUpstream(
-      `${baseUrl}/api/v1/credits/summary`,
-      "GET",
-      headers,
-      undefined,
-    ),
-    fetchUpstream(
-      `${baseUrl}/api/crypto/status`,
-      "GET",
-      headers,
-      undefined,
-    ).catch(() => null),
-  ]);
-
+  const summaryResponse = await fetchUpstream(
+    `${baseUrl}/api/v1/credits/summary`,
+    "GET",
+    headers,
+    undefined,
+  );
   const summaryPayload = await readJsonResponse(summaryResponse);
   if (!summaryResponse.ok) {
     return { status: summaryResponse.status, payload: summaryPayload };
   }
 
-  const cryptoPayload = cryptoStatusResponse
-    ? await readJsonResponse(cryptoStatusResponse).catch(() => ({}))
-    : {};
+  // Fetch crypto/status only when summary succeeded; cache it across requests
+  // so we don't burn a per-key rate-limit slot every time the dashboard
+  // refreshes (it changes rarely).
+  const cryptoPayload = (await fetchCryptoStatusCached(baseUrl, headers)) ?? {};
 
   return {
     status: summaryResponse.status,
     payload: mapBillingSummary(summaryPayload, baseUrl, cryptoPayload),
   };
+}
+
+/**
+ * Wraps `sendJson` to also set the HTTP `Retry-After` header when the upstream
+ * payload describes a rate-limit (status 429 + `retryAfter` in the body).
+ * The body's `retryAfter` field is preserved for clients that read JSON.
+ */
+function sendJsonWithRetry(
+  res: http.ServerResponse,
+  payload: unknown,
+  status: number,
+): void {
+  if (status === 429 && isRecord(payload)) {
+    const retryAfter = readNumber(payload.retryAfter);
+    if (retryAfter && retryAfter > 0) {
+      res.setHeader("Retry-After", String(Math.ceil(retryAfter)));
+    }
+  }
+  sendJson(res, payload, status);
 }
 
 export async function handleCloudBillingRoute(
@@ -401,7 +461,7 @@ export async function handleCloudBillingRoute(
 
   if (pathname === "/api/cloud/billing/summary" && method === "GET") {
     const { status, payload } = await forwardSummary(baseUrl, headers);
-    sendJson(res, payload, status);
+    sendJsonWithRetry(res, payload, status);
     return true;
   }
 
@@ -413,7 +473,7 @@ export async function handleCloudBillingRoute(
       undefined,
     );
     const summaryPayload = await readJsonResponse(summaryResponse);
-    sendJson(
+    sendJsonWithRetry(
       res,
       summaryResponse.ok ? mapPaymentMethods(summaryPayload) : summaryPayload,
       summaryResponse.status,
@@ -430,7 +490,7 @@ export async function handleCloudBillingRoute(
       undefined,
     );
     const historyPayload = await readJsonResponse(historyResponse);
-    sendJson(
+    sendJsonWithRetry(
       res,
       historyResponse.ok ? mapBillingHistory(historyPayload) : historyPayload,
       historyResponse.status,
@@ -467,7 +527,7 @@ export async function handleCloudBillingRoute(
       upstreamBody,
     );
     const checkoutPayload = await readJsonResponse(checkoutResponse);
-    sendJson(
+    sendJsonWithRetry(
       res,
       checkoutResponse.ok
         ? mapCheckoutResponse(checkoutPayload)
@@ -503,7 +563,7 @@ export async function handleCloudBillingRoute(
       upstreamBody,
     );
     const cryptoPayload = await readJsonResponse(cryptoResponse);
-    sendJson(
+    sendJsonWithRetry(
       res,
       cryptoResponse.ok
         ? mapCryptoQuoteResponse(cryptoPayload, amountUsd, payCurrency, network)
@@ -530,7 +590,7 @@ export async function handleCloudBillingRoute(
       body,
     );
     const responseData = await readJsonResponse(upstreamResponse);
-    sendJson(res, responseData, upstreamResponse.status);
+    sendJsonWithRetry(res, responseData, upstreamResponse.status);
     return true;
   }
 
@@ -554,7 +614,7 @@ export async function handleCloudBillingRoute(
       body,
     );
     const responseData = await readJsonResponse(upstreamResponse);
-    sendJson(res, responseData, upstreamResponse.status);
+    sendJsonWithRetry(res, responseData, upstreamResponse.status);
     return true;
   }
 
@@ -571,6 +631,6 @@ export async function handleCloudBillingRoute(
     body,
   );
   const responseData = await readJsonResponse(upstreamResponse);
-  sendJson(res, responseData, upstreamResponse.status);
+  sendJsonWithRetry(res, responseData, upstreamResponse.status);
   return true;
 }

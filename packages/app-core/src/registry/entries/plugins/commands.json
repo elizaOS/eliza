@@ -3,7 +3,7 @@
   "name": "Commands",
   "description": "Chat command system for Eliza agents (/help, /status, /reset, etc.)",
   "npmName": "@elizaos/plugin-commands",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["commands"],
   "config": {

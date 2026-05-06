@@ -163,8 +163,8 @@ Once typecheck, lint, and tests pass, publish to npm. Community plugins are list
 | Web frameworks | [`next`](packages/examples/next), [`react`](packages/examples/react), [`html`](packages/examples/html), [`browser-extension`](packages/examples/browser-extension), [`rest-api`](packages/examples/rest-api) |
 | Hosting / serverless | [`vercel`](packages/examples/vercel), [`cloudflare`](packages/examples/cloudflare), [`gcp`](packages/examples/gcp), [`aws`](packages/examples/aws), [`supabase`](packages/examples/supabase), [`convex`](packages/examples/convex) |
 | Protocols | [`mcp`](packages/examples/mcp), [`a2a`](packages/examples/a2a) |
-| On-chain / trading | [`polyagent`](packages/examples/polyagent), [`polymarket`](packages/examples/polymarket), [`trader`](packages/examples/trader), [`lp-manager`](packages/examples/lp-manager) |
-| Fun / games | [`tic-tac-toe`](packages/examples/tic-tac-toe), [`text-adventure`](packages/examples/text-adventure), [`game-of-life`](packages/examples/game-of-life), [`town`](packages/examples/town), [`roblox`](packages/examples/roblox), [`elizagotchi`](packages/examples/elizagotchi) |
+| On-chain / trading | [`polymarket`](packages/examples/polymarket), [`trader`](packages/examples/trader), [`lp-manager`](packages/examples/lp-manager) |
+| Fun / games | [`tic-tac-toe`](packages/examples/tic-tac-toe), [`text-adventure`](packages/examples/text-adventure), [`game-of-life`](packages/examples/game-of-life), [`roblox`](packages/examples/roblox), [`elizagotchi`](packages/examples/elizagotchi) |
 | Other | [`autonomous`](packages/examples/autonomous), [`avatar`](packages/examples/avatar), [`code`](packages/examples/code), [`form`](packages/examples/form), [`moltbook`](packages/examples/moltbook), [`_plugin`](packages/examples/_plugin) |
 
 ## Benchmarks

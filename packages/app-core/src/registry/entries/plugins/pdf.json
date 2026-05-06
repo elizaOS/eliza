@@ -3,7 +3,7 @@
   "name": "Pdf",
   "description": "Core Node.js plugin for elizaOS that provides essential services and actions for file operations.",
   "npmName": "@elizaos/plugin-pdf",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["pdf"],
   "config": {},

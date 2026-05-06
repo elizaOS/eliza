@@ -107,10 +107,10 @@ export interface PluginInfo {
   validationWarnings: Array<{ field: string; message: string }>;
   npmName?: string;
   version?: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   requestedVersion?: string;
   latestVersion?: string | null;
-  alphaVersion?: string | null;
+  betaVersion?: string | null;
   pluginDeps?: string[];
   /** Whether this plugin is actually loaded and running in the runtime. */
   isActive?: boolean;
@@ -412,10 +412,10 @@ export interface InstalledPlugin {
   version: string;
   installPath: string;
   installedAt: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   requestedVersion?: string;
   latestVersion?: string | null;
-  alphaVersion?: string | null;
+  betaVersion?: string | null;
 }
 
 export type PluginMutationApplyMode =
@@ -449,10 +449,10 @@ export interface PluginInstallResult {
   loadedPackages?: string[];
   unloadedPackages?: string[];
   reloadedPackages?: string[];
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   requestedVersion?: string;
   latestVersion?: string | null;
-  alphaVersion?: string | null;
+  betaVersion?: string | null;
   message?: string;
   error?: string;
 }

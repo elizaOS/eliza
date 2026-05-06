@@ -488,7 +488,7 @@ export class DiscordLocalService extends Service {
         }) as Memory;
         memory.createdAt = Date.now();
         memory.metadata = {
-          ...(memory.metadata ?? {}),
+          ...memory.metadata,
           discordChannelId: channelId,
           ...(guildId ? { discordServerId: guildId } : {}),
         } as MemoryMetadata;
@@ -608,7 +608,7 @@ export class DiscordLocalService extends Service {
     ];
     config.messageChannelIds = normalized;
 
-    for (const channelId of [...this.subscribedChannelIds]) {
+    for (const channelId of Array.from(this.subscribedChannelIds)) {
       if (normalized.includes(channelId)) {
         continue;
       }
@@ -1123,7 +1123,7 @@ export class DiscordLocalService extends Service {
       `Discord ${channelId}`;
 
     // `roomName` is accepted by the local `./eliza` source but not by
-    // the npm alpha dist-tag of `@elizaos/core`. Cast around the
+    // the npm beta dist-tag of `@elizaos/core`. Cast around the
     // excess-property check so the call works under both resolutions;
     // the runtime itself reads `roomName` in both versions, the type
     // just lags in the published package.
@@ -1200,7 +1200,7 @@ export class DiscordLocalService extends Service {
       ? Date.parse(message.timestamp)
       : Date.now();
     memory.metadata = {
-      ...(memory.metadata ?? {}),
+      ...memory.metadata,
       source: DISCORD_LOCAL_SERVICE_NAME,
       provider: "discord",
       timestamp: memory.createdAt,

@@ -336,10 +336,7 @@ function isSimpleReplyOnlyMessage(content: Record<string, unknown>): boolean {
 	}
 
 	const actions = readStringArray(content.actions).map(normalizeActionName);
-	return (
-		actions.length === 0 ||
-		actions.every((action) => !action || PASSIVE_ACTIONS.has(action))
-	);
+	return actions.every((action) => !action || PASSIVE_ACTIONS.has(action));
 }
 
 function formatExistingExperiences(experiences: Experience[]): string {

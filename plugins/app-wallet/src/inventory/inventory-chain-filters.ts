@@ -57,7 +57,7 @@ export function normalizeInventoryChainFilters(
 ): InventoryChainFilters {
   return {
     ...DEFAULT_INVENTORY_CHAIN_FILTERS,
-    ...(filters ?? {}),
+    ...filters,
   };
 }
 

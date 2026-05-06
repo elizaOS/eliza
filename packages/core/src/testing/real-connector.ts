@@ -244,7 +244,6 @@ export async function sendTestEmail(
 	}
 
 	try {
-		// @ts-expect-error - nodemailer is an optional peer dep for email tests
 		const nodemailer = await import("nodemailer");
 		const transport = nodemailer.createTransport({
 			host,
