@@ -140,6 +140,7 @@ declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/signal-native";
 declare module "qrcode";
+declare module "bun:ffi";
 
 declare module "@elizaos/app-knowledge/routes" {
   export type KnowledgeRouteContext = unknown;
