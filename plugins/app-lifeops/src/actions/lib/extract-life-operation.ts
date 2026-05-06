@@ -333,8 +333,7 @@ async function recoverCoreLifeOperationWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeCoreLifeOperationPlan(parsed) : null;
   } catch (error) {
     args.runtime.logger?.warn?.(
@@ -445,8 +444,7 @@ export async function extractLifeOperationWithLlm(args: {
   ].join("\n");
 
   const parseResponse = (rawResponse: string) => {
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeOperationPlan(parsed) : null;
   };
 

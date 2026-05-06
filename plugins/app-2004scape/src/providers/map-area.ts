@@ -99,9 +99,9 @@ export const mapAreaProvider: Provider = {
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as
-      | { getBotState(): BotState | null }
-      | null;
+    const service = runtime.getService("rs_2004scape") as unknown as {
+      getBotState(): BotState | null;
+    } | null;
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
       return {
@@ -126,7 +126,10 @@ export const mapAreaProvider: Provider = {
               adjacentAreas: area.adjacentAreas,
               travelCoords: area.travelCoords.map((coord) => ({
                 ...coord,
-                distance: Math.max(Math.abs(coord.x - x), Math.abs(coord.z - z)),
+                distance: Math.max(
+                  Math.abs(coord.x - x),
+                  Math.abs(coord.z - z),
+                ),
               })),
             }
           : {

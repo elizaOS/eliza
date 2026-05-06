@@ -11,7 +11,9 @@ import { GoogleMeetAPIService } from "../services/googleMeetAPIService";
 
 function getParams(params?: unknown): Record<string, unknown> {
   const direct =
-    params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+    params && typeof params === "object"
+      ? (params as Record<string, unknown>)
+      : {};
   const nested =
     direct.parameters && typeof direct.parameters === "object"
       ? (direct.parameters as Record<string, unknown>)
@@ -105,7 +107,8 @@ export const getParticipantsAction: Action = {
       }
 
       const options = getParams(params);
-      const text = typeof message.content?.text === "string" ? message.content.text : "";
+      const text =
+        typeof message.content?.text === "string" ? message.content.text : "";
       const conferenceRecordName =
         typeof options.conferenceRecordName === "string"
           ? options.conferenceRecordName
