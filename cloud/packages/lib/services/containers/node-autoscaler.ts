@@ -33,6 +33,11 @@ import {
   countAllocatedWorkloadsOnNode,
   countRetainedWorkloadsOnNode,
 } from "@/lib/services/docker-node-workloads";
+import {
+  inferArchitectureFromHetznerServerType,
+  inferNodeArchitectureFromMetadata,
+  isArchitectureCompatibleWithPlatform,
+} from "@/lib/services/docker-sandbox-utils";
 import { logger } from "@/lib/utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -66,8 +71,8 @@ export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
   maxNodes: 12,
   scaleUpCooldownMs: 5 * 60 * 1000,
   idleNodeMinAgeMs: 30 * 60 * 1000,
-  defaultServerType: "cax21",
-  defaultLocation: "fsn1",
+  defaultServerType: containersEnv.defaultHcloudServerType(),
+  defaultLocation: containersEnv.defaultHcloudLocation(),
   defaultImage: "ubuntu-24.04",
   defaultCapacity: 8,
 };
@@ -128,7 +133,15 @@ export class NodeAutoscaler {
   async evaluateCapacity(): Promise<CapacityDecision> {
     const nodes = await dockerNodesRepository.findAll();
     const enabled = nodes.filter((n) => n.enabled);
-    const healthyEnabled = enabled.filter((n) => n.status === "healthy");
+    const requiredPlatform = containersEnv.defaultAgentImagePlatform();
+    const healthyEnabled = enabled.filter(
+      (n) =>
+        n.status === "healthy" &&
+        isArchitectureCompatibleWithPlatform(
+          inferNodeArchitectureFromMetadata(n.metadata),
+          requiredPlatform,
+        ),
+    );
     const allocatedByNode = new Map(
       await Promise.all(
         healthyEnabled.map(
@@ -225,6 +238,7 @@ export class NodeAutoscaler {
       registrationUrl: bootstrap.registrationUrl,
       registrationSecret: bootstrap.registrationSecret,
       prePullImages,
+      prePullPlatform: containersEnv.defaultAgentImagePlatform(),
       capacity,
     });
 
@@ -266,6 +280,7 @@ export class NodeAutoscaler {
         serverType,
         location,
         image,
+        architecture: inferArchitectureFromHetznerServerType(serverType),
         provisionedAt: new Date().toISOString(),
       },
     });

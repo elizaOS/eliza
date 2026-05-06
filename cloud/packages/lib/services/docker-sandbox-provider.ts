@@ -23,6 +23,7 @@ import {
   allocatePort,
   BRIDGE_PORT_MAX,
   BRIDGE_PORT_MIN,
+  dockerPlatformFlag,
   extractDockerCreateContainerId,
   getContainerName,
   getVolumePath,
@@ -346,6 +347,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     // DOCKER_IMAGE (from env) takes precedence over per-agent DB override.
     // This prevents stale images from being sticky after the env is updated.
     const resolvedImage = DOCKER_IMAGE || config.dockerImage || "ghcr.io/elizaos/eliza:latest";
+    const imagePlatform = containersEnv.defaultAgentImagePlatform();
+    const platformFlags = dockerPlatformFlag(imagePlatform);
 
     // 1. Input validation
     validateAgentName(agentName);
@@ -355,7 +358,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
-    const dbNode = await dockerNodeManager.getAvailableNode();
+    const dbNode = await dockerNodeManager.getAvailableNode({ requiredPlatform: imagePlatform });
 
     let nodeId: string;
     let hostname: string;
@@ -435,7 +438,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       ELIZA_CLOUD_PROVISIONED: "1",
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,
-      // The current cloud agent image listens on PORT (default 2139).
+      // The current cloud agent image listens on PORT (default 3000).
       // Keep ELIZA_PORT for compatibility, but publish/probe the external
       // host ports against PORT so new containers don't expose a dead 2138.
       ELIZA_PORT: DEFAULT_LEGACY_PORT,
@@ -463,7 +466,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       // Pull image (may take a while on first run)
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
       try {
-        await ssh.exec(`docker pull ${shellQuote(resolvedImage)}`, PULL_TIMEOUT_MS);
+        await ssh.exec(
+          ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(" "),
+          PULL_TIMEOUT_MS,
+        );
         logger.info(`[docker-sandbox] Image pulled successfully on ${nodeId}`);
       } catch (pullErr) {
         logger.warn(
@@ -516,6 +522,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       const dockerCreateCmd = [
         "docker create",
+        ...platformFlags,
         `--name ${shellQuote(containerName)}`,
         "--restart unless-stopped",
         `--network ${shellQuote(DOCKER_NETWORK)}`,
@@ -531,7 +538,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/milady`)}:/root/.milady`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
-        // The cloud image serves both API and web UI from PORT (default 2139).
+        // The cloud image serves both API and web UI from PORT (default 3000).
         // Publish both externally allocated host ports to that live listener so
         // nginx can reach /api/* via bridge_url and the UI via web_ui_port.
         `-p ${bridgePort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,

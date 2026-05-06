@@ -13,7 +13,14 @@ import { countAllocatedWorkloadsOnNode } from "@/lib/services/docker-node-worklo
 import { DockerSSHClient } from "@/lib/services/docker-ssh";
 import { logger } from "@/lib/utils/logger";
 import { containersEnv } from "../config/containers-env";
-import { shellQuote } from "./docker-sandbox-utils";
+import {
+  dockerPlatformFlag,
+  inferNodeArchitectureFromMetadata,
+  isArchitectureCompatibleWithPlatform,
+  normalizeDockerArchitecture,
+  requiredArchitectureForPlatform,
+  shellQuote,
+} from "./docker-sandbox-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,6 +42,11 @@ export interface CapacitySummary {
   totalAllocated: number;
   totalAvailable: number;
   nodes: NodeCapacityReport[];
+}
+
+export interface NodeSelectionOptions {
+  /** Docker image platform the selected node must be able to run. */
+  requiredPlatform?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,16 +71,43 @@ export class DockerNodeManager {
    * Find the least-loaded healthy node with available capacity.
    * Returns null if no capacity is available.
    */
-  async getAvailableNode(): Promise<DockerNode | null> {
-    const node = await dockerNodesRepository.findLeastLoaded();
-    if (!node) {
-      logger.warn("[docker-node-manager] No available nodes with capacity");
-      return null;
+  async getAvailableNode(options: NodeSelectionOptions = {}): Promise<DockerNode | null> {
+    const nodes = await dockerNodesRepository.findEnabled();
+    const candidates = (
+      await Promise.all(
+        nodes.map(async (node) => {
+          const allocated = await countAllocatedWorkloadsOnNode(node.node_id);
+          return {
+            node,
+            allocated,
+            available: node.status === "healthy" ? Math.max(0, node.capacity - allocated) : 0,
+          };
+        }),
+      )
+    )
+      .filter((candidate) => candidate.available > 0)
+      .sort((a, b) => b.available - a.available);
+
+    for (const candidate of candidates) {
+      if (!isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {
+        logger.warn("[docker-node-manager] Skipping node with incompatible architecture", {
+          nodeId: candidate.node.node_id,
+          requiredPlatform: options.requiredPlatform,
+          metadata: candidate.node.metadata,
+        });
+        continue;
+      }
+      if (!(await this.ensureNodeReady(candidate.node, options))) {
+        continue;
+      }
+      logger.info(
+        `[docker-node-manager] Selected node ${candidate.node.node_id} (${candidate.allocated}/${candidate.node.capacity} used)`,
+      );
+      return { ...candidate.node, allocated_count: candidate.allocated };
     }
-    logger.info(
-      `[docker-node-manager] Selected node ${node.node_id} (${node.allocated_count}/${node.capacity} used)`,
-    );
-    return node;
+
+    logger.warn("[docker-node-manager] No reachable healthy nodes with capacity");
+    return null;
   }
 
   /**
@@ -143,6 +182,53 @@ export class DockerNodeManager {
     const status: DockerNodeStatus = lastError.includes("empty ID") ? "degraded" : "offline";
     await dockerNodesRepository.updateStatus(node.node_id, status);
     return status;
+  }
+
+  /**
+   * Single-attempt readiness probe used during scheduling. This prevents stale
+   * healthy rows from receiving new work when SSH credentials or the Docker
+   * daemon are no longer valid.
+   */
+  async ensureNodeReady(node: DockerNode, options: NodeSelectionOptions = {}): Promise<boolean> {
+    try {
+      const ssh = DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? undefined,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? undefined,
+      );
+      await ssh.connect();
+      const dockerInfo = await ssh.exec("docker info --format '{{.ID}}|{{.Architecture}}'", 10_000);
+      const { dockerId, architecture } = parseDockerInfoProbe(dockerInfo);
+      if (dockerId.trim()) {
+        if (
+          !isArchitectureCompatibleWithPlatform(architecture, options.requiredPlatform) &&
+          requiredArchitectureForPlatform(options.requiredPlatform)
+        ) {
+          logger.warn("[docker-node-manager] Node is reachable but incompatible with image", {
+            nodeId: node.node_id,
+            architecture,
+            requiredPlatform: options.requiredPlatform,
+          });
+          return false;
+        }
+        await dockerNodesRepository.updateStatus(node.node_id, "healthy");
+        return true;
+      }
+      await dockerNodesRepository.updateStatus(node.node_id, "degraded");
+      logger.warn(`[docker-node-manager] Node ${node.node_id} Docker probe returned empty ID`);
+      return false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await dockerNodesRepository.updateStatus(node.node_id, "offline").catch((updateError) => {
+        logger.warn("[docker-node-manager] Failed to mark node offline", {
+          nodeId: node.node_id,
+          error: updateError instanceof Error ? updateError.message : String(updateError),
+        });
+      });
+      logger.warn(`[docker-node-manager] Node ${node.node_id} is not reachable: ${message}`);
+      return false;
+    }
   }
 
   // ---- Capacity Reporting -----------------------------------------------
@@ -225,7 +311,10 @@ export class DockerNodeManager {
    * Pre-pull the agent image on healthy nodes with spare capacity so a
    * subsequent agent provision does not pay the Docker image cold-start cost.
    */
-  async prePullAgentImageOnAvailableNodes(image = containersEnv.defaultAgentImage()): Promise<
+  async prePullAgentImageOnAvailableNodes(
+    image = containersEnv.defaultAgentImage(),
+    platform = containersEnv.defaultAgentImagePlatform(),
+  ): Promise<
     Array<{
       nodeId: string;
       hostname: string;
@@ -262,6 +351,16 @@ export class DockerNodeManager {
           };
         }
 
+        if (!isNodeMetadataCompatible(node, platform)) {
+          return {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            available,
+            status: "skipped" as const,
+            reason: `node architecture is incompatible with ${platform}`,
+          };
+        }
+
         try {
           const ssh = DockerSSHClient.getClient(
             node.hostname,
@@ -271,7 +370,7 @@ export class DockerNodeManager {
           );
           await ssh.connect();
           await ssh.exec(
-            `docker image inspect ${shellQuote(image)} >/dev/null 2>&1 || docker pull ${shellQuote(image)}`,
+            ["docker pull", ...dockerPlatformFlag(platform), shellQuote(image)].join(" "),
             5 * 60 * 1000,
           );
           return {
@@ -339,3 +438,37 @@ export class DockerNodeManager {
 }
 
 export const dockerNodeManager = DockerNodeManager.getInstance();
+
+function isNodeMetadataCompatible(
+  node: DockerNode,
+  requiredPlatform: string | undefined | null,
+): boolean {
+  if (!requiredArchitectureForPlatform(requiredPlatform)) return true;
+  return isArchitectureCompatibleWithPlatform(
+    inferNodeArchitectureFromMetadata(node.metadata),
+    requiredPlatform,
+  );
+}
+
+function parseDockerInfoProbe(output: string): {
+  dockerId: string;
+  architecture: ReturnType<typeof normalizeDockerArchitecture>;
+} {
+  const lines = output
+    .split(/\r?\n/)
+    .map((candidate) => candidate.trim())
+    .filter(Boolean);
+  let line = "";
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const candidate = lines[index]!;
+    if (!candidate.startsWith("[stderr]")) {
+      line = candidate;
+      break;
+    }
+  }
+  const [dockerId = "", rawArchitecture = ""] = line.split("|");
+  return {
+    dockerId,
+    architecture: normalizeDockerArchitecture(rawArchitecture),
+  };
+}

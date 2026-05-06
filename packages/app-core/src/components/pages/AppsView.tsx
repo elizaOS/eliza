@@ -1097,10 +1097,11 @@ export function AppsView() {
       className="h-full bg-transparent"
       data-testid="apps-shell"
       sidebar={appsSidebar}
+      contentPadding={false}
       contentInnerClassName="w-full"
       contentClassName="![scrollbar-width:none] [&::-webkit-scrollbar]:!hidden"
     >
-      <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
+      <div className="device-layout flex w-full max-w-none flex-col gap-4 px-2 py-3 sm:px-4 lg:px-6 xl:mx-auto xl:max-w-6xl">
         {appWindows.length > 0 ? (
           <section
             data-testid="app-window-controls"

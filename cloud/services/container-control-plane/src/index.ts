@@ -6,6 +6,7 @@ import {
   getHetznerContainersClient,
   HetznerClientError,
 } from "@/lib/services/containers/hetzner-client";
+import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
 import { dockerNodeManager } from "@/lib/services/docker-node-manager";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 
@@ -201,24 +202,117 @@ function agentHotPoolResponse(c: Context) {
       ? await dockerNodeManager.prePullAgentImageOnAvailableNodes(image)
       : [];
     const capacity = await dockerNodeManager.getCapacityReport();
+    const failedPrePulls = nodes.filter((node) => node.status === "failed");
+    const noSuccessfulPrePulls =
+      prePullEnabled && nodes.length > 0 && failedPrePulls.length === nodes.length;
 
-    return c.json({
-      success: true,
-      data: {
-        image,
-        prePullEnabled,
-        syncedAllocatedCounts: Object.fromEntries(syncChanges),
-        capacity,
-        nodes,
-        timestamp: new Date().toISOString(),
+    return c.json(
+      {
+        success: !noSuccessfulPrePulls,
+        ...(noSuccessfulPrePulls
+          ? {
+              code: "AGENT_HOT_POOL_PREPULL_FAILED",
+              error: "Agent image pre-pull failed on every eligible Docker node.",
+            }
+          : {}),
+        data: {
+          image,
+          prePullEnabled,
+          syncedAllocatedCounts: Object.fromEntries(syncChanges),
+          capacity,
+          nodes,
+          timestamp: new Date().toISOString(),
+        },
       },
-    });
+      noSuccessfulPrePulls ? 502 : 200,
+    );
   });
 }
 
 app.get("/api/v1/cron/agent-hot-pool", agentHotPoolResponse);
 
 app.post("/api/v1/cron/agent-hot-pool", agentHotPoolResponse);
+
+function nodeAutoscaleResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const autoscaler = getNodeAutoscaler();
+    const decision = await autoscaler.evaluateCapacity();
+    const result: Record<string, unknown> = {
+      ...decision,
+      actions: [] as Array<Record<string, unknown>>,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (!decision.shouldScaleUp && decision.shouldScaleDownNodeIds.length === 0) {
+      return c.json({
+        success: true,
+        data: { ...result, action: "noop" },
+      });
+    }
+
+    if (decision.shouldScaleUp) {
+      const hcloudToken = containersEnv.hetznerCloudToken();
+      const publicKey = process.env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
+
+      if (!hcloudToken) {
+        (result.actions as Array<Record<string, unknown>>).push({
+          type: "scale_up_skipped",
+          reason: "HCLOUD_TOKEN not configured",
+        });
+      } else if (!publicKey) {
+        (result.actions as Array<Record<string, unknown>>).push({
+          type: "scale_up_skipped",
+          reason: "CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY not configured",
+        });
+      } else {
+        try {
+          const provisioned = await autoscaler.provisionNode(
+            {},
+            {
+              controlPlanePublicKey: publicKey,
+              registrationUrl: process.env.CONTAINERS_BOOTSTRAP_CALLBACK_URL,
+              registrationSecret: process.env.CONTAINERS_BOOTSTRAP_SECRET,
+            },
+          );
+          (result.actions as Array<Record<string, unknown>>).push({
+            type: "provisioned",
+            nodeId: provisioned.nodeId,
+            hostname: provisioned.hostname,
+            hcloudServerId: provisioned.hcloudServerId,
+          });
+        } catch (error) {
+          (result.actions as Array<Record<string, unknown>>).push({
+            type: "scale_up_failed",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+
+    if (decision.shouldScaleDownNodeIds.length > 0) {
+      const target = decision.shouldScaleDownNodeIds[0]!;
+      try {
+        await autoscaler.drainNode(target, { deprovision: true });
+        (result.actions as Array<Record<string, unknown>>).push({
+          type: "drained",
+          nodeId: target,
+        });
+      } catch (error) {
+        (result.actions as Array<Record<string, unknown>>).push({
+          type: "drain_failed",
+          nodeId: target,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return c.json({ success: true, data: result });
+  });
+}
+
+app.get("/api/v1/cron/node-autoscale", nodeAutoscaleResponse);
+
+app.post("/api/v1/cron/node-autoscale", nodeAutoscaleResponse);
 
 function processProvisioningJobsResponse(c: Context) {
   return handleInternal(c, async () => {
@@ -352,9 +446,14 @@ app.get("/api/v1/containers/:id/metrics", (c) =>
 app.all("*", (c) => c.json({ success: false, error: "Not found" }, 404));
 
 const port = Number(process.env.PORT ?? process.env.CONTAINER_CONTROL_PLANE_PORT ?? 8791);
+const idleTimeout = Math.min(
+  255,
+  Math.max(1, Number(process.env.CONTAINER_CONTROL_PLANE_IDLE_TIMEOUT_SECONDS ?? 255)),
+);
 Bun.serve({
   fetch: app.fetch,
   hostname: process.env.HOST ?? "127.0.0.1",
+  idleTimeout,
   port,
 });
 

@@ -471,7 +471,7 @@ export function Header({
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
       style={{
-        paddingBottom: "max(0.375rem, var(--safe-area-bottom, 0px))",
+        paddingBottom: "0.375rem",
         paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
         paddingRight: "max(0.5rem, var(--safe-area-right, 0px))",
       }}
