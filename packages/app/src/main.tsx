@@ -5,7 +5,7 @@ import "@elizaos/app-core/platform/native-plugin-entrypoints";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { Keyboard } from "@capacitor/keyboard";
+import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import {
   CompanionShell,
@@ -362,6 +362,8 @@ async function initializePlatform(): Promise<void> {
 
 async function initializeKeyboard(): Promise<void> {
   if (isIOS) {
+    await Keyboard.setResizeMode({ mode: KeyboardResize.None });
+    await Keyboard.setScroll({ isDisabled: true });
     await Keyboard.setAccessoryBarVisible({ isVisible: true });
   }
 
@@ -460,6 +462,13 @@ function handleDeepLink(url: string): void {
       break;
     case "contacts":
       setHashRoute("contacts", parsed.searchParams);
+      break;
+    case "wallet":
+    case "inventory":
+      setHashRoute("wallet", parsed.searchParams);
+      break;
+    case "browser":
+      setHashRoute("browser", parsed.searchParams);
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
@@ -649,11 +658,11 @@ function mountReactApp(): void {
           {phoneCompanion ? (
             <PhoneCompanionApp />
           ) : detachedShell ? (
-            <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden">
+            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
               <DetachedShellRoot route={windowShellRoute} />
             </div>
           ) : appWindowSlug ? (
-            <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden">
+            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
               <AppWindowRenderer slug={appWindowSlug} />
             </div>
           ) : (

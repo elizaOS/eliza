@@ -5,6 +5,7 @@ const finalDistDir = ".next";
 const tempDistDir = ".next-build";
 const nextEnvPath = "next-env.d.ts";
 const tsconfigPath = "tsconfig.json";
+const tsbuildInfoPath = "tsconfig.tsbuildinfo";
 const originalNextEnv = await readFile(nextEnvPath, "utf8").catch((error) => {
   if (error?.code === "ENOENT") {
     return null;
@@ -24,6 +25,11 @@ await rm(tempDistDir, {
   force: true,
   maxRetries: 5,
   recursive: true,
+  retryDelay: 100,
+});
+await rm(tsbuildInfoPath, {
+  force: true,
+  maxRetries: 5,
   retryDelay: 100,
 });
 
@@ -63,6 +69,11 @@ try {
   if (originalTsconfig !== null) {
     await writeFile(tsconfigPath, originalTsconfig);
   }
+  await rm(tsbuildInfoPath, {
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }
 
 process.exit(exitCode);

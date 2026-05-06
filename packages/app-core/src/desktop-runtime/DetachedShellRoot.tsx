@@ -147,7 +147,10 @@ function DetachedWorkspaceView({
 function OnboardingBlockedView(): JSX.Element {
   const { t } = useApp();
   return (
-    <div className="flex flex-col items-center justify-center flex-1 min-h-0 gap-4 text-center px-6">
+    <div
+      data-testid="onboarding-ui-overlay"
+      className="flex flex-col items-center justify-center flex-1 min-h-0 gap-4 text-center px-6"
+    >
       <div className="text-4xl">🎀</div>
       <h2 className="text-lg font-semibold text-txt">
         {t("detachedshell.SetupInProgress", {
@@ -226,14 +229,8 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
 export function DetachedShellRoot({
   route,
 }: DetachedShellRootProps): JSX.Element {
-  const {
-    authRequired,
-    onboardingComplete,
-    onboardingLoading,
-    retryStartup,
-    startupError,
-    t,
-  } = useApp();
+  const { authRequired, onboardingComplete, retryStartup, startupError, t } =
+    useApp();
   if (startupError) {
     return <StartupFailureView error={startupError} onRetry={retryStartup} />;
   }
@@ -242,7 +239,7 @@ export function DetachedShellRoot({
     return <PairingView />;
   }
 
-  if (!onboardingLoading && !onboardingComplete) {
+  if (!onboardingComplete) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col font-body text-txt bg-bg">
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

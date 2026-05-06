@@ -271,8 +271,8 @@ function ensurePlistArrayStrings(content, key, values) {
     const body = escapedValues
       .map((value) => `\t\t<string>${value}</string>`)
       .join("\n");
-    return content.replace(
-      "</dict>",
+    return insertBeforeRootPlistDictClose(
+      content,
       `\t<key>${key}</key>\n\t<array>\n${body}\n\t</array>\n</dict>`,
     );
   }
@@ -283,6 +283,17 @@ function ensurePlistArrayStrings(content, key, values) {
     }
   }
   return content.replace(arrayRe, `$1${body}$3`);
+}
+
+function insertBeforeRootPlistDictClose(content, insertion) {
+  const rootClose = "\n</dict>\n</plist>";
+  const index = content.lastIndexOf(rootClose);
+  if (index >= 0) {
+    return `${content.slice(0, index)}\n${insertion}${content.slice(index + "\n</dict>".length)}`;
+  }
+  const fallbackIndex = content.lastIndexOf("</dict>");
+  if (fallbackIndex < 0) return content;
+  return `${content.slice(0, fallbackIndex)}${insertion}${content.slice(fallbackIndex + "</dict>".length)}`;
 }
 
 function ensurePlistUrlScheme(content, urlScheme) {
@@ -300,8 +311,8 @@ function ensurePlistUrlScheme(content, urlScheme) {
 		</dict>`;
   const match = content.match(urlTypesRe);
   if (!match) {
-    return content.replace(
-      "</dict>",
+    return insertBeforeRootPlistDictClose(
+      content,
       `\t<key>CFBundleURLTypes</key>\n\t<array>${entry}\n\t</array>\n</dict>`,
     );
   }

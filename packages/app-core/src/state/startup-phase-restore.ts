@@ -26,7 +26,7 @@ import {
   MOBILE_LOCAL_AGENT_SERVER_ID,
   readPersistedMobileRuntimeMode,
 } from "../onboarding/mobile-runtime-mode";
-import { isAndroid, isIOS } from "../platform";
+import { isAndroid, isForceFreshOnboardingEnabled, isIOS } from "../platform";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {
@@ -156,7 +156,9 @@ function reconcilePersistedApiBaseWithLive(
 
 function mobileLoopbackActiveServer(): PersistedActiveServer {
   return {
-    id: isAndroid ? ANDROID_LOCAL_AGENT_SERVER_ID : MOBILE_LOCAL_AGENT_SERVER_ID,
+    id: isAndroid
+      ? ANDROID_LOCAL_AGENT_SERVER_ID
+      : MOBILE_LOCAL_AGENT_SERVER_ID,
     kind: "remote",
     label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
     apiBase: isAndroid
@@ -271,10 +273,20 @@ export async function runRestoringSession(
   deps.forceLocalBootstrapRef.current = false;
   let persistedActiveServer = loadPersistedActiveServer();
   let hadPrior = loadPersistedOnboardingComplete();
+  const forceFreshOnboarding = isForceFreshOnboardingEnabled();
+  if (forceFreshOnboarding) {
+    clearPersistedActiveServer();
+    savePersistedOnboardingComplete(false);
+    persistedActiveServer = null;
+    hadPrior = false;
+    deps.onboardingCompletionCommittedRef.current = false;
+    client.setBaseUrl(null);
+    client.setToken(null);
+  }
   if (cancelled.current) return;
 
   const desktopInstall =
-    !persistedActiveServer && isElectrobunRuntime()
+    !forceFreshOnboarding && !persistedActiveServer && isElectrobunRuntime()
       ? await inspectExistingElizaInstall().catch(() => null)
       : null;
   if (cancelled.current) return;
@@ -285,14 +297,15 @@ export async function runRestoringSession(
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI onboarding).
-  const probed = !persistedActiveServer
-    ? await detectExistingOnboardingConnection({
-        client,
-        timeoutMs: isDesktop
-          ? Math.min(getBackendStartupTimeoutMs(), 30_000)
-          : Math.min(getBackendStartupTimeoutMs(), 3_500),
-      })
-    : null;
+  const probed =
+    !forceFreshOnboarding && !persistedActiveServer
+      ? await detectExistingOnboardingConnection({
+          client,
+          timeoutMs: isDesktop
+            ? Math.min(getBackendStartupTimeoutMs(), 30_000)
+            : Math.min(getBackendStartupTimeoutMs(), 3_500),
+        })
+      : null;
   if (cancelled.current) return;
 
   let restoredActiveServer =
@@ -346,9 +359,13 @@ export async function runRestoringSession(
     hadPrior && !deps.onboardingCompletionCommittedRef.current;
 
   deps.setOnboardingExistingInstallDetected(
-    Boolean(
-      hadPrior || desktopInstall?.detected || probed?.detectedExistingInstall,
-    ),
+    forceFreshOnboarding
+      ? false
+      : Boolean(
+          hadPrior ||
+            desktopInstall?.detected ||
+            probed?.detectedExistingInstall,
+        ),
   );
 
   if (!restoredActiveServer) {
@@ -370,20 +387,22 @@ export async function runRestoringSession(
       inventoryProviders: [],
       sharedStyleRules: "",
     });
-    try {
-      const det = await scanProviderCredentials();
-      if (!cancelled.current && det.length > 0) {
-        console.log(
-          `[eliza][startup] Keychain scan found ${det.length} provider(s):`,
-          det.map((p) => p.id),
+    if (!forceFreshOnboarding) {
+      try {
+        const det = await scanProviderCredentials();
+        if (!cancelled.current && det.length > 0) {
+          console.log(
+            `[eliza][startup] Keychain scan found ${det.length} provider(s):`,
+            det.map((p) => p.id),
+          );
+          deps.applyDetectedProviders(det);
+        }
+      } catch (scanErr) {
+        console.warn(
+          "[eliza][startup] Keychain credential scan failed:",
+          scanErr,
         );
-        deps.applyDetectedProviders(det);
       }
-    } catch (scanErr) {
-      console.warn(
-        "[eliza][startup] Keychain credential scan failed:",
-        scanErr,
-      );
     }
     deps.setOnboardingComplete(false);
     deps.setOnboardingLoading(false);

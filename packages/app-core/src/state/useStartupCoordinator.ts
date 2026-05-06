@@ -256,7 +256,11 @@ export function useStartupCoordinator(
   // ── Public interface ─────────────────────────────────────────────
 
   const retry = useCallback(() => dispatch({ type: "RETRY" }), []);
-  const reset = useCallback(() => dispatch({ type: "RESET" }), []);
+  const reset = useCallback(() => {
+    _ctx.current = null;
+    effectRunRef.current += 1;
+    dispatch({ type: "RESET" });
+  }, []);
   const pairingSuccess = useCallback(
     () => dispatch({ type: "PAIRING_SUCCESS" }),
     [],

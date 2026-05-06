@@ -143,22 +143,40 @@ electrobun-wgpu {
 html,
 body {
   width: 100%;
+  max-width: 100%;
   height: 100%;
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 #root {
   display: flex;
   flex-direction: column;
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   font-family: var(--font-body);
   color: var(--text);
   background: var(--bg);
+}
+
+body.native {
+  position: fixed;
+  inset: 0;
+  touch-action: pan-y;
+}
+
+body.native #root {
+  min-height: 100dvh;
+  max-height: 100dvh;
+}
+
+body.native textarea {
+  resize: none;
 }
 
 /*

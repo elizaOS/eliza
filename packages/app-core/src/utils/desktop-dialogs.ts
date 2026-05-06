@@ -87,7 +87,14 @@ async function yieldWebviewAfterNativeDialog(): Promise<void> {
     window.setTimeout(() => resolve(), 0);
   });
   await new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => resolve());
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    window.setTimeout(finish, 100);
+    window.requestAnimationFrame(finish);
   });
 }
 
@@ -99,7 +106,14 @@ export async function yieldHttpAfterNativeMessageBox(): Promise<void> {
   if (typeof window === "undefined") return;
   await yieldWebviewAfterNativeDialog();
   await new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => resolve());
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    window.setTimeout(finish, 100);
+    window.requestAnimationFrame(finish);
   });
   await new Promise<void>((resolve) => {
     window.setTimeout(() => resolve(), 50);
