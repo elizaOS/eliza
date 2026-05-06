@@ -143,6 +143,7 @@ parts:
           "plugin-streaming",
           "plugin-telegram",
           "plugin-video",
+          "plugin-wallet",
           "plugin-wechat",
           "plugin-whatsapp",
         ]);
@@ -481,6 +482,7 @@ parts:
         --filter=@elizaos/app-lifeops \
         --filter=@elizaos/app-task-coordinator \
         --filter=@elizaos/app-training \
+        --filter=@elizaos/app-wallet \
         --filter=@elizaos/plugin-agent-skills \
         --filter=@elizaos/plugin-browser-bridge \
         --filter=@elizaos/plugin-imessage \
@@ -492,6 +494,7 @@ parts:
         --filter=@elizaos/plugin-streaming \
         --filter=@elizaos/plugin-telegram \
         --filter=@elizaos/plugin-video \
+        --filter=@elizaos/plugin-wallet \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
         --filter=@elizaos/capacitor-contacts \
