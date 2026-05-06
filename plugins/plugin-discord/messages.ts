@@ -130,6 +130,57 @@ function webpageAttachmentId(url: string): string {
 	return `webpage-${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
+const ACTIVE_TASK_AGENT_STATUSES = new Set([
+	"active",
+	"blocked",
+	"tool_running",
+]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function stringField(
+	record: Record<string, unknown> | null,
+	field: string,
+): string | undefined {
+	const value = record?.[field];
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+export function hasActiveTaskAgentWorkForMessage(
+	runtime: Pick<IAgentRuntime, "getService">,
+	messageId: string,
+): boolean {
+	try {
+		const coordinator = asRecord(runtime.getService("SWARM_COORDINATOR"));
+		const tasks = coordinator?.tasks;
+		if (!(tasks instanceof Map)) {
+			return false;
+		}
+
+		for (const taskValue of tasks.values()) {
+			const task = asRecord(taskValue);
+			const status = stringField(task, "status");
+			if (!status || !ACTIVE_TASK_AGENT_STATUSES.has(status)) {
+				continue;
+			}
+
+			const metadata = asRecord(task?.originMetadata);
+			const originMessageId = stringField(metadata, "messageId");
+			if (originMessageId === messageId) {
+				return true;
+			}
+		}
+	} catch {
+		return false;
+	}
+
+	return false;
+}
+
 /**
  * Class representing a Message Manager for handling Discord messages.
  */
@@ -1063,12 +1114,16 @@ export class MessageManager {
 					await Promise.race([generationPromise, timeoutPromise]);
 				}
 			} catch (generationError) {
+				const activeTaskAgentWork =
+					generationTimedOut &&
+					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
 				this.runtime.logger.error(
 					{
 						src: "plugin:discord",
 						agentId: this.runtime.agentId,
 						messageId: message.id,
 						timeoutMs: generationTimeoutMs,
+						activeTaskAgentWork,
 						error:
 							generationError instanceof Error
 								? generationError.message
@@ -1077,6 +1132,23 @@ export class MessageManager {
 					"Discord generation failed or timed out",
 				);
 				typingController.stop();
+				if (activeTaskAgentWork) {
+					statusReactions?.setDone();
+					await abortPendingDraft();
+					this.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+							timeoutMs: generationTimeoutMs,
+						},
+						"Suppressing Discord timeout reply while task-agent work is still active",
+					);
+					return;
+				}
+
 				statusReactions?.setError();
 				await abortPendingDraft();
 
