@@ -6,9 +6,12 @@ import {
   type Provider,
   type ProviderResult,
   type State,
-} from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
-import type { N8nExecution } from '../types/index';
+} from "@elizaos/core";
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from "../services/index";
+import type { N8nExecution } from "../types/index";
 
 const DEFAULT_PER_WORKFLOW_LIMIT = 5;
 const MAX_WORKFLOWS = 10;
@@ -17,7 +20,7 @@ interface ExecutionRow {
   workflowId: string;
   workflowName: string;
   executionId: string;
-  status: N8nExecution['status'];
+  status: N8nExecution["status"];
   startedAt: string;
   stoppedAt?: string;
   error?: string;
@@ -31,14 +34,21 @@ interface ExecutionRow {
  * an LLM hop to match a workflow.
  */
 export const n8nExecutionsProvider: Provider = {
-  name: 'n8nExecutions',
-  description: 'Recent n8n workflow execution history (status, start/stop, errors).',
-  descriptionCompressed: 'Recent n8n workflow execution history.',
+  name: "n8nExecutions",
+  description:
+    "Recent n8n workflow execution history (status, start/stop, errors).",
+  descriptionCompressed: "Recent n8n workflow execution history.",
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
     if (!service) {
-      return { text: '', data: {}, values: {} };
+      return { text: "", data: {}, values: {} };
     }
 
     try {
@@ -48,7 +58,7 @@ export const n8nExecutionsProvider: Provider = {
       if (workflows.length === 0) {
         return {
           text: encodeToonValue({
-            n8nExecutions: { status: 'no_workflows', executions: [] },
+            n8nExecutions: { status: "no_workflows", executions: [] },
           }),
           data: { executions: [] },
           values: { hasExecutions: false },
@@ -63,17 +73,17 @@ export const n8nExecutionsProvider: Provider = {
           try {
             const executions = await service.getWorkflowExecutions(
               wf.id,
-              DEFAULT_PER_WORKFLOW_LIMIT
+              DEFAULT_PER_WORKFLOW_LIMIT,
             );
             return { workflow: wf, executions };
           } catch (error) {
             logger.debug(
-              { src: 'plugin:n8n-workflow:provider:executions' },
-              `Could not fetch executions for workflow ${wf.id}: ${error instanceof Error ? error.message : String(error)}`
+              { src: "plugin:n8n-workflow:provider:executions" },
+              `Could not fetch executions for workflow ${wf.id}: ${error instanceof Error ? error.message : String(error)}`,
             );
             return { workflow: wf, executions: [] as N8nExecution[] };
           }
-        })
+        }),
       );
 
       for (const entry of executionsByWorkflow) {
@@ -99,7 +109,7 @@ export const n8nExecutionsProvider: Provider = {
       if (rows.length === 0) {
         return {
           text: encodeToonValue({
-            n8nExecutions: { status: 'no_executions', executions: [] },
+            n8nExecutions: { status: "no_executions", executions: [] },
           }),
           data: { executions: [] },
           values: { hasExecutions: false },
@@ -109,7 +119,7 @@ export const n8nExecutionsProvider: Provider = {
       return {
         text: encodeToonValue({
           n8nExecutions: {
-            status: 'ready',
+            status: "ready",
             instruction:
               "Recent execution rows for the user's n8n workflows. Use `error` to diagnose failed runs.",
             executions: rows,
@@ -120,10 +130,10 @@ export const n8nExecutionsProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        { src: 'plugin:n8n-workflow:provider:executions' },
-        `Failed to load executions: ${error instanceof Error ? error.message : String(error)}`
+        { src: "plugin:n8n-workflow:provider:executions" },
+        `Failed to load executions: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { text: '', data: {}, values: {} };
+      return { text: "", data: {}, values: {} };
     }
   },
 };
