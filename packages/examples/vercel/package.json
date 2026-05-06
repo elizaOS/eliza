@@ -25,6 +25,6 @@
     "@types/uuid": "^11.0.0",
     "@vercel/node": "^5.1.8",
     "typescript": "^6.0.0",
-    "vercel": "^41.7.3"
+    "vercel": "^53.1.1"
   }
 }
