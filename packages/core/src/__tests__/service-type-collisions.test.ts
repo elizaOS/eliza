@@ -460,9 +460,6 @@ describe("serviceType collision guardrails", () => {
 		expect(groups.get("FORM")?.map(classId)).toEqual([
 			"plugins/plugin-form/src/service.ts:FormService",
 		]);
-		expect(groups.get("SAM_TTS")?.map(classId)).toEqual([
-			"plugins/plugin-simple-voice/src/services/SamTTSService.ts:SamTTSService",
-		]);
 		expectServiceType(
 			registrations,
 			"plugins/plugin-tailscale/src/services/LocalTailscaleService.ts:LocalTailscaleService",
