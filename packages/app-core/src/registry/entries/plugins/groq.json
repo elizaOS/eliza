@@ -3,7 +3,7 @@
   "name": "Groq",
   "description": "Groq model provider for low-latency chat and inference workloads.",
   "npmName": "@elizaos/plugin-groq",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["ai-provider", "llm", "groq", "chat"],
   "config": {

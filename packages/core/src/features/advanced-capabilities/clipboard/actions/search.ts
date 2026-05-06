@@ -84,9 +84,9 @@ export const clipboardSearchAction: Action = {
 			typeof message?.content?.text === "string" ? message.content.text : "";
 		const __avText = __avTextRaw.toLowerCase();
 		const __avKeywords = ["clipboard", "search"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
+		const __avKeywordOk = __avKeywords.some(
+			(kw) => kw.length > 0 && __avText.includes(kw),
+		);
 		const __avRegex = /\b(?:clipboard|search)\b/i;
 		const __avRegexOk = __avRegex.test(__avText);
 		const __avSource = String(message?.content?.source ?? "");

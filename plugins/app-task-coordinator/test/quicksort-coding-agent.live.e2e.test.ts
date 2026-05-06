@@ -8,8 +8,8 @@ import {
   spawnAgentAction,
 } from "@elizaos/plugin-agent-orchestrator";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
-import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
 import { cleanForChat } from "../../../plugins/plugin-agent-orchestrator/src/services/ansi-utils.ts";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";

@@ -4,7 +4,7 @@
 #   pwsh -File packaging/inno/build-inno.ps1 `
 #     -BuildDir ./apps/app/electrobun/build `
 #     -OutputDir ./apps/app/electrobun/artifacts `
-#     -Version 2.0.0-alpha.96 `
+#     -Version 2.0.0-beta.0 `
 #     -Channel canary
 
 param(

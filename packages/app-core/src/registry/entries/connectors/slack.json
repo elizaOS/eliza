@@ -3,7 +3,7 @@
   "name": "Slack",
   "description": "Slack connector for elizaOS agents with Eliza Cloud OAuth and local Socket Mode support.",
   "npmName": "@elizaos/plugin-slack",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["slack", "chat", "messaging", "connector", "social", "social-chat"],
   "config": {

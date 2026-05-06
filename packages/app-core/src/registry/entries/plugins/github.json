@@ -3,7 +3,7 @@
   "name": "Github",
   "description": "Comprehensive GitHub integration plugin for ElizaOS with repository management, issue tracking, and PR workflows",
   "npmName": "@elizaos/plugin-github",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["github"],
   "config": {

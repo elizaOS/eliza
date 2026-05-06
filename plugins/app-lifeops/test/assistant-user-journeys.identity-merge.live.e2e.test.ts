@@ -10,10 +10,10 @@ import {
 } from "@elizaos/agent";
 import { AgentRuntime, type Plugin, type UUID } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
-import { ConversationHarness } from "../../../../eliza/test/helpers/conversation-harness.ts";
-import { saveEnv } from "../../../../eliza/test/helpers/test-utils";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { ConversationHarness } from "../../../test/helpers/conversation-harness.ts";
+import { saveEnv } from "../../../test/helpers/test-utils";
 import {
   acceptCanonicalIdentityMerge,
   seedCanonicalIdentityFixture,
@@ -103,7 +103,7 @@ describeIf(LIVE_SUITE_ENABLED)(
 
       const character = buildCharacterFromConfig({});
       character.settings = {
-        ...(character.settings ?? {}),
+        ...character.settings,
         ELIZA_ADMIN_ENTITY_ID: ownerId,
       };
       character.secrets = selectedProviderEnv;

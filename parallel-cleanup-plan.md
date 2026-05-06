@@ -876,4 +876,3 @@ Acceptance:
 - Action/provider/evaluator/service duplicates are gone or explicitly allowlisted.
 - Planner context is smaller, TOON-formatted, and capability-routed.
 - All LLM-like calls are traceable.
-

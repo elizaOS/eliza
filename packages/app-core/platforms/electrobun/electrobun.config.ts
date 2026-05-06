@@ -207,7 +207,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 		app: {
 			name: appName,
 			identifier: appId,
-			version: "2.0.0-alpha.87",
+			version: "2.0.0-beta.0",
 			description: "AI agents for the desktop",
 			urlSchemes: [urlScheme],
 		},

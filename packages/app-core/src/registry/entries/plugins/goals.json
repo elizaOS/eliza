@@ -3,7 +3,7 @@
   "name": "Goals",
   "description": "Goals for your agent",
   "npmName": "@elizaos/plugin-goals",
-  "version": "2.0.0-alpha.6",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["goals", "objectives", "task-management"],
   "config": {

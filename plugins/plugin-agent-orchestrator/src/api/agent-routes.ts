@@ -532,11 +532,18 @@ export async function handleAgentRoutes(
         agentType,
         workdir: rawWorkdir,
         task,
+        initialTask,
         memoryContent,
         approvalPreset,
         customCredentials,
         metadata,
       } = body;
+      const taskText =
+        typeof task === "string"
+          ? task
+          : typeof initialTask === "string"
+            ? initialTask
+            : undefined;
 
       // Validate workdir: must be within workspace base dir or cwd
       const workspaceBaseDir = path.join(os.homedir(), ".eliza", "workspaces");
@@ -631,13 +638,13 @@ export async function handleAgentRoutes(
         metadata as Record<string, unknown>,
       );
       const taskThread =
-        coordinator && task && !requestedThreadId
+        coordinator && taskText && !requestedThreadId
           ? await coordinator.createTaskThread({
               title:
                 ((metadata as Record<string, unknown>)?.label as
                   | string
                   | undefined) ?? `Task ${Date.now()}`,
-              originalRequest: task as string,
+              originalRequest: taskText,
               scenarioId: evalRunMetadata.scenarioId,
               batchId: evalRunMetadata.batchId,
               metadata: {
@@ -659,9 +666,7 @@ export async function handleAgentRoutes(
         name: `agent-${Date.now()}`,
         agentType: normalizedType,
         workdir: workdir as string,
-        initialTask: piRequested
-          ? toPiCommand(task as string | undefined)
-          : (task as string),
+        initialTask: piRequested ? toPiCommand(taskText) : taskText,
         memoryContent: memoryContent as string | undefined,
         credentials,
         approvalPreset: approvalPreset as
@@ -691,7 +696,7 @@ export async function handleAgentRoutes(
           agentType:
             agentStr as import("../services/pty-service.js").CodingAgentType,
           label: label || `${defaultLabelPrefix}-${session.id.slice(-8)}`,
-          originalTask: (task as string | undefined) ?? "",
+          originalTask: taskText ?? "",
           workdir: session.workdir,
         });
       }

@@ -3,7 +3,7 @@
   "name": "Evm",
   "description": "This plugin enables interaction with EVM-compatible chains, supporting token transfers, cross-chain bridging, and swaps via LiFi integration.",
   "npmName": "@elizaos/plugin-wallet",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["crypto", "evm"],
   "config": {

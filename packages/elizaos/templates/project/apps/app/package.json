@@ -1,6 +1,6 @@
 {
   "name": "__APP_PACKAGE_NAME__",
-  "version": "2.0.0-alpha.87",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -35,10 +35,10 @@
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
-    "@elizaos/app-core": "alpha",
-    "@elizaos/core": "alpha",
-    "@elizaos/ui": "alpha",
-    "@elizaos/shared": "alpha",
+    "@elizaos/app-core": "beta",
+    "@elizaos/core": "beta",
+    "@elizaos/ui": "beta",
+    "@elizaos/shared": "beta",
     "@pixiv/three-vrm": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

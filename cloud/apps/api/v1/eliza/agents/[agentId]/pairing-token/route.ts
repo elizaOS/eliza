@@ -5,6 +5,10 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -71,6 +75,22 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       let jobId: string | undefined;
       let alreadyInProgress = false;
       if (RESUMABLE_STATUSES.has(sandbox.status)) {
+        const workerHealth = await checkProvisioningWorkerHealth();
+        if (!workerHealth.ok) {
+          logger.warn("[pairing-token] auto-resume blocked: provisioning worker unavailable", {
+            agentId,
+            orgId: user.organization_id,
+            status: sandbox.status,
+            code: workerHealth.code,
+          });
+          return applyCorsHeaders(
+            Response.json(provisioningWorkerFailureBody(workerHealth), {
+              status: workerHealth.status,
+            }),
+            CORS_METHODS,
+          );
+        }
+
         try {
           const { job, created } = await provisioningJobService.enqueueAgentProvisionOnce({
             agentId,
@@ -88,8 +108,18 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
             status: sandbox.status,
             error: error instanceof Error ? error.message : String(error),
           });
-          // Fall through — we still return 202 so the client polls. A
-          // transient enqueue failure shouldn't break the open-web-ui flow.
+          return applyCorsHeaders(
+            Response.json(
+              {
+                success: false,
+                code: "PROVISIONING_ENQUEUE_FAILED",
+                error: "Failed to start agent resume. Retry in a moment.",
+                retryable: true,
+              },
+              { status: 503 },
+            ),
+            CORS_METHODS,
+          );
         }
       }
       const response = applyCorsHeaders(

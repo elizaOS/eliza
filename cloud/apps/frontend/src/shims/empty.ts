@@ -91,6 +91,32 @@ function makeStub(name: string): StubFn {
   }) as StubFn;
 }
 
+export class AsyncLocalStorage<T = unknown> {
+  private store: T | undefined;
+
+  run<R>(store: T, callback: (...args: unknown[]) => R, ...args: unknown[]): R {
+    const previous = this.store;
+    this.store = store;
+    try {
+      return callback(...args);
+    } finally {
+      this.store = previous;
+    }
+  }
+
+  getStore(): T | undefined {
+    return this.store;
+  }
+
+  enterWith(store: T): void {
+    this.store = store;
+  }
+
+  disable(): void {
+    this.store = undefined;
+  }
+}
+
 // Default export: a generic stub. Anything that does `import x from "fs"`
 // and then `x.foo()` will hit `default.foo` and name the access path.
 export default makeStub("default");

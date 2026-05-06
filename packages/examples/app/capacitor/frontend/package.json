@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-app-capacitor-frontend",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
