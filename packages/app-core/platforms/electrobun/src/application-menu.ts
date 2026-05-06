@@ -163,28 +163,6 @@ export type ApplicationMenuItem = {
 	enabled?: boolean;
 };
 
-export interface HeartbeatMenuSnapshot {
-	loading: boolean;
-	error: string | null;
-	totalHeartbeats: number;
-	activeHeartbeats: number;
-	totalExecutions: number;
-	totalFailures: number;
-	lastRunAtMs: number | null;
-	nextRunAtMs: number | null;
-}
-
-export const EMPTY_HEARTBEAT_MENU_SNAPSHOT: HeartbeatMenuSnapshot = {
-	loading: true,
-	error: null,
-	totalHeartbeats: 0,
-	activeHeartbeats: 0,
-	totalExecutions: 0,
-	totalFailures: 0,
-	lastRunAtMs: null,
-	nextRunAtMs: null,
-};
-
 const SETTINGS_ACTION_PREFIX = "open-settings-";
 
 function buildOpenWindowItems(
@@ -293,12 +271,6 @@ export function buildApplicationMenu({
 }: {
 	isMac: boolean;
 	browserEnabled: boolean;
-	/**
-	 * Heartbeat snapshot — currently unused since the per-surface menus that
-	 * displayed live heartbeat counts were folded into the unified Apps menu.
-	 * Kept on the signature so existing callers in `index.ts` do not break.
-	 */
-	heartbeatSnapshot?: HeartbeatMenuSnapshot;
 	detachedWindows: ManagedWindowSnapshot[];
 	agentReady?: boolean;
 }): ApplicationMenuItem[] {

@@ -27,6 +27,7 @@
  * services/n8n-sidecar.ts rather than being threaded through state.
  */
 
+<<<<<<< HEAD
 import type {
   RouteHelpers,
   RouteRequestMeta,
@@ -43,6 +44,15 @@ import type {
 } from "@elizaos/app-core/services/n8n-sidecar";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+=======
+import type { RouteHelpers, RouteRequestMeta } from '@elizaos/agent/api/route-helpers';
+import { readCompatJsonBody } from '@elizaos/app-core/api/compat-route-shared';
+import { isNativeServerPlatform } from '@elizaos/app-core/platform/is-native-server';
+import { type N8nMode, resolveN8nMode } from '@elizaos/app-core/services/n8n-mode';
+import type { N8nSidecar, N8nSidecarStatus } from '@elizaos/app-core/services/n8n-sidecar';
+import type { AgentRuntime } from '@elizaos/core';
+import { logger } from '@elizaos/core';
+>>>>>>> pr-7399
 import {
   applyResolutions,
   buildCatalogSnapshot,
@@ -168,9 +178,13 @@ export interface N8nRoutesConfigLike {
   };
 }
 
+<<<<<<< HEAD
 export interface N8nRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json"> {
+=======
+export interface N8nRouteContext extends RouteRequestMeta, Pick<RouteHelpers, 'json'> {
+>>>>>>> pr-7399
   config: N8nRoutesConfigLike;
   runtime: AgentRuntime | null;
   /**
@@ -224,10 +238,7 @@ export function __resetCloudHealthCacheForTests(): void {
   cloudHealthCache.clear();
 }
 
-async function probeCloudHealth(
-  baseUrl: string,
-  fetchImpl: typeof fetch,
-): Promise<N8nCloudHealth> {
+async function probeCloudHealth(baseUrl: string, fetchImpl: typeof fetch): Promise<N8nCloudHealth> {
   const url = `${normalizeBaseUrl(baseUrl)}/api/v1/health`;
   try {
     const res = await fetchImpl(url, {
@@ -238,18 +249,13 @@ async function probeCloudHealth(
     return res.ok ? "ok" : "degraded";
   } catch (err) {
     logger.debug(
-      `[n8n-routes] cloud health probe failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[n8n-routes] cloud health probe failed: ${err instanceof Error ? err.message : String(err)}`
     );
     return "degraded";
   }
 }
 
-async function getCloudHealth(
-  baseUrl: string,
-  fetchImpl: typeof fetch,
-): Promise<N8nCloudHealth> {
+async function getCloudHealth(baseUrl: string, fetchImpl: typeof fetch): Promise<N8nCloudHealth> {
   const key = normalizeBaseUrl(baseUrl);
   const now = Date.now();
   const cached = cloudHealthCache.get(key);
@@ -271,12 +277,20 @@ async function getCloudHealth(
  * is never reached.
  */
 async function loadSidecarModule(): Promise<
+<<<<<<< HEAD
   typeof import("@elizaos/app-core/services/n8n-sidecar") | null
+=======
+  typeof import('@elizaos/app-core/services/n8n-sidecar') | null
+>>>>>>> pr-7399
 > {
   if (isNativeServerPlatform()) {
     return null;
   }
+<<<<<<< HEAD
   return await import("@elizaos/app-core/services/n8n-sidecar");
+=======
+  return await import('@elizaos/app-core/services/n8n-sidecar');
+>>>>>>> pr-7399
 }
 
 // Cloud base URL default — mirrors `resolveCloudApiBaseUrl()` without
@@ -297,6 +311,7 @@ function resolveAgentId(ctx: N8nRouteContext): string {
     agentId?: string;
     character?: { id?: string };
   } | null;
+<<<<<<< HEAD
   return (
     runtimeAny?.agentId ??
     runtimeAny?.character?.id ??
@@ -309,29 +324,42 @@ function sendJson(
   status: number,
   body: unknown,
 ): void {
+=======
+  return runtimeAny?.agentId ?? runtimeAny?.character?.id ?? '00000000-0000-0000-0000-000000000000';
+}
+
+function sendJson(ctx: Pick<N8nRouteContext, 'res' | 'json'>, status: number, body: unknown): void {
+>>>>>>> pr-7399
   // The compat `json` helper signature in app-core is
   // `(res, body, status?) => void`; status defaults to 200 upstream.
-  const json = ctx.json as unknown as (
-    res: typeof ctx.res,
-    body: unknown,
-    status?: number,
-  ) => void;
+  const json = ctx.json as unknown as (res: typeof ctx.res, body: unknown, status?: number) => void;
   json(ctx.res, body, status);
 }
 
 /** Strip any credential material from node descriptors before forwarding. */
 function sanitizeNode(n: unknown): N8nWorkflowNodeLike {
+<<<<<<< HEAD
   if (!n || typeof n !== "object") {
+=======
+  if (!n || typeof n !== 'object') {
+>>>>>>> pr-7399
     return {};
   }
   const obj = n as Record<string, unknown>;
   return {
+<<<<<<< HEAD
     ...(typeof obj.id === "string" ? { id: obj.id } : {}),
     ...(typeof obj.name === "string" ? { name: obj.name } : {}),
     ...(typeof obj.type === "string" ? { type: obj.type } : {}),
     ...(typeof obj.typeVersion === "number"
       ? { typeVersion: obj.typeVersion }
       : {}),
+=======
+    ...(typeof obj.id === 'string' ? { id: obj.id } : {}),
+    ...(typeof obj.name === 'string' ? { name: obj.name } : {}),
+    ...(typeof obj.type === 'string' ? { type: obj.type } : {}),
+    ...(typeof obj.typeVersion === 'number' ? { typeVersion: obj.typeVersion } : {}),
+>>>>>>> pr-7399
   };
 }
 
@@ -340,7 +368,11 @@ function sanitizeNode(n: unknown): N8nWorkflowNodeLike {
  * parameters (needed by the graph viewer). Credentials are still stripped.
  */
 function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
+<<<<<<< HEAD
   if (!n || typeof n !== "object") {
+=======
+  if (!n || typeof n !== 'object') {
+>>>>>>> pr-7399
     return {};
   }
   const obj = n as Record<string, unknown>;
@@ -366,21 +398,35 @@ function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
     ...base,
     ...(position !== undefined ? { position } : {}),
     ...(parameters !== undefined ? { parameters } : {}),
+<<<<<<< HEAD
     ...(typeof obj.notes === "string" ? { notes: obj.notes } : {}),
     ...(typeof obj.notesInFlow === "boolean"
       ? { notesInFlow: obj.notesInFlow }
       : {}),
+=======
+    ...(typeof obj.notes === 'string' ? { notes: obj.notes } : {}),
+    ...(typeof obj.notesInFlow === 'boolean' ? { notesInFlow: obj.notesInFlow } : {}),
+>>>>>>> pr-7399
   };
 }
 
 /** Normalize an n8n workflow payload to our client-facing shape. */
 function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
+<<<<<<< HEAD
   if (!raw || typeof raw !== "object") {
     return null;
   }
   const obj = raw as Record<string, unknown>;
   const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
   const name = typeof obj.name === "string" ? obj.name : "";
+=======
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  const id = typeof obj.id === 'string' ? obj.id : String(obj.id ?? '');
+  const name = typeof obj.name === 'string' ? obj.name : '';
+>>>>>>> pr-7399
   if (!id) {
     return null;
   }
@@ -390,9 +436,13 @@ function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
     id,
     name,
     active: Boolean(obj.active),
+<<<<<<< HEAD
     ...(typeof obj.description === "string"
       ? { description: obj.description }
       : {}),
+=======
+    ...(typeof obj.description === 'string' ? { description: obj.description } : {}),
+>>>>>>> pr-7399
     nodes,
     nodeCount: nodes.length,
   };
@@ -408,12 +458,21 @@ function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
  * it needs without a second request.
  */
 function normalizeWorkflowFull(raw: unknown): N8nWorkflow | null {
+<<<<<<< HEAD
   if (!raw || typeof raw !== "object") {
     return null;
   }
   const obj = raw as Record<string, unknown>;
   const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
   const name = typeof obj.name === "string" ? obj.name : "";
+=======
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  const id = typeof obj.id === 'string' ? obj.id : String(obj.id ?? '');
+  const name = typeof obj.name === 'string' ? obj.name : '';
+>>>>>>> pr-7399
   if (!id) {
     return null;
   }
@@ -431,9 +490,13 @@ function normalizeWorkflowFull(raw: unknown): N8nWorkflow | null {
     id,
     name,
     active: Boolean(obj.active),
+<<<<<<< HEAD
     ...(typeof obj.description === "string"
       ? { description: obj.description }
       : {}),
+=======
+    ...(typeof obj.description === 'string' ? { description: obj.description } : {}),
+>>>>>>> pr-7399
     nodes,
     nodeCount: nodes.length,
     ...(connections !== undefined ? { connections } : {}),
@@ -458,7 +521,7 @@ function resolveProxyTarget(
   ctx: N8nRouteContext,
   subpath: string,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): {
   target: ProxyTarget | null;
   reason?: {
@@ -527,7 +590,11 @@ function resolveProxyTarget(
     Accept: "application/json",
   };
   if (apiKey) {
+<<<<<<< HEAD
     headers["X-N8N-API-KEY"] = apiKey;
+=======
+    headers['X-N8N-API-KEY'] = apiKey;
+>>>>>>> pr-7399
   }
 
   // n8n serves TWO parallel workflow APIs:
@@ -547,7 +614,7 @@ function resolveProxyTarget(
 async function fetchTargetAsJson(
   ctx: N8nRouteContext,
   target: ProxyTarget,
-  init: { method: string; body?: string },
+  init: { method: string; body?: string }
 ): Promise<{
   ok: boolean;
   status: number;
@@ -564,9 +631,7 @@ async function fetchTargetAsJson(
     res = await fetchImpl(target.url, {
       method: init.method,
       headers,
-      ...(init.body !== null && init.body !== undefined
-        ? { body: init.body }
-        : {}),
+      ...(init.body !== null && init.body !== undefined ? { body: init.body } : {}),
       signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
@@ -595,7 +660,11 @@ async function fetchTargetAsJson(
  * or `{ data }`. We accept both.
  */
 function extractWorkflowList(body: unknown): unknown[] {
+<<<<<<< HEAD
   if (!body || typeof body !== "object") {
+=======
+  if (!body || typeof body !== 'object') {
+>>>>>>> pr-7399
     return [];
   }
   const obj = body as Record<string, unknown>;
@@ -609,6 +678,7 @@ function extractWorkflowList(body: unknown): unknown[] {
 }
 
 function extractWorkflowSingle(body: unknown): unknown {
+<<<<<<< HEAD
   if (!body || typeof body !== "object") {
     return null;
   }
@@ -617,6 +687,16 @@ function extractWorkflowSingle(body: unknown): unknown {
     return obj.data;
   }
   if (obj.workflow && typeof obj.workflow === "object") {
+=======
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+  const obj = body as Record<string, unknown>;
+  if (obj.data && typeof obj.data === 'object') {
+    return obj.data;
+  }
+  if (obj.workflow && typeof obj.workflow === 'object') {
+>>>>>>> pr-7399
     return obj.workflow;
   }
   return body;
@@ -628,32 +708,31 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function readOptionalString(
-  obj: Record<string, unknown>,
-  key: string,
-): string | undefined {
+function readOptionalString(obj: Record<string, unknown>, key: string): string | undefined {
   const value = obj[key];
+<<<<<<< HEAD
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+=======
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+>>>>>>> pr-7399
 }
 
-function readOptionalBoolean(
-  obj: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
+function readOptionalBoolean(obj: Record<string, unknown>, key: string): boolean | undefined {
   const value = obj[key];
   return typeof value === "boolean" ? value : undefined;
 }
 
-function readOptionalNumber(
-  obj: Record<string, unknown>,
-  key: string,
-): number | undefined {
+function readOptionalNumber(obj: Record<string, unknown>, key: string): number | undefined {
   const value = obj[key];
+<<<<<<< HEAD
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+=======
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+>>>>>>> pr-7399
 }
 
 /**
@@ -688,9 +767,13 @@ interface TriggerContext {
  */
 async function buildTriggerContextFromConversation(
   runtime: AgentRuntime | null | undefined,
-  roomId: string,
+  roomId: string
 ): Promise<TriggerContext | undefined> {
+<<<<<<< HEAD
   if (!runtime || typeof runtime.getMemories !== "function") {
+=======
+  if (!runtime || typeof runtime.getMemories !== 'function') {
+>>>>>>> pr-7399
     return undefined;
   }
   let memories: Array<{
@@ -710,7 +793,7 @@ async function buildTriggerContextFromConversation(
     logger.debug?.(
       `[n8n-routes] buildTriggerContextFromConversation: getMemories threw: ${
         err instanceof Error ? err.message : String(err)
-      }`,
+      }`
     );
     return undefined;
   }
@@ -721,9 +804,13 @@ async function buildTriggerContextFromConversation(
   // Tail inbound = most recent memory whose entityId is NOT the agent.
   // `runtime.getMemories` typically returns most-recent-first; defensively
   // handle either order.
+<<<<<<< HEAD
   const inbound = memories.find(
     (m) => m.entityId && m.entityId !== runtime.agentId,
   );
+=======
+  const inbound = memories.find((m) => m.entityId && m.entityId !== runtime.agentId);
+>>>>>>> pr-7399
   if (!inbound?.metadata) {
     return undefined;
   }
@@ -735,6 +822,7 @@ async function buildTriggerContextFromConversation(
 
   // Canonical wins; flat fields are the legacy de-facto shape.
   const discordChannelId =
+<<<<<<< HEAD
     (typeof discord.channelId === "string" ? discord.channelId : undefined) ??
     (typeof meta.discordChannelId === "string"
       ? meta.discordChannelId
@@ -746,6 +834,14 @@ async function buildTriggerContextFromConversation(
       : undefined);
   const discordThreadId =
     typeof discord.threadId === "string" ? discord.threadId : undefined;
+=======
+    (typeof discord.channelId === 'string' ? discord.channelId : undefined) ??
+    (typeof meta.discordChannelId === 'string' ? meta.discordChannelId : undefined);
+  const discordGuildId =
+    (typeof discord.guildId === 'string' ? discord.guildId : undefined) ??
+    (typeof meta.discordServerId === 'string' ? meta.discordServerId : undefined);
+  const discordThreadId = typeof discord.threadId === 'string' ? discord.threadId : undefined;
+>>>>>>> pr-7399
 
   // No `meta.fromId` fallback for Telegram: `fromId` is the sender's user
   // id, which equals the chat id only in private 1:1 DMs. In group chats /
@@ -759,6 +855,7 @@ async function buildTriggerContextFromConversation(
       ? telegram.chatId
       : undefined;
   const telegramThreadId =
+<<<<<<< HEAD
     typeof telegram.threadId === "string" ||
     typeof telegram.threadId === "number"
       ? (telegram.threadId as string | number)
@@ -768,6 +865,14 @@ async function buildTriggerContextFromConversation(
     typeof slack.channelId === "string" ? slack.channelId : undefined;
   const slackTeamId =
     typeof slack.teamId === "string" ? slack.teamId : undefined;
+=======
+    typeof telegram.threadId === 'string' || typeof telegram.threadId === 'number'
+      ? (telegram.threadId as string | number)
+      : undefined;
+
+  const slackChannelId = typeof slack.channelId === 'string' ? slack.channelId : undefined;
+  const slackTeamId = typeof slack.teamId === 'string' ? slack.teamId : undefined;
+>>>>>>> pr-7399
 
   if (discordChannelId) {
     return {
@@ -784,9 +889,7 @@ async function buildTriggerContextFromConversation(
       source: "telegram",
       telegram: {
         chatId: telegramChatId,
-        ...(telegramThreadId !== undefined
-          ? { threadId: telegramThreadId }
-          : {}),
+        ...(telegramThreadId !== undefined ? { threadId: telegramThreadId } : {}),
       },
     };
   }
@@ -811,9 +914,7 @@ function readPosition(value: unknown): [number, number] | null {
     : null;
 }
 
-function readCredentials(
-  value: unknown,
-): Record<string, { id: string; name: string }> | undefined {
+function readCredentials(value: unknown): Record<string, { id: string; name: string }> | undefined {
   const raw = asRecord(value);
   if (!raw) {
     return undefined;
@@ -825,8 +926,13 @@ function readCredentials(
     if (!credential) {
       continue;
     }
+<<<<<<< HEAD
     const id = readOptionalString(credential, "id");
     const name = readOptionalString(credential, "name");
+=======
+    const id = readOptionalString(credential, 'id');
+    const name = readOptionalString(credential, 'name');
+>>>>>>> pr-7399
     if (!id || !name) {
       continue;
     }
@@ -835,17 +941,19 @@ function readCredentials(
   return Object.keys(credentials).length > 0 ? credentials : undefined;
 }
 
-function normalizeWorkflowWriteNode(
-  value: unknown,
-  index: number,
-): N8nWorkflowWriteNode | null {
+function normalizeWorkflowWriteNode(value: unknown, index: number): N8nWorkflowWriteNode | null {
   const obj = asRecord(value);
   if (!obj) {
     return null;
   }
 
+<<<<<<< HEAD
   const name = readOptionalString(obj, "name");
   const type = readOptionalString(obj, "type");
+=======
+  const name = readOptionalString(obj, 'name');
+  const type = readOptionalString(obj, 'type');
+>>>>>>> pr-7399
   if (!name || !type) {
     return null;
   }
@@ -856,9 +964,13 @@ function normalizeWorkflowWriteNode(
   const credentials = readCredentials(obj.credentials);
 
   return {
+<<<<<<< HEAD
     ...(readOptionalString(obj, "id")
       ? { id: readOptionalString(obj, "id") }
       : {}),
+=======
+    ...(readOptionalString(obj, 'id') ? { id: readOptionalString(obj, 'id') } : {}),
+>>>>>>> pr-7399
     name,
     type,
     typeVersion,
@@ -868,6 +980,7 @@ function normalizeWorkflowWriteNode(
     ...(readOptionalBoolean(obj, "disabled") !== undefined
       ? { disabled: readOptionalBoolean(obj, "disabled") }
       : {}),
+<<<<<<< HEAD
     ...(readOptionalString(obj, "notes")
       ? { notes: readOptionalString(obj, "notes") }
       : {}),
@@ -879,6 +992,15 @@ function normalizeWorkflowWriteNode(
       : {}),
     ...(readOptionalBoolean(obj, "continueOnFail") !== undefined
       ? { continueOnFail: readOptionalBoolean(obj, "continueOnFail") }
+=======
+    ...(readOptionalString(obj, 'notes') ? { notes: readOptionalString(obj, 'notes') } : {}),
+    ...(readOptionalBoolean(obj, 'notesInFlow') !== undefined
+      ? { notesInFlow: readOptionalBoolean(obj, 'notesInFlow') }
+      : {}),
+    ...(readOptionalString(obj, 'color') ? { color: readOptionalString(obj, 'color') } : {}),
+    ...(readOptionalBoolean(obj, 'continueOnFail') !== undefined
+      ? { continueOnFail: readOptionalBoolean(obj, 'continueOnFail') }
+>>>>>>> pr-7399
       : {}),
     ...(readOptionalBoolean(obj, "executeOnce") !== undefined
       ? { executeOnce: readOptionalBoolean(obj, "executeOnce") }
@@ -924,6 +1046,7 @@ function normalizeWorkflowConnections(value: unknown): N8nWorkflowConnections {
         ? group
             .map((connection) => {
               const obj = asRecord(connection);
+<<<<<<< HEAD
               const node = obj ? readOptionalString(obj, "node") : undefined;
               if (!obj || !node) {
                 return null;
@@ -938,6 +1061,20 @@ function normalizeWorkflowConnections(value: unknown): N8nWorkflowConnections {
                 connection !== null,
             )
         : [],
+=======
+              const node = obj ? readOptionalString(obj, 'node') : undefined;
+              if (!obj || !node) {
+                return null;
+              }
+              const index = readOptionalNumber(obj, 'index') ?? 0;
+              return { node, type: 'main' as const, index };
+            })
+            .filter(
+              (connection): connection is { node: string; type: 'main'; index: number } =>
+                connection !== null
+            )
+        : []
+>>>>>>> pr-7399
     );
     connections[sourceName] = { main };
   }
@@ -971,12 +1108,8 @@ function normalizeWorkflowWritePayload(body: Record<string, unknown>): {
   };
 }
 
-function propagateError(
-  ctx: N8nRouteContext,
-  upstream: { status: number; body: unknown },
-): void {
-  const status =
-    upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
+function propagateError(ctx: N8nRouteContext, upstream: { status: number; body: unknown }): void {
+  const status = upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
   let message = `upstream responded with ${upstream.status}`;
   if (upstream.body && typeof upstream.body === "object") {
     const b = upstream.body as Record<string, unknown>;
@@ -995,9 +1128,15 @@ function propagateError(
  * Returns null if pathname doesn't match.
  */
 function parseWorkflowPath(
+<<<<<<< HEAD
   pathname: string,
 ): { id: string; action: "get" | "activate" | "deactivate" } | null {
   const prefix = "/api/n8n/workflows/";
+=======
+  pathname: string
+): { id: string; action: 'get' | 'activate' | 'deactivate' } | null {
+  const prefix = '/api/n8n/workflows/';
+>>>>>>> pr-7399
   if (!pathname.startsWith(prefix)) {
     return null;
   }
@@ -1005,7 +1144,11 @@ function parseWorkflowPath(
   if (!rest) {
     return null;
   }
+<<<<<<< HEAD
   const parts = rest.split("/").filter(Boolean);
+=======
+  const parts = rest.split('/').filter(Boolean);
+>>>>>>> pr-7399
   if (parts.length === 1) {
     return { id: decodeURIComponent(parts[0] ?? ""), action: "get" };
   }
@@ -1026,7 +1169,7 @@ function parseWorkflowPath(
  */
 async function resolveSidecarForRequest(
   ctx: N8nRouteContext,
-  native: boolean,
+  native: boolean
 ): Promise<N8nSidecar | null> {
   if (ctx.n8nSidecar !== undefined) {
     return ctx.n8nSidecar;
@@ -1087,10 +1230,14 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
     return handleGenerateWorkflow(ctx);
   }
 
+<<<<<<< HEAD
   if (
     method === "POST" &&
     pathname === "/api/n8n/workflows/resolve-clarification"
   ) {
+=======
+  if (method === 'POST' && pathname === '/api/n8n/workflows/resolve-clarification') {
+>>>>>>> pr-7399
     return handleResolveClarification(ctx);
   }
 
@@ -1130,7 +1277,7 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
 async function handleStatus(
   ctx: N8nRouteContext,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   const { config, runtime } = ctx;
 
@@ -1142,8 +1289,12 @@ async function handleStatus(
   const sidecarState = sidecar?.getState();
   const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
 
+<<<<<<< HEAD
   const host =
     mode === "local" ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;
+=======
+  const host = mode === 'local' ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;
+>>>>>>> pr-7399
 
   // Cloud health — only probed when we are actually in cloud mode. The
   // probe is cached for 30s (see getCloudHealth) so rapid status polls
@@ -1155,7 +1306,7 @@ async function handleStatus(
     } else {
       cloudHealth = await getCloudHealth(
         config.cloud?.baseUrl ?? DEFAULT_CLOUD_API_BASE_URL,
-        ctx.fetchImpl ?? fetch,
+        ctx.fetchImpl ?? fetch
       );
     }
   }
@@ -1185,7 +1336,7 @@ async function handleStatus(
 async function handleListWorkflows(
   ctx: N8nRouteContext,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   const resolved = resolveProxyTarget(ctx, "", sidecar, native);
   if (!resolved.target) {
@@ -1205,9 +1356,7 @@ async function handleListWorkflows(
   }
 
   const list = extractWorkflowList(upstream.body);
-  const workflows = list
-    .map(normalizeWorkflow)
-    .filter((w): w is N8nWorkflow => w !== null);
+  const workflows = list.map(normalizeWorkflow).filter((w): w is N8nWorkflow => w !== null);
 
   sendJson(ctx, 200, { workflows });
   return true;
@@ -1225,7 +1374,7 @@ async function handleGetWorkflow(
   ctx: N8nRouteContext,
   id: string,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   if (!id) {
     sendJson(ctx, 400, { error: "workflow id required" });
@@ -1266,7 +1415,7 @@ async function writeWorkflow(
   subpath: string,
   payload: N8nWorkflowWritePayload,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
   if (!resolved.target) {
@@ -1299,10 +1448,19 @@ async function writeWorkflow(
 async function handleCreateWorkflow(
   ctx: N8nRouteContext,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!body) {
+<<<<<<< HEAD
+=======
+    return true;
+  }
+
+  const { payload, error } = normalizeWorkflowWritePayload(body);
+  if (!payload) {
+    sendJson(ctx, 400, { error: error ?? 'invalid workflow payload' });
+>>>>>>> pr-7399
     return true;
   }
 
@@ -1319,7 +1477,7 @@ async function handleUpdateWorkflow(
   ctx: N8nRouteContext,
   id: string,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   if (!id) {
     sendJson(ctx, 400, { error: "workflow id required" });
@@ -1337,6 +1495,7 @@ async function handleUpdateWorkflow(
     return true;
   }
 
+<<<<<<< HEAD
   return writeWorkflow(
     ctx,
     "PUT",
@@ -1345,19 +1504,22 @@ async function handleUpdateWorkflow(
     sidecar,
     native,
   );
+=======
+  return writeWorkflow(ctx, 'PUT', `/${encodeURIComponent(id)}`, payload, sidecar, native);
+>>>>>>> pr-7399
 }
 
 interface N8nWorkflowServiceLike {
   generateWorkflowDraft?: (
     prompt: string,
-    opts?: { triggerContext?: TriggerContext },
+    opts?: { triggerContext?: TriggerContext }
   ) => Promise<{
     id?: string;
     [k: string]: unknown;
   }>;
   deployWorkflow?: (
     workflow: Record<string, unknown>,
-    userId: string,
+    userId: string
   ) => Promise<{
     id: string;
     name: string;
@@ -1367,12 +1529,17 @@ interface N8nWorkflowServiceLike {
   getWorkflow?: (id: string) => Promise<Record<string, unknown>>;
 }
 
+<<<<<<< HEAD
 function getN8nWorkflowService(
   ctx: N8nRouteContext,
 ): N8nWorkflowServiceLike | null {
   const service = ctx.runtime?.getService?.("n8n_workflow") as
     | N8nWorkflowServiceLike
     | undefined;
+=======
+function getN8nWorkflowService(ctx: N8nRouteContext): N8nWorkflowServiceLike | null {
+  const service = ctx.runtime?.getService?.('n8n_workflow') as N8nWorkflowServiceLike | undefined;
+>>>>>>> pr-7399
   if (
     typeof service?.generateWorkflowDraft !== "function" ||
     typeof service.deployWorkflow !== "function" ||
@@ -1401,7 +1568,7 @@ function getConnectorTargetCatalog(ctx: N8nRouteContext): CatalogLike | null {
 async function deployAndRespond(
   ctx: N8nRouteContext,
   service: N8nWorkflowServiceLike,
-  draft: Record<string, unknown>,
+  draft: Record<string, unknown>
 ): Promise<void> {
   const userId = resolveAgentId(ctx);
   const deployed = await service.deployWorkflow?.(draft, userId);
@@ -1423,6 +1590,15 @@ async function deployAndRespond(
 async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!body) {
+<<<<<<< HEAD
+=======
+    return true;
+  }
+
+  const prompt = readOptionalString(body, 'prompt');
+  if (!prompt) {
+    sendJson(ctx, 400, { error: 'prompt required' });
+>>>>>>> pr-7399
     return true;
   }
 
@@ -1443,10 +1619,14 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   }
 
   const triggerContext = bridgeConversationId
+<<<<<<< HEAD
     ? await buildTriggerContextFromConversation(
         ctx.runtime,
         bridgeConversationId,
       )
+=======
+    ? await buildTriggerContextFromConversation(ctx.runtime, bridgeConversationId)
+>>>>>>> pr-7399
     : undefined;
 
   const draft = triggerContext
@@ -1484,9 +1664,7 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   return true;
 }
 
-async function handleResolveClarification(
-  ctx: N8nRouteContext,
-): Promise<boolean> {
+async function handleResolveClarification(ctx: N8nRouteContext): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!body) {
     return true;
@@ -1520,7 +1698,7 @@ async function handleResolveClarification(
 
   const result = applyResolutions(
     draft,
-    resolutions as Array<{ paramPath: string; value: string }>,
+    resolutions as Array<{ paramPath: string; value: string }>
   );
   if (!result.ok) {
     sendJson(ctx, 400, {
@@ -1533,10 +1711,17 @@ async function handleResolveClarification(
   const resolvedPaths = new Set(
     resolutions
       .map((r) => r.paramPath)
+<<<<<<< HEAD
       .filter((p): p is string => typeof p === "string" && p.length > 0),
   );
   const freeFormCount = resolutions.filter(
     (r) => typeof r.paramPath !== "string" || r.paramPath.length === 0,
+=======
+      .filter((p): p is string => typeof p === 'string' && p.length > 0)
+  );
+  const freeFormCount = resolutions.filter(
+    (r) => typeof r.paramPath !== 'string' || r.paramPath.length === 0
+>>>>>>> pr-7399
   ).length;
   pruneResolvedClarifications(draft, resolvedPaths, freeFormCount);
 
@@ -1554,9 +1739,7 @@ async function handleResolveClarification(
   const remaining = coerceClarifications(meta?.requiresClarification);
   if (remaining.length > 0) {
     const catalogService = getConnectorTargetCatalog(ctx);
-    const catalog = catalogService
-      ? await buildCatalogSnapshot(catalogService, remaining)
-      : [];
+    const catalog = catalogService ? await buildCatalogSnapshot(catalogService, remaining) : [];
     sendJson(ctx, 200, {
       status: "needs_clarification",
       draft,
@@ -1575,7 +1758,7 @@ async function handleToggleWorkflow(
   id: string,
   activate: boolean,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   if (!id) {
     sendJson(ctx, 400, { error: "workflow id required" });
@@ -1623,19 +1806,14 @@ async function handleDeleteWorkflow(
   ctx: N8nRouteContext,
   id: string,
   sidecar: N8nSidecar | null,
-  native: boolean,
+  native: boolean
 ): Promise<boolean> {
   if (!id) {
     sendJson(ctx, 400, { error: "workflow id required" });
     return true;
   }
 
-  const resolved = resolveProxyTarget(
-    ctx,
-    `/${encodeURIComponent(id)}`,
-    sidecar,
-    native,
-  );
+  const resolved = resolveProxyTarget(ctx, `/${encodeURIComponent(id)}`, sidecar, native);
   if (!resolved.target) {
     sendJson(ctx, 503, {
       error: resolved.reason?.message ?? "n8n not ready",

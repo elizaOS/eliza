@@ -27,6 +27,7 @@ import {
   readPersistedMobileRuntimeMode,
 } from "../onboarding/mobile-runtime-mode";
 import { isAndroid, isIOS } from "../platform";
+import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {
   clearPersistedActiveServer,
@@ -126,6 +127,33 @@ function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
   return server.kind === "local" || isMobileLocalAgentApiBase(server.apiBase);
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+}
+
+// Re-resolve a persisted loopback apiBase against whatever port the
+// dev orchestrator / Electrobun bridge actually bound this run. A
+// previous session may have captured a stale port (e.g. 31337) when
+// the live API has moved (e.g. 31338). Without this, every restore
+// re-applies the dead URL and the renderer 404s on every fetch.
+function reconcilePersistedApiBaseWithLive(
+  apiBase: string | undefined,
+): string | undefined {
+  if (!apiBase) return apiBase;
+  const live = getElizaApiBase();
+  if (!live || live === apiBase) return apiBase;
+  try {
+    const persisted = new URL(apiBase);
+    if (!isLoopbackHostname(persisted.hostname)) return apiBase;
+    const liveUrl = new URL(live);
+    if (!isLoopbackHostname(liveUrl.hostname)) return apiBase;
+    return live;
+  } catch {
+    return apiBase;
+  }
+}
+
 function mobileLoopbackActiveServer(): PersistedActiveServer {
   return {
     id: isAndroid ? ANDROID_LOCAL_AGENT_SERVER_ID : MOBILE_LOCAL_AGENT_SERVER_ID,
@@ -161,7 +189,16 @@ export async function applyRestoredConnection(args: {
     return;
   }
 
-  clientRef.setBaseUrl(restoredActiveServer.apiBase ?? null);
+  const reconciled = reconcilePersistedApiBaseWithLive(
+    restoredActiveServer.apiBase,
+  );
+  if (reconciled && reconciled !== restoredActiveServer.apiBase) {
+    savePersistedActiveServer({
+      ...restoredActiveServer,
+      apiBase: reconciled,
+    });
+  }
+  clientRef.setBaseUrl(reconciled ?? null);
   clientRef.setToken(restoredActiveServer.accessToken ?? null);
 }
 
