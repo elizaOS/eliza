@@ -1,1 +1,1 @@
-export { n8nWorkflowSchema, credentialMappings } from "./schema";
+export { n8nWorkflowSchema, credentialMappings } from './schema';
