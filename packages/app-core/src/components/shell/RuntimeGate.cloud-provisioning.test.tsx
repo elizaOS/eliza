@@ -189,6 +189,27 @@ function resetPlatformState() {
   platformState.isIOS = false;
 }
 
+async function openAdvancedRuntimeOptions(): Promise<void> {
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole("button", { name: /i want to run it myself/i }),
+    );
+  });
+}
+
+async function startLocalFromWelcome(): Promise<void> {
+  await openAdvancedRuntimeOptions();
+  await act(async () => {
+    fireEvent.click(screen.getByText(/use local/i));
+  });
+}
+
+async function startCloudFromWelcome(): Promise<void> {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /get started/i }));
+  });
+}
+
 function runtimeChoiceNames(): string[] {
   const choices: string[] = [];
   if (screen.queryByRole("button", { name: /get started/i })) {
@@ -198,10 +219,6 @@ function runtimeChoiceNames(): string[] {
     choices.push("local", "remote");
   }
   return choices;
-}
-
-function openAdvancedRuntimeChoices() {
-  fireEvent.click(screen.getByText("I want to run it myself"));
 }
 
 describe("resolveRuntimeChoices", () => {
@@ -243,12 +260,14 @@ describe("RuntimeGate onboarding choices", () => {
     resetPlatformState();
   });
 
-  it("offers Local on iOS through the in-process local agent", () => {
+  it("offers Local on iOS through the in-process local agent", async () => {
     platformState.isIOS = true;
 
     render(<RuntimeGate />);
+    await openAdvancedRuntimeOptions();
 
-    expect(runtimeChoiceNames()).toEqual(["cloud", "local", "remote"]);
+    expect(screen.getByText("Run on this machine")).toBeTruthy();
+    expect(screen.getByText("Connect to your own server")).toBeTruthy();
   });
 
   it.skip("shows Cloud, Local, and Remote on Android while the local probe is pending", () => {
@@ -263,9 +282,7 @@ describe("RuntimeGate onboarding choices", () => {
     platformState.isAndroid = true;
 
     render(<RuntimeGate />);
-
-    openAdvancedRuntimeChoices();
-    fireEvent.click(screen.getByRole("button", { name: /use local/i }));
+    await startLocalFromWelcome();
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "http://127.0.0.1:31337",
@@ -292,9 +309,7 @@ describe("RuntimeGate onboarding choices", () => {
     platformState.isIOS = true;
 
     render(<RuntimeGate />);
-
-    openAdvancedRuntimeChoices();
-    fireEvent.click(screen.getByRole("button", { name: /use local/i }));
+    await startLocalFromWelcome();
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "http://127.0.0.1:31337",
@@ -440,9 +455,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -517,9 +530,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -563,9 +574,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     const { rerender } = render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
     await act(async () => {
       fireEvent.click(screen.getByText("Sign in with Eliza Cloud"));
     });
@@ -609,9 +618,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await waitFor(() =>
       expect(screen.getByText("Insufficient credits")).toBeTruthy(),
@@ -628,9 +635,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     );
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -691,9 +696,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -727,9 +730,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     );
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -760,9 +761,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await waitFor(() =>
       expect(
@@ -811,9 +810,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -852,9 +849,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(

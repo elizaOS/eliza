@@ -143,6 +143,7 @@ parts:
           "plugin-streaming",
           "plugin-telegram",
           "plugin-video",
+          "plugin-wallet",
           "plugin-wechat",
           "plugin-whatsapp",
         ]);
@@ -302,6 +303,16 @@ parts:
       # Install dependencies — skip postinstall to avoid ensure-bundled-workspaces
       # trying to build the (now-removed) plugin-agent-orchestrator from source.
       bun install --ignore-scripts
+
+      # app-core still carries compatibility re-exports for wallet route
+      # helpers that live in plugin-wallet. The snap workspace rewrite keeps
+      # plugin-wallet on disk, but Bun may not link workspace packages unless
+      # a surviving manifest declares them. Link the local workspace explicitly
+      # so app-core's declaration build can resolve those compatibility imports.
+      mkdir -p node_modules/@elizaos "$APP_CORE_DIR/node_modules/@elizaos"
+      rm -rf node_modules/@elizaos/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
+      ln -s ../../plugins/plugin-wallet node_modules/@elizaos/plugin-wallet
+      ln -s ../../../../plugins/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
 
       # `bun install --ignore-scripts` skips the npm bun package postinstall,
       # leaving node_modules/bun/bin/bun as a non-executable JS shim. Turbo
@@ -481,6 +492,7 @@ parts:
         --filter=@elizaos/app-lifeops \
         --filter=@elizaos/app-task-coordinator \
         --filter=@elizaos/app-training \
+        --filter=@elizaos/app-wallet \
         --filter=@elizaos/plugin-agent-skills \
         --filter=@elizaos/plugin-browser-bridge \
         --filter=@elizaos/plugin-imessage \
@@ -492,6 +504,7 @@ parts:
         --filter=@elizaos/plugin-streaming \
         --filter=@elizaos/plugin-telegram \
         --filter=@elizaos/plugin-video \
+        --filter=@elizaos/plugin-wallet \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
         --filter=@elizaos/capacitor-contacts \

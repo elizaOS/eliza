@@ -836,6 +836,7 @@ export function RuntimeGate() {
       let provisionData:
         | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>["data"]
         | undefined;
+      let pollingIntervalMs: number | undefined;
       let provisionExpectedDurationMs = 0;
       if (!jobId) {
         let provRes: Awaited<
@@ -882,8 +883,9 @@ export function RuntimeGate() {
           return;
         }
         provisionData = provRes.data;
-        provisionExpectedDurationMs = provRes.polling?.expectedDurationMs ?? 0;
         jobId = provRes.data?.jobId;
+        pollingIntervalMs = provRes.polling?.intervalMs;
+        provisionExpectedDurationMs = provRes.polling?.expectedDurationMs ?? 0;
       }
 
       // Poll the agent until it has a connectable URL. The provision job
@@ -1092,7 +1094,7 @@ export function RuntimeGate() {
       void pollProvisionJob();
       pollTimerRef.current = setInterval(() => {
         void pollProvisionJob();
-      }, 2500);
+      }, pollingIntervalMs ?? 2500);
     },
     [finishAsCloud, t],
   );

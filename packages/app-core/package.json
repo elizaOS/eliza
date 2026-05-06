@@ -184,6 +184,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
