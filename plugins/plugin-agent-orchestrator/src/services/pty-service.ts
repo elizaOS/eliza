@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -34,8 +35,8 @@ import type {
   StallClassification,
   WorkerSessionHandle,
 } from "pty-manager";
+import { buildOpencodeSpawnConfig } from "./agent-credentials.js";
 import { AgentMetricsTracker } from "./agent-metrics.js";
-import { CLAUDE_SKILL_ESSENTIALS } from "./skill-essentials.js";
 import type { AgentSelectionStrategy } from "./agent-selection.js";
 import {
   captureTaskResponse,
@@ -72,6 +73,7 @@ import {
   buildSpawnConfig,
   setupDeferredTaskDelivery,
   setupOutputBuffer,
+  shouldUseCodexExecMode,
 } from "./pty-spawn.js";
 import type {
   CodingAgentType,
@@ -86,7 +88,13 @@ import {
   toOpencodeCommand,
   toPiCommand,
 } from "./pty-types.js";
-import { buildOpencodeSpawnConfig } from "./agent-credentials.js";
+import { CLAUDE_SKILL_ESSENTIALS } from "./skill-essentials.js";
+import {
+  TRAJECTORY_CHILD_STEP_ENV_KEY,
+  TRAJECTORY_CHILD_STEP_METADATA_KEY,
+  TRAJECTORY_PARENT_STEP_METADATA_KEY,
+  withLinkedSpawn,
+} from "./spawn-trajectory.js";
 import {
   classifyAndDecideForCoordinator,
   classifyStallOutput,
@@ -115,12 +123,6 @@ import {
   type TaskAgentFrameworkState,
   type TaskAgentTaskProfileInput,
 } from "./task-agent-frameworks.js";
-import {
-  TRAJECTORY_CHILD_STEP_ENV_KEY,
-  TRAJECTORY_CHILD_STEP_METADATA_KEY,
-  TRAJECTORY_PARENT_STEP_METADATA_KEY,
-  withLinkedSpawn,
-} from "./spawn-trajectory.js";
 
 /**
  * Grace period after `task_complete` before auto-stopping a PTY session.
@@ -130,6 +132,25 @@ import {
  * the PTY parent before it exits.
  */
 const TASK_COMPLETE_STOP_DELAY_MS = 5_000;
+
+export function shouldSuppressCodexExecPtyManagerEvent(options: {
+  codexExecMode: boolean;
+  event: string;
+  data: unknown;
+}): boolean {
+  if (!options.codexExecMode) return false;
+  const payload = options.data as
+    | {
+        source?: unknown;
+      }
+    | undefined;
+  if (payload?.source !== "pty_manager") return false;
+
+  // `codex exec` is non-interactive. Process exit and --output-last-message
+  // are the authoritative completion signals; TUI prompt detectors can
+  // misclassify ordinary exec output as login/blocking prompts.
+  return options.event === "blocked" || options.event === "login_required";
+}
 
 /**
  * Portable safety floor injected into every spawned coding-agent's memory
@@ -637,6 +658,7 @@ export class PTYService {
       classifyStall: (id, out) => this.classifyStall(id, out),
       emitEvent: (id, event, data) => this.emitEvent(id, event, data),
       handleGeminiAuth: (id) => this.handleGeminiAuth(id),
+      sessionMetadata: this.sessionMetadata,
       sessionOutputBuffers: this.sessionOutputBuffers,
       taskResponseMarkers: this.taskResponseMarkers,
       metricsTracker: this.metricsTracker,
@@ -1046,11 +1068,24 @@ export class PTYService {
     );
     const metadataWithoutModelPrefs = { ...(linkedMetadata ?? {}) };
     delete metadataWithoutModelPrefs.modelPrefs;
+    const codexExecMode = shouldUseCodexExecMode({
+      agentType: resolvedAgentType,
+      initialTask: resolvedInitialTask,
+    });
+    const codexExecOutputDir = codexExecMode
+      ? await mkdtemp(join(tmpdir(), `eliza-codex-${sessionId}-`))
+      : undefined;
+    const codexExecOutputFile = codexExecOutputDir
+      ? join(codexExecOutputDir, "last-message.txt")
+      : undefined;
     const resolvedMetadata = {
       ...metadataWithoutModelPrefs,
       requestedType: linkedMetadata?.requestedType ?? options.agentType,
       agentType: resolvedAgentType,
       coordinatorManaged: !!options.skipAdapterAutoResponse,
+      ...(codexExecMode ? { codexExecMode: true } : {}),
+      ...(codexExecOutputDir ? { codexExecOutputDir } : {}),
+      ...(codexExecOutputFile ? { codexExecOutputFile } : {}),
       ...(resolvedModelPrefs ? { modelPrefs: resolvedModelPrefs } : {}),
     };
 
@@ -1072,7 +1107,22 @@ export class PTYService {
       },
       workdir,
     );
-    const session = await this.manager.spawn(spawnConfig);
+    this.sessionMetadata.set(sessionId, resolvedMetadata);
+    let session: SessionHandle | WorkerSessionHandle;
+    try {
+      session = await this.manager.spawn(spawnConfig);
+    } catch (error) {
+      if (codexExecOutputDir) {
+        await rm(codexExecOutputDir, { recursive: true, force: true }).catch(
+          (cleanupError) =>
+            this.log(
+              `Failed to remove Codex exec output dir ${codexExecOutputDir}: ${cleanupError}`,
+            ),
+        );
+      }
+      this.sessionMetadata.delete(sessionId);
+      throw error;
+    }
     this.terminalSessionStates.delete(session.id);
     this.sessionNames.set(session.id, options.name);
 
@@ -2229,6 +2279,16 @@ export class PTYService {
   }
 
   private emitEvent(sessionId: string, event: string, data: unknown): void {
+    if (
+      shouldSuppressCodexExecPtyManagerEvent({
+        codexExecMode:
+          this.sessionMetadata.get(sessionId)?.codexExecMode === true,
+        event,
+        data,
+      })
+    ) {
+      return;
+    }
     if (
       event === "blocked" &&
       this.shouldSuppressBlockedEvent(sessionId, data)

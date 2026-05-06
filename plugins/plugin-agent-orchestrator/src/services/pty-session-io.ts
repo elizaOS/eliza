@@ -8,7 +8,7 @@
  * @module services/pty-session-io
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   BunCompatiblePTYManager,
@@ -136,6 +136,18 @@ export async function stopSession(
         await cleanupAgentHooks(workdir, log);
       } catch {
         // Best-effort — don't block shutdown
+      }
+    }
+
+    const metadata = sessionMetadata.get(sessionId);
+    const codexExecOutputDir = metadata?.codexExecOutputDir;
+    if (typeof codexExecOutputDir === "string") {
+      try {
+        await rm(codexExecOutputDir, { recursive: true, force: true });
+      } catch (err) {
+        log(
+          `Failed to remove Codex exec output dir ${codexExecOutputDir}: ${err}`,
+        );
       }
     }
 

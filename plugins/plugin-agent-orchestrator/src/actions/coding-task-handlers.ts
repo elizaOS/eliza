@@ -90,6 +90,102 @@ const KNOWN_AGENT_PREFIXES = [
   "bash",
 ] as const;
 
+const SHELL_COMMAND_RE =
+  /(?:^|[:\s])(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|pnpm|sed|tail|tee|tr|xargs|yarn)\b\s+(?:[-./~"'({[<>&|]|https?:\/\/|\w+=|\w+\.(?:cjs|css|html|js|json|md|mjs|ts|tsx|yaml|yml)\b|\b(?:add|build|commit|diff|exec|fetch|install|log|pull|push|rebase|run|show|status|test)\b)/;
+
+function isShellPipelineBoundary(
+  left: string,
+  right: string,
+  line: string,
+): boolean {
+  const trimmedLine = line.trim();
+  if (/^\|.*\|$/.test(trimmedLine)) return true;
+
+  const leftTrimmed = left.trim();
+  const rightTrimmed = right.trim();
+  if (!leftTrimmed || !rightTrimmed) return false;
+
+  const leftLooksShell =
+    SHELL_COMMAND_RE.test(leftTrimmed) ||
+    /[`$;]|\$\(|\b[A-Z][A-Z0-9_]*=/.test(leftTrimmed);
+  const rightStartsShell =
+    /^(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|pnpm|sed|tail|tee|tr|xargs|yarn)\b/.test(
+      rightTrimmed,
+    );
+  return leftLooksShell && rightStartsShell;
+}
+
+/**
+ * Split the planner's optional multi-agent string without treating shell
+ * pipelines in a single task recipe as agent delimiters.
+ */
+export function splitAgentSpecsParam(input: string): string[] {
+  const specs: string[] = [];
+  let segmentStart = 0;
+  let lineStart = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+
+  const push = (end: number) => {
+    const segment = input.slice(segmentStart, end).trim();
+    if (segment) specs.push(segment);
+  };
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    const prev = i > 0 ? input[i - 1] : "";
+
+    if (char === "\n") {
+      lineStart = i + 1;
+      continue;
+    }
+
+    if (
+      char === "'" &&
+      !inDouble &&
+      !inBacktick &&
+      !(/[A-Za-z0-9]/.test(prev) && /[A-Za-z0-9]/.test(input[i + 1] ?? ""))
+    ) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === '"' && !inSingle && !inBacktick && prev !== "\\") {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === "`" && !inSingle && !inDouble && prev !== "\\") {
+      inBacktick = !inBacktick;
+      continue;
+    }
+
+    if (char !== "|" || inSingle || inDouble || inBacktick) {
+      continue;
+    }
+
+    const lineEnd = input.indexOf("\n", i);
+    const line = input.slice(
+      lineStart,
+      lineEnd === -1 ? input.length : lineEnd,
+    );
+    if (
+      isShellPipelineBoundary(
+        input.slice(segmentStart, i),
+        input.slice(i + 1, lineEnd === -1 ? input.length : lineEnd),
+        line,
+      )
+    ) {
+      continue;
+    }
+
+    push(i);
+    segmentStart = i + 1;
+  }
+
+  push(input.length);
+  return specs;
+}
+
 /** Filename written into each spawned agent's workspace listing parent skills. */
 const SKILLS_MANIFEST_FILENAME = "SKILLS.md";
 
@@ -694,10 +790,7 @@ export async function handleMultiAgent(
 
   // Parse pipe-delimited agent specs: "task1 | task2 | agentType:task3"
   // A single empty string means "spawn one agent with no initial task".
-  const agentSpecs = agentsParam
-    .split("|")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const agentSpecs = splitAgentSpecsParam(agentsParam);
 
   // If nothing parsed (e.g. empty string), treat as one agent with no task
   if (agentSpecs.length === 0) {
@@ -725,8 +818,7 @@ export async function handleMultiAgent(
 
   // Skip the spawn callback — the LLM REPLY already says "on it" (character
   // prompt ack rule) and the task-progress-streamer delivers the final
-  // result. Emitting "Launching N agents..." here duplicates the ack and
-  // spams discord. See eliza nubs/full-working-state clean Discord UX fix.
+  // result. Emitting "Launching N agents..." here duplicates the ack.
 
   // Install the child→parent USE_SKILL bridge once per runtime. Idempotent —
   // subsequent task spawns are no-ops. Pass the module-level session allow-
