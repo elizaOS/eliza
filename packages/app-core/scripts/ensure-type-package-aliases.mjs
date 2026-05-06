@@ -119,9 +119,34 @@ function repairBrokenDirectoryLink(dir) {
   }
 }
 
+function recreateTypeRoot(targetTypesDir) {
+  rmSync(targetTypesDir, { recursive: true, force: true });
+  mkdirSync(targetTypesDir, { recursive: true });
+}
+
 function ensureTypeRoot(targetTypesDir) {
   repairBrokenDirectoryLink(targetTypesDir);
-  mkdirSync(targetTypesDir, { recursive: true });
+  try {
+    mkdirSync(targetTypesDir, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    recreateTypeRoot(targetTypesDir);
+  }
+}
+
+function ensureTypeChildDir(targetTypesDir, childDir) {
+  ensureTypeRoot(targetTypesDir);
+  try {
+    mkdirSync(childDir, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    recreateTypeRoot(targetTypesDir);
+    mkdirSync(childDir, { recursive: true });
+  }
 }
 
 function materializeTypePackage(targetTypesDir, packageName) {
@@ -164,9 +189,8 @@ function ensureTypeEntryPoint(targetDir, packageName) {
 }
 
 export function ensureBunTypesAlias(targetTypesDir) {
-  ensureTypeRoot(targetTypesDir);
   const bunTypesDir = path.join(targetTypesDir, "bun");
-  mkdirSync(bunTypesDir, { recursive: true });
+  ensureTypeChildDir(targetTypesDir, bunTypesDir);
   writeFileSync(
     path.join(bunTypesDir, "index.d.ts"),
     '/// <reference types="bun-types" />\n',
