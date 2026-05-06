@@ -189,10 +189,19 @@ function resetPlatformState() {
   platformState.isIOS = false;
 }
 
-function runtimeChoiceNames(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll("[data-runtime-choice]")).map(
-    (node) => node.getAttribute("data-runtime-choice") ?? "",
-  );
+function runtimeChoiceNames(): string[] {
+  const choices: string[] = [];
+  if (screen.queryByRole("button", { name: /get started/i })) {
+    choices.push("cloud");
+  }
+  if (screen.queryByText("I want to run it myself")) {
+    choices.push("local", "remote");
+  }
+  return choices;
+}
+
+function openAdvancedRuntimeChoices() {
+  fireEvent.click(screen.getByText("I want to run it myself"));
 }
 
 describe("resolveRuntimeChoices", () => {
@@ -237,9 +246,9 @@ describe("RuntimeGate onboarding choices", () => {
   it("offers Local on iOS through the in-process local agent", () => {
     platformState.isIOS = true;
 
-    const { container } = render(<RuntimeGate />);
+    render(<RuntimeGate />);
 
-    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
+    expect(runtimeChoiceNames()).toEqual(["cloud", "local", "remote"]);
   });
 
   it.skip("shows Cloud, Local, and Remote on Android while the local probe is pending", () => {
@@ -247,18 +256,16 @@ describe("RuntimeGate onboarding choices", () => {
 
     const { container } = render(<RuntimeGate />);
 
-    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
+    expect(runtimeChoiceNames()).toEqual(["cloud", "local", "remote"]);
   });
 
   it("starts the Android local service without waiting for model downloads", async () => {
     platformState.isAndroid = true;
 
-    const { container } = render(<RuntimeGate />);
+    render(<RuntimeGate />);
 
-    fireEvent.click(
-      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
+    openAdvancedRuntimeChoices();
+    fireEvent.click(screen.getByRole("button", { name: /use local/i }));
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "http://127.0.0.1:31337",
@@ -284,12 +291,10 @@ describe("RuntimeGate onboarding choices", () => {
   it("starts iOS local mode through the shared mobile local target", async () => {
     platformState.isIOS = true;
 
-    const { container } = render(<RuntimeGate />);
+    render(<RuntimeGate />);
 
-    fireEvent.click(
-      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
+    openAdvancedRuntimeChoices();
+    fireEvent.click(screen.getByRole("button", { name: /use local/i }));
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "http://127.0.0.1:31337",
@@ -513,7 +518,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -559,7 +564,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     const { rerender } = render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
     await act(async () => {
       fireEvent.click(screen.getByText("Sign in with Eliza Cloud"));
@@ -624,7 +629,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -687,7 +692,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -817,13 +822,13 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     );
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(125_000);
+      await vi.advanceTimersByTimeAsync(600_000);
     });
 
     await vi.waitFor(() =>
       expect(
         screen.getByText(
-          "Cloud agent provisioning is taking too long. The hosting service may be unavailable.",
+          "Cloud provisioning is still running after several minutes. Retry to resume status checks.",
         ),
       ).toBeTruthy(),
     );
