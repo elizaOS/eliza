@@ -6,7 +6,7 @@ import {
 } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageManager } from "../messages";
+import { hasActiveTaskAgentWorkForMessage, MessageManager } from "../messages";
 
 function runtime(): IAgentRuntime {
 	return {
@@ -97,5 +97,51 @@ describe("MessageManager URL enrichment", () => {
 		);
 
 		expect(first.attachments[0]?.id).toBe(second.attachments[0]?.id);
+	});
+});
+
+describe("hasActiveTaskAgentWorkForMessage", () => {
+	function runtimeWithTasks(tasks: Map<string, unknown>): IAgentRuntime {
+		return {
+			getService: vi.fn((serviceType) =>
+				serviceType === "SWARM_COORDINATOR" ? { tasks } : null,
+			),
+		} as unknown as IAgentRuntime;
+	}
+
+	it("matches active task-agent work by originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "tool_running",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			true,
+		);
+	});
+
+	it("ignores terminal task-agent work", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "completed",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			false,
+		);
 	});
 });
