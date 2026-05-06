@@ -222,10 +222,14 @@ describe("READ_ATTACHMENT", () => {
 		});
 
 		expect(result?.text).toBe("summary");
+		const expectedTokens = Math.min(
+			Math.max(Math.ceil(longContent.length / 4), 1024),
+			4096,
+		);
 		expect(runtime.useModel).toHaveBeenCalledWith(
 			ModelType.TEXT_SMALL,
 			expect.objectContaining({
-				maxTokens: Math.ceil(longContent.length / 4),
+				maxTokens: expectedTokens,
 			}),
 		);
 	});
