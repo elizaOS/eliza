@@ -174,6 +174,30 @@ describe("SEARCH action", () => {
     expect(result?.values?.error).toBe("SEARCH_CATEGORY_NOT_FOUND");
   });
 
+  it("stops post-action continuation when web search service is unavailable", async () => {
+    const runtime = createRuntime();
+    await webSearchPlugin.init?.({}, runtime);
+
+    const result = await searchAction.handler(
+      runtime,
+      createMessage("what is the current BTC price?"),
+      undefined,
+      {
+        parameters: {
+          category: "web",
+          query: "current BTC price",
+        },
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data).toMatchObject({
+      actionName: "SEARCH",
+      category: "web",
+      suppressPostActionContinuation: true,
+    });
+  });
+
   it("validates category filters before dispatch", async () => {
     const runtime = createRuntime();
     const fetchMock = vi.fn();

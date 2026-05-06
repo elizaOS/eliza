@@ -671,17 +671,21 @@ export class MessageManager {
 			let typingStarted = false;
 			let responseEmitted = false;
 			let generationTimedOut = false;
-			const generationTimeoutMs = Math.max(
-				30_000,
-				Number.parseInt(
-					String(
-						this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
-							this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
-							"120000",
-					),
-					10,
-				) || 120_000,
+			const generationTimeoutSetting = Number.parseInt(
+				String(
+					this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
+						process.env.DISCORD_GENERATION_TIMEOUT_MS ??
+						this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
+						process.env.MESSAGE_TIMEOUT_MS ??
+						"120000",
+				),
+				10,
 			);
+			const generationTimeoutMs =
+				Number.isFinite(generationTimeoutSetting) &&
+				generationTimeoutSetting > 0
+					? Math.max(30_000, generationTimeoutSetting)
+					: null;
 
 			const finalizePendingDraft = async () => {
 				if (draftStream?.isStarted() && !draftStream.isDone()) {
@@ -992,19 +996,23 @@ export class MessageManager {
 					}
 				})();
 
-				const timeoutPromise = new Promise<never>((_, reject) => {
-					generationTimeoutHandle = setTimeout(() => {
-						generationTimedOut = true;
-						reject(
-							new Error(
-								`Discord generation timeout after ${generationTimeoutMs}ms`,
-							),
-						);
-					}, generationTimeoutMs);
-				});
-
 				generationPromise.catch(() => {});
-				await Promise.race([generationPromise, timeoutPromise]);
+				if (generationTimeoutMs === null) {
+					await generationPromise;
+				} else {
+					const timeoutPromise = new Promise<never>((_, reject) => {
+						generationTimeoutHandle = setTimeout(() => {
+							generationTimedOut = true;
+							reject(
+								new Error(
+									`Discord generation timeout after ${generationTimeoutMs}ms`,
+								),
+							);
+						}, generationTimeoutMs);
+					});
+
+					await Promise.race([generationPromise, timeoutPromise]);
+				}
 			} catch (generationError) {
 				this.runtime.logger.error(
 					{
