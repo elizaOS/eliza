@@ -99,6 +99,10 @@ function providerDisplayName(
       return t("accounts.provider.openaiApi", {
         defaultValue: "OpenAI API",
       });
+    case "openrouter-api":
+      return t("accounts.provider.openrouterApi", {
+        defaultValue: "OpenRouter API",
+      });
     case "deepseek-api":
       return t("accounts.provider.deepseekApi", {
         defaultValue: "DeepSeek API",

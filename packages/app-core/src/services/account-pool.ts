@@ -116,6 +116,7 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
 > = {
   anthropic: "anthropic-api",
   openai: "openai-api",
+  openrouter: "openrouter-api",
   deepseek: "deepseek-api",
   zai: "zai-api",
   moonshot: "moonshot-api",
@@ -124,6 +125,7 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
 const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
   Partial<Record<DirectAccountProvider, string>>
 > = {
+  "openrouter-api": "https://openrouter.ai/api/v1",
   "moonshot-api": "https://api.moonshot.ai/v1",
 };
 
@@ -455,6 +457,7 @@ function isPoolProviderId(value: string): value is PoolProviderId {
     value === "openai-codex" ||
     value === "anthropic-api" ||
     value === "openai-api" ||
+    value === "openrouter-api" ||
     value === "deepseek-api" ||
     value === "zai-api" ||
     value === "moonshot-api"

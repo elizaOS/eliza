@@ -532,7 +532,9 @@ export async function handlePluginRoutes(
 
         const expectedCat = paramKeyToCategory(param.key);
         const filtered = providerModels.filter(
-          (m) => m.category === expectedCat,
+          (m) =>
+            m.category === expectedCat ||
+            (expectedCat === "chat" && m.category === "free"),
         );
 
         if (!plugin.configUiHints) plugin.configUiHints = {};
@@ -541,7 +543,10 @@ export async function handlePluginRoutes(
           type: "select",
           options: filtered.map((m) => ({
             value: m.id,
-            label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
+            label:
+              m.name !== m.id
+                ? `${m.name}${m.category === "free" ? " (free)" : ""} (${m.id})`
+                : `${m.id}${m.category === "free" ? " (free)" : ""}`,
           })),
         };
       }

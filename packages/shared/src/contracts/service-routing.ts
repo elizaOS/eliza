@@ -37,6 +37,7 @@ export type LinkedAccountProviderId =
   | "openai-codex"
   | "anthropic-api"
   | "openai-api"
+  | "openrouter-api"
   | "deepseek-api"
   | "zai-api"
   | "moonshot-api";
@@ -387,6 +388,7 @@ export function isLinkedAccountProviderId(
     value === "openai-codex" ||
     value === "anthropic-api" ||
     value === "openai-api" ||
+    value === "openrouter-api" ||
     value === "deepseek-api" ||
     value === "zai-api" ||
     value === "moonshot-api"

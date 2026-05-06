@@ -13,6 +13,7 @@ export type SubscriptionProvider = "anthropic-subscription" | "openai-codex";
 export type DirectAccountProvider =
   | "anthropic-api"
   | "openai-api"
+  | "openrouter-api"
   | "deepseek-api"
   | "zai-api"
   | "moonshot-api";
@@ -29,6 +30,7 @@ export const SUBSCRIPTION_PROVIDER_IDS = [
 export const DIRECT_ACCOUNT_PROVIDER_IDS = [
   "anthropic-api",
   "openai-api",
+  "openrouter-api",
   "deepseek-api",
   "zai-api",
   "moonshot-api",
@@ -59,6 +61,7 @@ export const DIRECT_ACCOUNT_PROVIDER_ENV: Record<
 > = {
   "anthropic-api": "ANTHROPIC_API_KEY",
   "openai-api": "OPENAI_API_KEY",
+  "openrouter-api": "OPENROUTER_API_KEY",
   "deepseek-api": "DEEPSEEK_API_KEY",
   "zai-api": "ZAI_API_KEY",
   "moonshot-api": "MOONSHOT_API_KEY",

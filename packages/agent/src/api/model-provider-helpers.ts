@@ -193,8 +193,11 @@ export function getModelOptions(): {
 
 export type ModelCategory =
   | "chat"
+  | "free"
   | "embedding"
   | "image"
+  | "vision"
+  | "imageGeneration"
   | "tts"
   | "stt"
   | "other";
@@ -214,7 +217,9 @@ export interface ProviderCache {
 
 export function classifyModel(modelId: string): ModelCategory {
   const id = modelId.toLowerCase();
+  if (id.endsWith(":free")) return "free";
   if (id.includes("embed") || id.includes("text-embedding")) return "embedding";
+  if (id.includes("vision")) return "vision";
   if (
     id.includes("dall-e") ||
     id.includes("dalle") ||
@@ -223,7 +228,7 @@ export function classifyModel(modelId: string): ModelCategory {
     id.includes("midjourney") ||
     id.includes("flux")
   )
-    return "image";
+    return "imageGeneration";
   if (
     id.includes("tts") ||
     id.includes("text-to-speech") ||
@@ -245,7 +250,13 @@ export function classifyModel(modelId: string): ModelCategory {
 export function paramKeyToCategory(paramKey: string): ModelCategory {
   const k = paramKey.toUpperCase();
   if (k.includes("EMBEDDING")) return "embedding";
-  if (k.includes("IMAGE")) return "image";
+  if (
+    k.includes("IMAGE_GENERATION") ||
+    k === "AI_GATEWAY_IMAGE_MODEL" ||
+    k === "OPENAI_IMAGE_MODEL"
+  )
+    return "imageGeneration";
+  if (k.includes("IMAGE") || k.includes("VISION")) return "vision";
   if (k.includes("TTS")) return "tts";
   if (k.includes("STT") || k.includes("TRANSCRIPTION")) return "stt";
   return "chat";
@@ -359,7 +370,8 @@ export async function fetchModelsREST(
 export function restTypeToCategory(type: string): ModelCategory {
   const t = type.toLowerCase();
   if (t.includes("embed")) return "embedding";
-  if (t === "image" || t.includes("image-generation")) return "image";
+  if (t.includes("vision")) return "vision";
+  if (t === "image" || t.includes("image-generation")) return "imageGeneration";
   if (t.includes("tts") || t.includes("speech")) return "tts";
   if (t.includes("stt") || t.includes("transcription") || t.includes("whisper"))
     return "stt";
@@ -449,7 +461,6 @@ export async function fetchOllamaModels(
   }
 }
 
-/** Fetch ALL OpenRouter models: chat (/api/v1/models) + embeddings (/api/v1/embeddings/models). */
 export async function fetchOpenRouterModels(
   apiKey: string,
 ): Promise<CachedModel[]> {
@@ -459,59 +470,107 @@ export async function fetchOpenRouterModels(
   interface ORModel {
     id: string;
     name?: string;
-    architecture?: { modality?: string; output_modalities?: string[] };
+    architecture?: {
+      modality?: string;
+      input_modalities?: string[];
+      output_modalities?: string[];
+    };
+    pricing?: Record<string, string | number | null | undefined>;
   }
 
-  // Fetch chat/text models and embedding models in parallel
-  const [chatRes, embedRes] = await Promise.all([
-    fetch("https://openrouter.ai/api/v1/models?output_modalities=all", {
-      headers,
-    }).catch(() => null),
-    fetch("https://openrouter.ai/api/v1/embeddings/models", { headers }).catch(
-      () => null,
-    ),
-  ]);
+  let response: Response | null = null;
+  try {
+    response = await fetch(
+      "https://openrouter.ai/api/v1/models?output_modalities=all",
+      { headers },
+    );
+  } catch (e: unknown) {
+    logger.warn(
+      `[model-catalog] Failed to fetch OpenRouter models: ${e instanceof Error ? e.message : e}`,
+    );
+    return [];
+  }
 
   const models: CachedModel[] = [];
 
-  // Parse chat/text/image models
-  if (chatRes?.ok) {
+  if (response?.ok) {
     try {
-      const data = (await chatRes.json()) as { data?: ORModel[] };
+      const data = (await response.json()) as { data?: ORModel[] };
       for (const m of data.data ?? []) {
+        const inputs = (m.architecture?.input_modalities ?? []).map((value) =>
+          value.toLowerCase(),
+        );
         const outputs = (m.architecture?.output_modalities ?? []).map((value) =>
           value.toLowerCase(),
         );
         const modality = m.architecture?.modality?.toLowerCase() ?? "";
-        let category: ModelCategory = "chat";
-        if (outputs.includes("text") || modality.includes("text->text")) {
-          category = "chat";
-        } else if (outputs.includes("image")) category = "image";
-        else if (outputs.includes("audio")) category = "tts";
-        models.push({ id: m.id, name: m.name ?? m.id, category });
-      }
-    } catch {
-      /* parse error */
-    }
-  }
+        const isFree = isOpenRouterFreeModel(m);
+        const categories = new Set<ModelCategory>();
+        const hasTextOutput =
+          outputs.includes("text") || modality.includes("->text");
+        const hasImageInput =
+          inputs.includes("image") ||
+          modality.includes("image->") ||
+          modality.includes("+image");
 
-  // Parse embedding models
-  if (embedRes?.ok) {
-    try {
-      const data = (await embedRes.json()) as { data?: ORModel[] };
-      for (const m of data.data ?? []) {
-        models.push({ id: m.id, name: m.name ?? m.id, category: "embedding" });
+        if (outputs.includes("embeddings") || modality.includes("embedding")) {
+          categories.add("embedding");
+        }
+        if (hasImageInput && hasTextOutput) {
+          categories.add("vision");
+        }
+        if (outputs.includes("image") || modality.includes("->image")) {
+          categories.add("imageGeneration");
+        }
+        if (hasTextOutput && !outputs.includes("image")) {
+          categories.add(isFree ? "free" : "chat");
+        }
+        if (outputs.includes("audio")) {
+          categories.add("tts");
+        }
+        if (categories.size === 0) {
+          categories.add(classifyModel(m.id));
+        }
+
+        for (const category of categories) {
+          models.push({ id: m.id, name: m.name ?? m.id, category });
+        }
       }
-    } catch {
-      /* parse error */
+    } catch (e: unknown) {
+      logger.warn(
+        `[model-catalog] Failed to parse OpenRouter models: ${e instanceof Error ? e.message : e}`,
+      );
     }
   }
 
   const deduped = Array.from(
-    new Map(models.map((model) => [model.id, model])).values(),
+    new Map(
+      models.map((model) => [`${model.id}:${model.category}`, model]),
+    ).values(),
   );
   deduped.sort((a, b) => a.id.localeCompare(b.id));
   return deduped;
+}
+
+function isOpenRouterFreeModel(model: {
+  id: string;
+  name?: string;
+  pricing?: Record<string, string | number | null | undefined>;
+}): boolean {
+  if (model.id.toLowerCase().endsWith(":free")) return true;
+  if (model.name?.toLowerCase().includes("free")) return true;
+  const pricedFields = ["prompt", "completion", "request", "image"];
+  const values = pricedFields
+    .map((field) => model.pricing?.[field])
+    .filter((value) => value != null);
+  return (
+    values.length > 0 &&
+    values.every((value) => {
+      const numberValue =
+        typeof value === "number" ? value : Number.parseFloat(String(value));
+      return Number.isFinite(numberValue) && numberValue === 0;
+    })
+  );
 }
 
 /** Fetch Vercel AI Gateway models — no auth required, response has `type` field. */

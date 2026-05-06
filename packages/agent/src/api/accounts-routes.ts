@@ -109,6 +109,7 @@ const SUPPORTED_PROVIDER_IDS = [
   "openai-codex",
   "anthropic-api",
   "openai-api",
+  "openrouter-api",
   "deepseek-api",
   "zai-api",
   "moonshot-api",
@@ -117,6 +118,7 @@ const SUPPORTED_PROVIDER_IDS = [
 const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
   "anthropic-api",
   "openai-api",
+  "openrouter-api",
   "deepseek-api",
   "zai-api",
   "moonshot-api",
@@ -385,6 +387,11 @@ function directProviderBaseUrl(providerId: DirectAccountProvider): string {
       );
     case "openai-api":
       return process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
+    case "openrouter-api":
+      return (
+        process.env.OPENROUTER_BASE_URL?.trim() ||
+        "https://openrouter.ai/api/v1"
+      );
     case "deepseek-api":
       return (
         process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com"

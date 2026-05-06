@@ -403,6 +403,7 @@ export const ONBOARDING_PROVIDER_CATALOG = [
 export const DIRECT_ACCOUNT_PROVIDER_BY_ONBOARDING_PROVIDER = {
   anthropic: "anthropic-api",
   openai: "openai-api",
+  openrouter: "openrouter-api",
   deepseek: "deepseek-api",
   zai: "zai-api",
   moonshot: "moonshot-api",

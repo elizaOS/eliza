@@ -120,8 +120,11 @@ export type AgentAutomationMode = "connectors-only" | "full";
 
 export type ProviderModelCategory =
   | "chat"
+  | "free"
   | "embedding"
   | "image"
+  | "vision"
+  | "imageGeneration"
   | "tts"
   | "stt"
   | "other";

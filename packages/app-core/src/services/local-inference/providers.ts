@@ -31,6 +31,7 @@ export type ProviderId =
   | "openai-codex"
   | "anthropic"
   | "openai"
+  | "openrouter"
   | "deepseek"
   | "zai"
   | "moonshot"
@@ -269,6 +270,18 @@ const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
   configureHref: "#ai-model",
 };
 
+const OPENROUTER_PROVIDER: ProviderDefinition = {
+  id: "openrouter",
+  label: "OpenRouter API",
+  kind: "cloud-api",
+  description: "OpenRouter models via API key or linked account pool.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return apiKeyOrLinkedAccountState("openrouter-api", ["OPENROUTER_API_KEY"]);
+  },
+  configureHref: "#ai-model",
+};
+
 const GOOGLE_PROVIDER: ProviderDefinition = {
   id: "google",
   label: "Google (Gemini)",
@@ -351,6 +364,7 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
   ELIZACLOUD_PROVIDER,
   ANTHROPIC_PROVIDER,
   OPENAI_PROVIDER,
+  OPENROUTER_PROVIDER,
   DEEPSEEK_PROVIDER,
   ZAI_PROVIDER,
   MOONSHOT_PROVIDER,
@@ -360,7 +374,7 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 ];
 
 function apiKeyOrLinkedAccountState(
-  providerId: "deepseek-api" | "zai-api" | "moonshot-api",
+  providerId: "openrouter-api" | "deepseek-api" | "zai-api" | "moonshot-api",
   envKeys: readonly string[],
 ): ProviderEnableState {
   const hasEnv = envKeys.some((key) => process.env[key]?.trim());

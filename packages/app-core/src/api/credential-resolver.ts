@@ -199,6 +199,8 @@ const DIRECT_ACCOUNT_PROVIDER_BY_REQUEST: Readonly<
   "anthropic-api": "anthropic-api",
   openai: "openai-api",
   "openai-api": "openai-api",
+  openrouter: "openrouter-api",
+  "openrouter-api": "openrouter-api",
   deepseek: "deepseek-api",
   "deepseek-api": "deepseek-api",
   zai: "zai-api",
