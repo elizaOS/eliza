@@ -4,11 +4,7 @@
   "description": "Built-in advanced capability for recording and recalling transferable agent learnings, surfaced in the Character Experience workspace alongside trajectory inspection tooling.",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": [
-    "experience",
-    "learning",
-    "memory"
-  ],
+  "tags": ["experience", "learning", "memory"],
   "config": {
     "AUTO_RECORD_THRESHOLD": {
       "type": "number",
@@ -26,10 +22,7 @@
     "icon": "Star",
     "group": "storage",
     "groupOrder": 10,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

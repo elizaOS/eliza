@@ -191,10 +191,7 @@
     "icon": "TrendingDown",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

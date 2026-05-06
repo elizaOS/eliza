@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-tailscale",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": [
-    "tunnel",
-    "tailscale",
-    "networking"
-  ],
+  "tags": ["tunnel", "tailscale", "networking"],
   "config": {
     "TAILSCALE_BACKEND": {
       "type": "string",
@@ -72,10 +68,7 @@
     "icon": "Network",
     "group": "devtools",
     "groupOrder": 6,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/eliza-ai/eliza/tree/develop/plugins/plugin-tailscale#readme",

@@ -63,10 +63,7 @@
     "icon": "Wrench",
     "group": "agents",
     "groupOrder": 7,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

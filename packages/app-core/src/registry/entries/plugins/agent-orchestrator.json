@@ -21,10 +21,7 @@
     "icon": "Target",
     "group": "agents",
     "groupOrder": 7,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

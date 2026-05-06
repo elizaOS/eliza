@@ -21,7 +21,9 @@ import {
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent/runtime/eliza";
 import { collectPluginNames as upstreamCollectPluginNames } from "@elizaos/agent/runtime/plugin-collector";
+
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
+
 import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 
 export {
