@@ -660,26 +660,18 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setCloudCallsDisabled(true);
     setRoutingModeSaving(true);
     try {
-      const cfg = await client.getConfig();
-      const cloud = asRecord(cfg.cloud) ?? {};
-      const services = asRecord(cloud.services) ?? {};
-      await client.updateConfig({
-        deploymentTarget: { runtime: "local" },
-        cloud: {
-          ...cloud,
-          enabled: false,
-          inferenceMode: "local",
-          services: {
-            ...services,
-            inference: false,
-            media: false,
-            tts: false,
-            embeddings: false,
-            rpc: false,
-          },
-        },
-        serviceRouting: null,
-      });
+      // Route through the canonical cloud disconnect path so we get the full
+      // teardown (POST /api/cloud/disconnect → cloudManager.disconnect(),
+      // delete cloud.apiKey, applyCanonicalOnboardingConfig with
+      // linkedAccounts.elizacloud=unlinked + clearRoutes, env wipe, runtime
+      // character-secrets wipe) plus the renderer-side state reset
+      // (elizaCloud{Enabled,Connected,Credits,UserId,...} all flipped). The
+      // previous bespoke client.updateConfig({ cloud: { enabled: false, ... } })
+      // toggled flags but left cloud.apiKey, linkedAccounts, env vars and
+      // runtime secrets intact, so the next "use cloud" path silently reused
+      // stale state. skipConfirmation: true because clicking "Use local only"
+      // IS the confirmation — no need for a second dialog.
+      await app.handleCloudDisconnect({ skipConfirmation: true });
       void client.restartAgent().catch((err) => {
         notifySelectionFailure("Local-only mode saved; restart failed", err);
       });
@@ -691,6 +683,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       setRoutingModeSaving(false);
     }
   }, [
+    app,
     cloudCallsDisabled,
     notifySelectionFailure,
     resolvedSelectedId,
