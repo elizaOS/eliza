@@ -39,6 +39,9 @@ export function formatRelativeTime(
   ) => string,
 ): string {
   const date = new Date(dateString);
+  if (!Number.isFinite(date.getTime())) {
+    return t("conversations.justNow");
+  }
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);

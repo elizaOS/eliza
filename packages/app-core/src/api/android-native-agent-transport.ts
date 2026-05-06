@@ -28,6 +28,14 @@ const agentPluginName = "Agent";
 
 let nativeTransportPromise: Promise<AgentRequestTransport | null> | null = null;
 
+function toNativeAgentPlugin(
+  plugin: NativeAgentPlugin | null | undefined,
+): NativeAgentPlugin | null {
+  if (!plugin?.request) return null;
+  const request = plugin.request.bind(plugin);
+  return { request };
+}
+
 function isNativeAndroid(): boolean {
   try {
     return (
@@ -46,7 +54,8 @@ async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
     const registeredAgent =
       capacitorWithPlugins.Plugins?.[agentPluginName] ??
       Capacitor.registerPlugin<NativeAgentPlugin>(agentPluginName);
-    if (registeredAgent?.request) return registeredAgent;
+    const agent = toNativeAgentPlugin(registeredAgent);
+    if (agent) return agent;
   } catch {
     // Fall through to the package import for browser/package-mode test builds.
   }
@@ -55,7 +64,7 @@ async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
     const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
       Agent?: NativeAgentPlugin;
     };
-    return mod.Agent ?? null;
+    return toNativeAgentPlugin(mod.Agent);
   } catch {
     return null;
   }

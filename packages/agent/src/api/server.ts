@@ -36,6 +36,7 @@ import {
 import {
   credTypesForConnector,
   getStylePresets,
+  isMobilePlatform,
   normalizeCharacterLanguage,
   resolveApiBindHost,
   resolveServerOnlyPort,
@@ -60,6 +61,7 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
+import { attachMobileDeviceBridgeToServer } from "../runtime/mobile-device-bridge-bootstrap.js";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
@@ -150,6 +152,7 @@ import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
+import { handleComputerUseRoutes } from "./computer-use-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
@@ -171,10 +174,15 @@ import {
 // iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
 // import { handleIMessageRoute } from "./imessage-routes.js";
 import { handleInboxRoute } from "./inbox-routes.js";
+import {
+  getLocalInferenceActiveModelId,
+  handleLocalInferenceRoutes,
+} from "./local-inference-routes.js";
 import { handleMcpRoutes } from "./mcp-routes.js";
 import { pushWithBatchEvict } from "./memory-bounds.js";
 import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
+import { handleMobileOptionalRoutes } from "./mobile-optional-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
 import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.js";
 import { handleOnboardingRoutes } from "./onboarding-routes.js";
@@ -957,6 +965,11 @@ const TRAINING_SERVICE_REGISTRY_MODULE: string =
   "@elizaos/app-training/services/training-service-registry";
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
+  if (isMobilePlatform()) {
+    logger.info("[eliza-api] Training service disabled on mobile platform");
+    return null;
+  }
+
   const candidates = [
     "../services/training-service",
     "@elizaos/app-training",
@@ -1351,6 +1364,9 @@ async function handleRequest(
     res.end();
     return;
   }
+
+  if (await handleLocalInferenceRoutes(req, res)) return;
+  if (await handleComputerUseRoutes(req, res, pathname, method)) return;
 
   // ── Provider inference helpers ────────────────────────────────────────
   const _disableCloudInference = (): void => {
@@ -2626,6 +2642,10 @@ async function handleRequest(
     if (handled) return;
   }
 
+  if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
+    return;
+  }
+
   // ── Music player compatibility fallback ─────────────────────────────────
   if (
     tryHandleMusicPlayerStatusFallback({
@@ -3052,6 +3072,12 @@ export async function startApiServer(opts?: {
       addLog("error", msg, "api", ["server", "api"]);
       error(res, msg, 500);
     }
+  });
+  void attachMobileDeviceBridgeToServer(server).catch((err) => {
+    logger.warn(
+      "[eliza-api] Failed to attach mobile device bridge:",
+      err instanceof Error ? err.message : String(err),
+    );
   });
   console.log(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
@@ -3508,6 +3534,9 @@ export async function startApiServer(opts?: {
         request.url ?? "/",
         `http://${request.headers.host ?? "localhost"}`,
       );
+      if (wsUrl.pathname === "/api/local-inference/device-bridge") {
+        return;
+      }
       const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
       if (rejection) {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
@@ -3554,7 +3583,7 @@ export async function startApiServer(opts?: {
             type: "status",
             state: state.agentState,
             agentName: state.agentName,
-            model: state.model,
+            model: state.model || getLocalInferenceActiveModelId(),
             startedAt: state.startedAt,
             startup: state.startup,
             pendingRestart: state.pendingRestartReasons.length > 0,
@@ -3747,7 +3776,7 @@ export async function startApiServer(opts?: {
       type: "status",
       state: state.agentState,
       agentName: state.agentName,
-      model: state.model,
+      model: state.model || getLocalInferenceActiveModelId(),
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,

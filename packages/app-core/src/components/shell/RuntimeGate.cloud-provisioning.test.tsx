@@ -189,7 +189,7 @@ function runtimeChoiceNames(container: HTMLElement): string[] {
 }
 
 describe("resolveRuntimeChoices", () => {
-  it("offers Cloud, Local, and Remote on iOS and Android", () => {
+  it("offers only working native runtime choices per platform", () => {
     expect(
       resolveRuntimeChoices({
         isAndroid: false,
@@ -199,7 +199,7 @@ describe("resolveRuntimeChoices", () => {
         showLocalOption: false,
         localProbePending: false,
       }),
-    ).toEqual(["cloud", "local", "remote"]);
+    ).toEqual(["cloud", "remote"]);
 
     expect(
       resolveRuntimeChoices({
@@ -227,12 +227,12 @@ describe("RuntimeGate onboarding choices", () => {
     resetPlatformState();
   });
 
-  it("shows Cloud, Local, and Remote on iOS", () => {
+  it("does not offer Local on iOS until a native local agent exists", () => {
     platformState.isIOS = true;
 
     const { container } = render(<RuntimeGate />);
 
-    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
+    expect(runtimeChoiceNames(container)).toEqual(["cloud", "remote"]);
   });
 
   it("shows Cloud, Local, and Remote on Android while the local probe is pending", () => {
@@ -241,34 +241,6 @@ describe("RuntimeGate onboarding choices", () => {
     const { container } = render(<RuntimeGate />);
 
     expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
-  });
-
-  it("starts the iOS Local path without persisting a localhost Cloud backend", () => {
-    platformState.isIOS = true;
-
-    const { container } = render(<RuntimeGate />);
-
-    fireEvent.click(
-      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
-
-    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
-    expect(clientMock.setToken).toHaveBeenCalledWith(null);
-    expect(clearPersistedActiveServerMock).toHaveBeenCalled();
-    expect(savePersistedActiveServerMock).not.toHaveBeenCalled();
-    expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
-      "local",
-    );
-    expect(setStateMock).toHaveBeenCalledWith(
-      "onboardingServerTarget",
-      "local",
-    );
-    expect(startupDispatchMock).toHaveBeenCalledWith({
-      type: "SPLASH_CONTINUE",
-    });
-    expect(completeOnboardingMock).toHaveBeenCalled();
-    expect(agentStartMock).not.toHaveBeenCalled();
   });
 
   it("starts the Android local service without waiting for model downloads", async () => {
@@ -615,7 +587,15 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     );
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    expect(
+      screen.getByText("Waiting for Cloud to accept provisioning..."),
+    ).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
     });
 
     await vi.waitFor(() =>
@@ -626,6 +606,60 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       ).toBeTruthy(),
     );
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("stops polling when a provisioning job never leaves the queued or processing states", async () => {
+    vi.useFakeTimers();
+    clientMock.provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-1", agentId: "agent-1", status: "pending" },
+      polling: { intervalMs: 60_000 },
+    });
+    clientMock.getCloudCompatJobStatus.mockResolvedValue({
+      success: true,
+      data: {
+        id: "job-1",
+        jobId: "job-1",
+        type: "agent_provision",
+        status: "processing",
+        data: {},
+        result: null,
+        error: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        startedAt: "2026-01-01T00:00:01.000Z",
+        completedAt: null,
+        retryCount: 0,
+        name: "agent_provision",
+        state: "processing",
+        created_on: "2026-01-01T00:00:00.000Z",
+        completed_on: null,
+      },
+    });
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Select Cloud"));
+    });
+
+    await vi.waitFor(() =>
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600_000);
+    });
+
+    await vi.waitFor(() =>
+      expect(
+        screen.getByText(
+          "Cloud provisioning is still running after several minutes. Retry to resume status checks.",
+        ),
+      ).toBeTruthy(),
+    );
     expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });

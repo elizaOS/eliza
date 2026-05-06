@@ -14,6 +14,9 @@
  * `clearLocalAgentProbeCache()` resets the cache between tests.
  */
 
+import { Capacitor } from "@capacitor/core";
+import { isAndroidLocalAgentUrl } from "./local-agent-token";
+
 export const DEFAULT_LOCAL_AGENT_HEALTH_URL =
   "http://127.0.0.1:31337/api/health";
 
@@ -32,6 +35,65 @@ interface CacheEntry {
 
 const resultCache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<boolean>>();
+
+type NativeAgentProbePlugin = {
+  request?: (options: {
+    method?: string;
+    path: string;
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+  }) => Promise<{
+    status: number;
+    body?: string | null;
+  }>;
+};
+
+const agentPluginId = "@elizaos/capacitor-agent";
+const agentPluginName = "Agent";
+
+function toNativeAgentProbePlugin(
+  plugin: NativeAgentProbePlugin | null | undefined,
+): NativeAgentProbePlugin | null {
+  if (typeof plugin?.request !== "function") return null;
+  const request = plugin.request.bind(plugin);
+  return {
+    request: (options) => request(options),
+  };
+}
+
+function isNativeAndroid(): boolean {
+  try {
+    return (
+      Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function resolveNativeAgentPlugin(): Promise<NativeAgentProbePlugin | null> {
+  try {
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, NativeAgentProbePlugin | undefined>;
+    };
+    const registeredAgent =
+      capacitorWithPlugins.Plugins?.[agentPluginName] ??
+      Capacitor.registerPlugin<NativeAgentProbePlugin>(agentPluginName);
+    const agent = toNativeAgentProbePlugin(registeredAgent);
+    if (agent) return agent;
+  } catch {
+    // Fall through to the package import for browser/package-mode test builds.
+  }
+
+  try {
+    const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
+      Agent?: NativeAgentProbePlugin;
+    };
+    return toNativeAgentProbePlugin(mod.Agent);
+  } catch {
+    return null;
+  }
+}
 
 /** Reset the probe cache. Test-only. */
 export function clearLocalAgentProbeCache(): void {
@@ -68,7 +130,68 @@ export async function shouldShowLocalOption(
   return probeLocalAgent();
 }
 
+function isHealthyBody(body: unknown): boolean {
+  if (typeof body !== "object" || body === null) return false;
+  const b = body as {
+    ok?: unknown;
+    ready?: unknown;
+    agentState?: unknown;
+  };
+  if (b.ok === true) return true;
+  if (b.ready === true) return true;
+  if (b.agentState === "running") return true;
+  return false;
+}
+
+async function runNativeAndroidProbe(
+  url: string,
+  timeoutMs: number,
+): Promise<boolean | null> {
+  if (!isAndroidLocalAgentUrl(url) || !isNativeAndroid()) return null;
+
+  const agent = await resolveNativeAgentPlugin();
+  if (!agent?.request) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+
+  let result: Awaited<
+    ReturnType<NonNullable<NativeAgentProbePlugin["request"]>>
+  >;
+  try {
+    result = await agent.request({
+      method: "GET",
+      path: `${parsed.pathname}${parsed.search}`,
+      headers: {
+        Accept: "application/json",
+        "X-ElizaOS-Client-Id": "local-agent-probe",
+      },
+      timeoutMs,
+    });
+  } catch {
+    return false;
+  }
+
+  if (result.status < 200 || result.status >= 300) return false;
+
+  let body: unknown;
+  try {
+    body = JSON.parse(result.body ?? "");
+  } catch {
+    return false;
+  }
+
+  return isHealthyBody(body);
+}
+
 async function runProbe(url: string, timeoutMs: number): Promise<boolean> {
+  const nativeResult = await runNativeAndroidProbe(url, timeoutMs);
+  if (nativeResult !== null) return nativeResult;
+
   if (typeof fetch !== "function") return false;
 
   const controller = new AbortController();
@@ -103,16 +226,7 @@ async function runProbe(url: string, timeoutMs: number): Promise<boolean> {
   // Treat either as healthy. `ok === true` covers the stub; `ready === true`
   // and `agentState === "running"` cover the real runtime. Without this, the
   // RuntimeGate tile stays hidden even when the agent is plainly up.
-  if (typeof body !== "object" || body === null) return false;
-  const b = body as {
-    ok?: unknown;
-    ready?: unknown;
-    agentState?: unknown;
-  };
-  if (b.ok === true) return true;
-  if (b.ready === true) return true;
-  if (b.agentState === "running") return true;
-  return false;
+  return isHealthyBody(body);
 }
 
 /**

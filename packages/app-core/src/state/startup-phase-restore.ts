@@ -161,9 +161,11 @@ export async function applyRestoredConnection(args: {
 }
 
 function activeServerToTarget(
-  kind: PersistedActiveServer["kind"],
+  server: PersistedActiveServer,
 ): "embedded-local" | "cloud-managed" | "remote-backend" {
-  switch (kind) {
+  if (isAndroidLocalActiveServer(server)) return "embedded-local";
+
+  switch (server.kind) {
     case "local":
       return "embedded-local";
     case "cloud":
@@ -376,6 +378,6 @@ export async function runRestoringSession(
   };
   dispatch({
     type: "SESSION_RESTORED",
-    target: activeServerToTarget(restoredActiveServer.kind),
+    target: activeServerToTarget(restoredActiveServer),
   });
 }

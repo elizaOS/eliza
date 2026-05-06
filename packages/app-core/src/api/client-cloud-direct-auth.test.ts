@@ -344,6 +344,58 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("normalizes native direct provisioning job aliases from Cloud", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        job_id: "job-top-level",
+        state: "queued",
+        polling: {
+          interval_ms: "1500",
+          expected_duration_ms: "90000",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.provisionCloudCompatAgent("agent-1");
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          agentId: "agent-1",
+          jobId: "job-top-level",
+          status: "queued",
+        }),
+        polling: expect.objectContaining({
+          intervalMs: 1500,
+          expectedDurationMs: 90_000,
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("does not fall back to localhost provisioning on native when the Cloud token is missing", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("native Cloud provisioning must not fetch"));
+
+    const client = new ElizaClient("http://localhost:31337");
+    const result = await client.provisionCloudCompatAgent("agent-1");
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: false,
+        error: "Eliza Cloud login session is missing. Sign in again.",
+      }),
+    );
+    expect(capacitorMocks.request).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("polls direct Cloud provision jobs on native", async () => {
     capacitorMocks.request.mockResolvedValue({
       status: 200,
@@ -374,6 +426,41 @@ describe("ElizaClient direct Cloud auth on native", () => {
         data: expect.objectContaining({
           jobId: "job-1",
           status: "completed",
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("normalizes native direct job status aliases from Cloud", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 200,
+      data: {
+        success: true,
+        data: {
+          job_id: "job-1",
+          type: "agent_provision",
+          state: "succeeded",
+          data: { bridge_url: "https://agent-1.example.test" },
+          retry_count: "2",
+          created_at: "2026-05-05T00:00:00.000Z",
+          completed_at: "2026-05-05T00:01:00.000Z",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.getCloudCompatJobStatus("job-1");
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          jobId: "job-1",
+          status: "completed",
+          retryCount: 2,
+          data: { bridge_url: "https://agent-1.example.test" },
+          completedAt: "2026-05-05T00:01:00.000Z",
         }),
       }),
     );
