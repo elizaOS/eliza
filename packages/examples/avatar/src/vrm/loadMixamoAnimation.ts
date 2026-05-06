@@ -80,6 +80,13 @@ function getHipsHeightFromVrm(vrm: VRM): number {
   return Math.max(0.001, Math.abs(hipsPos.y - rootPos.y));
 }
 
+function loadFbx(url: string): Promise<THREE.Group> {
+  const loader = new FBXLoader() as unknown as {
+    loadAsync(url: string): Promise<THREE.Group>;
+  };
+  return loader.loadAsync(url);
+}
+
 /**
  * Load Mixamo-style FBX animation, retarget for three-vrm, and return a VRM-compatible clip.
  */
@@ -87,8 +94,7 @@ export async function loadMixamoAnimation(
   url: string,
   vrm: VRM,
 ): Promise<THREE.AnimationClip> {
-  const loader = new FBXLoader();
-  const asset = await loader.loadAsync(url);
+  const asset = await loadFbx(url);
   const sourceClip =
     THREE.AnimationClip.findByName(asset.animations, "mixamo.com") ??
     asset.animations[0];
