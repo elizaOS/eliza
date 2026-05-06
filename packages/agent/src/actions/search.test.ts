@@ -322,9 +322,8 @@ describe("SEARCH action", () => {
 
     expect(result?.success).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(
-      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
-    );
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const body = JSON.parse(String(requestInit?.body));
     expect(body).toMatchObject({
       query: "budget",
       table: "knowledge",

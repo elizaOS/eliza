@@ -2696,7 +2696,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			if (params.actionResult) {
 				params.actionResult.data = {
-					...(params.actionResult.data ?? {}),
+					...params.actionResult.data,
 					actionResultClipboard: {
 						id: item.id,
 						title: item.title,
@@ -3308,7 +3308,7 @@ export class AgentRuntime implements IAgentRuntime {
 							...accumulatedState,
 							values: { ...accumulatedState.values, ...actionResult.values },
 							data: {
-								...(accumulatedState.data || {}),
+								...accumulatedState.data,
 								actionResults: [...existingActionResults, actionResult],
 								actionPlan,
 							},
@@ -4168,16 +4168,16 @@ export class AgentRuntime implements IAgentRuntime {
 				providerName: string;
 			}
 		> = {
-			...((cachedState.data &&
-				(cachedState.data.providers as Record<
-					string,
-					{
-						text?: string;
-						values?: Record<string, ProviderValue>;
-						providerName: string;
-					}
-				>)) ||
-				{}),
+			...(cachedState.data?.providers as
+				| Record<
+						string,
+						{
+							text?: string;
+							values?: Record<string, ProviderValue>;
+							providerName: string;
+						}
+				  >
+				| undefined),
 		};
 		for (const freshResult of providerData) {
 			// Redact secrets from individual provider text results
@@ -4217,7 +4217,7 @@ export class AgentRuntime implements IAgentRuntime {
 			"conversation",
 		);
 		const aggregatedStateValues: Record<string, StateValue> = {
-			...(cachedState.values || {}),
+			...cachedState.values,
 		};
 		for (const provider of providersToGet) {
 			const providerResult = currentProviderResults[provider.name];
@@ -4248,7 +4248,7 @@ export class AgentRuntime implements IAgentRuntime {
 				providers: providersText,
 			},
 			data: {
-				...(cachedState.data || {}),
+				...cachedState.data,
 				__conversationSeed: conversationSeed,
 				providerOrder: providersToGet.map((provider) => provider.name),
 				providers: currentProviderResults,

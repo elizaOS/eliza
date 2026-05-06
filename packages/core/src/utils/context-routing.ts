@@ -446,7 +446,7 @@ export function attachAvailableContexts(
 	return {
 		...state,
 		values: {
-			...(state.values || {}),
+			...state.values,
 			[AVAILABLE_CONTEXTS_STATE_KEY]: availableContexts.join(", "),
 		},
 	};

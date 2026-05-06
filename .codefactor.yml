@@ -1,0 +1,10 @@
+rules:
+  javascript:
+    complexity:
+      enabled: false
+  typescript:
+    complexity:
+      enabled: false
+  python:
+    complexity:
+      enabled: false

@@ -9,10 +9,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { ModelType, parseToonKeyValue } from "@elizaos/core";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
@@ -214,8 +211,7 @@ async function resolveOwnerInboxPlanWithLlm(args: {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return { subaction: null, channel: null, shouldAct: null };
     }
@@ -314,9 +310,9 @@ function delegateTo(
     });
   }
   const delegated = {
-    ...(options ?? {}),
+    ...options,
     parameters: {
-      ...(options?.parameters ?? {}),
+      ...options?.parameters,
       ...parameters,
     },
   } as HandlerOptions;
@@ -434,8 +430,8 @@ export const ownerInboxAction: Action & {
     "RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN, even if they may include inbox items. " +
     "DO NOT use this action for the agent's own mailbox — that is AGENT_INBOX. " +
     "Owner only.",
-	descriptionCompressed:
-		"Triage owner inbox across Gmail Slack Discord SMS Telegram iMessage WhatsApp; digest, respond, search, Gmail read/draft/send.",
+  descriptionCompressed:
+    "Triage owner inbox across Gmail Slack Discord SMS Telegram iMessage WhatsApp; digest, respond, search, Gmail read/draft/send.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

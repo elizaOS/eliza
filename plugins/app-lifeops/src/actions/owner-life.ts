@@ -1991,8 +1991,8 @@ export const lifeAction: Action & {
   ],
   description:
     "Owner-only. Manage personal routines, habits, goals, todos, reminders, alarms, escalation settings, calendar/email queries about life state, and reminder mutations. The single LifeOps action for: creating/editing/deleting/completing items; logging progress; setting reminders or alarms; capturing the owner's phone number; configuring escalation; querying today's calendar, the next event, recent email, or a high-level overview.",
-	descriptionCompressed:
-		"Manage life routines: definitions, goals, occurrences, reminders, prefs, calendar/email queries, overview. Owner only.",
+  descriptionCompressed:
+    "Manage life routines: definitions, goals, occurrences, reminders, prefs, calendar/email queries, overview. Owner only.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     if (looksLikeCodingTaskRequest(messageText(message))) {
@@ -2783,7 +2783,7 @@ export const lifeAction: Action & {
           ) {
             goalMetadata = mergeGoalMetadataWithGrounding({
               metadata: {
-                ...(goalMetadata ?? {}),
+                ...goalMetadata,
                 source: "chat",
                 originalIntent: intent,
               },
@@ -2913,7 +2913,7 @@ export const lifeAction: Action & {
           supportStrategy: goalDraft.request.supportStrategy,
           successCriteria: goalDraft.request.successCriteria,
           metadata: {
-            ...(goalDraft.request.metadata ?? {}),
+            ...goalDraft.request.metadata,
             source: "chat",
             originalIntent: goalDraft.intent || goalDraft.request.title,
           },

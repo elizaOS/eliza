@@ -9,8 +9,8 @@ import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -185,7 +185,7 @@ function collectLocalDependencyNames(pkgJson, workspacePackages) {
 function resolveTargets() {
   const workspacePackages = collectWorkspacePackages(ELIZA_ROOT);
   const targets = new Map();
-  const queue = [...SEED_TARGETS.map((target) => target.label)];
+  const queue = SEED_TARGETS.map((target) => target.label);
 
   for (let index = 0; index < queue.length; index += 1) {
     const label = queue[index];
@@ -195,12 +195,16 @@ function resolveTargets() {
 
     const target = workspacePackages.get(label);
     if (!target) {
-      throw new Error(`[pack-upstreams] Missing local workspace package ${label}`);
+      throw new Error(
+        `[pack-upstreams] Missing local workspace package ${label}`,
+      );
     }
 
     const pkgJson = readPackageJson(target.dir);
     if (!pkgJson) {
-      throw new Error(`[pack-upstreams] No package.json found in ${target.dir}`);
+      throw new Error(
+        `[pack-upstreams] No package.json found in ${target.dir}`,
+      );
     }
 
     targets.set(label, target);
