@@ -45,7 +45,7 @@ export interface ChatState {
   conversationMessages: ConversationMessage[];
   autonomousEvents: StreamEventEnvelope[];
   autonomousLatestEventId: string | null;
-  autonomousRunHealthByRunId: import("../autonomy").AutonomyRunHealthMap;
+  autonomousRunHealthByRunId: import("./autonomy").AutonomyRunHealthMap;
   ptySessions: CodingAgentSession[];
   unreadConversations: Set<string>;
   chatPendingImages: ImageAttachment[];
