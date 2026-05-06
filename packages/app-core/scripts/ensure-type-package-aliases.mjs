@@ -140,6 +140,7 @@ function ensureTypeEntryPoint(targetDir, packageName) {
 }
 
 function ensureBunTypesAlias(targetTypesDir) {
+  mkdirSync(targetTypesDir, { recursive: true });
   const bunTypesDir = path.join(targetTypesDir, "bun");
   mkdirSync(bunTypesDir, { recursive: true });
   writeFileSync(

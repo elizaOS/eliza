@@ -38,7 +38,7 @@ export function usePairingState() {
     if (pairingBusyRef.current || pairingBusy) return;
     const code = pairingCodeInput.trim();
     if (!code) {
-      setPairingError("Enter the pairing code from the server logs.");
+      setPairingError("Enter the pairing code from your server.");
       return;
     }
     setPairingError(null);
@@ -52,7 +52,9 @@ export function usePairingState() {
     } catch (err) {
       const status = (err as { status?: number }).status;
       if (status === 410)
-        setPairingError("Pairing code expired. Check logs for a new code.");
+        setPairingError(
+          "Pairing code expired. Generate a new code and try again.",
+        );
       else if (status === 429)
         setPairingError("Too many attempts. Try again later.");
       else setPairingError("Pairing failed. Check the code and try again.");

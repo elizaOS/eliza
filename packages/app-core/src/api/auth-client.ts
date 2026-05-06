@@ -1,9 +1,8 @@
 /**
  * Typed client for P1 session auth endpoints.
  *
- * All state-changing calls go through `fetchWithCsrf` so the CSRF header is
- * attached automatically. GET requests use plain `fetch` with
- * `credentials: "include"`.
+ * Calls go through `fetchWithCsrf` so cookie/session requests, bearer-token
+ * requests, and desktop remote HTTP requests share one transport path.
  *
  * This module is UI-only. It deliberately does NOT import ElizaClient so it
  * can be used in auth-gated components before the main client is initialised.
@@ -339,9 +338,7 @@ export async function authMe(): Promise<AuthMeResult> {
 export async function authListSessions(): Promise<AuthSessionsResult> {
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/sessions`, {
-      credentials: "include",
-    });
+    res = await fetchWithCsrf(`${authBase()}/api/auth/sessions`);
   } catch {
     return { ok: false, status: 401 };
   }

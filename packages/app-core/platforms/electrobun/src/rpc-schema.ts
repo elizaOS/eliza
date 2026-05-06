@@ -73,6 +73,21 @@ export interface NotificationOptions {
 	urgency?: "normal" | "critical" | "low";
 }
 
+export interface DesktopHttpRequestOptions {
+	url: string;
+	method?: string;
+	headers?: Record<string, string>;
+	body?: string | null;
+	timeoutMs?: number;
+}
+
+export interface DesktopHttpRequestResult {
+	status: number;
+	statusText?: string;
+	headers?: Record<string, string>;
+	body?: string | null;
+}
+
 export interface WindowBounds {
 	x: number;
 	y: number;
@@ -650,6 +665,10 @@ export type ElizaDesktopRPCSchema = {
 					externalApiBase?: string | null;
 					externalApiSource?: string | null;
 				};
+			};
+			desktopHttpRequest: {
+				params: DesktopHttpRequestOptions;
+				response: DesktopHttpRequestResult;
 			};
 			desktopOpenLogsFolder: { params: undefined; response: undefined };
 			desktopCreateBugReportBundle: {

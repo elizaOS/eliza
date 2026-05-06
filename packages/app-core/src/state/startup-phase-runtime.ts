@@ -23,6 +23,8 @@ export interface StartingRuntimeDeps {
   setStartupError: (v: StartupErrorState | null) => void;
   setOnboardingLoading: (v: boolean) => void;
   setAuthRequired: (v: boolean) => void;
+  setPairingEnabled: (v: boolean) => void;
+  setPairingExpiresAt: (v: number | null) => void;
   setPendingRestart: (v: boolean | ((prev: boolean) => boolean)) => void;
   setPendingRestartReasons: (
     v: string[] | ((prev: string[]) => string[]),
@@ -149,6 +151,19 @@ export async function runStartingRuntime(
       }
     } catch (err) {
       const ae = asApiLikeError(err);
+      if (ae?.status === 401 && !client.hasToken()) {
+        const auth = await client.getAuthStatus().catch(() => ({
+          required: true,
+          pairingEnabled: false,
+          expiresAt: null,
+        }));
+        deps.setAuthRequired(true);
+        deps.setPairingEnabled(auth.pairingEnabled);
+        deps.setPairingExpiresAt(auth.expiresAt);
+        deps.setOnboardingLoading(false);
+        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
+        return;
+      }
       if (ae?.status === 401 && client.hasToken()) {
         // Transient 401 (port race / pre-bearer endpoint): retry without
         // wiping the token. /api/auth/status in startup-phase-poll is the

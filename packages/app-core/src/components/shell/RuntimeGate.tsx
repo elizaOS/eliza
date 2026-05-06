@@ -497,14 +497,6 @@ export function RuntimeGate() {
     [isDesktop, isDev, showLocalOption, localProbePending],
   );
   const runtimeChoiceKey = runtimeChoices.join("|");
-  const [selectedChoice, setSelectedChoice] = useState<RuntimeChoice>("cloud");
-
-  useEffect(() => {
-    if (runtimeChoices.length === 0) return;
-    if (runtimeChoices.includes(selectedChoice)) return;
-    setSelectedChoice(runtimeChoices[0]);
-  }, [runtimeChoices, selectedChoice]);
-
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
   useEffect(() => {
     if (subView !== "chooser" && subView !== "remote") return;
@@ -734,33 +726,6 @@ export function RuntimeGate() {
     startupCoordinator,
     t,
   ]);
-
-  const handleSelectChoice = useCallback(() => {
-    switch (selectedChoice) {
-      case "cloud":
-        setSubView("cloud");
-        return;
-      case "local":
-        // ElizaOS / Android pre-seed paths still want the immediate
-        // finishAsLocal() — the on-device runtime is the only legitimate
-        // option there and the chooser is bypassed entirely on stock
-        // builds. Desktop/iOS/web users actively pick Local and need a
-        // provider before the runtime can answer chat.
-        if (elizaOSAutoLocal || isAndroid) {
-          finishAsLocal();
-          return;
-        }
-        setLocalStage("provider");
-        setLocalProviderId(null);
-        setLocalApiKey("");
-        setLocalError(null);
-        setSubView("local");
-        return;
-      case "remote":
-        setSubView("remote");
-        return;
-    }
-  }, [elizaOSAutoLocal, finishAsLocal, selectedChoice]);
 
   const handleLocalSelectProvider = useCallback((providerId: string) => {
     setLocalProviderId(providerId);
@@ -1815,6 +1780,15 @@ export function RuntimeGate() {
           className="h-11 rounded-none border-2 border-[#f0b90b]/45 bg-black/55 text-sm text-white placeholder:text-white/40 focus:border-[#ffe600]"
           style={{ fontFamily: MONO_FONT }}
         />
+        <p
+          style={{ fontFamily: MONO_FONT }}
+          className="text-3xs leading-relaxed text-white/52"
+        >
+          {t("runtimegate.remoteTokenHelp", {
+            defaultValue:
+              "Leave blank unless you already have a permanent access token. Without one, you'll pair with a one-time code on the next screen.",
+          })}
+        </p>
 
         {error && (
           <p
