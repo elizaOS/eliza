@@ -26,8 +26,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../../eliza/test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
+import { itIf } from "../../../../test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
 import { trajectoriesPlugin } from "../../../core/src/features/trajectories/index.js";
 import {

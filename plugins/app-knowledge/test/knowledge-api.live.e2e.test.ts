@@ -12,9 +12,9 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   type RuntimeHarness as Runtime,
   startLiveRuntimeServer,
-} from "../../../../eliza/packages/app-core/test/helpers/live-runtime-server";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests";
-import { req } from "../../../../eliza/test/helpers/http";
+} from "../../../packages/app-core/test/helpers/live-runtime-server";
+import { describeIf } from "../../../test/helpers/conditional-tests";
+import { req } from "../../../test/helpers/http";
 
 const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
