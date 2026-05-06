@@ -49,7 +49,7 @@ import {
 // the call site that owns the only path to the module.
 import { ChatView } from "../components/pages/ChatView";
 import { DatabasePageView } from "../components/pages/DatabasePageView";
-import { LogsPageView } from "../components/pages/LogsPageView";
+import { LogsView } from "../components/pages/LogsView";
 import { MemoryViewerView } from "../components/pages/MemoryViewerView";
 import { PluginsPageView } from "../components/pages/PluginsPageView";
 import { RelationshipsView } from "../components/pages/RelationshipsView";
@@ -103,7 +103,7 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
     case "database":
       return <DatabasePageView />;
     case "logs":
-      return <LogsPageView />;
+      return <LogsView />;
     case "fine-tuning":
     case "advanced":
       return <FineTuningView />;

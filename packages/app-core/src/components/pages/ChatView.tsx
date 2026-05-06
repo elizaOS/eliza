@@ -25,12 +25,12 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { fetchWithCsrf } from "../../api/csrf-client";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
-} from "../../app-shell/task-coordinator-slots.js";
-import { isRoutineCodingAgentMessage } from "../../chat";
-import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+} from "../../slots/task-coordinator-slots.js";
 import { useChatComposer } from "../../state/ChatComposerContext";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import { useApp } from "../../state/useApp";
