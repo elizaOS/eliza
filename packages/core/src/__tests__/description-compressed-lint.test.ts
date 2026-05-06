@@ -143,7 +143,7 @@ describe("lintDescriptionCompressed", () => {
 
 	it("returns multiple violations for a description that breaks several rules at once", () => {
 		const text =
-			"This action will basically simply forward messages to the user — please use this action when in order to send configuration data, currently with the agent.";
+			"This action will basically simply forward messages to the user — please use this action when in order to send configuration data, currently with the agent and friends.";
 		const result = lintDescriptionCompressed(text);
 		expect(result.ok).toBe(false);
 
