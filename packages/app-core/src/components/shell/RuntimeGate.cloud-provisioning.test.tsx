@@ -189,10 +189,25 @@ function resetPlatformState() {
   platformState.isIOS = false;
 }
 
-function runtimeChoiceNames(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll("[data-runtime-choice]")).map(
-    (node) => node.getAttribute("data-runtime-choice") ?? "",
-  );
+async function openAdvancedRuntimeOptions(): Promise<void> {
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole("button", { name: /i want to run it myself/i }),
+    );
+  });
+}
+
+async function startLocalFromWelcome(): Promise<void> {
+  await openAdvancedRuntimeOptions();
+  await act(async () => {
+    fireEvent.click(screen.getByText(/use local/i));
+  });
+}
+
+async function startCloudFromWelcome(): Promise<void> {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /get started/i }));
+  });
 }
 
 describe("resolveRuntimeChoices", () => {
@@ -234,19 +249,14 @@ describe("RuntimeGate onboarding choices", () => {
     resetPlatformState();
   });
 
-  // SKIP block: the welcome-redesign moved [data-runtime-choice] tiles
-  // behind WelcomeChooser's "Get started" button + collapsed advanced
-  // disclosure. The tests in this block (and the "Select Cloud" assertions
-  // below) still target the pre-redesign 3-tile layout and need to either
-  // click the disclosure first or assert against the new surface. Restore
-  // as `it(...)` once the welcome flow tests have been rewritten against
-  // WelcomeChooser.
-  it.skip("offers Local on iOS through the in-process local agent", () => {
+  it("offers Local on iOS through the in-process local agent", async () => {
     platformState.isIOS = true;
 
-    const { container } = render(<RuntimeGate />);
+    render(<RuntimeGate />);
+    await openAdvancedRuntimeOptions();
 
-    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
+    expect(screen.getByText("Run on this machine")).toBeTruthy();
+    expect(screen.getByText("Connect to your own server")).toBeTruthy();
   });
 
   it.skip("shows Cloud, Local, and Remote on Android while the local probe is pending", () => {
@@ -257,15 +267,11 @@ describe("RuntimeGate onboarding choices", () => {
     expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
   });
 
-  it.skip("starts the Android local service without waiting for model downloads", async () => {
+  it("starts the Android local service without waiting for model downloads", async () => {
     platformState.isAndroid = true;
 
-    const { container } = render(<RuntimeGate />);
-
-    fireEvent.click(
-      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
+    render(<RuntimeGate />);
+    await startLocalFromWelcome();
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "http://127.0.0.1:31337",
@@ -288,15 +294,11 @@ describe("RuntimeGate onboarding choices", () => {
     await waitFor(() => expect(agentStartMock).toHaveBeenCalledTimes(1));
   });
 
-  it.skip("starts iOS local mode through the shared mobile local target", async () => {
+  it("starts iOS local mode through the shared mobile local target", async () => {
     platformState.isIOS = true;
 
-    const { container } = render(<RuntimeGate />);
-
-    fireEvent.click(
-      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
+    render(<RuntimeGate />);
+    await startLocalFromWelcome();
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "http://127.0.0.1:31337",
@@ -442,9 +444,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -487,7 +487,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
-  it.skip("uses the completed provisioning job bridge URL when agent status has not hydrated yet", async () => {
+  it("uses the completed provisioning job bridge URL when agent status has not hydrated yet", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: true,
@@ -519,9 +519,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -547,7 +545,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
-  it.skip("logs in from the Cloud screen, provisions the first agent, and completes startup", async () => {
+  it("logs in from the Cloud screen, provisions the first agent, and completes startup", async () => {
     vi.useFakeTimers();
     const handleCloudLoginMock = vi.fn(async () => {
       setupApp({
@@ -565,9 +563,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     const { rerender } = render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
-    });
+    await startCloudFromWelcome();
     await act(async () => {
       fireEvent.click(screen.getByText("Sign in with Eliza Cloud"));
     });
@@ -602,7 +598,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
-  it.skip("surfaces provisioning API failures without completing onboarding", async () => {
+  it("surfaces provisioning API failures without completing onboarding", async () => {
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: false,
       error: "Insufficient credits",
@@ -611,9 +607,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await waitFor(() =>
       expect(screen.getByText("Insufficient credits")).toBeTruthy(),
@@ -623,16 +617,14 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("times out before the first provisioning response instead of hanging on startup", async () => {
+  it("times out before the first provisioning response instead of hanging on startup", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockImplementation(
       () => new Promise(() => undefined),
     );
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -664,7 +656,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("stops polling when a provisioning job never leaves the queued or processing states", async () => {
+  it("stops polling when a provisioning job never leaves the queued or processing states", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: true,
@@ -693,9 +685,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -718,7 +708,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("surfaces repeated async provisioning poll failures without hanging startup", async () => {
+  it("surfaces repeated async provisioning poll failures without hanging startup", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: true,
@@ -729,9 +719,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     );
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -751,7 +739,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("surfaces 'hosting unavailable' when create returns nodeId=null and skips provision", async () => {
+  it("surfaces 'hosting unavailable' when create returns nodeId=null and skips provision", async () => {
     clientMock.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [],
@@ -762,9 +750,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await waitFor(() =>
       expect(
@@ -777,7 +763,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("times out async provisioning that stays queued past PROVISION_JOB_DEADLINE_MS", async () => {
+  it("times out async provisioning that stays queued past PROVISION_JOB_DEADLINE_MS", async () => {
     vi.useFakeTimers();
     clientMock.getCloudCompatAgents.mockResolvedValue({
       success: true,
@@ -813,9 +799,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
@@ -824,13 +808,13 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     );
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(125_000);
+      await vi.advanceTimersByTimeAsync(600_000);
     });
 
     await vi.waitFor(() =>
       expect(
         screen.getByText(
-          "Cloud agent provisioning is taking too long. The hosting service may be unavailable.",
+          "Cloud provisioning is still running after several minutes. Retry to resume status checks.",
         ),
       ).toBeTruthy(),
     );
@@ -838,7 +822,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("re-provisions an existing agent whose /api/health probe fails", async () => {
+  it("re-provisions an existing agent whose /api/health probe fails", async () => {
     const fetchMock = vi.fn(async () => {
       throw new Error("Network unreachable");
     });
@@ -854,9 +838,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     });
 
     render(<RuntimeGate />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
-    });
+    await startCloudFromWelcome();
 
     await vi.waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
