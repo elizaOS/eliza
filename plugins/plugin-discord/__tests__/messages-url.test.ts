@@ -6,7 +6,7 @@ import {
 } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageManager } from "../messages";
+import { MessageManager, resolveGenerationTimeoutMs } from "../messages";
 
 function runtime(): IAgentRuntime {
 	return {
@@ -97,5 +97,15 @@ describe("MessageManager URL enrichment", () => {
 		);
 
 		expect(first.attachments[0]?.id).toBe(second.attachments[0]?.id);
+	});
+});
+
+describe("MessageManager generation timeout config", () => {
+	it("allows env-configured timeout disablement", () => {
+		expect(resolveGenerationTimeoutMs("0", "120000")).toBeNull();
+		expect(resolveGenerationTimeoutMs(undefined, "0")).toBeNull();
+		expect(resolveGenerationTimeoutMs("1000", undefined)).toBe(30_000);
+		expect(resolveGenerationTimeoutMs(undefined, "45000")).toBe(45_000);
+		expect(resolveGenerationTimeoutMs("disabled", undefined)).toBe(120_000);
 	});
 });

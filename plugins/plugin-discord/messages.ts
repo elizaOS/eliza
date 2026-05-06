@@ -61,6 +61,20 @@ import {
 	sendMessageInChunks,
 } from "./utils";
 
+export function resolveGenerationTimeoutMs(
+	timeoutSetting: unknown,
+	fallbackSetting: unknown,
+): number | null {
+	const parsed = Number.parseInt(
+		String(timeoutSetting ?? fallbackSetting ?? "120000"),
+		10,
+	);
+	if (!Number.isFinite(parsed)) {
+		return 120_000;
+	}
+	return parsed > 0 ? Math.max(30_000, parsed) : null;
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -686,16 +700,11 @@ export class MessageManager {
 			let typingStarted = false;
 			let responseEmitted = false;
 			let generationTimedOut = false;
-			const generationTimeoutMs = Math.max(
-				30_000,
-				Number.parseInt(
-					String(
-						this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
-							this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
-							"120000",
-					),
-					10,
-				) || 120_000,
+			const generationTimeoutMs = resolveGenerationTimeoutMs(
+				this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
+					process.env.DISCORD_GENERATION_TIMEOUT_MS,
+				this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
+					process.env.MESSAGE_TIMEOUT_MS,
 			);
 
 			const finalizePendingDraft = async () => {
@@ -1036,19 +1045,23 @@ export class MessageManager {
 					}
 				})();
 
-				const timeoutPromise = new Promise<never>((_, reject) => {
-					generationTimeoutHandle = setTimeout(() => {
-						generationTimedOut = true;
-						reject(
-							new Error(
-								`Discord generation timeout after ${generationTimeoutMs}ms`,
-							),
-						);
-					}, generationTimeoutMs);
-				});
-
 				generationPromise.catch(() => {});
-				await Promise.race([generationPromise, timeoutPromise]);
+				if (generationTimeoutMs === null) {
+					await generationPromise;
+				} else {
+					const timeoutPromise = new Promise<never>((_, reject) => {
+						generationTimeoutHandle = setTimeout(() => {
+							generationTimedOut = true;
+							reject(
+								new Error(
+									`Discord generation timeout after ${generationTimeoutMs}ms`,
+								),
+							);
+						}, generationTimeoutMs);
+					});
+
+					await Promise.race([generationPromise, timeoutPromise]);
+				}
 			} catch (generationError) {
 				this.runtime.logger.error(
 					{

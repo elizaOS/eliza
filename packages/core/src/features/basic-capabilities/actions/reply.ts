@@ -17,6 +17,17 @@ import { composePromptFromState, parseToonKeyValue } from "../../../utils.ts";
 // Get text content from centralized specs
 const spec = requireActionSpec("REPLY");
 
+function getPlannerReplyFallback(responses?: Memory[]): string {
+	for (const response of responses ?? []) {
+		const text = response.content?.text;
+		if (typeof text === "string" && text.trim().length > 0) {
+			return text.trim();
+		}
+	}
+
+	return "";
+}
+
 export const replyAction = {
 	name: spec.name,
 	similes: spec.similes ? [...spec.similes] : [],
@@ -68,16 +79,39 @@ export const replyAction = {
 			template: runtime.character.templates?.replyTemplate || replyTemplate,
 		});
 
-		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-		});
+		const plannerReplyFallback = getPlannerReplyFallback(responses);
+		let response: string;
+		try {
+			response = await runtime.useModel(ModelType.TEXT_LARGE, {
+				prompt,
+			});
+		} catch (error) {
+			if (plannerReplyFallback) {
+				logger.warn(
+					{
+						src: "plugin:basic-capabilities:action:reply",
+						agentId: runtime.agentId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Reply model failed; using planner reply fallback",
+				);
+				response = "";
+			} else {
+				throw error;
+			}
+		}
 
 		const parsedToon = parseToonKeyValue(response);
 		const thoughtValue = parsedToon?.thought;
 		const textValue = parsedToon?.text;
 		const thought: string =
 			typeof thoughtValue === "string" ? thoughtValue : "";
-		const text: string = typeof textValue === "string" ? textValue : "";
+		const parsedText = typeof textValue === "string" ? textValue.trim() : "";
+		const rawText = response.trim();
+		const text =
+			parsedText ||
+			plannerReplyFallback ||
+			(rawText.startsWith("<") ? "" : rawText);
 
 		const responseContent = {
 			thought,
