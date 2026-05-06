@@ -836,10 +836,10 @@ export function RuntimeGate() {
       let provisionData:
         | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>["data"]
         | undefined;
+      let provRes:
+        | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>
+        | undefined;
       if (!jobId) {
-        let provRes: Awaited<
-          ReturnType<typeof client.provisionCloudCompatAgent>
-        >;
         let startStatusTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           startStatusTimer = setTimeout(() => {
@@ -1004,7 +1004,7 @@ export function RuntimeGate() {
         Date.now() +
         Math.max(
           PROVISION_JOB_WAIT_DEADLINE_MS,
-          provRes.polling?.expectedDurationMs ?? 0,
+          provRes?.polling?.expectedDurationMs ?? 0,
         );
       const pollProvisionJob = async () => {
         if (Date.now() >= provisionJobDeadlineMs) {
