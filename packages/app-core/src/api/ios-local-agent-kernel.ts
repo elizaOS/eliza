@@ -731,11 +731,17 @@ export async function handleIosLocalAgentRequest(
 
   if (
     method === "GET" &&
-    ["/api/apps", "/api/catalog/apps", "/api/plugins", "/api/skills"].includes(
-      pathname,
-    )
+    (pathname === "/api/apps" || pathname === "/api/catalog/apps")
   ) {
-    return json({ apps: [], plugins: [], skills: [] });
+    return json([]);
+  }
+
+  if (method === "GET" && pathname === "/api/plugins") {
+    return json({ plugins: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/skills") {
+    return json({ skills: [] });
   }
 
   if (method === "GET" && pathname === "/api/local-inference/hub") {
