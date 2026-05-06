@@ -1284,15 +1284,32 @@ export async function generateChatResponse(
       hasText: boolean,
     ): void => {
       actionCallbacksSeen += 1;
-      seenActionTags.add(actionTag.toUpperCase());
+      const normalizedActionTag = normalizeActionName(actionTag);
+      if (normalizedActionTag) {
+        seenActionTags.add(normalizedActionTag);
+      }
       runtime.logger?.info(
         {
           src: "eliza-api",
-          action: actionTag,
+          action: normalizedActionTag || actionTag,
           hasText,
         },
-        `[eliza-api] Action callback fired: ${actionTag}`,
+        `[eliza-api] Action callback fired: ${normalizedActionTag || actionTag}`,
       );
+    };
+    const extractCallbackActionTag = (content: Content): string => {
+      const record = content as Record<string, unknown>;
+      if (typeof record.action === "string" && record.action.length > 0) {
+        return record.action;
+      }
+      if (Array.isArray(record.actions)) {
+        const firstAction = record.actions.find(
+          (action): action is string =>
+            typeof action === "string" && action.trim().length > 0,
+        );
+        if (firstAction) return firstAction;
+      }
+      return "VISIBLE_CALLBACK";
     };
 
     const generationCapture = await withModelUsageCapture(runtime, () =>
@@ -1420,15 +1437,11 @@ export async function generateChatResponse(
                   throw createChatGenerationTimeoutError(generationTimeoutMs);
                 }
 
-                const actionTag = (content as Record<string, unknown>)?.action;
-                if (typeof actionTag === "string" && actionTag.length > 0) {
-                  recordActionCallback(
-                    actionTag,
-                    Boolean(extractCompatTextContent(content)),
-                  );
-                }
-
                 const chunk = extractCompatTextContent(content);
+                recordActionCallback(
+                  extractCallbackActionTag(content),
+                  Boolean(chunk),
+                );
                 if (!chunk) return [];
                 if (!claimStreamSource("callback")) return [];
                 applyCallbackTextUpdate(content, chunk);

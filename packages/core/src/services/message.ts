@@ -2504,19 +2504,54 @@ export function stripReplyWhenActionOwnsTurn(
 	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	actions: readonly string[] | null | undefined,
 ): string[] {
-	if (!actions || actions.length <= 1) {
-		return Array.isArray(actions) ? [...actions] : [];
+	if (!actions || actions.length === 0) {
+		return [];
 	}
-
-	const hasPassive = actions.some((action) =>
-		PASSIVE_TURN_ACTIONS.has(normalizeActionIdentifier(action)),
-	);
-	if (!hasPassive) {
+	if (actions.length <= 1) {
 		return [...actions];
 	}
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
-	const ownedActions = actions.filter((action) => {
+	const dedupedActions: string[] = [];
+	const seenActionNames = new Set<string>();
+	for (const action of actions) {
+		const canonicalName =
+			resolveRuntimeAction(actionLookup, action)?.name ??
+			canonicalPlannerControlActionName(action) ??
+			action;
+		const normalizedName = normalizeActionIdentifier(canonicalName);
+		if (normalizedName && seenActionNames.has(normalizedName)) {
+			continue;
+		}
+		if (normalizedName) {
+			seenActionNames.add(normalizedName);
+		}
+		dedupedActions.push(action);
+	}
+
+	if (dedupedActions.length !== actions.length) {
+		runtime.logger.info(
+			{
+				src: "service:message",
+				originalActions: actions,
+				filteredActions: dedupedActions,
+			},
+			"Dropped duplicate planner actions before execution",
+		);
+	}
+
+	if (dedupedActions.length <= 1) {
+		return dedupedActions;
+	}
+
+	const hasPassive = dedupedActions.some((action) =>
+		PASSIVE_TURN_ACTIONS.has(normalizeActionIdentifier(action)),
+	);
+	if (!hasPassive) {
+		return dedupedActions;
+	}
+
+	const ownedActions = dedupedActions.filter((action) => {
 		const normalized = normalizeActionIdentifier(action);
 		if (!normalized || PASSIVE_TURN_ACTIONS.has(normalized)) {
 			return false;
@@ -2527,16 +2562,16 @@ export function stripReplyWhenActionOwnsTurn(
 		);
 	});
 	if (ownedActions.length === 0) {
-		return [...actions];
+		return dedupedActions;
 	}
 
-	const filtered = actions.filter(
+	const filtered = dedupedActions.filter(
 		(action) => !PASSIVE_TURN_ACTIONS.has(normalizeActionIdentifier(action)),
 	);
 	runtime.logger.info(
 		{
 			src: "service:message",
-			originalActions: actions,
+			originalActions: dedupedActions,
 			filteredActions: filtered,
 			suppressedBy: ownedActions,
 		},
