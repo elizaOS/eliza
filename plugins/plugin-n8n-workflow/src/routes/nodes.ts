@@ -1,21 +1,13 @@
-import type {
-  Route,
-  RouteRequest,
-  RouteResponse,
-  IAgentRuntime,
-} from "@elizaos/core";
+import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
 import {
   searchNodes,
   getNodeDefinition,
   getAllNodes,
   filterNodesByIntegrationSupport,
-} from "../utils/catalog";
-import type { NodeSearchResult } from "../types/index";
-import {
-  N8N_CREDENTIAL_PROVIDER_TYPE,
-  isCredentialProvider,
-} from "../types/index";
-import { validateLimit } from "./_helpers";
+} from '../utils/catalog';
+import type { NodeSearchResult } from '../types/index';
+import { N8N_CREDENTIAL_PROVIDER_TYPE, isCredentialProvider } from '../types/index';
+import { validateLimit } from './_helpers';
 
 /**
  * GET /nodes?q=gmail,email&limit=20
@@ -23,7 +15,7 @@ import { validateLimit } from "./_helpers";
 async function listNodes(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime,
+  _runtime: IAgentRuntime
 ): Promise<void> {
   try {
     const q = req.query?.q as string | undefined;
@@ -32,13 +24,13 @@ async function listNodes(
     if (!q) {
       res.status(400).json({
         success: false,
-        error: "q parameter is required (comma-separated keywords)",
+        error: 'q parameter is required (comma-separated keywords)',
       });
       return;
     }
 
     const keywords = q
-      .split(",")
+      .split(',')
       .map((k) => k.trim())
       .filter(Boolean);
     const results = searchNodes(keywords, limit);
@@ -50,8 +42,8 @@ async function listNodes(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: "failed_to_search_nodes",
-      message: error instanceof Error ? error.message : "Unknown error",
+      error: 'failed_to_search_nodes',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 }
@@ -64,22 +56,20 @@ async function listNodes(
 async function listAvailableNodes(
   _req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   try {
     const catalog = getAllNodes();
     const allResults: NodeSearchResult[] = catalog
       .filter((n) => n.name && n.displayName)
-      .map((node) => ({ node, score: 0, matchReason: "catalog" }));
+      .map((node) => ({ node, score: 0, matchReason: 'catalog' }));
 
     const rawProvider = runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
     const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
 
     if (!credProvider?.checkCredentialTypes) {
       const utility = allResults.filter((r) => !r.node.credentials?.length);
-      const services = allResults.filter(
-        (r) => (r.node.credentials?.length ?? 0) > 0,
-      );
+      const services = allResults.filter((r) => (r.node.credentials?.length ?? 0) > 0);
       res.json({
         success: true,
         data: {
@@ -100,15 +90,10 @@ async function listAvailableNodes(
 
     const checkResult = credProvider.checkCredentialTypes([...credTypes]);
     const supportedSet = new Set(checkResult.supported);
-    const { remaining, removed } = filterNodesByIntegrationSupport(
-      allResults,
-      supportedSet,
-    );
+    const { remaining, removed } = filterNodesByIntegrationSupport(allResults, supportedSet);
 
     const utility = remaining.filter((r) => !r.node.credentials?.length);
-    const supported = remaining.filter(
-      (r) => (r.node.credentials?.length ?? 0) > 0,
-    );
+    const supported = remaining.filter((r) => (r.node.credentials?.length ?? 0) > 0);
 
     res.json({
       success: true,
@@ -124,8 +109,8 @@ async function listAvailableNodes(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: "failed_to_list_nodes",
-      message: error instanceof Error ? error.message : "Unknown error",
+      error: 'failed_to_list_nodes',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 }
@@ -137,20 +122,18 @@ async function listAvailableNodes(
 async function getNode(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime,
+  _runtime: IAgentRuntime
 ): Promise<void> {
   try {
     const type = req.params?.type;
     if (!type) {
-      res.status(400).json({ success: false, error: "node_type_required" });
+      res.status(400).json({ success: false, error: 'node_type_required' });
       return;
     }
 
     const definition = getNodeDefinition(type);
     if (!definition) {
-      res
-        .status(404)
-        .json({ success: false, error: `node_type_not_found: ${type}` });
+      res.status(404).json({ success: false, error: `node_type_not_found: ${type}` });
       return;
     }
 
@@ -158,8 +141,8 @@ async function getNode(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: "failed_to_get_node",
-      message: error instanceof Error ? error.message : "Unknown error",
+      error: 'failed_to_get_node',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 }
@@ -193,7 +176,7 @@ function formatCatalogNode(r: NodeSearchResult) {
 }
 
 export const nodeRoutes: Route[] = [
-  { type: "GET", path: "/nodes/available", handler: listAvailableNodes },
-  { type: "GET", path: "/nodes/:type", handler: getNode },
-  { type: "GET", path: "/nodes", handler: listNodes },
+  { type: 'GET', path: '/nodes/available', handler: listAvailableNodes },
+  { type: 'GET', path: '/nodes/:type', handler: getNode },
+  { type: 'GET', path: '/nodes', handler: listNodes },
 ];

@@ -1,4 +1,4 @@
-import { type IAgentRuntime, ModelType, logger } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, logger } from '@elizaos/core';
 import {
   KeywordExtractionResult,
   N8nWorkflow,
@@ -10,7 +10,7 @@ import {
   FeasibilityResult,
   OutputRefValidation,
   RuntimeContext,
-} from "../types/index";
+} from '../types/index';
 import {
   KEYWORD_EXTRACTION_SYSTEM_PROMPT,
   WORKFLOW_GENERATION_SYSTEM_PROMPT,
@@ -21,23 +21,23 @@ import {
   FIELD_CORRECTION_USER_PROMPT,
   PARAM_CORRECTION_SYSTEM_PROMPT,
   PARAM_CORRECTION_USER_PROMPT,
-} from "../prompts/index";
-import { WORKFLOW_MATCHING_SYSTEM_PROMPT } from "../prompts/workflowMatching";
+} from '../prompts/index';
+import { WORKFLOW_MATCHING_SYSTEM_PROMPT } from '../prompts/workflowMatching';
 import {
   keywordExtractionSchema,
   workflowMatchingSchema,
   draftIntentSchema,
   feasibilitySchema,
-} from "../schemas/index";
-import { getNodeDefinition, simplifyNodeForLLM } from "./catalog";
+} from '../schemas/index';
+import { getNodeDefinition, simplifyNodeForLLM } from './catalog';
 import {
   hasOutputSchema,
   getAvailableResources,
   getAvailableOperations,
   loadOutputSchema,
   formatSchemaForPrompt,
-} from "./outputSchema";
-import type { UnknownParamDetection } from "./workflow";
+} from './outputSchema';
+import type { UnknownParamDetection } from './workflow';
 
 /**
  * Build an optional bias directive that nudges keyword extraction toward
@@ -46,20 +46,18 @@ import type { UnknownParamDetection } from "./workflow";
  * `preferredProviders` list is supplied — keeps existing baseline behavior
  * for non-host installs.
  */
-function buildPreferredProvidersDirective(
-  preferredProviders?: string[],
-): string {
+function buildPreferredProvidersDirective(preferredProviders?: string[]): string {
   if (!preferredProviders || preferredProviders.length === 0) {
-    return "";
+    return '';
   }
-  const list = preferredProviders.map((p) => p.toLowerCase()).join(", ");
+  const list = preferredProviders.map((p) => p.toLowerCase()).join(', ');
   return `\n\nHost-supported providers: ${list}. When the user names a generic concept that maps to one of these (e.g. "my email" with gmail in the list, "my chat" with discord in the list), emit the specific provider keyword (gmail, discord) — NOT a generic fallback (imap, webhook, email). Prefer these provider names over alternative integrations.`;
 }
 
 export async function extractKeywords(
   runtime: IAgentRuntime,
   userPrompt: string,
-  preferredProviders?: string[],
+  preferredProviders?: string[]
 ): Promise<string[]> {
   let result: KeywordExtractionResult;
   try {
@@ -70,8 +68,8 @@ export async function extractKeywords(
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error(
-      { src: "plugin:n8n-workflow:generation:keywords", error: errMsg },
-      `Keyword extraction LLM call failed: ${errMsg}`,
+      { src: 'plugin:n8n-workflow:generation:keywords', error: errMsg },
+      `Keyword extraction LLM call failed: ${errMsg}`
     );
     throw new Error(`Keyword extraction failed: ${errMsg}`, { cause: error });
   }
@@ -80,19 +78,17 @@ export async function extractKeywords(
   if (!result || !result.keywords || !Array.isArray(result.keywords)) {
     logger.error(
       {
-        src: "plugin:n8n-workflow:generation:keywords",
+        src: 'plugin:n8n-workflow:generation:keywords',
         result: JSON.stringify(result),
       },
-      "Invalid keyword extraction response structure",
+      'Invalid keyword extraction response structure'
     );
-    throw new Error(
-      "Invalid keyword extraction response: missing or invalid keywords array",
-    );
+    throw new Error('Invalid keyword extraction response: missing or invalid keywords array');
   }
 
   // Validate all items are strings
-  if (!result.keywords.every((kw) => typeof kw === "string")) {
-    throw new Error("Keywords array contains non-string elements");
+  if (!result.keywords.every((kw) => typeof kw === 'string')) {
+    throw new Error('Keywords array contains non-string elements');
   }
 
   // Limit to 5 keywords max, filter empty strings
@@ -105,14 +101,14 @@ export async function extractKeywords(
 export async function matchWorkflow(
   runtime: IAgentRuntime,
   userRequest: string,
-  workflows: N8nWorkflow[],
+  workflows: N8nWorkflow[]
 ): Promise<WorkflowMatchResult> {
   if (workflows.length === 0) {
     return {
       matchedWorkflowId: null,
-      confidence: "none",
+      confidence: 'none',
       matches: [],
-      reason: "No workflows available",
+      reason: 'No workflows available',
     };
   }
 
@@ -121,9 +117,9 @@ export async function matchWorkflow(
     const workflowList = workflows
       .map(
         (wf, index) =>
-          `${index + 1}. "${wf.name}" (ID: ${wf.id}, Status: ${wf.active ? "ACTIVE" : "INACTIVE"})`,
+          `${index + 1}. "${wf.name}" (ID: ${wf.id}, Status: ${wf.active ? 'ACTIVE' : 'INACTIVE'})`
       )
-      .join("\n");
+      .join('\n');
 
     const userPrompt = `${userRequest}
 
@@ -137,44 +133,40 @@ ${workflowList}`;
         schema: workflowMatchingSchema,
       })) as WorkflowMatchResult;
     } catch (innerError) {
-      const errMsg =
-        innerError instanceof Error ? innerError.message : String(innerError);
+      const errMsg = innerError instanceof Error ? innerError.message : String(innerError);
       logger.error(
-        { src: "plugin:n8n-workflow:generation:matcher", error: errMsg },
-        `Workflow matching LLM call failed: ${errMsg}`,
+        { src: 'plugin:n8n-workflow:generation:matcher', error: errMsg },
+        `Workflow matching LLM call failed: ${errMsg}`
       );
       throw innerError;
     }
 
     // Validate the returned ID actually exists in the provided list
-    if (
-      result.matchedWorkflowId &&
-      !workflows.some((wf) => wf.id === result.matchedWorkflowId)
-    ) {
+    if (result.matchedWorkflowId && !workflows.some((wf) => wf.id === result.matchedWorkflowId)) {
       logger.warn(
-        { src: "plugin:n8n-workflow:generation:matcher" },
-        `LLM returned non-existent workflow ID "${result.matchedWorkflowId}" — discarding`,
+        { src: 'plugin:n8n-workflow:generation:matcher' },
+        `LLM returned non-existent workflow ID "${result.matchedWorkflowId}" — discarding`
       );
       result.matchedWorkflowId = null;
-      result.confidence = "none";
+      result.confidence = 'none';
     }
 
     logger.debug(
-      { src: "plugin:n8n-workflow:generation:matcher" },
-      `Workflow match: ${result.matchedWorkflowId || "none"} (confidence: ${result.confidence})`,
+      { src: 'plugin:n8n-workflow:generation:matcher' },
+      `Workflow match: ${result.matchedWorkflowId || 'none'} (confidence: ${result.confidence})`
     );
 
     return result;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(
-      { src: "plugin:n8n-workflow:generation:matcher" },
-      `Workflow matching failed: ${errorMessage}`,
+      { src: 'plugin:n8n-workflow:generation:matcher' },
+      `Workflow matching failed: ${errorMessage}`
     );
 
     return {
       matchedWorkflowId: null,
-      confidence: "none",
+      confidence: 'none',
       matches: [],
       reason: `Workflow matching service unavailable: ${errorMessage}`,
     };
@@ -184,10 +176,10 @@ ${workflowList}`;
 export async function classifyDraftIntent(
   runtime: IAgentRuntime,
   userMessage: string,
-  draft: WorkflowDraft,
+  draft: WorkflowDraft
 ): Promise<DraftIntentResult> {
   const draftSummary = `Workflow: "${draft.workflow.name}"
-Nodes: ${draft.workflow.nodes.map((n) => `${n.name} (${n.type})`).join(", ")}
+Nodes: ${draft.workflow.nodes.map((n) => `${n.name} (${n.type})`).join(', ')}
 Original prompt: "${draft.prompt}"`;
 
   let result: DraftIntentResult;
@@ -207,27 +199,24 @@ ${userMessage}`,
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error(
-      { src: "plugin:n8n-workflow:generation:intent", error: errMsg },
-      `classifyDraftIntent LLM call failed: ${errMsg}`,
+      { src: 'plugin:n8n-workflow:generation:intent', error: errMsg },
+      `classifyDraftIntent LLM call failed: ${errMsg}`
     );
     return {
-      intent: "show_preview",
+      intent: 'show_preview',
       reason: `Intent classification failed (${errMsg}) — re-showing preview`,
     };
   }
 
-  const validIntents = ["confirm", "cancel", "modify", "new"] as const;
-  if (
-    !result?.intent ||
-    !validIntents.includes(result.intent as (typeof validIntents)[number])
-  ) {
+  const validIntents = ['confirm', 'cancel', 'modify', 'new'] as const;
+  if (!result?.intent || !validIntents.includes(result.intent as (typeof validIntents)[number])) {
     logger.warn(
-      { src: "plugin:n8n-workflow:generation:intent" },
-      `Invalid intent from LLM: ${JSON.stringify(result)}, re-showing preview`,
+      { src: 'plugin:n8n-workflow:generation:intent' },
+      `Invalid intent from LLM: ${JSON.stringify(result)}, re-showing preview`
     );
     return {
-      intent: "show_preview",
-      reason: "Could not classify intent — re-showing preview",
+      intent: 'show_preview',
+      reason: 'Could not classify intent — re-showing preview',
     };
   }
 
@@ -254,7 +243,7 @@ export async function fixWorkflowErrors(
     expression?: string;
     availableFields?: string[];
   }>,
-  relevantNodes: NodeDefinition[],
+  relevantNodes: NodeDefinition[]
 ): Promise<N8nWorkflow> {
   if (errors.length === 0) {
     return workflow;
@@ -262,12 +251,12 @@ export async function fixWorkflowErrors(
   const errorBlock = errors
     .map((e, i) => {
       const av = e.availableFields?.length
-        ? ` Available fields on the upstream node: ${e.availableFields.join(", ")}.`
-        : "";
-      const expr = e.expression ? ` Expression: \`${e.expression}\`.` : "";
+        ? ` Available fields on the upstream node: ${e.availableFields.join(', ')}.`
+        : '';
+      const expr = e.expression ? ` Expression: \`${e.expression}\`.` : '';
       return `${i + 1}. Node "${e.node}" — ${e.detail}.${expr}${av}`;
     })
-    .join("\n");
+    .join('\n');
 
   const simplifiedNodes = relevantNodes.map(simplifyNodeForLLM);
   const fixPrompt = `You are fixing a deterministic-validator-flagged n8n workflow. Apply ONLY the listed fixes — do not refactor anything else.
@@ -291,13 +280,13 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
     response = (await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: fixPrompt,
       temperature: 0,
-      responseFormat: { type: "json_object" },
+      responseFormat: { type: 'json_object' },
     })) as string;
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error(
-      { src: "plugin:n8n-workflow:generation:fixErrors", err: errMsg },
-      `fixWorkflowErrors LLM call failed: ${errMsg}`,
+      { src: 'plugin:n8n-workflow:generation:fixErrors', err: errMsg },
+      `fixWorkflowErrors LLM call failed: ${errMsg}`
     );
     throw err;
   }
@@ -306,8 +295,8 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
     return parseWorkflowResponse(response);
   } catch (_err) {
     logger.error(
-      { src: "plugin:n8n-workflow:generation:fixErrors" },
-      "fixWorkflowErrors response could not be parsed; keeping original workflow",
+      { src: 'plugin:n8n-workflow:generation:fixErrors' },
+      'fixWorkflowErrors response could not be parsed; keeping original workflow'
     );
     return workflow;
   }
@@ -331,7 +320,7 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
  */
 function extractFirstBalancedJsonObject(text: string): unknown | null {
   for (let start = 0; start < text.length; start++) {
-    if (text[start] !== "{") {
+    if (text[start] !== '{') {
       continue;
     }
     let depth = 0;
@@ -342,7 +331,7 @@ function extractFirstBalancedJsonObject(text: string): unknown | null {
       if (inString) {
         if (escaped) {
           escaped = false;
-        } else if (ch === "\\") {
+        } else if (ch === '\\') {
           escaped = true;
         } else if (ch === '"') {
           inString = false;
@@ -351,9 +340,9 @@ function extractFirstBalancedJsonObject(text: string): unknown | null {
       }
       if (ch === '"') {
         inString = true;
-      } else if (ch === "{") {
+      } else if (ch === '{') {
         depth++;
-      } else if (ch === "}") {
+      } else if (ch === '}') {
         depth--;
         if (depth === 0) {
           const candidate = text.slice(start, i + 1);
@@ -372,8 +361,8 @@ function extractFirstBalancedJsonObject(text: string): unknown | null {
 function parseWorkflowResponse(response: string): N8nWorkflow {
   // Strip markdown code fences (handles ```json, ```, with any whitespace/newlines)
   const cleaned = response
-    .replace(/^[\s\S]*?```(?:json)?\s*\n?/i, "") // Remove everything up to and including opening fence
-    .replace(/\n?```[\s\S]*$/i, "") // Remove closing fence and everything after
+    .replace(/^[\s\S]*?```(?:json)?\s*\n?/i, '') // Remove everything up to and including opening fence
+    .replace(/\n?```[\s\S]*$/i, '') // Remove closing fence and everything after
     .trim();
 
   let workflow: N8nWorkflow;
@@ -387,18 +376,18 @@ function parseWorkflowResponse(response: string): N8nWorkflow {
     if (extracted === null) {
       throw new Error(
         `Failed to parse workflow JSON: ${initialError instanceof Error ? initialError.message : String(initialError)}\n\nRaw response: ${response}`,
-        { cause: initialError },
+        { cause: initialError }
       );
     }
     workflow = extracted as N8nWorkflow;
   }
 
   if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
-    throw new Error("Invalid workflow: missing or invalid nodes array");
+    throw new Error('Invalid workflow: missing or invalid nodes array');
   }
 
-  if (!workflow.connections || typeof workflow.connections !== "object") {
-    throw new Error("Invalid workflow: missing or invalid connections object");
+  if (!workflow.connections || typeof workflow.connections !== 'object') {
+    throw new Error('Invalid workflow: missing or invalid connections object');
   }
 
   return workflow;
@@ -426,17 +415,17 @@ function buildOutputSchemaContext(nodes: NodeDefinition[]): string {
         }
         const formatted = formatSchemaForPrompt(result.schema);
         sections.push(
-          `### ${node.name} (resource: "${resource}", operation: "${operation}")\n${formatted}`,
+          `### ${node.name} (resource: "${resource}", operation: "${operation}")\n${formatted}`
         );
       }
     }
   }
 
   if (sections.length === 0) {
-    return "";
+    return '';
   }
 
-  return `\n## Node Output Schemas\n\nWhen referencing output data from a previous node using expressions like \`{{ $json.field }}\`, use ONLY the field paths listed below. Do NOT invent field names from your training data.\n\n${sections.join("\n\n")}`;
+  return `\n## Node Output Schemas\n\nWhen referencing output data from a previous node using expressions like \`{{ $json.field }}\`, use ONLY the field paths listed below. Do NOT invent field names from your training data.\n\n${sections.join('\n\n')}`;
 }
 
 /**
@@ -448,37 +437,37 @@ function buildOutputSchemaContext(nodes: NodeDefinition[]): string {
  */
 function buildRuntimeContextSections(ctx?: RuntimeContext): string {
   if (!ctx) {
-    return "";
+    return '';
   }
   const lines: string[] = [];
   if (ctx.supportedCredentials?.length) {
-    lines.push("## Available Credentials");
+    lines.push('## Available Credentials');
     lines.push(
-      "These credential types are pre-resolved by the host. Attach the credentials block to every relevant node — the host injects the real id post-generation.",
+      'These credential types are pre-resolved by the host. Attach the credentials block to every relevant node — the host injects the real id post-generation.'
     );
     for (const c of ctx.supportedCredentials) {
       lines.push(
-        `- ${c.credType}: name "${c.friendlyName}" — applies to: ${c.nodeTypes.join(", ")}`,
+        `- ${c.credType}: name "${c.friendlyName}" — applies to: ${c.nodeTypes.join(', ')}`
       );
     }
-    lines.push("");
+    lines.push('');
   }
   if (ctx.facts?.length) {
-    lines.push("## Runtime Facts");
-    lines.push("Use these real values verbatim instead of placeholders.");
+    lines.push('## Runtime Facts');
+    lines.push('Use these real values verbatim instead of placeholders.');
     for (const fact of ctx.facts) {
       lines.push(`- ${fact}`);
     }
-    lines.push("");
+    lines.push('');
   }
-  return lines.length ? `\n${lines.join("\n")}\n` : "";
+  return lines.length ? `\n${lines.join('\n')}\n` : '';
 }
 
 export async function generateWorkflow(
   runtime: IAgentRuntime,
   userPrompt: string,
   relevantNodes: NodeDefinition[],
-  runtimeContext?: RuntimeContext,
+  runtimeContext?: RuntimeContext
 ): Promise<N8nWorkflow> {
   const simplifiedNodes = relevantNodes.map(simplifyNodeForLLM);
   const outputSchemaCtx = buildOutputSchemaContext(relevantNodes);
@@ -502,7 +491,7 @@ Generate a valid n8n workflow JSON that fulfills this request.`;
   const response = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: fullPrompt,
     temperature: 0,
-    responseFormat: { type: "json_object" },
+    responseFormat: { type: 'json_object' },
   });
 
   const workflow = parseWorkflowResponse(response);
@@ -519,7 +508,7 @@ export async function modifyWorkflow(
   existingWorkflow: N8nWorkflow,
   modificationRequest: string,
   relevantNodes: NodeDefinition[],
-  runtimeContext?: RuntimeContext,
+  runtimeContext?: RuntimeContext
 ): Promise<N8nWorkflow> {
   const { _meta, ...workflowForLLM } = existingWorkflow;
 
@@ -550,7 +539,7 @@ Keep all unchanged nodes and connections intact. Only add, remove, or change wha
   const response = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: fullPrompt,
     temperature: 0,
-    responseFormat: { type: "json_object" },
+    responseFormat: { type: 'json_object' },
   });
 
   const modified = parseWorkflowResponse(response);
@@ -563,9 +552,7 @@ Keep all unchanged nodes and connections intact. Only add, remove, or change wha
   return modified;
 }
 
-export function collectExistingNodeDefinitions(
-  workflow: N8nWorkflow,
-): NodeDefinition[] {
+export function collectExistingNodeDefinitions(workflow: N8nWorkflow): NodeDefinition[] {
   const defs: NodeDefinition[] = [];
   const seen = new Set<string>();
 
@@ -580,8 +567,8 @@ export function collectExistingNodeDefinitions(
       defs.push(def);
     } else {
       logger.warn(
-        { src: "plugin:n8n-workflow:generation:modify" },
-        `No catalog definition found for node type "${node.type}" — LLM will have limited context for this node`,
+        { src: 'plugin:n8n-workflow:generation:modify' },
+        `No catalog definition found for node type "${node.type}" — LLM will have limited context for this node`
       );
     }
   }
@@ -592,7 +579,7 @@ export function collectExistingNodeDefinitions(
 export async function formatActionResponse(
   runtime: IAgentRuntime,
   responseType: string,
-  data: Record<string, unknown>,
+  data: Record<string, unknown>
 ): Promise<string> {
   try {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -604,15 +591,15 @@ export async function formatActionResponse(
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error(
       {
-        src: "plugin:n8n-workflow:generation:format",
+        src: 'plugin:n8n-workflow:generation:format',
         error: errMsg,
         responseType,
       },
-      `formatActionResponse LLM call failed: ${errMsg}`,
+      `formatActionResponse LLM call failed: ${errMsg}`
     );
     // Return a fallback message so the action can still communicate with the user
-    if (responseType === "ERROR") {
-      return `An error occurred: ${data.error || "Unknown error"}`;
+    if (responseType === 'ERROR') {
+      return `An error occurred: ${data.error || 'Unknown error'}`;
     }
     return `Operation completed (type: ${responseType})`;
   }
@@ -620,32 +607,32 @@ export async function formatActionResponse(
 
 function formatActionDataForPrompt(value: unknown, indent = 0): string {
   if (value === undefined || value === null) {
-    return "";
+    return '';
   }
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return value.trim();
   }
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }
-  const pad = " ".repeat(indent);
+  const pad = ' '.repeat(indent);
   if (Array.isArray(value)) {
     return value
       .map((item) => {
         const formatted = formatActionDataForPrompt(item, indent + 2);
         return `${pad}- ${formatted.replace(/\n/g, `\n${pad}  `)}`;
       })
-      .join("\n");
+      .join('\n');
   }
-  if (typeof value === "object") {
+  if (typeof value === 'object') {
     return Object.entries(value as Record<string, unknown>)
       .map(([key, entry]) => {
         const formatted = formatActionDataForPrompt(entry, indent + 2);
-        return formatted.includes("\n")
+        return formatted.includes('\n')
           ? `${pad}${key}:\n${formatted}`
           : `${pad}${key}: ${formatted}`;
       })
-      .join("\n");
+      .join('\n');
   }
   return String(value);
 }
@@ -654,22 +641,22 @@ export async function assessFeasibility(
   runtime: IAgentRuntime,
   userPrompt: string,
   removedNodes: NodeSearchResult[],
-  remainingNodes: NodeSearchResult[],
+  remainingNodes: NodeSearchResult[]
 ): Promise<FeasibilityResult> {
   const removedList = removedNodes
     .filter((r) => r.node.credentials?.length)
     .map((r) => r.node.displayName)
-    .join(", ");
+    .join(', ');
 
   const availableList = remainingNodes
     .filter((r) => r.node.credentials?.length)
     .map((r) => r.node.displayName)
-    .join(", ");
+    .join(', ');
 
   const utilityList = remainingNodes
     .filter((r) => !r.node.credentials?.length)
     .map((r) => r.node.displayName)
-    .join(", ");
+    .join(', ');
 
   try {
     const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
@@ -685,8 +672,8 @@ export async function assessFeasibility(
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error(
-      { src: "plugin:n8n-workflow:generation:feasibility", error: errMsg },
-      `Feasibility assessment LLM call failed: ${errMsg}`,
+      { src: 'plugin:n8n-workflow:generation:feasibility', error: errMsg },
+      `Feasibility assessment LLM call failed: ${errMsg}`
     );
     return {
       feasible: false,
@@ -702,24 +689,24 @@ export async function assessFeasibility(
 export async function correctFieldReferences(
   runtime: IAgentRuntime,
   workflow: N8nWorkflow,
-  invalidRefs: OutputRefValidation[],
+  invalidRefs: OutputRefValidation[]
 ): Promise<N8nWorkflow> {
   if (invalidRefs.length === 0) {
     return workflow;
   }
 
   logger.debug(
-    { src: "plugin:n8n-workflow:generation:correction" },
-    `Correcting ${invalidRefs.length} invalid field reference(s)`,
+    { src: 'plugin:n8n-workflow:generation:correction' },
+    `Correcting ${invalidRefs.length} invalid field reference(s)`
   );
 
   const corrections = await Promise.all(
     invalidRefs.map(async (ref) => {
       try {
         const userPrompt = FIELD_CORRECTION_USER_PROMPT.replace(
-          "{expression}",
-          ref.expression,
-        ).replace("{availableFields}", ref.availableFields.join("\n"));
+          '{expression}',
+          ref.expression
+        ).replace('{availableFields}', ref.availableFields.join('\n'));
 
         const corrected = await runtime.useModel(ModelType.TEXT_SMALL, {
           prompt: `${FIELD_CORRECTION_SYSTEM_PROMPT}\n\n${userPrompt}`,
@@ -735,12 +722,12 @@ export async function correctFieldReferences(
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         logger.warn(
-          { src: "plugin:n8n-workflow:generation:correction", error: errMsg },
-          `Failed to correct expression "${ref.expression}": ${errMsg}`,
+          { src: 'plugin:n8n-workflow:generation:correction', error: errMsg },
+          `Failed to correct expression "${ref.expression}": ${errMsg}`
         );
         return null;
       }
-    }),
+    })
   );
 
   const correctedWorkflow = JSON.parse(JSON.stringify(workflow)) as N8nWorkflow;
@@ -750,9 +737,7 @@ export async function correctFieldReferences(
       continue;
     }
 
-    const node = correctedWorkflow.nodes.find(
-      (n) => n.name === correction.nodeName,
-    );
+    const node = correctedWorkflow.nodes.find((n) => n.name === correction.nodeName);
     if (!node?.parameters) {
       continue;
     }
@@ -760,8 +745,8 @@ export async function correctFieldReferences(
     replaceInObject(node.parameters, correction.original, correction.corrected);
 
     logger.debug(
-      { src: "plugin:n8n-workflow:generation:correction" },
-      `Corrected "${correction.original}" → "${correction.corrected}" in node "${correction.nodeName}"`,
+      { src: 'plugin:n8n-workflow:generation:correction' },
+      `Corrected "${correction.original}" → "${correction.corrected}" in node "${correction.nodeName}"`
     );
   }
 
@@ -771,26 +756,22 @@ export async function correctFieldReferences(
 function replaceInObject(
   obj: Record<string, unknown>,
   original: string,
-  replacement: string,
+  replacement: string
 ): void {
   for (const key of Object.keys(obj)) {
     const value = obj[key];
 
-    if (typeof value === "string" && value.includes(original)) {
+    if (typeof value === 'string' && value.includes(original)) {
       obj[key] = value.replaceAll(original, replacement);
     } else if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
-        if (typeof value[i] === "string" && value[i].includes(original)) {
+        if (typeof value[i] === 'string' && value[i].includes(original)) {
           value[i] = value[i].replaceAll(original, replacement);
-        } else if (typeof value[i] === "object" && value[i] !== null) {
-          replaceInObject(
-            value[i] as Record<string, unknown>,
-            original,
-            replacement,
-          );
+        } else if (typeof value[i] === 'object' && value[i] !== null) {
+          replaceInObject(value[i] as Record<string, unknown>, original, replacement);
         }
       }
-    } else if (typeof value === "object" && value !== null) {
+    } else if (typeof value === 'object' && value !== null) {
       replaceInObject(value as Record<string, unknown>, original, replacement);
     }
   }
@@ -802,7 +783,7 @@ function replaceInObject(
  */
 function fuzzyMatchParam(
   unknownKey: string,
-  validProps: { name: string; type: string }[],
+  validProps: { name: string; type: string }[]
 ): string | null {
   const lower = unknownKey.toLowerCase();
 
@@ -813,9 +794,7 @@ function fuzzyMatchParam(
     if (!(pLower.includes(lower) || lower.includes(pLower))) {
       return false;
     }
-    const ratio =
-      Math.min(lower.length, pLower.length) /
-      Math.max(lower.length, pLower.length);
+    const ratio = Math.min(lower.length, pLower.length) / Math.max(lower.length, pLower.length);
     return ratio >= 0.6;
   });
   if (substringMatches.length === 1) {
@@ -829,7 +808,7 @@ function fuzzyMatchParam(
 export async function correctParameterNames(
   runtime: IAgentRuntime,
   workflow: N8nWorkflow,
-  detections: UnknownParamDetection[],
+  detections: UnknownParamDetection[]
 ): Promise<N8nWorkflow> {
   if (detections.length === 0) {
     return workflow;
@@ -841,9 +820,7 @@ export async function correctParameterNames(
   const needsLLM: UnknownParamDetection[] = [];
 
   for (const detection of detections) {
-    const node = correctedWorkflow.nodes.find(
-      (n) => n.name === detection.nodeName,
-    );
+    const node = correctedWorkflow.nodes.find((n) => n.name === detection.nodeName);
     if (!node) {
       continue;
     }
@@ -854,8 +831,8 @@ export async function correctParameterNames(
       const match = fuzzyMatchParam(key, detection.propertyDefs);
       if (match) {
         logger.debug(
-          { src: "plugin:n8n-workflow:generation:paramCorrection" },
-          `Node "${detection.nodeName}": ${key} → ${match} (deterministic)`,
+          { src: 'plugin:n8n-workflow:generation:paramCorrection' },
+          `Node "${detection.nodeName}": ${key} → ${match} (deterministic)`
         );
         node.parameters[match] = node.parameters[key];
         delete node.parameters[key];
@@ -879,25 +856,16 @@ export async function correctParameterNames(
 
   // Phase 2: LLM correction for complex cases (restructuring)
   logger.debug(
-    { src: "plugin:n8n-workflow:generation:paramCorrection" },
-    `LLM correction needed for ${needsLLM.length} node(s): ${needsLLM.map((d) => `"${d.nodeName}" (${d.unknownKeys.join(", ")})`).join("; ")}`,
+    { src: 'plugin:n8n-workflow:generation:paramCorrection' },
+    `LLM correction needed for ${needsLLM.length} node(s): ${needsLLM.map((d) => `"${d.nodeName}" (${d.unknownKeys.join(', ')})`).join('; ')}`
   );
 
   const corrections = await Promise.all(
     needsLLM.map(async (detection) => {
       try {
-        const userPrompt = PARAM_CORRECTION_USER_PROMPT.replace(
-          "{nodeType}",
-          detection.nodeType,
-        )
-          .replace(
-            "{currentParams}",
-            JSON.stringify(detection.currentParams, null, 2),
-          )
-          .replace(
-            "{propertyDefs}",
-            JSON.stringify(detection.propertyDefs, null, 2),
-          );
+        const userPrompt = PARAM_CORRECTION_USER_PROMPT.replace('{nodeType}', detection.nodeType)
+          .replace('{currentParams}', JSON.stringify(detection.currentParams, null, 2))
+          .replace('{propertyDefs}', JSON.stringify(detection.propertyDefs, null, 2));
 
         const response = await runtime.useModel(ModelType.TEXT_SMALL, {
           prompt: `${PARAM_CORRECTION_SYSTEM_PROMPT}\n\n${userPrompt}`,
@@ -905,23 +873,21 @@ export async function correctParameterNames(
         });
 
         const cleaned = (response as string)
-          .replace(/^[\s\S]*?```(?:json)?\s*\n?/i, "")
-          .replace(/\n?```[\s\S]*$/i, "")
+          .replace(/^[\s\S]*?```(?:json)?\s*\n?/i, '')
+          .replace(/\n?```[\s\S]*$/i, '')
           .trim();
 
         const correctedParams = JSON.parse(cleaned) as Record<string, unknown>;
 
         // Validate: corrected params should only contain valid property names
         const validNames = new Set(detection.propertyDefs.map((p) => p.name));
-        validNames.add("resource");
-        validNames.add("operation");
-        const invalidKeys = Object.keys(correctedParams).filter(
-          (k) => !validNames.has(k),
-        );
+        validNames.add('resource');
+        validNames.add('operation');
+        const invalidKeys = Object.keys(correctedParams).filter((k) => !validNames.has(k));
         if (invalidKeys.length > 0) {
           logger.warn(
-            { src: "plugin:n8n-workflow:generation:paramCorrection" },
-            `LLM returned invalid keys for "${detection.nodeName}": ${invalidKeys.join(", ")} — dropping them`,
+            { src: 'plugin:n8n-workflow:generation:paramCorrection' },
+            `LLM returned invalid keys for "${detection.nodeName}": ${invalidKeys.join(', ')} — dropping them`
           );
           for (const k of invalidKeys) {
             delete correctedParams[k];
@@ -933,14 +899,14 @@ export async function correctParameterNames(
         const errMsg = error instanceof Error ? error.message : String(error);
         logger.warn(
           {
-            src: "plugin:n8n-workflow:generation:paramCorrection",
+            src: 'plugin:n8n-workflow:generation:paramCorrection',
             error: errMsg,
           },
-          `Failed to correct parameters for node "${detection.nodeName}": ${errMsg}`,
+          `Failed to correct parameters for node "${detection.nodeName}": ${errMsg}`
         );
         return null;
       }
-    }),
+    })
   );
 
   for (const correction of corrections) {
@@ -948,9 +914,7 @@ export async function correctParameterNames(
       continue;
     }
 
-    const node = correctedWorkflow.nodes.find(
-      (n) => n.name === correction.nodeName,
-    );
+    const node = correctedWorkflow.nodes.find((n) => n.name === correction.nodeName);
     if (!node) {
       continue;
     }
@@ -964,8 +928,8 @@ export async function correctParameterNames(
     }
 
     logger.debug(
-      { src: "plugin:n8n-workflow:generation:paramCorrection" },
-      `Node "${correction.nodeName}": params corrected via LLM — keys: ${Object.keys(correction.correctedParams).join(", ")}`,
+      { src: 'plugin:n8n-workflow:generation:paramCorrection' },
+      `Node "${correction.nodeName}": params corrected via LLM — keys: ${Object.keys(correction.correctedParams).join(', ')}`
     );
 
     node.parameters = correction.correctedParams;
