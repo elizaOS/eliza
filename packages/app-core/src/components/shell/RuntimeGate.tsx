@@ -42,6 +42,7 @@ import {
 } from "../../bridge/gateway-discovery";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
+import { autoDownloadRecommendedLocalModelInBackground } from "../../onboarding/auto-download-recommended";
 import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
@@ -626,6 +627,10 @@ export function RuntimeGate() {
         apiBase: localApiBase,
       });
       void startMobileLocalAgent();
+      // Fire-and-forget: don't gate the UI on the model download. The user
+      // lands in chat immediately; the recommended model is enqueued as
+      // soon as the runtime answers /api/health.
+      void autoDownloadRecommendedLocalModelInBackground(localApiBase);
     } else {
       // Desktop: the local agent IS the bundled API on loopback.
       // The dev orchestrator may bind a port other than 31337 when that
