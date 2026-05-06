@@ -836,6 +836,7 @@ export function RuntimeGate() {
       let provisionData:
         | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>["data"]
         | undefined;
+      let provisionExpectedDurationMs = 0;
       if (!jobId) {
         let provRes: Awaited<
           ReturnType<typeof client.provisionCloudCompatAgent>
@@ -881,6 +882,7 @@ export function RuntimeGate() {
           return;
         }
         provisionData = provRes.data;
+        provisionExpectedDurationMs = provRes.polling?.expectedDurationMs ?? 0;
         jobId = provRes.data?.jobId;
       }
 
@@ -1002,10 +1004,7 @@ export function RuntimeGate() {
       };
       const provisionJobDeadlineMs =
         Date.now() +
-        Math.max(
-          PROVISION_JOB_WAIT_DEADLINE_MS,
-          provRes.polling?.expectedDurationMs ?? 0,
-        );
+        Math.max(PROVISION_JOB_WAIT_DEADLINE_MS, provisionExpectedDurationMs);
       const pollProvisionJob = async () => {
         if (Date.now() >= provisionJobDeadlineMs) {
           stopPollingWithError(
