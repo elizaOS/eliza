@@ -32,6 +32,8 @@ export const AGENT_CONTAINER_NAME_PREFIX = "agent-";
 export const MAX_AGENT_ID_LENGTH =
   DOCKER_CONTAINER_NAME_MAX_LENGTH - AGENT_CONTAINER_NAME_PREFIX.length;
 
+export type DockerNodeArchitecture = "amd64" | "arm64";
+
 // ---------------------------------------------------------------------------
 // Shell Quoting
 // ---------------------------------------------------------------------------
@@ -42,6 +44,80 @@ export const MAX_AGENT_ID_LENGTH =
  */
 export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+// ---------------------------------------------------------------------------
+// Platform / Architecture helpers
+// ---------------------------------------------------------------------------
+
+export function validateDockerPlatform(platform: string): void {
+  if (!/^[A-Za-z0-9._/-]+$/.test(platform)) {
+    throw new Error(
+      `Invalid Docker platform "${platform}": must contain only letters, numbers, dots, underscores, slashes, or hyphens.`,
+    );
+  }
+}
+
+export function normalizeDockerArchitecture(
+  value: string | undefined | null,
+): DockerNodeArchitecture | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["amd64", "x86", "x86_64", "x86-64", "x64"].includes(normalized)) return "amd64";
+  if (["arm", "arm64", "aarch64", "arm64/v8"].includes(normalized)) return "arm64";
+  return null;
+}
+
+export function requiredArchitectureForPlatform(
+  platform: string | undefined | null,
+): DockerNodeArchitecture | null {
+  const normalized = platform?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("amd64") || normalized.includes("x86_64")) return "amd64";
+  if (normalized.includes("arm64") || normalized.includes("aarch64")) return "arm64";
+  return null;
+}
+
+export function inferArchitectureFromHetznerServerType(
+  serverType: string | undefined | null,
+): DockerNodeArchitecture | null {
+  const normalized = serverType?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.startsWith("cax")) return "arm64";
+  if (normalized.startsWith("cx") || normalized.startsWith("cpx") || normalized.startsWith("ccx")) {
+    return "amd64";
+  }
+  return null;
+}
+
+export function inferNodeArchitectureFromMetadata(
+  metadata: unknown,
+): DockerNodeArchitecture | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const record = metadata as Record<string, unknown>;
+  const explicit =
+    typeof record.architecture === "string"
+      ? normalizeDockerArchitecture(record.architecture)
+      : null;
+  if (explicit) return explicit;
+  return typeof record.serverType === "string"
+    ? inferArchitectureFromHetznerServerType(record.serverType)
+    : null;
+}
+
+export function isArchitectureCompatibleWithPlatform(
+  architecture: DockerNodeArchitecture | null,
+  platform: string | undefined | null,
+): boolean {
+  const required = requiredArchitectureForPlatform(platform);
+  return !required || !architecture || architecture === required;
+}
+
+export function dockerPlatformFlag(platform: string | undefined | null): string[] {
+  const trimmed = platform?.trim();
+  if (!trimmed) return [];
+  validateDockerPlatform(trimmed);
+  return [`--platform ${shellQuote(trimmed)}`];
 }
 
 // ---------------------------------------------------------------------------
@@ -186,19 +262,27 @@ export function requiresDockerHostGateway(targetUrl: string): boolean {
  * for a container ID.
  */
 export function extractDockerCreateContainerId(output: string): string {
-  const lastLine = output
+  const lines = output
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
-    .at(-1);
+    .filter(Boolean);
+  let containerId: string | undefined;
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const line = lines[index]!;
+    if (/^[0-9a-f]{12,64}$/i.test(line)) {
+      containerId = line;
+      break;
+    }
+  }
 
-  if (!lastLine || !/^[0-9a-f]{12,64}$/i.test(lastLine)) {
+  if (!containerId) {
+    const lastLine = lines.at(-1);
     throw new Error(
       `[docker-sandbox] docker create returned an invalid container id: ${JSON.stringify(lastLine ?? "")}`,
     );
   }
 
-  return lastLine.slice(0, 12);
+  return containerId.slice(0, 12);
 }
 
 // ---------------------------------------------------------------------------

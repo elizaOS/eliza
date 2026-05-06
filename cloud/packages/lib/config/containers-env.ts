@@ -87,6 +87,22 @@ export const containersEnv = {
   },
 
   /**
+   * Platform for the canonical managed-agent image. The current production
+   * image is amd64-only, so autoscaled nodes must be x86 unless operators
+   * explicitly publish/configure a multi-arch image.
+   */
+  defaultAgentImagePlatform(): string | undefined {
+    const env = getCloudAwareEnv();
+    return (
+      pick(
+        env.ELIZA_AGENT_IMAGE_PLATFORM,
+        env.CONTAINERS_DEFAULT_IMAGE_PLATFORM,
+        env.AGENT_DOCKER_PLATFORM,
+      ) ?? "linux/amd64"
+    );
+  },
+
+  /**
    * Seed-only fallback list of nodes used before any node is registered
    * via `POST /api/v1/admin/docker-nodes`.
    * Format: `nodeId:hostname:capacity,nodeId2:hostname2:capacity2`.
@@ -99,7 +115,7 @@ export const containersEnv = {
   /** Application port baked into the canonical Eliza agent image. */
   agentPort(): string {
     const env = getCloudAwareEnv();
-    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "2139";
+    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "3000";
   },
 
   /** Bridge port the agent listens on inside the container (for agent-server bridge). */
@@ -141,5 +157,14 @@ export const containersEnv = {
   defaultHcloudLocation(): string {
     const env = getCloudAwareEnv();
     return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "fsn1";
+  },
+
+  /**
+   * Default Hetzner Cloud server type for elastic Docker nodes. Keep this on
+   * x86 because the managed agent image defaults to linux/amd64.
+   */
+  defaultHcloudServerType(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "cpx32";
   },
 };
