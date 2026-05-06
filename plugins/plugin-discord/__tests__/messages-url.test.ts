@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import {
 	__setKnowledgeUrlFetchImplForTests,
 	ContentType,
@@ -97,5 +99,18 @@ describe("MessageManager URL enrichment", () => {
 		);
 
 		expect(first.attachments[0]?.id).toBe(second.attachments[0]?.id);
+	});
+});
+
+describe("MessageManager generation timeout config", () => {
+	it("allows env-configured timeout disablement", async () => {
+		const source = await readFile(
+			path.resolve(import.meta.dirname, "../messages.ts"),
+			"utf8",
+		);
+
+		expect(source).toContain("process.env.DISCORD_GENERATION_TIMEOUT_MS");
+		expect(source).toContain("process.env.MESSAGE_TIMEOUT_MS");
+		expect(source).toContain("generationTimeoutMs === null");
 	});
 });
