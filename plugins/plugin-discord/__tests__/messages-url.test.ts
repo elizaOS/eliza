@@ -145,6 +145,24 @@ describe("hasActiveTaskAgentWorkForMessage", () => {
 		);
 	});
 
+	it("matches blocked task-agent work by originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "blocked",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			true,
+		);
+	});
+
 	it("ignores active task-agent work for a different originating message id", () => {
 		const runtime = runtimeWithTasks(
 			new Map([

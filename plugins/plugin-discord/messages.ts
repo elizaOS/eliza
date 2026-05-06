@@ -109,7 +109,11 @@ function webpageAttachmentId(url: string): string {
 	return `webpage-${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
-const ACTIVE_TASK_AGENT_STATUSES = new Set(["active", "tool_running"]);
+const ACTIVE_TASK_AGENT_STATUSES = new Set([
+	"active",
+	"blocked",
+	"tool_running",
+]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
