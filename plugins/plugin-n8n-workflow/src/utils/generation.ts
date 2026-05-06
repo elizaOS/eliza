@@ -620,21 +620,12 @@ export async function formatActionResponse(
 
 function formatActionDataForPrompt(value: unknown, indent = 0): string {
   if (value === undefined || value === null) {
-<<<<<<< HEAD
     return "";
   }
   if (typeof value === "string") {
     return value.trim();
   }
   if (typeof value === "number" || typeof value === "boolean") {
-=======
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value.trim();
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
->>>>>>> pr-7399
     return String(value);
   }
   const pad = " ".repeat(indent);

@@ -101,7 +101,7 @@ function PluginListView({
     new Set(),
   );
   const [pluginReleaseStreams, setPluginReleaseStreams] = useState<
-    Record<string, "latest" | "alpha">
+    Record<string, "latest" | "beta">
   >({});
   const pluginDescriptionFallback = t("pluginsview.NoDescriptionAvailable", {
     defaultValue: "No description available",
@@ -436,15 +436,15 @@ function PluginListView({
   };
 
   const getSelectedReleaseStream = useCallback(
-    (plugin: PluginInfo): "latest" | "alpha" =>
+    (plugin: PluginInfo): "latest" | "beta" =>
       pluginReleaseStreams[plugin.id] ??
       plugin.releaseStream ??
-      (plugin.alphaVersion ? "alpha" : "latest"),
+      (plugin.betaVersion ? "beta" : "latest"),
     [pluginReleaseStreams],
   );
 
   const handleReleaseStreamChange = useCallback(
-    (pluginId: string, stream: "latest" | "alpha") => {
+    (pluginId: string, stream: "latest" | "beta") => {
       setPluginReleaseStreams((prev) => {
         if (prev[pluginId] === stream) return prev;
         return { ...prev, [pluginId]: stream };
@@ -494,7 +494,7 @@ function PluginListView({
 
   const handleInstallPlugin = async (pluginId: string, npmName: string) => {
     const plugin = plugins.find((candidate) => candidate.id === pluginId);
-    const stream = plugin ? getSelectedReleaseStream(plugin) : "alpha";
+    const stream = plugin ? getSelectedReleaseStream(plugin) : "beta";
     setInstallingPlugins((prev) => new Set(prev).add(pluginId));
     try {
       const result = (await runWithPluginManager(
@@ -572,7 +572,7 @@ function PluginListView({
 
   const handleUpdatePlugin = async (pluginId: string, npmName: string) => {
     const plugin = plugins.find((candidate) => candidate.id === pluginId);
-    const stream = plugin ? getSelectedReleaseStream(plugin) : "alpha";
+    const stream = plugin ? getSelectedReleaseStream(plugin) : "beta";
     setUpdatingPlugins((prev) => new Set(prev).add(pluginId));
     try {
       const result = (await runWithPluginManager(

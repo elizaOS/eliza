@@ -26,11 +26,7 @@ const VALID_KINDS: ReadonlySet<N8nClarificationRequest["kind"]> = new Set([
 ]);
 
 function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
-<<<<<<< HEAD
   if (!v || typeof v !== "object") {
-=======
-  if (!v || typeof v !== 'object') {
->>>>>>> pr-7399
     return false;
   }
   const o = v as Record<string, unknown>;
@@ -53,35 +49,20 @@ export function coerceClarifications(raw: unknown): N8nClarificationRequest[] {
       if (trimmed.length === 0) {
         continue;
       }
-<<<<<<< HEAD
       out.push({ kind: "free_text", question: trimmed, paramPath: "" });
       continue;
     }
     if (!isStructuredClarification(item)) {
       continue;
     }
-=======
-      out.push({ kind: 'free_text', question: trimmed, paramPath: '' });
-      continue;
-    }
-    if (!isStructuredClarification(item)) {
-      continue;
-    }
->>>>>>> pr-7399
     const o = item as unknown as Record<string, unknown>;
     const kindRaw = typeof o.kind === "string" ? o.kind : "free_text";
     const kind = (
-<<<<<<< HEAD
       VALID_KINDS.has(kindRaw as N8nClarificationRequest["kind"])
         ? kindRaw
         : "free_text"
     ) as N8nClarificationRequest["kind"];
     const platform = typeof o.platform === "string" ? o.platform : undefined;
-=======
-      VALID_KINDS.has(kindRaw as N8nClarificationRequest['kind']) ? kindRaw : 'free_text'
-    ) as N8nClarificationRequest['kind'];
-    const platform = typeof o.platform === 'string' ? o.platform : undefined;
->>>>>>> pr-7399
     let scope: { guildId?: string } | undefined;
     if (
       o.scope &&
@@ -145,11 +126,7 @@ export function parseParamPath(path: string): string[] {
     }
     // Identifier run: read until next `.` or `[`.
     let j = i;
-<<<<<<< HEAD
     while (j < n && path[j] !== "." && path[j] !== "[") {
-=======
-    while (j < n && path[j] !== '.' && path[j] !== '[') {
->>>>>>> pr-7399
       j += 1;
     }
     const ident = path.slice(i, j).trim();
@@ -178,7 +155,7 @@ export function parseParamPath(path: string): string[] {
 export function setByDotPath(
   obj: Record<string, unknown>,
   paramPath: string,
-  value: unknown
+  value: unknown,
 ): void {
   const segments = parseParamPath(paramPath);
   let cur: Record<string, unknown> | unknown[] = obj;
@@ -187,7 +164,9 @@ export function setByDotPath(
     const isArrayIndex = /^[0-9]+$/.test(seg);
     if (Array.isArray(cur)) {
       if (!isArrayIndex) {
-        throw new Error(`paramPath segment "${seg}" is not a valid array index at depth ${i}`);
+        throw new Error(
+          `paramPath segment "${seg}" is not a valid array index at depth ${i}`,
+        );
       }
       const idx = Number(seg);
       let next = cur[idx];
@@ -195,15 +174,10 @@ export function setByDotPath(
         next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
         cur[idx] = next;
       }
-<<<<<<< HEAD
       if (typeof next !== "object" || next === null) {
         throw new Error(
           `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
         );
-=======
-      if (typeof next !== 'object' || next === null) {
-        throw new Error(`paramPath cannot descend into non-object at "${seg}" (depth ${i})`);
->>>>>>> pr-7399
       }
       cur = next as Record<string, unknown> | unknown[];
       continue;
@@ -213,22 +187,19 @@ export function setByDotPath(
       next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
       (cur as Record<string, unknown>)[seg] = next;
     }
-<<<<<<< HEAD
     if (typeof next !== "object" || next === null) {
       throw new Error(
         `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
       );
-=======
-    if (typeof next !== 'object' || next === null) {
-      throw new Error(`paramPath cannot descend into non-object at "${seg}" (depth ${i})`);
->>>>>>> pr-7399
     }
     cur = next as Record<string, unknown> | unknown[];
   }
   const last = segments[segments.length - 1];
   if (Array.isArray(cur)) {
     if (!/^[0-9]+$/.test(last)) {
-      throw new Error(`paramPath terminal segment "${last}" must be numeric at array`);
+      throw new Error(
+        `paramPath terminal segment "${last}" must be numeric at array`,
+      );
     }
     cur[Number(last)] = value;
   } else {
@@ -238,7 +209,7 @@ export function setByDotPath(
 
 export function applyResolutions(
   draft: Record<string, unknown>,
-  resolutions: ReadonlyArray<N8nClarificationResolution>
+  resolutions: ReadonlyArray<N8nClarificationResolution>,
 ): { ok: true } | { ok: false; error: string; paramPath?: string } {
   for (const r of resolutions) {
     if (!r || typeof r.paramPath !== "string") {
@@ -268,7 +239,9 @@ export function applyResolutions(
         notes = meta.userNotes as string[];
       } else {
         notes =
-          meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
+          meta.userNotes !== null && meta.userNotes !== undefined
+            ? [String(meta.userNotes)]
+            : [];
         meta.userNotes = notes;
       }
       notes.push(r.value);
@@ -308,14 +281,10 @@ export function applyResolutions(
 export function pruneResolvedClarifications(
   draft: Record<string, unknown>,
   resolved: ReadonlySet<string>,
-  freeFormCount = 0
+  freeFormCount = 0,
 ): void {
   const meta = (draft as { _meta?: Record<string, unknown> })._meta;
-<<<<<<< HEAD
   if (!meta || typeof meta !== "object") {
-=======
-  if (!meta || typeof meta !== 'object') {
->>>>>>> pr-7399
     return;
   }
   const list = meta.requiresClarification;
@@ -337,14 +306,10 @@ export function pruneResolvedClarifications(
         return false;
       }
       // Empty-paramPath object-form: also positional.
-<<<<<<< HEAD
       if (
         (typeof path !== "string" || path.length === 0) &&
         toDropFreeForm > 0
       ) {
-=======
-      if ((typeof path !== 'string' || path.length === 0) && toDropFreeForm > 0) {
->>>>>>> pr-7399
         toDropFreeForm -= 1;
         return false;
       }
@@ -377,7 +342,7 @@ export interface CatalogLike {
  */
 export async function buildCatalogSnapshot(
   catalog: CatalogLike,
-  clarifications: ReadonlyArray<N8nClarificationRequest>
+  clarifications: ReadonlyArray<N8nClarificationRequest>,
 ): Promise<N8nClarificationTargetGroup[]> {
   const platforms = new Set<string>();
   for (const c of clarifications) {

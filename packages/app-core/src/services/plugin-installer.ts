@@ -148,15 +148,15 @@ function pluginDir(pluginName: string): string {
 
 function normaliseReleaseChannel(
   value: string | undefined,
-): "alpha" | "next" | null {
+): "beta" | "next" | null {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "alpha" || normalized === "next") {
+  if (normalized === "beta" || normalized === "next") {
     return normalized;
   }
   return null;
 }
 
-function resolveCurrentElizaReleaseChannel(): "alpha" | "next" | null {
+function resolveCurrentElizaReleaseChannel(): "beta" | "next" | null {
   for (const envKey of RELEASE_CHANNEL_ENV_KEYS) {
     const configuredChannel = normaliseReleaseChannel(process.env[envKey]);
     if (configuredChannel) {
@@ -172,8 +172,8 @@ function resolveCurrentElizaReleaseChannel(): "alpha" | "next" | null {
     const version =
       typeof pkg.version === "string" ? pkg.version.toLowerCase() : "";
 
-    if (version.includes("alpha")) {
-      return "alpha";
+    if (version.includes("beta")) {
+      return "beta";
     }
     if (version.includes("next")) {
       return "next";
@@ -238,7 +238,7 @@ export async function detectPackageManager(): Promise<"bun" | "npm"> {
  *
  * @param pluginName - The plugin name (e.g., "@elizaos/plugin-discord")
  * @param onProgress - Optional progress callback
- * @param requestedVersion - Optional specific version to install (e.g., "1.2.23-alpha.0")
+ * @param requestedVersion - Optional specific version to install (e.g., "2.0.0-beta.0")
  */
 export function installPlugin(
   pluginName: string,

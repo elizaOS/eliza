@@ -3,7 +3,7 @@
   "name": "Nostr",
   "description": "Nostr connector for relay-based social posting and conversation handling.",
   "npmName": "@elizaos/plugin-nostr",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["connector", "social", "nostr", "relays", "social-feed"],
   "config": {

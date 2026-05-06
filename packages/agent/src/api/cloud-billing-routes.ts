@@ -53,7 +53,7 @@ async function fetchCryptoStatusCached(
     headers,
     undefined,
   ).catch(() => null);
-  if (!response || !response.ok) {
+  if (!response?.ok) {
     return cached?.value ?? null;
   }
   const value = await readJsonResponse(response).catch(() => ({}));

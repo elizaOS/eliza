@@ -1,6 +1,5 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { defineConfig } from "tsup";
 
 function resolvePackageRoot(): string {
   // CWD wins when it points at a real package directory. A parent
@@ -51,7 +50,7 @@ function collectSrcEntries(srcRoot: string): string[] {
 }
 
 /** Transpile workspace plugins/apps under `plugins/*` without bundling deps. */
-export default defineConfig({
+export default {
   entry: collectSrcEntries(path.join(resolvePackageRoot(), "src")),
   outDir: "dist",
   format: ["esm"],
@@ -67,4 +66,4 @@ export default defineConfig({
     options.packages = "external";
     return options;
   },
-});
+};

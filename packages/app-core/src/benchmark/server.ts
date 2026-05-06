@@ -43,6 +43,7 @@ import {
 // This ensures API keys are available when plugins initialize
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
+const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
 
 // ---------------------------------------------------------------------------
 // Security: authentication + CORS
@@ -406,7 +407,7 @@ export async function startBenchmarkServer() {
     process.env.OPENROUTER_API_KEY = openRouterApiKey;
     try {
       const { default: openrouterPlugin } = await import(
-        "@elizaos/plugin-openrouter"
+        OPENROUTER_PLUGIN_MODULE
       );
       plugins.push(toPlugin(openrouterPlugin, "@elizaos/plugin-openrouter"));
       elizaLogger.info("[bench] Loaded LLM plugin: @elizaos/plugin-openrouter");

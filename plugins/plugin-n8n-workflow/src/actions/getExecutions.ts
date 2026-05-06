@@ -134,27 +134,18 @@ export const getExecutionsAction: Action = {
       const matchResult = workflowIdParam
         ? {
             matchedWorkflowId: workflowIdParam,
-<<<<<<< HEAD
             confidence: "high" as const,
-=======
-            confidence: 'high' as const,
->>>>>>> pr-7399
             matches: workflows.map((workflow) => ({
               id: workflow.id,
               name: workflow.name,
               score: workflow.id === workflowIdParam ? 1 : 0,
             })),
-<<<<<<< HEAD
             reason: "workflowId parameter",
-=======
-            reason: 'workflowId parameter',
->>>>>>> pr-7399
           }
         : workflowNameParam
           ? {
               matchedWorkflowId:
                 workflows.find((workflow) =>
-<<<<<<< HEAD
                   workflow.name.toLowerCase().includes(workflowNameParam),
                 )?.id ?? null,
               confidence: "high" as const,
@@ -166,17 +157,6 @@ export const getExecutionsAction: Action = {
                   : 0,
               })),
               reason: "workflowName parameter",
-=======
-                  workflow.name.toLowerCase().includes(workflowNameParam)
-                )?.id ?? null,
-              confidence: 'high' as const,
-              matches: workflows.map((workflow) => ({
-                id: workflow.id,
-                name: workflow.name,
-                score: workflow.name.toLowerCase().includes(workflowNameParam) ? 1 : 0,
-              })),
-              reason: 'workflowName parameter',
->>>>>>> pr-7399
             }
           : await matchWorkflow(runtime, context, workflows);
 

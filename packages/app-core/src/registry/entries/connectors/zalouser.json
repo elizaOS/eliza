@@ -3,7 +3,7 @@
   "name": "Zalouser",
   "description": "Zalo personal-account connector for one-to-one messaging workflows.",
   "npmName": "@elizaos/plugin-zalouser",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "connector",

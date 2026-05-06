@@ -183,7 +183,7 @@ async function loadProvisionRoute(): Promise<Hono> {
   return parent;
 }
 
-function buildProvisionRequest(
+async function buildProvisionRequest(
   app: Hono,
   opts: { sync?: boolean; headers?: HeadersInit } = {},
 ): Promise<Response> {

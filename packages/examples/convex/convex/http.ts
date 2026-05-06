@@ -95,7 +95,7 @@ http.route({
     return jsonResponse({
       status: "healthy",
       runtime: "elizaos-convex",
-      version: "2.0.0-alpha",
+      version: "2.0.0-beta.0",
     });
   }),
 });

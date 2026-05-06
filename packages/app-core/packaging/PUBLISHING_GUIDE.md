@@ -100,7 +100,7 @@ python -m build
 twine upload dist/*
 ```
 
-The alpha version (`2.0.0a7`) is fine for name reservation.
+The beta version (`2.0.0b0`) is fine for name reservation.
 
 ---
 
@@ -129,7 +129,7 @@ cp /path/to/eliza/packaging/homebrew/eliza.rb Formula/eliza.rb
 
 ```bash
 # Download the tarball and compute hash
-curl -fsSL "https://registry.npmjs.org/elizaai/-/elizaai-2.0.0-alpha.7.tgz" -o eliza.tgz
+curl -fsSL "https://registry.npmjs.org/elizaos/-/elizaos-2.0.0-beta.0.tgz" -o eliza.tgz
 shasum -a 256 eliza.tgz
 # Replace PLACEHOLDER_SHA256 in eliza.rb with the actual hash
 ```
@@ -216,7 +216,7 @@ cp -r packaging/debian .
 dpkg-buildpackage -S -sa -k"YOUR_GPG_KEY_ID"
 
 # Upload to PPA
-dput ppa:YOUR_USERNAME/eliza ../eliza_2.0.0~alpha7-1_source.changes
+dput ppa:YOUR_USERNAME/eliza ../eliza_2.0.0~beta0-1_source.changes
 ```
 
 5. **Users install with**:
@@ -325,7 +325,7 @@ cp packaging/snap/snapcraft.yaml snap/
 # Build the snap (requires LXD or Multipass)
 snapcraft
 
-# This produces: eliza_2.0.0-alpha.7_amd64.snap
+# This produces: eliza_2.0.0-beta.0_amd64.snap
 ```
 
 ### 4.3 Test Locally
@@ -576,7 +576,7 @@ Manual recovery path:
 
 ```bash
 # Re-run only the post-release distribution layer for an existing release
-gh workflow run release-orchestrator.yml -f version=2.0.0-alpha.87
+gh workflow run release-orchestrator.yml -f version=2.0.0-beta.0
 ```
 
 ### Required GitHub Secrets
@@ -669,7 +669,7 @@ When releasing a new version, update these files:
 | File | Field to Update |
 |---|---|
 | `package.json` | `version` |
-| `packaging/pypi/pyproject.toml` | `version` (use PEP 440: `2.0.0a7` not `2.0.0-alpha.7`) |
+| `packaging/pypi/pyproject.toml` | `version` (use PEP 440: `2.0.0b0` not `2.0.0-beta.0`) |
 | `packaging/pypi/eliza/__init__.py` | `__version__` |
 | `packaging/snap/snapcraft.yaml` | `version` |
 | `packaging/debian/changelog` | Add new entry at top |
@@ -681,11 +681,11 @@ When releasing a new version, update these files:
 
 | Platform | Format | Example |
 |---|---|---|
-| npm | semver pre-release | `2.0.0-alpha.7` |
-| PyPI (PEP 440) | alpha suffix | `2.0.0a7` |
-| Debian | tilde for pre-release | `2.0.0~alpha7-1` |
-| Snap | semver-ish | `2.0.0-alpha.7` |
-| Flatpak | semver | `2.0.0-alpha.7` |
+| npm | semver pre-release | `2.0.0-beta.0` |
+| PyPI (PEP 440) | beta suffix | `2.0.0b0` |
+| Debian | tilde for pre-release | `2.0.0~beta0-1` |
+| Snap | semver-ish | `2.0.0-beta.0` |
+| Flatpak | semver | `2.0.0-beta.0` |
 | Homebrew | follows npm tarball URL | (automatic) |
 
 ---

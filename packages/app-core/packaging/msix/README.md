@@ -32,7 +32,7 @@ pwsh -File apps/app/electrobun/scripts/sign-windows.ps1 `
 pwsh -File packaging/msix/build-msix.ps1 `
   -BuildDir ./apps/app/electrobun/build `
   -OutputDir ./apps/app/electrobun/artifacts `
-  -Version "2.0.0-alpha.84"
+  -Version "2.0.0-beta.0"
 ```
 
 ## CI Pipeline

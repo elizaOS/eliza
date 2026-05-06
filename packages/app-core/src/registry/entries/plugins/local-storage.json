@@ -3,7 +3,7 @@
   "name": "Local Storage",
   "description": "Local filesystem attachment storage. Default fallback when Eliza Cloud storage is not connected.",
   "npmName": "@elizaos/plugin-local-storage",
-  "version": "2.0.0-alpha.0",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["storage", "files", "local"],
   "config": {

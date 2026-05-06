@@ -25,7 +25,7 @@ import {
 } from "@elizaos/agent";
 import { ChannelType, stringToUuid, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { itIf } from "../../../test/helpers/conditional-tests.ts";
 import { createLifeOpsConnectorGrant } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";

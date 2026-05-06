@@ -464,7 +464,7 @@ async function seedClaudeTrustForWorkdirUnsafe(
   if (existing && existing.hasTrustDialogAccepted === true) {
     return;
   }
-  projects[workdir] = { ...(existing ?? {}), hasTrustDialogAccepted: true };
+  projects[workdir] = { ...existing, hasTrustDialogAccepted: true };
   parsed.projects = projects;
   await writeFile(configPath, JSON.stringify(parsed, null, 2), "utf8");
 }
@@ -794,7 +794,7 @@ export class PTYService {
         metadata: {
           name: options.name,
           requestedType: options.agentType,
-          ...(options.metadata ?? {}),
+          ...options.metadata,
         },
         env: options.env,
         childId: (session) => session.id,
@@ -857,13 +857,13 @@ export class PTYService {
       options.metadata[TRAJECTORY_PARENT_STEP_METADATA_KEY].trim().length > 0;
     const linkedMetadata = hasParentTrajectoryStep
       ? {
-          ...(options.metadata ?? {}),
+          ...options.metadata,
           [TRAJECTORY_CHILD_STEP_METADATA_KEY]: sessionId,
         }
       : options.metadata;
     const linkedEnv = hasParentTrajectoryStep
       ? {
-          ...(options.env ?? {}),
+          ...options.env,
           [TRAJECTORY_CHILD_STEP_ENV_KEY]: sessionId,
         }
       : options.env;
@@ -1066,7 +1066,7 @@ export class PTYService {
       resolvedAgentType,
       readTaskAgentModelPrefs(linkedMetadata?.modelPrefs),
     );
-    const metadataWithoutModelPrefs = { ...(linkedMetadata ?? {}) };
+    const metadataWithoutModelPrefs = { ...linkedMetadata };
     delete metadataWithoutModelPrefs.modelPrefs;
     const codexExecMode = shouldUseCodexExecMode({
       agentType: resolvedAgentType,
@@ -1090,9 +1090,9 @@ export class PTYService {
     };
 
     const mergedSpawnEnv = {
-      ...(linkedEnv ?? {}),
-      ...(codexApprovalEnv ?? {}),
-      ...(opencodeConfigEnv ?? {}),
+      ...linkedEnv,
+      ...codexApprovalEnv,
+      ...opencodeConfigEnv,
     };
     const spawnConfig = buildSpawnConfig(
       sessionId,
