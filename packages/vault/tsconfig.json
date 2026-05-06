@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2023"],
-    "types": ["node"],
+    "types": ["node", "vitest"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

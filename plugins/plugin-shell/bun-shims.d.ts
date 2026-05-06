@@ -25,3 +25,30 @@ declare const Bun: {
     exited: Promise<number>;
   };
 };
+
+declare module "cross-spawn" {
+  import type {
+    ChildProcess,
+    SpawnOptionsWithoutStdio,
+    SpawnSyncOptions,
+    SpawnSyncReturns,
+  } from "node:child_process";
+
+  function spawn(
+    command: string,
+    args?: readonly string[],
+    options?: SpawnOptionsWithoutStdio
+  ): ChildProcess;
+  function spawn(command: string, options?: SpawnOptionsWithoutStdio): ChildProcess;
+
+  namespace spawn {
+    function sync(
+      command: string,
+      args?: readonly string[],
+      options?: SpawnSyncOptions
+    ): SpawnSyncReturns<Buffer>;
+    function sync(command: string, options?: SpawnSyncOptions): SpawnSyncReturns<Buffer>;
+  }
+
+  export default spawn;
+}

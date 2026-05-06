@@ -2,6 +2,10 @@ import { createCharacter, type IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";
 
+function isSchemaObject(value: unknown): value is JSONSchema7 {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Minimal mock runtime for testing model detection.
  * Extends IAgentRuntime with model information properties.
@@ -177,7 +181,7 @@ function findSchemaChanges(original: JSONSchema7, transformed: JSONSchema7): str
     for (const [propName, origProp] of Object.entries(original.properties)) {
       const transProp = transformed.properties[propName];
 
-      if (typeof origProp === "object" && typeof transProp === "object") {
+      if (isSchemaObject(origProp) && isSchemaObject(transProp)) {
         // Check for removed properties
         const origKeys = Object.keys(origProp);
         const transKeys = Object.keys(transProp);

@@ -83,7 +83,7 @@ const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
   ".txt",
 ]);
 const TAR_SAFE_RELATIVE_PATH_MAX = Number.parseInt(
-  process.env.ELIZA_RUNTIME_TAR_SAFE_RELATIVE_PATH_MAX ?? "213",
+  process.env.ELIZA_RUNTIME_TAR_SAFE_RELATIVE_PATH_MAX ?? "202",
   10,
 );
 const TAR_SAFE_BASENAME_MAX = Number.parseInt(
@@ -290,14 +290,93 @@ export function matchesRuntimeVariant(
   return true;
 }
 
+function isPackageNameCompatibleWithCurrentPlatform(
+  name: string,
+  targetOS = process.platform,
+  targetArch = process.arch,
+): boolean {
+  const runtimeVariantPackages = [
+    /^@node-llama-cpp\/(.+)$/,
+    /^@nomicfoundation\/edr-(.+)$/,
+    /^@nomicfoundation\/solidity-analyzer-(.+)$/,
+  ];
+
+  for (const pattern of runtimeVariantPackages) {
+    const match = name.match(pattern);
+    if (match) {
+      return matchesRuntimeVariant(match[1], targetOS, targetArch);
+    }
+  }
+
+  return true;
+}
+
 export function shouldKeepPackageRelativePath(
   relativePath: string,
   targetOS = process.platform,
   targetArch = process.arch,
+  packageName?: string,
 ): boolean {
   const normalizedPath = relativePath.split(path.sep).join("/");
   if (!normalizedPath || normalizedPath === ".") {
     return true;
+  }
+
+  if (packageName === "ffprobe-static") {
+    const ffprobeMatch = normalizedPath.match(/^bin\/([^/]+)\/([^/]+)(?:\/|$)/);
+    if (ffprobeMatch) {
+      return matchesRuntimeVariant(`${ffprobeMatch[1]}-${ffprobeMatch[2]}`);
+    }
+  }
+
+  if (packageName === "node-llama-cpp") {
+    if (
+      normalizedPath === "llama" ||
+      normalizedPath.startsWith("llama/") ||
+      normalizedPath === "templates" ||
+      normalizedPath.startsWith("templates/")
+    ) {
+      return false;
+    }
+  }
+
+  if (packageName === "onnxruntime-web") {
+    if (normalizedPath === "lib" || normalizedPath.startsWith("lib/")) {
+      return false;
+    }
+  }
+
+  if (packageName === "@elizaos/app-core") {
+    if (
+      normalizedPath === ".tmp" ||
+      normalizedPath.startsWith(".tmp/") ||
+      normalizedPath === ".storybook" ||
+      normalizedPath.startsWith(".storybook/") ||
+      normalizedPath === "action-benchmark-report" ||
+      normalizedPath.startsWith("action-benchmark-report/") ||
+      normalizedPath === "skills/.cache" ||
+      normalizedPath.startsWith("skills/.cache/")
+    ) {
+      return false;
+    }
+  }
+
+  if (packageName === "@elizaos/app-companion") {
+    if (
+      normalizedPath === "public_src" ||
+      normalizedPath.startsWith("public_src/")
+    ) {
+      return false;
+    }
+  }
+
+  if (packageName === "@elizaos/agent") {
+    if (
+      normalizedPath === "dist-mobile" ||
+      normalizedPath.startsWith("dist-mobile/")
+    ) {
+      return false;
+    }
   }
 
   if (
@@ -308,12 +387,6 @@ export function shouldKeepPackageRelativePath(
   ) {
     return false;
   }
-  if (
-    normalizedPath.includes("resources/studio/resources/projects/resources/")
-  ) {
-    return false;
-  }
-
   const prebuildMatch = normalizedPath.match(
     /(?:^|\/)prebuilds\/([^/]+)(?:\/|$)/,
   );
@@ -353,7 +426,30 @@ export function shouldKeepPackageRelativePath(
   return true;
 }
 
-function pruneCopiedPackageDir(packageDir: string): void {
+function shouldPreservePrunedPackageEntry(
+  packageName: string | undefined,
+  packageDir: string | undefined,
+  entryPath: string,
+): boolean {
+  if (packageName !== "@elevenlabs/elevenlabs-js" || !packageDir) {
+    return false;
+  }
+
+  const relativePath = toPosixPath(path.relative(packageDir, entryPath));
+  return (
+    relativePath === "api/resources/conversationalAi/resources/tests" ||
+    relativePath.startsWith(
+      "api/resources/conversationalAi/resources/tests/",
+    ) ||
+    relativePath ===
+      "serialization/resources/conversationalAi/resources/tests" ||
+    relativePath.startsWith(
+      "serialization/resources/conversationalAi/resources/tests/",
+    )
+  );
+}
+
+function pruneCopiedPackageDir(name: string, packageDir: string): void {
   if (!fs.existsSync(packageDir)) return;
 
   const visit = (currentDir: string): void => {
@@ -364,7 +460,8 @@ function pruneCopiedPackageDir(packageDir: string): void {
       if (
         entry.name === "node_modules" ||
         (RUNTIME_COPY_PRUNED_DIR_NAMES.has(entry.name) &&
-          !isRequiredRuntimeDocDirectory(entryPath))
+          !isRequiredRuntimeDocDirectory(entryPath) &&
+          !shouldPreservePrunedPackageEntry(name, packageDir, entryPath))
       ) {
         fs.rmSync(entryPath, { recursive: true, force: true });
         continue;
@@ -378,7 +475,14 @@ function pruneCopiedPackageDir(packageDir: string): void {
         continue;
       }
 
-      if (!shouldKeepPackageRelativePath(relativePath)) {
+      if (
+        !shouldKeepPackageRelativePath(
+          relativePath,
+          process.platform,
+          process.arch,
+          name,
+        )
+      ) {
         fs.rmSync(entryPath, { recursive: true, force: true });
         continue;
       }
@@ -419,7 +523,7 @@ function copyPackageDir(
     force: true,
     dereference: true,
     filter: (entry) => {
-      if (!shouldCopyPackageEntry(entry)) {
+      if (!shouldCopyPackageEntry(entry, name, sourceDir)) {
         return false;
       }
       if (name === "@elizaos/app-core") {
@@ -444,7 +548,7 @@ function copyPackageDir(
   if (destIsInsideSource) {
     fs.renameSync(copyDest, dest);
   }
-  pruneCopiedPackageDir(dest);
+  pruneCopiedPackageDir(name, dest);
   patchCopiedPackageRuntimeSurface(name, dest, rootDestDir);
   return true;
 }
@@ -637,6 +741,16 @@ function rewriteJsStringSpecifiers(
     .replaceAll(`'./${oldStem}.js'`, `'./${newStem}.js'`);
 }
 
+function rewriteQuotedJsSpecifier(
+  source: string,
+  oldSpecifier: string,
+  newSpecifier: string,
+): string {
+  return source
+    .replaceAll(`"${oldSpecifier}"`, `"${newSpecifier}"`)
+    .replaceAll(`'${oldSpecifier}'`, `'${newSpecifier}'`);
+}
+
 function visitFiles(rootDir: string, visit: (filePath: string) => void): void {
   if (!fs.existsSync(rootDir)) {
     return;
@@ -665,14 +779,24 @@ function isTarSafeRelativePath(relativePath: string): boolean {
   );
 }
 
+function relativeJsSpecifier(fromDir: string, toFile: string): string {
+  let specifier = toPosixPath(path.relative(fromDir, toFile));
+  if (!specifier.startsWith(".")) {
+    specifier = `./${specifier}`;
+  }
+  return specifier;
+}
+
 function patchCopiedElevenLabsTarSafePaths(
   packageDir: string,
   rootDestDir: string,
 ): void {
   type Rename = {
     directory: string;
+    oldPath: string;
     oldBase: string;
     oldStem: string;
+    newPath: string;
     newBase: string;
     newStem: string;
   };
@@ -703,8 +827,10 @@ function patchCopiedElevenLabsTarSafePaths(
     fs.renameSync(filePath, newPath);
     renames.push({
       directory: path.dirname(filePath),
+      oldPath: filePath,
       oldBase,
       oldStem,
+      newPath,
       newBase,
       newStem,
     });
@@ -721,20 +847,29 @@ function patchCopiedElevenLabsTarSafePaths(
 
     let source = fs.readFileSync(filePath, "utf8");
     const original = source;
+    const fileDir = path.dirname(filePath);
     for (const rename of renames) {
-      if (path.dirname(filePath) !== rename.directory) {
-        continue;
+      const oldSpecifier = relativeJsSpecifier(fileDir, rename.oldPath);
+      const newSpecifier = relativeJsSpecifier(fileDir, rename.newPath);
+      source = rewriteQuotedJsSpecifier(source, oldSpecifier, newSpecifier);
+      source = rewriteQuotedJsSpecifier(
+        source,
+        oldSpecifier.replace(/\.js$/, ""),
+        newSpecifier.replace(/\.js$/, ""),
+      );
+
+      if (path.dirname(filePath) === rename.directory) {
+        source = rewriteJsStringSpecifiers(
+          source,
+          rename.oldStem,
+          rename.newStem,
+        );
+        source = rewriteJsStringSpecifiers(
+          source,
+          rename.oldBase,
+          rename.newBase,
+        );
       }
-      source = rewriteJsStringSpecifiers(
-        source,
-        rename.oldStem,
-        rename.newStem,
-      );
-      source = rewriteJsStringSpecifiers(
-        source,
-        rename.oldBase,
-        rename.newBase,
-      );
     }
     if (source !== original) {
       fs.writeFileSync(filePath, source);
@@ -776,6 +911,10 @@ export function shouldSkipPackagedDependency(
   requesterName: string,
   dependencyName: string,
 ): boolean {
+  if (!isPackageNameCompatibleWithCurrentPlatform(dependencyName)) {
+    return true;
+  }
+
   return (
     PACKAGED_DEPENDENCY_SKIPS.get(requesterName)?.has(dependencyName) ?? false
   );
@@ -805,12 +944,17 @@ function isRecursivePackageSymlinkTarget(
   );
 }
 
-export function shouldCopyPackageEntry(entry: string): boolean {
+export function shouldCopyPackageEntry(
+  entry: string,
+  packageName?: string,
+  packageRoot?: string,
+): boolean {
   const basename = path.basename(entry);
   if (
     basename === "node_modules" ||
     (RUNTIME_COPY_PRUNED_DIR_NAMES.has(basename) &&
-      !isRequiredRuntimeDocDirectory(entry))
+      !isRequiredRuntimeDocDirectory(entry) &&
+      !shouldPreservePrunedPackageEntry(packageName, packageRoot, entry))
   ) {
     return false;
   }
@@ -1392,7 +1536,13 @@ function main(): void {
     if (!request) continue;
 
     const { name, spec, requesterDir, requesterDestDir } = request;
-    if (!name || DEP_SKIP.has(name)) continue;
+    if (
+      !name ||
+      DEP_SKIP.has(name) ||
+      !isPackageNameCompatibleWithCurrentPlatform(name)
+    ) {
+      continue;
+    }
 
     const resolved = resolvePackage(name, spec, requesterDir);
     if (!resolved) {
