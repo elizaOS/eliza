@@ -116,6 +116,14 @@ export interface ConversationMessage {
   reactions?: ConversationMessageReaction[];
   /** True when the SSE stream was interrupted before receiving a "done" event. */
   interrupted?: boolean;
+  /**
+   * When set, this assistant turn is the server's no-provider /
+   * provider-issue / insufficient-credits fallback. The renderer can
+   * substitute a structured gate UI (e.g. "Connect a provider →
+   * Settings") for `failureKind === "no_provider"` instead of rendering
+   * the fallback `text` as a normal reply bubble.
+   */
+  failureKind?: "insufficient_credits" | "no_provider" | "provider_issue";
 }
 
 export type ConversationChannelType =
