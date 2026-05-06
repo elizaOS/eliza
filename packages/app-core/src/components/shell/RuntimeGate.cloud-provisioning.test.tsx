@@ -365,8 +365,12 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       success: true,
       data: {
         status: "running",
+        lastHeartbeat: null,
         bridgeUrl: "https://agent-1.elizacloud.ai",
         webUiUrl: null,
+        currentNode: null,
+        suspendedReason: null,
+        databaseStatus: "ready",
       },
     });
     clientMock.createCloudCompatAgent.mockResolvedValue({
