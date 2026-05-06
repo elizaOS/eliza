@@ -50,6 +50,10 @@ import {
   isIOS,
 } from "../../platform/init";
 import {
+  ONBOARDING_PROVIDER_CATALOG,
+  type OnboardingProviderOption,
+} from "../../providers";
+import {
   addAgentProfile,
   clearPersistedActiveServer,
   savePersistedActiveServer,
@@ -113,7 +117,7 @@ function normalizeRemoteTarget(value: string): string | null {
   }
 }
 
-type SubView = "chooser" | "cloud" | "remote";
+type SubView = "chooser" | "cloud" | "remote" | "local";
 type RuntimeChoice = "cloud" | "local" | "remote";
 
 type CloudStage =
@@ -124,6 +128,8 @@ type CloudStage =
   | "creating"
   | "provisioning"
   | "connecting";
+
+type LocalStage = "provider" | "config";
 
 function normalizeRuntimeUrl(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -347,6 +353,29 @@ export function RuntimeGate() {
 
   // Local embeddings toggle (elizacloud only, default unchecked)
   const [useLocalEmbeddings, setUseLocalEmbeddings] = useState(false);
+
+  // Local-runtime setup wizard. When the user picks "Local" in the
+  // chooser we render an in-place wizard (provider list → API key entry)
+  // before completing onboarding. Without this, finishAsLocal() drops
+  // the user straight into chat with no model provider configured —
+  // their first send hits the no_provider gate (commit 28e19c8023) and
+  // they have to backtrack to Settings. The wizard saves the round-trip.
+  const [localStage, setLocalStage] = useState<LocalStage>("provider");
+  const [localProviderId, setLocalProviderId] = useState<string | null>(null);
+  const [localApiKey, setLocalApiKey] = useState("");
+  const [localSaving, setLocalSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // Filter catalog to direct API-key providers (group:"local" excludes
+  // managed cloud + subscription paths — those have their own flows).
+  const localProviderCatalog = useMemo<readonly OnboardingProviderOption[]>(
+    () =>
+      ONBOARDING_PROVIDER_CATALOG.filter(
+        (provider) =>
+          provider.group === "local" && provider.authMode === "api-key",
+      ),
+    [],
+  );
 
   // Local-tile readiness. Desktop/dev are local-capable synchronously.
   // Android probes the on-device agent's `/api/health` so ElizaOS can
@@ -643,13 +672,78 @@ export function RuntimeGate() {
         setSubView("cloud");
         return;
       case "local":
-        finishAsLocal();
+        // ElizaOS / Android pre-seed paths still want the immediate
+        // finishAsLocal() — the on-device runtime is the only legitimate
+        // option there and the chooser is bypassed entirely on stock
+        // builds. Desktop/iOS/web users actively pick Local and need a
+        // provider before the runtime can answer chat.
+        if (elizaOSAutoLocal || isAndroid) {
+          finishAsLocal();
+          return;
+        }
+        setLocalStage("provider");
+        setLocalProviderId(null);
+        setLocalApiKey("");
+        setLocalError(null);
+        setSubView("local");
         return;
       case "remote":
         setSubView("remote");
         return;
     }
-  }, [finishAsLocal, selectedChoice]);
+  }, [elizaOSAutoLocal, finishAsLocal, selectedChoice]);
+
+  const handleLocalSelectProvider = useCallback((providerId: string) => {
+    setLocalProviderId(providerId);
+    setLocalApiKey("");
+    setLocalError(null);
+    setLocalStage("config");
+  }, []);
+
+  const handleLocalConfigBack = useCallback(() => {
+    setLocalStage("provider");
+    setLocalError(null);
+  }, []);
+
+  const handleLocalSave = useCallback(async () => {
+    if (!localProviderId) {
+      setLocalError(
+        t("runtimegate.localPickProvider", {
+          defaultValue: "Pick a provider first.",
+        }),
+      );
+      return;
+    }
+    const trimmedKey = localApiKey.trim();
+    if (!trimmedKey) {
+      setLocalError(
+        t("runtimegate.localApiKeyRequired", {
+          defaultValue: "Enter an API key for the selected provider.",
+        }),
+      );
+      return;
+    }
+
+    setLocalSaving(true);
+    setLocalError(null);
+    try {
+      // switchProvider writes the canonical config (cloud.* off,
+      // serviceRouting.llmText.{backend,transport:"direct"}, env key).
+      // Routing-mode "local-only" + the provider's API key = the runtime
+      // boots with a registered provider and chat works immediately.
+      await client.switchProvider(localProviderId, trimmedKey);
+      finishAsLocal();
+    } catch (err) {
+      setLocalSaving(false);
+      setLocalError(
+        err instanceof Error
+          ? err.message
+          : t("runtimegate.localSaveFailed", {
+              defaultValue: "Failed to save provider — please try again.",
+            }),
+      );
+    }
+  }, [finishAsLocal, localApiKey, localProviderId, t]);
 
   // ── Cloud: provision + connect ─────────────────────────────────────
 
@@ -1261,6 +1355,139 @@ export function RuntimeGate() {
     );
   }
 
+  // ── Render: local setup wizard ─────────────────────────────────────
+  if (subView === "local") {
+    const selectedProvider = localProviderId
+      ? localProviderCatalog.find((p) => p.id === localProviderId)
+      : null;
+    return (
+      <GateShell
+        uiLanguage={uiLanguage}
+        setUiLanguage={setUiLanguage}
+        uiTheme={uiTheme}
+        setUiTheme={setUiTheme}
+        t={t}
+      >
+        <GateHeader t={t} />
+
+        <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
+          <p
+            style={{ fontFamily: MONO_FONT }}
+            className="text-3xs uppercase text-white/60"
+          >
+            {localStage === "provider"
+              ? t("runtimegate.localPickEyebrow", {
+                  defaultValue: "Pick a model provider",
+                })
+              : t("runtimegate.localConfigEyebrow", {
+                  defaultValue: "Add your API key",
+                })}
+          </p>
+
+          {localStage === "provider" && (
+            <div className="flex flex-col gap-2">
+              {localProviderCatalog.map((provider) => (
+                <Card
+                  key={provider.id}
+                  className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                  style={{ borderRadius: 0 }}
+                >
+                  <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white/95">
+                        {provider.name}
+                      </p>
+                      <p className="truncate text-xs-tight text-white/52">
+                        {provider.description}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                      onClick={() => handleLocalSelectProvider(provider.id)}
+                    >
+                      {t("common.choose", { defaultValue: "Choose" })}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+              <BackButton t={t} onClick={() => setSubView("chooser")} />
+            </div>
+          )}
+
+          {localStage === "config" && selectedProvider && (
+            <div className="flex flex-col gap-3">
+              <Card
+                className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                style={{ borderRadius: 0 }}
+              >
+                <CardContent className="flex flex-col gap-1 px-3 py-3">
+                  <p className="text-sm font-semibold text-white/95">
+                    {selectedProvider.name}
+                  </p>
+                  <p className="text-xs-tight text-white/52">
+                    {selectedProvider.description}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Input
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  selectedProvider.keyPrefix
+                    ? t("runtimegate.localApiKeyPlaceholderPrefixed", {
+                        defaultValue: "{{prefix}}…",
+                        prefix: selectedProvider.keyPrefix,
+                      })
+                    : t("runtimegate.localApiKeyPlaceholder", {
+                        defaultValue: "API key",
+                      })
+                }
+                value={localApiKey}
+                onChange={(e) => setLocalApiKey(e.target.value)}
+                disabled={localSaving}
+                className="!h-11 !rounded-none !border-2 !border-black !bg-white !px-3 !text-sm !text-black"
+              />
+
+              {localError ? (
+                <p className="text-xs text-danger">{localError}</p>
+              ) : null}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                  onClick={() => void handleLocalSave()}
+                  disabled={localSaving || !localApiKey.trim()}
+                >
+                  {localSaving ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner className="h-3 w-3" />
+                      {t("common.saving", { defaultValue: "Saving…" })}
+                    </span>
+                  ) : (
+                    t("runtimegate.localSaveContinue", {
+                      defaultValue: "Continue to chat",
+                    })
+                  )}
+                </Button>
+                <BackButton
+                  t={t}
+                  onClick={handleLocalConfigBack}
+                  disabled={localSaving}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </GateShell>
+    );
+  }
+
   // ── Render: remote ─────────────────────────────────────────────────
 
   return (
@@ -1641,16 +1868,19 @@ function ElizaOSLocalSplash({ message }: { message: string }) {
 function BackButton({
   t,
   onClick,
+  disabled = false,
 }: {
   t: (key: string, values?: Record<string, unknown>) => string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       style={{ fontFamily: MONO_FONT }}
-      className="mt-2 self-center text-3xs uppercase text-white/60 underline hover:text-white"
+      className="mt-2 self-center text-3xs uppercase text-white/60 underline hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-white/60"
     >
       {t("common.back", { defaultValue: "Back" })}
     </button>
