@@ -279,6 +279,10 @@ type StructuredResponseCandidate = {
 };
 
 type DynamicPromptStreamExtractor = ToonFieldStreamExtractor;
+type DynamicPromptRetryOptions = {
+	abortSignal?: AbortSignal;
+	retryBackoff?: number | RetryBackoffConfig;
+};
 
 function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
@@ -6045,34 +6049,19 @@ ${section_end}`;
 				currentRetry++;
 
 				if (options.abortSignal?.aborted) {
-					extractor?.signalError("Cancelled by user");
-					delete (state as Record<string, unknown>)._smartRetryContext;
-					this.clearStructuredOutputFailureState(state);
-					return null;
+					return this.cancelStructuredPromptRetry(state, extractor);
 				}
 
 				if (currentRetry <= maxRetries) {
-					// Apply retry backoff for model errors
-					if (options.retryBackoff) {
-						const delayMs = this.calculateBackoffDelay(
-							options.retryBackoff,
+					if (
+						!(await this.waitForStructuredPromptRetryBackoff(
+							state,
+							extractor,
+							options,
 							currentRetry,
-						);
-						this.logger.debug(
-							`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
-						);
-
-						// Abortable sleep - check signal during wait, not just after
-						const aborted = await this.abortableSleep(
-							delayMs,
-							options.abortSignal,
-						);
-						if (aborted) {
-							extractor?.signalError("Cancelled by user");
-							delete (state as Record<string, unknown>)._smartRetryContext;
-							this.clearStructuredOutputFailureState(state);
-							return null;
-						}
+						))
+					) {
+						return null;
 					}
 
 					// Signal retry to extractor if it exists
@@ -6406,34 +6395,19 @@ ${section_end}`;
 			currentRetry++;
 
 			if (options.abortSignal?.aborted) {
-				extractor?.signalError("Cancelled by user");
-				delete (state as Record<string, unknown>)._smartRetryContext;
-				this.clearStructuredOutputFailureState(state);
-				return null;
+				return this.cancelStructuredPromptRetry(state, extractor);
 			}
 
 			if (currentRetry <= maxRetries) {
-				// Apply retry backoff
-				if (options.retryBackoff) {
-					const delayMs = this.calculateBackoffDelay(
-						options.retryBackoff,
+				if (
+					!(await this.waitForStructuredPromptRetryBackoff(
+						state,
+						extractor,
+						options,
 						currentRetry,
-					);
-					this.logger.debug(
-						`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
-					);
-
-					// Abortable sleep - check signal during wait, not just after
-					const aborted = await this.abortableSleep(
-						delayMs,
-						options.abortSignal,
-					);
-					if (aborted) {
-						extractor?.signalError("Cancelled by user");
-						delete (state as Record<string, unknown>)._smartRetryContext;
-						this.clearStructuredOutputFailureState(state);
-						return null;
-					}
+					))
+				) {
+					return null;
 				}
 
 				// Signal retry to extractor
@@ -6956,6 +6930,40 @@ ${section_end}`;
 			default:
 				return effectiveType;
 		}
+	}
+
+	private cancelStructuredPromptRetry(
+		state: State,
+		extractor: DynamicPromptStreamExtractor | undefined,
+	): null {
+		extractor?.signalError("Cancelled by user");
+		delete (state as Record<string, unknown>)._smartRetryContext;
+		this.clearStructuredOutputFailureState(state);
+		return null;
+	}
+
+	private async waitForStructuredPromptRetryBackoff(
+		state: State,
+		extractor: DynamicPromptStreamExtractor | undefined,
+		options: DynamicPromptRetryOptions,
+		currentRetry: number,
+	): Promise<boolean> {
+		if (!options.retryBackoff) {
+			return true;
+		}
+		const delayMs = this.calculateBackoffDelay(
+			options.retryBackoff,
+			currentRetry,
+		);
+		this.logger.debug(
+			`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
+		);
+
+		if (await this.abortableSleep(delayMs, options.abortSignal)) {
+			this.cancelStructuredPromptRetry(state, extractor);
+			return false;
+		}
+		return true;
 	}
 
 	/**
