@@ -371,6 +371,42 @@ export class ProvisioningJobService {
     });
   }
 
+  /**
+   * Drive heartbeats for every running sandbox. The on-prem worker calls this
+   * each cycle so last_heartbeat_at stays fresh and unreachable agents flip
+   * to disconnected. Heartbeats are HTTP fetches over the Headscale tunnel,
+   * so this only runs from the Node sidecar (not from the Cloudflare Worker).
+   */
+  async processRunningHeartbeats(concurrency = 5): Promise<HeartbeatResult> {
+    const running = await agentSandboxesRepository.listRunning();
+    const total = running.length;
+    if (total === 0) return { total: 0, succeeded: 0, failed: 0 };
+
+    let succeeded = 0;
+    let failed = 0;
+    const queue = [...running];
+    const workers = Array.from({ length: Math.min(concurrency, total) }, async () => {
+      while (true) {
+        const r = queue.shift();
+        if (!r) break;
+        const ok = await elizaSandboxService
+          .heartbeat(r.id, r.organization_id)
+          .catch((error: unknown) => {
+            logger.warn("[provisioning-jobs] heartbeat threw", {
+              agentId: r.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return false;
+          });
+        if (ok) succeeded += 1;
+        else failed += 1;
+      }
+    });
+    await Promise.all(workers);
+
+    return { total, succeeded, failed };
+  }
+
   private async recoverStaleJobs(): Promise<number> {
     let totalRecovered = 0;
 
@@ -435,6 +471,12 @@ export class ProvisioningJobService {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface HeartbeatResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+}
 
 export interface ProcessingResult {
   claimed: number;
