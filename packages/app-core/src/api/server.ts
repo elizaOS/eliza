@@ -272,6 +272,17 @@ function resolveCompatPgliteDataDir(config: ElizaConfig): string {
   return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 
+/**
+ * Reset hop for `POST /api/agent/reset`. Deliberately operates entirely
+ * in-process: stops the runtime then removes the PGlite data dir.
+ *
+ * Must NOT issue loopback HTTP requests back to this same server — the
+ * single Node listener can't service the outer request and a re-entrant
+ * call simultaneously and the request hangs (issue #7409).
+ *
+ * Exported via `_clearCompatPgliteDataDirForTests` for the regression
+ * test that asserts no `fetch()` is invoked during reset.
+ */
 async function clearCompatPgliteDataDir(
   runtime: AgentRuntime | null,
   config: ElizaConfig,
@@ -301,6 +312,8 @@ async function clearCompatPgliteDataDir(
     );
   }
 }
+
+export const _clearCompatPgliteDataDirForTests = clearCompatPgliteDataDir;
 
 // sendJsonResponse, sendJsonErrorResponse — now imported from ./response
 
