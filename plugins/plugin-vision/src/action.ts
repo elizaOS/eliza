@@ -39,9 +39,13 @@ async function saveExecutionRecord(
   await runtime.createMemory(memory, "messages");
 }
 
-function readActionParams(options?: Record<string, unknown>): Record<string, unknown> {
+function readActionParams(
+  options?: Record<string, unknown>,
+): Record<string, unknown> {
   const direct =
-    options && typeof options === "object" ? (options as Record<string, unknown>) : {};
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
   const parameters =
     direct.parameters && typeof direct.parameters === "object"
       ? (direct.parameters as Record<string, unknown>)
@@ -61,7 +65,11 @@ export const describeSceneAction: Action = {
       description:
         "Scene description detail level. Use summary to omit object/person breakdowns from the spoken response.",
       required: false,
-      schema: { type: "string", enum: ["summary", "detailed"], default: "detailed" },
+      schema: {
+        type: "string",
+        enum: ["summary", "detailed"],
+        default: "detailed",
+      },
     },
   ],
   validate: async (
@@ -247,7 +255,11 @@ export const describeSceneAction: Action = {
         description += `\n\nObjects detected: ${objectDescriptions.join(", ")}.`;
       }
 
-      if (detailLevel === "detailed" && scene.sceneChanged && scene.changePercentage) {
+      if (
+        detailLevel === "detailed" &&
+        scene.sceneChanged &&
+        scene.changePercentage
+      ) {
         description += `\n\n(Scene changed by ${scene.changePercentage.toFixed(1)}% since last analysis)`;
       }
 
@@ -1151,8 +1163,7 @@ export const nameEntityAction: Action = {
 export const identifyPersonAction: Action = {
   name: "IDENTIFY_PERSON",
   description: "Identify a person in view if they have been seen before",
-  descriptionCompressed:
-    "Match face to known person via local recognition.",
+  descriptionCompressed: "Match face to known person via local recognition.",
   similes: [
     "who is that",
     "who is the person",

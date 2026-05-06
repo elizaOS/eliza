@@ -63,7 +63,10 @@ function dispatchInventoryOp(
     case "drop": {
       const slot = Number(params.item ?? params.slot);
       if (!Number.isInteger(slot) || slot < 0 || slot >= 28) {
-        return Promise.resolve({ success: false, message: "item must be slot 0..27" });
+        return Promise.resolve({
+          success: false,
+          message: "item must be slot 0..27",
+        });
       }
       return service.executeAction({ action: "dropItem", slot });
     }
@@ -74,7 +77,10 @@ function dispatchInventoryOp(
         slot !== undefined &&
         (!Number.isInteger(slot) || slot < 0 || slot >= 28)
       ) {
-        return Promise.resolve({ success: false, message: "item must be slot 0..27" });
+        return Promise.resolve({
+          success: false,
+          message: "item must be slot 0..27",
+        });
       }
       return service.executeAction({ action: "eatFood", slot });
     }
@@ -105,7 +111,10 @@ function dispatchJournalOp(
     case "complete-goal": {
       const statusRaw = str(params, "status").toLowerCase() || "completed";
       if (statusRaw !== "completed" && statusRaw !== "abandoned") {
-        return { success: false, message: "status must be completed|abandoned" };
+        return {
+          success: false,
+          message: "status must be completed|abandoned",
+        };
       }
       const explicitId =
         params.goalId != null
@@ -121,7 +130,8 @@ function dispatchJournalOp(
         statusRaw as "completed" | "abandoned",
         notes,
       );
-      if (!updated) return { success: false, message: `goal ${goalId} not found` };
+      if (!updated)
+        return { success: false, message: `goal ${goalId} not found` };
       return { success: true, message: `goal -> ${statusRaw}` };
     }
     case "remember": {

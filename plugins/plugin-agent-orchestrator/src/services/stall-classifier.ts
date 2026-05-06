@@ -8,7 +8,11 @@
  * @module services/stall-classifier
  */
 
-import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  parseToonKeyValue,
+  type IAgentRuntime,
+  ModelType,
+} from "@elizaos/core";
 import {
   buildTaskCompletionTimeline,
   extractTaskCompletionTraceRecords,
