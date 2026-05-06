@@ -12,7 +12,11 @@
  * @module services/swarm-event-triage
  */
 
-import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  parseToonKeyValue,
+  type IAgentRuntime,
+  ModelType,
+} from "@elizaos/core";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
 // ─── Types ───

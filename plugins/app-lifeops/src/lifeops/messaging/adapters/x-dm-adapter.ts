@@ -41,7 +41,11 @@ export class XDmAdapter extends BaseMessageAdapter {
     const refs: MessageRef[] = [];
     for (const dm of result.inbound) {
       const receivedAtMs = Date.parse(dm.receivedAt);
-      if (sinceMs !== undefined && Number.isFinite(receivedAtMs) && receivedAtMs < sinceMs) {
+      if (
+        sinceMs !== undefined &&
+        Number.isFinite(receivedAtMs) &&
+        receivedAtMs < sinceMs
+      ) {
         continue;
       }
       refs.push({
@@ -80,10 +84,13 @@ export class XDmAdapter extends BaseMessageAdapter {
   ): Promise<{ draftId: string; preview: string }> {
     const recipient = draft.to[0]?.identifier;
     if (!recipient) {
-      throw new Error("[XDmAdapter] createDraft requires a recipient identifier");
+      throw new Error(
+        "[XDmAdapter] createDraft requires a recipient identifier",
+      );
     }
     const draftId = `twitter:${recipient}:${Date.now()}`;
-    const preview = draft.body.length > 200 ? `${draft.body.slice(0, 197)}...` : draft.body;
+    const preview =
+      draft.body.length > 200 ? `${draft.body.slice(0, 197)}...` : draft.body;
     return { draftId, preview };
   }
 
@@ -99,7 +106,9 @@ export class XDmAdapter extends BaseMessageAdapter {
     const parts = draftId.split(":");
     const participantId = parts[1];
     if (!participantId) {
-      throw new Error(`[XDmAdapter] cannot resolve recipient from draftId ${draftId}`);
+      throw new Error(
+        `[XDmAdapter] cannot resolve recipient from draftId ${draftId}`,
+      );
     }
     // The triage service stores the body on the DraftRecord; we don't have that
     // here, so fetch it from the runtime-level service if available.

@@ -1,10 +1,6 @@
 import type http from "node:http";
 import { isMobilePlatform } from "@elizaos/shared";
-import {
-  readRequestBody,
-  sendJson,
-  sendJsonError,
-} from "./http-helpers.js";
+import { readRequestBody, sendJson, sendJsonError } from "./http-helpers.js";
 import {
   readStreamSettings,
   validateStreamSettings,
@@ -82,7 +78,10 @@ export async function handleMobileOptionalRoutes(
     return true;
   }
 
-  if (method === "GET" && pathname === "/api/coding-agents/coordinator/status") {
+  if (
+    method === "GET" &&
+    pathname === "/api/coding-agents/coordinator/status"
+  ) {
     sendJson(res, {
       supervisionLevel: "unavailable",
       taskCount: 0,

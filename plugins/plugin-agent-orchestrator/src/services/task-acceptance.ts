@@ -1,4 +1,8 @@
-import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  parseToonKeyValue,
+  type IAgentRuntime,
+  ModelType,
+} from "@elizaos/core";
 import type { CreateTaskThreadInput } from "./task-registry.js";
 
 export interface TaskAcceptanceCriteriaResult {
@@ -35,7 +39,9 @@ function parseCriteriaResponse(raw: string): string[] {
     const rawCriteria = parsedToon.criteria;
     if (Array.isArray(rawCriteria)) {
       return uniqueCriteria(
-        rawCriteria.filter((entry): entry is string => typeof entry === "string"),
+        rawCriteria.filter(
+          (entry): entry is string => typeof entry === "string",
+        ),
       );
     }
     if (typeof rawCriteria === "string") {
