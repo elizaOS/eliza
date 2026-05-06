@@ -201,9 +201,7 @@ function buildSemanticRepairPrompt(args: {
 function parseSemanticEvaluationOutput(
   raw: string,
 ): Record<string, unknown> | null {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(raw)
-  );
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 function buildSemanticEvaluationResult(

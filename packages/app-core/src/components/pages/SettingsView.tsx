@@ -54,16 +54,16 @@ import {
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
+import { IdentitySettingsSection } from "../settings/IdentitySettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
+import { RuntimeSettingsSection } from "../settings/RuntimeSettingsSection";
 import { SecretsManagerSection } from "../settings/SecretsManagerSection";
 import { SecuritySettingsSection } from "../settings/SecuritySettingsSection";
 import { WalletKeysSection } from "../settings/WalletKeysSection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { ReleaseCenterView } from "./ReleaseCenterView";
-import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
-import { RuntimeSettingsSection } from "./settings/RuntimeSettingsSection";
 
 const SETTINGS_SIDEBAR_WIDTH_KEY = "eliza:settings:sidebar:width";
 const SETTINGS_SIDEBAR_COLLAPSED_KEY = "eliza:settings:sidebar:collapsed";

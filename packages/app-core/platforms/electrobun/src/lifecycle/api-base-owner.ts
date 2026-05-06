@@ -39,6 +39,10 @@ interface ApiBaseSnapshot {
 
 let current: ApiBaseSnapshot = { base: null, token: "" };
 
+function safeJsonForHtml(value: unknown): string {
+	return JSON.stringify(value).replace(/<\//g, "<\\/");
+}
+
 /**
  * Update the singleton with the latest known API base + token. Subsequent
  * `injectIntoHtml(...)` and `pushToWindow(...)` calls read this state.
@@ -73,8 +77,8 @@ export function getCurrent(): Readonly<ApiBaseSnapshot> {
  */
 export function injectIntoHtml(html: string): string {
 	if (!current.base) return html;
-	const baseLiteral = JSON.stringify(current.base);
-	const tokenLiteral = current.token ? JSON.stringify(current.token) : "";
+	const baseLiteral = safeJsonForHtml(current.base);
+	const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
 	const tokenInject = tokenLiteral
 		? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
 		: "";

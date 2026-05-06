@@ -704,8 +704,7 @@ function packageDesktopBuild() {
 
   const packageEnv = {
     ...process.env,
-    ELIZA_ELECTROBUN_REPO_ROOT:
-      process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
+    ELIZA_ELECTROBUN_REPO_ROOT: process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
     ...(stageMacosReleaseApp && process.platform === "darwin"
       ? { ELIZA_ELECTROBUN_NOTARIZE: "0" }
       : {}),

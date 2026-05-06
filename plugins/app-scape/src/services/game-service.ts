@@ -620,9 +620,7 @@ ${actionList}
 Your choice:`;
   }
 
-  private parseActionFromResponse(
-    response: string,
-  ): {
+  private parseActionFromResponse(response: string): {
     actionName: string;
     subaction: string;
     legacyAction: string;
@@ -676,10 +674,7 @@ Your choice:`;
     parsed: Record<string, unknown> | null,
   ): string | null {
     const raw =
-      parsed?.op ??
-      parsed?.subaction ??
-      parsed?.operation ??
-      parsed?.intent;
+      parsed?.op ?? parsed?.subaction ?? parsed?.operation ?? parsed?.intent;
     if (typeof raw !== "string") return null;
     return (
       raw
@@ -781,7 +776,8 @@ Your choice:`;
       }
       case "eat": {
         const raw = parsed.params.item ?? parsed.params.slot;
-        const slot = raw === undefined || raw === null ? undefined : Number(raw);
+        const slot =
+          raw === undefined || raw === null ? undefined : Number(raw);
         if (
           slot !== undefined &&
           (!Number.isInteger(slot) || slot < 0 || slot >= 28)

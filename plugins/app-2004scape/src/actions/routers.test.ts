@@ -41,8 +41,10 @@ describe("2004scape action routers", () => {
   });
 
   it("dispatches INVENTORY_OP drop through the game service", async () => {
-    const calls: Array<{ actionType: string; params: Record<string, unknown> }> =
-      [];
+    const calls: Array<{
+      actionType: string;
+      params: Record<string, unknown>;
+    }> = [];
     const runtime = {
       getService: (name: string) =>
         name === "rs_2004scape"
@@ -74,8 +76,10 @@ describe("2004scape action routers", () => {
   });
 
   it("dispatches WALK_TO with coordinate params", async () => {
-    const calls: Array<{ actionType: string; params: Record<string, unknown> }> =
-      [];
+    const calls: Array<{
+      actionType: string;
+      params: Record<string, unknown>;
+    }> = [];
     const runtime = {
       getService: (name: string) =>
         name === "rs_2004scape"
@@ -106,8 +110,10 @@ describe("2004scape action routers", () => {
   });
 
   it("dispatches SKILL_OP using the `skill` field", async () => {
-    const calls: Array<{ actionType: string; params: Record<string, unknown> }> =
-      [];
+    const calls: Array<{
+      actionType: string;
+      params: Record<string, unknown>;
+    }> = [];
     const runtime = {
       getService: (name: string) =>
         name === "rs_2004scape"

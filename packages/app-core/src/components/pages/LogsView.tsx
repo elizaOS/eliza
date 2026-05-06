@@ -1,5 +1,6 @@
 import {
   Button,
+  ContentLayout,
   Input,
   PagePanel,
   Select,
@@ -8,12 +9,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@elizaos/ui";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { LogEntry } from "../../api";
 import { useApp } from "../../state";
 import { formatTime } from "../../utils/format";
 
-export function LogsView() {
+/**
+ * Logs page — formerly split across `LogsPageView` (a 17-LOC ContentLayout
+ * wrapper) and `LogsView` (the panel). Folded into one component since
+ * neither caller passed contentHeader/inModal — both props default to
+ * the same shape the wrapper used to apply.
+ */
+export function LogsView({
+  contentHeader,
+  inModal,
+}: {
+  contentHeader?: ReactNode;
+  inModal?: boolean;
+} = {}) {
+  return (
+    <ContentLayout contentHeader={contentHeader} inModal={inModal}>
+      <LogsViewBody />
+    </ContentLayout>
+  );
+}
+
+function LogsViewBody() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const {

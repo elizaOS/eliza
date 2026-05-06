@@ -831,7 +831,11 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
           },
           {
             userRequest: "show all unread emails from alex@example.com",
-            requiredFragments: ["triage_messages", "alex@example.com", "unread"],
+            requiredFragments: [
+              "triage_messages",
+              "alex@example.com",
+              "unread",
+            ],
           },
         ] as const;
 

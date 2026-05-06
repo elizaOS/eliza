@@ -75,7 +75,11 @@ export function hasActionRequest(
 
 function extractActionNames(parsed: Record<string, unknown>): string[] {
   const raw =
-    parsed.action ?? parsed.actionName ?? parsed.name ?? parsed.type ?? parsed.actions;
+    parsed.action ??
+    parsed.actionName ??
+    parsed.name ??
+    parsed.type ??
+    parsed.actions;
   if (typeof raw === "string") {
     return raw
       .split(",")
@@ -87,7 +91,8 @@ function extractActionNames(parsed: Record<string, unknown>): string[] {
       if (typeof entry === "string") return [entry];
       if (entry && typeof entry === "object") {
         const record = entry as Record<string, unknown>;
-        const name = record.name ?? record.action ?? record.actionName ?? record.type;
+        const name =
+          record.name ?? record.action ?? record.actionName ?? record.type;
         return typeof name === "string" ? [name] : [];
       }
       return [];
@@ -97,5 +102,8 @@ function extractActionNames(parsed: Record<string, unknown>): string[] {
 }
 
 function normalizeActionName(value: string): string {
-  return value.trim().replace(/[\s-]+/g, "_").toUpperCase();
+  return value
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .toUpperCase();
 }

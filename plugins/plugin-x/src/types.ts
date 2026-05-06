@@ -220,10 +220,8 @@ export interface TwitterUserRef {
 /**
  * Twitter-specific message received payload
  */
-export interface TwitterMessageReceivedPayload extends Omit<
-  MessagePayload,
-  "message"
-> {
+export interface TwitterMessageReceivedPayload
+  extends Omit<MessagePayload, "message"> {
   message: TwitterMemory;
   tweet: Tweet;
   user: TwitterUserRef;
@@ -254,10 +252,8 @@ export interface TwitterReactionReceivedPayload extends MessagePayload {
 /**
  * Twitter-specific quote tweet received payload
  */
-export interface TwitterQuoteReceivedPayload extends Omit<
-  MessagePayload,
-  "message" | "reaction"
-> {
+export interface TwitterQuoteReceivedPayload
+  extends Omit<MessagePayload, "message" | "reaction"> {
   /** The original tweet that was quoted */
   quotedTweet: Tweet;
   /** The quote tweet */
@@ -278,10 +274,8 @@ export interface TwitterQuoteReceivedPayload extends Omit<
 /**
  * Twitter-specific mention received payload
  */
-export interface TwitterMentionReceivedPayload extends Omit<
-  MessagePayload,
-  "message"
-> {
+export interface TwitterMentionReceivedPayload
+  extends Omit<MessagePayload, "message"> {
   /** The tweet containing the mention */
   tweet: Tweet;
   /** The user who mentioned */

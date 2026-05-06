@@ -58,6 +58,14 @@ export const ANTHROPIC_ACCOUNT_POOL_SYMBOL = AccountPoolShimSymbol;
 
 const tokenCache = new Map<string, OAuthToken>();
 const ENV_CACHE_KEY = "__env__";
+const APP_CREDENTIAL_CACHE_KEY = "__app_anthropic_subscription__";
+
+interface AppSubscriptionCredentials {
+  credentials?: {
+    access?: string;
+    expires?: number;
+  };
+}
 
 /**
  * Ref: https://code.claude.com/docs/en/authentication
@@ -68,6 +76,12 @@ const ENV_CACHE_KEY = "__env__";
  * legacy file/keychain reader.
  */
 export function getClaudeOAuthToken(opts?: { accountId?: string }): OAuthToken {
+  const appToken = readAppManagedAnthropicToken();
+  if (appToken) {
+    tokenCache.set(APP_CREDENTIAL_CACHE_KEY, appToken);
+    return appToken;
+  }
+
   const cacheKey = opts?.accountId ?? ENV_CACHE_KEY;
   const cached = tokenCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt - 60_000) {
@@ -112,6 +126,12 @@ export async function getClaudeOAuthTokenAsync(opts?: {
   sessionKey?: string;
   exclude?: string[];
 }): Promise<OAuthToken> {
+  const appToken = readAppManagedAnthropicToken();
+  if (appToken) {
+    tokenCache.set(APP_CREDENTIAL_CACHE_KEY, appToken);
+    return appToken;
+  }
+
   const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN") ?? getEnvVar("ANTHROPIC_OAUTH_TOKEN");
   if (envToken) {
     const token: OAuthToken = {
@@ -178,6 +198,18 @@ export function reportClaudeOAuthRateLimited(
 }
 
 export function getClaudeOAuthMeta(): ClaudeCredentials["claudeAiOauth"] | null {
+  const appToken = readAppManagedAnthropicToken();
+  if (appToken) {
+    return {
+      accessToken: appToken.accessToken,
+      refreshToken: "",
+      expiresAt: appToken.expiresAt,
+      scopes: [],
+      subscriptionType: "app-managed",
+      rateLimitTier: "",
+    };
+  }
+
   const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN") ?? getEnvVar("ANTHROPIC_OAUTH_TOKEN");
   if (envToken) return null;
 
@@ -196,6 +228,53 @@ export function clearTokenCache(accountId?: string): void {
 function getEnvVar(key: string): string | undefined {
   if (typeof process === "undefined") return undefined;
   return process.env[key];
+}
+
+function readAppManagedAnthropicToken(): OAuthToken | null {
+  if (typeof process === "undefined") return null;
+
+  const cached = tokenCache.get(APP_CREDENTIAL_CACHE_KEY);
+  if (cached && Date.now() < cached.expiresAt - 60_000) {
+    return cached;
+  }
+
+  const { join } = require("node:path") as typeof import("node:path");
+  const { homedir } = require("node:os") as typeof import("node:os");
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const namespace = getEnvVar("ELIZA_NAMESPACE")?.trim() || "eliza";
+  const stateDir = getEnvVar("ELIZA_STATE_DIR")?.trim() || join(homedir(), `.${namespace}`);
+  const accountId = getEnvVar("ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID")?.trim() || "default";
+  const paths = [
+    join(stateDir, "auth", "anthropic-subscription", `${accountId}.json`),
+    join(homedir(), ".eliza", "auth", "anthropic-subscription", `${accountId}.json`),
+    join(homedir(), ".eliza", "auth", "anthropic-subscription.json"),
+  ];
+
+  for (const credentialPath of paths) {
+    try {
+      const parsed = JSON.parse(
+        readFileSync(credentialPath, "utf-8")
+      ) as AppSubscriptionCredentials;
+      const access = parsed.credentials?.access?.trim();
+      if (!access) continue;
+      const expires = parsed.credentials?.expires;
+      const token: OAuthToken = {
+        accessToken: access,
+        expiresAt:
+          typeof expires === "number" && Number.isFinite(expires)
+            ? expires
+            : Number.POSITIVE_INFINITY,
+      };
+      if (Date.now() < token.expiresAt - 60_000) {
+        return token;
+      }
+    } catch {
+      // Try the next known app-managed credential location.
+    }
+  }
+
+  tokenCache.delete(APP_CREDENTIAL_CACHE_KEY);
+  return null;
 }
 
 function readFromCredentialStore(): ClaudeCredentials | null {

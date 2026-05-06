@@ -28,6 +28,10 @@ import type {
   WsEventHandler,
 } from "./client-types";
 import { ApiError } from "./client-types";
+import {
+  iosInProcessAgentTransportForUrl,
+  isIosInProcessLocalAgentBase,
+} from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
@@ -324,6 +328,7 @@ export class ElizaClient {
         const transport =
           this.requestTransport === fetchAgentTransport
             ? ((await androidNativeAgentTransportForUrl(requestUrl)) ??
+              (await iosInProcessAgentTransportForUrl(requestUrl)) ??
               nativeCloudHttpTransportForUrl(requestUrl) ??
               this.requestTransport)
             : this.requestTransport;
@@ -463,6 +468,17 @@ export class ElizaClient {
   // --- WebSocket ---
 
   connectWs(): void {
+    if (isIosInProcessLocalAgentBase(this.baseUrl)) {
+      this.backoffMs = 500;
+      this.reconnectAttempt = 0;
+      this.disconnectedAt = null;
+      if (this.connectionState !== "connected") {
+        this.connectionState = "connected";
+        this.emitConnectionStateChange();
+      }
+      return;
+    }
+
     if (
       this.ws?.readyState === WebSocket.OPEN ||
       this.ws?.readyState === WebSocket.CONNECTING

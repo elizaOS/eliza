@@ -111,7 +111,7 @@ import {
 // route-level splitting back, lift `lazy()` to a single owning call site.
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DatabasePageView } from "./components/pages/DatabasePageView";
-import { LogsPageView } from "./components/pages/LogsPageView";
+import { LogsView } from "./components/pages/LogsView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
@@ -609,7 +609,7 @@ function ViewRouter({
       case "logs":
         return (
           <TabContentView>
-            <LogsPageView />
+            <LogsView />
           </TabContentView>
         );
       case "fine-tuning":

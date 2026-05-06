@@ -60,7 +60,8 @@ function isRecord(value: unknown): value is ParamsRecord {
 function normalizeParams(params: ParamsRecord, dispatch: string): ParamsRecord {
   const normalized = { ...params };
 
-  if (normalized.npc && !normalized.npcName) normalized.npcName = normalized.npc;
+  if (normalized.npc && !normalized.npcName)
+    normalized.npcName = normalized.npc;
   if (normalized.item && !normalized.itemName)
     normalized.itemName = normalized.item;
   if (normalized.object && !normalized.objectName)

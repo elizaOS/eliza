@@ -8,15 +8,18 @@ import {
   logger,
   type Memory,
   type State,
-} from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
-import { matchWorkflow } from '../utils/generation';
-import { buildConversationContext } from '../utils/context';
-import type { WorkflowDraft } from '../types/index';
-import { DRAFT_TTL_MS } from '../utils/constants';
+} from "@elizaos/core";
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from "../services/index";
+import { matchWorkflow } from "../utils/generation";
+import { buildConversationContext } from "../utils/context";
+import type { WorkflowDraft } from "../types/index";
+import { DRAFT_TTL_MS } from "../utils/constants";
 
 const DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
-const VALID_OPS = ['activate', 'deactivate', 'delete'] as const;
+const VALID_OPS = ["activate", "deactivate", "delete"] as const;
 type LifecycleOp = (typeof VALID_OPS)[number];
 
 interface PendingDeletion {
@@ -35,40 +38,40 @@ type LifecycleOptions = {
 const examples: ActionExample[][] = [
   [
     {
-      name: '{{user1}}',
-      content: { text: 'Enable my payment workflow' },
+      name: "{{user1}}",
+      content: { text: "Enable my payment workflow" },
     },
     {
-      name: '{{agent}}',
+      name: "{{agent}}",
       content: {
         text: "I'll activate that workflow for you.",
-        actions: ['WORKFLOW_LIFECYCLE_OP'],
+        actions: ["WORKFLOW_LIFECYCLE_OP"],
       },
     },
   ],
   [
     {
-      name: '{{user1}}',
-      content: { text: 'Pause my Stripe workflow' },
+      name: "{{user1}}",
+      content: { text: "Pause my Stripe workflow" },
     },
     {
-      name: '{{agent}}',
+      name: "{{agent}}",
       content: {
         text: "I'll deactivate that workflow for you.",
-        actions: ['WORKFLOW_LIFECYCLE_OP'],
+        actions: ["WORKFLOW_LIFECYCLE_OP"],
       },
     },
   ],
   [
     {
-      name: '{{user1}}',
-      content: { text: 'Delete the old payment workflow' },
+      name: "{{user1}}",
+      content: { text: "Delete the old payment workflow" },
     },
     {
-      name: '{{agent}}',
+      name: "{{agent}}",
       content: {
         text: "I'll delete that workflow for you.",
-        actions: ['WORKFLOW_LIFECYCLE_OP'],
+        actions: ["WORKFLOW_LIFECYCLE_OP"],
       },
     },
   ],
@@ -77,33 +80,33 @@ const examples: ActionExample[][] = [
 function parseOpFromText(text: string): LifecycleOp | null {
   const lower = text.toLowerCase();
   if (/\b(delete|remove|destroy|get rid of)\b/.test(lower)) {
-    return 'delete';
+    return "delete";
   }
   if (/\b(deactivate|disable|stop|pause|turn off)\b/.test(lower)) {
-    return 'deactivate';
+    return "deactivate";
   }
   if (/\b(activate|enable|start|turn on)\b/.test(lower)) {
-    return 'activate';
+    return "activate";
   }
   return null;
 }
 
 function resolveOp(message: Memory, options?: unknown): LifecycleOp | null {
   const params = (options as LifecycleOptions | undefined)?.parameters ?? {};
-  if (typeof params.op === 'string') {
+  if (typeof params.op === "string") {
     const trimmed = params.op.trim().toLowerCase();
     if ((VALID_OPS as readonly string[]).includes(trimmed)) {
       return trimmed as LifecycleOp;
     }
   }
-  return parseOpFromText(message.content?.text || '');
+  return parseOpFromText(message.content?.text || "");
 }
 
 async function handleActivateDraftRedirect(
   runtime: IAgentRuntime,
   service: N8nWorkflowService,
   message: Memory,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
 ): Promise<ActionResult | null> {
   const cacheKey = `workflow_draft:${message.entityId}`;
   let pendingDraft = await runtime.getCache<WorkflowDraft>(cacheKey);
@@ -119,12 +122,12 @@ async function handleActivateDraftRedirect(
 
   if (pendingDraft.workflow._meta?.requiresClarification?.length) {
     logger.info(
-      { src: 'plugin:n8n-workflow:action:lifecycle' },
-      'Draft redirect: draft needs clarification, prompting user'
+      { src: "plugin:n8n-workflow:action:lifecycle" },
+      "Draft redirect: draft needs clarification, prompting user",
     );
     if (callback) {
       await callback({
-        text: 'I still need a bit more information before I can create this workflow. Could you answer the questions above?',
+        text: "I still need a bit more information before I can create this workflow. Could you answer the questions above?",
         success: false,
       });
     }
@@ -132,18 +135,23 @@ async function handleActivateDraftRedirect(
   }
 
   logger.info(
-    { src: 'plugin:n8n-workflow:action:lifecycle' },
-    `Draft redirect: deploying pending draft "${pendingDraft.workflow.name}" (LLM misrouted to ACTIVATE)`
+    { src: "plugin:n8n-workflow:action:lifecycle" },
+    `Draft redirect: deploying pending draft "${pendingDraft.workflow.name}" (LLM misrouted to ACTIVATE)`,
   );
 
-  const result = await service.deployWorkflow(pendingDraft.workflow, message.entityId);
+  const result = await service.deployWorkflow(
+    pendingDraft.workflow,
+    message.entityId,
+  );
 
   if (result.missingCredentials.length > 0) {
     const connList = result.missingCredentials
       .map((m) =>
-        m.authUrl ? `- **${m.credType}**: [Connect](${m.authUrl})` : `- **${m.credType}**`
+        m.authUrl
+          ? `- **${m.credType}**: [Connect](${m.authUrl})`
+          : `- **${m.credType}**`,
       )
-      .join('\n');
+      .join("\n");
     if (callback) {
       await callback({
         text: `The following services need to be connected before deploying:\n\n${connList}\n\nPlease connect them and try again.`,
@@ -158,8 +166,8 @@ async function handleActivateDraftRedirect(
   let responseText = `Workflow "${result.name}" deployed successfully!\n\n`;
   responseText += `**Workflow ID:** ${result.id}\n`;
   responseText += `**Nodes:** ${result.nodeCount}\n`;
-  responseText += `**Status:** ${result.active ? 'Active' : 'Inactive'}\n`;
-  responseText += '\nAll credentials configured — workflow is ready to run!';
+  responseText += `**Status:** ${result.active ? "Active" : "Inactive"}\n`;
+  responseText += "\nAll credentials configured — workflow is ready to run!";
 
   if (callback) {
     await callback({ text: responseText, success: true });
@@ -174,9 +182,14 @@ async function runActivate(
   message: Memory,
   state: State | undefined,
   workflowIdParam: string | null,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const draftRedirect = await handleActivateDraftRedirect(runtime, service, message, callback);
+  const draftRedirect = await handleActivateDraftRedirect(
+    runtime,
+    service,
+    message,
+    callback,
+  );
   if (draftRedirect) {
     return draftRedirect;
   }
@@ -187,8 +200,8 @@ async function runActivate(
     message,
     state,
     workflowIdParam,
-    'activate',
-    callback
+    "activate",
+    callback,
   );
   if (!workflowId) {
     return { success: false };
@@ -196,13 +209,13 @@ async function runActivate(
 
   await service.activateWorkflow(workflowId);
   logger.info(
-    { src: 'plugin:n8n-workflow:action:lifecycle' },
-    `Activated workflow ${workflowId}`
+    { src: "plugin:n8n-workflow:action:lifecycle" },
+    `Activated workflow ${workflowId}`,
   );
 
   if (callback) {
     await callback({
-      text: '✅ Workflow activated and is now running.',
+      text: "✅ Workflow activated and is now running.",
       success: true,
     });
   }
@@ -215,7 +228,7 @@ async function runDeactivate(
   message: Memory,
   state: State | undefined,
   workflowIdParam: string | null,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const workflowId = await resolveWorkflowId(
     runtime,
@@ -223,8 +236,8 @@ async function runDeactivate(
     message,
     state,
     workflowIdParam,
-    'deactivate',
-    callback
+    "deactivate",
+    callback,
   );
   if (!workflowId) {
     return { success: false };
@@ -232,13 +245,13 @@ async function runDeactivate(
 
   await service.deactivateWorkflow(workflowId);
   logger.info(
-    { src: 'plugin:n8n-workflow:action:lifecycle' },
-    `Deactivated workflow ${workflowId}`
+    { src: "plugin:n8n-workflow:action:lifecycle" },
+    `Deactivated workflow ${workflowId}`,
   );
 
   if (callback) {
     await callback({
-      text: '⏸️  Workflow deactivated and will no longer run automatically.',
+      text: "⏸️  Workflow deactivated and will no longer run automatically.",
       success: true,
     });
   }
@@ -251,14 +264,14 @@ async function runDelete(
   message: Memory,
   state: State | undefined,
   workflowIdParam: string | null,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const userId = message.entityId;
   const cacheKey = `workflow_delete_pending:${userId}`;
 
   const pending = await runtime.getCache<PendingDeletion>(cacheKey);
   if (pending && Date.now() - pending.createdAt < DELETE_CONFIRM_TTL_MS) {
-    const userText = (message.content?.text || '').toLowerCase().trim();
+    const userText = (message.content?.text || "").toLowerCase().trim();
     const isConfirm = /^(yes|confirm|ok|do it|go ahead|oui|y)$/i.test(userText);
 
     if (isConfirm) {
@@ -266,8 +279,8 @@ async function runDelete(
       await runtime.deleteCache(cacheKey);
 
       logger.info(
-        { src: 'plugin:n8n-workflow:action:lifecycle' },
-        `Deleted workflow ${pending.workflowId} after confirmation`
+        { src: "plugin:n8n-workflow:action:lifecycle" },
+        `Deleted workflow ${pending.workflowId} after confirmation`,
       );
 
       if (callback) {
@@ -282,7 +295,7 @@ async function runDelete(
     await runtime.deleteCache(cacheKey);
     if (callback) {
       await callback({
-        text: 'Deletion cancelled.',
+        text: "Deletion cancelled.",
         success: true,
       });
     }
@@ -295,7 +308,7 @@ async function runDelete(
   if (workflows.length === 0) {
     if (callback) {
       await callback({
-        text: 'No workflows available to delete.',
+        text: "No workflows available to delete.",
         success: false,
       });
     }
@@ -309,8 +322,10 @@ async function runDelete(
   } else {
     const context = buildConversationContext(message, state);
     const matchResult = await matchWorkflow(runtime, context, workflows);
-    if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-      const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
+    if (!matchResult.matchedWorkflowId || matchResult.confidence === "none") {
+      const workflowList = matchResult.matches
+        .map((m) => `- ${m.name} (ID: ${m.id})`)
+        .join("\n");
       if (callback) {
         await callback({
           text: `Could not identify which workflow to delete. Available workflows:\n${workflowList}`,
@@ -350,7 +365,7 @@ async function resolveWorkflowId(
   state: State | undefined,
   workflowIdParam: string | null,
   opLabel: string,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
 ): Promise<string | null> {
   const userId = message.entityId;
   const workflows = await service.listWorkflows(userId);
@@ -382,8 +397,10 @@ async function resolveWorkflowId(
   const context = buildConversationContext(message, state);
   const matchResult = await matchWorkflow(runtime, context, workflows);
 
-  if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-    const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
+  if (!matchResult.matchedWorkflowId || matchResult.confidence === "none") {
+    const workflowList = matchResult.matches
+      .map((m) => `- ${m.name} (ID: ${m.id})`)
+      .join("\n");
     if (callback) {
       await callback({
         text: `Could not identify which workflow to ${opLabel}. Available workflows:\n${workflowList}`,
@@ -397,44 +414,47 @@ async function resolveWorkflowId(
 }
 
 export const workflowLifecycleOpAction: Action = {
-  name: 'WORKFLOW_LIFECYCLE_OP',
+  name: "WORKFLOW_LIFECYCLE_OP",
   similes: [
-    'ACTIVATE_WORKFLOW',
-    'DEACTIVATE_WORKFLOW',
-    'DELETE_WORKFLOW',
-    'ENABLE_WORKFLOW',
-    'DISABLE_WORKFLOW',
-    'STOP_WORKFLOW',
-    'PAUSE_WORKFLOW',
-    'TURN_ON_WORKFLOW',
-    'TURN_OFF_WORKFLOW',
-    'START_WORKFLOW',
-    'REMOVE_WORKFLOW',
-    'DESTROY_WORKFLOW',
+    "ACTIVATE_WORKFLOW",
+    "DEACTIVATE_WORKFLOW",
+    "DELETE_WORKFLOW",
+    "ENABLE_WORKFLOW",
+    "DISABLE_WORKFLOW",
+    "STOP_WORKFLOW",
+    "PAUSE_WORKFLOW",
+    "TURN_ON_WORKFLOW",
+    "TURN_OFF_WORKFLOW",
+    "START_WORKFLOW",
+    "REMOVE_WORKFLOW",
+    "DESTROY_WORKFLOW",
     // Back-compat for callers that still reference the old action names
-    'ACTIVATE_N8N_WORKFLOW',
-    'DEACTIVATE_N8N_WORKFLOW',
-    'DELETE_N8N_WORKFLOW',
+    "ACTIVATE_N8N_WORKFLOW",
+    "DEACTIVATE_N8N_WORKFLOW",
+    "DELETE_N8N_WORKFLOW",
   ],
   description:
     'n8n workflow lifecycle operation. Pass `op` ("activate", "deactivate", or "delete") and optionally `workflowId`. Identifies workflows by ID, name, or semantic description.',
-  descriptionCompressed: 'n8n workflow lifecycle: activate, deactivate, delete.',
+  descriptionCompressed:
+    "n8n workflow lifecycle: activate, deactivate, delete.",
 
   parameters: [
     {
-      name: 'op',
-      description: 'Lifecycle operation to perform. One of: activate, deactivate, delete.',
+      name: "op",
+      description:
+        "Lifecycle operation to perform. One of: activate, deactivate, delete.",
       required: false,
       schema: {
-        type: 'string' as const,
+        type: "string" as const,
         enum: [...VALID_OPS],
       },
     },
     {
-      name: 'workflowId',
-      description: 'Exact n8n workflow id. When omitted, the workflow is matched semantically.',
+      name: "workflowId",
+      description:
+        "Exact n8n workflow id. When omitted, the workflow is matched semantically.",
       required: false,
-      schema: { type: 'string' as const },
+      schema: { type: "string" as const },
     },
   ],
 
@@ -447,18 +467,20 @@ export const workflowLifecycleOpAction: Action = {
     message: Memory,
     state: State | undefined,
     options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
 
     if (!service) {
       logger.error(
-        { src: 'plugin:n8n-workflow:action:lifecycle' },
-        'N8n Workflow service not available'
+        { src: "plugin:n8n-workflow:action:lifecycle" },
+        "N8n Workflow service not available",
       );
       if (callback) {
         await callback({
-          text: 'N8n Workflow service is not available.',
+          text: "N8n Workflow service is not available.",
           success: false,
         });
       }
@@ -469,7 +491,7 @@ export const workflowLifecycleOpAction: Action = {
     if (!op) {
       if (callback) {
         await callback({
-          text: 'Could not determine which lifecycle operation to perform. Please specify activate, deactivate, or delete.',
+          text: "Could not determine which lifecycle operation to perform. Please specify activate, deactivate, or delete.",
           success: false,
         });
       }
@@ -478,24 +500,47 @@ export const workflowLifecycleOpAction: Action = {
 
     const params = (options as LifecycleOptions | undefined)?.parameters ?? {};
     const workflowIdParam =
-      typeof params.workflowId === 'string' && params.workflowId.trim().length > 0
+      typeof params.workflowId === "string" &&
+      params.workflowId.trim().length > 0
         ? params.workflowId.trim()
         : null;
 
     try {
       switch (op) {
-        case 'activate':
-          return await runActivate(runtime, service, message, state, workflowIdParam, callback);
-        case 'deactivate':
-          return await runDeactivate(runtime, service, message, state, workflowIdParam, callback);
-        case 'delete':
-          return await runDelete(runtime, service, message, state, workflowIdParam, callback);
+        case "activate":
+          return await runActivate(
+            runtime,
+            service,
+            message,
+            state,
+            workflowIdParam,
+            callback,
+          );
+        case "deactivate":
+          return await runDeactivate(
+            runtime,
+            service,
+            message,
+            state,
+            workflowIdParam,
+            callback,
+          );
+        case "delete":
+          return await runDelete(
+            runtime,
+            service,
+            message,
+            state,
+            workflowIdParam,
+            callback,
+          );
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       logger.error(
-        { src: 'plugin:n8n-workflow:action:lifecycle', op },
-        `Failed to ${op} workflow: ${errorMessage}`
+        { src: "plugin:n8n-workflow:action:lifecycle", op },
+        `Failed to ${op} workflow: ${errorMessage}`,
       );
 
       if (callback) {

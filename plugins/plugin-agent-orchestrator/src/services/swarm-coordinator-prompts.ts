@@ -496,7 +496,10 @@ function normalizeCoordinationResponse(
       const keys = Array.isArray(record.keys)
         ? record.keys.map(String).filter(Boolean)
         : typeof record.keys === "string" && record.keys.trim()
-          ? record.keys.split(",").map((key) => key.trim()).filter(Boolean)
+          ? record.keys
+              .split(",")
+              .map((key) => key.trim())
+              .filter(Boolean)
           : [];
       if (keys.length === 0) return null;
       result.useKeys = true;

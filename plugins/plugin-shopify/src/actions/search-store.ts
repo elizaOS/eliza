@@ -8,11 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  logger,
-  ModelType,
-  parseToonKeyValue,
-} from "@elizaos/core";
+import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -59,9 +55,10 @@ type SearchStoreParams = {
   limit?: unknown;
 };
 
-function readSearchStoreParams(
-  options?: HandlerOptions,
-): { intent: SearchIntent | null; limit: number } {
+function readSearchStoreParams(options?: HandlerOptions): {
+  intent: SearchIntent | null;
+  limit: number;
+} {
   const params = (options?.parameters ?? {}) as SearchStoreParams;
   const query =
     typeof params.query === "string" && params.query.trim().length > 0
@@ -100,8 +97,7 @@ User message: "${text}"
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(response);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(response);
     if (parsed?.query) {
       return parsed as unknown as SearchIntent;
     }

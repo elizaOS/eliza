@@ -7,7 +7,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && node scripts/ensure-native-plugins-linked.mjs",
+    "postinstall": "bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
@@ -177,7 +177,6 @@
     "@elizaos/plugin-starter",
     "@nestjs/core",
     "@openapitools/openapi-generator-cli",
-    "@polyagent/app",
     "@swc/core",
     "@tensorflow/tfjs-node",
     "bigint-buffer",

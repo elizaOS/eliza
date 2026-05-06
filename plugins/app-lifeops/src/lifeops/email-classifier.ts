@@ -337,9 +337,7 @@ function resolveModelType(modelSetting: string): keyof typeof ModelType {
 function parseStructuredClassification(
   raw: string,
 ): Record<string, unknown> | null {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(raw)
-  );
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 function normalizeSignalList(value: unknown): string[] {

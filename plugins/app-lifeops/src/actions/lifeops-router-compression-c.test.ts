@@ -105,9 +105,7 @@ vi.mock("../website-blocker/chat-integration/harsh-mode-check.ts", () => ({
   hasActiveHarshNoBypassRule: vi.fn(async () => false),
 }));
 
-import {
-  ownerAutofillAction,
-} from "./owner-autofill.js";
+import { ownerAutofillAction } from "./owner-autofill.js";
 import { dossierAction } from "./owner-dossier.js";
 import { healthAction } from "./owner-health.js";
 import { relationshipAction } from "./owner-relationship.js";
@@ -165,11 +163,9 @@ describe("LifeOps router compression C", () => {
   });
 
   it("collapses autofill legacy actions into one AUTOFILL router", async () => {
-    expect(
-      new Set([
-        ownerAutofillAction.name,
-      ]),
-    ).toEqual(new Set(["OWNER_AUTOFILL"]));
+    expect(new Set([ownerAutofillAction.name])).toEqual(
+      new Set(["OWNER_AUTOFILL"]),
+    );
 
     const runtime = makeRuntime();
     const result = await ownerAutofillAction.handler?.(

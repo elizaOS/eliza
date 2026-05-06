@@ -29,6 +29,7 @@ import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { ChatGenerationResult, LogEntry } from "./chat-routes.js";
 import {
+  classifyChatFailure,
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
@@ -1350,6 +1351,7 @@ export async function handleConversationRoutes(
             "Chat generation failed with no streamed text",
           );
           const providerIssueReply = getChatFailureReply(err, state.logBuffer);
+          const failureKind = classifyChatFailure(err, state.logBuffer);
           try {
             await persistAssistantConversationMemory(
               runtime,
@@ -1362,6 +1364,9 @@ export async function handleConversationRoutes(
               type: "done",
               fullText: providerIssueReply,
               agentName: state.agentName,
+              // See non-streaming branch — renderer gates chat input on
+              // failureKind === "no_provider".
+              failureKind,
             });
           } catch (persistErr) {
             writeSse(res, {
@@ -1521,6 +1526,7 @@ export async function handleConversationRoutes(
         `[conversations] POST /messages failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       const providerIssueReply = getChatFailureReply(err, state.logBuffer);
+      const failureKind = classifyChatFailure(err, state.logBuffer);
       try {
         await persistAssistantConversationMemory(
           runtime,
@@ -1532,6 +1538,11 @@ export async function handleConversationRoutes(
         json(res, {
           text: providerIssueReply,
           agentName: state.agentName,
+          // Renderer keys off this discriminator. "no_provider" means the
+          // chat input should be gated with a "Connect a provider" CTA
+          // instead of treating the message text as a normal assistant
+          // reply (the user can't make progress without taking action).
+          failureKind,
         });
       } catch (persistErr) {
         error(res, getErrorMessage(persistErr), 500);

@@ -259,7 +259,9 @@ function parseExtractionEnvelope<TSubaction extends string>(
     : null;
 
   const params =
-    parsed.params && typeof parsed.params === "object" && !Array.isArray(parsed.params)
+    parsed.params &&
+    typeof parsed.params === "object" &&
+    !Array.isArray(parsed.params)
       ? (parsed.params as Record<string, unknown>)
       : {};
 

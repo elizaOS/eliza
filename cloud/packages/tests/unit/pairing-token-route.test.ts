@@ -47,6 +47,7 @@ interface MockedSandboxState {
   sandbox: MockSandbox | null;
   enqueueCalled: number;
   generateTokenCalled: number;
+  enqueueError?: Error;
 }
 
 function buildMocks(state: MockedSandboxState) {
@@ -73,6 +74,9 @@ function buildMocks(state: MockedSandboxState) {
     provisioningJobService: {
       enqueueAgentProvisionOnce: async () => {
         state.enqueueCalled += 1;
+        if (state.enqueueError) {
+          throw state.enqueueError;
+        }
         return { job: { id: "job-1", status: "pending" }, created: true };
       },
     },
@@ -120,13 +124,27 @@ function buildRequest(): Request {
 }
 
 const params = { params: Promise.resolve({ agentId: TEST_AGENT_ID }) };
+const originalNodeEnv = process.env.NODE_ENV;
+const originalRequireProvisioningWorker = process.env.REQUIRE_PROVISIONING_WORKER;
+
+function restoreOptionalEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
 
 describe.each(Object.entries(ROUTE_PATHS))("pairing-token route — %s", (_label, routePath) => {
   beforeEach(() => {
     mock.restore();
+    process.env.NODE_ENV = "test";
+    restoreOptionalEnv("REQUIRE_PROVISIONING_WORKER", originalRequireProvisioningWorker);
   });
   afterEach(() => {
     mock.restore();
+    restoreOptionalEnv("NODE_ENV", originalNodeEnv);
+    restoreOptionalEnv("REQUIRE_PROVISIONING_WORKER", originalRequireProvisioningWorker);
   });
 
   test("status=running issues a token (200)", async () => {
@@ -257,30 +275,30 @@ describe.each(Object.entries(ROUTE_PATHS))("pairing-token route — %s", (_label
     expect(state.enqueueCalled).toBe(0);
   });
 
-  test("enqueue failure on resumable status still returns 202 (resilient)", async () => {
+  test("enqueue failure on resumable status fails instead of telling clients to poll forever", async () => {
     const state: MockedSandboxState = {
       sandbox: makeSandbox({ status: "stopped" }),
       enqueueCalled: 0,
       generateTokenCalled: 0,
+      enqueueError: new Error("transient enqueue failure"),
     };
     buildMocks(state);
-    // Override the enqueue to throw, simulating a transient failure.
-    mock.module("@/lib/services/provisioning-jobs", () => ({
-      provisioningJobService: {
-        enqueueAgentProvisionOnce: async () => {
-          throw new Error("transient enqueue failure");
-        },
-      },
-    }));
 
     const { POST } = await importRoute(routePath);
     const res = await POST(buildRequest(), params);
 
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(503);
     const body = (await res.json()) as {
-      data: { status: string; jobId?: string };
+      success: boolean;
+      code: string;
+      error: string;
+      retryable: boolean;
     };
-    expect(body.data.status).toBe("starting");
-    expect(body.data.jobId).toBeUndefined();
+    expect(body).toEqual({
+      success: false,
+      code: "PROVISIONING_ENQUEUE_FAILED",
+      error: "Failed to start agent resume. Retry in a moment.",
+      retryable: true,
+    });
   });
 });

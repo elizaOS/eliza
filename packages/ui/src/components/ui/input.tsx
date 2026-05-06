@@ -1,14 +1,9 @@
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-export interface InputVariantProps {
-  variant?: "default" | "form" | "config" | null;
-  density?: "default" | "compact" | "relaxed" | null;
-}
-
-const _inputVariants = cva(
+const inputVariants = cva(
   "w-full border text-sm transition-[border-color,box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
@@ -32,13 +27,9 @@ const _inputVariants = cva(
   },
 );
 
-const inputVariants: (props?: InputVariantProps) => string = _inputVariants as (
-  props?: InputVariantProps,
-) => string;
-
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement>,
-    InputVariantProps {
+    VariantProps<typeof inputVariants> {
   hasError?: boolean;
 }
 

@@ -261,7 +261,8 @@ export const ownerDigestAction: Action & {
     },
     {
       name: "sinceMs",
-      description: "Override the lookback window for morning briefings (ms epoch).",
+      description:
+        "Override the lookback window for morning briefings (ms epoch).",
       required: false,
       schema: { type: "number" as const },
     },

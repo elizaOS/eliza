@@ -37,9 +37,7 @@ const TRAINING_METHODS: Record<
   strength: [
     { minLevel: 1, method: "chickens or cows", location: "Lumbridge" },
   ],
-  defence: [
-    { minLevel: 1, method: "chickens or cows", location: "Lumbridge" },
-  ],
+  defence: [{ minLevel: 1, method: "chickens or cows", location: "Lumbridge" }],
   cooking: [
     { minLevel: 1, method: "cook shrimp or meat", location: "range or fire" },
   ],
@@ -92,9 +90,9 @@ export const worldKnowledgeProvider: Provider = {
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as
-      | { getBotState(): BotState | null }
-      | null;
+    const service = runtime.getService("rs_2004scape") as unknown as {
+      getBotState(): BotState | null;
+    } | null;
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
       return {

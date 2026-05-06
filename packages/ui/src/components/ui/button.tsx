@@ -1,26 +1,10 @@
 import { Slot } from "@radix-ui/react-slot";
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-type ButtonVariantsProps = {
-  variant?:
-    | "default"
-    | "surface"
-    | "surfaceAccent"
-    | "surfaceDestructive"
-    | "destructive"
-    | "outline"
-    | "secondary"
-    | "ghost"
-    | "link"
-    | null;
-  size?: "default" | "sm" | "lg" | "icon" | null;
-  className?: string | null | undefined;
-};
-
-const _buttonVariants = cva(
+const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-bg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
@@ -58,12 +42,9 @@ const _buttonVariants = cva(
   },
 );
 
-const buttonVariants: (props?: ButtonVariantsProps) => string =
-  _buttonVariants as (props?: ButtonVariantsProps) => string;
-
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    Omit<ButtonVariantsProps, "className"> {
+    VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }
 

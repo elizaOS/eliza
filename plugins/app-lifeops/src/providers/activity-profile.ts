@@ -31,8 +31,7 @@ export const activityProfileProvider: Provider = {
   name: "activity-profile",
   description:
     "Owner and agent only. Compact user activity context: platform, time bucket, recency.",
-  descriptionCompressed:
-    "owner+agent activity: platform, time bucket, recency",
+  descriptionCompressed: "owner+agent activity: platform, time bucket, recency",
   dynamic: true,
   position: 13,
   async get(

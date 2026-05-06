@@ -202,20 +202,34 @@ async function buildProvisionRequest(
   return Promise.resolve(response);
 }
 
+function restoreOptionalEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
+
 describe("eliza agent provision route", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalAllowSync = process.env.ALLOW_AGENT_SYNC_PROVISIONING;
+  const originalControlPlaneUrl = process.env.CONTAINER_CONTROL_PLANE_URL;
+  const originalRequireProvisioningWorker = process.env.REQUIRE_PROVISIONING_WORKER;
 
   beforeEach(() => {
     mock.restore();
-    process.env.NODE_ENV = originalNodeEnv;
-    process.env.ALLOW_AGENT_SYNC_PROVISIONING = originalAllowSync;
+    process.env.NODE_ENV = "test";
+    restoreOptionalEnv("ALLOW_AGENT_SYNC_PROVISIONING", originalAllowSync);
+    restoreOptionalEnv("CONTAINER_CONTROL_PLANE_URL", originalControlPlaneUrl);
+    restoreOptionalEnv("REQUIRE_PROVISIONING_WORKER", originalRequireProvisioningWorker);
   });
 
   afterEach(() => {
     mock.restore();
-    process.env.NODE_ENV = originalNodeEnv;
-    process.env.ALLOW_AGENT_SYNC_PROVISIONING = originalAllowSync;
+    restoreOptionalEnv("NODE_ENV", originalNodeEnv);
+    restoreOptionalEnv("ALLOW_AGENT_SYNC_PROVISIONING", originalAllowSync);
+    restoreOptionalEnv("CONTAINER_CONTROL_PLANE_URL", originalControlPlaneUrl);
+    restoreOptionalEnv("REQUIRE_PROVISIONING_WORKER", originalRequireProvisioningWorker);
   });
 
   test("returns existing connection details when the agent is already running", async () => {
@@ -343,6 +357,33 @@ describe("eliza agent provision route", () => {
     });
     expect(body.error).not.toContain("SQL_HEAVY_PAYLOAD_STORAGE");
     expect(state.enqueueCalls).toHaveLength(1);
+  });
+
+  test("fails closed in production when the provisioning worker is not configured", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.CONTAINER_CONTROL_PLANE_URL;
+    const state = makeState();
+    installMocks(state);
+
+    const app = await loadProvisionRoute();
+    const res = await buildProvisionRequest(app);
+
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as {
+      success: boolean;
+      code: string;
+      error: string;
+      retryable: boolean;
+    };
+    expect(body).toEqual({
+      success: false,
+      code: "PROVISIONING_WORKER_NOT_CONFIGURED",
+      error:
+        "Agent provisioning worker is not configured. Set CONTAINER_CONTROL_PLANE_URL before accepting provisioning requests.",
+      retryable: true,
+    });
+    expect(state.creditChecks).toEqual(["o1"]);
+    expect(state.enqueueCalls).toEqual([]);
   });
 
   test("returns 402 and skips enqueueing when credits are insufficient", async () => {

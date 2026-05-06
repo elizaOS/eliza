@@ -42,7 +42,9 @@ function collectSrcEntries(srcRoot: string): string[] {
   };
   walk(srcRoot);
   if (out.length === 0) {
-    throw new Error(`[tsup.plugin-packages.shared] No entries under ${srcRoot}`);
+    throw new Error(
+      `[tsup.plugin-packages.shared] No entries under ${srcRoot}`,
+    );
   }
   return out;
 }

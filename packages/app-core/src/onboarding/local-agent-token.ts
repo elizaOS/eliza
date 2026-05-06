@@ -15,7 +15,7 @@ type AgentWithLocalToken = {
 const agentPluginName = "Agent";
 const agentPluginId = "@elizaos/capacitor-agent";
 
-export function isAndroidLocalAgentUrl(value: string): boolean {
+export function isMobileLocalAgentUrl(value: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(value);
@@ -27,6 +27,10 @@ export function isAndroidLocalAgentUrl(value: string): boolean {
     parsed.port === LOCAL_AGENT_PORT &&
     LOCAL_AGENT_HOSTS.has(parsed.hostname)
   );
+}
+
+export function isAndroidLocalAgentUrl(value: string): boolean {
+  return isMobileLocalAgentUrl(value);
 }
 
 function isNativeAndroid(): boolean {

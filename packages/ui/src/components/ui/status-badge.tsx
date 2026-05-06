@@ -131,35 +131,3 @@ export const StatusDot = React.forwardRef<HTMLSpanElement, StatusDotProps>(
   },
 );
 StatusDot.displayName = "StatusDot";
-
-export interface StatCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  label: string;
-  value: React.ReactNode;
-  accent?: boolean;
-}
-
-export const StatCard = React.forwardRef<HTMLDivElement, StatCardProps>(
-  ({ label, value, accent = false, className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(
-        "flex flex-col items-center justify-center border border-border bg-bg p-3 min-w-[80px]",
-        className,
-      )}
-      {...props}
-    >
-      <div
-        className={cn(
-          "text-lg font-bold tabular-nums",
-          accent && "text-accent",
-        )}
-      >
-        {value}
-      </div>
-      <div className="mt-0.5 text-2xs uppercase tracking-wide text-muted">
-        {label}
-      </div>
-    </div>
-  ),
-);
-StatCard.displayName = "StatCard";

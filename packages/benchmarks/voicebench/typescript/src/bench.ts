@@ -196,8 +196,7 @@ const USER_ENTITY_ID = "00000000-0000-0000-0000-000000000102" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000103" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-000000000104" as UUID;
 
-const MOCK_TRANSCRIPT =
-  "Hello there. This is a short voice benchmark sample.";
+const MOCK_TRANSCRIPT = "Hello there. This is a short voice benchmark sample.";
 const MOCK_TEXT_RESPONSE = "Mock voicebench response is ready.";
 const MOCK_MESSAGE_HANDLER_TOON = `thought: Running deterministic voicebench mock response.
 actions: REPLY
@@ -214,7 +213,9 @@ text: ${MOCK_TEXT_RESPONSE}`;
 const MOCK_SHOULD_RESPOND_TOON = `name: VoicebenchAgent
 reasoning: Voicebench messages should receive a benchmark response.
 action: RESPOND`;
-const ZERO_EMBEDDING = Object.freeze(new Array(384).fill(0)) as readonly number[];
+const ZERO_EMBEDDING = Object.freeze(
+  new Array(384).fill(0),
+) as readonly number[];
 
 function mockTextHandler(params: Record<string, unknown>): string {
   const prompt = String(params.prompt ?? "");
@@ -534,7 +535,9 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
   // fall back to the sibling source-checkout layout that some workspaces use.
   let groqModule: GroqPluginModule;
   try {
-    groqModule = (await import("@elizaos/plugin-groq")) as unknown as GroqPluginModule;
+    groqModule = (await import(
+      "@elizaos/plugin-groq"
+    )) as unknown as GroqPluginModule;
   } catch {
     groqModule = (await import(
       "../../../../../plugins/plugin-groq/index.ts"
@@ -713,7 +716,9 @@ async function main(): Promise<void> {
       (runtime.getService(
         "trajectory_logger",
       ) as TrajectoryLoggerServiceLike | null) ??
-      (runtime.getService("trajectories") as TrajectoryLoggerServiceLike | null);
+      (runtime.getService(
+        "trajectories",
+      ) as TrajectoryLoggerServiceLike | null);
     for (const mode of config.modes) {
       for (const sample of samples) {
         const sampleAudioBytes = readFileSync(sample.audioPath);

@@ -4,14 +4,17 @@ import type { OnboardingServerTarget } from "./server-target";
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
 /**
- * Constants describing the bundled Android on-device agent endpoint. The
- * ElizaOS variant pre-seeds these as the persisted active server at app
- * boot; the vanilla Android APK uses them only when the user explicitly
- * picks Local in `RuntimeGate`.
+ * Constants describing the bundled mobile on-device agent endpoint. Android
+ * serves this over loopback; iOS uses the same URL shape as a stable client
+ * identity and resolves it through the in-process ITTP transport.
  */
-export const ANDROID_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+export const MOBILE_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+export const MOBILE_LOCAL_AGENT_SERVER_ID = "local:mobile";
+export const MOBILE_LOCAL_AGENT_LABEL = "On-device agent";
+
+export const ANDROID_LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
 export const ANDROID_LOCAL_AGENT_SERVER_ID = "local:android";
-export const ANDROID_LOCAL_AGENT_LABEL = "On-device agent";
+export const ANDROID_LOCAL_AGENT_LABEL = MOBILE_LOCAL_AGENT_LABEL;
 
 export type MobileRuntimeMode =
   | "remote-mac"

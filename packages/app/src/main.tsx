@@ -52,6 +52,7 @@ import {
   isElectrobunRuntime,
   isElizaOS,
   loadUiTheme,
+  MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   normalizeMobileRuntimeMode,
@@ -187,6 +188,7 @@ const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
+let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
 
 function isDesktopPlatform(): boolean {
@@ -348,7 +350,7 @@ async function initializePlatform(): Promise<void> {
     await initializeKeyboard();
     initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
-    await initializeMobileDeviceBridge();
+    void initializeMobileDeviceBridge();
   }
 
   if (isDesktopPlatform()) {
@@ -766,9 +768,10 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
   const existing = await Preferences.get({ key: DEVICE_BRIDGE_ID_KEY });
   if (existing.value?.trim()) return existing.value.trim();
 
+  const prefix = isAndroid ? "android" : isIOS ? "ios" : "mobile";
   const generated =
     globalThis.crypto?.randomUUID?.() ??
-    `ios-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   await Preferences.set({ key: DEVICE_BRIDGE_ID_KEY, value: generated });
   return generated;
 }
@@ -778,9 +781,15 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
     return config.deviceBridgeUrl;
   }
   // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
-  // local: the agent runs in-process on the same device, so the WebView's
-  // @elizaos/capacitor-llama dials the bridge over loopback at the locally
-  // bound apiBase.
+  // Android local: the foreground agent service owns the loopback API and the
+  // WebView dials its device bridge for native llama.cpp calls.
+  // iOS local: requests are handled by the in-process ITTP route kernel, so a
+  // loopback WebSocket bridge is both unnecessary and unsafe in simulator runs
+  // where host-level adb port forwarding can expose another device's agent.
+  if (config.mode === "local" && isIOS) return null;
+  if (config.mode === "local" && isAndroid) {
+    return apiBaseToDeviceBridgeUrl(MOBILE_LOCAL_AGENT_API_BASE);
+  }
   if (config.mode !== "cloud-hybrid" && config.mode !== "local") return null;
   const apiBase = getBootConfig().apiBase?.trim();
   if (!apiBase) return null;
@@ -800,28 +809,41 @@ async function initializeMobileDeviceBridge(): Promise<void> {
     return;
   }
   if (mobileDeviceBridgeClient) return;
+  if (mobileDeviceBridgeStartPromise) return;
 
   const agentUrl = resolveDeviceBridgeUrl(runtimeConfig);
   if (!agentUrl) return;
 
-  try {
-    const [{ startDeviceBridgeClient }, deviceId] = await Promise.all([
-      import("@elizaos/capacitor-llama"),
-      getOrCreateDeviceBridgeId(),
-    ]);
-    mobileDeviceBridgeClient = startDeviceBridgeClient({
-      agentUrl,
-      ...(runtimeConfig.deviceBridgeToken
-        ? { pairingToken: runtimeConfig.deviceBridgeToken }
-        : {}),
-      deviceId,
-    });
-  } catch (error) {
-    console.warn(
-      `${APP_LOG_PREFIX} Device bridge unavailable:`,
-      error instanceof Error ? error.message : error,
-    );
-  }
+  mobileDeviceBridgeStartPromise = (async () => {
+    try {
+      const [{ startDeviceBridgeClient }, deviceId] = await Promise.all([
+        import("@elizaos/capacitor-llama"),
+        getOrCreateDeviceBridgeId(),
+      ]);
+      mobileDeviceBridgeClient = startDeviceBridgeClient({
+        agentUrl,
+        ...(runtimeConfig.deviceBridgeToken
+          ? { pairingToken: runtimeConfig.deviceBridgeToken }
+          : {}),
+        deviceId,
+        onStateChange: (state, detail) => {
+          console.info(
+            `${APP_LOG_PREFIX} Device bridge ${state}`,
+            detail ?? "",
+          );
+        },
+      });
+    } catch (error) {
+      console.warn(
+        `${APP_LOG_PREFIX} Device bridge unavailable:`,
+        error instanceof Error ? error.message : error,
+      );
+    } finally {
+      mobileDeviceBridgeStartPromise = null;
+    }
+  })();
+
+  await mobileDeviceBridgeStartPromise;
 }
 
 function stopMobileDeviceBridge(): void {
@@ -835,6 +857,7 @@ function initializeMobileRuntimeModeListener(): void {
   document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, () => {
     const mode = getCurrentIosRuntimeConfig().mode;
     if (mode === "cloud-hybrid" || mode === "local") {
+      stopMobileDeviceBridge();
       void initializeMobileDeviceBridge();
       return;
     }

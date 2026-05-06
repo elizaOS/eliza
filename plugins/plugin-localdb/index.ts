@@ -1,6 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { IAgentRuntime, IDatabaseAdapter, Plugin, UUID } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  IDatabaseAdapter,
+  Plugin,
+  UUID,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { InMemoryDatabaseAdapter } from "../plugin-inmemorydb/adapter";
 import type { IStorage } from "../plugin-inmemorydb/types";
@@ -71,7 +76,10 @@ class FileStorage implements IStorage {
     return Array.from(this.getCollection(collection).values()) as T[];
   }
 
-  async getWhere<T>(collection: string, predicate: (item: T) => boolean): Promise<T[]> {
+  async getWhere<T>(
+    collection: string,
+    predicate: (item: T) => boolean,
+  ): Promise<T[]> {
     return (await this.getAll<T>(collection)).filter(predicate);
   }
 
@@ -136,7 +144,10 @@ function getDataDir(runtime: RuntimeWithDatabase): string {
   return join(process.cwd(), ".eliza-localdb");
 }
 
-export function createDatabaseAdapter(agentId: UUID, dataDir: string): InMemoryDatabaseAdapter {
+export function createDatabaseAdapter(
+  agentId: UUID,
+  dataDir: string,
+): InMemoryDatabaseAdapter {
   return new InMemoryDatabaseAdapter(new FileStorage(dataDir), agentId);
 }
 
@@ -144,7 +155,10 @@ export const plugin: Plugin = {
   name: "@elizaos/plugin-localdb",
   description: "Local JSON-file database storage for elizaOS examples.",
 
-  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+  async init(
+    _config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ): Promise<void> {
     const r = runtime as RuntimeWithDatabase;
     const hasAdapter =
       r.adapter !== undefined ||

@@ -703,12 +703,32 @@ export function useChatSend(deps: UseChatSendDeps) {
             let changed = false;
             const next = prev.map((message) => {
               if (message.id !== assistantMsgId) return message;
-              if (message.text === data.text) return message;
+              if (
+                message.text === data.text &&
+                message.failureKind === data.failureKind
+              ) {
+                return message;
+              }
               changed = true;
-              return { ...message, text: data.text };
+              return {
+                ...message,
+                text: data.text,
+                ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+              };
             });
             return changed ? next : prev;
           });
+        } else if (data.failureKind) {
+          // Streaming text already matched but the server flagged a failure
+          // class — stamp it on the assistant turn so the renderer can swap
+          // in the gate UI (e.g. "Connect a provider").
+          setConversationMessages((prev) =>
+            prev.map((message) =>
+              message.id === assistantMsgId
+                ? { ...message, failureKind: data.failureKind }
+                : message,
+            ),
+          );
         }
         if (data.usage) {
           setChatLastUsage({
@@ -808,6 +828,9 @@ export function useChatSend(deps: UseChatSendDeps) {
                   role: "assistant",
                   text: retryData.text,
                   timestamp: Date.now(),
+                  ...(retryData.failureKind
+                    ? { failureKind: retryData.failureKind }
+                    : {}),
                 },
               ]),
             );
@@ -1061,12 +1084,31 @@ export function useChatSend(deps: UseChatSendDeps) {
               let changed = false;
               const next = prev.map((message) => {
                 if (message.id !== assistantMsgId) return message;
-                if (message.text === data.text) return message;
+                if (
+                  message.text === data.text &&
+                  message.failureKind === data.failureKind
+                ) {
+                  return message;
+                }
                 changed = true;
-                return { ...message, text: data.text };
+                return {
+                  ...message,
+                  text: data.text,
+                  ...(data.failureKind
+                    ? { failureKind: data.failureKind }
+                    : {}),
+                };
               });
               return changed ? next : prev;
             });
+          } else if (data.failureKind) {
+            setConversationMessages((prev) =>
+              prev.map((message) =>
+                message.id === assistantMsgId
+                  ? { ...message, failureKind: data.failureKind }
+                  : message,
+              ),
+            );
           }
 
           if (!data.completed && streamedAssistantText.trim()) {

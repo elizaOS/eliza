@@ -6,6 +6,10 @@ import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -111,6 +115,21 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
             bridgeUrl: result.bridgeUrl,
             healthUrl: result.healthUrl,
           },
+        }),
+        CORS_METHODS,
+      );
+    }
+
+    const workerHealth = await checkProvisioningWorkerHealth();
+    if (!workerHealth.ok) {
+      logger.warn("[agent-api] Resume blocked: provisioning worker unavailable", {
+        agentId,
+        orgId: user.organization_id,
+        code: workerHealth.code,
+      });
+      return applyCorsHeaders(
+        Response.json(provisioningWorkerFailureBody(workerHealth), {
+          status: workerHealth.status,
         }),
         CORS_METHODS,
       );

@@ -188,7 +188,10 @@ async function handleMarkets(
   options: HandlerOptions | Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  const limit = Math.min(100, Math.max(1, readNumberParam(options, "limit", 20)));
+  const limit = Math.min(
+    100,
+    Math.max(1, readNumberParam(options, "limit", 20)),
+  );
   const offset = Math.max(0, readNumberParam(options, "offset", 0));
   const response = await fetchPolymarketJson<PolymarketMarketsResponse>(
     `/api/polymarket/markets?limit=${limit}&offset=${offset}`,
@@ -229,8 +232,7 @@ async function handleOrderbook(
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const tokenId =
-    readStringParam(options, "tokenId") ??
-    readStringParam(options, "token_id");
+    readStringParam(options, "tokenId") ?? readStringParam(options, "token_id");
   if (!tokenId) {
     const text = "Provide a Polymarket CLOB token id.";
     if (callback) await callback({ text, actions: ["POLYMARKET_READ"] });

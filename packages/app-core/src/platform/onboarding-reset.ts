@@ -8,7 +8,7 @@ import type {
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 const ONBOARDING_STEP_STORAGE_KEY = "eliza:onboarding:step";
 const LEGACY_ONBOARDING_STEP_STORAGE_KEY = "eliza:onboarding-step";
-const LEGACY_ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
+const ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
 const FORCE_FRESH_ONBOARDING_STORAGE_KEY = "elizaos:onboarding:force-fresh";
 const RESET_QUERY_PARAM = "reset";
 const PATCH_STATE = Symbol.for("elizaos.forceFreshOnboardingPatch");
@@ -90,7 +90,7 @@ export function applyForceFreshOnboardingReset(args?: {
       resolvedStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
       resolvedStorage.removeItem(ONBOARDING_STEP_STORAGE_KEY);
       resolvedStorage.removeItem(LEGACY_ONBOARDING_STEP_STORAGE_KEY);
-      resolvedStorage.removeItem(LEGACY_ONBOARDING_COMPLETE_STORAGE_KEY);
+      resolvedStorage.removeItem(ONBOARDING_COMPLETE_STORAGE_KEY);
       resolvedStorage.setItem(FORCE_FRESH_ONBOARDING_STORAGE_KEY, "1");
     } catch {
       // Ignore storage failures during startup.

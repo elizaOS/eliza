@@ -25,6 +25,61 @@ function formatBrowserResultText(result: BrowserActionResult): string {
         : `Browser action failed: ${result.error}`;
 }
 
+const AUTO_OPEN_BROWSER_ACTIONS = new Set<BrowserActionParams["action"]>([
+  "navigate",
+  "click",
+  "type",
+  "scroll",
+  "screenshot",
+  "dom",
+  "get_dom",
+  "clickables",
+  "get_clickables",
+  "execute",
+  "state",
+  "info",
+  "context",
+  "get_context",
+  "wait",
+  "list_tabs",
+  "open_tab",
+  "close_tab",
+  "switch_tab",
+]);
+
+function shouldAutoOpenBrowser(
+  params: BrowserActionParams,
+  result: BrowserActionResult,
+): boolean {
+  return (
+    !result.success &&
+    typeof result.error === "string" &&
+    result.error.includes("Browser not open") &&
+    AUTO_OPEN_BROWSER_ACTIONS.has(params.action)
+  );
+}
+
+async function executeBrowserActionWithAutoOpen(
+  service: ComputerUseService,
+  params: BrowserActionParams,
+): Promise<BrowserActionResult> {
+  let result = await service.executeBrowserAction(params);
+  if (!shouldAutoOpenBrowser(params, result)) {
+    return result;
+  }
+
+  const openResult = await service.executeBrowserAction({
+    ...params,
+    action: "open",
+  });
+  if (!openResult.success) {
+    return openResult;
+  }
+
+  result = await service.executeBrowserAction(params);
+  return result;
+}
+
 export const browserAction: Action = {
   name: "BROWSER_ACTION",
   similes: [
@@ -161,7 +216,7 @@ export const browserAction: Action = {
       return { success: false, error: "No action specified" };
     }
 
-    const result = await service.executeBrowserAction(params);
+    const result = await executeBrowserActionWithAutoOpen(service, params);
     const text = formatBrowserResultText(result);
 
     if (callback) {

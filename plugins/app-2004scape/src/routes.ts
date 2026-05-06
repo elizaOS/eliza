@@ -307,7 +307,10 @@ function generateBotUsername(agentName: string): string {
 }
 
 function generateBotPassword(length = 16): string {
-  return Array.from({ length }, () => PASSWORD_CHARS[randomInt(PASSWORD_CHARS.length)]).join("");
+  return Array.from(
+    { length },
+    () => PASSWORD_CHARS[randomInt(PASSWORD_CHARS.length)],
+  ).join("");
 }
 
 async function prepareCredentials(

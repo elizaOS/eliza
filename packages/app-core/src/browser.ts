@@ -46,7 +46,6 @@ export * from "@elizaos/ui";
 export { App } from "./App.tsx";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
-export * from "./app-shell/task-coordinator-slots.tsx";
 export * from "./bridge/index.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/extensions/registry.ts";
@@ -92,6 +91,7 @@ export {
   buildPluginListUiSpec,
 } from "./config/plugin-ui-spec.ts";
 export * from "./config/ui-spec.ts";
+export * from "./desktop-runtime/index.ts";
 export * from "./events/index.ts";
 export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";
@@ -117,7 +117,7 @@ export * from "./onboarding/server-target.ts";
 export * from "./platform/index.ts";
 export * from "./security/agent-vault-id.ts";
 export * from "./security/platform-secure-store.ts";
-export * from "./shell/index.ts";
+export * from "./slots/task-coordinator-slots.tsx";
 export * from "./state/CompanionSceneConfigContext.tsx";
 export * from "./state/index.ts";
 export * from "./types/index.ts";

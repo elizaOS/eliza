@@ -596,50 +596,98 @@ export function useCloudState({
   // Keep forward ref in sync so handleOnboardingNext can call it.
   handleCloudLoginRef.current = handleCloudLogin;
 
-  const handleCloudDisconnect = useCallback(async () => {
-    const MAIN_CONFIRM_DISCONNECT_MS = 300_000;
-    const MAIN_POST_ONLY_MS = 12_000;
-    const RENDERER_DISCONNECT_MS = 12_000;
+  const handleCloudDisconnect = useCallback(
+    async (opts?: { skipConfirmation?: boolean }): Promise<void> => {
+      const MAIN_CONFIRM_DISCONNECT_MS = 300_000;
+      const MAIN_POST_ONLY_MS = 12_000;
+      const RENDERER_DISCONNECT_MS = 12_000;
+      const skipConfirmation = opts?.skipConfirmation === true;
 
-    elizaCloudDisconnectInFlightRef.current = true;
-    setElizaCloudDisconnecting(true);
+      elizaCloudDisconnectInFlightRef.current = true;
+      setElizaCloudDisconnecting(true);
 
-    try {
-      let needRendererDisconnect = true;
+      try {
+        let needRendererDisconnect = true;
 
-      if (isElectrobunRuntime()) {
-        const combined = await invokeDesktopBridgeRequestWithTimeout<
-          { cancelled: true } | { ok: true } | { ok: false; error?: string }
-        >({
-          rpcMethod: "agentCloudDisconnectWithConfirm",
-          ipcChannel: "agent:cloudDisconnectWithConfirm",
-          params: {
-            apiBase: client.getBaseUrl().trim() || undefined,
-            bearerToken: client.getRestAuthToken() ?? undefined,
-          },
-          timeoutMs: MAIN_CONFIRM_DISCONNECT_MS,
-        });
+        if (isElectrobunRuntime()) {
+          if (!skipConfirmation) {
+            const combined = await invokeDesktopBridgeRequestWithTimeout<
+              { cancelled: true } | { ok: true } | { ok: false; error?: string }
+            >({
+              rpcMethod: "agentCloudDisconnectWithConfirm",
+              ipcChannel: "agent:cloudDisconnectWithConfirm",
+              params: {
+                apiBase: client.getBaseUrl().trim() || undefined,
+                bearerToken: client.getRestAuthToken() ?? undefined,
+              },
+              timeoutMs: MAIN_CONFIRM_DISCONNECT_MS,
+            });
 
-        if (combined.status === "ok" && combined.value) {
-          const v = combined.value;
-          if ("cancelled" in v && v.cancelled) {
-            return;
+            if (combined.status === "ok" && combined.value) {
+              const v = combined.value;
+              if ("cancelled" in v && v.cancelled) {
+                return;
+              }
+              if ("ok" in v) {
+                if (
+                  v.ok === false &&
+                  typeof v.error === "string" &&
+                  v.error.trim()
+                ) {
+                  throw new Error(v.error.trim());
+                }
+                if (v.ok === true) {
+                  needRendererDisconnect = false;
+                }
+              }
+            }
           }
-          if ("ok" in v) {
+
+          if (needRendererDisconnect) {
             if (
-              v.ok === false &&
-              typeof v.error === "string" &&
-              v.error.trim()
+              !skipConfirmation &&
+              !(await confirmDesktopAction({
+                title: "Disconnect from Eliza Cloud",
+                message:
+                  "The agent will need a local AI provider to continue working.",
+                confirmLabel: "Disconnect",
+                cancelLabel: "Cancel",
+                type: "warning",
+              }))
             ) {
-              throw new Error(v.error.trim());
+              return;
             }
-            if (v.ok === true) {
-              needRendererDisconnect = false;
+            if (!skipConfirmation) {
+              await yieldHttpAfterNativeMessageBox();
+            }
+
+            const postOutcome = await invokeDesktopBridgeRequestWithTimeout<{
+              ok: boolean;
+              error?: string;
+            }>({
+              rpcMethod: "agentPostCloudDisconnect",
+              ipcChannel: "agent:postCloudDisconnect",
+              params: {
+                apiBase: client.getBaseUrl().trim() || undefined,
+                bearerToken: client.getRestAuthToken() ?? undefined,
+              },
+              timeoutMs: MAIN_POST_ONLY_MS,
+            });
+
+            if (postOutcome.status === "ok" && postOutcome.value) {
+              const mr = postOutcome.value;
+              if (mr.ok === true) {
+                needRendererDisconnect = false;
+              } else if (
+                mr.ok === false &&
+                typeof mr.error === "string" &&
+                mr.error.trim()
+              ) {
+                throw new Error(mr.error.trim());
+              }
             }
           }
-        }
-
-        if (needRendererDisconnect) {
+        } else if (!skipConfirmation) {
           if (
             !(await confirmDesktopAction({
               title: "Disconnect from Eliza Cloud",
@@ -653,93 +701,55 @@ export function useCloudState({
             return;
           }
           await yieldHttpAfterNativeMessageBox();
-
-          const postOutcome = await invokeDesktopBridgeRequestWithTimeout<{
-            ok: boolean;
-            error?: string;
-          }>({
-            rpcMethod: "agentPostCloudDisconnect",
-            ipcChannel: "agent:postCloudDisconnect",
-            params: {
-              apiBase: client.getBaseUrl().trim() || undefined,
-              bearerToken: client.getRestAuthToken() ?? undefined,
-            },
-            timeoutMs: MAIN_POST_ONLY_MS,
-          });
-
-          if (postOutcome.status === "ok" && postOutcome.value) {
-            const mr = postOutcome.value;
-            if (mr.ok === true) {
-              needRendererDisconnect = false;
-            } else if (
-              mr.ok === false &&
-              typeof mr.error === "string" &&
-              mr.error.trim()
-            ) {
-              throw new Error(mr.error.trim());
-            }
-          }
         }
-      } else if (
-        !(await confirmDesktopAction({
-          title: "Disconnect from Eliza Cloud",
-          message:
-            "The agent will need a local AI provider to continue working.",
-          confirmLabel: "Disconnect",
-          cancelLabel: "Cancel",
-          type: "warning",
-        }))
-      ) {
-        return;
-      } else {
-        await yieldHttpAfterNativeMessageBox();
-      }
 
-      if (needRendererDisconnect) {
-        await Promise.race([
-          client.cloudDisconnect(),
-          new Promise<never>((_, reject) => {
-            window.setTimeout(() => {
-              reject(
-                new Error(
-                  `Disconnect timed out after ${RENDERER_DISCONNECT_MS / 1000}s`,
-                ),
-              );
-            }, RENDERER_DISCONNECT_MS);
-          }),
-        ]);
-      }
+        if (needRendererDisconnect) {
+          await Promise.race([
+            client.cloudDisconnect(),
+            new Promise<never>((_, reject) => {
+              window.setTimeout(() => {
+                reject(
+                  new Error(
+                    `Disconnect timed out after ${RENDERER_DISCONNECT_MS / 1000}s`,
+                  ),
+                );
+              }, RENDERER_DISCONNECT_MS);
+            }),
+          ]);
+        }
 
-      setElizaCloudEnabled(false);
-      setElizaCloudConnected(false);
-      publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
-        apiConnected: false,
-        enabled: false,
-        cloudVoiceProxyAvailable: false,
-        hasPersistedApiKey: false,
-      });
-      setElizaCloudVoiceProxyAvailable(false);
-      setElizaCloudCredits(null);
-      setElizaCloudCreditsLow(false);
-      setElizaCloudCreditsCritical(false);
-      setElizaCloudAuthRejected(false);
-      setElizaCloudCreditsError(null);
-      setElizaCloudUserId(null);
-      setElizaCloudStatusReason(null);
-      lastElizaCloudPollConnectedRef.current = false;
-      elizaCloudPreferDisconnectedUntilLoginRef.current = true;
-      setActionNotice("Disconnected from Eliza Cloud.", "success");
-    } catch (err) {
-      setActionNotice(
-        `Failed to disconnect: ${err instanceof Error ? err.message : err}`,
-        "error",
-      );
-    } finally {
-      elizaCloudDisconnectInFlightRef.current = false;
-      setElizaCloudDisconnecting(false);
-      void pollCloudCredits();
-    }
-  }, [pollCloudCredits, setActionNotice]);
+        setElizaCloudEnabled(false);
+        setElizaCloudConnected(false);
+        publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
+          apiConnected: false,
+          enabled: false,
+          cloudVoiceProxyAvailable: false,
+          hasPersistedApiKey: false,
+        });
+        setElizaCloudVoiceProxyAvailable(false);
+        setElizaCloudCredits(null);
+        setElizaCloudCreditsLow(false);
+        setElizaCloudCreditsCritical(false);
+        setElizaCloudAuthRejected(false);
+        setElizaCloudCreditsError(null);
+        setElizaCloudUserId(null);
+        setElizaCloudStatusReason(null);
+        lastElizaCloudPollConnectedRef.current = false;
+        elizaCloudPreferDisconnectedUntilLoginRef.current = true;
+        setActionNotice("Disconnected from Eliza Cloud.", "success");
+      } catch (err) {
+        setActionNotice(
+          `Failed to disconnect: ${err instanceof Error ? err.message : err}`,
+          "error",
+        );
+      } finally {
+        elizaCloudDisconnectInFlightRef.current = false;
+        setElizaCloudDisconnecting(false);
+        void pollCloudCredits();
+      }
+    },
+    [pollCloudCredits, setActionNotice],
+  );
 
   // ── Effects ────────────────────────────────────────────────────────
 
