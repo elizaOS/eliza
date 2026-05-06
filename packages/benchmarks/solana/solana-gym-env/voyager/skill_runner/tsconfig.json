@@ -9,7 +9,7 @@
     "noEmit": true,
     "composite": true,
     "strict": true,
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "downlevelIteration": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
