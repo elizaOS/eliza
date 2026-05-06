@@ -142,7 +142,9 @@ export const sendXPostAction: Action = {
             data: { reason: result.reason },
           } satisfies ActionResult;
         }
-        const postService = new TwitterPostService(service.twitterClient.client);
+        const postService = new TwitterPostService(
+          service.twitterClient.client,
+        );
         const post = await postService.createPost({
           agentId: runtime.agentId,
           roomId:

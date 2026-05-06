@@ -1,10 +1,4 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 import { encode } from "@toon-format/toon";
 import type { SignalService } from "../service";
@@ -26,11 +20,7 @@ export const signalContactsProvider: Provider = {
   dynamic: true,
   contexts: ["social", "connectors"],
   relevanceKeywords: [...RELEVANCE_KEYWORDS],
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     const recentMessages = (state?.recentMessagesData as Memory[] | undefined) ?? [];
     const isRelevant =
       validateActionKeywords(message, recentMessages, [...RELEVANCE_KEYWORDS]) ||

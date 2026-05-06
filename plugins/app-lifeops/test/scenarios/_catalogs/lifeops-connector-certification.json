@@ -108,11 +108,7 @@
       "connector": "google-calendar",
       "axis": "core",
       "providers": ["Google Calendar API"],
-      "actions": [
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR"
-      ],
+      "actions": ["OWNER_CALENDAR", "OWNER_CALENDAR", "OWNER_CALENDAR"],
       "capabilities": [
         "availability",
         "create",
@@ -131,11 +127,7 @@
       "axis": "rate-limited",
       "degraded": true,
       "providers": ["Google Calendar API"],
-      "actions": [
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR",
-        "OWNER_CALENDAR"
-      ],
+      "actions": ["OWNER_CALENDAR", "OWNER_CALENDAR", "OWNER_CALENDAR"],
       "capabilities": [
         "availability",
         "retry-safe-write",

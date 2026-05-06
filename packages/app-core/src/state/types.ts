@@ -946,7 +946,9 @@ export interface AppActions {
 
   // Cloud
   handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
-  handleCloudDisconnect: () => Promise<void>;
+  handleCloudDisconnect: (opts?: {
+    skipConfirmation?: boolean;
+  }) => Promise<void>;
 
   // Multi-agent
   switchAgentProfile: (profileId: string) => void;

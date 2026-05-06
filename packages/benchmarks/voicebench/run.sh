@@ -44,7 +44,6 @@ export ELEVENLABS_OUTPUT_FORMAT="${ELEVENLABS_OUTPUT_FORMAT:-mp3_22050_32}"
 if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
   CANDIDATE_AUDIO_PATHS=(
     "${SCRIPT_DIR}/shared/audio/default.wav"
-    "${ROOT_DIR}/examples/town/public/assets/background.mp3"
     "${ROOT_DIR}/agent-town/public/assets/background.mp3"
   )
   if [[ "${PROFILE}" == "mock" ]]; then

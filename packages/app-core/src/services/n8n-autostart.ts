@@ -2,12 +2,12 @@
  * n8n autostart — boot-time sidecar spawn.
  *
  * Motivation: previously the local n8n sidecar was only spawned lazily
- * when the user opened the Workflows tab (N8nWorkflowsPanel → `POST
- * /api/n8n/sidecar/start`). That meant the first workflow action paid a
- * cold-start tax (~10-20s of `bunx n8n@<pinned>`) and any scheduled job
- * that tried to dispatch a workflow before the user ever visited the tab
- * would fail. We now kick the sidecar off at agent boot when the desired
- * mode is "local".
+ * when the renderer opened the Workflows tab and POSTed
+ * `/api/n8n/sidecar/start`. That meant the first workflow action paid
+ * a cold-start tax (~10-20s of `bunx n8n@<pinned>`) and any scheduled
+ * job that tried to dispatch a workflow before the user ever visited
+ * the tab would fail. We now kick the sidecar off at agent boot when
+ * the desired mode is "local".
  *
  * Desired state is computed via the shared `resolveN8nMode` helper:
  *   - mode === "local" AND no sidecar already spawned → start one.

@@ -18,8 +18,8 @@
 
 import { Button } from "@elizaos/ui";
 import { useCallback } from "react";
-import { reloadIntoRuntimePicker } from "../../../onboarding/reload-into-runtime-picker";
-import { useApp } from "../../../state";
+import { reloadIntoRuntimePicker } from "../../onboarding/reload-into-runtime-picker";
+import { useApp } from "../../state";
 
 export function RuntimeSettingsSection() {
   const { t } = useApp();

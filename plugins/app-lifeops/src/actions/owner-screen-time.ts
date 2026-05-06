@@ -117,8 +117,7 @@ const SUBACTIONS: SubactionsMap<Subaction> = {
   time_on_app: {
     description:
       "Focus time for one app (matched by app name or bundle id) over the last N hours. macOS-only.",
-    descriptionCompressed:
-      "focus time one app name or bundle id last N hours",
+    descriptionCompressed: "focus time one app name or bundle id last N hours",
     required: ["appNameOrBundleId"],
     optional: ["windowHours"],
   },
@@ -161,7 +160,8 @@ function formatMinutes(totalMs: number): number {
 }
 
 function clampDays(value: number | undefined, fallback: number): number {
-  const raw = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  const raw =
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
   return Math.min(31, Math.max(1, Math.floor(raw)));
 }
 
@@ -547,9 +547,7 @@ export const ownerScreenTimeAction: Action = {
         return respond({
           success: true,
           scenario:
-            source === "app"
-              ? "screen_time_by_app"
-              : "screen_time_by_website",
+            source === "app" ? "screen_time_by_app" : "screen_time_by_website",
           fallback,
           context: {
             source,

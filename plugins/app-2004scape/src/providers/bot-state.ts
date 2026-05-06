@@ -24,9 +24,9 @@ export const botStateProvider: Provider = {
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as
-      | { getBotState(): BotState | null }
-      | null;
+    const service = runtime.getService("rs_2004scape") as unknown as {
+      getBotState(): BotState | null;
+    } | null;
     const state = service?.getBotState?.();
     if (!state || !state.connected) {
       return { text: providerText({ status: "not_connected" }) };
@@ -146,8 +146,8 @@ export const botStateProvider: Provider = {
               currentStyle: state.combatStyle.currentStyle,
               weaponName: state.combatStyle.weaponName,
               styleName:
-                state.combatStyle.styles[state.combatStyle.currentStyle]?.name ??
-                `style ${state.combatStyle.currentStyle}`,
+                state.combatStyle.styles[state.combatStyle.currentStyle]
+                  ?.name ?? `style ${state.combatStyle.currentStyle}`,
             }
           : null,
       }),

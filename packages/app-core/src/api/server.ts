@@ -41,7 +41,6 @@ import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-  getCompatApiToken,
 } from "./auth";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
@@ -179,7 +178,7 @@ const _PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
 // Internal helpers used by the monkey-patch handler (stay in server.ts)
 // ---------------------------------------------------------------------------
 
-// extractHeaderValue, getCompatApiToken — now imported from ./auth
+// extractHeaderValue — now imported from ./auth
 // tokenMatches — now imported from ./auth
 // Pairing infrastructure — now in ./auth-pairing-compat-routes
 // getProvidedApiToken, ensureCompatApiAuthorized, isDevEnvironment,
@@ -271,150 +270,6 @@ function resolveCompatPgliteDataDir(config: ElizaConfig): string {
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
-}
-
-/**
- * Actual port the API server is listening on, set after server.listen()
- * resolves. Used by loopback calls to target the correct endpoint even
- * when the server binds to a dynamic port (port: 0 or EADDRINUSE fallback).
- */
-let _resolvedLoopbackPort: number | null = null;
-
-/** Called from startApiServer after the upstream server resolves. */
-export function setResolvedLoopbackPort(port: number): void {
-  _resolvedLoopbackPort = port;
-}
-
-/**
- * Build the loopback base URL for internal server-to-self API calls.
- * Always targets 127.0.0.1 — never trusts the incoming Host header,
- * which would allow an attacker to redirect loopback fetches (and the
- * attached API token) to an external server.
- *
- * Priority: actual listener port > env vars > default 31337.
- */
-function resolveCompatLoopbackApiBase(
-  _req: Pick<http.IncomingMessage, "headers">,
-): string {
-  const port =
-    _resolvedLoopbackPort ??
-    (Number(
-      process.env.ELIZA_API_PORT?.trim() ||
-        process.env.ELIZA_PORT?.trim() ||
-        "31337",
-    ) ||
-      31337);
-  return `http://127.0.0.1:${port}`;
-}
-
-function buildCompatLoopbackHeaders(
-  _req: Pick<http.IncomingMessage, "headers">,
-  init?: RequestInit,
-): Headers {
-  const headers = new Headers(init?.headers ?? {});
-  if (!headers.has("Accept")) {
-    headers.set("Accept", "application/json");
-  }
-  if (!headers.has("Content-Type") && init?.body) {
-    headers.set("Content-Type", "application/json");
-  }
-  const apiToken = getCompatApiToken();
-  if (apiToken && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${apiToken}`);
-  }
-  return headers;
-}
-
-async function compatLoopbackFetchJson<T>(
-  req: Pick<http.IncomingMessage, "headers">,
-  pathname: string,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetch(
-    new URL(pathname, resolveCompatLoopbackApiBase(req)),
-    {
-      ...init,
-      headers: buildCompatLoopbackHeaders(req, init),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}: ${pathname}`);
-  }
-  return (await response.json()) as T;
-}
-
-async function compatLoopbackRequest(
-  req: Pick<http.IncomingMessage, "headers">,
-  pathname: string,
-  init?: RequestInit,
-): Promise<void> {
-  const response = await fetch(
-    new URL(pathname, resolveCompatLoopbackApiBase(req)),
-    {
-      ...init,
-      headers: buildCompatLoopbackHeaders(req, init),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}: ${pathname}`);
-  }
-}
-
-async function clearCompatRuntimeStateViaApi(
-  req: Pick<http.IncomingMessage, "headers">,
-): Promise<void> {
-  try {
-    const conversations = await compatLoopbackFetchJson<{
-      conversations?: Array<{ id: string }>;
-    }>(req, "/api/conversations");
-    for (const conversation of conversations.conversations ?? []) {
-      if (!conversation?.id) continue;
-      await compatLoopbackRequest(
-        req,
-        `/api/conversations/${encodeURIComponent(conversation.id)}`,
-        { method: "DELETE" },
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      `[eliza][reset] Failed to clear conversations before reset: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-
-  try {
-    const knowledge = await compatLoopbackFetchJson<{
-      documents?: Array<{ id: string }>;
-    }>(req, "/api/knowledge/documents");
-    for (const document of knowledge.documents ?? []) {
-      if (!document?.id) continue;
-      await compatLoopbackRequest(
-        req,
-        `/api/knowledge/documents/${encodeURIComponent(document.id)}`,
-        { method: "DELETE" },
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      `[eliza][reset] Failed to clear knowledge documents before reset: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-
-  try {
-    await compatLoopbackRequest(req, "/api/trajectories", {
-      method: "DELETE",
-      body: JSON.stringify({ all: true }),
-    });
-  } catch (err) {
-    logger.warn(
-      `[eliza][reset] Failed to clear trajectories before reset: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
 }
 
 async function clearCompatPgliteDataDir(
@@ -841,7 +696,9 @@ async function handleCompatRoute(
         "[eliza][reset] POST /api/agent/reset: loading config, will clear onboarding state, persisted provider config, and cloud keys (GGUF / MODELS_DIR untouched)",
       );
       const config = loadElizaConfig();
-      await clearCompatRuntimeStateViaApi(req);
+      logger.info(
+        "[eliza][reset] Skipping loopback API cleanup; runtime stop plus PGlite data-dir removal clears conversations, knowledge, and trajectories without re-entering the HTTP server.",
+      );
       await clearCompatPgliteDataDir(state.current, config);
       state.current = null;
       clearPersistedOnboardingConfig(config);
@@ -1140,13 +997,6 @@ export async function startApiServer(
     }
 
     const server = await upstreamStartApiServer(...args);
-
-    // Record the actual listener port so loopback calls target the right
-    // endpoint even when the server bound to a dynamic port (port: 0 or
-    // EADDRINUSE fallback).
-    if (typeof server.port === "number" && server.port > 0) {
-      setResolvedLoopbackPort(server.port);
-    }
 
     const originalUpdateRuntime = server.updateRuntime as (
       runtime: AgentRuntime,

@@ -624,7 +624,37 @@ export function getChatFailureReply(
   ) {
     return pickInsufficientCreditsChatReply();
   }
+  if (isNoProviderError(err)) {
+    return NO_PROVIDER_CHAT_MESSAGE;
+  }
   return getProviderIssueChatReply();
+}
+
+/**
+ * Discriminator the conversation route includes in its 200 response so the
+ * renderer can distinguish "provider configured but throwing" from "no
+ * provider configured at all" — the latter is a UX gate ("Connect a
+ * provider"), not a chat reply.
+ */
+export type ChatFailureKind =
+  | "insufficient_credits"
+  | "no_provider"
+  | "provider_issue";
+
+export function classifyChatFailure(
+  err: unknown,
+  logBuffer: LogEntry[],
+): ChatFailureKind {
+  if (
+    isInsufficientCreditsError(err) ||
+    findRecentInsufficientCreditsLog(logBuffer)
+  ) {
+    return "insufficient_credits";
+  }
+  if (isNoProviderError(err)) {
+    return "no_provider";
+  }
+  return "provider_issue";
 }
 
 export function normalizeChatResponseText(

@@ -195,7 +195,10 @@ function parseDelimitedList(value: string): string[] {
     );
 }
 
-function readToonField(response: string, fieldName: string): string | undefined {
+function readToonField(
+  response: string,
+  fieldName: string,
+): string | undefined {
   const parsed = parseToonKeyValue<Record<string, unknown>>(response);
   const parsedValue = parsed?.[fieldName];
   if (typeof parsedValue === "string") {

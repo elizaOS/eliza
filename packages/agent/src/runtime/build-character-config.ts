@@ -210,6 +210,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
       "You can create, activate, deactivate, and delete n8n workflows via natural language using the n8n workflow actions.",
     );
   }
+  capabilityHints.push(
+    "You have a persistent task manager and can create scheduled or one-off tasks when the user asks; do not claim you lack tasks, memory, persistence, or scheduling when those actions are available.",
+  );
   const effectiveSystemPrompt =
     capabilityHints.length > 0
       ? `${systemPrompt}\n\n${capabilityHints.join("\n")}`

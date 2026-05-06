@@ -1,7 +1,4 @@
-import {
-  type IAgentRuntime,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { type IAgentRuntime, runWithTrajectoryContext } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   TRAJECTORY_PARENT_STEP_ENV_KEY,

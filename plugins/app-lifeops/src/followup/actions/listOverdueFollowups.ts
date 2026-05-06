@@ -46,7 +46,9 @@ export const listOverdueFollowupsAction: Action = {
       Date.now(),
       thresholdDays,
     );
-    const overdue = limit ? digest.overdue.slice(0, Math.floor(limit)) : digest.overdue;
+    const overdue = limit
+      ? digest.overdue.slice(0, Math.floor(limit))
+      : digest.overdue;
     if (overdue.length === 0) {
       return {
         success: true,

@@ -89,7 +89,8 @@ export function extractPlannerAction(text: string): string | null {
     if (typeof first === "string") return first.trim().toUpperCase();
     if (first && typeof first === "object") {
       const record = first as Record<string, unknown>;
-      const name = record.name ?? record.action ?? record.actionName ?? record.type;
+      const name =
+        record.name ?? record.action ?? record.actionName ?? record.type;
       if (typeof name === "string") return name.trim().toUpperCase();
     }
   }

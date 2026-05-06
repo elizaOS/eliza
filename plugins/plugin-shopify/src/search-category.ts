@@ -1,7 +1,4 @@
-import type {
-  IAgentRuntime,
-  SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const SHOPIFY_STORE_SEARCH_CATEGORY: SearchCategoryRegistration = {
   category: "shopify_store",

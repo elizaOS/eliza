@@ -19,7 +19,6 @@ export { SaveCommandModal } from "./components/chat/SaveCommandModal";
 export { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
-export { AdvancedPageView } from "./components/pages/AdvancedPageView";
 export { AppsPageView } from "./components/pages/AppsPageView";
 export {
   AutomationsDesktopShell,
@@ -34,7 +33,7 @@ export {
   HeartbeatsView,
 } from "./components/pages/HeartbeatsView";
 export { KnowledgeView } from "./components/pages/KnowledgeView";
-export { LogsPageView } from "./components/pages/LogsPageView";
+export { LogsView } from "./components/pages/LogsView";
 export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";
 export { RelationshipsView } from "./components/pages/RelationshipsView";

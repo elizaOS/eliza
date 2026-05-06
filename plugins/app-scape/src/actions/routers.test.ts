@@ -110,9 +110,7 @@ describe("scape action registry", () => {
 
     const result = await scapeJournalAction.handler(
       runtime,
-      makeMemory(
-        "action: JOURNAL_OP\nop: set-goal\ntitle: Reach Draynor",
-      ),
+      makeMemory("action: JOURNAL_OP\nop: set-goal\ntitle: Reach Draynor"),
       undefined,
       {},
     );

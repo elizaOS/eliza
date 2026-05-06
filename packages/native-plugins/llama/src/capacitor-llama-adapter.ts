@@ -114,7 +114,8 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
     releaseAllContexts: () => plugin.releaseAllContexts(),
     completion:
       typeof plugin.completion === "function"
-        ? (options) => plugin.completion?.(options) as Promise<NativeCompletionResult>
+        ? (options) =>
+            plugin.completion?.(options) as Promise<NativeCompletionResult>
         : undefined,
     generateText:
       typeof plugin.generateText === "function"
@@ -124,11 +125,13 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
     stopCompletion: (options) => plugin.stopCompletion(options),
     embedding:
       typeof plugin.embedding === "function"
-        ? (options) => plugin.embedding?.(options) as Promise<NativeEmbeddingResult>
+        ? (options) =>
+            plugin.embedding?.(options) as Promise<NativeEmbeddingResult>
         : undefined,
     tokenize:
       typeof plugin.tokenize === "function"
-        ? (options) => plugin.tokenize?.(options) as Promise<{ tokens: number[] }>
+        ? (options) =>
+            plugin.tokenize?.(options) as Promise<{ tokens: number[] }>
         : undefined,
     addListener: (event, listener) => plugin.addListener(event, listener),
   };

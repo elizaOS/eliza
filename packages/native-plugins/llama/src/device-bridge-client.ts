@@ -95,6 +95,7 @@ export interface DeviceBridgeClientConfig {
 
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
+const CONNECT_TIMEOUT_MS = 5_000;
 
 export class DeviceBridgeClient {
   private socket: WebSocket | null = null;
@@ -149,8 +150,28 @@ export class DeviceBridgeClient {
       return;
     }
     this.socket = ws;
+    let timedOut = false;
+    const connectTimeout = setTimeout(() => {
+      if (
+        this.stopped ||
+        this.socket !== ws ||
+        ws.readyState !== WebSocket.CONNECTING
+      ) {
+        return;
+      }
+      timedOut = true;
+      this.socket = null;
+      this.config.onStateChange?.("error", "websocket connect timeout");
+      try {
+        ws.close();
+      } catch {
+        /* best effort */
+      }
+      this.scheduleReconnect();
+    }, CONNECT_TIMEOUT_MS);
 
     ws.onopen = () => {
+      clearTimeout(connectTimeout);
       this.reconnectAttempt = 0;
       void this.sendRegister(ws);
     };
@@ -170,8 +191,10 @@ export class DeviceBridgeClient {
     };
 
     ws.onclose = () => {
-      this.socket = null;
+      clearTimeout(connectTimeout);
+      if (this.socket === ws) this.socket = null;
       this.config.onStateChange?.("disconnected");
+      if (timedOut) return;
       this.scheduleReconnect();
     };
   }

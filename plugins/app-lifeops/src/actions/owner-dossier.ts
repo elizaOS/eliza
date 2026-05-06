@@ -113,15 +113,12 @@ async function resolveDossierParamsWithToon(args: {
   return {
     intent: nonEmptyString(parsed.intent) ?? args.rawParams.intent,
     calendarEventId:
-      args.rawParams.calendarEventId ??
-      nonEmptyString(parsed.calendarEventId),
+      args.rawParams.calendarEventId ?? nonEmptyString(parsed.calendarEventId),
     subject: args.rawParams.subject ?? nonEmptyString(parsed.subject),
     attendeeHandles:
-      args.rawParams.attendeeHandles ??
-      coerceHandles(parsed.attendeeHandles),
+      args.rawParams.attendeeHandles ?? coerceHandles(parsed.attendeeHandles),
     generatedForAt:
-      args.rawParams.generatedForAt ??
-      nonEmptyString(parsed.generatedForAt),
+      args.rawParams.generatedForAt ?? nonEmptyString(parsed.generatedForAt),
   };
 }
 

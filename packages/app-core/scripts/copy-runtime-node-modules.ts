@@ -59,7 +59,10 @@ const DEP_SKIP = new Set(["typescript", "@types/node", "lucide-react"]);
 const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core"]);
 const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>();
 const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
+  ".git",
+  ".gradle",
   ".github",
+  ".turbo",
   "benchmark",
   "benchmarks",
   "coverage",
@@ -79,6 +82,14 @@ const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
   ".tsbuildinfo",
   ".txt",
 ]);
+const TAR_SAFE_RELATIVE_PATH_MAX = Number.parseInt(
+  process.env.ELIZA_RUNTIME_TAR_SAFE_RELATIVE_PATH_MAX ?? "213",
+  10,
+);
+const TAR_SAFE_BASENAME_MAX = Number.parseInt(
+  process.env.ELIZA_RUNTIME_TAR_SAFE_BASENAME_MAX ?? "100",
+  10,
+);
 const PLATFORM_ALIASES = new Map<string, string>([
   ["android", "android"],
   ["aix", "aix"],
@@ -120,6 +131,15 @@ const ARCH_ALIASES = new Map<string, string>([
 const bunPackageIndex = new Map<string, Set<string>>();
 const registryPackageIndex = new Map<string, ResolvedPackage>();
 const trackedPackageIndex = new Map<string, ResolvedPackage>();
+
+function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
+  const normalizedPath = entryPath.split(path.sep).join("/");
+  return (
+    normalizedPath.endsWith("/yaml/dist/doc") ||
+    normalizedPath.endsWith("/viem/_esm/actions/test") ||
+    normalizedPath.endsWith("/viem/actions/test")
+  );
+}
 
 function parseArgs(argv: string[]): Options {
   const opts: Record<string, string> = {};
@@ -289,9 +309,7 @@ export function shouldKeepPackageRelativePath(
     return false;
   }
   if (
-    normalizedPath.includes(
-      "resources/studio/resources/projects/resources/",
-    )
+    normalizedPath.includes("resources/studio/resources/projects/resources/")
   ) {
     return false;
   }
@@ -345,7 +363,8 @@ function pruneCopiedPackageDir(packageDir: string): void {
 
       if (
         entry.name === "node_modules" ||
-        RUNTIME_COPY_PRUNED_DIR_NAMES.has(entry.name)
+        (RUNTIME_COPY_PRUNED_DIR_NAMES.has(entry.name) &&
+          !isRequiredRuntimeDocDirectory(entryPath))
       ) {
         fs.rmSync(entryPath, { recursive: true, force: true });
         continue;
@@ -381,6 +400,7 @@ function copyPackageDir(
   name: string,
   sourceDir: string,
   targetNodeModules: string,
+  rootDestDir: string,
 ): boolean {
   const dest = packagePath(name, targetNodeModules);
   fs.rmSync(dest, { recursive: true, force: true });
@@ -407,12 +427,7 @@ function copyPackageDir(
           .relative(sourceDir, entry)
           .split(path.sep)
           .join("/");
-        if (
-          relativeEntry === "platforms/electrobun/build" ||
-          relativeEntry.startsWith("platforms/electrobun/build/") ||
-          relativeEntry === "platforms/electrobun/artifacts" ||
-          relativeEntry.startsWith("platforms/electrobun/artifacts/")
-        ) {
+        if (shouldSkipPackagedAppCoreEntry(relativeEntry)) {
           return false;
         }
       }
@@ -430,8 +445,33 @@ function copyPackageDir(
     fs.renameSync(copyDest, dest);
   }
   pruneCopiedPackageDir(dest);
-  patchCopiedPackageRuntimeSurface(name, dest);
+  patchCopiedPackageRuntimeSurface(name, dest, rootDestDir);
   return true;
+}
+
+function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
+  return (
+    relativeEntry === "packaging" ||
+    relativeEntry.startsWith("packaging/") ||
+    relativeEntry === "dist/packaging" ||
+    relativeEntry.startsWith("dist/packaging/") ||
+    relativeEntry === "platforms/android" ||
+    relativeEntry.startsWith("platforms/android/") ||
+    relativeEntry === "platforms/ios" ||
+    relativeEntry.startsWith("platforms/ios/") ||
+    relativeEntry === "dist/platforms/android" ||
+    relativeEntry.startsWith("dist/platforms/android/") ||
+    relativeEntry === "dist/platforms/ios" ||
+    relativeEntry.startsWith("dist/platforms/ios/") ||
+    relativeEntry === "platforms/electrobun/build" ||
+    relativeEntry.startsWith("platforms/electrobun/build/") ||
+    relativeEntry === "platforms/electrobun/artifacts" ||
+    relativeEntry.startsWith("platforms/electrobun/artifacts/") ||
+    relativeEntry === "dist/platforms/electrobun/build" ||
+    relativeEntry.startsWith("dist/platforms/electrobun/build/") ||
+    relativeEntry === "dist/platforms/electrobun/artifacts" ||
+    relativeEntry.startsWith("dist/platforms/electrobun/artifacts/")
+  );
 }
 
 type PackageJsonManifest = {
@@ -576,9 +616,143 @@ function patchCopiedAppLifeOpsRuntimeImports(packageDir: string): void {
   }
 }
 
+function shortHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function rewriteJsStringSpecifiers(
+  source: string,
+  oldStem: string,
+  newStem: string,
+): string {
+  return source
+    .replaceAll(`"./${oldStem}"`, `"./${newStem}"`)
+    .replaceAll(`'./${oldStem}'`, `'./${newStem}'`)
+    .replaceAll(`"./${oldStem}.js"`, `"./${newStem}.js"`)
+    .replaceAll(`'./${oldStem}.js'`, `'./${newStem}.js'`);
+}
+
+function visitFiles(rootDir: string, visit: (filePath: string) => void): void {
+  if (!fs.existsSync(rootDir)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+    const entryPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      visitFiles(entryPath, visit);
+      continue;
+    }
+    if (entry.isFile()) {
+      visit(entryPath);
+    }
+  }
+}
+
+function tarRelativePath(rootDestDir: string, filePath: string): string {
+  return path.relative(rootDestDir, filePath).split(path.sep).join("/");
+}
+
+function isTarSafeRelativePath(relativePath: string): boolean {
+  return (
+    relativePath.length <= TAR_SAFE_RELATIVE_PATH_MAX &&
+    path.posix.basename(relativePath).length <= TAR_SAFE_BASENAME_MAX
+  );
+}
+
+function patchCopiedElevenLabsTarSafePaths(
+  packageDir: string,
+  rootDestDir: string,
+): void {
+  type Rename = {
+    directory: string;
+    oldBase: string;
+    oldStem: string;
+    newBase: string;
+    newStem: string;
+  };
+
+  const renames: Rename[] = [];
+  visitFiles(packageDir, (filePath) => {
+    if (!filePath.endsWith(".js")) {
+      return;
+    }
+
+    const relativePath = tarRelativePath(rootDestDir, filePath);
+    if (isTarSafeRelativePath(relativePath)) {
+      return;
+    }
+
+    const oldBase = path.basename(filePath);
+    const oldStem = oldBase.replace(/\.js$/, "");
+    const newStem = `f_${shortHash(tarRelativePath(packageDir, filePath))}`;
+    const newBase = `${newStem}.js`;
+    const newPath = path.join(path.dirname(filePath), newBase);
+
+    if (fs.existsSync(newPath)) {
+      throw new Error(
+        `[runtime-copy] generated duplicate tar-safe filename ${newPath}`,
+      );
+    }
+
+    fs.renameSync(filePath, newPath);
+    renames.push({
+      directory: path.dirname(filePath),
+      oldBase,
+      oldStem,
+      newBase,
+      newStem,
+    });
+  });
+
+  if (renames.length === 0) {
+    return;
+  }
+
+  visitFiles(packageDir, (filePath) => {
+    if (!filePath.endsWith(".js")) {
+      return;
+    }
+
+    let source = fs.readFileSync(filePath, "utf8");
+    const original = source;
+    for (const rename of renames) {
+      if (path.dirname(filePath) !== rename.directory) {
+        continue;
+      }
+      source = rewriteJsStringSpecifiers(
+        source,
+        rename.oldStem,
+        rename.newStem,
+      );
+      source = rewriteJsStringSpecifiers(
+        source,
+        rename.oldBase,
+        rename.newBase,
+      );
+    }
+    if (source !== original) {
+      fs.writeFileSync(filePath, source);
+    }
+  });
+}
+
+function patchCopiedAiSdkProviderRuntimeSurface(packageDir: string): void {
+  const distIndex = path.join(packageDir, "dist", "index.js");
+  if (fs.existsSync(distIndex)) {
+    fs.rmSync(path.join(packageDir, "src"), { recursive: true, force: true });
+  }
+}
+
 function patchCopiedPackageRuntimeSurface(
   name: string,
   packageDir: string,
+  rootDestDir: string,
 ): void {
   if (name === "@elizaos/app-lifeops") {
     patchCopiedAppLifeOpsRuntimeImports(packageDir);
@@ -586,6 +760,14 @@ function patchCopiedPackageRuntimeSurface(
   }
   if (name === "@elizaos/agent") {
     patchCopiedAgentRuntimeExports(packageDir);
+    return;
+  }
+  if (name === "@ai-sdk/provider") {
+    patchCopiedAiSdkProviderRuntimeSurface(packageDir);
+    return;
+  }
+  if (name === "@elevenlabs/elevenlabs-js") {
+    patchCopiedElevenLabsTarSafePaths(packageDir, rootDestDir);
     return;
   }
 }
@@ -627,7 +809,8 @@ export function shouldCopyPackageEntry(entry: string): boolean {
   const basename = path.basename(entry);
   if (
     basename === "node_modules" ||
-    RUNTIME_COPY_PRUNED_DIR_NAMES.has(basename)
+    (RUNTIME_COPY_PRUNED_DIR_NAMES.has(basename) &&
+      !isRequiredRuntimeDocDirectory(entry))
   ) {
     return false;
   }
@@ -1109,6 +1292,40 @@ function copyPgliteCompatibilityAssets(targetDist: string): void {
   }
 }
 
+function assertTarSafeRuntimePaths(targetDist: string): void {
+  const unsafe: string[] = [];
+
+  const visit = (currentDir: string): void => {
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const entryPath = path.join(currentDir, entry.name);
+      const relativePath = tarRelativePath(targetDist, entryPath);
+      if (!isTarSafeRelativePath(relativePath)) {
+        unsafe.push(relativePath);
+        if (unsafe.length >= 20) {
+          return;
+        }
+      }
+      if (entry.isDirectory()) {
+        visit(entryPath);
+        if (unsafe.length >= 20) {
+          return;
+        }
+      }
+    }
+  };
+
+  visit(targetDist);
+  if (unsafe.length > 0) {
+    throw new Error(
+      [
+        "[runtime-copy] runtime bundle contains tar-unsafe paths for the Electrobun self-extractor.",
+        `Limit relative path length to <= ${TAR_SAFE_RELATIVE_PATH_MAX} and basename length to <= ${TAR_SAFE_BASENAME_MAX}.`,
+        ...unsafe.map((entry) => `  ${entry.length} ${entry}`),
+      ].join("\n"),
+    );
+  }
+}
+
 function main(): void {
   const { scanDir, targetDist } = parseArgs(process.argv.slice(2));
   const targetNodeModules = path.join(targetDist, "node_modules");
@@ -1211,7 +1428,14 @@ function main(): void {
       continue;
     }
 
-    if (!copyPackageDir(name, resolved.sourceDir, copyTargetNodeModules)) {
+    if (
+      !copyPackageDir(
+        name,
+        resolved.sourceDir,
+        copyTargetNodeModules,
+        targetDist,
+      )
+    ) {
       if (alwaysBundled.has(name)) {
         missingAlwaysBundled.add(name);
       } else {
@@ -1243,6 +1467,7 @@ function main(): void {
   }
 
   copyPgliteCompatibilityAssets(targetDist);
+  assertTarSafeRuntimePaths(targetDist);
 
   console.log(
     `[runtime-copy] bundled ${copiedNames.size} package(s) into ${targetNodeModules}`,

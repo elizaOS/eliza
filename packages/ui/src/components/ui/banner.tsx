@@ -1,14 +1,10 @@
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import { AlertTriangle, Info, X, XCircle } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 
-type BannerVariantsProps = {
-  variant?: "error" | "warning" | "info" | null;
-};
-
-const _bannerVariants = cva(
+const bannerVariants = cva(
   "flex items-center gap-3 border px-4 py-2.5 text-xs",
   {
     variants: {
@@ -24,9 +20,6 @@ const _bannerVariants = cva(
   },
 );
 
-const bannerVariants: (props?: BannerVariantsProps) => string =
-  _bannerVariants as (props?: BannerVariantsProps) => string;
-
 const ICONS: Record<string, React.ElementType> = {
   error: XCircle,
   warning: AlertTriangle,
@@ -35,7 +28,7 @@ const ICONS: Record<string, React.ElementType> = {
 
 export interface BannerProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    BannerVariantsProps {
+    VariantProps<typeof bannerVariants> {
   /** Optional action element (button, link) */
   action?: React.ReactNode;
   /** Show dismiss button */

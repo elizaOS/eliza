@@ -5,9 +5,8 @@ import type {
   SendPolicy,
 } from "@elizaos/core";
 
-const OWNER_APPROVAL_REQUIRED: ReadonlySet<MessageSource> = new Set<MessageSource>([
-  "gmail",
-]);
+const OWNER_APPROVAL_REQUIRED: ReadonlySet<MessageSource> =
+  new Set<MessageSource>(["gmail"]);
 
 function makeApprovalDescription(draft: DraftRequest): string {
   const recipients = draft.to
@@ -15,9 +14,8 @@ function makeApprovalDescription(draft: DraftRequest): string {
     .filter(Boolean)
     .join(", ");
   const subject = draft.subject ? ` (${draft.subject})` : "";
-  const preview = draft.body.length > 240
-    ? `${draft.body.slice(0, 237)}...`
-    : draft.body;
+  const preview =
+    draft.body.length > 240 ? `${draft.body.slice(0, 237)}...` : draft.body;
   const target = recipients.length > 0 ? recipients : "(no recipients)";
   return `Approve sending ${draft.source} to ${target}${subject}: ${preview}`;
 }
@@ -41,7 +39,8 @@ export function createOwnerSendPolicy(): SendPolicy {
       const requestId = await runtime.createTask({
         name: `OWNER_SEND_APPROVAL_${Date.now()}`,
         description: makeApprovalDescription(draft),
-        roomId: (draft.metadata?.roomId as string | undefined) ?? runtime.agentId,
+        roomId:
+          (draft.metadata?.roomId as string | undefined) ?? runtime.agentId,
         entityId:
           (draft.metadata?.entityId as string | undefined) ?? runtime.agentId,
         tags: ["AWAITING_CHOICE", "APPROVAL", "OWNER_SEND_APPROVAL"],

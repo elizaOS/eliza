@@ -165,12 +165,10 @@ export const goalsProvider: Provider = {
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const service = runtime.getService("rs_2004scape") as unknown as
-      | {
-          getBotState(): BotState | null;
-          getEventLog(): Array<{ action: string; timestamp: number }>;
-        }
-      | null;
+    const service = runtime.getService("rs_2004scape") as unknown as {
+      getBotState(): BotState | null;
+      getEventLog(): Array<{ action: string; timestamp: number }>;
+    } | null;
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
       return {

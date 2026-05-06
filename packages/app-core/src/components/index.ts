@@ -74,7 +74,6 @@ export * from "./conversations/conversation-utils";
 export * from "./custom-actions/CustomActionEditor";
 export * from "./custom-actions/CustomActionsPanel";
 export * from "./custom-actions/CustomActionsView";
-export * from "./pages/AdvancedPageView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
 export * from "./pages/AutomationsView";
@@ -89,7 +88,6 @@ export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
 export * from "./pages/KnowledgeView";
 
-export * from "./pages/LogsPageView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
 export * from "./pages/MemoryViewerView";

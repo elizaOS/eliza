@@ -74,19 +74,29 @@ const MAX_TEXT_INPUT_LENGTH = 4096;
 // Simple in-process rate limiter for session-creation requests.
 const SESSION_CREATE_LIMIT = 10; // max requests per window
 const SESSION_CREATE_WINDOW_MS = 60_000; // 1 minute
-const sessionCreateCounts = new Map<string, { count: number; resetAt: number }>();
+const sessionCreateCounts = new Map<
+  string,
+  { count: number; resetAt: number }
+>();
 
 function getRemoteIp(req: http.IncomingMessage | undefined): string {
   const addr = req?.socket?.remoteAddress ?? req?.headers?.["x-forwarded-for"];
-  return (Array.isArray(addr) ? addr[0] : (addr ?? "unknown")).split(",")[0].trim();
+  return (Array.isArray(addr) ? addr[0] : (addr ?? "unknown"))
+    .split(",")[0]
+    .trim();
 }
 
-function sessionCreateRateLimitExceeded(req: http.IncomingMessage | undefined): boolean {
+function sessionCreateRateLimitExceeded(
+  req: http.IncomingMessage | undefined,
+): boolean {
   const ip = getRemoteIp(req);
   const now = Date.now();
   const entry = sessionCreateCounts.get(ip);
   if (!entry || entry.resetAt <= now) {
-    sessionCreateCounts.set(ip, { count: 1, resetAt: now + SESSION_CREATE_WINDOW_MS });
+    sessionCreateCounts.set(ip, {
+      count: 1,
+      resetAt: now + SESSION_CREATE_WINDOW_MS,
+    });
     return false;
   }
   entry.count += 1;
@@ -178,7 +188,11 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   if (ctx.method === "POST" && ctx.pathname === `${BASE_PATH}/session`) {
     if (sessionCreateRateLimitExceeded(ctx.req)) {
-      ctx.error(ctx.res, "Too many session creation requests. Please wait before trying again.", 429);
+      ctx.error(
+        ctx.res,
+        "Too many session creation requests. Please wait before trying again.",
+        429,
+      );
       return true;
     }
     const body = await ctx.readJsonBody<StartSessionBody>();

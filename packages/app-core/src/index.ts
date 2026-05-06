@@ -21,7 +21,6 @@ export * from "./api/compat-route-shared";
 export * from "./api/index";
 export * from "./api/response";
 export * from "./api/server-cloud-tts";
-export * from "./app-shell/task-coordinator-slots";
 export {
   type AppShellPageRegistration,
   listAppShellPages,
@@ -36,6 +35,7 @@ export type {
   CompanionSceneStatus,
 } from "./config/boot-config";
 export * from "./config/index";
+export * from "./desktop-runtime/index";
 export * from "./events/index";
 export * from "./hooks/useActivityEvents";
 export * from "./hooks/useBugReport";
@@ -63,8 +63,7 @@ export { CHANNEL_PLUGIN_MAP } from "./runtime/channel-plugin-map";
 export * from "./security/agent-vault-id";
 export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
-
-export * from "./shell/index";
+export * from "./slots/task-coordinator-slots";
 export * from "./state/index";
 export * from "./test-support/test-helpers";
 export * from "./types/index";

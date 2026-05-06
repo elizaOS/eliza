@@ -242,7 +242,8 @@ export class RealXFeedAdapter implements XFeedAdapter {
         const usernameMap = buildUsernameMap(iter.includes);
         const messages: XDirectMessage[] = [];
         for await (const event of iter) {
-          if (event.event_type && event.event_type !== "MessageCreate") continue;
+          if (event.event_type && event.event_type !== "MessageCreate")
+            continue;
           messages.push({
             id: event.id ?? "",
             senderId: event.sender_id ?? "",
@@ -290,15 +291,11 @@ export class RealXFeedAdapter implements XFeedAdapter {
   }
 
   async createTweet(args: { text: string }): Promise<{ id: string }> {
-    return logSdkCall(
-      "tweet",
-      { textLen: args.text.length },
-      async () => {
-        const client = await this.v2Client();
-        const result = await client.v2.tweet(args.text);
-        return { id: result.data.id };
-      },
-    );
+    return logSdkCall("tweet", { textLen: args.text.length }, async () => {
+      const client = await this.v2Client();
+      const result = await client.v2.tweet(args.text);
+      return { id: result.data.id };
+    });
   }
 }
 

@@ -90,8 +90,7 @@ function parseInfo(raw: unknown): SignalOpInfo | null {
     typeof parsed.targetAuthor === "string" && parsed.targetAuthor.trim().length > 0
       ? String(parsed.targetAuthor)
       : undefined;
-  const remove =
-    parsed.remove === true || String(parsed.remove ?? "").toLowerCase() === "true";
+  const remove = parsed.remove === true || String(parsed.remove ?? "").toLowerCase() === "true";
 
   return {
     op: opRaw as SignalOp,
@@ -191,19 +190,9 @@ async function handleReact(
   const recipient = room?.channelId || info.targetAuthor;
 
   if (info.remove) {
-    await service.removeReaction(
-      recipient,
-      info.emoji,
-      info.targetTimestamp,
-      info.targetAuthor
-    );
+    await service.removeReaction(recipient, info.emoji, info.targetTimestamp, info.targetAuthor);
   } else {
-    await service.sendReaction(
-      recipient,
-      info.emoji,
-      info.targetTimestamp,
-      info.targetAuthor
-    );
+    await service.sendReaction(recipient, info.emoji, info.targetTimestamp, info.targetAuthor);
   }
 
   return {
@@ -235,11 +224,7 @@ export const messageOp: Action = {
   descriptionCompressed: "Signal message ops: send, react.",
   suppressPostActionContinuation: true,
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;
     }
@@ -257,7 +242,9 @@ export const messageOp: Action = {
       return true;
     }
     const text = typeof message.content?.text === "string" ? message.content.text : "";
-    return /\bsignal\b/i.test(text) && /\b(reply|send|message|text|react|reaction|emoji)\b/i.test(text);
+    return (
+      /\bsignal\b/i.test(text) && /\b(reply|send|message|text|react|reaction|emoji)\b/i.test(text)
+    );
   },
 
   handler: async (

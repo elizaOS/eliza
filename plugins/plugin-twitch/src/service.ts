@@ -18,8 +18,8 @@ import {
 import { RefreshingAuthProvider, StaticAuthProvider } from "@twurple/auth";
 import { ChatClient, type ChatMessage } from "@twurple/chat";
 import {
-  formatChannelForDisplay,
   type ITwitchService,
+  formatChannelForDisplay,
   MAX_TWITCH_MESSAGE_LENGTH,
   normalizeChannel,
   splitMessageForTwitch,
