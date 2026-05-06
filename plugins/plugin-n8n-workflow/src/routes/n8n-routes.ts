@@ -30,28 +30,28 @@
 import type {
   RouteHelpers,
   RouteRequestMeta,
-} from '@elizaos/agent/api/route-helpers';
-import { readCompatJsonBody } from '@elizaos/app-core/api/compat-route-shared';
-import { isNativeServerPlatform } from '@elizaos/app-core/platform/is-native-server';
+} from "@elizaos/agent/api/route-helpers";
+import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
+import { isNativeServerPlatform } from "@elizaos/app-core/platform/is-native-server";
 import {
   type N8nMode,
   resolveN8nMode,
-} from '@elizaos/app-core/services/n8n-mode';
+} from "@elizaos/app-core/services/n8n-mode";
 import type {
   N8nSidecar,
   N8nSidecarStatus,
-} from '@elizaos/app-core/services/n8n-sidecar';
-import type { AgentRuntime } from '@elizaos/core';
-import { logger } from '@elizaos/core';
+} from "@elizaos/app-core/services/n8n-sidecar";
+import type { AgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   applyResolutions,
   buildCatalogSnapshot,
   type CatalogLike,
   coerceClarifications,
   pruneResolvedClarifications,
-} from '../lib/n8n-clarification';
+} from "../lib/n8n-clarification";
 
-export type { N8nMode } from '@elizaos/app-core/services/n8n-mode';
+export type { N8nMode } from "@elizaos/app-core/services/n8n-mode";
 
 /**
  * Host platform for the n8n status surface. On mobile (iOS / Android) the
@@ -59,14 +59,14 @@ export type { N8nMode } from '@elizaos/app-core/services/n8n-mode';
  * inside the Capacitor runtime. The status surface still reports state so
  * the UI can render a cloud-only view.
  */
-export type N8nHostPlatform = 'desktop' | 'mobile';
+export type N8nHostPlatform = "desktop" | "mobile";
 
 /**
  * Result of the cloud-gateway health probe. Reflects reachability of
  * `${cloudBaseUrl}/api/v1/health` — `unknown` means we did not probe
  * (mode !== "cloud" or probe failed before HTTP resolved).
  */
-export type N8nCloudHealth = 'ok' | 'degraded' | 'unknown';
+export type N8nCloudHealth = "ok" | "degraded" | "unknown";
 
 export interface N8nStatusResponse {
   mode: N8nMode;
@@ -112,11 +112,11 @@ export interface N8nWorkflow {
   /** Connection graph — only present on single-workflow GET, not on list. */
   connections?: Record<
     string,
-    { main?: Array<Array<{ node: string; type: 'main'; index: number }>> }
+    { main?: Array<Array<{ node: string; type: "main"; index: number }>> }
   >;
 }
 
-type N8nWorkflowConnections = NonNullable<N8nWorkflow['connections']>;
+type N8nWorkflowConnections = NonNullable<N8nWorkflow["connections"]>;
 
 interface N8nWorkflowWriteNode {
   id?: string;
@@ -136,7 +136,7 @@ interface N8nWorkflowWriteNode {
   retryOnFail?: boolean;
   maxTries?: number;
   waitBetweenTries?: number;
-  onError?: 'continueErrorOutput' | 'continueRegularOutput' | 'stopWorkflow';
+  onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
 }
 
 interface N8nWorkflowWritePayload {
@@ -170,7 +170,7 @@ export interface N8nRoutesConfigLike {
 
 export interface N8nRouteContext
   extends RouteRequestMeta,
-    Pick<RouteHelpers, 'json'> {
+    Pick<RouteHelpers, "json"> {
   config: N8nRoutesConfigLike;
   runtime: AgentRuntime | null;
   /**
@@ -231,18 +231,18 @@ async function probeCloudHealth(
   const url = `${normalizeBaseUrl(baseUrl)}/api/v1/health`;
   try {
     const res = await fetchImpl(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
+      method: "GET",
+      headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(CLOUD_HEALTH_PROBE_TIMEOUT_MS),
     });
-    return res.ok ? 'ok' : 'degraded';
+    return res.ok ? "ok" : "degraded";
   } catch (err) {
     logger.debug(
       `[n8n-routes] cloud health probe failed: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
-    return 'degraded';
+    return "degraded";
   }
 }
 
@@ -271,24 +271,28 @@ async function getCloudHealth(
  * is never reached.
  */
 async function loadSidecarModule(): Promise<
-  typeof import('@elizaos/app-core/services/n8n-sidecar') | null
-  > {
-  if (isNativeServerPlatform()) {return null;}
-  return await import('@elizaos/app-core/services/n8n-sidecar');
+  typeof import("@elizaos/app-core/services/n8n-sidecar") | null
+> {
+  if (isNativeServerPlatform()) {
+    return null;
+  }
+  return await import("@elizaos/app-core/services/n8n-sidecar");
 }
 
 // Cloud base URL default — mirrors `resolveCloudApiBaseUrl()` without
 // pulling the validator in (avoids an async-validation dep on a hot path).
-const DEFAULT_CLOUD_API_BASE_URL = 'https://api.eliza.how';
+const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.how";
 
 function normalizeBaseUrl(raw: string | undefined | null): string {
-  const trimmed = (raw ?? '').trim();
+  const trimmed = (raw ?? "").trim();
   const base = trimmed.length > 0 ? trimmed : DEFAULT_CLOUD_API_BASE_URL;
-  return base.replace(/\/+$/, '');
+  return base.replace(/\/+$/, "");
 }
 
 function resolveAgentId(ctx: N8nRouteContext): string {
-  if (ctx.agentId?.trim()) {return ctx.agentId.trim();}
+  if (ctx.agentId?.trim()) {
+    return ctx.agentId.trim();
+  }
   const runtimeAny = ctx.runtime as unknown as {
     agentId?: string;
     character?: { id?: string };
@@ -296,12 +300,12 @@ function resolveAgentId(ctx: N8nRouteContext): string {
   return (
     runtimeAny?.agentId ??
     runtimeAny?.character?.id ??
-    '00000000-0000-0000-0000-000000000000'
+    "00000000-0000-0000-0000-000000000000"
   );
 }
 
 function sendJson(
-  ctx: Pick<N8nRouteContext, 'res' | 'json'>,
+  ctx: Pick<N8nRouteContext, "res" | "json">,
   status: number,
   body: unknown,
 ): void {
@@ -317,13 +321,15 @@ function sendJson(
 
 /** Strip any credential material from node descriptors before forwarding. */
 function sanitizeNode(n: unknown): N8nWorkflowNodeLike {
-  if (!n || typeof n !== 'object') {return {};}
+  if (!n || typeof n !== "object") {
+    return {};
+  }
   const obj = n as Record<string, unknown>;
   return {
-    ...(typeof obj.id === 'string' ? { id: obj.id } : {}),
-    ...(typeof obj.name === 'string' ? { name: obj.name } : {}),
-    ...(typeof obj.type === 'string' ? { type: obj.type } : {}),
-    ...(typeof obj.typeVersion === 'number'
+    ...(typeof obj.id === "string" ? { id: obj.id } : {}),
+    ...(typeof obj.name === "string" ? { name: obj.name } : {}),
+    ...(typeof obj.type === "string" ? { type: obj.type } : {}),
+    ...(typeof obj.typeVersion === "number"
       ? { typeVersion: obj.typeVersion }
       : {}),
   };
@@ -334,7 +340,9 @@ function sanitizeNode(n: unknown): N8nWorkflowNodeLike {
  * parameters (needed by the graph viewer). Credentials are still stripped.
  */
 function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
-  if (!n || typeof n !== 'object') {return {};}
+  if (!n || typeof n !== "object") {
+    return {};
+  }
   const obj = n as Record<string, unknown>;
   const base = sanitizeNode(n);
 
@@ -343,14 +351,14 @@ function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
   const position: [number, number] | undefined =
     Array.isArray(pos) &&
     pos.length >= 2 &&
-    typeof pos[0] === 'number' &&
-    typeof pos[1] === 'number'
+    typeof pos[0] === "number" &&
+    typeof pos[1] === "number"
       ? [pos[0], pos[1]]
       : undefined;
 
   // parameters: pass through as-is (no credentials inside this field)
   const parameters =
-    obj.parameters && typeof obj.parameters === 'object'
+    obj.parameters && typeof obj.parameters === "object"
       ? (obj.parameters as Record<string, unknown>)
       : undefined;
 
@@ -358,8 +366,8 @@ function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
     ...base,
     ...(position !== undefined ? { position } : {}),
     ...(parameters !== undefined ? { parameters } : {}),
-    ...(typeof obj.notes === 'string' ? { notes: obj.notes } : {}),
-    ...(typeof obj.notesInFlow === 'boolean'
+    ...(typeof obj.notes === "string" ? { notes: obj.notes } : {}),
+    ...(typeof obj.notesInFlow === "boolean"
       ? { notesInFlow: obj.notesInFlow }
       : {}),
   };
@@ -367,18 +375,22 @@ function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
 
 /** Normalize an n8n workflow payload to our client-facing shape. */
 function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
-  if (!raw || typeof raw !== 'object') {return null;}
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
   const obj = raw as Record<string, unknown>;
-  const id = typeof obj.id === 'string' ? obj.id : String(obj.id ?? '');
-  const name = typeof obj.name === 'string' ? obj.name : '';
-  if (!id) {return null;}
+  const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
+  const name = typeof obj.name === "string" ? obj.name : "";
+  if (!id) {
+    return null;
+  }
   const nodesRaw = Array.isArray(obj.nodes) ? obj.nodes : [];
   const nodes = nodesRaw.map(sanitizeNode);
   return {
     id,
     name,
     active: Boolean(obj.active),
-    ...(typeof obj.description === 'string'
+    ...(typeof obj.description === "string"
       ? { description: obj.description }
       : {}),
     nodes,
@@ -396,26 +408,30 @@ function normalizeWorkflow(raw: unknown): N8nWorkflow | null {
  * it needs without a second request.
  */
 function normalizeWorkflowFull(raw: unknown): N8nWorkflow | null {
-  if (!raw || typeof raw !== 'object') {return null;}
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
   const obj = raw as Record<string, unknown>;
-  const id = typeof obj.id === 'string' ? obj.id : String(obj.id ?? '');
-  const name = typeof obj.name === 'string' ? obj.name : '';
-  if (!id) {return null;}
+  const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
+  const name = typeof obj.name === "string" ? obj.name : "";
+  if (!id) {
+    return null;
+  }
   const nodesRaw = Array.isArray(obj.nodes) ? obj.nodes : [];
   const nodes = nodesRaw.map(sanitizeNodeFull);
 
   // connections: n8n's connection map is a plain object keyed by source node
   // name. We pass it through as-is — it contains no credential material.
   const connections =
-    obj.connections && typeof obj.connections === 'object'
-      ? (obj.connections as N8nWorkflow['connections'])
+    obj.connections && typeof obj.connections === "object"
+      ? (obj.connections as N8nWorkflow["connections"])
       : undefined;
 
   return {
     id,
     name,
     active: Boolean(obj.active),
-    ...(typeof obj.description === 'string'
+    ...(typeof obj.description === "string"
       ? { description: obj.description }
       : {}),
     nodes,
@@ -460,7 +476,7 @@ function resolveProxyTarget(
     if (!apiKey) {
       return {
         target: null,
-        reason: { message: 'cloud api key missing', status: 'error' },
+        reason: { message: "cloud api key missing", status: "error" },
       };
     }
     const baseUrl = normalizeBaseUrl(ctx.config.cloud?.baseUrl);
@@ -471,7 +487,7 @@ function resolveProxyTarget(
         url,
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          Accept: 'application/json',
+          Accept: "application/json",
         },
       },
     };
@@ -484,14 +500,14 @@ function resolveProxyTarget(
   if (!localEnabled) {
     return {
       target: null,
-      reason: { message: 'n8n disabled', status: 'stopped' },
+      reason: { message: "n8n disabled", status: "stopped" },
     };
   }
 
   const sidecarState = sidecar?.getState();
-  const status: N8nSidecarStatus = sidecarState?.status ?? 'stopped';
+  const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
 
-  if (status !== 'ready') {
+  if (status !== "ready") {
     return {
       target: null,
       reason: { message: `n8n not ready (${status})`, status },
@@ -502,15 +518,17 @@ function resolveProxyTarget(
   if (!host) {
     return {
       target: null,
-      reason: { message: 'n8n host unknown', status: 'error' },
+      reason: { message: "n8n host unknown", status: "error" },
     };
   }
 
   const apiKey = sidecar?.getApiKey() ?? ctx.config.n8n?.apiKey ?? null;
   const headers: Record<string, string> = {
-    Accept: 'application/json',
+    Accept: "application/json",
   };
-  if (apiKey) {headers['X-N8N-API-KEY'] = apiKey;}
+  if (apiKey) {
+    headers["X-N8N-API-KEY"] = apiKey;
+  }
 
   // n8n serves TWO parallel workflow APIs:
   //   /rest/workflows   — internal UI endpoint, requires JWT cookie auth.
@@ -520,7 +538,7 @@ function resolveProxyTarget(
   // 401 "Unauthorized" even with a valid key — that's the wrong endpoint.
   return {
     target: {
-      url: `${host.replace(/\/+$/, '')}/api/v1/workflows${subpath}`,
+      url: `${host.replace(/\/+$/, "")}/api/v1/workflows${subpath}`,
       headers,
     },
   };
@@ -538,7 +556,7 @@ async function fetchTargetAsJson(
   const fetchImpl = ctx.fetchImpl ?? fetch;
   const headers: Record<string, string> = { ...target.headers };
   if (init.body !== null && init.body !== undefined) {
-    headers['content-type'] = 'application/json';
+    headers["content-type"] = "application/json";
   }
 
   let res: Response;
@@ -558,8 +576,8 @@ async function fetchTargetAsJson(
   }
 
   let parsed: unknown = null;
-  const contentType = res.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json')) {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
     try {
       parsed = await res.json();
     } catch {}
@@ -577,23 +595,35 @@ async function fetchTargetAsJson(
  * or `{ data }`. We accept both.
  */
 function extractWorkflowList(body: unknown): unknown[] {
-  if (!body || typeof body !== 'object') {return [];}
+  if (!body || typeof body !== "object") {
+    return [];
+  }
   const obj = body as Record<string, unknown>;
-  if (Array.isArray(obj.workflows)) {return obj.workflows;}
-  if (Array.isArray(obj.data)) {return obj.data;}
+  if (Array.isArray(obj.workflows)) {
+    return obj.workflows;
+  }
+  if (Array.isArray(obj.data)) {
+    return obj.data;
+  }
   return [];
 }
 
 function extractWorkflowSingle(body: unknown): unknown {
-  if (!body || typeof body !== 'object') {return null;}
+  if (!body || typeof body !== "object") {
+    return null;
+  }
   const obj = body as Record<string, unknown>;
-  if (obj.data && typeof obj.data === 'object') {return obj.data;}
-  if (obj.workflow && typeof obj.workflow === 'object') {return obj.workflow;}
+  if (obj.data && typeof obj.data === "object") {
+    return obj.data;
+  }
+  if (obj.workflow && typeof obj.workflow === "object") {
+    return obj.workflow;
+  }
   return body;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
+  return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
@@ -603,7 +633,7 @@ function readOptionalString(
   key: string,
 ): string | undefined {
   const value = obj[key];
-  return typeof value === 'string' && value.trim().length > 0
+  return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
 }
@@ -613,7 +643,7 @@ function readOptionalBoolean(
   key: string,
 ): boolean | undefined {
   const value = obj[key];
-  return typeof value === 'boolean' ? value : undefined;
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function readOptionalNumber(
@@ -621,7 +651,7 @@ function readOptionalNumber(
   key: string,
 ): number | undefined {
   const value = obj[key];
-  return typeof value === 'number' && Number.isFinite(value)
+  return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
 }
@@ -660,7 +690,9 @@ async function buildTriggerContextFromConversation(
   runtime: AgentRuntime | null | undefined,
   roomId: string,
 ): Promise<TriggerContext | undefined> {
-  if (!runtime || typeof runtime.getMemories !== 'function') {return undefined;}
+  if (!runtime || typeof runtime.getMemories !== "function") {
+    return undefined;
+  }
   let memories: Array<{
     entityId?: string;
     metadata?: Record<string, unknown>;
@@ -668,7 +700,7 @@ async function buildTriggerContextFromConversation(
   try {
     memories = (await runtime.getMemories({
       roomId: roomId as never,
-      tableName: 'messages',
+      tableName: "messages",
       count: 12,
     } as Parameters<typeof runtime.getMemories>[0])) as Array<{
       entityId?: string;
@@ -682,7 +714,9 @@ async function buildTriggerContextFromConversation(
     );
     return undefined;
   }
-  if (!Array.isArray(memories) || memories.length === 0) {return undefined;}
+  if (!Array.isArray(memories) || memories.length === 0) {
+    return undefined;
+  }
 
   // Tail inbound = most recent memory whose entityId is NOT the agent.
   // `runtime.getMemories` typically returns most-recent-first; defensively
@@ -690,7 +724,9 @@ async function buildTriggerContextFromConversation(
   const inbound = memories.find(
     (m) => m.entityId && m.entityId !== runtime.agentId,
   );
-  if (!inbound?.metadata) {return undefined;}
+  if (!inbound?.metadata) {
+    return undefined;
+  }
 
   const meta = inbound.metadata as Record<string, unknown>;
   const discord = (meta.discord ?? {}) as Record<string, unknown>;
@@ -699,17 +735,17 @@ async function buildTriggerContextFromConversation(
 
   // Canonical wins; flat fields are the legacy de-facto shape.
   const discordChannelId =
-    (typeof discord.channelId === 'string' ? discord.channelId : undefined) ??
-    (typeof meta.discordChannelId === 'string'
+    (typeof discord.channelId === "string" ? discord.channelId : undefined) ??
+    (typeof meta.discordChannelId === "string"
       ? meta.discordChannelId
       : undefined);
   const discordGuildId =
-    (typeof discord.guildId === 'string' ? discord.guildId : undefined) ??
-    (typeof meta.discordServerId === 'string'
+    (typeof discord.guildId === "string" ? discord.guildId : undefined) ??
+    (typeof meta.discordServerId === "string"
       ? meta.discordServerId
       : undefined);
   const discordThreadId =
-    typeof discord.threadId === 'string' ? discord.threadId : undefined;
+    typeof discord.threadId === "string" ? discord.threadId : undefined;
 
   // No `meta.fromId` fallback for Telegram: `fromId` is the sender's user
   // id, which equals the chat id only in private 1:1 DMs. In group chats /
@@ -719,23 +755,23 @@ async function buildTriggerContextFromConversation(
   // upstream Telegram plugin hasn't populated it yet, we skip Telegram
   // routing rather than guess.
   const telegramChatId =
-    typeof telegram.chatId === 'string' || typeof telegram.chatId === 'number'
+    typeof telegram.chatId === "string" || typeof telegram.chatId === "number"
       ? telegram.chatId
       : undefined;
   const telegramThreadId =
-    typeof telegram.threadId === 'string' ||
-    typeof telegram.threadId === 'number'
+    typeof telegram.threadId === "string" ||
+    typeof telegram.threadId === "number"
       ? (telegram.threadId as string | number)
       : undefined;
 
   const slackChannelId =
-    typeof slack.channelId === 'string' ? slack.channelId : undefined;
+    typeof slack.channelId === "string" ? slack.channelId : undefined;
   const slackTeamId =
-    typeof slack.teamId === 'string' ? slack.teamId : undefined;
+    typeof slack.teamId === "string" ? slack.teamId : undefined;
 
   if (discordChannelId) {
     return {
-      source: 'discord',
+      source: "discord",
       discord: {
         ...(discordChannelId ? { channelId: discordChannelId } : {}),
         ...(discordGuildId ? { guildId: discordGuildId } : {}),
@@ -745,7 +781,7 @@ async function buildTriggerContextFromConversation(
   }
   if (telegramChatId !== undefined) {
     return {
-      source: 'telegram',
+      source: "telegram",
       telegram: {
         chatId: telegramChatId,
         ...(telegramThreadId !== undefined
@@ -756,7 +792,7 @@ async function buildTriggerContextFromConversation(
   }
   if (slackChannelId) {
     return {
-      source: 'slack',
+      source: "slack",
       slack: {
         channelId: slackChannelId,
         ...(slackTeamId ? { teamId: slackTeamId } : {}),
@@ -769,8 +805,8 @@ async function buildTriggerContextFromConversation(
 function readPosition(value: unknown): [number, number] | null {
   return Array.isArray(value) &&
     value.length >= 2 &&
-    typeof value[0] === 'number' &&
-    typeof value[1] === 'number'
+    typeof value[0] === "number" &&
+    typeof value[1] === "number"
     ? [value[0], value[1]]
     : null;
 }
@@ -779,15 +815,21 @@ function readCredentials(
   value: unknown,
 ): Record<string, { id: string; name: string }> | undefined {
   const raw = asRecord(value);
-  if (!raw) {return undefined;}
+  if (!raw) {
+    return undefined;
+  }
 
   const credentials: Record<string, { id: string; name: string }> = {};
   for (const [key, credentialValue] of Object.entries(raw)) {
     const credential = asRecord(credentialValue);
-    if (!credential) {continue;}
-    const id = readOptionalString(credential, 'id');
-    const name = readOptionalString(credential, 'name');
-    if (!id || !name) {continue;}
+    if (!credential) {
+      continue;
+    }
+    const id = readOptionalString(credential, "id");
+    const name = readOptionalString(credential, "name");
+    if (!id || !name) {
+      continue;
+    }
     credentials[key] = { id, name };
   }
   return Object.keys(credentials).length > 0 ? credentials : undefined;
@@ -798,20 +840,24 @@ function normalizeWorkflowWriteNode(
   index: number,
 ): N8nWorkflowWriteNode | null {
   const obj = asRecord(value);
-  if (!obj) {return null;}
+  if (!obj) {
+    return null;
+  }
 
-  const name = readOptionalString(obj, 'name');
-  const type = readOptionalString(obj, 'type');
-  if (!name || !type) {return null;}
+  const name = readOptionalString(obj, "name");
+  const type = readOptionalString(obj, "type");
+  if (!name || !type) {
+    return null;
+  }
 
   const position = readPosition(obj.position) ?? [index * 260, 0];
   const parameters = asRecord(obj.parameters) ?? {};
-  const typeVersion = readOptionalNumber(obj, 'typeVersion') ?? 1;
+  const typeVersion = readOptionalNumber(obj, "typeVersion") ?? 1;
   const credentials = readCredentials(obj.credentials);
 
   return {
-    ...(readOptionalString(obj, 'id')
-      ? { id: readOptionalString(obj, 'id') }
+    ...(readOptionalString(obj, "id")
+      ? { id: readOptionalString(obj, "id") }
       : {}),
     name,
     type,
@@ -819,39 +865,39 @@ function normalizeWorkflowWriteNode(
     position,
     parameters,
     ...(credentials ? { credentials } : {}),
-    ...(readOptionalBoolean(obj, 'disabled') !== undefined
-      ? { disabled: readOptionalBoolean(obj, 'disabled') }
+    ...(readOptionalBoolean(obj, "disabled") !== undefined
+      ? { disabled: readOptionalBoolean(obj, "disabled") }
       : {}),
-    ...(readOptionalString(obj, 'notes')
-      ? { notes: readOptionalString(obj, 'notes') }
+    ...(readOptionalString(obj, "notes")
+      ? { notes: readOptionalString(obj, "notes") }
       : {}),
-    ...(readOptionalBoolean(obj, 'notesInFlow') !== undefined
-      ? { notesInFlow: readOptionalBoolean(obj, 'notesInFlow') }
+    ...(readOptionalBoolean(obj, "notesInFlow") !== undefined
+      ? { notesInFlow: readOptionalBoolean(obj, "notesInFlow") }
       : {}),
-    ...(readOptionalString(obj, 'color')
-      ? { color: readOptionalString(obj, 'color') }
+    ...(readOptionalString(obj, "color")
+      ? { color: readOptionalString(obj, "color") }
       : {}),
-    ...(readOptionalBoolean(obj, 'continueOnFail') !== undefined
-      ? { continueOnFail: readOptionalBoolean(obj, 'continueOnFail') }
+    ...(readOptionalBoolean(obj, "continueOnFail") !== undefined
+      ? { continueOnFail: readOptionalBoolean(obj, "continueOnFail") }
       : {}),
-    ...(readOptionalBoolean(obj, 'executeOnce') !== undefined
-      ? { executeOnce: readOptionalBoolean(obj, 'executeOnce') }
+    ...(readOptionalBoolean(obj, "executeOnce") !== undefined
+      ? { executeOnce: readOptionalBoolean(obj, "executeOnce") }
       : {}),
-    ...(readOptionalBoolean(obj, 'alwaysOutputData') !== undefined
-      ? { alwaysOutputData: readOptionalBoolean(obj, 'alwaysOutputData') }
+    ...(readOptionalBoolean(obj, "alwaysOutputData") !== undefined
+      ? { alwaysOutputData: readOptionalBoolean(obj, "alwaysOutputData") }
       : {}),
-    ...(readOptionalBoolean(obj, 'retryOnFail') !== undefined
-      ? { retryOnFail: readOptionalBoolean(obj, 'retryOnFail') }
+    ...(readOptionalBoolean(obj, "retryOnFail") !== undefined
+      ? { retryOnFail: readOptionalBoolean(obj, "retryOnFail") }
       : {}),
-    ...(readOptionalNumber(obj, 'maxTries') !== undefined
-      ? { maxTries: readOptionalNumber(obj, 'maxTries') }
+    ...(readOptionalNumber(obj, "maxTries") !== undefined
+      ? { maxTries: readOptionalNumber(obj, "maxTries") }
       : {}),
-    ...(readOptionalNumber(obj, 'waitBetweenTries') !== undefined
-      ? { waitBetweenTries: readOptionalNumber(obj, 'waitBetweenTries') }
+    ...(readOptionalNumber(obj, "waitBetweenTries") !== undefined
+      ? { waitBetweenTries: readOptionalNumber(obj, "waitBetweenTries") }
       : {}),
-    ...(obj.onError === 'continueErrorOutput' ||
-    obj.onError === 'continueRegularOutput' ||
-    obj.onError === 'stopWorkflow'
+    ...(obj.onError === "continueErrorOutput" ||
+    obj.onError === "continueRegularOutput" ||
+    obj.onError === "stopWorkflow"
       ? { onError: obj.onError }
       : {}),
   };
@@ -859,30 +905,38 @@ function normalizeWorkflowWriteNode(
 
 function normalizeWorkflowConnections(value: unknown): N8nWorkflowConnections {
   const raw = asRecord(value);
-  if (!raw) {return {};}
+  if (!raw) {
+    return {};
+  }
 
   const connections: N8nWorkflowConnections = {};
   for (const [sourceName, outputValue] of Object.entries(raw)) {
     const outputMap = asRecord(outputValue);
-    if (!outputMap) {continue;}
+    if (!outputMap) {
+      continue;
+    }
     const mainRaw = outputMap.main;
-    if (!Array.isArray(mainRaw)) {continue;}
+    if (!Array.isArray(mainRaw)) {
+      continue;
+    }
     const main = mainRaw.map((group) =>
       Array.isArray(group)
         ? group
-          .map((connection) => {
-            const obj = asRecord(connection);
-            const node = obj ? readOptionalString(obj, 'node') : undefined;
-            if (!obj || !node) {return null;}
-            const index = readOptionalNumber(obj, 'index') ?? 0;
-            return { node, type: 'main' as const, index };
-          })
-          .filter(
-            (
-              connection,
-            ): connection is { node: string; type: 'main'; index: number } =>
-              connection !== null,
-          )
+            .map((connection) => {
+              const obj = asRecord(connection);
+              const node = obj ? readOptionalString(obj, "node") : undefined;
+              if (!obj || !node) {
+                return null;
+              }
+              const index = readOptionalNumber(obj, "index") ?? 0;
+              return { node, type: "main" as const, index };
+            })
+            .filter(
+              (
+                connection,
+              ): connection is { node: string; type: "main"; index: number } =>
+                connection !== null,
+            )
         : [],
     );
     connections[sourceName] = { main };
@@ -894,9 +948,9 @@ function normalizeWorkflowWritePayload(body: Record<string, unknown>): {
   payload?: N8nWorkflowWritePayload;
   error?: string;
 } {
-  const name = readOptionalString(body, 'name');
+  const name = readOptionalString(body, "name");
   if (!name) {
-    return { error: 'workflow name required' };
+    return { error: "workflow name required" };
   }
 
   const nodesRaw = Array.isArray(body.nodes) ? body.nodes : [];
@@ -904,7 +958,7 @@ function normalizeWorkflowWritePayload(body: Record<string, unknown>): {
     .map((node, index) => normalizeWorkflowWriteNode(node, index))
     .filter((node): node is N8nWorkflowWriteNode => node !== null);
   if (nodes.length === 0) {
-    return { error: 'workflow must include at least one valid node' };
+    return { error: "workflow must include at least one valid node" };
   }
 
   return {
@@ -924,13 +978,13 @@ function propagateError(
   const status =
     upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
   let message = `upstream responded with ${upstream.status}`;
-  if (upstream.body && typeof upstream.body === 'object') {
+  if (upstream.body && typeof upstream.body === "object") {
     const b = upstream.body as Record<string, unknown>;
     const candidate = b.error ?? b.message;
-    if (typeof candidate === 'string' && candidate.length > 0) {
+    if (typeof candidate === "string" && candidate.length > 0) {
       message = candidate;
     }
-  } else if (typeof upstream.body === 'string' && upstream.body.length > 0) {
+  } else if (typeof upstream.body === "string" && upstream.body.length > 0) {
     message = upstream.body;
   }
   sendJson(ctx, status, { error: message });
@@ -942,19 +996,23 @@ function propagateError(
  */
 function parseWorkflowPath(
   pathname: string,
-): { id: string; action: 'get' | 'activate' | 'deactivate' } | null {
-  const prefix = '/api/n8n/workflows/';
-  if (!pathname.startsWith(prefix)) {return null;}
+): { id: string; action: "get" | "activate" | "deactivate" } | null {
+  const prefix = "/api/n8n/workflows/";
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
   const rest = pathname.slice(prefix.length);
-  if (!rest) {return null;}
-  const parts = rest.split('/').filter(Boolean);
+  if (!rest) {
+    return null;
+  }
+  const parts = rest.split("/").filter(Boolean);
   if (parts.length === 1) {
-    return { id: decodeURIComponent(parts[0] ?? ''), action: 'get' };
+    return { id: decodeURIComponent(parts[0] ?? ""), action: "get" };
   }
   if (parts.length === 2) {
     const action = parts[1];
-    if (action === 'activate' || action === 'deactivate') {
-      return { id: decodeURIComponent(parts[0] ?? ''), action };
+    if (action === "activate" || action === "deactivate") {
+      return { id: decodeURIComponent(parts[0] ?? ""), action };
     }
   }
   return null;
@@ -970,8 +1028,12 @@ async function resolveSidecarForRequest(
   ctx: N8nRouteContext,
   native: boolean,
 ): Promise<N8nSidecar | null> {
-  if (ctx.n8nSidecar !== undefined) {return ctx.n8nSidecar;}
-  if (native) {return null;}
+  if (ctx.n8nSidecar !== undefined) {
+    return ctx.n8nSidecar;
+  }
+  if (native) {
+    return null;
+  }
   const mod = await loadSidecarModule();
   return mod?.peekN8nSidecar() ?? null;
 }
@@ -981,17 +1043,17 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
   const native = ctx.isNativePlatform ?? isNativeServerPlatform();
 
   // --- Status ---------------------------------------------------------------
-  if (method === 'GET' && pathname === '/api/n8n/status') {
+  if (method === "GET" && pathname === "/api/n8n/status") {
     const sidecar = await resolveSidecarForRequest(ctx, native);
     return handleStatus(ctx, sidecar, native);
   }
 
   // --- Sidecar start (fire-and-forget) --------------------------------------
-  if (method === 'POST' && pathname === '/api/n8n/sidecar/start') {
+  if (method === "POST" && pathname === "/api/n8n/sidecar/start") {
     if (native) {
       sendJson(ctx, 409, {
-        error: 'Local n8n not supported on mobile. Use Eliza Cloud.',
-        platform: 'mobile' satisfies N8nHostPlatform,
+        error: "Local n8n not supported on mobile. Use Eliza Cloud.",
+        platform: "mobile" satisfies N8nHostPlatform,
       });
       return true;
     }
@@ -1006,7 +1068,7 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
     if (!sidecar) {
       // Desktop path with no sidecar module reachable — treat as a hard
       // failure rather than pretending the boot succeeded.
-      sendJson(ctx, 500, { error: 'n8n sidecar module unavailable' });
+      sendJson(ctx, 500, { error: "n8n sidecar module unavailable" });
       return true;
     }
     void sidecar.start();
@@ -1015,24 +1077,24 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
   }
 
   // --- Workflows list -------------------------------------------------------
-  if (method === 'GET' && pathname === '/api/n8n/workflows') {
+  if (method === "GET" && pathname === "/api/n8n/workflows") {
     const sidecar = await resolveSidecarForRequest(ctx, native);
     return handleListWorkflows(ctx, sidecar, native);
   }
 
   // --- Workflow generation / creation --------------------------------------
-  if (method === 'POST' && pathname === '/api/n8n/workflows/generate') {
+  if (method === "POST" && pathname === "/api/n8n/workflows/generate") {
     return handleGenerateWorkflow(ctx);
   }
 
   if (
-    method === 'POST' &&
-    pathname === '/api/n8n/workflows/resolve-clarification'
+    method === "POST" &&
+    pathname === "/api/n8n/workflows/resolve-clarification"
   ) {
     return handleResolveClarification(ctx);
   }
 
-  if (method === 'POST' && pathname === '/api/n8n/workflows') {
+  if (method === "POST" && pathname === "/api/n8n/workflows") {
     const sidecar = await resolveSidecarForRequest(ctx, native);
     return handleCreateWorkflow(ctx, sidecar, native);
   }
@@ -1040,23 +1102,23 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
   // --- Workflow CRUD --------------------------------------------------------
   const parsed = parseWorkflowPath(pathname);
   if (parsed) {
-    if (method === 'POST' && parsed.action === 'activate') {
+    if (method === "POST" && parsed.action === "activate") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleToggleWorkflow(ctx, parsed.id, true, sidecar, native);
     }
-    if (method === 'POST' && parsed.action === 'deactivate') {
+    if (method === "POST" && parsed.action === "deactivate") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleToggleWorkflow(ctx, parsed.id, false, sidecar, native);
     }
-    if (method === 'GET' && parsed.action === 'get') {
+    if (method === "GET" && parsed.action === "get") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleGetWorkflow(ctx, parsed.id, sidecar, native);
     }
-    if (method === 'PUT' && parsed.action === 'get') {
+    if (method === "PUT" && parsed.action === "get") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleUpdateWorkflow(ctx, parsed.id, sidecar, native);
     }
-    if (method === 'DELETE' && parsed.action === 'get') {
+    if (method === "DELETE" && parsed.action === "get") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleDeleteWorkflow(ctx, parsed.id, sidecar, native);
     }
@@ -1078,16 +1140,16 @@ async function handleStatus(
     native,
   });
   const sidecarState = sidecar?.getState();
-  const status: N8nSidecarStatus = sidecarState?.status ?? 'stopped';
+  const status: N8nSidecarStatus = sidecarState?.status ?? "stopped";
 
   const host =
-    mode === 'local' ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;
+    mode === "local" ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;
 
   // Cloud health — only probed when we are actually in cloud mode. The
   // probe is cached for 30s (see getCloudHealth) so rapid status polls
   // don't hammer the gateway. Tests inject cloudHealthOverride to bypass.
-  let cloudHealth: N8nCloudHealth = 'unknown';
-  if (mode === 'cloud') {
+  let cloudHealth: N8nCloudHealth = "unknown";
+  if (mode === "cloud") {
     if (ctx.cloudHealthOverride !== undefined) {
       cloudHealth = ctx.cloudHealthOverride;
     } else {
@@ -1104,14 +1166,14 @@ async function handleStatus(
     status,
     cloudConnected,
     localEnabled,
-    platform: native ? 'mobile' : 'desktop',
+    platform: native ? "mobile" : "desktop",
     cloudHealth,
     ...(sidecarState
       ? {
-        errorMessage: sidecarState.errorMessage,
-        retries: sidecarState.retries,
-        recentOutput: sidecarState.recentOutput,
-      }
+          errorMessage: sidecarState.errorMessage,
+          retries: sidecarState.retries,
+          recentOutput: sidecarState.recentOutput,
+        }
       : {}),
   };
 
@@ -1125,17 +1187,17 @@ async function handleListWorkflows(
   sidecar: N8nSidecar | null,
   native: boolean,
 ): Promise<boolean> {
-  const resolved = resolveProxyTarget(ctx, '', sidecar, native);
+  const resolved = resolveProxyTarget(ctx, "", sidecar, native);
   if (!resolved.target) {
     sendJson(ctx, 503, {
-      error: resolved.reason?.message ?? 'n8n not ready',
-      status: resolved.reason?.status ?? 'stopped',
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
     });
     return true;
   }
 
   const upstream = await fetchTargetAsJson(ctx, resolved.target, {
-    method: 'GET',
+    method: "GET",
   });
   if (!upstream.ok) {
     propagateError(ctx, upstream);
@@ -1166,7 +1228,7 @@ async function handleGetWorkflow(
   native: boolean,
 ): Promise<boolean> {
   if (!id) {
-    sendJson(ctx, 400, { error: 'workflow id required' });
+    sendJson(ctx, 400, { error: "workflow id required" });
     return true;
   }
 
@@ -1174,14 +1236,14 @@ async function handleGetWorkflow(
   const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
   if (!resolved.target) {
     sendJson(ctx, 503, {
-      error: resolved.reason?.message ?? 'n8n not ready',
-      status: resolved.reason?.status ?? 'stopped',
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
     });
     return true;
   }
 
   const upstream = await fetchTargetAsJson(ctx, resolved.target, {
-    method: 'GET',
+    method: "GET",
   });
   if (!upstream.ok) {
     propagateError(ctx, upstream);
@@ -1191,7 +1253,7 @@ async function handleGetWorkflow(
   const single = extractWorkflowSingle(upstream.body);
   const normalized = normalizeWorkflowFull(single);
   if (!normalized) {
-    sendJson(ctx, 502, { error: 'unexpected upstream shape' });
+    sendJson(ctx, 502, { error: "unexpected upstream shape" });
     return true;
   }
   sendJson(ctx, 200, normalized);
@@ -1200,7 +1262,7 @@ async function handleGetWorkflow(
 
 async function writeWorkflow(
   ctx: N8nRouteContext,
-  method: 'POST' | 'PUT',
+  method: "POST" | "PUT",
   subpath: string,
   payload: N8nWorkflowWritePayload,
   sidecar: N8nSidecar | null,
@@ -1209,8 +1271,8 @@ async function writeWorkflow(
   const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
   if (!resolved.target) {
     sendJson(ctx, 503, {
-      error: resolved.reason?.message ?? 'n8n not ready',
-      status: resolved.reason?.status ?? 'stopped',
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
     });
     return true;
   }
@@ -1227,7 +1289,7 @@ async function writeWorkflow(
   const single = extractWorkflowSingle(upstream.body);
   const normalized = normalizeWorkflowFull(single);
   if (!normalized) {
-    sendJson(ctx, 502, { error: 'unexpected upstream shape' });
+    sendJson(ctx, 502, { error: "unexpected upstream shape" });
     return true;
   }
   sendJson(ctx, 200, normalized);
@@ -1240,15 +1302,17 @@ async function handleCreateWorkflow(
   native: boolean,
 ): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
-  if (!body) {return true;}
-
-  const { payload, error } = normalizeWorkflowWritePayload(body);
-  if (!payload) {
-    sendJson(ctx, 400, { error: error ?? 'invalid workflow payload' });
+  if (!body) {
     return true;
   }
 
-  return writeWorkflow(ctx, 'POST', '', payload, sidecar, native);
+  const { payload, error } = normalizeWorkflowWritePayload(body);
+  if (!payload) {
+    sendJson(ctx, 400, { error: error ?? "invalid workflow payload" });
+    return true;
+  }
+
+  return writeWorkflow(ctx, "POST", "", payload, sidecar, native);
 }
 
 async function handleUpdateWorkflow(
@@ -1258,22 +1322,24 @@ async function handleUpdateWorkflow(
   native: boolean,
 ): Promise<boolean> {
   if (!id) {
-    sendJson(ctx, 400, { error: 'workflow id required' });
+    sendJson(ctx, 400, { error: "workflow id required" });
     return true;
   }
 
   const body = await readCompatJsonBody(ctx.req, ctx.res);
-  if (!body) {return true;}
+  if (!body) {
+    return true;
+  }
 
   const { payload, error } = normalizeWorkflowWritePayload(body);
   if (!payload) {
-    sendJson(ctx, 400, { error: error ?? 'invalid workflow payload' });
+    sendJson(ctx, 400, { error: error ?? "invalid workflow payload" });
     return true;
   }
 
   return writeWorkflow(
     ctx,
-    'PUT',
+    "PUT",
     `/${encodeURIComponent(id)}`,
     payload,
     sidecar,
@@ -1304,13 +1370,13 @@ interface N8nWorkflowServiceLike {
 function getN8nWorkflowService(
   ctx: N8nRouteContext,
 ): N8nWorkflowServiceLike | null {
-  const service = ctx.runtime?.getService?.('n8n_workflow') as
+  const service = ctx.runtime?.getService?.("n8n_workflow") as
     | N8nWorkflowServiceLike
     | undefined;
   if (
-    typeof service?.generateWorkflowDraft !== 'function' ||
-    typeof service.deployWorkflow !== 'function' ||
-    typeof service.getWorkflow !== 'function'
+    typeof service?.generateWorkflowDraft !== "function" ||
+    typeof service.deployWorkflow !== "function" ||
+    typeof service.getWorkflow !== "function"
   ) {
     return null;
   }
@@ -1323,10 +1389,10 @@ function getConnectorTargetCatalog(ctx: N8nRouteContext): CatalogLike | null {
   // n8n_workflow service. Falling back to null is fine — the route then
   // returns clarifications without a catalog and the UI renders free-text
   // inputs only.
-  const candidate = ctx.runtime?.getService?.('connector_target_catalog') as
+  const candidate = ctx.runtime?.getService?.("connector_target_catalog") as
     | CatalogLike
     | undefined;
-  if (candidate && typeof candidate.listGroups === 'function') {
+  if (candidate && typeof candidate.listGroups === "function") {
     return candidate;
   }
   return null;
@@ -1340,13 +1406,13 @@ async function deployAndRespond(
   const userId = resolveAgentId(ctx);
   const deployed = await service.deployWorkflow?.(draft, userId);
   if (!deployed) {
-    sendJson(ctx, 500, { error: 'deployWorkflow not available' });
+    sendJson(ctx, 500, { error: "deployWorkflow not available" });
     return;
   }
   if (deployed.missingCredentials.length > 0) {
     sendJson(ctx, 200, {
       ...deployed,
-      warning: 'missing credentials',
+      warning: "missing credentials",
     });
     return;
   }
@@ -1356,29 +1422,31 @@ async function deployAndRespond(
 
 async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
-  if (!body) {return true;}
-
-  const prompt = readOptionalString(body, 'prompt');
-  if (!prompt) {
-    sendJson(ctx, 400, { error: 'prompt required' });
+  if (!body) {
     return true;
   }
 
-  const name = readOptionalString(body, 'name');
-  const workflowId = readOptionalString(body, 'workflowId');
-  const bridgeConversationId = readOptionalString(body, 'bridgeConversationId');
+  const prompt = readOptionalString(body, "prompt");
+  if (!prompt) {
+    sendJson(ctx, 400, { error: "prompt required" });
+    return true;
+  }
+
+  const name = readOptionalString(body, "name");
+  const workflowId = readOptionalString(body, "workflowId");
+  const bridgeConversationId = readOptionalString(body, "bridgeConversationId");
 
   const service = getN8nWorkflowService(ctx);
   if (!service) {
-    sendJson(ctx, 503, { error: 'n8n workflow service unavailable' });
+    sendJson(ctx, 503, { error: "n8n workflow service unavailable" });
     return true;
   }
 
   const triggerContext = bridgeConversationId
     ? await buildTriggerContextFromConversation(
-      ctx.runtime,
-      bridgeConversationId,
-    )
+        ctx.runtime,
+        bridgeConversationId,
+      )
     : undefined;
 
   const draft = triggerContext
@@ -1404,7 +1472,7 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
       ? await buildCatalogSnapshot(catalogService, clarifications)
       : [];
     sendJson(ctx, 200, {
-      status: 'needs_clarification',
+      status: "needs_clarification",
       draft,
       clarifications,
       catalog,
@@ -1420,18 +1488,20 @@ async function handleResolveClarification(
   ctx: N8nRouteContext,
 ): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
-  if (!body) {return true;}
+  if (!body) {
+    return true;
+  }
 
   const draftRaw = (body as Record<string, unknown>).draft;
-  if (!draftRaw || typeof draftRaw !== 'object' || Array.isArray(draftRaw)) {
-    sendJson(ctx, 400, { error: 'draft required' });
+  if (!draftRaw || typeof draftRaw !== "object" || Array.isArray(draftRaw)) {
+    sendJson(ctx, 400, { error: "draft required" });
     return true;
   }
   const draft = draftRaw as Record<string, unknown>;
 
   const resolutionsRaw = (body as Record<string, unknown>).resolutions;
   if (!Array.isArray(resolutionsRaw) || resolutionsRaw.length === 0) {
-    sendJson(ctx, 400, { error: 'resolutions required' });
+    sendJson(ctx, 400, { error: "resolutions required" });
     return true;
   }
   const resolutions = resolutionsRaw as Array<{
@@ -1439,12 +1509,12 @@ async function handleResolveClarification(
     value?: unknown;
   }>;
 
-  const name = readOptionalString(body, 'name');
-  const workflowId = readOptionalString(body, 'workflowId');
+  const name = readOptionalString(body, "name");
+  const workflowId = readOptionalString(body, "workflowId");
 
   const service = getN8nWorkflowService(ctx);
   if (!service) {
-    sendJson(ctx, 503, { error: 'n8n workflow service unavailable' });
+    sendJson(ctx, 503, { error: "n8n workflow service unavailable" });
     return true;
   }
 
@@ -1463,10 +1533,10 @@ async function handleResolveClarification(
   const resolvedPaths = new Set(
     resolutions
       .map((r) => r.paramPath)
-      .filter((p): p is string => typeof p === 'string' && p.length > 0),
+      .filter((p): p is string => typeof p === "string" && p.length > 0),
   );
   const freeFormCount = resolutions.filter(
-    (r) => typeof r.paramPath !== 'string' || r.paramPath.length === 0,
+    (r) => typeof r.paramPath !== "string" || r.paramPath.length === 0,
   ).length;
   pruneResolvedClarifications(draft, resolvedPaths, freeFormCount);
 
@@ -1488,7 +1558,7 @@ async function handleResolveClarification(
       ? await buildCatalogSnapshot(catalogService, remaining)
       : [];
     sendJson(ctx, 200, {
-      status: 'needs_clarification',
+      status: "needs_clarification",
       draft,
       clarifications: remaining,
       catalog,
@@ -1508,22 +1578,22 @@ async function handleToggleWorkflow(
   native: boolean,
 ): Promise<boolean> {
   if (!id) {
-    sendJson(ctx, 400, { error: 'workflow id required' });
+    sendJson(ctx, 400, { error: "workflow id required" });
     return true;
   }
 
-  const subpath = `/${encodeURIComponent(id)}/${activate ? 'activate' : 'deactivate'}`;
+  const subpath = `/${encodeURIComponent(id)}/${activate ? "activate" : "deactivate"}`;
   const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
   if (!resolved.target) {
     sendJson(ctx, 503, {
-      error: resolved.reason?.message ?? 'n8n not ready',
-      status: resolved.reason?.status ?? 'stopped',
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
     });
     return true;
   }
 
   const upstream = await fetchTargetAsJson(ctx, resolved.target, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({}),
   });
   if (!upstream.ok) {
@@ -1538,7 +1608,7 @@ async function handleToggleWorkflow(
     // minimal response so the UI can still toggle optimistic state.
     sendJson(ctx, 200, {
       id,
-      name: '',
+      name: "",
       active: activate,
       nodes: [],
       nodeCount: 0,
@@ -1556,7 +1626,7 @@ async function handleDeleteWorkflow(
   native: boolean,
 ): Promise<boolean> {
   if (!id) {
-    sendJson(ctx, 400, { error: 'workflow id required' });
+    sendJson(ctx, 400, { error: "workflow id required" });
     return true;
   }
 
@@ -1568,14 +1638,14 @@ async function handleDeleteWorkflow(
   );
   if (!resolved.target) {
     sendJson(ctx, 503, {
-      error: resolved.reason?.message ?? 'n8n not ready',
-      status: resolved.reason?.status ?? 'stopped',
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
     });
     return true;
   }
 
   const upstream = await fetchTargetAsJson(ctx, resolved.target, {
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!upstream.ok) {
     propagateError(ctx, upstream);

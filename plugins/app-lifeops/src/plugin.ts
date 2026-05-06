@@ -1,8 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import {
-  getDefaultTriageService,
-  registerSendPolicy,
-} from "@elizaos/core";
+import { getDefaultTriageService, registerSendPolicy } from "@elizaos/core";
 import { manageBrowserBridgeAction } from "./action.ts";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { ownerAppBlockAction } from "./actions/owner-app-block.js";

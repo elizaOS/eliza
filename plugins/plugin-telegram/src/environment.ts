@@ -1,8 +1,8 @@
-import { type IAgentRuntime, logger } from '@elizaos/core';
-import { z } from 'zod';
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { z } from "zod";
 
 export const telegramEnvSchema = z.object({
-  TELEGRAM_BOT_TOKEN: z.string().min(1, 'Telegram bot token is required'),
+  TELEGRAM_BOT_TOKEN: z.string().min(1, "Telegram bot token is required"),
 });
 
 /**
@@ -21,25 +21,25 @@ export async function validateTelegramConfig(
   runtime: IAgentRuntime,
 ): Promise<TelegramConfig | null> {
   try {
-    const rawToken = runtime.getSetting('TELEGRAM_BOT_TOKEN');
+    const rawToken = runtime.getSetting("TELEGRAM_BOT_TOKEN");
     const fromRuntime =
-      typeof rawToken === 'string' && rawToken.trim() ? rawToken.trim() : '';
+      typeof rawToken === "string" && rawToken.trim() ? rawToken.trim() : "";
     const fromEnv = process.env.TELEGRAM_BOT_TOKEN;
     const config = {
       TELEGRAM_BOT_TOKEN:
         fromRuntime ||
-        (typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : ''),
+        (typeof fromEnv === "string" && fromEnv.trim() ? fromEnv.trim() : ""),
     };
 
     return telegramEnvSchema.parse(config);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.issues
-        .map((err) => `${err.path.join('.')}: ${err.message}`)
-        .join('\n');
+        .map((err) => `${err.path.join(".")}: ${err.message}`)
+        .join("\n");
       logger.warn(
-        { src: 'plugin:telegram', errors: errorMessages },
-        'Telegram configuration validation failed',
+        { src: "plugin:telegram", errors: errorMessages },
+        "Telegram configuration validation failed",
       );
     }
     return null;
