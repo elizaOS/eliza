@@ -127,7 +127,7 @@ const searchInMessages = (
 const fallbackSpec = {
 	name: "SEARCH_MESSAGES",
 	description: "Search for messages in a Discord channel.",
-	descriptionCompressed: "Search messages in Discord channel.",
+	descriptionCompressed: "Search Discord channel msgs.",
 	similes: ["FIND_MESSAGES", "LOOKUP_MESSAGES"],
 	examples: [] as ActionExample[][],
 };

@@ -434,8 +434,8 @@ export const ownerInboxAction: Action & {
     "RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN, even if they may include inbox items. " +
     "DO NOT use this action for the agent's own mailbox — that is AGENT_INBOX. " +
     "Owner only.",
-  descriptionCompressed:
-    "Owner's inbox (Gmail + Slack + Discord + SMS + Telegram + iMessage + WhatsApp): triage, digest, respond, reply-needed lookup, search, and per-Gmail read/draft/send. Owner only. Not the agent's own mailbox.",
+	descriptionCompressed:
+		"Triage owner inbox across Gmail Slack Discord SMS Telegram iMessage WhatsApp; digest, respond, search, Gmail read/draft/send.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
