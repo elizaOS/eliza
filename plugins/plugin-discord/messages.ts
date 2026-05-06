@@ -38,6 +38,12 @@ import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
 import { stripReasoningTags } from "./reasoning-tags";
 import {
+	applyDiscordStalenessGuard,
+	type DiscordStalenessConfig,
+	getDiscordChannelMessageSequence,
+	getDiscordStalenessConfig,
+} from "./staleness";
+import {
 	createStatusReactionController,
 	type StatusReactionScope,
 	shouldShowStatusReaction,
@@ -123,6 +129,7 @@ export class MessageManager {
 	private statusReactionScope: StatusReactionScope;
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
+	private stalenessConfig: DiscordStalenessConfig;
 	private recentlyProcessedMessageIds = new Map<string, number>();
 	private static readonly PROCESSED_MESSAGE_TTL_MS = 2 * 60 * 1000;
 	/**
@@ -170,6 +177,9 @@ export class MessageManager {
 		) as string | undefined;
 		this.draftStreamingEnabled =
 			draftStreamSetting === "true" || draftStreamSetting === "1";
+		this.stalenessConfig = getDiscordStalenessConfig((key) =>
+			this.runtime.getSetting(key),
+		);
 	}
 
 	/**
@@ -643,6 +653,10 @@ export class MessageManager {
 			}
 
 			const messageId = newMessage.id;
+			const stalenessStartSequence = getDiscordChannelMessageSequence(
+				this,
+				message.channel.id,
+			);
 			const channel = message.channel as TextChannel;
 			const typingController = createTypingController(channel);
 			const clientUserId = this.client.user?.id;
@@ -748,6 +762,35 @@ export class MessageManager {
 						typeof content.target === "string" &&
 						content.target.toLowerCase() !== "discord"
 					) {
+						return [];
+					}
+
+					const stalenessDecision = applyDiscordStalenessGuard({
+						config: this.stalenessConfig,
+						owner: this,
+						message,
+						startSequence: stalenessStartSequence,
+						content,
+					});
+					if (stalenessDecision.stale) {
+						this.runtime.logger.warn(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								channelId: message.channel.id,
+								messageId: message.id,
+								messagesSinceTurnStart:
+									stalenessDecision.messagesSinceTurnStart,
+								threshold: this.stalenessConfig.threshold,
+								behavior: stalenessDecision.behavior,
+							},
+							"Discord response completed after newer channel messages arrived",
+						);
+					}
+					if (!stalenessDecision.shouldSend) {
+						typingController.stop();
+						statusReactions?.setDone();
+						await finalizePendingDraft();
 						return [];
 					}
 
