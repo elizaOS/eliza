@@ -2472,8 +2472,26 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   await run("xcodebuild", [...createArgs, "-output", xcframeworkDir], {
     cwd: packageDir,
   });
+  // CocoaPods adds the parent directory of every `vendored_frameworks` entry
+  // to FRAMEWORK_SEARCH_PATHS. With both `llama-cpp.framework` (the original
+  // device-only one shipped in the npm tarball) and the freshly-created
+  // `llama-cpp.xcframework` sitting in the same parent dir, the linker's
+  // -F path resolves `-framework llama-cpp` to the device-only `.framework`
+  // first and fails simulator builds with:
+  //   ld: building for 'iOS-simulator', but linking in dylib (...) built for 'iOS'
+  // Move the device-only framework out of the search path so only the
+  // xcframework's per-platform slice can resolve.
+  if (fs.existsSync(deviceFramework)) {
+    const archivedDeviceFramework = path.join(
+      packageDir,
+      "ios",
+      ".llama-cpp-device-archive",
+    );
+    fs.rmSync(archivedDeviceFramework, { recursive: true, force: true });
+    fs.renameSync(deviceFramework, archivedDeviceFramework);
+  }
   console.log(
-    "[mobile-build] Prepared llama.cpp xcframework for iOS simulator.",
+    "[mobile-build] Prepared llama.cpp xcframework for iOS simulator (device-only .framework moved out of FRAMEWORK_SEARCH_PATHS).",
   );
 }
 
