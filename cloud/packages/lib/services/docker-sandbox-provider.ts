@@ -230,7 +230,7 @@ if status not in (200, 201, 202, 400, 409):
     raise SystemExit(f"Steward agent registration failed with status {status}")
 # 400/409 = agent already exists, continue to token minting
 
-status, body = post(f"/agents/{agent_id}/token", {"name": tenant_id})
+status, body = post(f"/agents/{agent_id}/token", {"expiresIn": "365d"})
 if status not in (200, 201):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward token mint failed with status {status}")
