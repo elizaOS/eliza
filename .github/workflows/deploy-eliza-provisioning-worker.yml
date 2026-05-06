@@ -1,0 +1,180 @@
+name: Deploy Eliza Provisioning Worker
+
+# SSHes to the Hetzner provisioning host, fetches the latest develop/main commit,
+# installs the systemd unit shipped at cloud/packages/scripts/eliza-provisioning-worker.service,
+# and restarts the daemon. Runs in parallel with the legacy 0xSolace worker until cutover.
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - '.github/workflows/deploy-eliza-provisioning-worker.yml'
+      - 'cloud/packages/scripts/provisioning-worker.ts'
+      - 'cloud/packages/scripts/eliza-provisioning-worker.service'
+      - 'cloud/packages/lib/services/provisioning-jobs.ts'
+      - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
+      - 'cloud/packages/lib/services/eliza-sandbox.ts'
+      - 'cloud/packages/db/repositories/agent-sandboxes.ts'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+concurrency:
+  group: deploy-eliza-provisioning-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  determine-env:
+    name: Determine Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      branch: ${{ steps.env.outputs.branch }}
+    steps:
+      - name: Set environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.event.inputs.environment == 'production' && 'main' || 'develop' }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "branch=develop" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy worker to Hetzner host
+    runs-on: ubuntu-latest
+    needs: determine-env
+    environment: ${{ needs.determine-env.outputs.environment }}
+    timeout-minutes: 15
+    env:
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
+    steps:
+      - name: Verify deploy secrets
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::error::Missing ELIZA_PROVISIONING_HOST or ELIZA_PROVISIONING_SSH_KEY for environment ${{ needs.determine-env.outputs.environment }}."
+            exit 1
+          fi
+
+      - name: Deploy and restart worker
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 10m
+          envs: DEPLOY_BRANCH
+          script: |
+            set -euo pipefail
+            echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
+
+            cd /opt/eliza
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0=safe.directory
+            export GIT_CONFIG_VALUE_0=/opt/eliza
+
+            rm -f .git/index.lock
+
+            # Discard local drift, preserve env files.
+            git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
+            git checkout -- . 2>/dev/null || true
+
+            git fetch origin "$DEPLOY_BRANCH"
+            git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+
+            # Ensure bun + tsx are available. Bun installs the workspace; npx tsx runs the daemon.
+            if ! command -v bun >/dev/null 2>&1; then
+              curl -fsSL https://bun.sh/install | bash
+              export BUN_INSTALL="$HOME/.bun"
+              export PATH="$BUN_INSTALL/bin:$PATH"
+            fi
+
+            cd /opt/eliza
+            for attempt in 1 2 3; do
+              if bun install --frozen-lockfile; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then exit 1; fi
+              echo "bun install attempt $attempt failed; retrying in 10s..."
+              sleep 10
+            done
+
+            # Install/refresh the systemd unit.
+            sudo install -m 0644 \
+              cloud/packages/scripts/eliza-provisioning-worker.service \
+              /etc/systemd/system/eliza-provisioning-worker.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable eliza-provisioning-worker
+
+            sudo systemctl restart eliza-provisioning-worker
+            echo "=== Restart issued; waiting for first poll cycle ==="
+
+      - name: Health check
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            for attempt in $(seq 1 18); do
+              if sudo systemctl is-active --quiet eliza-provisioning-worker; then
+                if sudo journalctl -u eliza-provisioning-worker --since '2 min ago' --no-pager \
+                    | grep -q "\[provisioning-worker\] starting"; then
+                  echo "Worker is active and emitted startup log on attempt $attempt."
+                  exit 0
+                fi
+              fi
+              echo "Health check attempt $attempt/18: not ready yet, retrying in 5s..."
+              sleep 5
+            done
+
+            echo "::error::eliza-provisioning-worker failed to become healthy within 90s."
+            sudo systemctl status eliza-provisioning-worker --no-pager || true
+            sudo journalctl -u eliza-provisioning-worker -n 200 --no-pager || true
+            exit 1
+
+      - name: Notify Discord (Success)
+        if: success()
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "🚀 Eliza Provisioning Worker Deployed"
+          nodetail: true
+          description: |
+            Environment: ${{ needs.determine-env.outputs.environment }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0x00ff00
+
+      - name: Notify Discord (Failure)
+        if: failure()
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "❌ Eliza Provisioning Worker Deploy Failed"
+          nodetail: true
+          description: |
+            Environment: ${{ needs.determine-env.outputs.environment }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0xff0000
