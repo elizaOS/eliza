@@ -41,6 +41,17 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 120_000,
     maxWorkers: 2,
+    // Bootstrap-token tests spin up a real PGlite database + jose-signed
+    // RS256 key material per test, and have intermittently exited the
+    // vitest worker fork unexpectedly on CI (Worker exited unexpectedly /
+    // Worker forks emitted error). Forcing a single fork serializes the
+    // heavy native + WASM init across the file boundary and removes the
+    // class of crash.
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [

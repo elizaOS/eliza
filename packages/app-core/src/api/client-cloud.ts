@@ -327,7 +327,30 @@ async function directCloudRequest<T>(
     return parsed;
   }
 
-  const res = await fetch(url, { ...init, method, headers });
+  // 30s wall clock — long enough for cloud to provision an agent, short
+  // enough that a hung request surfaces as an error instead of an infinite
+  // spinner in onboarding.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      method,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw Object.assign(
+        new Error(`Cloud request timed out after 30s: ${url}`),
+        { status: 0, data: null, url, code: "timeout" },
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   const data = await res.json().catch(async () => ({
     error: await res.text().catch(() => res.statusText),
   }));
@@ -1145,6 +1168,10 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
     );
   }
 
+  // Proxy fallback (only hit when direct cloud token is not available — see
+  // `directCloudRequest` token plumbing). The compat namespace doesn't have
+  // a `/provision` sub-resource, so we use the v1/app proxy path here. With
+  // a properly-wired direct token we never hit this branch in normal flow.
   return this.fetch(
     `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/provision`,
     { method: "POST" },
