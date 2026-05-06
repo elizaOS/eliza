@@ -210,6 +210,17 @@ async function startCloudFromWelcome(): Promise<void> {
   });
 }
 
+function runtimeChoiceNames(): string[] {
+  const choices: string[] = [];
+  if (screen.queryByRole("button", { name: /get started/i })) {
+    choices.push("cloud");
+  }
+  if (screen.queryByText("I want to run it myself")) {
+    choices.push("local", "remote");
+  }
+  return choices;
+}
+
 describe("resolveRuntimeChoices", () => {
   it("offers only working native runtime choices per platform", () => {
     expect(
@@ -264,7 +275,7 @@ describe("RuntimeGate onboarding choices", () => {
 
     const { container } = render(<RuntimeGate />);
 
-    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
+    expect(runtimeChoiceNames()).toEqual(["cloud", "local", "remote"]);
   });
 
   it("starts the Android local service without waiting for model downloads", async () => {
