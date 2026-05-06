@@ -29,6 +29,10 @@ import {
 	type MessageDebouncer,
 } from "./debouncer";
 import {
+	getDiscordMessageCoalesceConfig,
+	makeCoalescedDiscordMessage,
+} from "./message-coalesce";
+import {
 	diffMemberRoles,
 	diffOverwrites,
 	diffRolePermissions,
@@ -164,25 +168,65 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 } {
 	const { listenCids, debounceMs, channelDebounceMs, responseCooldownMs } =
 		parseEventListenerConfig(service);
+	const messageCoalesce = getDiscordMessageCoalesceConfig((key) =>
+		service.runtime.getSetting(key),
+	);
+	const effectiveDebounceMs = messageCoalesce.enabled
+		? messageCoalesce.windowMs
+		: debounceMs;
+	const effectiveChannelDebounceMs = messageCoalesce.enabled
+		? messageCoalesce.windowMs
+		: channelDebounceMs;
 
 	// ── Message debouncer ──────────────────────────────────────────────
-	const messageDebouncer = createMessageDebouncer((messages) => {
-		if (!service.messageManager || messages.length === 0) {
-			return;
-		}
+	const messageDebouncer = createMessageDebouncer(
+		(messages) => {
+			if (!service.messageManager || messages.length === 0) {
+				return;
+			}
 
-		if (messages.length === 1) {
-			void service.messageManager.handleMessage(messages[0]);
-			return;
-		}
+			const anchor = messages[0];
+			if (messageCoalesce.enabled) {
+				const combined = makeCoalescedDiscordMessage(
+					messages,
+					anchor,
+					messageCoalesce,
+				);
+				if (messages.length > 1) {
+					service.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: service.runtime.agentId,
+							channelId: messages[0]?.channel?.id,
+							messageIds: messages.map((message) => message.id),
+							count: messages.length,
+							path: "messageDebouncer",
+						},
+						"Coalesced inbound Discord messages",
+					);
+				}
+				void service.messageManager.handleMessage(combined as Message);
+				return;
+			}
 
-		const anchor = messages[0];
-		const combinedText = messages.map((message) => message.content).join("\n");
-		const combined = Object.create(anchor, {
-			content: { value: combinedText, writable: true, enumerable: true },
-		});
-		void service.messageManager.handleMessage(combined as Message);
-	}, debounceMs);
+			if (messages.length === 1) {
+				void service.messageManager.handleMessage(anchor);
+				return;
+			}
+
+			const combinedText = messages
+				.map((message) => message.content)
+				.join("\n");
+			const combined = Object.create(anchor, {
+				content: { value: combinedText, writable: true, enumerable: true },
+			});
+			void service.messageManager.handleMessage(combined as Message);
+		},
+		effectiveDebounceMs,
+		{
+			maxBatch: messageCoalesce.enabled ? messageCoalesce.maxBatch : undefined,
+		},
+	);
 
 	// ── Channel debouncer ──────────────────────────────────────────────
 	const channelDebouncer = createChannelDebouncer(
@@ -216,7 +260,27 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			}
 
 			anchor ??= messages[messages.length - 1];
-			if (messages.length === 1) {
+			if (messageCoalesce.enabled) {
+				const combined = makeCoalescedDiscordMessage(
+					messages,
+					anchor,
+					messageCoalesce,
+				);
+				if (messages.length > 1) {
+					service.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: service.runtime.agentId,
+							channelId: messages[0]?.channel?.id,
+							messageIds: messages.map((message) => message.id),
+							count: messages.length,
+							path: "channelDebouncer",
+						},
+						"Coalesced inbound Discord messages",
+					);
+				}
+				void service.messageManager.handleMessage(combined as Message);
+			} else if (messages.length === 1) {
 				void service.messageManager.handleMessage(anchor);
 			} else {
 				const contextLines = messages
@@ -238,10 +302,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			channelDebouncer?.markResponded(messages[0].channel.id);
 		},
 		{
-			debounceMs: channelDebounceMs,
+			debounceMs: effectiveChannelDebounceMs,
 			responseCooldownMs,
 			getBotUserId: () => service.client?.user?.id,
 			botName: service.character?.name,
+			coalesceEnabled: messageCoalesce.enabled,
+			maxBatch: messageCoalesce.maxBatch,
 		},
 	);
 
