@@ -434,18 +434,12 @@ function isEmptyStructuredValue(value: unknown): boolean {
 	}
 
 	if (Array.isArray(value)) {
-		return (
-			value.length === 0 ||
-			value.every((entry) => isEmptyStructuredValue(entry))
-		);
+		return value.every((entry) => isEmptyStructuredValue(entry));
 	}
 
 	if (isRecord(value)) {
 		const entries = Object.values(value);
-		return (
-			entries.length === 0 ||
-			entries.every((entry) => isEmptyStructuredValue(entry))
-		);
+		return entries.every((entry) => isEmptyStructuredValue(entry));
 	}
 
 	if (typeof value === "string") {

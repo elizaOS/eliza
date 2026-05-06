@@ -91,8 +91,8 @@ def main() -> int:
     log.info("done: total=%d train=%d val=%d test=%d",
              n_total, n_train, n_val, n_test)
     log.info("  → %s", train_p)
-    log.info("  → %s",   val_p)
-    log.info("  → %s",  test_p)
+    log.info("  → %s", val_p)
+    log.info("  → %s", test_p)
     return 0
 
 

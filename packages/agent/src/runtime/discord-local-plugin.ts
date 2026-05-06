@@ -488,7 +488,7 @@ export class DiscordLocalService extends Service {
         }) as Memory;
         memory.createdAt = Date.now();
         memory.metadata = {
-          ...(memory.metadata ?? {}),
+          ...memory.metadata,
           discordChannelId: channelId,
           ...(guildId ? { discordServerId: guildId } : {}),
         } as MemoryMetadata;
@@ -608,7 +608,7 @@ export class DiscordLocalService extends Service {
     ];
     config.messageChannelIds = normalized;
 
-    for (const channelId of [...this.subscribedChannelIds]) {
+    for (const channelId of Array.from(this.subscribedChannelIds)) {
       if (normalized.includes(channelId)) {
         continue;
       }
@@ -1200,7 +1200,7 @@ export class DiscordLocalService extends Service {
       ? Date.parse(message.timestamp)
       : Date.now();
     memory.metadata = {
-      ...(memory.metadata ?? {}),
+      ...memory.metadata,
       source: DISCORD_LOCAL_SERVICE_NAME,
       provider: "discord",
       timestamp: memory.createdAt,

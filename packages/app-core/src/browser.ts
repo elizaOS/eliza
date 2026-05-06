@@ -9,7 +9,7 @@ export { ChainIcon } from "@elizaos/app-wallet/inventory/ChainIcon";
 // Inventory + wallet UI moved to @elizaos/app-wallet. Re-exported here for
 // renderer-side modules (e.g. plugins/app-companion/.../walletUtils.ts) that
 // still reach for these symbols via @elizaos/app-core/browser.
-// TODO: remove once consumers import directly from @elizaos/app-wallet.
+// Compatibility bridge while consumers migrate to direct @elizaos/app-wallet imports.
 export {
   CHAIN_CONFIGS,
   type ChainConfig,

@@ -628,7 +628,7 @@ async function handler(
 	}));
 	const prompt = composePrompt({
 		state: {
-			...(state?.values || {}),
+			...state?.values,
 			actionResults: formatActionResults(actionResults),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: formatPromptData({ entities }),
@@ -858,7 +858,7 @@ async function handler(
 				tags,
 				metadata: {
 					interactions: 1,
-					...(relationship.metadata || {}),
+					...relationship.metadata,
 				},
 			});
 		}

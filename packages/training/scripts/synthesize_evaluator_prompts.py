@@ -147,7 +147,7 @@ def call_openai_compat(cfg: TeacherCfg, system: str, user: str, *,
     last_exc: Exception | None = None
     for attempt in range(6):
         try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
+            with urllib.request.urlopen(req, timeout=180) as resp:  # nosec B310
                 result = _json.loads(resp.read().decode("utf-8"))
             break
         except urllib.error.HTTPError as e:
@@ -303,7 +303,7 @@ def normalize_teacher_output(s: str, *, allow_json: bool = False) -> str:
         if isinstance(decoded, (dict, list)):
             return ToonEncoder().encode(decoded)
     except Exception:  # noqa: BLE001
-        pass
+        return cleaned
     return cleaned
 
 

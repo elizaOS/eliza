@@ -7,7 +7,8 @@ import {
 export const TRAJECTORY_PARENT_STEP_METADATA_KEY = "parentTrajectoryStepId";
 export const TRAJECTORY_CHILD_STEP_METADATA_KEY = "trajectoryChildStepId";
 export const TRAJECTORY_LINK_SOURCE_METADATA_KEY = "trajectoryLinkSource";
-export const TRAJECTORY_PARENT_STEP_ENV_KEY = "MILADY_PARENT_TRAJECTORY_STEP_ID";
+export const TRAJECTORY_PARENT_STEP_ENV_KEY =
+  "MILADY_PARENT_TRAJECTORY_STEP_ID";
 export const TRAJECTORY_CHILD_STEP_ENV_KEY = "MILADY_TRAJECTORY_CHILD_STEP_ID";
 
 export interface LinkedSpawnContext {
@@ -36,7 +37,7 @@ export function buildLinkedSpawnMetadata(
 ): Record<string, unknown> {
   const parentStepId = cleanParentStepId(handle);
   return {
-    ...(metadata ?? {}),
+    ...metadata,
     ...(parentStepId
       ? {
           [TRAJECTORY_PARENT_STEP_METADATA_KEY]: parentStepId,
@@ -53,7 +54,7 @@ export function buildLinkedSpawnEnv(
   const parentStepId = cleanParentStepId(handle);
   if (!parentStepId) return env;
   return {
-    ...(env ?? {}),
+    ...env,
     [TRAJECTORY_PARENT_STEP_ENV_KEY]: parentStepId,
   };
 }
