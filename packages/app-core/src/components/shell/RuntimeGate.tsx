@@ -43,9 +43,11 @@ import {
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import {
-  ANDROID_LOCAL_AGENT_API_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
+  MOBILE_LOCAL_AGENT_API_BASE,
+  MOBILE_LOCAL_AGENT_LABEL,
+  MOBILE_LOCAL_AGENT_SERVER_ID,
   persistMobileRuntimeModeForServerTarget,
 } from "../../onboarding/mobile-runtime-mode";
 import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
@@ -70,7 +72,7 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
-const LOCAL_AGENT_API_BASE = ANDROID_LOCAL_AGENT_API_BASE;
+const LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
 const PROVISION_START_STILL_WAITING_MS = 5_000;
 const PROVISION_START_TIMEOUT_MS = 20_000;
 const PROVISION_JOB_WAIT_DEADLINE_MS = 600_000;
@@ -80,8 +82,8 @@ type NativeAgentPlugin = {
   start?: () => Promise<unknown>;
 };
 
-async function startAndroidLocalAgent(): Promise<void> {
-  if (!isAndroid) return;
+async function startMobileLocalAgent(): Promise<void> {
+  if (!isAndroid && !isIOS) return;
   try {
     const capacitorWithPlugins = Capacitor as typeof Capacitor & {
       Plugins?: Record<string, NativeAgentPlugin | undefined>;
@@ -92,7 +94,7 @@ async function startAndroidLocalAgent(): Promise<void> {
     await registeredAgent.start?.();
   } catch (err) {
     console.warn(
-      "[RuntimeGate] Failed to start Android local agent",
+      "[RuntimeGate] Failed to start mobile local agent",
       err instanceof Error ? err.message : err,
     );
   }
@@ -288,7 +290,7 @@ export function resolveRuntimeChoices(args: {
   if (args.isAndroid) {
     return ["cloud", "local", "remote"];
   }
-  if (args.isIOS) return ["cloud", "remote"];
+  if (args.isIOS) return ["cloud", "local", "remote"];
   if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
   if (args.showLocalOption || args.localProbePending) {
     return ["cloud", "local", "remote"];
@@ -445,15 +447,15 @@ export function RuntimeGate() {
 
   // Local-tile readiness. Desktop/dev are local-capable synchronously.
   // Android probes the on-device agent's `/api/health` so ElizaOS can
-  // auto-complete once the bundled runtime is ready, but the mobile picker
-  // still offers Local while that probe is pending. iOS does not host a
-  // local agent today; web can include it when a caller reports local
-  // availability or an in-progress probe through `resolveRuntimeChoices`.
+  // auto-complete once the bundled runtime is ready. iOS uses the in-process
+  // ITTP route kernel, so native iOS can expose Local without a TCP probe.
+  // Plain web can include it when a caller reports local availability or an
+  // in-progress probe through `resolveRuntimeChoices`.
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;
   const [localProbeResult, setLocalProbeResult] = useState<boolean | null>(
-    synchronousLocal ? true : isAndroid ? null : false,
+    synchronousLocal ? true : isAndroid || isIOS ? null : false,
   );
 
   // ElizaOS: the picker is bypassed entirely unless the user explicitly asks
@@ -470,7 +472,7 @@ export function RuntimeGate() {
 
   useEffect(() => {
     if (synchronousLocal) return;
-    if (!isAndroid) return;
+    if (!isAndroid && !isIOS) return;
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
     // Re-poll every 4 s while the gate is mounted and the agent is not yet
@@ -481,7 +483,7 @@ export function RuntimeGate() {
     // result is in — `probe-local-agent`'s positive cache then keeps it
     // stable for the rest of the session.
     const poll = () => {
-      shouldShowLocalOption({ isDesktop, isDev, isAndroid })
+      shouldShowLocalOption({ isDesktop, isDev, isAndroid, isIOS })
         .then((ok) => {
           if (cancelled) return;
           setLocalProbeResult(ok);
@@ -619,39 +621,30 @@ export function RuntimeGate() {
   );
 
   const finishAsLocal = useCallback(() => {
-    if (isIOS && !isAndroid) {
-      setError(
-        t("runtimegate.localUnsupportedIos", {
-          defaultValue:
-            "Local agent mode is not available on iOS yet. Use Eliza Cloud or connect to a remote agent.",
-        }),
-      );
-      return;
-    }
     setError(null);
-    if (isAndroid) {
-      // Android: the local agent runs as a foreground service inside the
-      // app and always listens on loopback `127.0.0.1:31337`. The WebView
-      // origin is `https://localhost` (Capacitor) or `file://`, so a null
-      // base URL does not reach the agent — pin it explicitly. We persist
-      // it as a `remote` active server pointing at loopback so the
-      // existing startup-phase-restore branch hydrates the API base on
-      // next launch; the `local` mobile runtime mode records the
-      // distinction for any UI that needs it.
+    if (isAndroid || isIOS) {
+      // Mobile local mode always pins the loopback-shaped base URL. Android
+      // serves it from the foreground service; iOS intercepts the same URL
+      // through the in-process ITTP transport before any TCP request is made.
+      // Persisting it as a `remote` active server keeps the existing startup
+      // restore branch working while `local` mobile runtime mode records the
+      // user-visible distinction.
       client.setBaseUrl(LOCAL_AGENT_API_BASE);
       client.setToken(null);
       savePersistedActiveServer({
-        id: ANDROID_LOCAL_AGENT_SERVER_ID,
+        id: isAndroid
+          ? ANDROID_LOCAL_AGENT_SERVER_ID
+          : MOBILE_LOCAL_AGENT_SERVER_ID,
         kind: "remote",
-        label: ANDROID_LOCAL_AGENT_LABEL,
+        label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
         apiBase: LOCAL_AGENT_API_BASE,
       });
       addAgentProfile({
         kind: "remote",
-        label: ANDROID_LOCAL_AGENT_LABEL,
+        label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
         apiBase: LOCAL_AGENT_API_BASE,
       });
-      void startAndroidLocalAgent();
+      void startMobileLocalAgent();
     } else {
       client.setBaseUrl(null);
       client.setToken(null);
@@ -663,7 +656,7 @@ export function RuntimeGate() {
     // Always land on chat. The composer lock + "Set up an LLM provider"
     // placeholder handles the missing-provider case.
     completeOnboarding();
-  }, [completeOnboarding, setState, startupCoordinator, t]);
+  }, [completeOnboarding, setState, startupCoordinator]);
 
   // Auto-pick the on-device agent on ElizaOS. The picker is bypassed by
   // default — the only legitimate way to see it is `?runtime=picker`, set

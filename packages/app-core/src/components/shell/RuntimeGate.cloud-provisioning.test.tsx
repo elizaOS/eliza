@@ -82,6 +82,9 @@ vi.mock("../../onboarding/mobile-runtime-mode", () => ({
   ANDROID_LOCAL_AGENT_API_BASE: "http://127.0.0.1:31337",
   ANDROID_LOCAL_AGENT_LABEL: "On-device agent",
   ANDROID_LOCAL_AGENT_SERVER_ID: "local:android",
+  MOBILE_LOCAL_AGENT_API_BASE: "http://127.0.0.1:31337",
+  MOBILE_LOCAL_AGENT_LABEL: "On-device agent",
+  MOBILE_LOCAL_AGENT_SERVER_ID: "local:mobile",
   persistMobileRuntimeModeForServerTarget:
     persistMobileRuntimeModeForServerTargetMock,
 }));
@@ -199,7 +202,7 @@ describe("resolveRuntimeChoices", () => {
         showLocalOption: false,
         localProbePending: false,
       }),
-    ).toEqual(["cloud", "remote"]);
+    ).toEqual(["cloud", "local", "remote"]);
 
     expect(
       resolveRuntimeChoices({
@@ -227,12 +230,12 @@ describe("RuntimeGate onboarding choices", () => {
     resetPlatformState();
   });
 
-  it("does not offer Local on iOS until a native local agent exists", () => {
+  it("offers Local on iOS through the in-process local agent", () => {
     platformState.isIOS = true;
 
     const { container } = render(<RuntimeGate />);
 
-    expect(runtimeChoiceNames(container)).toEqual(["cloud", "remote"]);
+    expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
   });
 
   it("shows Cloud, Local, and Remote on Android while the local probe is pending", () => {
@@ -270,6 +273,33 @@ describe("RuntimeGate onboarding choices", () => {
     expect(startupDispatchMock).toHaveBeenCalledWith({
       type: "SPLASH_CONTINUE",
     });
+    expect(completeOnboardingMock).toHaveBeenCalled();
+    await waitFor(() => expect(agentStartMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("starts iOS local mode through the shared mobile local target", async () => {
+    platformState.isIOS = true;
+
+    const { container } = render(<RuntimeGate />);
+
+    fireEvent.click(
+      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
+
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "http://127.0.0.1:31337",
+    );
+    expect(clientMock.setToken).toHaveBeenCalledWith(null);
+    expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
+      id: "local:mobile",
+      kind: "remote",
+      label: "On-device agent",
+      apiBase: "http://127.0.0.1:31337",
+    });
+    expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
+      "local",
+    );
     expect(completeOnboardingMock).toHaveBeenCalled();
     await waitFor(() => expect(agentStartMock).toHaveBeenCalledTimes(1));
   });
