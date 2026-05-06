@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "ai.elizaos.app"
+    namespace "app.eliza"
     compileSdk rootProject.ext.compileSdkVersion
     // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
     // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
@@ -10,7 +10,7 @@ android {
         buildConfig true
     }
     defaultConfig {
-        applicationId "ai.elizaos.app"
+        applicationId "app.eliza"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
