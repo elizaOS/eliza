@@ -6,11 +6,11 @@ export interface N8nWorkflow {
   connections: N8nConnections;
   active?: boolean;
   settings?: {
-    executionOrder?: "v1" | "v0";
+    executionOrder?: 'v1' | 'v0';
     saveExecutionProgress?: boolean;
     saveManualExecutions?: boolean;
-    saveDataErrorExecution?: "all" | "none";
-    saveDataSuccessExecution?: "all" | "none";
+    saveDataErrorExecution?: 'all' | 'none';
+    saveDataSuccessExecution?: 'all' | 'none';
     executionTimeout?: number;
     timezone?: string;
   };
@@ -53,12 +53,7 @@ export interface ClarificationRequest {
    * Semantic category of the missing value. Determines how the host
    * renders the picker (channel/server/recipient pickers vs. free text).
    */
-  kind:
-    | "target_channel"
-    | "target_server"
-    | "recipient"
-    | "value"
-    | "free_text";
+  kind: 'target_channel' | 'target_server' | 'recipient' | 'value' | 'free_text';
   /**
    * Connector platform this clarification belongs to (e.g. 'discord',
    * 'slack', 'telegram', 'gmail'). Drives catalog source selection.
@@ -99,7 +94,7 @@ export interface N8nNode {
   retryOnFail?: boolean;
   maxTries?: number;
   waitBetweenTries?: number;
-  onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
+  onError?: 'continueErrorOutput' | 'continueRegularOutput' | 'stopWorkflow';
 }
 
 export interface N8nCredentialReference {
@@ -142,30 +137,22 @@ export interface N8nExecution {
   id: string;
   finished: boolean;
   mode:
-    | "cli"
-    | "error"
-    | "integrated"
-    | "internal"
-    | "manual"
-    | "retry"
-    | "trigger"
-    | "webhook"
-    | "evaluation"
-    | "chat";
+    | 'cli'
+    | 'error'
+    | 'integrated'
+    | 'internal'
+    | 'manual'
+    | 'retry'
+    | 'trigger'
+    | 'webhook'
+    | 'evaluation'
+    | 'chat';
   retryOf?: string | null;
   retrySuccessId?: string | null;
   startedAt: string;
   stoppedAt?: string | null;
   workflowId: string;
-  status:
-    | "canceled"
-    | "crashed"
-    | "error"
-    | "new"
-    | "running"
-    | "success"
-    | "unknown"
-    | "waiting";
+  status: 'canceled' | 'crashed' | 'error' | 'new' | 'running' | 'success' | 'unknown' | 'waiting';
   waitTill?: string | null;
   customData?: Record<string, unknown>;
   data?: {
@@ -260,7 +247,7 @@ export interface KeywordExtractionResult {
  */
 export interface WorkflowMatchResult {
   matchedWorkflowId: string | null;
-  confidence: "high" | "medium" | "low" | "none";
+  confidence: 'high' | 'medium' | 'low' | 'none';
   matches: Array<{
     id: string;
     name: string;
@@ -277,14 +264,14 @@ export interface WorkflowValidationResult {
 
 // Credential provider types
 
-export const N8N_CREDENTIAL_PROVIDER_TYPE = "n8n_credential_provider";
+export const N8N_CREDENTIAL_PROVIDER_TYPE = 'n8n_credential_provider';
 
 /**
  * Result of a credential resolution attempt by an external provider.
  */
 export type CredentialProviderResult =
-  | { status: "credential_data"; data: Record<string, unknown> }
-  | { status: "needs_auth"; authUrl: string }
+  | { status: 'credential_data'; data: Record<string, unknown> }
+  | { status: 'needs_auth'; authUrl: string }
   | null;
 
 /**
@@ -314,18 +301,16 @@ export interface FeasibilityResult {
 /**
  * Type guard to check if a service implements CredentialProvider
  */
-export function isCredentialProvider(
-  service: unknown,
-): service is CredentialProvider {
-  if (!service || typeof service !== "object") {
+export function isCredentialProvider(service: unknown): service is CredentialProvider {
+  if (!service || typeof service !== 'object') {
     return false;
   }
-  return typeof (service as Record<string, unknown>).resolve === "function";
+  return typeof (service as Record<string, unknown>).resolve === 'function';
 }
 
 // Runtime context provider types
 
-export const N8N_RUNTIME_CONTEXT_PROVIDER_TYPE = "n8n_runtime_context_provider";
+export const N8N_RUNTIME_CONTEXT_PROVIDER_TYPE = 'n8n_runtime_context_provider';
 
 export interface RuntimeContextSupportedCredential {
   credType: string;
@@ -400,28 +385,22 @@ export interface RuntimeContextProviderInput {
 }
 
 export interface RuntimeContextProvider {
-  getRuntimeContext(
-    input: RuntimeContextProviderInput,
-  ): Promise<RuntimeContext>;
+  getRuntimeContext(input: RuntimeContextProviderInput): Promise<RuntimeContext>;
 }
 
 /**
  * Type guard to check if a service implements RuntimeContextProvider.
  */
-export function isRuntimeContextProvider(
-  service: unknown,
-): service is RuntimeContextProvider {
-  if (!service || typeof service !== "object") {
+export function isRuntimeContextProvider(service: unknown): service is RuntimeContextProvider {
+  if (!service || typeof service !== 'object') {
     return false;
   }
-  return (
-    typeof (service as Record<string, unknown>).getRuntimeContext === "function"
-  );
+  return typeof (service as Record<string, unknown>).getRuntimeContext === 'function';
 }
 
 // Credential store types
 
-export const N8N_CREDENTIAL_STORE_TYPE = "n8n_credential_store";
+export const N8N_CREDENTIAL_STORE_TYPE = 'n8n_credential_store';
 
 export interface CredentialMapping {
   credType: string;
@@ -478,7 +457,7 @@ export interface WorkflowDraft {
 }
 
 export interface DraftIntentResult {
-  intent: "confirm" | "cancel" | "modify" | "new" | "show_preview";
+  intent: 'confirm' | 'cancel' | 'modify' | 'new' | 'show_preview';
   modificationRequest?: string;
   reason: string;
 }
@@ -497,20 +476,20 @@ export class N8nApiError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
-    public response?: unknown,
+    public response?: unknown
   ) {
     super(message);
-    this.name = "N8nApiError";
+    this.name = 'N8nApiError';
   }
 }
 
 export class UnsupportedIntegrationError extends Error {
   constructor(
     public unsupportedServices: string[],
-    public availableServices: string[],
+    public availableServices: string[]
   ) {
-    super(`Unsupported integrations: ${unsupportedServices.join(", ")}`);
-    this.name = "UnsupportedIntegrationError";
+    super(`Unsupported integrations: ${unsupportedServices.join(', ')}`);
+    this.name = 'UnsupportedIntegrationError';
   }
 }
 
