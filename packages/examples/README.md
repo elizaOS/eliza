@@ -113,9 +113,6 @@ until the full flow is verified.
 
 ## Known Human-Gated Items
 
-- `packages/examples/minecraft` is not present. There is a
-  `plugins/plugin-minecraft`, but no example package to run.
-- `packages/examples/town` is not present.
 - Roblox, Safari extension installation, AWS, GCP, Cloudflare, Vercel,
   Supabase, and Convex all require external accounts or desktop/cloud setup
   beyond local script execution.

@@ -3,7 +3,7 @@
   "name": "Plugin Manager",
   "description": "Plugin discovery, install, eject, sync, registry search, and creation",
   "npmName": "@elizaos/plugin-plugin-manager",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["plugins", "registry", "install", "create", "agents"],
   "config": {},

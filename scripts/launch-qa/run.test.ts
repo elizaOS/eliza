@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import path from "node:path";
 import { selectTasks } from "./run.mjs";
 
 function options(overrides: Record<string, unknown> = {}) {
@@ -42,5 +44,15 @@ describe("launch QA task selection", () => {
     ).map((task) => task.id);
 
     expect(ids).toEqual(["agent-focused"]);
+  });
+
+  test("quick suite task file references exist", () => {
+    for (const task of selectTasks(options())) {
+      for (const file of task.requiredFiles ?? []) {
+        expect(
+          fs.existsSync(path.join(process.cwd(), task.cwd ?? "", file)),
+        ).toBe(true);
+      }
+    }
   });
 });

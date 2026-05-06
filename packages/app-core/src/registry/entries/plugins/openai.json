@@ -3,7 +3,7 @@
   "name": "Openai",
   "description": "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
   "npmName": "@elizaos/plugin-openai",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["ai-provider", "llm", "openai"],
   "config": {

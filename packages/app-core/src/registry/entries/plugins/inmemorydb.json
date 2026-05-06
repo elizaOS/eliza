@@ -3,7 +3,7 @@
   "name": "Inmemorydb",
   "description": "Pure in-memory, ephemeral database storage for elizaOS - no persistence, completely forgets on reset",
   "npmName": "@elizaos/plugin-inmemorydb",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["database", "storage", "inmemorydb"],
   "config": {},

@@ -24,12 +24,8 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
-import {
-  saveEnv,
-  sleep,
-  withTimeout,
-} from "../../../../eliza/test/helpers/test-utils";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { saveEnv, sleep, withTimeout } from "../../../test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
@@ -621,7 +617,7 @@ describeIf(LIVE_SUITE_ENABLED)(
 
       const character = buildCharacterFromConfig({});
       character.settings = {
-        ...(character.settings ?? {}),
+        ...character.settings,
         ELIZA_ADMIN_ENTITY_ID: ownerId,
       };
       character.secrets = selectedProviderEnv;

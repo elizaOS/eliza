@@ -9,7 +9,7 @@ on:
       source_tag:
         description: Source dist-tag to mirror
         required: false
-        default: alpha
+        default: beta
         type: string
       target_tag:
         description: Target dist-tag to update
@@ -40,4 +40,4 @@ jobs:
           AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
           mkdir -p "$(dirname "$AUTH_NPMRC")"
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
-          node scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag || 'alpha' }}" "${{ inputs.target_tag || 'next' }}"
+          node scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag || 'beta' }}" "${{ inputs.target_tag || 'next' }}"

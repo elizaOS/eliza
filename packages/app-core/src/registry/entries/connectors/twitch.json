@@ -3,7 +3,7 @@
   "name": "Twitch",
   "description": "Twitch connector for live chat, channel events, and audience interactions.",
   "npmName": "@elizaos/plugin-twitch",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "connector",

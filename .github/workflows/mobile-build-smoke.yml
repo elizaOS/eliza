@@ -67,10 +67,14 @@ jobs:
           echo "Built app at: $APP_PATH"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")
           echo "Bundle ID: $BUNDLE_ID"
-          # iOS project under packages/app-core/platforms/ios is currently
-          # ai.elizaos.app. Allow a future eliza brand id alongside it.
+          # Bundle ID source of truth is packages/app/app.config.ts (read
+          # by run-mobile-build.mjs via regex). Current value is
+          # `app.eliza` since commit d042ed57b5 renamed it from the
+          # legacy `ai.elizaos.app`. The two prior ids remain accepted
+          # because release branches and downstream forks may not have
+          # rebased onto the rename yet.
           case "$BUNDLE_ID" in
-            ai.elizaos.app|ai.elizaos.Eliza) ;;
+            app.eliza|ai.elizaos.app|ai.elizaos.Eliza) ;;
             *)
               echo "ERROR: Unexpected bundle ID: $BUNDLE_ID"
               exit 1

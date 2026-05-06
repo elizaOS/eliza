@@ -576,7 +576,7 @@ async function withChildTrajectoryStep<T>(
 	}
 
 	const childContext = {
-		...(parentCtx ?? {}),
+		...parentCtx,
 		trajectoryId,
 		trajectoryStepId: childStepId,
 		parentStepId,

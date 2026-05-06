@@ -10,7 +10,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  TagInput,
+  TagEditor,
   Textarea,
   useApp,
 } from "@elizaos/app-core";
@@ -605,7 +605,7 @@ export function EventEditorDrawer({
               <span className="block text-xs font-medium text-muted">
                 {t("eventEditor.attendees", { defaultValue: "Attendees" })}
               </span>
-              <TagInput
+              <TagEditor
                 items={form.attendees}
                 onChange={(next) =>
                   updateForm(

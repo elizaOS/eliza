@@ -637,6 +637,214 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 }
 
 /**
+ * Legacy structured-response parser.
+ *
+ * Prefer `parseToonKeyValue` for new prompts. This compatibility helper keeps
+ * older XML-based cloud prompts working while still accepting the newer TOON
+ * response shape first.
+ */
+export function parseKeyValueXml<T = Record<string, unknown>>(
+	text: string,
+): T | null {
+	const parsedToon = parseToonKeyValue<Record<string, unknown>>(text);
+	if (parsedToon) {
+		return parsedToon as T;
+	}
+
+	if (!text) return null;
+
+	let xmlContent: string | null = null;
+	const responseStart = text.indexOf("<response>");
+	if (responseStart !== -1) {
+		const contentStart = responseStart + "<response>".length;
+		const responseEnd = text.indexOf("</response>", contentStart);
+		if (responseEnd !== -1) {
+			xmlContent = text.slice(contentStart, responseEnd);
+		}
+	}
+
+	if (!xmlContent) {
+		const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(safeText);
+		if (!looksLikeXml) {
+			return null;
+		}
+
+		const firstBlock = findFirstXmlBlock(text);
+		if (!firstBlock) {
+			logger.warn({ src: "core:utils" }, "Could not find XML block in text");
+			return null;
+		}
+		xmlContent = firstBlock.content;
+	}
+
+	const result: Record<string, unknown> = {};
+	for (const { key, value } of extractDirectXmlChildren(xmlContent)) {
+		if (key === "actions" || key === "providers" || key === "evaluators") {
+			const singularTag = key.replace(/s$/, "");
+			const hasXmlTags =
+				value && new RegExp(`<${singularTag}[\\s>/]`).test(value);
+			result[key] = hasXmlTags
+				? value
+				: value
+					? value.split(",").map((entry) => entry.trim())
+					: [];
+		} else if (key === "simple") {
+			result[key] = value.toLowerCase() === "true";
+		} else {
+			result[key] = value;
+		}
+	}
+
+	if (Object.keys(result).length === 0) {
+		logger.warn(
+			{ src: "core:utils" },
+			"No key-value pairs extracted from XML content",
+		);
+		return null;
+	}
+
+	return result as T;
+}
+
+function findFirstXmlBlock(
+	input: string,
+): { tag: string; content: string } | null {
+	let i = 0;
+	const length = input.length;
+	while (i < length) {
+		const openIdx = input.indexOf("<", i);
+		if (openIdx === -1) break;
+		if (
+			input.startsWith("</", openIdx) ||
+			input.startsWith("<!--", openIdx) ||
+			input.startsWith("<?", openIdx)
+		) {
+			i = openIdx + 1;
+			continue;
+		}
+
+		const tagInfo = readXmlStartTag(input, openIdx);
+		if (!tagInfo || tagInfo.selfClosing) {
+			i = (tagInfo?.end ?? openIdx) + 1;
+			continue;
+		}
+
+		const closeIdx = findMatchingXmlClose(input, tagInfo.tag, tagInfo.end + 1);
+		if (closeIdx !== -1) {
+			return {
+				tag: tagInfo.tag,
+				content: input.slice(tagInfo.end + 1, closeIdx),
+			};
+		}
+		i = tagInfo.end + 1;
+	}
+	return null;
+}
+
+function extractDirectXmlChildren(
+	input: string,
+): Array<{ key: string; value: string }> {
+	const pairs: Array<{ key: string; value: string }> = [];
+	let i = 0;
+	const length = input.length;
+	while (i < length) {
+		const openIdx = input.indexOf("<", i);
+		if (openIdx === -1) break;
+		if (
+			input.startsWith("</", openIdx) ||
+			input.startsWith("<!--", openIdx) ||
+			input.startsWith("<?", openIdx)
+		) {
+			i = openIdx + 1;
+			continue;
+		}
+
+		const tagInfo = readXmlStartTag(input, openIdx);
+		if (!tagInfo || tagInfo.selfClosing) {
+			i = (tagInfo?.end ?? openIdx) + 1;
+			continue;
+		}
+
+		const closeIdx = findMatchingXmlClose(input, tagInfo.tag, tagInfo.end + 1);
+		if (closeIdx === -1) {
+			i = tagInfo.end + 1;
+			continue;
+		}
+
+		const innerRaw = input.slice(tagInfo.end + 1, closeIdx);
+		pairs.push({
+			key: tagInfo.tag,
+			value: unescapeBasicXmlEntities(innerRaw).trim(),
+		});
+		i = closeIdx + `</${tagInfo.tag}>`.length;
+	}
+	return pairs;
+}
+
+function readXmlStartTag(
+	input: string,
+	openIdx: number,
+): { tag: string; end: number; selfClosing: boolean } | null {
+	let j = openIdx + 1;
+	let tag = "";
+	while (j < input.length) {
+		const ch = input[j];
+		if (/^[A-Za-z0-9_-]$/.test(ch)) {
+			tag += ch;
+			j += 1;
+			continue;
+		}
+		break;
+	}
+	if (!tag) return null;
+	const end = input.indexOf(">", j);
+	if (end === -1) return null;
+	return {
+		tag,
+		end,
+		selfClosing: /\/\s*>$/.test(input.slice(openIdx, end + 1)),
+	};
+}
+
+function findMatchingXmlClose(
+	input: string,
+	tag: string,
+	start: number,
+): number {
+	const closeSeq = `</${tag}>`;
+	let depth = 1;
+	let cursor = start;
+	while (depth > 0 && cursor < input.length) {
+		const nextOpen = input.indexOf(`<${tag}`, cursor);
+		const nextClose = input.indexOf(closeSeq, cursor);
+		if (nextClose === -1) return -1;
+		if (nextOpen !== -1 && nextOpen < nextClose) {
+			const nestedTag = readXmlStartTag(input, nextOpen);
+			if (!nestedTag) return -1;
+			if (!nestedTag.selfClosing) {
+				depth += 1;
+			}
+			cursor = nestedTag.end + 1;
+		} else {
+			depth -= 1;
+			if (depth === 0) return nextClose;
+			cursor = nextClose + closeSeq.length;
+		}
+	}
+	return -1;
+}
+
+function unescapeBasicXmlEntities(value: string): string {
+	return value
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&quot;/g, '"')
+		.replace(/&apos;/g, "'")
+		.replace(/&amp;/g, "&");
+}
+
+/**
  * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
  * trailing commas, unquoted keys, or single quotes still parses (why: strict JSON often fails on model output).
  * Returns null on parse failure so one bad block doesn't crash the flow.
