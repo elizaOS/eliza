@@ -55,7 +55,7 @@ jobs:
 
       - name: Build CPU image
         id: build_cpu
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: packages/training
           file: packages/training/Dockerfile.cpu
