@@ -1,12 +1,11 @@
 /**
  * probe-local-agent.ts
  *
- * Liveness probe for an on-device Eliza agent listening on loopback.
+ * Liveness probe for an on-device Eliza agent.
  *
- * Phase E of the local-agent-on-Android effort gates the "Local Agent" tile
- * in `RuntimeGate` behind a real check that the agent's `/api/health`
- * endpoint is reachable and reports `{ ok: true }`. Without this, a user on
- * Android with no native agent installed would see a tile that does nothing.
+ * Android reaches the bundled foreground service over loopback. iOS reaches
+ * an in-process route kernel through the ITTP transport, so its local option
+ * is available as soon as the native app is running.
  *
  * Result is cached for `PROBE_CACHE_TTL_MS` so repeated renders during the
  * onboarding flow do not hammer loopback. The cache is keyed by URL.
@@ -71,6 +70,14 @@ function isNativeAndroid(): boolean {
   }
 }
 
+function isNativeIos(): boolean {
+  try {
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
+  } catch {
+    return false;
+  }
+}
+
 async function resolveNativeAgentPlugin(): Promise<NativeAgentProbePlugin | null> {
   try {
     const capacitorWithPlugins = Capacitor as typeof Capacitor & {
@@ -105,6 +112,7 @@ export interface LocalOptionGate {
   isDesktop: boolean;
   isDev: boolean;
   isAndroid: boolean;
+  isIOS: boolean;
 }
 
 /**
@@ -113,19 +121,21 @@ export interface LocalOptionGate {
  *
  * - Desktop and dev builds: always `true` synchronously — they manage the
  *   runtime themselves.
- * - Android: unconditionally the only runtime mode (the picker is bypassed
+ * - Android: unconditionally the only runtime mode on ElizaOS (the picker is bypassed
  *   in the APK by `preSeedAndroidLocalRuntimeIfFresh` + the `RuntimeGate`
  *   Android branch). The probe here is purely a *readiness* signal —
  *   "is the agent's `/api/health` reachable yet?" — used by the splash to
  *   know when to call `finishAsLocal()`. It is **not** a gate on whether
  *   the local mode is offered at all; on Android it always is.
- * - Other platforms (iOS, plain web): `false`. They do not host a local
- *   agent.
+ * - iOS: `true` in native builds because the local agent uses the in-WebView
+ *   ITTP route kernel instead of a TCP listener.
+ * - Plain web: `false`. It does not host a local agent.
  */
 export async function shouldShowLocalOption(
   gate: LocalOptionGate,
 ): Promise<boolean> {
   if (gate.isDesktop || gate.isDev) return true;
+  if (gate.isIOS) return isNativeIos();
   if (!gate.isAndroid) return false;
   return probeLocalAgent();
 }

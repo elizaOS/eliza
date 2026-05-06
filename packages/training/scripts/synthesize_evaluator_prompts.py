@@ -46,6 +46,7 @@ import os
 import random
 import re
 import sys
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -109,6 +110,7 @@ def call_openai_compat(cfg: TeacherCfg, system: str, user: str, *,
     so most of the budget goes to `content`, then fall back to `reasoning` when
     `content` is empty (rare, but happens on tight max_tokens)."""
     import json as _json
+    import urllib.error
     import urllib.request
     api_key = os.environ.get(api_key_env)
     if not api_key:
@@ -142,11 +144,10 @@ def call_openai_compat(cfg: TeacherCfg, system: str, user: str, *,
     # Retry with exponential backoff on 429 (rate limit) and 5xx (transient
     # upstream errors). The backoff respects the `Retry-After` header when
     # the server provides one (Groq does on 429).
-    import urllib.error, time, random as _random
     last_exc: Exception | None = None
     for attempt in range(6):
         try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
+            with urllib.request.urlopen(req, timeout=180) as resp:  # nosec B310
                 result = _json.loads(resp.read().decode("utf-8"))
             break
         except urllib.error.HTTPError as e:
@@ -156,13 +157,13 @@ def call_openai_compat(cfg: TeacherCfg, system: str, user: str, *,
                 if retry_after and retry_after.isdigit():
                     delay = float(retry_after)
                 else:
-                    delay = (2 ** attempt) + _random.uniform(0, 0.5)
+                    delay = (2 ** attempt) + random.uniform(0, 0.5)
                 time.sleep(min(delay, 60.0))
                 continue
             raise
         except (urllib.error.URLError, TimeoutError) as e:
             last_exc = e
-            time.sleep((2 ** attempt) + _random.uniform(0, 0.5))
+            time.sleep((2 ** attempt) + random.uniform(0, 0.5))
             continue
     else:
         raise RuntimeError(f"teacher request failed after retries: {last_exc}")
@@ -302,7 +303,7 @@ def normalize_teacher_output(s: str, *, allow_json: bool = False) -> str:
         if isinstance(decoded, (dict, list)):
             return ToonEncoder().encode(decoded)
     except Exception:  # noqa: BLE001
-        pass
+        return cleaned
     return cleaned
 
 
@@ -753,9 +754,9 @@ def _build_scenario_fact_extractor(
 
 
 SUMMARIZATION_LENGTH_BUCKETS = (
-    ("short",  8, 12, 0.40),
+    ("short", 8, 12, 0.40),
     ("medium", 12, 20, 0.40),
-    ("long",   20, 30, 0.20),
+    ("long", 20, 30, 0.20),
 )
 
 

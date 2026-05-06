@@ -21,9 +21,13 @@ import {
   ANDROID_LOCAL_AGENT_API_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
+  MOBILE_LOCAL_AGENT_API_BASE,
+  MOBILE_LOCAL_AGENT_LABEL,
+  MOBILE_LOCAL_AGENT_SERVER_ID,
   readPersistedMobileRuntimeMode,
 } from "../onboarding/mobile-runtime-mode";
-import { isAndroid } from "../platform";
+import { isAndroid, isIOS } from "../platform";
+import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {
   clearPersistedActiveServer,
@@ -103,7 +107,7 @@ export interface RestoringSessionCtx {
   hadPriorOnboarding: boolean;
 }
 
-function isAndroidLocalAgentApiBase(value: string | undefined): boolean {
+function isMobileLocalAgentApiBase(value: string | undefined): boolean {
   if (!value) return false;
   try {
     const parsed = new URL(value);
@@ -119,16 +123,45 @@ function isAndroidLocalAgentApiBase(value: string | undefined): boolean {
   }
 }
 
-function isAndroidLocalActiveServer(server: PersistedActiveServer): boolean {
-  return server.kind === "local" || isAndroidLocalAgentApiBase(server.apiBase);
+function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
+  return server.kind === "local" || isMobileLocalAgentApiBase(server.apiBase);
 }
 
-function androidLoopbackActiveServer(): PersistedActiveServer {
+function isLoopbackHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+}
+
+// Re-resolve a persisted loopback apiBase against whatever port the
+// dev orchestrator / Electrobun bridge actually bound this run. A
+// previous session may have captured a stale port (e.g. 31337) when
+// the live API has moved (e.g. 31338). Without this, every restore
+// re-applies the dead URL and the renderer 404s on every fetch.
+function reconcilePersistedApiBaseWithLive(
+  apiBase: string | undefined,
+): string | undefined {
+  if (!apiBase) return apiBase;
+  const live = getElizaApiBase();
+  if (!live || live === apiBase) return apiBase;
+  try {
+    const persisted = new URL(apiBase);
+    if (!isLoopbackHostname(persisted.hostname)) return apiBase;
+    const liveUrl = new URL(live);
+    if (!isLoopbackHostname(liveUrl.hostname)) return apiBase;
+    return live;
+  } catch {
+    return apiBase;
+  }
+}
+
+function mobileLoopbackActiveServer(): PersistedActiveServer {
   return {
-    id: ANDROID_LOCAL_AGENT_SERVER_ID,
+    id: isAndroid ? ANDROID_LOCAL_AGENT_SERVER_ID : MOBILE_LOCAL_AGENT_SERVER_ID,
     kind: "remote",
-    label: ANDROID_LOCAL_AGENT_LABEL,
-    apiBase: ANDROID_LOCAL_AGENT_API_BASE,
+    label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
+    apiBase: isAndroid
+      ? ANDROID_LOCAL_AGENT_API_BASE
+      : MOBILE_LOCAL_AGENT_API_BASE,
   };
 }
 
@@ -156,14 +189,23 @@ export async function applyRestoredConnection(args: {
     return;
   }
 
-  clientRef.setBaseUrl(restoredActiveServer.apiBase ?? null);
+  const reconciled = reconcilePersistedApiBaseWithLive(
+    restoredActiveServer.apiBase,
+  );
+  if (reconciled && reconciled !== restoredActiveServer.apiBase) {
+    savePersistedActiveServer({
+      ...restoredActiveServer,
+      apiBase: reconciled,
+    });
+  }
+  clientRef.setBaseUrl(reconciled ?? null);
   clientRef.setToken(restoredActiveServer.accessToken ?? null);
 }
 
 function activeServerToTarget(
   server: PersistedActiveServer,
 ): "embedded-local" | "cloud-managed" | "remote-backend" {
-  if (isAndroidLocalActiveServer(server)) return "embedded-local";
+  if (isMobileLocalActiveServer(server)) return "embedded-local";
 
   switch (server.kind) {
     case "local":
@@ -256,10 +298,10 @@ export async function runRestoringSession(
   let restoredActiveServer =
     persistedActiveServer ?? (probed ? probed.activeServer : null);
 
-  if (isAndroid && restoredActiveServer) {
+  if ((isAndroid || isIOS) && restoredActiveServer) {
     const mobileRuntimeMode = readPersistedMobileRuntimeMode();
     if (
-      isAndroidLocalActiveServer(restoredActiveServer) &&
+      isMobileLocalActiveServer(restoredActiveServer) &&
       mobileRuntimeMode !== "local"
     ) {
       clearPersistedActiveServer();
@@ -269,7 +311,7 @@ export async function runRestoringSession(
       hadPrior = false;
       deps.onboardingCompletionCommittedRef.current = false;
     } else if (restoredActiveServer.kind === "local") {
-      restoredActiveServer = androidLoopbackActiveServer();
+      restoredActiveServer = mobileLoopbackActiveServer();
       persistedActiveServer = restoredActiveServer;
       savePersistedActiveServer(restoredActiveServer);
     } else if (!restoredActiveServer.apiBase) {

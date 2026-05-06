@@ -9,7 +9,7 @@ export { ChainIcon } from "@elizaos/app-wallet/inventory/ChainIcon";
 // Inventory + wallet UI moved to @elizaos/app-wallet. Re-exported here for
 // renderer-side modules (e.g. plugins/app-companion/.../walletUtils.ts) that
 // still reach for these symbols via @elizaos/app-core/browser.
-// TODO: remove once consumers import directly from @elizaos/app-wallet.
+// Compatibility bridge while consumers migrate to direct @elizaos/app-wallet imports.
 export {
   CHAIN_CONFIGS,
   type ChainConfig,
@@ -95,7 +95,6 @@ export * from "./desktop-runtime/index.ts";
 export * from "./events/index.ts";
 export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";
-export * from "./hooks/useCanvasWindow.ts";
 export * from "./hooks/useChatAvatarVoiceBridge.ts";
 export * from "./hooks/useContextMenu.ts";
 export {
@@ -103,7 +102,6 @@ export {
   useShortcutsHelp,
 } from "./hooks/useKeyboardShortcuts.ts";
 export * from "./hooks/useMediaQuery.ts";
-export * from "./hooks/useMusicPlayer.ts";
 export * from "./hooks/useRenderGuard.ts";
 export * from "./hooks/useSignalPairing.ts";
 export * from "./hooks/useStreamPopoutNavigation.ts";

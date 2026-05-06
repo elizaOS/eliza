@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.538",
+  "version": "2.0.0-beta.0",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -165,7 +165,8 @@
     "three": "^0.184.0"
   },
   "optionalDependencies": {
-    "node-llama-cpp": "3.18.1"
+    "node-llama-cpp": "3.18.1",
+    "sharp": "^0.34.5"
   },
   "trustedDependencies": [
     "node-llama-cpp"
@@ -245,6 +246,7 @@
     "json5": "^2.2.3",
     "playwright-core": "^1.58.2",
     "react-test-renderer": "^19.2.4",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
     "telegraf": "^4.16.3",
     "typescript": "^6.0.0",

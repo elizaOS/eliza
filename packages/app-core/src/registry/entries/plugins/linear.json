@@ -3,7 +3,7 @@
   "name": "Linear",
   "description": "Linear integration plugin for ElizaOS (TypeScript)",
   "npmName": "@elizaos/plugin-linear",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["linear", "typescript", "project-management"],
   "config": {

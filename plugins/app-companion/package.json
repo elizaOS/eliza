@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-companion",
-  "version": "0.0.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Companion app package with the VRM scene runtime and avatar utilities.",
   "main": "./dist/index.js",

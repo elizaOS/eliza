@@ -41,11 +41,11 @@ export function parseReleaseVersion(raw) {
     throw new Error("Release version is required");
   }
   const match = normalized.match(
-    /^(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc|nightly)\.([0-9A-Za-z.-]+))?$/,
+    /^(\d+)\.(\d+)\.(\d+)(?:-(beta|rc|nightly)\.([0-9A-Za-z.-]+))?$/,
   );
   if (!match) {
     throw new Error(
-      `Unsupported Agent Browser Bridge release version "${raw}". Expected 1.2.3 or 1.2.3-alpha.4 style semver.`,
+      `Unsupported Agent Browser Bridge release version "${raw}". Expected 1.2.3 or 1.2.3-beta.0 style semver.`,
     );
   }
   const major = Number.parseInt(match[1], 10);
@@ -140,8 +140,6 @@ function deriveChromeBuildSegment(release) {
       return 50000 + ordinal;
     case "beta":
       return 40000 + ordinal;
-    case "alpha":
-      return 30000 + ordinal;
     case "nightly":
       return 10000 + ordinal;
     default:
@@ -167,9 +165,7 @@ export function buildSafariExtensionVersions(release) {
         ? 8000 + ordinal
         : release.prereleaseLabel === "beta"
           ? 7000 + ordinal
-          : release.prereleaseLabel === "alpha"
-            ? 6000 + ordinal
-            : 5000 + ordinal;
+          : 5000 + ordinal;
 
   const buildVersion =
     release.major * 100_000_000 +

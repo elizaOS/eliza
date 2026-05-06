@@ -172,6 +172,7 @@
     "typecheck": {
       "dependsOn": [
         "@elizaos/core#build",
+        "^build",
         "@elizaos/plugin-groq#build",
         "@elizaos/plugin-inmemorydb#build",
         "@elizaos/plugin-sql#build",
@@ -193,6 +194,23 @@
     },
     "@elizaos/app#typecheck": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/example-autonomous#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-inmemorydb#build",
+        "@elizaos/plugin-local-ai#build",
+        "@elizaos/plugin-shell#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/gcp-examples#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-streaming#typecheck": {

@@ -64,7 +64,7 @@ function expandPackagePaths(patterns) {
   return packages;
 }
 
-// Get all @elizaos package names from the workspace
+// Get all local package names from the managed workspace.
 function getWorkspacePackageNames(packagePaths) {
   const names = new Set();
 
@@ -73,7 +73,7 @@ function getWorkspacePackageNames(packagePaths) {
     if (existsSync(pkgJsonPath)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-        if (pkg.name?.startsWith("@elizaos/")) {
+        if (typeof pkg.name === "string" && pkg.name.length > 0) {
           names.add(pkg.name);
         }
       } catch {
@@ -103,7 +103,7 @@ function restoreWorkspaceRefs(pkgJsonPath, version, workspacePackageNames) {
     if (!pkg[depType]) continue;
 
     for (const [depName, depVersion] of Object.entries(pkg[depType])) {
-      // Only restore workspace:* for @elizaos packages that are part of this workspace
+      // Only restore workspace:* for packages that are part of this workspace
       // and currently have the release version
       if (
         workspacePackageNames.has(depName) &&
@@ -152,7 +152,7 @@ function main() {
 
   const workspacePackageNames = getWorkspacePackageNames(packagePaths);
   console.log(
-    `🏷️  Found ${workspacePackageNames.size} @elizaos packages in workspace\n`,
+    `🏷️  Found ${workspacePackageNames.size} local packages in workspace\n`,
   );
 
   let totalModified = 0;

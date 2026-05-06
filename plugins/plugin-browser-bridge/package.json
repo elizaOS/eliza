@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-browser-bridge",
-  "version": "0.1.1",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Agent Browser Bridge plugin: schema, contracts, routes, and packaging utilities for Chrome/Safari browser companions. Generic counterpart to LifeOps' workflow-bound browser sessions.",
   "main": "./dist/index.js",

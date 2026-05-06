@@ -139,14 +139,22 @@ runs:
       # Bun's hoisted install layout puts the package at
       # node_modules/.bun/bun@<ver>/node_modules/bun/install.js rather
       # than the legacy node_modules/bun/install.js, so check the
-      # hoisted path too.
+      # hoisted path too. Recent bun versions nest deeper (the cache
+      # uses content-addressable hash dirs); raised maxdepth from 4 to
+      # 8 and added a final unbounded fallback so every layout we've
+      # seen in the wild gets caught.
       shell: bash
       run: |
         install_js=""
         if [ -f node_modules/bun/install.js ]; then
           install_js="node_modules/bun/install.js"
         elif [ -d node_modules/.bun ]; then
-          install_js="$(find node_modules/.bun -maxdepth 4 -path '*/bun@*/node_modules/bun/install.js' -print -quit 2>/dev/null)"
+          install_js="$(find node_modules/.bun -maxdepth 8 -path '*/bun@*/node_modules/bun/install.js' -print -quit 2>/dev/null)"
+        fi
+        # Final fallback: scan the whole node_modules tree (slower but
+        # exhaustive). Skip if we already found one above.
+        if [ -z "$install_js" ] || [ ! -f "$install_js" ]; then
+          install_js="$(find node_modules -path '*/bun/install.js' -print -quit 2>/dev/null)"
         fi
         if [ -n "$install_js" ] && [ -f "$install_js" ]; then
           echo "Running bun postinstall: $install_js"

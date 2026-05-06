@@ -21,14 +21,26 @@ import {
   type LiveProviderName,
   selectLiveProvider,
 } from "../../app-core/test/helpers/live-provider.ts";
+
 // Test helpers loaded lazily so the build rootDir stays within src/.
 async function loadTestMocks() {
+  // Keep these as widened strings so TypeScript does not pull repo-level test
+  // helpers into the scenario-runner typecheck graph.
+  const mockRuntimeSpecifier =
+    "../../../test/mocks/helpers/mock-runtime.ts" as string;
+  const lifeopsSimulatorSpecifier =
+    "../../../test/mocks/helpers/lifeops-simulator.ts" as string;
+  const benchmarkFixturesSpecifier =
+    "../../../test/mocks/helpers/seed-benchmark-fixtures.ts" as string;
+  const grantsSpecifier =
+    "../../../test/mocks/helpers/seed-grants.ts" as string;
+
   const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants] =
     await Promise.all([
-      import("../../../../eliza/test/mocks/helpers/mock-runtime.ts"),
-      import("../../../../eliza/test/mocks/helpers/lifeops-simulator.ts"),
-      import("../../../../eliza/test/mocks/helpers/seed-benchmark-fixtures.ts"),
-      import("../../../../eliza/test/mocks/helpers/seed-grants.ts"),
+      import(mockRuntimeSpecifier),
+      import(lifeopsSimulatorSpecifier),
+      import(benchmarkFixturesSpecifier),
+      import(grantsSpecifier),
     ]);
   return {
     prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,

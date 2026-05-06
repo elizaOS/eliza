@@ -14,7 +14,7 @@ on:
         type: string
         default: testflight
       version:
-        description: "Version override (e.g. 2.0.0-alpha.82)"
+        description: "Version override (e.g. 2.0.0-beta.0)"
         required: true
         type: string
     secrets:
@@ -64,7 +64,7 @@ on:
           - app-store
         default: testflight
       version:
-        description: "Version override (e.g. 2.0.0-alpha.82)"
+        description: "Version override (e.g. 2.0.0-beta.0)"
         required: false
         type: string
 

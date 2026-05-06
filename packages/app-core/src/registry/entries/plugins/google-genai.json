@@ -3,7 +3,7 @@
   "name": "Google Genai",
   "description": "LLM ElizaOS plugin for google genai",
   "npmName": "@elizaos/plugin-google-genai",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["ai-provider", "llm", "google-genai", "google", "genai"],
   "config": {

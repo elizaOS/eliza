@@ -3,7 +3,7 @@
   "name": "Tee",
   "description": "A plugin for secure key derivation and remote attestation within Trusted Execution Environments (TEE).",
   "npmName": "@elizaos/plugin-tee",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["crypto", "tee"],
   "config": {

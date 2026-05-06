@@ -53,7 +53,6 @@ async function readJsonBody(
     return null;
   }
 }
-
 interface GitHubUserResponse {
   login: string;
 }

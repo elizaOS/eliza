@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-chat",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Interactive CLI chat with an AI agent using elizaOS - supports OpenAI, Claude, xAI, Gemini, and Groq",
   "type": "module",
   "scripts": {

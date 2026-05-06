@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-roblox-agent-typescript",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Roblox ↔ elizaOS agent bridge (TypeScript)",
   "type": "module",
   "scripts": {

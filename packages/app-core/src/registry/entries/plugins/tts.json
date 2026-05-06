@@ -3,7 +3,7 @@
   "name": "Tts",
   "description": "A plugin for generating text-to-speech using FAL.ai API within the ElizaOS ecosystem, featuring automatic language detection and voice selection.",
   "npmName": "@elizaos/plugin-tts",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["llm", "text-to-speech"],
   "config": {

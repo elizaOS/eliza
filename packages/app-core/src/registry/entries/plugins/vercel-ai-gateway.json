@@ -3,7 +3,7 @@
   "name": "Vercel Ai Gateway",
   "description": "Vercel AI Gateway provider for routing model requests through a single endpoint.",
   "npmName": "@elizaos/plugin-vercel-ai-gateway",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "ai-provider",
