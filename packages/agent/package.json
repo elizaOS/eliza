@@ -150,6 +150,7 @@
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/native-reasoning": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",

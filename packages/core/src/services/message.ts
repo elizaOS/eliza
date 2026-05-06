@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { v4 } from "uuid";
 import z from "zod";
 import {
@@ -169,6 +170,122 @@ const ALLOWED_CLASSIFIER_ACTIONS = new Set([
 	"IGNORE",
 	"STOP",
 ]);
+
+type NativeReasoningModule = {
+	runNativeReasoningLoop: (
+		runtime: IAgentRuntime,
+		message: Memory,
+		callback: HandlerCallback,
+		options?: {
+			registry?: unknown;
+			provider?: "anthropic" | "openai" | "codex";
+		},
+	) => Promise<void>;
+	buildDefaultRegistry: () => unknown;
+};
+
+function isNativeReasoningEnabled(runtime: IAgentRuntime): boolean {
+	return runtime.character.reasoning?.mode === "native";
+}
+
+async function tryHandleWithNativeReasoning(
+	runtime: IAgentRuntime,
+	message: Memory,
+	callback?: HandlerCallback,
+): Promise<MessageProcessingResult | null> {
+	if (!isNativeReasoningEnabled(runtime)) {
+		return null;
+	}
+
+	let responseContent: Content | null = null;
+	let responseFiles: Parameters<HandlerCallback>[1];
+	let didRespond = false;
+	const nativeCallback: HandlerCallback = async (content, files) => {
+		responseContent = content;
+		responseFiles = files;
+		didRespond = typeof content.text === "string" && content.text.length > 0;
+		return [];
+	};
+
+	try {
+		const nativeReasoningPackage = "@elizaos/native-reasoning";
+		let nativeReasoningSpecifier = nativeReasoningPackage;
+		try {
+			nativeReasoningSpecifier = createRequire(
+				`${process.cwd()}/package.json`,
+			).resolve(nativeReasoningPackage);
+		} catch {
+			// Fall back to the normal package resolver for published installs.
+		}
+		const nativeReasoning = (await import(
+			nativeReasoningSpecifier
+		)) as NativeReasoningModule;
+		await nativeReasoning.runNativeReasoningLoop(
+			runtime,
+			message,
+			nativeCallback,
+			{
+				registry: nativeReasoning.buildDefaultRegistry(),
+				provider: runtime.character.reasoning?.provider,
+			},
+		);
+	} catch (error) {
+		runtime.logger.error(
+			{
+				src: "service:message",
+				err: error instanceof Error ? error.message : String(error),
+			},
+			"Native reasoning runtime failed",
+		);
+		throw error;
+	}
+
+	const responseMessages: Memory[] = [];
+	if (didRespond && responseContent !== null) {
+		const finalContent = responseContent as Content;
+		const responseId = finalContent.responseId ?? asUUID(v4());
+		finalContent.responseId = responseId;
+		if (message.id) {
+			finalContent.inReplyTo = createUniqueUuid(runtime, message.id);
+		}
+		const responseMemory: Memory = {
+			id: responseId,
+			entityId: runtime.agentId,
+			agentId: runtime.agentId,
+			content: finalContent,
+			roomId: message.roomId,
+			createdAt: Date.now(),
+		};
+		responseMessages.push(responseMemory);
+
+		await runtime.applyPipelineHooks(
+			"outgoing_before_deliver",
+			outgoingPipelineHookContext(finalContent, {
+				source: "native-reasoning",
+				roomId: message.roomId,
+				message,
+				responseId,
+			}),
+		);
+		await runtime.createMemory(responseMemory, "messages");
+		await runtime.emitEvent(EventType.MESSAGE_SENT, {
+			runtime,
+			message: responseMemory,
+			source: message.content.source ?? "messageHandler",
+		});
+		await callback?.(finalContent, responseFiles);
+	}
+
+	return {
+		didRespond,
+		responseContent,
+		responseMessages,
+		state: { values: {}, data: {}, text: "" } as State,
+		mode: didRespond ? "simple" : "none",
+		skipEvaluation: true,
+		reason: "native-reasoning",
+	};
+}
 
 function resolveDualPressureThreshold(runtime: IAgentRuntime): number {
 	const raw = runtime.getSetting("DUAL_PRESSURE_THRESHOLD");
@@ -3014,6 +3131,15 @@ export class DefaultMessageService implements IMessageService {
 					}
 				: undefined,
 			async (): Promise<MessageProcessingResult> => {
+				const nativeResult = await tryHandleWithNativeReasoning(
+					runtime,
+					message,
+					callback,
+				);
+				if (nativeResult) {
+					return nativeResult;
+				}
+
 				// Determine shouldRespondModel from options or runtime settings
 				const shouldRespondModelSetting = runtime.getSetting(
 					"SHOULD_RESPOND_MODEL",

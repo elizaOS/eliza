@@ -1,0 +1,71 @@
+{
+  "name": "@elizaos/native-reasoning",
+  "version": "2.0.0-beta.0",
+  "description": "Single-call multi-tool reasoning loop for elizaOS agents as an opt-in alternate runtime.",
+  "keywords": [
+    "elizaos",
+    "agent",
+    "anthropic",
+    "codex",
+    "openai",
+    "tool-use",
+    "reasoning"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./loop": {
+      "bun": "./src/loop.ts",
+      "types": "./dist/loop.d.ts",
+      "import": "./dist/loop.js",
+      "default": "./dist/loop.js"
+    },
+    "./tool-schema": {
+      "bun": "./src/tool-schema.ts",
+      "types": "./dist/tool-schema.d.ts",
+      "import": "./dist/tool-schema.js",
+      "default": "./dist/tool-schema.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SPEC.md"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write ./src",
+    "lint:check": "bunx @biomejs/biome check ./src",
+    "format": "bunx @biomejs/biome format --write ./src",
+    "format:check": "bunx @biomejs/biome format ./src",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
