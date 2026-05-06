@@ -122,7 +122,7 @@ import sys
 sys.stdout.write('\n'.join(json.dumps(r) for r in recs) + '\n')
 " > "$WORK/rc_in.jsonl"
 "$PY" scripts/transform_reasoning_cot.py --input "$WORK/rc_in.jsonl" --mode reshape --output "$WORK/rc_out.jsonl" >/dev/null
-n_out=$(wc -l < "$WORK/rc_out.jsonl")
+n_out=$(awk 'END { print NR }' "$WORK/rc_out.jsonl")
 [[ "$n_out" == "3" ]] || fail "reasoning_cot reshape: expected 3 lines, got $n_out"
 "$PY" scripts/classify_records_by_phase.py --input "$WORK/rc_out.jsonl" --out "$WORK/rc_phase/" >/dev/null
 p2=$("$PY" -c "import json; d=json.load(open('$WORK/rc_phase/phase_coverage.json')); print(d['phase_counts'].get('2',0))")
@@ -146,7 +146,7 @@ import sys
 sys.stdout.write('\n'.join(json.dumps(r) for r in recs) + '\n')
 " > "$WORK/cd_in.jsonl"
 "$PY" scripts/transform_claude_distill_to_reply.py --input "$WORK/cd_in.jsonl" --output "$WORK/cd_out.jsonl" >/dev/null
-n_out=$(wc -l < "$WORK/cd_out.jsonl")
+n_out=$(awk 'END { print NR }' "$WORK/cd_out.jsonl")
 [[ "$n_out" == "3" ]] || fail "claude_distill: expected 3 lines, got $n_out"
 "$PY" scripts/classify_records_by_phase.py --input "$WORK/cd_out.jsonl" --out "$WORK/cd_phase/" >/dev/null
 p2=$("$PY" -c "import json; d=json.load(open('$WORK/cd_phase/phase_coverage.json')); print(d['phase_counts'].get('2',0))")

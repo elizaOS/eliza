@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0-alpha.538",
+  "version": "2.0.0-beta.0",
   "packages": [
     "packages/*",
     "packages/native-plugins/*",
@@ -10,15 +10,15 @@
   "npmClient": "bun",
   "command": {
     "publish": {
-      "message": "chore(release): publish alpha",
+      "message": "chore(release): publish beta",
       "registry": "https://registry.npmjs.org",
       "allowBranch": [
         "main",
         "develop",
-        "alpha",
         "v2.0.0",
         "release/*",
-        "new-beginnings"
+        "new-beginnings",
+        "beta"
       ],
       "ignoreChanges": [
         "**/*.md",
@@ -31,10 +31,10 @@
       "allowBranch": [
         "main",
         "develop",
-        "alpha",
         "v2.0.0",
         "release/*",
-        "new-beginnings"
+        "new-beginnings",
+        "beta"
       ],
       "message": "chore(release): publish %s",
       "push": true,

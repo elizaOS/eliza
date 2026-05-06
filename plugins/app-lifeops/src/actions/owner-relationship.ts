@@ -11,6 +11,7 @@
  * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -24,7 +25,6 @@ import {
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
 } from "@elizaos/shared";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import {
@@ -585,7 +585,7 @@ export const relationshipAction: Action & {
     "add_follow_up | complete_follow_up | follow_up_list | list_overdue_followups | " +
     "mark_followup_done | set_followup_threshold.",
   descriptionCompressed:
-    "contacts/rolodex/follow-ups: list_contacts add_contact log_interaction add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold owner",
+    "Manage contacts: list/add, log interactions, add/complete/list followups, days_since, overdue list, threshold. Owner only.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
@@ -654,7 +654,7 @@ export const relationshipAction: Action & {
       });
       subaction = plan.subaction;
       params = {
-        ...(plan.params ?? {}),
+        ...plan.params,
         ...rawParams,
         ...(subaction ? { subaction } : {}),
       };

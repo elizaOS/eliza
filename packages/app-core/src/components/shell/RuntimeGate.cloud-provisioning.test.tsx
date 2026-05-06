@@ -38,7 +38,6 @@ const {
   clientMock: {
     getCloudCompatAgents: vi.fn(),
     getCloudCompatAgent: vi.fn(),
-    getCloudCompatAgentStatus: vi.fn(),
     createCloudCompatAgent: vi.fn(),
     provisionCloudCompatAgent: vi.fn(),
     getCloudCompatJobStatus: vi.fn(),
@@ -437,7 +436,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -606,7 +605,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await waitFor(() =>
@@ -724,7 +723,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -757,7 +756,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await waitFor(() =>
@@ -808,7 +807,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -849,7 +848,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>

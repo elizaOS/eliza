@@ -21,12 +21,12 @@ const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-skills/src",
 );
-const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
-const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const pluginBrowserBridgeSrc = path.join(
   monorepoRoot,
   "plugins/plugin-browser-bridge/src",
 );
+const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
+const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
@@ -150,6 +150,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-agent-skills\/(.+)$/,
         replacement: path.join(pluginAgentSkillsSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-browser-bridge$/,
+        replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-browser-bridge\/(.+)$/,
+        replacement: path.join(pluginBrowserBridgeSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-pdf$/,

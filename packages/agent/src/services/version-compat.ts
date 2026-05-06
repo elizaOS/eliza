@@ -38,7 +38,7 @@ export interface VersionCompatReport {
   results: PluginCompatResult[];
   /** Plugins that failed the check. */
   failures: PluginCompatResult[];
-  /** Advisory message (e.g. "pin to alpha.3" or "upgrade core"). */
+  /** Advisory message (e.g. "pin to beta.0" or "upgrade core"). */
   advisory: string;
 }
 
@@ -67,7 +67,7 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
 const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = ["elizaOSCloud"];
 
 // ---------------------------------------------------------------------------
-// Semver comparison (simplified for alpha tags)
+// Semver comparison for stable and prerelease tags.
 // ---------------------------------------------------------------------------
 
 /**
@@ -75,13 +75,13 @@ const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = ["elizaOSCloud"];
  * Returns null for unparseable versions.
  *
  * Examples:
- *   "2.0.0-alpha.3"          → [2, 0, 0, 3]
- *   "2.0.0-alpha.4"          → [2, 0, 0, 4]
+ *   "2.0.0-beta.0"           → [2, 0, 0, 0]
+ *   "2.0.0-beta.1"           → [2, 0, 0, 1]
  *   "2.0.0-nightly.20260208" → [2, 0, 0, 20260208]
  *   "2.0.0"                  → [2, 0, 0, Infinity]  (release beats any pre-release)
  *
  * Note: comparisons are only meaningful within the same pre-release tag type
- * (alpha vs alpha, nightly vs nightly). Cross-tag comparisons (alpha.7 vs beta.1)
+ * (beta vs beta, nightly vs nightly). Cross-tag comparisons (beta.1 vs rc.1)
  * compare only the numeric suffix, which may not reflect the intended ordering.
  * The update checker always compares within the same channel, so this is safe.
  */
@@ -89,7 +89,7 @@ export function parseSemver(
   version: string,
 ): [number, number, number, number] | null {
   const match = version.match(
-    /^(\d+)\.(\d+)\.(\d+)(?:-(?:alpha|beta|rc|nightly)\.(\d+))?$/,
+    /^(\d+)\.(\d+)\.(\d+)(?:-(?:beta|rc|nightly)\.(\d+))?$/,
   );
   if (!match) return null;
 

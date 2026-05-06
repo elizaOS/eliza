@@ -8,15 +8,15 @@ import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../../eliza/test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../../eliza/test/helpers/live-child-env.ts";
+} from "../../../../test/helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env.ts";
 
 export const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 export const LIVE_PROVIDER_OVERRIDE =
   process.env.ELIZA_LIVE_PROVIDER?.trim().toLowerCase() ?? "";
 export const LIVE_CHAT_TEST_TIMEOUT_MS = 300_000;
 export const LIVE_RUNTIME_BOOT_TIMEOUT_MS = 180_000;
-/** Monorepo root (parent of `eliza/`). */
+/** Monorepo root. */
 export const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",

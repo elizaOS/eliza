@@ -14,7 +14,7 @@ export default {
   app: {
     name: "__APP_NAME__",
     identifier: "__BUNDLE_ID__",
-    version: "2.0.0-alpha.87",
+    version: "2.0.0-beta.0",
     description: "Cute AI agents for the desktop",
     urlSchemes: ["eliza"],
   },

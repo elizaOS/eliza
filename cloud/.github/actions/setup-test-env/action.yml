@@ -43,6 +43,11 @@ runs:
 
         exit 1
 
+    - name: Build linked elizaOS workspaces
+      shell: bash
+      working-directory: cloud
+      run: bun run build:linked-workspaces
+
     - name: Validate migration journal
       shell: bash
       working-directory: cloud

@@ -153,7 +153,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		description:
 			"Unified app control. mode=launch starts a registered app; mode=relaunch stops then launches (optionally with verify); mode=list shows installed + running runs; mode=load_from_directory registers apps from an absolute folder; mode=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 		descriptionCompressed:
-			"unifi app control mode launch start register app; mode relaunch stop launch (optionally w/ verify); mode list show install + run run; mode load_from_directory register app absolute folder; mode create run multi-turn create-or-edit flow search exist app, ask new/edit/cancel, scaffold min-app template, dispatch cod agent w/ AppVerificationService validator",
+			"Manage apps: launch/relaunch/list/load folder/create; create scaffolds min app, runs coding agent, verifies result.",
 		suppressPostActionContinuation: true,
 
 		parameters: [

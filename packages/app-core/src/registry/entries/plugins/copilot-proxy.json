@@ -3,7 +3,7 @@
   "name": "Copilot Proxy",
   "description": "ElizaOS Copilot Proxy Model Provider - TypeScript implementation",
   "npmName": "@elizaos/plugin-copilot-proxy",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["copilot-proxy", "copilot", "proxy"],
   "config": {
