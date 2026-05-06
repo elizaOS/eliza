@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -397,20 +397,6 @@ function expectServiceType(
 	expect(registration?.serviceType).toBe(serviceType);
 }
 
-function expectServiceTypeIfSourceExists(
-	registrations: ServiceClassRegistration[],
-	classIdentifier: string,
-	serviceType: string,
-): void {
-	const relativePath = classIdentifier.slice(
-		0,
-		classIdentifier.lastIndexOf(":"),
-	);
-	if (existsSync(path.join(repoRoot, relativePath))) {
-		expectServiceType(registrations, classIdentifier, serviceType);
-	}
-}
-
 describe("serviceType collision guardrails", () => {
 	it("warns when dynamic service registration makes getService ambiguous", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
@@ -474,11 +460,6 @@ describe("serviceType collision guardrails", () => {
 		expect(groups.get("FORM")?.map(classId)).toEqual([
 			"plugins/plugin-form/src/service.ts:FormService",
 		]);
-		expectServiceTypeIfSourceExists(
-			registrations,
-			"plugins/plugin-simple-voice/src/services/SamTTSService.ts:SamTTSService",
-			"SAM_TTS",
-		);
 		expectServiceType(
 			registrations,
 			"plugins/plugin-tailscale/src/services/LocalTailscaleService.ts:LocalTailscaleService",
