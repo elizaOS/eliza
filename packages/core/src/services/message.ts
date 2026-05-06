@@ -1521,6 +1521,8 @@ Examples:
 	- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> OWNER_DEVICE_INTENT
 	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> OWNER_DEVICE_INTENT
 	- "if you get stuck in the browser or on my computer, call me" -> OWNER_VOICE_CALL
+	- "check disk space on this VPS with df -h" -> SHELL_COMMAND
+	- "what is the current BTC price in USD?" -> SEARCH
 
 ${draftSection}Return TOON only:
 thought: short reasoning
@@ -1597,7 +1599,7 @@ const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
 const ACTION_METADATA_FUTURE_HINTS =
 	/\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
 
-type ActionOwnershipSuggestion = {
+export type ActionOwnershipSuggestion = {
 	actionName: string;
 	score: number;
 	secondBestScore: number;
@@ -1763,6 +1765,48 @@ function findDirectOwnedActionSuggestion(
 	runtime: Pick<IAgentRuntime, "actions">,
 	messageText: string,
 ): ActionOwnershipSuggestion | null {
+	if (looksLikeLocalShellRequest(messageText)) {
+		const shellAction = findRuntimeActionByNames(runtime, [
+			"SHELL_COMMAND",
+			"RUN_IN_TERMINAL",
+			"RUN_COMMAND",
+			"EXECUTE_COMMAND",
+			"TERMINAL",
+			"SHELL",
+			"RUN_SHELL",
+			"EXEC",
+		]);
+		if (shellAction) {
+			return {
+				actionName: shellAction.name,
+				score: 100,
+				secondBestScore: 0,
+				reasons: ["direct:local-shell-check"],
+			};
+		}
+	}
+
+	if (looksLikeWebSearchRequest(messageText)) {
+		const searchAction = findRuntimeActionByNames(runtime, [
+			"SEARCH",
+			"WEB_SEARCH",
+			"SEARCH_WEB",
+			"BRAVE_SEARCH",
+			"INTERNET_SEARCH",
+			"SEARCH_INTERNET",
+			"LOOKUP_WEB",
+			"GOOGLE",
+		]);
+		if (searchAction) {
+			return {
+				actionName: searchAction.name,
+				score: 100,
+				secondBestScore: 0,
+				reasons: ["direct:web-search"],
+			};
+		}
+	}
+
 	if (
 		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
 			messageText,
@@ -1796,17 +1840,276 @@ function findDirectOwnedActionSuggestion(
 	return null;
 }
 
+function findRuntimeActionByNames(
+	runtime: Pick<IAgentRuntime, "actions">,
+	names: string[],
+): Action | undefined {
+	const wanted = new Set(names.map(normalizeActionIdentifier));
+	return (runtime.actions ?? []).find((action) => {
+		const candidates = [action.name, ...(action.similes ?? [])]
+			.filter((value): value is string => typeof value === "string")
+			.map(normalizeActionIdentifier);
+		return candidates.some((candidate) => wanted.has(candidate));
+	});
+}
+
+function looksLikeLocalShellRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) {
+		return false;
+	}
+
+	if (
+		/\b(?:do not|don't|dont|without)\s+(?:run|execute|use)\s+(?:commands?|shell|terminal)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+
+	if (looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+
+	const mentionsCommand =
+		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh)\b/iu.test(
+			normalized,
+		);
+	const asksToInspect =
+		/\b(?:run|execute|check|inspect|show|list|print|tail|look(?:\s+at)?|read|verify)\b/iu.test(
+			normalized,
+		);
+	const mentionsLocalSurface =
+		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
+		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk space|logs?|service|systemd)\b/iu.test(
+			normalized,
+		);
+
+	return mentionsCommand && asksToInspect && mentionsLocalSurface;
+}
+
+function looksLikeActionExplanationRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	const asksForExplanation =
+		/\b(?:explain|describe|teach|walk\s+me\s+through|what\s+does|what\s+is|how\s+(?:does|do|to)|why)\b/iu.test(
+			normalized,
+		);
+	if (!asksForExplanation) {
+		return false;
+	}
+
+	const asksToExecuteAfterExplanation =
+		/\b(?:and|then|also|after(?:wards)?|next)\s+(?:please\s+)?(?:run|execute)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:run|execute)\b.*\b(?:after|once)\s+(?:you\s+)?(?:explain|describe|teach|walk\s+me\s+through)\b/iu.test(
+			normalized,
+		);
+
+	return !asksToExecuteAfterExplanation;
+}
+
+function looksLikeWebSearchRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) {
+		return false;
+	}
+
+	if (
+		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+
+	const explicitlyAsksSearch =
+		/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu.test(
+			normalized,
+		);
+	const asksCurrentInfo =
+		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|up[- ]?to[- ]?date)\b/iu.test(
+			normalized,
+		);
+	const mentionsMarketOrNews =
+		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
+			normalized,
+		);
+
+	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
+}
+
+function quoteShellArg(value: string): string {
+	return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function extractLocalShellPath(text: string): string | null {
+	const match = text.match(
+		/(?:^|[\s`'"])(\/(?:home|Users|workspace|workspaces|tmp|var\/tmp|opt|srv)\/[A-Za-z0-9._~+/@:-]+)/u,
+	);
+	if (!match?.[1]) {
+		return null;
+	}
+	return match[1].replace(/[),.;:]+$/u, "");
+}
+
+export function inferLocalShellCommandFromMessageText(
+	messageText: string,
+): string | null {
+	const text = messageText.toLowerCase();
+	if (!looksLikeLocalShellRequest(messageText)) {
+		return null;
+	}
+
+	if (/\bdf\s+-h\b/iu.test(messageText) || /\bdisk space\b/iu.test(text)) {
+		return "df -h";
+	}
+
+	if (/\bgit\b/iu.test(text)) {
+		const localPath = extractLocalShellPath(messageText);
+		if (!localPath) {
+			if (/\bgit\s+status\b/iu.test(messageText)) {
+				return "git status --short --branch";
+			}
+			return null;
+		}
+		const repo = quoteShellArg(localPath);
+		const commands = [`git -C ${repo} status --short --branch`];
+		if (
+			/\b(?:branch|head|sha|origin\/(?:develop|main|master)|latest|author config|commit author|user\.name|user\.email)\b/iu.test(
+				messageText,
+			)
+		) {
+			commands.push(
+				`git -C ${repo} branch --show-current`,
+				`git -C ${repo} rev-parse --short HEAD`,
+				`(git -C ${repo} rev-parse --short origin/develop 2>/dev/null || git -C ${repo} rev-parse --short origin/main 2>/dev/null || true)`,
+				`git -C ${repo} config user.name`,
+				`git -C ${repo} config user.email`,
+			);
+		}
+		return commands.join(" && ");
+	}
+
+	return null;
+}
+
+export function inferWebSearchQueryFromMessageText(
+	messageText: string,
+): string | null {
+	if (!looksLikeWebSearchRequest(messageText)) {
+		return null;
+	}
+
+	const query = messageText
+		.replace(/<@!?\d+>/gu, " ")
+		.replace(
+			/\banswer\s+(?:briefly|in\s+one\s+short\s+sentence|with\s+the\s+price\s+only)\b.*$/iu,
+			" ",
+		)
+		.replace(
+			/\band\s+mention\s+if\s+you\s+cannot\s+browse\s+live\s+prices\b.*$/iu,
+			" ",
+		)
+		.replace(
+			/\b(?:search\s+(?:the\s+)?web\s+(?:for|about)?|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu,
+			" ",
+		)
+		.replace(/\bwhat\s+is\s+the\b/iu, " ")
+		.replace(/[?.!]+/gu, " ")
+		.trim()
+		.replace(/\s+/gu, " ");
+
+	return query.length > 0 ? query : messageText.trim();
+}
+
+function hasSelectedShellCommandAction(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	return (
+		responseContent?.actions?.some(
+			(actionName) =>
+				typeof actionName === "string" &&
+				normalizeActionIdentifier(actionName) ===
+					normalizeActionIdentifier("SHELL_COMMAND"),
+		) ?? false
+	);
+}
+
+function hasSelectedSearchAction(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	return (
+		responseContent?.actions?.some((actionName) => {
+			if (typeof actionName !== "string") {
+				return false;
+			}
+			const normalized = normalizeActionIdentifier(actionName);
+			return (
+				normalized === normalizeActionIdentifier("SEARCH") ||
+				normalized === normalizeActionIdentifier("WEB_SEARCH")
+			);
+		}) ?? false
+	);
+}
+
+function mergeLocalShellCommandParams(
+	existingParams: Content["params"],
+	command: string,
+): Content["params"] {
+	if (
+		existingParams &&
+		typeof existingParams === "object" &&
+		!Array.isArray(existingParams)
+	) {
+		return {
+			...(existingParams as Record<string, unknown>),
+			SHELL_COMMAND: {
+				...(((existingParams as Record<string, unknown>).SHELL_COMMAND as
+					| Record<string, unknown>
+					| undefined) ?? {}),
+				command,
+			},
+		} as Content["params"];
+	}
+
+	return {
+		SHELL_COMMAND: { command },
+	} as Content["params"];
+}
+
+function mergeWebSearchQueryParams(
+	existingParams: Content["params"],
+	query: string,
+): Content["params"] {
+	if (
+		existingParams &&
+		typeof existingParams === "object" &&
+		!Array.isArray(existingParams)
+	) {
+		return {
+			...(existingParams as Record<string, unknown>),
+			SEARCH: {
+				...(((existingParams as Record<string, unknown>).SEARCH as
+					| Record<string, unknown>
+					| undefined) ?? {}),
+				category: "web",
+				query,
+			},
+		} as Content["params"];
+	}
+
+	return {
+		SEARCH: { category: "web", query },
+	} as Content["params"];
+}
+
 export function suggestOwnedActionFromMetadata(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Pick<Memory, "content">,
 ): ActionOwnershipSuggestion | null {
 	const messageText = getUserMessageText(message);
-	if (
-		messageText.length === 0 ||
-		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
-			pattern.test(messageText),
-		)
-	) {
+	if (messageText.length === 0) {
 		return null;
 	}
 
@@ -1816,6 +2119,14 @@ export function suggestOwnedActionFromMetadata(
 	);
 	if (directSuggestion) {
 		return directSuggestion;
+	}
+
+	if (
+		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
+			pattern.test(messageText),
+		)
+	) {
+		return null;
 	}
 
 	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
@@ -1972,6 +2283,23 @@ export function shouldRunMetadataActionRescue(
 	return true;
 }
 
+export function shouldPromoteExplicitReplyToOwnedAction(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+	suggestion: ActionOwnershipSuggestion | null,
+	messageText = "",
+): boolean {
+	if (!suggestion || !hasExplicitReplyIntent(responseContent)) {
+		return false;
+	}
+	if (looksLikeActionExplanationRequest(messageText)) {
+		return false;
+	}
+	return (
+		suggestion.reasons.includes("direct:local-shell-check") ||
+		suggestion.reasons.includes("direct:web-search")
+	);
+}
+
 function shouldAttemptActionRescue(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Memory,
@@ -1990,6 +2318,10 @@ function shouldAttemptActionRescue(
 	}
 
 	if (looksLikeNonActionableChatter(message)) {
+		return false;
+	}
+
+	if (looksLikeSelfPolicyExplanationRequest(message)) {
 		return false;
 	}
 
@@ -2140,8 +2472,98 @@ function shouldAttemptProviderRescue(
 	);
 }
 
+export function looksLikeSelfPolicyExplanationRequest(
+	message: Pick<Memory, "content">,
+): boolean {
+	const text =
+		typeof message.content.text === "string"
+			? message.content.text.toLowerCase()
+			: "";
+	if (!text.trim()) {
+		return false;
+	}
+
+	const hasNoWorkDirective =
+		/\b(?:do not|don't|dont|without)\s+(?:build|create|edit|change|modify|write|scaffold|run|execute|use|touch|commit|push|open|make)\b/iu.test(
+			text,
+		) ||
+		/\b(?:answer|respond)\s+(?:in|with)\s+(?:one|1|a)\s+(?:short\s+)?sentence\b/iu.test(
+			text,
+		) ||
+		/\bdo not run commands?\b/iu.test(text);
+	const asksMonetizedAppGuidance =
+		/\b(?:monetized|monetised)\b/iu.test(text) &&
+		/\b(?:workflow|skill|sdk|example app|reference app|build[- ]?monetized[- ]?app)\b/iu.test(
+			text,
+		);
+	const asksWorkspaceMap =
+		/\b(?:which|what|where)\b[\s\S]{0,120}\b(?:folder|folders|path|paths|repo|repos|repository|repositories|workspace|worktree|source)\b/iu.test(
+			text,
+		) &&
+		/\b(?:live|read[- ]?only|allowed|touch|edit|pr work|github|git config|default branch|latest)\b/iu.test(
+			text,
+		);
+	const asksAgentMethod =
+		/\b(?:what|which|how)\b[\s\S]{0,120}\b(?:workflow|workflows|skill|skills|sdk|example app|routing|configured|allowed|supposed to use|should you use)\b/iu.test(
+			text,
+		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/iu.test(text);
+	const asksQuestion =
+		/\?/.test(text) || /\b(?:what|which|where|how|should)\b/iu.test(text);
+	const asksActualWork =
+		/\b(?:build|create|make|implement|fix|edit|change|modify|write|scaffold|deploy|commit|push|open)\b[\s\S]{0,120}\b(?:app|code|file|files|pr|pull request|branch|repo|feature|bug)\b/iu.test(
+			text,
+		);
+
+	if (
+		hasNoWorkDirective &&
+		asksQuestion &&
+		(asksMonetizedAppGuidance || asksWorkspaceMap || asksAgentMethod)
+	) {
+		return true;
+	}
+
+	return (
+		asksQuestion &&
+		!asksActualWork &&
+		(asksWorkspaceMap || asksAgentMethod || asksMonetizedAppGuidance)
+	);
+}
+
 export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
-	return (message.content.attachments?.length ?? 0) > 0;
+	if ((message.content.attachments?.length ?? 0) > 0) {
+		return true;
+	}
+
+	const text =
+		typeof message.content.text === "string"
+			? message.content.text.toLowerCase()
+			: "";
+	if (!text) {
+		return false;
+	}
+
+	if (looksLikeLocalShellRequest(text)) {
+		return true;
+	}
+
+	const asksSelfPolicy =
+		/\b(?:configured|routing|workflow|workflows?|folders?|repos?|repositories|source|workspace|workspaces|skills?|sdk|example app|read-only|pr work)\b/.test(
+			text,
+		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/.test(text);
+	const asksDocumentOrKnowledge =
+		/\b(uploaded|upload|attachment|attached|document|documents?|file|files?|knowledge base|kb)\b/.test(
+			text,
+		);
+
+	if (asksDocumentOrKnowledge) {
+		return false;
+	}
+
+	if (looksLikeSelfPolicyExplanationRequest(message)) {
+		return true;
+	}
+
+	return asksSelfPolicy;
 }
 
 function buildProviderSelectionPrompt(draftReply?: string): string {
@@ -2445,6 +2867,34 @@ function suppressesPostActionContinuation(
 	responseContent: Content | null | undefined,
 ): boolean {
 	return getActionContinuationDecision(runtime, responseContent).suppressed;
+}
+
+export function actionResultsSuppressPostActionContinuation(
+	actionResults: readonly ActionResult[],
+): boolean {
+	return actionResults.some((result) => {
+		const data =
+			result?.data &&
+			typeof result.data === "object" &&
+			!Array.isArray(result.data)
+				? (result.data as Record<string, unknown>)
+				: null;
+		if (!data) {
+			return false;
+		}
+
+		if (data.suppressPostActionContinuation === true) {
+			return true;
+		}
+
+		const terminal = data.terminal;
+		return (
+			terminal !== null &&
+			typeof terminal === "object" &&
+			!Array.isArray(terminal) &&
+			(terminal as Record<string, unknown>).permissionDenied === true
+		);
+	});
 }
 
 /**
@@ -4065,11 +4515,15 @@ export class DefaultMessageService implements IMessageService {
 						{ onStreamChunk: opts.onStreamChunk },
 					);
 
+					const latestActionResults = message.id
+						? runtime.getActionResults(message.id)
+						: [];
 					if (
 						opts.continueAfterActions &&
 						message.id &&
 						shouldContinueAfterActions(runtime, responseContent) &&
-						!suppressesPostActionContinuation(runtime, responseContent)
+						!suppressesPostActionContinuation(runtime, responseContent) &&
+						!actionResultsSuppressPostActionContinuation(latestActionResults)
 					) {
 						const continuation = await this.runPostActionContinuation(
 							runtime,
@@ -4077,7 +4531,7 @@ export class DefaultMessageService implements IMessageService {
 							state,
 							callback,
 							opts,
-							runtime.getActionResults(message.id),
+							latestActionResults,
 						);
 						if (continuation.responseMessages.length > 0) {
 							responseMessages = [
@@ -5086,6 +5540,15 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
+		if (actionResultsSuppressPostActionContinuation(initialActionResults)) {
+			return {
+				responseContent: null,
+				responseMessages: [],
+				state,
+				mode: "none",
+			};
+		}
+
 		const traceActionResults: ActionResult[] = [...initialActionResults];
 		const responseMessages: Memory[] = [];
 		let accumulatedState = state;
@@ -5236,6 +5699,9 @@ export class DefaultMessageService implements IMessageService {
 			}
 
 			const latestActionResults = runtime.getActionResults(message.id);
+			if (actionResultsSuppressPostActionContinuation(latestActionResults)) {
+				break;
+			}
 			if (latestActionResults.length === 0) {
 				runtime.logger.warn(
 					{ src: "service:message", iteration: iterationCount + 1 },
@@ -5313,6 +5779,14 @@ export class DefaultMessageService implements IMessageService {
 		const initialActionResults = message.id
 			? runtime.getActionResults(message.id)
 			: [];
+		if (actionResultsSuppressPostActionContinuation(initialActionResults)) {
+			return {
+				responseContent: null,
+				responseMessages: [],
+				state,
+				mode: "none",
+			};
+		}
 		let accumulatedState = withTaskCompletion(
 			withActionResults(
 				await composeContinuationDecisionState(
@@ -5472,7 +5946,8 @@ export class DefaultMessageService implements IMessageService {
 		if (
 			latestActionResults.length > 0 &&
 			shouldContinueAfterActions(runtime, responseContent) &&
-			!suppressesPostActionContinuation(runtime, responseContent)
+			!suppressesPostActionContinuation(runtime, responseContent) &&
+			!actionResultsSuppressPostActionContinuation(latestActionResults)
 		) {
 			return await this.runPostActionContinuation(
 				runtime,
@@ -6092,25 +6567,28 @@ Return TOON only with the continuation in the text field, starting immediately a
 			}
 		}
 
-		if (shouldRunMetadataActionRescue(responseContent)) {
-			const metadataSuggestion = suggestOwnedActionFromMetadata(
-				runtime,
-				message,
+		const metadataSuggestion = suggestOwnedActionFromMetadata(runtime, message);
+		if (
+			metadataSuggestion &&
+			(shouldRunMetadataActionRescue(responseContent) ||
+				shouldPromoteExplicitReplyToOwnedAction(
+					responseContent,
+					metadataSuggestion,
+					getUserMessageText(message),
+				))
+		) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					originalActions: responseContent.actions ?? [],
+					suggestedAction: metadataSuggestion.actionName,
+					score: metadataSuggestion.score,
+					secondBestScore: metadataSuggestion.secondBestScore,
+					reasons: metadataSuggestion.reasons,
+				},
+				"Recovered primary action from action metadata after passive reply draft",
 			);
-			if (metadataSuggestion) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						originalActions: responseContent.actions ?? [],
-						suggestedAction: metadataSuggestion.actionName,
-						score: metadataSuggestion.score,
-						secondBestScore: metadataSuggestion.secondBestScore,
-						reasons: metadataSuggestion.reasons,
-					},
-					"Recovered primary action from action metadata after passive reply draft",
-				);
-				responseContent.actions = [metadataSuggestion.actionName];
-			}
+			responseContent.actions = [metadataSuggestion.actionName];
 		}
 
 		// Action parameter repair (Python parity):
@@ -6121,6 +6599,70 @@ Return TOON only with the continuation in the text field, starting immediately a
 			const normalizedName = action.name.trim().toUpperCase();
 			if (normalizedName) {
 				actionByName.set(normalizedName, action);
+			}
+		}
+
+		if (hasSelectedShellCommandAction(responseContent)) {
+			const existingShellParams = parseActionParams(responseContent.params).get(
+				"SHELL_COMMAND",
+			);
+			if (
+				typeof existingShellParams?.command !== "string" ||
+				existingShellParams.command.trim().length === 0
+			) {
+				const inferredCommand = inferLocalShellCommandFromMessageText(
+					getUserMessageText(message),
+				);
+				if (inferredCommand) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							action: "SHELL_COMMAND",
+							command: inferredCommand,
+						},
+						"Filled SHELL_COMMAND params for explicit local shell check",
+					);
+					responseContent.params = mergeLocalShellCommandParams(
+						responseContent.params,
+						inferredCommand,
+					);
+				}
+			}
+		}
+
+		if (hasSelectedSearchAction(responseContent)) {
+			const existingSearchParams =
+				parseActionParams(responseContent.params).get("SEARCH") ??
+				parseActionParams(responseContent.params).get("WEB_SEARCH");
+			const existingCategory =
+				typeof existingSearchParams?.category === "string"
+					? existingSearchParams.category.trim().toLowerCase()
+					: "";
+			const missingWebQuery =
+				typeof existingSearchParams?.query !== "string" ||
+				existingSearchParams.query.trim().length === 0;
+			if (
+				(existingCategory === "" || existingCategory === "web") &&
+				(missingWebQuery || existingCategory === "")
+			) {
+				const inferredQuery = inferWebSearchQueryFromMessageText(
+					getUserMessageText(message),
+				);
+				if (inferredQuery) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							action: "SEARCH",
+							category: "web",
+							query: inferredQuery,
+						},
+						"Filled SEARCH params for explicit current-info request",
+					);
+					responseContent.params = mergeWebSearchQueryParams(
+						responseContent.params,
+						inferredQuery,
+					);
+				}
 			}
 		}
 

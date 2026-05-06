@@ -287,6 +287,11 @@ export const terminalAction: Action = {
       return {
         success: false,
         text: "Permission denied: only the owner may run terminal commands.",
+        data: {
+          actionName: TERMINAL_ACTION_NAME,
+          suppressPostActionContinuation: true,
+          terminal: { permissionDenied: true },
+        },
       };
     }
 

@@ -377,7 +377,11 @@ async function runWebSearch(
       success: false,
       text: 'Web search service is not available. Enable plugin-web-search to use category "web".',
       values: { error: "SERVICE_NOT_FOUND" },
-      data: { actionName: "SEARCH", category: "web" },
+      data: {
+        actionName: "SEARCH",
+        category: "web",
+        suppressPostActionContinuation: true,
+      },
     };
   }
 
