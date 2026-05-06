@@ -87,8 +87,8 @@ export const describeSceneAction: Action = {
       | undefined;
     const __avLegacyContextOk = Boolean(
       __avVisionService &&
-      typeof __avVisionService.isActive === "function" &&
-      __avVisionService.isActive(),
+        typeof __avVisionService.isActive === "function" &&
+        __avVisionService.isActive(),
     );
     const __avKeywords = ["describe", "scene"];
     const __avKeywordOk =
@@ -400,8 +400,8 @@ export const captureImageAction: Action = {
       | undefined;
     const __avLegacyContextOk = Boolean(
       __avVisionService &&
-      typeof __avVisionService.isActive === "function" &&
-      __avVisionService.isActive(),
+        typeof __avVisionService.isActive === "function" &&
+        __avVisionService.isActive(),
     );
     const __avKeywords = ["capture", "image"];
     const __avKeywordOk =
@@ -948,8 +948,8 @@ export const nameEntityAction: Action = {
       | undefined;
     const __avLegacyContextOk = Boolean(
       __avVisionService &&
-      typeof __avVisionService.isActive === "function" &&
-      __avVisionService.isActive(),
+        typeof __avVisionService.isActive === "function" &&
+        __avVisionService.isActive(),
     );
     const __avKeywords = ["name", "entity"];
     const __avKeywordOk =
@@ -1204,8 +1204,8 @@ export const identifyPersonAction: Action = {
       | undefined;
     const __avLegacyContextOk = Boolean(
       __avVisionService &&
-      typeof __avVisionService.isActive === "function" &&
-      __avVisionService.isActive(),
+        typeof __avVisionService.isActive === "function" &&
+        __avVisionService.isActive(),
     );
     const __avKeywords = ["identify", "person"];
     const __avKeywordOk =
@@ -1460,8 +1460,8 @@ export const trackEntityAction: Action = {
       | undefined;
     const __avLegacyContextOk = Boolean(
       __avVisionService &&
-      typeof __avVisionService.isActive === "function" &&
-      __avVisionService.isActive(),
+        typeof __avVisionService.isActive === "function" &&
+        __avVisionService.isActive(),
     );
     const __avKeywords = ["track", "entity"];
     const __avKeywordOk =
