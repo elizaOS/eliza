@@ -1,10 +1,4 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 import { encode } from "@toon-format/toon";
 import type { SignalService } from "../service";
@@ -24,16 +18,13 @@ interface SignalGroupEntry {
 
 export const signalGroupsProvider: Provider = {
   name: "signalGroups",
-  description: "Lists active Signal groups the bot is a member of with member counts and short descriptions.",
+  description:
+    "Lists active Signal groups the bot is a member of with member counts and short descriptions.",
   descriptionCompressed: "Active Signal groups (member counts, descriptions).",
   dynamic: true,
   contexts: ["social", "connectors"],
   relevanceKeywords: [...RELEVANCE_KEYWORDS],
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     const recentMessages = (state?.recentMessagesData as Memory[] | undefined) ?? [];
     const isRelevant =
       validateActionKeywords(message, recentMessages, [...RELEVANCE_KEYWORDS]) ||
