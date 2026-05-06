@@ -47,7 +47,7 @@ enabled = true
 # -----------------------------------------------------------------------------
 [triggers]
 crons = [
-  "* * * * *",      # deployment-monitor + health-check
+  "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
   "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning
   "*/10 * * * *",   # cleanup-expired-crypto-payments
   "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog
@@ -162,6 +162,7 @@ LLM_TRAJECTORY_STORAGE = "r2"
 #   CONTAINER_CONTROL_PLANE_URL        Node sidecar URL for container mutations + hot-pool image pre-pull
 #   CONTAINER_CONTROL_PLANE_TOKEN      Shared Worker↔sidecar secret
 #   HCLOUD_TOKEN                       Hetzner Cloud API token for elastic Docker node provisioning
+#       HETZNER_CLOUD_API_KEY is also accepted as an alias.
 #   CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY Public SSH key written to autoscaled nodes
 #   CONTAINERS_BOOTSTRAP_CALLBACK_URL  Optional docker_nodes self-registration callback URL
 #   CONTAINERS_BOOTSTRAP_SECRET        Optional docker_nodes self-registration shared secret

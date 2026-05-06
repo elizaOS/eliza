@@ -3,7 +3,7 @@
   "name": "Localdb",
   "description": "Simple JSON-based local database storage for elizaOS - no SQL, no migrations",
   "npmName": "@elizaos/plugin-localdb",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["database", "storage", "localdb"],
   "config": {},

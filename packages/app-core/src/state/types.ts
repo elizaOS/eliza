@@ -378,7 +378,7 @@ export interface AppState {
   conversationMessages: ConversationMessage[];
   autonomousEvents: StreamEventEnvelope[];
   autonomousLatestEventId: string | null;
-  autonomousRunHealthByRunId: import("../autonomy").AutonomyRunHealthMap;
+  autonomousRunHealthByRunId: import("./autonomy").AutonomyRunHealthMap;
   /** Active PTY coding agent sessions from the SwarmCoordinator. */
   ptySessions: CodingAgentSession[];
   /** Conversation IDs with unread proactive messages from the agent. */
@@ -946,7 +946,9 @@ export interface AppActions {
 
   // Cloud
   handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
-  handleCloudDisconnect: () => Promise<void>;
+  handleCloudDisconnect: (opts?: {
+    skipConfirmation?: boolean;
+  }) => Promise<void>;
 
   // Multi-agent
   switchAgentProfile: (profileId: string) => void;

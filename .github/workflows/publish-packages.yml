@@ -6,7 +6,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: "Version to publish (e.g. 2.0.0-alpha.7)"
+        description: "Version to publish (e.g. 2.0.0-beta.0)"
         required: true
         type: string
       pypi:
@@ -39,7 +39,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (e.g. 2.0.0-alpha.7)"
+        description: "Version to publish (e.g. 2.0.0-beta.0)"
         required: true
         type: string
       pypi:
@@ -87,16 +87,16 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "npm_version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          # PEP 440 conversion: 2.0.0-alpha.7 → 2.0.0a7
-          PYPI_VERSION=$(echo "$VERSION" | sed -E 's/-alpha\.?/a/; s/-beta\.?/b/; s/-rc\.?/rc/')
+          # PEP 440 conversion: 2.0.0-beta.0 → 2.0.0b0
+          PYPI_VERSION=$(echo "$VERSION" | sed -E 's/-beta\.?/b/; s/-rc\.?/rc/')
           echo "pypi_version=$PYPI_VERSION" >> "$GITHUB_OUTPUT"
 
-          # Debian version: 2.0.0-alpha.7 → 2.0.0~alpha7-1
-          DEB_VERSION=$(echo "$VERSION" | sed -E 's/-alpha\./~alpha/; s/-beta\./~beta/; s/-rc\./~rc/')
+          # Debian version: 2.0.0-beta.0 → 2.0.0~beta0-1
+          DEB_VERSION=$(echo "$VERSION" | sed -E 's/-beta\./~beta/; s/-rc\./~rc/')
           echo "deb_version=${DEB_VERSION}-1" >> "$GITHUB_OUTPUT"
 
           # Pre-release detection
-          if echo "$VERSION" | grep -qE '(alpha|beta|rc)'; then
+          if echo "$VERSION" | grep -qE '(beta|rc)'; then
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
@@ -105,7 +105,7 @@ jobs:
           echo "Version: $VERSION"
           echo "PyPI: $PYPI_VERSION"
           echo "Debian: ${DEB_VERSION}-1"
-          echo "Pre-release: $(echo "$VERSION" | grep -qE '(alpha|beta|rc)' && echo true || echo false)"
+          echo "Pre-release: $(echo "$VERSION" | grep -qE '(beta|rc)' && echo true || echo false)"
 
       - name: Check registry credentials
         id: registry_credentials
@@ -398,6 +398,39 @@ jobs:
           flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install -y --user flathub org.freedesktop.Platform//24.08
           flatpak install -y --user flathub org.freedesktop.Sdk//24.08
+
+      - name: Wait for npm package version
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.npm_version }}"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "https://registry.npmjs.org/elizaos/${VERSION}" >/dev/null; then
+              echo "Found elizaos@${VERSION} on npm"
+              exit 0
+            fi
+            echo "elizaos@${VERSION} is not visible on npm yet (attempt ${attempt}/30); waiting..."
+            sleep 20
+          done
+          echo "::error::elizaos@${VERSION} was not visible on npm before Flatpak build"
+          exit 1
+
+      - name: Prepare Flatpak release manifest
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.npm_version }}"
+          TODAY="$(date -u +%F)"
+          MANIFEST="packages/app-core/packaging/flatpak/ai.elizaos.App.yml"
+          METAINFO="packages/app-core/packaging/flatpak/ai.elizaos.App.metainfo.xml"
+
+          sed -i -E \
+            "s#npm install -g elizaos(@[^[:space:]]+)? --prefix=/app --ignore-scripts#npm install -g elizaos@${VERSION} --prefix=/app --ignore-scripts#" \
+            "$MANIFEST"
+          sed -i -E \
+            "s#<release version=\"[^\"]+\" date=\"[^\"]+\">#<release version=\"${VERSION}\" date=\"${TODAY}\">#" \
+            "$METAINFO"
+
+          grep -n "npm install -g elizaos" "$MANIFEST"
+          grep -n "<release version" "$METAINFO" | head -1
 
       - name: Build Flatpak
         working-directory: packages/app-core/packaging/flatpak

@@ -3,7 +3,7 @@
   "name": "Matrix",
   "description": "Matrix connector for rooms, bots, and federated chat workflows.",
   "npmName": "@elizaos/plugin-matrix",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["connector", "messaging", "matrix", "chat", "social", "social-chat"],
   "config": {

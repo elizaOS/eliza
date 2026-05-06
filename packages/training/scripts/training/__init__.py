@@ -5,12 +5,17 @@ Quantization lives next to this in `scripts/quantization/`; benchmarks live in
 training pipeline (APOLLO, APOLLO-Mini, AdamW baseline).
 """
 
-from .optimizer import (
-    build_adamw_optimizer,
-    build_apollo_mini_optimizer,
-    build_apollo_optimizer,
-    optimizer_state_bytes,
-)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .optimizer import (
+        build_adamw_optimizer,
+        build_apollo_mini_optimizer,
+        build_apollo_optimizer,
+        optimizer_state_bytes,
+    )
 
 __all__ = [
     "build_adamw_optimizer",
@@ -18,3 +23,11 @@ __all__ = [
     "build_apollo_optimizer",
     "optimizer_state_bytes",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in __all__:
+        from . import optimizer
+
+        return getattr(optimizer, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -18,7 +18,7 @@ export interface PluginCardProps {
   updatingPlugins: Set<string>;
   uninstallingPlugins: Set<string>;
   installProgress: Map<string, { phase: string; message: string }>;
-  releaseStreamSelections: Record<string, "latest" | "alpha">;
+  releaseStreamSelections: Record<string, "latest" | "beta">;
   draggingId: string | null;
   dragOverId: string | null;
   pluginDescriptionFallback: string;
@@ -27,7 +27,7 @@ export interface PluginCardProps {
   onInstall: (pluginId: string, npmName: string) => void;
   onUpdate: (pluginId: string, npmName: string) => void;
   onUninstall: (pluginId: string, npmName: string) => void;
-  onReleaseStreamChange: (pluginId: string, stream: "latest" | "alpha") => void;
+  onReleaseStreamChange: (pluginId: string, stream: "latest" | "beta") => void;
   onOpenExternalUrl: (url: string) => void;
   onDragStart?: (e: React.DragEvent, pluginId: string) => void;
   onDragOver?: (e: React.DragEvent, pluginId: string) => void;
@@ -91,9 +91,9 @@ export function PluginCard({
   const selectedReleaseStream =
     releaseStreamSelections[p.id] ??
     p.releaseStream ??
-    (p.alphaVersion ? "alpha" : "latest");
+    (p.betaVersion ? "beta" : "latest");
   const remoteVersionForSelection =
-    selectedReleaseStream === "alpha" ? p.alphaVersion : p.latestVersion;
+    selectedReleaseStream === "beta" ? p.betaVersion : p.latestVersion;
   const showReleaseControls = !isShowcase && Boolean(p.npmName);
   const canUpdate = showReleaseControls && Boolean(p.version);
   const canUninstall =
@@ -336,17 +336,15 @@ export function PluginCard({
               main
             </Button>
             <Button
-              variant={
-                selectedReleaseStream === "alpha" ? "default" : "outline"
-              }
+              variant={selectedReleaseStream === "beta" ? "default" : "outline"}
               size="sm"
               className="h-6 px-2 text-2xs font-bold tracking-wide"
               onClick={(e) => {
                 e.stopPropagation();
-                onReleaseStreamChange(p.id, "alpha");
+                onReleaseStreamChange(p.id, "beta");
               }}
             >
-              alpha
+              beta
             </Button>
           </div>
         )}

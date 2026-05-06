@@ -53,18 +53,17 @@ const TASKS = [
       "run",
       "--config",
       "packages/app-core/vitest.config.ts",
-      "packages/app-core/src/components/permissions/StreamingPermissions.test.ts",
-      "packages/app-core/src/components/pages/ConfigPageView.test.tsx",
-      "packages/app-core/src/components/settings/CapabilitiesSection.test.tsx",
-      "packages/app-core/src/components/shell/ComputerUseApprovalOverlay.test.tsx",
-      "packages/app-core/src/services/__tests__/account-pool.test.ts",
-      "packages/app-core/src/api/auth-pairing-compat-routes.test.ts",
-      "packages/app-core/src/api/computer-use-compat-routes.test.ts",
-      "packages/app-core/test/onboarding/launch-qa-remote-target.test.tsx",
-      "packages/app-core/test/onboarding/pre-seed-android-local-runtime.test.ts",
+      "packages/app-core/src/api/client-cloud-direct-auth.test.ts",
+      "packages/app-core/src/state/persistence-cloud-active-server.test.ts",
+      "packages/app-core/scripts/startup-integration-script-drift.test.ts",
+    ],
+    requiredFiles: [
+      "packages/app-core/src/api/client-cloud-direct-auth.test.ts",
+      "packages/app-core/src/state/persistence-cloud-active-server.test.ts",
+      "packages/app-core/scripts/startup-integration-script-drift.test.ts",
     ],
     description:
-      "Focused app-core settings, account routing, remote pairing, onboarding, and Computer Use tests",
+      "Focused app-core cloud auth, persistence, and startup script drift tests",
   },
   {
     id: "agent-focused",
@@ -75,12 +74,14 @@ const TASKS = [
       "run",
       "--config",
       "packages/agent/vitest.config.ts",
-      "packages/agent/src/api/agent-status-routes.test.ts",
-      "packages/agent/src/services/launchpads/fake-wallet-launchpad.test.ts",
-      "packages/agent/src/services/launchpads/launchpad-engine.test.ts",
-      "packages/agent/src/actions/launchpad-launch.test.ts",
+      "packages/agent/src/actions/search.test.ts",
+      "packages/agent/src/runtime/operations/vault-integration.test.ts",
     ],
-    description: "Focused agent status and launchpad safety tests",
+    requiredFiles: [
+      "packages/agent/src/actions/search.test.ts",
+      "packages/agent/src/runtime/operations/vault-integration.test.ts",
+    ],
+    description: "Focused agent search and vault runtime tests",
   },
   {
     id: "lifeops-focused",
@@ -91,11 +92,14 @@ const TASKS = [
       "run",
       "--config",
       "plugins/app-lifeops/vitest.config.ts",
-      "plugins/app-lifeops/test/fake-connectors.contract.test.ts",
-      "plugins/app-lifeops/test/followup-tracker.test.ts",
-      "plugins/app-lifeops/src/hooks/useGoogleLifeOpsConnector.test.ts",
+      "plugins/app-lifeops/src/website-blocker/chat-integration/__tests__/actions.test.ts",
+      "plugins/app-lifeops/src/website-blocker/chat-integration/__tests__/block-rule-service.test.ts",
     ],
-    description: "Focused LifeOps follow-up and connector refresh tests",
+    requiredFiles: [
+      "plugins/app-lifeops/src/website-blocker/chat-integration/__tests__/actions.test.ts",
+      "plugins/app-lifeops/src/website-blocker/chat-integration/__tests__/block-rule-service.test.ts",
+    ],
+    description: "Focused LifeOps website blocker chat-integration tests",
   },
   {
     id: "training-focused",
@@ -234,8 +238,12 @@ function parseArgs(argv) {
 
 function taskExists(task) {
   return (
-    !task.optionalScript ||
-    fs.existsSync(path.join(repoRoot, task.optionalScript))
+    (!task.optionalScript ||
+      fs.existsSync(path.join(repoRoot, task.optionalScript))) &&
+    (!task.requiredFiles ||
+      task.requiredFiles.every((file) =>
+        fs.existsSync(path.join(repoRoot, task.cwd ?? "", file)),
+      ))
   );
 }
 

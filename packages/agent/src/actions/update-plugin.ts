@@ -16,10 +16,10 @@ function getApiBase(): string {
   return `http://localhost:${port}`;
 }
 
-type ReleaseStream = "latest" | "alpha";
+type ReleaseStream = "latest" | "beta";
 
 function isReleaseStream(value: unknown): value is ReleaseStream {
-  return value === "latest" || value === "alpha";
+  return value === "latest" || value === "beta";
 }
 
 interface PluginUpdateResponse {
@@ -43,9 +43,9 @@ export const updatePluginAction: Action = {
 
   description:
     "Update an installed plugin to the latest available version. Pass " +
-    "stream='alpha' to take the alpha release instead of the stable one.",
+    "stream='beta' to take the beta release instead of the stable one.",
   descriptionCompressed:
-    "update install plugin latest available version pass stream alpha take alpha release instead stable one",
+    "update install plugin latest available version pass stream beta take beta release instead stable one",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);
@@ -131,9 +131,9 @@ export const updatePluginAction: Action = {
     {
       name: "stream",
       description:
-        "Release stream to pull from: 'latest' (stable) or 'alpha'. Defaults to the plugin's current stream.",
+        "Release stream to pull from: 'latest' (stable) or 'beta'. Defaults to the plugin's current stream.",
       required: false,
-      schema: { type: "string" as const, enum: ["latest", "alpha"] },
+      schema: { type: "string" as const, enum: ["latest", "beta"] },
     },
   ],
   examples: [
@@ -152,12 +152,12 @@ export const updatePluginAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Bump telegram to alpha." },
+        content: { text: "Bump telegram to beta." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Plugin @elizaos/plugin-telegram@2.0.0-alpha.357 updated successfully.",
+          text: "Plugin @elizaos/plugin-telegram@2.0.0-beta.0 updated successfully.",
         },
       },
     ],

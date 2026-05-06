@@ -232,7 +232,7 @@ export class NodeAutoscaler {
     const labels = {
       "managed-by": "eliza-cloud",
       "node-id": nodeId,
-      ...(request.labels ?? {}),
+      ...request.labels,
     };
 
     const provisioned = await client.createServer({

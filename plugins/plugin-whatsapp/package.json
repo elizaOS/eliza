@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-whatsapp",
   "description": "WhatsApp plugin for ElizaOS (Cloud API + Baileys QR auth)",
-  "version": "2.0.0-alpha.537",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

@@ -3,7 +3,7 @@
   "name": "Elevenlabs",
   "description": "ElevenLabs voice plugin for text-to-speech generation and conversational audio output.",
   "npmName": "@elizaos/plugin-elevenlabs",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["voice", "text-to-speech", "audio", "elevenlabs"],
   "config": {

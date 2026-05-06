@@ -35,9 +35,9 @@ const skipLocalUpstreams =
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
   process.env.MILADY_SKIP_LOCAL_UPSTREAMS === "1";
 const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = new Map([
-  ["@elizaos/plugin-sql", "alpha"],
-  ["@elizaos/plugin-ollama", "alpha"],
-  ["@elizaos/plugin-local-ai", "alpha"],
+  ["@elizaos/plugin-sql", "beta"],
+  ["@elizaos/plugin-ollama", "beta"],
+  ["@elizaos/plugin-local-ai", "beta"],
 ]);
 
 const publishManifest = {

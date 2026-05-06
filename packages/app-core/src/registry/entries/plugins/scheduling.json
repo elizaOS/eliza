@@ -3,7 +3,7 @@
   "name": "Scheduling",
   "description": "Scheduling and calendar coordination plugin for ElizaOS agents",
   "npmName": "@elizaos/plugin-scheduling",
-  "version": "2.0.0-alpha.6",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["scheduling", "calendar"],
   "config": {

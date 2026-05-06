@@ -28,11 +28,17 @@ RUN apt-get update \
         curl \
         git \
         ninja-build \
+        unzip \
  && rm -rf /var/lib/apt/lists/*
 
 ENV UV_INSTALL_DIR=/usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
  && uv --version
+
+ENV BUN_INSTALL=/root/.bun \
+    PATH=/root/.bun/bin:$PATH
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13" \
+ && bun --version
 
 WORKDIR /workspace
 
@@ -46,8 +52,10 @@ RUN uv venv --python 3.12 /workspace/.venv \
  && . /workspace/.venv/bin/activate \
  && uv sync --extra train --frozen --no-install-project
 
+RUN bun add @toon-format/toon@2.1.0
+
 ENV VIRTUAL_ENV=/workspace/.venv \
-    PATH=/workspace/.venv/bin:$PATH \
+    PATH=/root/.bun/bin:/workspace/.venv/bin:$PATH \
     PYTHONPATH=/workspace/scripts
 
 # Bring the scripts tree in for tests + lint targets. We deliberately

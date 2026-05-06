@@ -39,14 +39,10 @@ const PUBLIC_HEALTH_ROUTES = new Set<string>([
   "/api/cron/process-redemptions",
   "/api/cron/sample-eliza-price",
 ]);
-const WORKER_STUB_ROUTES = new Set<string>(["/api/v1/cron/process-provisioning-jobs"]);
 
 function expectedUnauthStatuses(route: string): number[] {
   if (PUBLIC_HEALTH_ROUTES.has(route)) {
     return [200];
-  }
-  if (WORKER_STUB_ROUTES.has(route)) {
-    return [501];
   }
 
   return [401, 403, 503];
@@ -55,9 +51,6 @@ function expectedUnauthStatuses(route: string): number[] {
 function expectedWrongSecretStatuses(route: string): number[] {
   if (PUBLIC_HEALTH_ROUTES.has(route)) {
     return [200];
-  }
-  if (WORKER_STUB_ROUTES.has(route)) {
-    return [501];
   }
 
   return [401, 403, 503];

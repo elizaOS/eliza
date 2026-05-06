@@ -495,7 +495,7 @@ export class CloudAuthService extends Service {
   async authenticateWithDevice(): Promise<CloudCredentials> {
     const deviceId = await deriveDeviceId();
     const platform = detectPlatform();
-    const appVersion = process.env.ELIZAOS_CLOUD_APP_VERSION ?? "2.0.0-alpha";
+    const appVersion = process.env.ELIZAOS_CLOUD_APP_VERSION ?? "2.0.0-beta.0";
     const os = await import("node:os");
 
     logger.info(`[CloudAuth] Authenticating device (platform=${platform})`);

@@ -3,7 +3,7 @@
   "name": "Tailscale",
   "description": "Tunnel plugin — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter. Mutually exclusive with the ngrok tunnel plugin.",
   "npmName": "@elizaos/plugin-tailscale",
-  "version": "2.0.0-alpha.0",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["tunnel", "tailscale", "networking"],
   "config": {

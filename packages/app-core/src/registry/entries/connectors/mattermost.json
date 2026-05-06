@@ -3,7 +3,7 @@
   "name": "Mattermost",
   "description": "Mattermost integration plugin for elizaOS agents - TypeScript implementation",
   "npmName": "@elizaos/plugin-mattermost",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["connector", "social", "social-chat", "messaging", "mattermost"],
   "config": {

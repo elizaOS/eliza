@@ -3,7 +3,7 @@
   "name": "Vision",
   "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
   "npmName": "@elizaos/plugin-vision",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["vision", "camera", "ai-vision"],
   "config": {

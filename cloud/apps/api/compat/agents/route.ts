@@ -24,6 +24,11 @@ import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { stripReservedElizaConfigKeys } from "@/lib/services/eliza-agent-config";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -114,6 +119,19 @@ app.post("/", async (c) => {
     // Strip reserved __agent* keys from user-supplied agentConfig to prevent
     // callers from spoofing internal lifecycle flags.
     const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
+    const autoProvision =
+      (c.env as { WAIFU_AUTO_PROVISION?: string }).WAIFU_AUTO_PROVISION === "true";
+
+    if (autoProvision) {
+      const workerHealth = await checkProvisioningWorkerHealth();
+      if (!workerHealth.ok) {
+        logger.warn("[compat] Agent creation blocked: provisioning worker unavailable", {
+          orgId: user.organization_id,
+          code: workerHealth.code,
+        });
+        return c.json(provisioningWorkerFailureBody(workerHealth), workerHealth.status);
+      }
+    }
 
     let agent = await elizaSandboxService.createAgent({
       organizationId: user.organization_id,
@@ -128,36 +146,49 @@ app.post("/", async (c) => {
       orgId: user.organization_id,
     });
 
-    let provisionWarning: string | undefined;
-    if ((c.env as { WAIFU_AUTO_PROVISION?: string }).WAIFU_AUTO_PROVISION === "true") {
+    let provisioningJobId: string | undefined;
+    if (autoProvision) {
       try {
-        const result = await elizaSandboxService.provision(agent.id, user.organization_id);
-        if (result.success && result.sandboxRecord) {
-          agent = result.sandboxRecord;
-        } else if (!result.success) {
-          provisionWarning =
-            "Auto-provision was requested but did not succeed; the agent was created and can be provisioned manually.";
-          logger.warn("[compat] Auto-provision did not succeed", {
-            agentId: agent.id,
-            error: result.error,
-          });
-        }
+        const { job } = await provisioningJobService.enqueueAgentProvisionOnce({
+          agentId: agent.id,
+          organizationId: user.organization_id,
+          userId: user.id,
+          agentName: agent.agent_name ?? agent.id,
+          expectedUpdatedAt: agent.updated_at,
+        });
+        provisioningJobId = job.id;
       } catch (provErr) {
-        provisionWarning =
-          "Auto-provision was requested but failed; the agent was created and can be provisioned manually.";
         logger.error("[compat] Auto-provision failed", {
           agentId: agent.id,
           error: provErr instanceof Error ? provErr.message : String(provErr),
         });
+        return c.json(
+          {
+            success: false,
+            code: "PROVISIONING_ENQUEUE_FAILED",
+            error: "Agent was created, but provisioning could not be started. Retry provisioning.",
+            retryable: true,
+            data: toCompatCreateResult(agent),
+          },
+          503,
+        );
       }
     }
 
     const data = toCompatCreateResult(agent);
-    const responseBody = provisionWarning
-      ? { ...envelope(data), warning: provisionWarning }
+    const responseBody = provisioningJobId
+      ? {
+          ...envelope(data),
+          provisioningJobId,
+          polling: {
+            endpoint: `/api/compat/jobs/${agent.id}`,
+            intervalMs: 5000,
+            expectedDurationMs: 90000,
+          },
+        }
       : envelope(data);
 
-    return c.json(responseBody, 201);
+    return c.json(responseBody, autoProvision ? 202 : 201);
   } catch (err) {
     if (err instanceof ApiError) {
       return c.json(errorEnvelope(err.message), err.status as 400);
