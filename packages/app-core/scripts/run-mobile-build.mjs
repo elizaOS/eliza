@@ -505,18 +505,14 @@ async function buildWeb(platform) {
       : platform === "ios-overlay"
         ? "ios"
         : platform;
-  await run(
-    process.execPath,
-    [path.join(repoRoot, "scripts/run-app-web-build.mjs")],
-    {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
-        MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
-      },
+  await run("bun", ["run", "build"], {
+    cwd: appDir,
+    env: {
+      ...process.env,
+      ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
+      MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
     },
-  );
+  });
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
