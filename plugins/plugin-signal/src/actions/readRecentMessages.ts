@@ -28,7 +28,7 @@ export const readRecentMessages: Action = {
     "SIGNAL_INBOX",
   ],
   description: "Read the most recent Signal messages across active conversations",
-  descriptionCompressed: "Read recent Signal messages.",
+  descriptionCompressed: "Read recent Signal msgs.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;

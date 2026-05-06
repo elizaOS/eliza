@@ -140,8 +140,8 @@ export const passwordManagerAction: Action & {
   description:
     "Look up or copy credentials from your password manager (1Password CLI or ProtonPass). " +
     "Subactions: search, list, inject_username, inject_password. Credentials are NEVER displayed in chat — injection only copies to the OS clipboard briefly.",
-  descriptionCompressed:
-    "password manager 1Password ProtonPass: search list inject_username inject_password; clipboard-only never displays creds; confirmed-true required for inject; owner",
+	descriptionCompressed:
+		"Search/list 1Password or ProtonPass creds; inject username/password via clipboard only after confirm. Owner only.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>

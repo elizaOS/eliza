@@ -584,8 +584,8 @@ export const relationshipAction: Action & {
     "Subactions: list_contacts | add_contact | log_interaction | days_since | " +
     "add_follow_up | complete_follow_up | follow_up_list | list_overdue_followups | " +
     "mark_followup_done | set_followup_threshold.",
-  descriptionCompressed:
-    "contacts/rolodex/follow-ups: list_contacts add_contact log_interaction add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold owner",
+	descriptionCompressed:
+		"Manage contacts: list/add, log interactions, add/complete/list followups, days_since, overdue list, threshold. Owner only.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (

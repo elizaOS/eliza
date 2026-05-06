@@ -293,7 +293,7 @@ export const createWorkflowAction: Action & {
     'about the draft — including "yes", "ok", "deploy it", "cancel", or modification requests. ' +
     'Never reply with text only when a draft is pending.',
   descriptionCompressed:
-    'generate, preview, deploy n8n workflow natural language handle full lifecycle: generate draft, show preview, deploy user confirmation handle modify/cancel pend draft IMPORTANT: workflow draft pend, action use user response draft includ yes, ok, deploy, cancel, modification request never reply w/ text draft pend',
+    'Generate, preview, deploy n8n workflows; handle draft confirmation, cancel, modification, and pending draft replies.',
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);

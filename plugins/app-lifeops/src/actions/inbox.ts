@@ -378,8 +378,8 @@ export const inboxAction: Action & {
     "DO NOT use this action when the user is only complaining about email or messages without asking for triage, a digest, or a reply workflow. " +
     "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
     "Subactions: triage, digest, respond. Owner only.",
-  descriptionCompressed:
-    "Inbox: triage messages, daily digest, draft/send responses, missed-call repair, and group-chat handoff policies. Owner only.",
+	descriptionCompressed:
+		"Triage inbox msgs, build daily digest, draft/send replies, repair missed calls, manage group-chat handoff policies. Owner only.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

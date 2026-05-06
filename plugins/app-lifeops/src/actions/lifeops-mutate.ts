@@ -587,8 +587,8 @@ export const lifeOpsMutateAction: Action & {
     "payment_csv_import (import bank/CSV transactions), " +
     "unsubscribe_sender (unsubscribe from a Gmail sender). " +
     "Each subaction expects subaction-specific params (see schema). Owner access only.",
-  descriptionCompressed:
-    "LifeOps writes: gmail reply/manage, calendar create/update/delete, reminder snooze/complete/create, payment source add/delete + csv import, mark inbox read, unsubscribe sender.",
+	descriptionCompressed:
+		"Write LifeOps: Gmail reply/manage, calendar create/update/delete, reminders, payment sources/CSV import, mark inbox read, unsubscribe.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory) =>
