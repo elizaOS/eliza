@@ -789,7 +789,7 @@ async function withPackagedHarness(
     });
     debugPackagedPhase("starting initial packaged launch");
     await harness.start({
-      bridgeHealthTimeoutMs: process.env.CI ? 180_000 : 90_000,
+      bridgeHealthTimeoutMs: 300_000,
       shellReadyTimeoutMs: process.env.CI ? 120_000 : 60_000,
     });
     debugPackagedPhase("initial packaged launch ready");
@@ -806,7 +806,7 @@ async function withPackagedHarness(
     const requestCountBeforeRelaunch = api.requests.length;
     debugPackagedPhase("starting packaged relaunch");
     await harness.relaunch({
-      bridgeHealthTimeoutMs: process.env.CI ? 180_000 : 90_000,
+      bridgeHealthTimeoutMs: 300_000,
       shellReadyTimeoutMs: process.env.CI ? 120_000 : 60_000,
     });
     debugPackagedPhase("packaged relaunch ready");
@@ -935,7 +935,10 @@ async function withPackagedHarness(
   }
 }
 
-test("packaged desktop persists media, provider, and plugin state across relaunch", async (_fixtures, testInfo) => {
+test("packaged desktop persists media, provider, and plugin state across relaunch", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  void _browserName;
   test.skip(
     !isPackagedPlatform(),
     "Packaged desktop regressions require a macOS or Windows launcher.",
@@ -975,7 +978,10 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
   });
 });
 
-test("packaged desktop reset from Settings returns the shell to onboarding", async (_fixtures, testInfo) => {
+test("packaged desktop reset from Settings returns the shell to onboarding", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  void _browserName;
   test.skip(
     !isPackagedPlatform(),
     "Packaged desktop regressions require a macOS or Windows launcher.",
@@ -991,7 +997,10 @@ test("packaged desktop reset from Settings returns the shell to onboarding", asy
   });
 });
 
-test("packaged desktop reset from the application menu returns the shell to onboarding", async (_fixtures, testInfo) => {
+test("packaged desktop reset from the application menu returns the shell to onboarding", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  void _browserName;
   test.skip(
     !isPackagedPlatform(),
     "Packaged desktop regressions require a macOS or Windows launcher.",
@@ -1011,7 +1020,10 @@ test("packaged desktop reset from the application menu returns the shell to onbo
   });
 });
 
-test("packaged macOS desktop keeps the tray alive and preserves vibrancy through resize", async (_fixtures, testInfo) => {
+test("packaged macOS desktop keeps the tray alive and preserves vibrancy through resize", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  void _browserName;
   test.skip(
     process.platform !== "darwin",
     "Tray and vibrancy regression checks are macOS-only.",

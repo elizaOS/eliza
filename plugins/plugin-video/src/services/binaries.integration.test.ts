@@ -27,13 +27,13 @@ describeIntegration("BinaryResolver integration", () => {
     expect(ytDlpPath.length).toBeGreaterThan(0);
     const stat = await fsp.stat(ytDlpPath);
     expect(stat.isFile()).toBe(true);
-    expect(stat.mode & 0o111).not.toBe(0);
+    expect(stat.mode & 0o111).toBeGreaterThan(0);
   });
 
   it("resolves an ffmpeg binary path on the host", async () => {
     const r = new BinaryResolver();
     const ffmpegPath = await r.getFfmpegPath();
-    expect(ffmpegPath).not.toBeNull();
+    expect(Boolean(ffmpegPath)).toBe(true);
     if (!ffmpegPath) return;
     const stat = await fsp.stat(ffmpegPath);
     expect(stat.isFile()).toBe(true);
@@ -62,7 +62,7 @@ describeIntegration("BinaryResolver integration", () => {
       expect(binPath.startsWith(tmp)).toBe(true);
       const stat = await fsp.stat(binPath);
       expect(stat.isFile()).toBe(true);
-      expect(stat.mode & 0o111).not.toBe(0);
+      expect(stat.mode & 0o111).toBeGreaterThan(0);
       const meta = JSON.parse(
         await fsp.readFile(path.join(tmp, "yt-dlp.meta.json"), "utf8"),
       );

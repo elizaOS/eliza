@@ -2,8 +2,6 @@ import { type Plugin, elizaLogger } from "@elizaos/core";
 import { startTailscaleAction } from "./actions/start-tailscale";
 import { stopTailscaleAction } from "./actions/stop-tailscale";
 import { getTailscaleStatusAction } from "./actions/get-tailscale-status";
-import { CloudTailscaleService } from "./services/CloudTailscaleService";
-import { LocalTailscaleService } from "./services/LocalTailscaleService";
 import { selectTunnelBackend } from "./services/TunnelBackendSelector";
 import { TailscaleTestSuite } from "./__tests__/TailscaleTestSuite";
 
