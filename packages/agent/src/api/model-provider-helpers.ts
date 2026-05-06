@@ -36,9 +36,9 @@ export function getModelOptions(): {
   const allModels = [
     {
       id: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-      name: "GPT OSS 120B Nitro",
+      name: "GPT OSS 120B",
       provider: "OpenAI",
-      description: "Recommended OpenRouter high-throughput reasoning model.",
+      description: "Recommended cloud reasoning model.",
       recommended: true,
     },
     {

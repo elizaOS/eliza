@@ -111,72 +111,72 @@
       },
       "ELIZAOS_CLOUD_NANO_MODEL": {
         "type": "string",
-        "description": "Nano/cheapest text model for lightweight routing and should-respond tasks (overrides NANO_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "description": "Nano/cheapest text model for lightweight routing and should-respond tasks (overrides NANO_MODEL). Default: openai/gpt-oss-120b",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "NANO_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the nano language model if ELIZAOS_CLOUD_NANO_MODEL is not set.",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_SMALL_MODEL": {
         "type": "string",
-        "description": "Small/fast model for quick tasks (overrides SMALL_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "description": "Small/fast model for quick tasks (overrides SMALL_MODEL). Default: openai/gpt-oss-120b",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "SMALL_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the small language model if ELIZAOS_CLOUD_SMALL_MODEL is not set.",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_MEDIUM_MODEL": {
         "type": "string",
-        "description": "Medium planning model for multi-step reasoning (overrides MEDIUM_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "description": "Medium planning model for multi-step reasoning (overrides MEDIUM_MODEL). Default: openai/gpt-oss-120b",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "MEDIUM_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the medium language model if ELIZAOS_CLOUD_MEDIUM_MODEL is not set.",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_LARGE_MODEL": {
         "type": "string",
-        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: openai/gpt-oss-120b",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "LARGE_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the large language model if ELIZAOS_CLOUD_LARGE_MODEL is not set.",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_MEGA_MODEL": {
         "type": "string",
         "description": "Mega/top-tier model for the heaviest generation tasks (overrides MEGA_MODEL). Falls back to the large tier when unset.",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "MEGA_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the mega language model if ELIZAOS_CLOUD_MEGA_MODEL is not set.",
         "required": false,
-        "default": "openai/gpt-oss-120b:nitro",
+        "default": "openai/gpt-oss-120b",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL": {

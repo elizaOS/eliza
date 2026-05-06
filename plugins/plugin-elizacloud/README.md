@@ -78,10 +78,10 @@ Get an API key from
 | `ELIZAOS_CLOUD_API_KEY` | API key used for authenticated Cloud requests | Required |
 | `ELIZAOS_CLOUD_BASE_URL` | Eliza Cloud API base URL | `https://www.elizacloud.ai/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | Enables container provisioning, device auth, bridge, and backup services | `false` |
-| `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `openai/gpt-oss-120b:nitro` |
-| `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `openai/gpt-oss-120b:nitro` |
+| `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `openai/gpt-oss-120b` |
+| `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `openai/gpt-oss-120b` |
 | `ELIZAOS_CLOUD_MEDIUM_MODEL` | Medium planning model override | `MEDIUM_MODEL` or small model |
-| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `openai/gpt-oss-120b:nitro` |
+| `ELIZAOS_CLOUD_LARGE_MODEL` | Large model override | `LARGE_MODEL` or `openai/gpt-oss-120b` |
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | nano model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | medium model |

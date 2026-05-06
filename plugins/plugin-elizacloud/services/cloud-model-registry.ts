@@ -1,6 +1,7 @@
 /** Fetches and caches available models from ElizaCloud. */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
 import type { CloudAuthService } from "./cloud-auth";
 
 interface ModelListEntry {
@@ -27,6 +28,9 @@ export interface ModelsByProvider {
 }
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const RETIRED_MODEL_ALIASES = new Map<string, string>([
+  ["openai/gpt-oss-120b:nitro", DEFAULT_ELIZA_CLOUD_TEXT_MODEL],
+]);
 
 const PROVIDER_PREFIXES: ReadonlyArray<[string, string]> = [
   ["gpt-", "openai"],
@@ -58,6 +62,35 @@ function stripProvider(modelId: string): string {
     return modelId.split("/").slice(1).join("/");
   }
   return modelId;
+}
+
+function normalizeModelId(modelId: string): string {
+  return RETIRED_MODEL_ALIASES.get(modelId.trim()) ?? modelId.trim();
+}
+
+export function resolveAvailableCloudModelId(
+  requestedModelId: string,
+  availableModels: readonly AvailableModel[]
+): string {
+  const requested = requestedModelId.trim();
+  if (!requested) return requestedModelId;
+
+  const normalized = normalizeModelId(requested);
+  if (availableModels.length === 0) return normalized;
+
+  const modelIds = new Set(availableModels.map((model) => model.id));
+  const modelNames = new Set(availableModels.map((model) => model.name));
+  if (modelIds.has(requested) || modelNames.has(requested)) return requested;
+  if (modelIds.has(normalized) || modelNames.has(normalized)) return normalized;
+
+  const providerSeparator = requested.lastIndexOf("/");
+  const variantSeparator = requested.lastIndexOf(":");
+  if (variantSeparator > providerSeparator) {
+    const baseModel = requested.slice(0, variantSeparator);
+    if (modelIds.has(baseModel) || modelNames.has(baseModel)) return baseModel;
+  }
+
+  return normalized;
 }
 
 export class CloudModelRegistryService extends Service {
@@ -175,11 +208,16 @@ export class CloudModelRegistryService extends Service {
     for (const { key, label } of settingsToCheck) {
       const value = this.runtime.getSetting(key);
       if (value && typeof value === "string") {
-        const found = modelIds.has(value) || nameSet.has(value);
+        const resolved = resolveAvailableCloudModelId(value, this.models);
+        const found = modelIds.has(resolved) || nameSet.has(resolved);
         if (!found) {
           logger.warn(
             `[CloudModelRegistry] Configured ${label} "${value}" not found in available models. ` +
               "It may still work if the gateway supports it, but check your configuration."
+          );
+        } else if (resolved !== value) {
+          logger.warn(
+            `[CloudModelRegistry] Configured ${label} "${value}" resolves to available model "${resolved}".`
           );
         }
       }
@@ -198,5 +236,12 @@ export class CloudModelRegistryService extends Service {
       await this.fetchModels();
     }
     return this.byProvider;
+  }
+
+  async resolveModelId(modelId: string): Promise<string> {
+    if (Date.now() - this.lastFetchedAt > CACHE_TTL_MS) {
+      await this.fetchModels();
+    }
+    return resolveAvailableCloudModelId(modelId, this.models);
   }
 }

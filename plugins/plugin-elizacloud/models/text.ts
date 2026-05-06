@@ -8,6 +8,10 @@ import { logger, ModelType } from "@elizaos/core";
 import type { LanguageModel } from "ai";
 import { createOpenAIClient } from "../providers/openai";
 import {
+  type CloudModelRegistryService,
+  resolveAvailableCloudModelId,
+} from "../services/cloud-model-registry";
+import {
   getActionPlannerModel,
   getExperimentalTelemetry,
   getLargeModel,
@@ -140,7 +144,20 @@ function getModelNameForType(runtime: IAgentRuntime, modelType: TextModelType): 
   }
 }
 
-function buildGenerateParams(
+async function resolveModelName(runtime: IAgentRuntime, modelName: string): Promise<string> {
+  const registry = runtime.getService("CLOUD_MODEL_REGISTRY") as CloudModelRegistryService | null;
+  const resolvedModelName = registry
+    ? await registry.resolveModelId(modelName)
+    : resolveAvailableCloudModelId(modelName, []);
+  if (resolvedModelName !== modelName) {
+    logger.warn(
+      `[ELIZAOS_CLOUD] Resolved configured model "${modelName}" to available model "${resolvedModelName}".`
+    );
+  }
+  return resolvedModelName;
+}
+
+async function buildGenerateParams(
   runtime: IAgentRuntime,
   modelType: TextModelType,
   params: GenerateTextParams
@@ -150,7 +167,7 @@ function buildGenerateParams(
   const maxTokens = params.maxTokens ?? 8192;
 
   const openai = createOpenAIClient(runtime);
-  const modelName = getModelNameForType(runtime, modelType);
+  const modelName = await resolveModelName(runtime, getModelNameForType(runtime, modelType));
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const userContent =
     (paramsWithAttachments.attachments?.length ?? 0) > 0
@@ -196,7 +213,7 @@ async function generateTextWithModel(
   modelType: TextModelType,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const { modelName, prompt } = buildGenerateParams(runtime, modelType, params);
+  const { modelName, prompt } = await buildGenerateParams(runtime, modelType, params);
 
   logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
 
