@@ -11,7 +11,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { RobloxService } from "@elizaos/plugin-roblox";
-import express, { type Request, type Response } from "express";
+import express from "express";
 import { v4 as uuidv4 } from "uuid";
 
 const ROBLOX_SERVICE_NAME = "roblox";
@@ -29,6 +29,31 @@ export type RobloxChatResponseBody = {
   agentName: string;
 };
 
+export type Request<_Params = object, _ResBody = object, ReqBody = unknown> = {
+  body: ReqBody;
+  ip?: string;
+  socket: { remoteAddress?: string };
+  header: (name: string) => string | undefined;
+};
+export type Response = {
+  status: (code: number) => Response;
+  json: (body: unknown) => Response;
+};
+export type ExpressApp = {
+  use: (...handlers: unknown[]) => void;
+  get: (
+    path: string,
+    handler: (req: Request, res: Response) => unknown,
+  ) => void;
+  post: (
+    path: string,
+    handler: (
+      req: Request<object, object, RobloxChatRequestBody>,
+      res: Response,
+    ) => unknown,
+  ) => void;
+  listen: (port: number, callback?: () => void) => unknown;
+};
 export type RequestWithRawBody = Request & { rawBody?: string };
 export type HeaderReader = {
   header: (name: string) => string | undefined;
@@ -116,12 +141,12 @@ function createRateLimiter() {
 export function createRobloxBridgeApp(
   runtime: RuntimeLike,
   sharedSecret: string,
-): express.Express {
-  const app = express();
+): ExpressApp {
+  const app = express() as ExpressApp;
   app.use(
     express.json({
-      verify: (req, _res, buf) => {
-        (req as RequestWithRawBody).rawBody = buf.toString("utf8");
+      verify: (req: RequestWithRawBody, _res: Response, buf: Buffer) => {
+        req.rawBody = buf.toString("utf8");
       },
     }),
   );

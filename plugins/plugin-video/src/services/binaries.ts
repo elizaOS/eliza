@@ -104,7 +104,10 @@ export class BinaryResolver {
   constructor(opts: BinaryResolverOptions = {}) {
     this.binariesDir = opts.binariesDir ?? defaultBinariesDir();
     this.releaseUrl = opts.releaseUrl ?? YT_DLP_RELEASE_URL;
-    this.fetchImpl = opts.fetchImpl ?? ((...a) => globalThis.fetch(...a));
+    this.fetchImpl =
+      opts.fetchImpl ??
+      ((input: RequestInfo | URL, init?: RequestInit) =>
+        globalThis.fetch(input, init));
     this.now = opts.now ?? Date.now;
     this.disableAutoUpdate =
       opts.disableAutoUpdate ?? envBool("ELIZA_DISABLE_YTDLP_AUTOUPDATE");
