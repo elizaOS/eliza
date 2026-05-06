@@ -1,5 +1,5 @@
 -- Usage analytics: persisted canonical keys (aligned with model-id-translation.ts)
-ALTER TABLE "usage_records" ADD COLUMN "canonical_model" text GENERATED ALWAYS AS (
+ALTER TABLE "usage_records" ADD COLUMN IF NOT EXISTS "canonical_model" text GENERATED ALWAYS AS (
   CASE
     WHEN model IS NULL OR model::text = '' THEN '__null__'
     WHEN position('/'::text in model::text) > 0 THEN
@@ -12,7 +12,7 @@ ALTER TABLE "usage_records" ADD COLUMN "canonical_model" text GENERATED ALWAYS A
   END
 ) STORED;
 
-ALTER TABLE "usage_records" ADD COLUMN "canonical_provider" text GENERATED ALWAYS AS (
+ALTER TABLE "usage_records" ADD COLUMN IF NOT EXISTS "canonical_provider" text GENERATED ALWAYS AS (
   CASE provider
     WHEN 'x-ai' THEN 'xai'
     WHEN 'mistralai' THEN 'mistral'
