@@ -54,6 +54,19 @@ import {
 	sendMessageInChunks,
 } from "./utils";
 
+export function resolveGenerationTimeoutMs(
+	timeoutSetting: unknown,
+	fallbackSetting: unknown,
+): number | null {
+	const parsed = Number.parseInt(
+		String(timeoutSetting ?? fallbackSetting ?? "120000"),
+		10,
+	);
+	return Number.isFinite(parsed) && parsed > 0
+		? Math.max(30_000, parsed)
+		: null;
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -671,21 +684,12 @@ export class MessageManager {
 			let typingStarted = false;
 			let responseEmitted = false;
 			let generationTimedOut = false;
-			const generationTimeoutSetting = Number.parseInt(
-				String(
-					this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
-						process.env.DISCORD_GENERATION_TIMEOUT_MS ??
-						this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
-						process.env.MESSAGE_TIMEOUT_MS ??
-						"120000",
-				),
-				10,
+			const generationTimeoutMs = resolveGenerationTimeoutMs(
+				this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
+					process.env.DISCORD_GENERATION_TIMEOUT_MS,
+				this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
+					process.env.MESSAGE_TIMEOUT_MS,
 			);
-			const generationTimeoutMs =
-				Number.isFinite(generationTimeoutSetting) &&
-				generationTimeoutSetting > 0
-					? Math.max(30_000, generationTimeoutSetting)
-					: null;
 
 			const finalizePendingDraft = async () => {
 				if (draftStream?.isStarted() && !draftStream.isDone()) {
