@@ -13,29 +13,29 @@ import {
   type Memory,
   type Provider,
   type State,
-} from "@elizaos/core";
-import { getTunnelService } from "../types";
+} from '@elizaos/core';
+import { getTunnelService } from '../types';
 
 function formatUptime(startedAt: Date): string {
   const ms = Date.now() - startedAt.getTime();
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
   if (hours > 0) {
-    return `${hours} hour${hours === 1 ? "" : "s"}, ${minutes % 60} minute${minutes % 60 === 1 ? "" : "s"}`;
+    return `${hours} hour${hours === 1 ? '' : 's'}, ${minutes % 60} minute${minutes % 60 === 1 ? '' : 's'}`;
   }
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
 export const tailscaleStatusProvider: Provider = {
-  name: "tailscaleStatus",
+  name: 'tailscaleStatus',
   description:
-    "Current Tailscale tunnel status: active flag, public URL, local port, uptime, backend provider.",
-  descriptionCompressed: "Tailscale tunnel status: active, url, port, uptime.",
+    'Current Tailscale tunnel status: active flag, public URL, local port, uptime, backend provider.',
+  descriptionCompressed: 'Tailscale tunnel status: active, url, port, uptime.',
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const tunnelService = getTunnelService(runtime);
     if (!tunnelService) {
-      return { text: "" };
+      return { text: '' };
     }
 
     const status = tunnelService.getStatus();
@@ -55,7 +55,7 @@ export const tailscaleStatusProvider: Provider = {
       text,
       values: {
         active: status.active,
-        url: status.url ?? "",
+        url: status.url ?? '',
         port: status.port ?? 0,
         provider: status.provider,
       },

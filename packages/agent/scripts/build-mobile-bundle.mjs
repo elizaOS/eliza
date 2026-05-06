@@ -312,24 +312,21 @@ const dedupePlugin = {
 const nativeCapacitorPlugin = {
   name: "eliza-mobile-native-capacitor-workspaces",
   setup(build) {
-    build.onResolve(
-      { filter: /^@elizaos\/capacitor-[^/]+$/ },
-      (args) => {
-        const packageName = args.path.replace("@elizaos/capacitor-", "");
-        const target = path.resolve(
-          repoRoot,
-          "packages",
-          "native-plugins",
-          packageName,
-          "src",
-          "index.ts",
-        );
-        if (!existsSync(target)) {
-          return undefined;
-        }
-        return { path: target, namespace: "file" };
-      },
-    );
+    build.onResolve({ filter: /^@elizaos\/capacitor-[^/]+$/ }, (args) => {
+      const packageName = args.path.replace("@elizaos/capacitor-", "");
+      const target = path.resolve(
+        repoRoot,
+        "packages",
+        "native-plugins",
+        packageName,
+        "src",
+        "index.ts",
+      );
+      if (!existsSync(target)) {
+        return undefined;
+      }
+      return { path: target, namespace: "file" };
+    });
   },
 };
 

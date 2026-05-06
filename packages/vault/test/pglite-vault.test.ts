@@ -131,9 +131,9 @@ describe("PgliteVaultImpl", () => {
   });
 
   it("rejects non-string value", async () => {
-    await expect(
-      vault.set("k", 123 as unknown as string),
-    ).rejects.toThrow(/must be a string/);
+    await expect(vault.set("k", 123 as unknown as string)).rejects.toThrow(
+      /must be a string/,
+    );
   });
 
   it("ciphertext is opaque on disk (decrypt requires the master key)", async () => {

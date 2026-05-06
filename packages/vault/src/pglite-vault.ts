@@ -6,11 +6,7 @@ import { decrypt, encrypt } from "./crypto.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
 import { AuditLog } from "./audit.js";
-import {
-  emptyStore,
-  readStore,
-  type StoreData,
-} from "./store.js";
+import { emptyStore, readStore, type StoreData } from "./store.js";
 import type { Vault, SetOptions } from "./vault.js";
 import { VaultMissError } from "./vault.js";
 import type {
@@ -236,9 +232,7 @@ export class PgliteVaultImpl implements Vault {
     }
     return {
       key,
-      source: (row.ref_source ?? "1password") as
-        | "1password"
-        | "protonpass",
+      source: (row.ref_source ?? "1password") as "1password" | "protonpass",
       sensitive: true,
       lastModified,
     };
@@ -287,7 +281,9 @@ export class PgliteVaultImpl implements Vault {
     if (!row) throw new VaultMissError(key);
     if (row.kind === "value") {
       if (row.value == null) {
-        throw new Error(`vault: corrupt entry ${key}: kind=value but value=null`);
+        throw new Error(
+          `vault: corrupt entry ${key}: kind=value but value=null`,
+        );
       }
       return row.value;
     }
