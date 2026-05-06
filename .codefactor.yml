@@ -4,9 +4,18 @@ exclude:
   # The Complex Method warnings flagged on these files predate this PR.
   # The PR diff touches them only as part of develop-side CI fixes
   # (revert + @ts-ignore + format pass), not to add complexity.
-  - "plugins/plugin-n8n-workflow/**"
   - "plugins/plugin-agent-orchestrator/src/services/pty-service.ts"
   - "plugins/plugin-elizacloud/models/text.ts"
+  - "plugins/plugin-n8n-workflow/src/actions/activateWorkflow.ts"
+  - "plugins/plugin-n8n-workflow/src/actions/createWorkflow.ts"
+  - "plugins/plugin-n8n-workflow/src/actions/deleteWorkflow.ts"
+  - "plugins/plugin-n8n-workflow/src/actions/getExecutions.ts"
+  - "plugins/plugin-n8n-workflow/src/actions/modifyExistingWorkflow.ts"
+  - "plugins/plugin-n8n-workflow/src/actions/workflowLifecycleOp.ts"
+  - "plugins/plugin-n8n-workflow/src/routes/n8n-routes.ts"
+  - "plugins/plugin-n8n-workflow/src/services/n8n-workflow-service.ts"
+  - "plugins/plugin-n8n-workflow/src/utils/outputSchema.ts"
+  - "plugins/plugin-n8n-workflow/src/utils/validateAndRepair.ts"
   - "packages/agent/src/runtime/aosp-llama-adapter.ts"
   - "packages/app-core/scripts/run-mobile-build.mjs"
   - "packages/app-core/src/api/client-base.ts"
