@@ -56,7 +56,10 @@ type CapacitorLlamaAdapter = {
     totalRamGb?: number;
     availableRamGb?: number | null;
     cpuCores?: number;
-    gpu?: { backend?: "metal" | "vulkan" | "gpu-delegate"; available?: boolean } | null;
+    gpu?: {
+      backend?: "metal" | "vulkan" | "gpu-delegate";
+      available?: boolean;
+    } | null;
     gpuSupported?: boolean;
   }>;
   isLoaded?: () => Promise<{ loaded: boolean; modelPath: string | null }>;
@@ -163,7 +166,8 @@ function readActiveModelState(): ActiveModelState {
   ) {
     return {
       modelId: parsed.modelId.trim(),
-      loadedAt: typeof parsed.loadedAt === "string" ? parsed.loadedAt : nowIso(),
+      loadedAt:
+        typeof parsed.loadedAt === "string" ? parsed.loadedAt : nowIso(),
       status: "ready",
     };
   }
@@ -202,7 +206,8 @@ async function capacitorLlamaProviderStatus(): Promise<ProviderStatus> {
         ? "Native Capacitor runtime detected"
         : "Capacitor llama runtime unavailable",
     },
-    registeredSlots: activeState.status === "ready" ? ["TEXT_SMALL", "TEXT_LARGE"] : [],
+    registeredSlots:
+      activeState.status === "ready" ? ["TEXT_SMALL", "TEXT_LARGE"] : [],
   };
 }
 
@@ -266,9 +271,9 @@ async function loadCapacitorLlama(): Promise<CapacitorLlamaAdapter | null> {
   llamaAdapterPromise ??= (async () => {
     try {
       const packageName = "@elizaos/capacitor-llama";
-      const mod = (await import(/* @vite-ignore */ packageName)) as
-        | CapacitorLlamaModule
-        | null;
+      const mod = (await import(
+        /* @vite-ignore */ packageName
+      )) as CapacitorLlamaModule | null;
       return mod?.capacitorLlama ?? null;
     } catch {
       return null;
@@ -301,14 +306,17 @@ function buildHuggingFaceResolveUrl(model: CatalogModel): string {
   return `https://huggingface.co/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
 }
 
-function catalogForAvailableModel(
-  model: { name?: string; path?: string },
-): CatalogModel | undefined {
+function catalogForAvailableModel(model: {
+  name?: string;
+  path?: string;
+}): CatalogModel | undefined {
   const haystack = `${model.name ?? ""} ${model.path ?? ""}`.toLowerCase();
   return MODEL_CATALOG.find((candidate) => {
     const id = candidate.id.toLowerCase();
     const file = candidate.ggufFile.split("/").pop()?.toLowerCase() ?? "";
-    return haystack.includes(id) || (file.length > 0 && haystack.includes(file));
+    return (
+      haystack.includes(id) || (file.length > 0 && haystack.includes(file))
+    );
   });
 }
 
@@ -364,7 +372,9 @@ async function hardwareProbe(): Promise<HardwareProbe> {
 
 async function ensureActiveModelLoaded(): Promise<void> {
   if (activeState.status !== "ready" || !activeState.modelId) {
-    throw new Error("No local model is active. Install and activate a GGUF model first.");
+    throw new Error(
+      "No local model is active. Install and activate a GGUF model first.",
+    );
   }
   const installed = await listInstalledModels();
   const model = installed.find((entry) => entry.id === activeState.modelId);
@@ -401,7 +411,15 @@ function buildPrompt(messages: LocalMessage[], latestText: string): string {
 async function generateLocalReply(
   conversation: LocalConversation,
   text: string,
-): Promise<{ text: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number; model?: string } }> {
+): Promise<{
+  text: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    model?: string;
+  };
+}> {
   await ensureActiveModelLoaded();
   const llama = await loadCapacitorLlama();
   if (!llama?.generate) {
@@ -415,7 +433,8 @@ async function generateLocalReply(
     topP: 0.9,
     stopSequences: ["\nUser:", "\nAssistant:"],
   });
-  const cleaned = result.text.trim() || "I could not generate a local response.";
+  const cleaned =
+    result.text.trim() || "I could not generate a local response.";
   return {
     text: cleaned,
     usage: {
@@ -500,7 +519,9 @@ function startDownload(model: CatalogModel): DownloadJob {
         modelFilename(model),
       );
       const path =
-        typeof result === "string" ? result : result.path ?? modelFilename(model);
+        typeof result === "string"
+          ? result
+          : (result.path ?? modelFilename(model));
       updateDownload(job, {
         state: "completed",
         received: job.total,
@@ -553,9 +574,15 @@ async function activateModel(
   try {
     const llama = await loadCapacitorLlama();
     if (!llama?.load) {
-      throw new Error("Capacitor llama runtime is not available on this build.");
+      throw new Error(
+        "Capacitor llama runtime is not available on this build.",
+      );
     }
-    await llama.load({ modelPath: model.path, contextSize: 4096, useGpu: true });
+    await llama.load({
+      modelPath: model.path,
+      contextSize: 4096,
+      useGpu: true,
+    });
     const state: ActiveModelState = {
       modelId,
       loadedAt: nowIso(),
@@ -704,11 +731,17 @@ export async function handleIosLocalAgentRequest(
 
   if (
     method === "GET" &&
-    ["/api/apps", "/api/catalog/apps", "/api/plugins", "/api/skills"].includes(
-      pathname,
-    )
+    (pathname === "/api/apps" || pathname === "/api/catalog/apps")
   ) {
-    return json({ apps: [], plugins: [], skills: [] });
+    return json([]);
+  }
+
+  if (method === "GET" && pathname === "/api/plugins") {
+    return json({ plugins: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/skills") {
+    return json({ skills: [] });
   }
 
   if (method === "GET" && pathname === "/api/local-inference/hub") {
@@ -731,7 +764,10 @@ export async function handleIosLocalAgentRequest(
     return json({ downloads: [...downloads.values()] });
   }
 
-  if (method === "GET" && pathname === "/api/local-inference/downloads/stream") {
+  if (
+    method === "GET" &&
+    pathname === "/api/local-inference/downloads/stream"
+  ) {
     return textEventStream([
       {
         type: "snapshot",
@@ -750,7 +786,7 @@ export async function handleIosLocalAgentRequest(
             body.spec &&
             !Array.isArray(body.spec) &&
             typeof (body.spec as { id?: unknown }).id === "string"
-          ? ((body.spec as { id: string }).id)
+          ? (body.spec as { id: string }).id
           : "";
     const catalog = findCatalogModel(modelId);
     if (!catalog) return json({ error: `Unknown model id: ${modelId}` }, 404);
@@ -992,7 +1028,9 @@ export async function handleIosLocalAgentRequest(
       }
       store.conversations[index].updatedAt = nowIso();
       writeStore(store);
-      return json({ conversation: conversationDto(store.conversations[index]) });
+      return json({
+        conversation: conversationDto(store.conversations[index]),
+      });
     }
   }
 

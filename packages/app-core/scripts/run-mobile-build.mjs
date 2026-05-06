@@ -21,7 +21,7 @@
  *                             docs/agent-on-mobile.md).
  *   6. Native build         — gradlew / xcodebuild
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -166,7 +166,14 @@ function runCapacitor(args) {
   return run(
     process.execPath,
     [
-      path.join(appDir, "node_modules", "@capacitor", "cli", "bin", "capacitor"),
+      path.join(
+        appDir,
+        "node_modules",
+        "@capacitor",
+        "cli",
+        "bin",
+        "capacitor",
+      ),
       ...args,
     ],
     { cwd: appDir },
@@ -309,6 +316,12 @@ function ensurePlistUrlScheme(content, urlScheme) {
  * symlinks). Returns a path relative to `relativeTo`.
  */
 function resolvePackagePath(pkgName, relativeTo) {
+  const linked = resolvePackageAbsolutePath(pkgName);
+  if (!linked) return null;
+  return path.relative(relativeTo, linked);
+}
+
+function resolvePackageAbsolutePath(pkgName) {
   const appPackage = path.join(appDir, "node_modules", ...pkgName.split("/"));
   const rootNodeModulesPackage = path.join(
     repoRoot,
@@ -330,7 +343,7 @@ function resolvePackagePath(pkgName, relativeTo) {
   }
   const linked = candidates.find((candidate) => fs.existsSync(candidate));
   if (!linked) return null;
-  return path.relative(relativeTo, fs.realpathSync(linked));
+  return fs.realpathSync(linked);
 }
 
 function resolveNativePluginPackagePath(pkgName, relativeTo) {
@@ -1550,8 +1563,7 @@ const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set([
   "CapacitorStatusBar",
 ]);
 
-const IOS_SIMULATOR_STRIPPED_SPM_PLUGINS = new Set(["LlamaCppCapacitor"]);
-const IOS_SIMULATOR_STRIPPED_PACKAGE_CLASSES = new Set(["LlamaCppPlugin"]);
+const IOS_COCOAPODS_OWNED_SPM_PLUGINS = new Set(["LlamaCppCapacitor"]);
 
 const IOS_BONJOUR_SERVICES = [
   "_eliza-gw._tcp",
@@ -1652,11 +1664,8 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   overlayIos();
   stripSpmIncompatiblePlugins();
   if (isIosSimulatorBuildTarget(buildTarget)) {
-    stripSpmPlugins(IOS_SIMULATOR_STRIPPED_SPM_PLUGINS, {
-      reason: "simulator build",
-    });
-    stripCapacitorPackageClasses(IOS_SIMULATOR_STRIPPED_PACKAGE_CLASSES, {
-      reason: "simulator build",
+    stripSpmPlugins(IOS_COCOAPODS_OWNED_SPM_PLUGINS, {
+      reason: "CocoaPods-owned",
     });
   }
   return syncedFiles;
@@ -1684,6 +1693,7 @@ function generatePodfile() {
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
+    ["LlamaCppCapacitor", "llama-cpp-capacitor"],
   ];
 
   const lines = [
@@ -1782,41 +1792,6 @@ function stripSpmIncompatiblePlugins() {
   stripSpmPlugins(IOS_INCOMPATIBLE_SPM_PLUGINS, {
     reason: "incompatible",
   });
-}
-
-function stripCapacitorPackageClasses(
-  classNames,
-  { reason = "native build" } = {},
-) {
-  const configPath = path.join(
-    appDir,
-    "ios",
-    "App",
-    "App",
-    "capacitor.config.json",
-  );
-  if (!fs.existsSync(configPath)) return;
-
-  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const packageClassList = config.packageClassList;
-  if (!Array.isArray(packageClassList)) return;
-
-  const filtered = packageClassList.filter(
-    (value) => typeof value !== "string" || !classNames.has(value),
-  );
-  if (filtered.length === packageClassList.length) return;
-
-  config.packageClassList = filtered;
-  fs.writeFileSync(
-    configPath,
-    `${JSON.stringify(config, null, "\t")}\n`,
-    "utf8",
-  );
-  console.log(
-    `[mobile-build] Stripped ${reason} Capacitor package classes: ${Array.from(
-      classNames,
-    ).join(", ")}`,
-  );
 }
 
 function patchAndroidGradleWrapperForReleaseCompat() {
@@ -2117,7 +2092,14 @@ async function loadImageToolForBrandAssets(platform) {
   }
 }
 
-async function writeCoverPng(tool, source, output, width, height, options = {}) {
+async function writeCoverPng(
+  tool,
+  source,
+  output,
+  width,
+  height,
+  options = {},
+) {
   if (tool.kind === "sharp") {
     let image = tool.sharp(source).resize(width, height, {
       fit: "cover",
@@ -2312,6 +2294,174 @@ async function generateAndroidBrandAssets() {
 }
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
+
+function findFrameworkBinary(frameworkDir) {
+  return firstExisting([
+    path.join(frameworkDir, path.basename(frameworkDir, ".framework")),
+    path.join(
+      frameworkDir,
+      "Versions",
+      "A",
+      path.basename(frameworkDir, ".framework"),
+    ),
+  ]);
+}
+
+function readMachOPlatform(binaryPath) {
+  const result = spawnSync("otool", ["-l", binaryPath], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return null;
+  const match = result.stdout.match(
+    /cmd LC_BUILD_VERSION[\s\S]*?platform\s+(\d+)/,
+  );
+  return match ? Number(match[1]) : null;
+}
+
+function readMachOArchs(binaryPath) {
+  const result = spawnSync("lipo", ["-archs", binaryPath], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return [];
+  return result.stdout.trim().split(/\s+/).filter(Boolean);
+}
+
+function frameworkMatches({ frameworkDir, platform, arch }) {
+  const binaryPath = findFrameworkBinary(frameworkDir);
+  if (!binaryPath || !fs.existsSync(binaryPath)) return false;
+  return (
+    readMachOPlatform(binaryPath) === platform &&
+    readMachOArchs(binaryPath).includes(arch)
+  );
+}
+
+function hasSimulatorSlice(xcframeworkDir) {
+  if (!fs.existsSync(xcframeworkDir)) return false;
+  const pending = [xcframeworkDir];
+  while (pending.length) {
+    const current = pending.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(entryPath);
+        continue;
+      }
+      if (
+        entry.name === "llama-cpp" &&
+        readMachOPlatform(entryPath) === 7 &&
+        readMachOArchs(entryPath).includes("arm64")
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function patchLlamaCppCapacitorPodspecForXcframework(packageDir) {
+  const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
+  if (!fs.existsSync(podspecPath)) return;
+  const current = fs.readFileSync(podspecPath, "utf8");
+  const patched = current.replace(
+    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
+    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+  );
+  if (patched !== current) {
+    fs.writeFileSync(podspecPath, patched, "utf8");
+    console.log(
+      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework.",
+    );
+  }
+}
+
+async function buildIosLlamaCppSimulatorFramework(packageDir) {
+  if (!resolveExecutable("cmake")) {
+    throw new Error(
+      "cmake is required to build llama.cpp for the iOS simulator.",
+    );
+  }
+
+  const iosSourceDir = path.join(packageDir, "ios");
+  const buildDir = path.join(iosSourceDir, "build-simulator-arm64");
+  fs.rmSync(buildDir, { recursive: true, force: true });
+  fs.mkdirSync(buildDir, { recursive: true });
+
+  await run(
+    "cmake",
+    [
+      "..",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_OSX_SYSROOT=iphonesimulator",
+      "-DCMAKE_OSX_ARCHITECTURES=arm64",
+      "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
+      "-DCMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE=NO",
+    ],
+    { cwd: buildDir },
+  );
+  await run(
+    "cmake",
+    [
+      "--build",
+      ".",
+      "--config",
+      "Release",
+      "--",
+      `-j${Math.max(os.cpus().length, 1)}`,
+    ],
+    { cwd: buildDir },
+  );
+
+  const frameworkDir = firstExisting([
+    path.join(buildDir, "llama-cpp.framework"),
+    path.join(buildDir, "Release", "llama-cpp.framework"),
+  ]);
+  if (
+    !frameworkDir ||
+    !frameworkMatches({ frameworkDir, platform: 7, arch: "arm64" })
+  ) {
+    throw new Error(
+      "Built llama.cpp framework is not an arm64 iOS simulator framework.",
+    );
+  }
+  return frameworkDir;
+}
+
+async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
+  if (!isIosSimulatorBuildTarget(buildTarget)) return;
+
+  const packageDir = resolvePackageAbsolutePath("llama-cpp-capacitor");
+  if (!packageDir) return;
+
+  const frameworksDir = path.join(packageDir, "ios", "Frameworks");
+  const xcframeworkDir = path.join(frameworksDir, "llama-cpp.xcframework");
+  patchLlamaCppCapacitorPodspecForXcframework(packageDir);
+
+  if (hasSimulatorSlice(xcframeworkDir)) {
+    return;
+  }
+
+  const simulatorFramework =
+    await buildIosLlamaCppSimulatorFramework(packageDir);
+  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
+  const createArgs = ["-create-xcframework"];
+  if (
+    frameworkMatches({
+      frameworkDir: deviceFramework,
+      platform: 2,
+      arch: "arm64",
+    })
+  ) {
+    createArgs.push("-framework", deviceFramework);
+  }
+  createArgs.push("-framework", simulatorFramework);
+  fs.rmSync(xcframeworkDir, { recursive: true, force: true });
+  await run("xcodebuild", [...createArgs, "-output", xcframeworkDir], {
+    cwd: packageDir,
+  });
+  console.log(
+    "[mobile-build] Prepared llama.cpp xcframework for iOS simulator.",
+  );
+}
 
 export function shouldRunIosPodInstall(syncedFiles = []) {
   return syncedFiles.includes(path.join("App", "Podfile"));
@@ -2541,6 +2691,7 @@ async function buildIos() {
   );
   const syncedFiles = prepareIosOverlay({ buildTarget });
   await generateIosBrandAssets();
+  await ensureIosLlamaCppVendoredFramework({ buildTarget });
 
   // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
   if (
@@ -2567,6 +2718,9 @@ async function buildIos() {
       "-sdk",
       buildTarget.sdk,
       "CODE_SIGNING_ALLOWED=NO",
+      ...(isIosSimulatorBuildTarget(buildTarget)
+        ? ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "EXCLUDED_ARCHS=x86_64"]
+        : []),
       "build",
     ],
     { cwd: iosDir },
