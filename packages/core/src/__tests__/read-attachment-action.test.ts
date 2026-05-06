@@ -208,6 +208,32 @@ describe("READ_ATTACHMENT", () => {
 		expect(runtime.useModel).not.toHaveBeenCalled();
 	});
 
+	it("sizes answer token budget from attachment content length", async () => {
+		const longContent = "alpha beta gamma delta ".repeat(600);
+		const { result, runtime } = await runReadAttachment({
+			responder: "summary",
+			request: "summarize this document",
+			attachments: [
+				attachment({
+					text: longContent,
+					source: "Plaintext",
+				}),
+			],
+		});
+
+		expect(result?.text).toBe("summary");
+		const expectedTokens = Math.min(
+			Math.max(Math.ceil(longContent.length / 4), 1024),
+			4096,
+		);
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.objectContaining({
+				maxTokens: expectedTokens,
+			}),
+		);
+	});
+
 	it("answers image requests from generated image descriptions", async () => {
 		const imageAttachment = attachment({
 			id: "image-1",
