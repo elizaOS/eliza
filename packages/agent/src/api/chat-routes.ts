@@ -408,10 +408,34 @@ async function resolveExactKnowledgeValueForChat(
 // Chat failure / no-response helpers
 // ---------------------------------------------------------------------------
 
+// Reserved for path #4 — actual generation throw caught by getChatFailureReply.
+// Do NOT use as the generic empty-response fallback; that mislabels every
+// IGNORE / empty-action / placeholder-text path as a provider failure.
 const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
 const INSUFFICIENT_CREDITS_CHAT_REPLY =
   "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
-const GENERIC_NO_RESPONSE_CHAT_REPLY = PROVIDER_ISSUE_CHAT_REPLY;
+// Used by paths #1-#3: planner picked IGNORE/NONE/empty REPLY, action ran but
+// emitted no text callback, or normalized text became a placeholder. None of
+// these are provider failures, so the message must not blame the provider.
+const NO_RESPONSE_FALLBACK_REPLY =
+  "I don't have a reply for that — try rephrasing?";
+// Routed-model errors raised by the model router when no provider plugin is
+// loaded for a requested model class (e.g. TEXT_SMALL). Identifies the OOB
+// "no provider configured" case so chat routes can return a structured 503
+// instead of a generic 500 — UI clients gate on `error.type === "no_provider"`
+// to render a "Connect a provider" CTA instead of an opaque error toast.
+const NO_PROVIDER_ERROR_FRAGMENTS = [
+  "No provider registered for",
+  "No model registered for",
+];
+function isNoProviderError(err: unknown): boolean {
+  const msg =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return NO_PROVIDER_ERROR_FRAGMENTS.some((frag) => msg.includes(frag));
+}
+const NO_PROVIDER_CHAT_MESSAGE =
+  "Connect an LLM provider to start chatting. Open Settings → Providers, " +
+  "or pick Eliza Cloud from the runtime picker.";
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 
@@ -535,7 +559,7 @@ export function resolveNoResponseFallback(
   if (findRecentInsufficientCreditsLog(logBuffer)) {
     return pickInsufficientCreditsChatReply();
   }
-  return GENERIC_NO_RESPONSE_CHAT_REPLY;
+  return NO_RESPONSE_FALLBACK_REPLY;
 }
 
 function getProviderIssueChatReply(): string {
@@ -600,7 +624,37 @@ export function getChatFailureReply(
   ) {
     return pickInsufficientCreditsChatReply();
   }
+  if (isNoProviderError(err)) {
+    return NO_PROVIDER_CHAT_MESSAGE;
+  }
   return getProviderIssueChatReply();
+}
+
+/**
+ * Discriminator the conversation route includes in its 200 response so the
+ * renderer can distinguish "provider configured but throwing" from "no
+ * provider configured at all" — the latter is a UX gate ("Connect a
+ * provider"), not a chat reply.
+ */
+export type ChatFailureKind =
+  | "insufficient_credits"
+  | "no_provider"
+  | "provider_issue";
+
+export function classifyChatFailure(
+  err: unknown,
+  logBuffer: LogEntry[],
+): ChatFailureKind {
+  if (
+    isInsufficientCreditsError(err) ||
+    findRecentInsufficientCreditsLog(logBuffer)
+  ) {
+    return "insufficient_credits";
+  }
+  if (isNoProviderError(err)) {
+    return "no_provider";
+  }
+  return "provider_issue";
 }
 
 export function normalizeChatResponseText(
@@ -608,8 +662,13 @@ export function normalizeChatResponseText(
   logBuffer: LogEntry[],
   runtime?: AgentRuntime | null,
 ): string {
+  // Both fallback strings can hit this path; either should be re-routed to
+  // the insufficient-credits reply when a recent credits log explains why
+  // generation produced nothing.
+  const trimmed = text.trim();
   if (
-    text.trim() === PROVIDER_ISSUE_CHAT_REPLY &&
+    (trimmed === PROVIDER_ISSUE_CHAT_REPLY ||
+      trimmed === NO_RESPONSE_FALLBACK_REPLY) &&
     findRecentInsufficientCreditsLog(logBuffer)
   ) {
     return pickInsufficientCreditsChatReply();
@@ -2057,15 +2116,28 @@ export async function handleChatRoutes(
         writeSseData(res, "[DONE]");
       } catch (err) {
         if (!aborted) {
-          writeSseData(
-            res,
-            JSON.stringify({
-              error: {
-                message: getErrorMessage(err),
-                type: "server_error",
-              },
-            }),
-          );
+          if (isNoProviderError(err)) {
+            writeSseData(
+              res,
+              JSON.stringify({
+                error: {
+                  message: NO_PROVIDER_CHAT_MESSAGE,
+                  type: "no_provider",
+                  code: "NO_PROVIDER_REGISTERED",
+                },
+              }),
+            );
+          } else {
+            writeSseData(
+              res,
+              JSON.stringify({
+                error: {
+                  message: getErrorMessage(err),
+                  type: "server_error",
+                },
+              }),
+            );
+          }
           writeSseData(res, "[DONE]");
         }
       } finally {
@@ -2143,11 +2215,25 @@ export async function handleChatRoutes(
         ],
       });
     } catch (err) {
-      json(
-        res,
-        { error: { message: getErrorMessage(err), type: "server_error" } },
-        500,
-      );
+      if (isNoProviderError(err)) {
+        json(
+          res,
+          {
+            error: {
+              message: NO_PROVIDER_CHAT_MESSAGE,
+              type: "no_provider",
+              code: "NO_PROVIDER_REGISTERED",
+            },
+          },
+          503,
+        );
+      } else {
+        json(
+          res,
+          { error: { message: getErrorMessage(err), type: "server_error" } },
+          500,
+        );
+      }
     }
     return true;
   }
@@ -2333,14 +2419,29 @@ export async function handleChatRoutes(
         writeSseJson(res, { type: "message_stop" }, "message_stop");
       } catch (err) {
         if (!aborted) {
-          writeSseJson(
-            res,
-            {
-              type: "error",
-              error: { type: "server_error", message: getErrorMessage(err) },
-            },
-            "error",
-          );
+          if (isNoProviderError(err)) {
+            writeSseJson(
+              res,
+              {
+                type: "error",
+                error: {
+                  type: "no_provider",
+                  code: "NO_PROVIDER_REGISTERED",
+                  message: NO_PROVIDER_CHAT_MESSAGE,
+                },
+              },
+              "error",
+            );
+          } else {
+            writeSseJson(
+              res,
+              {
+                type: "error",
+                error: { type: "server_error", message: getErrorMessage(err) },
+              },
+              "error",
+            );
+          }
         }
       } finally {
         res.end();
@@ -2414,11 +2515,25 @@ export async function handleChatRoutes(
         usage: { input_tokens: 0, output_tokens: 0 },
       });
     } catch (err) {
-      json(
-        res,
-        { error: { type: "server_error", message: getErrorMessage(err) } },
-        500,
-      );
+      if (isNoProviderError(err)) {
+        json(
+          res,
+          {
+            error: {
+              type: "no_provider",
+              code: "NO_PROVIDER_REGISTERED",
+              message: NO_PROVIDER_CHAT_MESSAGE,
+            },
+          },
+          503,
+        );
+      } else {
+        json(
+          res,
+          { error: { type: "server_error", message: getErrorMessage(err) } },
+          500,
+        );
+      }
     }
     return true;
   }

@@ -872,7 +872,8 @@ export function MessageContent({
   message,
   analysisMode = false,
 }: MessageContentProps) {
-  const { sendActionMessage } = useApp();
+  const app = useApp();
+  const { sendActionMessage } = app;
 
   // Parse segments — memoize to avoid re-parsing on every render
   const segments = useMemo(() => {
@@ -890,6 +891,32 @@ export function MessageContent({
     },
     [sendActionMessage],
   );
+
+  const handleOpenSettings = useCallback(() => {
+    app.setTab?.("settings");
+  }, [app.setTab]);
+
+  // The server flags failed assistant turns with `failureKind`. For
+  // `no_provider` specifically the user can't make progress without
+  // wiring up a provider, so render a structured gate (banner + CTA)
+  // instead of the fallback text — clicking jumps to Settings where
+  // ProviderSwitcher lives. Other failure kinds (insufficient_credits,
+  // provider_issue) still render as normal text bubbles; the user has
+  // separate, clearer in-product affordances for those (Cloud billing
+  // banner, retry).
+  if (message.failureKind === "no_provider") {
+    return (
+      <div className="border border-warn/30 bg-warn/5 rounded-md p-3 text-sm">
+        <div className="font-medium mb-1">Connect a provider to chat</div>
+        <div className="text-muted whitespace-pre-wrap mb-2">
+          {message.text}
+        </div>
+        <Button type="button" size="sm" onClick={handleOpenSettings}>
+          Open Settings
+        </Button>
+      </div>
+    );
+  }
 
   // Fast path: single plain-text segment (most messages)
   if (segments.length === 1 && segments[0].kind === "text") {

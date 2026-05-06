@@ -59,7 +59,10 @@ const DEP_SKIP = new Set(["typescript", "@types/node", "lucide-react"]);
 const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core"]);
 const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>();
 const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
+  ".git",
+  ".gradle",
   ".github",
+  ".turbo",
   "benchmark",
   "benchmarks",
   "coverage",
@@ -79,6 +82,14 @@ const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
   ".tsbuildinfo",
   ".txt",
 ]);
+const TAR_SAFE_RELATIVE_PATH_MAX = Number.parseInt(
+  process.env.ELIZA_RUNTIME_TAR_SAFE_RELATIVE_PATH_MAX ?? "213",
+  10,
+);
+const TAR_SAFE_BASENAME_MAX = Number.parseInt(
+  process.env.ELIZA_RUNTIME_TAR_SAFE_BASENAME_MAX ?? "100",
+  10,
+);
 const PLATFORM_ALIASES = new Map<string, string>([
   ["android", "android"],
   ["aix", "aix"],
@@ -389,6 +400,7 @@ function copyPackageDir(
   name: string,
   sourceDir: string,
   targetNodeModules: string,
+  rootDestDir: string,
 ): boolean {
   const dest = packagePath(name, targetNodeModules);
   fs.rmSync(dest, { recursive: true, force: true });
@@ -415,12 +427,7 @@ function copyPackageDir(
           .relative(sourceDir, entry)
           .split(path.sep)
           .join("/");
-        if (
-          relativeEntry === "platforms/electrobun/build" ||
-          relativeEntry.startsWith("platforms/electrobun/build/") ||
-          relativeEntry === "platforms/electrobun/artifacts" ||
-          relativeEntry.startsWith("platforms/electrobun/artifacts/")
-        ) {
+        if (shouldSkipPackagedAppCoreEntry(relativeEntry)) {
           return false;
         }
       }
@@ -438,8 +445,33 @@ function copyPackageDir(
     fs.renameSync(copyDest, dest);
   }
   pruneCopiedPackageDir(dest);
-  patchCopiedPackageRuntimeSurface(name, dest);
+  patchCopiedPackageRuntimeSurface(name, dest, rootDestDir);
   return true;
+}
+
+function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
+  return (
+    relativeEntry === "packaging" ||
+    relativeEntry.startsWith("packaging/") ||
+    relativeEntry === "dist/packaging" ||
+    relativeEntry.startsWith("dist/packaging/") ||
+    relativeEntry === "platforms/android" ||
+    relativeEntry.startsWith("platforms/android/") ||
+    relativeEntry === "platforms/ios" ||
+    relativeEntry.startsWith("platforms/ios/") ||
+    relativeEntry === "dist/platforms/android" ||
+    relativeEntry.startsWith("dist/platforms/android/") ||
+    relativeEntry === "dist/platforms/ios" ||
+    relativeEntry.startsWith("dist/platforms/ios/") ||
+    relativeEntry === "platforms/electrobun/build" ||
+    relativeEntry.startsWith("platforms/electrobun/build/") ||
+    relativeEntry === "platforms/electrobun/artifacts" ||
+    relativeEntry.startsWith("platforms/electrobun/artifacts/") ||
+    relativeEntry === "dist/platforms/electrobun/build" ||
+    relativeEntry.startsWith("dist/platforms/electrobun/build/") ||
+    relativeEntry === "dist/platforms/electrobun/artifacts" ||
+    relativeEntry.startsWith("dist/platforms/electrobun/artifacts/")
+  );
 }
 
 type PackageJsonManifest = {
