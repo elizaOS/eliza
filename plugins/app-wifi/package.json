@@ -25,6 +25,11 @@
       "types": "./src/register.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
+    },
+    "./providers/networks": {
+      "types": "./src/providers/networks.ts",
+      "import": "./dist/providers/networks.js",
+      "default": "./dist/providers/networks.js"
     }
   },
   "scripts": {
