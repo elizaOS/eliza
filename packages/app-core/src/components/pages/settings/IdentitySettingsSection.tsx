@@ -2,8 +2,14 @@ import {
   Button,
   Input,
   SaveFooter,
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
   Textarea,
-  ThemedSelect,
   useTimeout,
 } from "@elizaos/ui";
 import { Volume2, VolumeX } from "lucide-react";
@@ -406,19 +412,42 @@ export function IdentitySettingsSection() {
             {t("common.voice", { defaultValue: "Voice" })}
           </SettingsFieldLabel>
           <div className="flex items-center gap-2">
-            <ThemedSelect
-              value={visibleVoicePresetId}
-              groups={voiceGroups}
-              onChange={handleVoiceSelect}
-              placeholder={t("charactereditor.SelectAVoice", {
-                defaultValue: "Select a voice",
-              })}
-              ariaLabelledBy="settings-identity-voice-label"
-              menuPlacement="bottom"
-              className="min-w-0 flex-1"
-              triggerClassName="h-11 rounded-xl border-border/60 bg-card/80 px-3 text-sm shadow-none"
-              menuClassName="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md"
-            />
+            <Select
+              value={visibleVoicePresetId ?? undefined}
+              onValueChange={(value) => handleVoiceSelect(value as string)}
+            >
+              <SelectTrigger
+                aria-labelledby="settings-identity-voice-label"
+                className="min-w-0 flex-1 h-11 rounded-xl border-border/60 bg-card/80 px-3 text-sm shadow-none"
+              >
+                <SelectValue
+                  placeholder={t("charactereditor.SelectAVoice", {
+                    defaultValue: "Select a voice",
+                  })}
+                />
+              </SelectTrigger>
+              <SelectContent className="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md">
+                {voiceGroups.map((group) => (
+                  <SelectGroup key={group.label}>
+                    <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">
+                      {group.label}
+                    </SelectLabel>
+                    {group.items.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="font-semibold">{item.text}</span>
+                          {item.hint ? (
+                            <span className="text-muted text-xs">
+                              {item.hint}
+                            </span>
+                          ) : null}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               type="button"
               variant={voiceTesting ? "destructive" : "ghost"}
