@@ -91,8 +91,7 @@ export const sendMessage: Action = {
         prompt,
       });
 
-      const parsedResponse =
-        parseToonKeyValue<Record<string, unknown>>(response);
+      const parsedResponse = parseToonKeyValue<Record<string, unknown>>(response);
       if (parsedResponse?.text) {
         messageInfo = {
           text: String(parsedResponse.text),

@@ -18,8 +18,8 @@ import {
 import { RefreshingAuthProvider, StaticAuthProvider } from "@twurple/auth";
 import { ChatClient, type ChatMessage } from "@twurple/chat";
 import {
-  type ITwitchService,
   formatChannelForDisplay,
+  type ITwitchService,
   MAX_TWITCH_MESSAGE_LENGTH,
   normalizeChannel,
   splitMessageForTwitch,
@@ -87,7 +87,10 @@ export class TwitchService extends Service implements ITwitchService {
     return service;
   }
 
-  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: TwitchService): void {
+  static registerSendHandlers(
+    runtime: IAgentRuntime,
+    serviceInstance: TwitchService,
+  ): void {
     if (!serviceInstance) {
       return;
     }
@@ -106,15 +109,18 @@ export class TwitchService extends Service implements ITwitchService {
           service: TWITCH_SERVICE_NAME,
           maxMessageLength: MAX_TWITCH_MESSAGE_LENGTH,
         },
-        resolveTargets: serviceInstance.resolveConnectorTargets.bind(serviceInstance),
-        listRecentTargets: serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
+        resolveTargets:
+          serviceInstance.resolveConnectorTargets.bind(serviceInstance),
+        listRecentTargets:
+          serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
         listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
-        getChatContext: serviceInstance.getConnectorChatContext.bind(serviceInstance),
+        getChatContext:
+          serviceInstance.getConnectorChatContext.bind(serviceInstance),
         sendHandler,
       });
       runtime.logger.info(
         { src: "plugin:twitch", agentId: runtime.agentId },
-        "Registered Twitch chat connector"
+        "Registered Twitch chat connector",
       );
       return;
     }
@@ -465,7 +471,7 @@ export class TwitchService extends Service implements ITwitchService {
   async handleSendMessage(
     runtime: IAgentRuntime,
     target: TargetInfo,
-    content: Content
+    content: Content,
   ): Promise<void> {
     const text = typeof content.text === "string" ? content.text.trim() : "";
     if (!text) {
@@ -481,7 +487,9 @@ export class TwitchService extends Service implements ITwitchService {
       const metadata = room?.metadata as Record<string, unknown> | undefined;
       replyTo =
         replyTo ??
-        (typeof metadata?.twitchReplyTo === "string" ? metadata.twitchReplyTo : undefined);
+        (typeof metadata?.twitchReplyTo === "string"
+          ? metadata.twitchReplyTo
+          : undefined);
     }
 
     await this.sendMessage(text, {
@@ -492,7 +500,7 @@ export class TwitchService extends Service implements ITwitchService {
 
   async resolveConnectorTargets(
     query: string,
-    _context: MessageConnectorQueryContext
+    _context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
     const normalizedQuery = normalizeTwitchConnectorQuery(query);
     return this.getConnectorChannels()
@@ -505,7 +513,7 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   async listConnectorRooms(
-    _context: MessageConnectorQueryContext
+    _context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
     return this.getConnectorChannels()
       .map((channel) => this.buildChannelTarget(channel, 0.5))
@@ -513,7 +521,7 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   async listRecentConnectorTargets(
-    context: MessageConnectorQueryContext
+    context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
     const targets: MessageConnectorTarget[] = [];
     const room =
@@ -541,7 +549,7 @@ export class TwitchService extends Service implements ITwitchService {
 
   async getConnectorChatContext(
     target: TargetInfo,
-    context: MessageConnectorQueryContext
+    context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorChatContext | null> {
     let channel = target.channelId;
     if (!channel && target.roomId) {
@@ -580,7 +588,10 @@ export class TwitchService extends Service implements ITwitchService {
     return Array.from(channels);
   }
 
-  private buildChannelTarget(channel: string, score: number): MessageConnectorTarget {
+  private buildChannelTarget(
+    channel: string,
+    score: number,
+  ): MessageConnectorTarget {
     const normalized = normalizeChannel(channel);
     return {
       target: {
