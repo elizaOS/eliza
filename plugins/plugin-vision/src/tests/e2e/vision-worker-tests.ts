@@ -170,7 +170,9 @@ export class VisionWorkerE2ETestSuite {
         console.log(`Found ${displayCount} display(s)`);
 
         if (displayCount <= 1) {
-          console.log("⚠️  Only one display found, skipping multi-display test");
+          console.log(
+            "⚠️  Only one display found, skipping multi-display test",
+          );
           return;
         }
 
