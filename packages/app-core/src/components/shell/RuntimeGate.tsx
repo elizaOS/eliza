@@ -67,6 +67,8 @@ const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
 const CLOUD_AGENT_PROBE_TIMEOUT_MS = 4_000;
 
+const PROVISION_JOB_DEADLINE_MS = 120_000;
+
 const LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
 
 /**
@@ -790,7 +792,7 @@ export function RuntimeGate() {
       }
 
       let consecutivePollFailures = 0;
-      const provisionDeadline = Date.now() + AGENT_URL_WAIT_DEADLINE_MS;
+      const provisionDeadline = Date.now() + PROVISION_JOB_DEADLINE_MS;
       const stopPollingWithError = (message: string) => {
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
