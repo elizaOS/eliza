@@ -67,17 +67,19 @@ const FORBIDDEN_STOCK_PACKAGES = [
 
 /**
  * Build the per-variant property map. The vendor-specific
- * `<vendorDir>.boot_phase` property is set by the variant's
+ * `<propertyPrefix>.boot_phase` property is set by the variant's
  * `init.<vendorDir>.rc`; the framework's `ro.setupwizard.mode` is
- * universal.
+ * universal. propertyPrefix defaults to vendorDir for forks that
+ * follow the common convention, but Milady-style forks (vendor dir
+ * "milady", property namespace "miladyos") declare it separately.
  */
-function requiredBootProperties(vendorDir) {
+function requiredBootProperties(propertyPrefix) {
   return {
     "ro.setupwizard.mode": "DISABLED",
-    // <vendorDir>.boot_phase is intentionally non-ro so
+    // <propertyPrefix>.boot_phase is intentionally non-ro so
     // init.<vendorDir>.rc can re-set it at each phase. ro.* is
     // immutable after first set.
-    [`${vendorDir}.boot_phase`]: "completed",
+    [`${propertyPrefix}.boot_phase`]: "completed",
   };
 }
 
@@ -274,7 +276,7 @@ function validateProductProperty(adb, serial, variant) {
 function validateBootProperties(adb, serial, variant) {
   const properties = {};
   for (const [name, expected] of Object.entries(
-    requiredBootProperties(variant.vendorDir),
+    requiredBootProperties(variant.propertyPrefix ?? variant.vendorDir),
   )) {
     const actual = shell(adb, serial, `getprop ${name}`).trim();
     if (actual !== expected) {

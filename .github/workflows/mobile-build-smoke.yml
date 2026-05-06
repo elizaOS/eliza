@@ -67,7 +67,12 @@ jobs:
           echo "Built app at: $APP_PATH"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")
           echo "Bundle ID: $BUNDLE_ID"
-          # Allow the current Capacitor app ID and legacy/beta app IDs.
+          # Bundle ID source of truth is packages/app/app.config.ts (read
+          # by run-mobile-build.mjs via regex). Current value is
+          # `app.eliza` since commit d042ed57b5 renamed it from the
+          # legacy `ai.elizaos.app`. The two prior ids remain accepted
+          # because release branches and downstream forks may not have
+          # rebased onto the rename yet.
           case "$BUNDLE_ID" in
             app.eliza|ai.elizaos.app|ai.elizaos.Eliza) ;;
             *)

@@ -316,21 +316,22 @@ async function directCloudRequest<T>(
       connectTimeout: 10_000,
       readTimeout: 10_000,
     });
-    if (res.status < 200 || res.status >= 300) {
+    const parsed = parseDirectCloudJson(res.data) as T;
+    if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
       throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
         status: res.status,
         data: res.data,
         url,
       });
     }
-    return parseDirectCloudJson(res.data) as T;
+    return parsed;
   }
 
   const res = await fetch(url, { ...init, method, headers });
   const data = await res.json().catch(async () => ({
     error: await res.text().catch(() => res.statusText),
   }));
-  if (!res.ok) {
+  if (!isAcceptableDirectCloudResponse(res.status, data)) {
     throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
       status: res.status,
       data,
@@ -338,6 +339,24 @@ async function directCloudRequest<T>(
     });
   }
   return data as T;
+}
+
+/**
+ * Eliza Cloud's REST envelopes return `{ success: true, ... }` even when
+ * the HTTP status is non-2xx — most commonly 202 (job enqueued) and 409
+ * (provisioning already in progress, jobId still useful for polling). The
+ * legacy strict-2xx check threw on those bodies and stranded callers like
+ * `provisionAndConnect` mid-await with no jobId, surfacing as an "infinite
+ * Starting provisioning…" UI hang. Accept any response whose body claims
+ * `success: true` regardless of status, and any 2xx response otherwise.
+ */
+function isAcceptableDirectCloudResponse(
+  status: number,
+  body: unknown,
+): boolean {
+  if (status >= 200 && status < 300) return true;
+  if (typeof body !== "object" || body === null) return false;
+  return (body as { success?: unknown }).success === true;
 }
 
 function isDirectCloudAuthError(err: unknown): boolean {
@@ -1382,6 +1401,30 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
   this: ElizaClient,
   agentId,
 ) {
+  // Direct-cloud fallback for mobile/web clients that have no local
+  // Milady API server proxying `/api/cloud/compat/agents/...`. The
+  // direct cloud surface returns a richer agent record at
+  // `/api/v1/eliza/agents/<id>`; we project it down to the
+  // `CloudCompatAgentStatus` shape callers expect.
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: DirectCloudAgent;
+  }>(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`);
+  if (direct) {
+    const a = toCloudCompatAgent(direct.data ?? { id: agentId });
+    return {
+      success: direct.success,
+      data: {
+        status: a.status,
+        lastHeartbeat: a.last_heartbeat_at,
+        bridgeUrl: a.bridge_url,
+        webUiUrl: a.webUiUrl,
+        currentNode: null,
+        suspendedReason: null,
+        databaseStatus: a.database_status,
+      },
+    };
+  }
   return this.fetch(
     `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/status`,
   );
