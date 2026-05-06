@@ -754,9 +754,9 @@ def _build_scenario_fact_extractor(
 
 
 SUMMARIZATION_LENGTH_BUCKETS = (
-    ("short",  8, 12, 0.40),
+    ("short", 8, 12, 0.40),
     ("medium", 12, 20, 0.40),
-    ("long",   20, 30, 0.20),
+    ("long", 20, 30, 0.20),
 )
 
 
