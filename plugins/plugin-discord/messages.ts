@@ -1073,7 +1073,7 @@ export class MessageManager {
 				typingController.stop();
 				if (activeTaskAgentWork) {
 					statusReactions?.setDone();
-					await finalizePendingDraft();
+					await abortPendingDraft();
 					this.runtime.logger.warn(
 						{
 							src: "plugin:discord",

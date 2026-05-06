@@ -127,6 +127,42 @@ describe("hasActiveTaskAgentWorkForMessage", () => {
 		);
 	});
 
+	it("matches queued active task-agent work by originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "active",
+						originMetadata: { messageId: "message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			true,
+		);
+	});
+
+	it("ignores active task-agent work for a different originating message id", () => {
+		const runtime = runtimeWithTasks(
+			new Map([
+				[
+					"session-1",
+					{
+						status: "tool_running",
+						originMetadata: { messageId: "other-message-memory-id" },
+					},
+				],
+			]),
+		);
+
+		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
+			false,
+		);
+	});
+
 	it("ignores terminal task-agent work", () => {
 		const runtime = runtimeWithTasks(
 			new Map([
