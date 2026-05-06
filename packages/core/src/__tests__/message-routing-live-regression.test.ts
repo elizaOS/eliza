@@ -5,6 +5,7 @@ import {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
+	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
 	suggestOwnedActionFromMetadata,
 } from "../services/message";
@@ -52,6 +53,11 @@ describe("live routing regressions", () => {
 				"which folder is live read-only? answer paths only. do not run commands.",
 			),
 		).toBeNull();
+		expect(
+			inferLocalShellCommandFromMessageText(
+				"check git status in /home/alice/project and tell me the branch",
+			),
+		).toContain("git -C '/home/alice/project' status --short --branch");
 	});
 
 	it("recognizes current-info requests as web search without spawning work", () => {
@@ -82,6 +88,31 @@ describe("live routing regressions", () => {
 		).toBe("current BTC price in USD");
 	});
 
+	it("does not route generic current status questions to web search", () => {
+		const runtime = {
+			actions: [
+				{
+					name: "SEARCH",
+					similes: ["WEB_SEARCH", "SEARCH_WEB"],
+					description: "Search the web or other registered backends",
+				},
+			],
+		} as unknown as Pick<IAgentRuntime, "actions">;
+
+		expect(
+			suggestOwnedActionFromMetadata(runtime, {
+				content: {
+					text: "what is the current status of the build?",
+				},
+			}),
+		).toBeNull();
+		expect(
+			inferWebSearchQueryFromMessageText(
+				"what is the current status of the build?",
+			),
+		).toBeNull();
+	});
+
 	it("does not rescue self-policy explanation questions into task actions", () => {
 		expect(
 			looksLikeSelfPolicyExplanationRequest({
@@ -90,6 +121,16 @@ describe("live routing regressions", () => {
 				},
 			}),
 		).toBe(true);
+	});
+
+	it("does not skip document rescue for ordinary second-person questions", () => {
+		expect(
+			shouldSkipDocumentProviderRescue({
+				content: {
+					text: "can you explain the uploaded document?",
+				},
+			} as unknown as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
+		).toBe(false);
 	});
 
 	it("stops continuation when an action result blocks the turn", () => {

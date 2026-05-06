@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import {
 	__setKnowledgeUrlFetchImplForTests,
 	ContentType,
@@ -8,7 +6,7 @@ import {
 } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageManager } from "../messages";
+import { MessageManager, resolveGenerationTimeoutMs } from "../messages";
 
 function runtime(): IAgentRuntime {
 	return {
@@ -103,14 +101,10 @@ describe("MessageManager URL enrichment", () => {
 });
 
 describe("MessageManager generation timeout config", () => {
-	it("allows env-configured timeout disablement", async () => {
-		const source = await readFile(
-			path.resolve(import.meta.dirname, "../messages.ts"),
-			"utf8",
-		);
-
-		expect(source).toContain("process.env.DISCORD_GENERATION_TIMEOUT_MS");
-		expect(source).toContain("process.env.MESSAGE_TIMEOUT_MS");
-		expect(source).toContain("generationTimeoutMs === null");
+	it("allows env-configured timeout disablement", () => {
+		expect(resolveGenerationTimeoutMs("0", "120000")).toBeNull();
+		expect(resolveGenerationTimeoutMs(undefined, "0")).toBeNull();
+		expect(resolveGenerationTimeoutMs("1000", undefined)).toBe(30_000);
+		expect(resolveGenerationTimeoutMs(undefined, "45000")).toBe(45_000);
 	});
 });

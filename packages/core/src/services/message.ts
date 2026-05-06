@@ -1907,7 +1907,7 @@ function looksLikeWebSearchRequest(text: string): boolean {
 			normalized,
 		);
 	const mentionsMarketOrNews =
-		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather|score|scores|status)\b/iu.test(
+		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
 			normalized,
 		);
 
@@ -1920,7 +1920,7 @@ function quoteShellArg(value: string): string {
 
 function extractLocalShellPath(text: string): string | null {
 	const match = text.match(
-		/(?:^|[\s`'"])(\/home\/milady\/[A-Za-z0-9._~+/-]+)/u,
+		/(?:^|[\s`'"])(\/(?:home|Users|workspace|workspaces|tmp|var\/tmp|opt|srv)\/[A-Za-z0-9._~+/@:-]+)/u,
 	);
 	if (!match?.[1]) {
 		return null;
@@ -2528,9 +2528,9 @@ export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
 	}
 
 	const asksSelfPolicy =
-		/\b(your|you|configured|routing|workflow|workflows?|folders?|repos?|repositories|source|workspace|workspaces|skills?|sdk|example app|read-only|pr work)\b/.test(
+		/\b(?:configured|routing|workflow|workflows?|folders?|repos?|repositories|source|workspace|workspaces|skills?|sdk|example app|read-only|pr work)\b/.test(
 			text,
-		);
+		) && /\b(?:you|your|agent|nubilio|codex|task agent|subagent)\b/.test(text);
 	const asksDocumentOrKnowledge =
 		/\b(uploaded|upload|attachment|attached|document|documents?|file|files?|knowledge base|kb)\b/.test(
 			text,
