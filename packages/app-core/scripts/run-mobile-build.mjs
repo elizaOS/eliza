@@ -2382,18 +2382,22 @@ function hasSimulatorSlice(xcframeworkDir) {
   return false;
 }
 
-function patchLlamaCppCapacitorPodspecForXcframework(packageDir) {
+export function patchLlamaCppCapacitorPodspecForXcframework(packageDir) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
   if (!fs.existsSync(podspecPath)) return;
   const current = fs.readFileSync(podspecPath, "utf8");
-  const patched = current.replace(
+  let patched = current.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+  );
+  patched = patched.replace(
+    /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*['"]\$\(inherited\) "\$\(PODS_TARGET_SRCROOT\)\/ios\/Frameworks"['"]\s*\n\s*\}\s*/m,
+    "\n",
   );
   if (patched !== current) {
     fs.writeFileSync(podspecPath, patched, "utf8");
     console.log(
-      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework.",
+      "[mobile-build] Patched llama-cpp-capacitor podspec for simulator xcframework.",
     );
   }
 }
