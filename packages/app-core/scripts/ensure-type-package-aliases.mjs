@@ -9,6 +9,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -100,6 +101,29 @@ function findCachedTypePackageDir(packageName) {
   return path.join(GLOBAL_TYPES_CACHE_DIR, matches[0]);
 }
 
+function repairBrokenDirectoryLink(dir) {
+  try {
+    const stat = lstatSync(dir);
+    if (!stat.isSymbolicLink()) {
+      return;
+    }
+
+    const resolvedPath = path.resolve(path.dirname(dir), readlinkSync(dir));
+    if (!existsSync(resolvedPath)) {
+      unlinkSync(dir);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+function ensureTypeRoot(targetTypesDir) {
+  repairBrokenDirectoryLink(targetTypesDir);
+  mkdirSync(targetTypesDir, { recursive: true });
+}
+
 function materializeTypePackage(targetTypesDir, packageName) {
   const sourceDir = findCachedTypePackageDir(packageName);
   if (!sourceDir) {
@@ -108,7 +132,7 @@ function materializeTypePackage(targetTypesDir, packageName) {
 
   const targetDir = path.join(targetTypesDir, packageName);
   rmSync(targetDir, { recursive: true, force: true });
-  mkdirSync(targetTypesDir, { recursive: true });
+  ensureTypeRoot(targetTypesDir);
   cpSync(sourceDir, targetDir, {
     recursive: true,
     force: true,
@@ -139,7 +163,8 @@ function ensureTypeEntryPoint(targetDir, packageName) {
   }
 }
 
-function ensureBunTypesAlias(targetTypesDir) {
+export function ensureBunTypesAlias(targetTypesDir) {
+  ensureTypeRoot(targetTypesDir);
   const bunTypesDir = path.join(targetTypesDir, "bun");
   mkdirSync(bunTypesDir, { recursive: true });
   writeFileSync(
