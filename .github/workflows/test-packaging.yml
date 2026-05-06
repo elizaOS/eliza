@@ -57,30 +57,45 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Check for PyPI package directory
+        id: pypi_check
+        run: |
+          if [[ -d packages/app-core/packaging/pypi ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::packages/app-core/packaging/pypi not present in this branch — skipping PyPI build"
+          fi
+
       - name: Setup Python
+        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
       - name: Setup Node.js
+        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "24"
           check-latest: false
 
       - name: Build
+        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
           pip install build
           python -m build
 
       - name: Check dist
+        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
           pip install twine
           twine check dist/*
 
       - name: Install and test
+        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
           pip install dist/*.whl
@@ -146,18 +161,31 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Check for PyPI package directory
+        id: pypi_check
+        run: |
+          if [[ -d packages/app-core/packaging/pypi ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::packages/app-core/packaging/pypi not present in this branch — skipping PyPI matrix build"
+          fi
+
       - name: Setup Python ${{ matrix.python }}
+        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
       - name: Setup Node.js
+        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "24"
           check-latest: false
 
       - name: Build and test
+        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
           pip install build
