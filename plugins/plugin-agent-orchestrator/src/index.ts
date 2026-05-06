@@ -10,7 +10,7 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
-import type { Plugin } from "@elizaos/core";
+import { ModelType, type IAgentRuntime, type Plugin } from "@elizaos/core";
 // Side-effect: register coding-agent HTTP routes with the runtime route registry.
 import "./register-routes.js";
 import { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
@@ -33,6 +33,12 @@ import { activeWorkspaceContextProvider } from "./providers/active-workspace-con
 // Services
 import { PTYService } from "./services/pty-service.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
+import {
+  codexCliImageDescriptionModel,
+  codexCliTextModel,
+  isCodexModelProviderEnabled,
+  readCodexModelProviderPriority,
+} from "./services/codex-model-provider.js";
 
 export const taskAgentPlugin: Plugin = {
   name: "@elizaos/plugin-agent-orchestrator",
@@ -40,7 +46,42 @@ export const taskAgentPlugin: Plugin = {
     "Orchestrate open-ended task agents (Claude Code, Codex, Gemini CLI, Aider, Pi, etc.) via PTY sessions, " +
     "manage workspaces, track current task status, and keep background work moving while the main agent stays in conversation",
 
-  // NOTE: init() is NOT reliably called by ElizaOS for workspace plugins.
+  init(_config, runtime) {
+    if (!isCodexModelProviderEnabled(runtime)) {
+      return;
+    }
+
+    const priority = readCodexModelProviderPriority(runtime);
+    const textHandler = codexCliTextModel as unknown as Parameters<
+      IAgentRuntime["registerModel"]
+    >[1];
+    for (const modelType of [
+      ModelType.TEXT_NANO,
+      ModelType.TEXT_SMALL,
+      ModelType.TEXT_MEDIUM,
+      ModelType.TEXT_LARGE,
+      ModelType.TEXT_MEGA,
+      ModelType.RESPONSE_HANDLER,
+      ModelType.ACTION_PLANNER,
+      ModelType.TEXT_COMPLETION,
+    ]) {
+      runtime.registerModel(
+        modelType,
+        textHandler,
+        taskAgentPlugin.name,
+        priority,
+      );
+    }
+    runtime.registerModel(
+      ModelType.IMAGE_DESCRIPTION,
+      codexCliImageDescriptionModel as unknown as Parameters<
+        IAgentRuntime["registerModel"]
+      >[1],
+      taskAgentPlugin.name,
+      priority,
+    );
+  },
+
   // SwarmCoordinator and auth callback wiring is done in PTYService.start()
   // which ElizaOS calls reliably via the services lifecycle.
 
