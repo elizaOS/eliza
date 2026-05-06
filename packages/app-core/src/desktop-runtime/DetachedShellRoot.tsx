@@ -6,7 +6,6 @@ import {
   type ReactNode,
   Suspense,
 } from "react";
-import { CodingAgentSettingsSection } from "../app-shell/task-coordinator-slots.js";
 import { ConversationsSidebar } from "../components/conversations/ConversationsSidebar";
 import { ChatView } from "../components/pages/ChatView";
 import { ConfigPageView } from "../components/pages/ConfigPageView";
@@ -24,6 +23,7 @@ import {
   resolveDetachedShellTarget,
   type WindowShellRoute,
 } from "../platform/window-shell";
+import { CodingAgentSettingsSection } from "../slots/task-coordinator-slots.js";
 import { useApp } from "../state/useApp";
 
 interface DetachedShellRootProps {
