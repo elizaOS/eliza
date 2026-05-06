@@ -9,6 +9,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -100,6 +101,54 @@ function findCachedTypePackageDir(packageName) {
   return path.join(GLOBAL_TYPES_CACHE_DIR, matches[0]);
 }
 
+function repairBrokenDirectoryLink(dir) {
+  try {
+    const stat = lstatSync(dir);
+    if (!stat.isSymbolicLink()) {
+      return;
+    }
+
+    const resolvedPath = path.resolve(path.dirname(dir), readlinkSync(dir));
+    if (!existsSync(resolvedPath)) {
+      unlinkSync(dir);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+function recreateTypeRoot(targetTypesDir) {
+  rmSync(targetTypesDir, { recursive: true, force: true });
+  mkdirSync(targetTypesDir, { recursive: true });
+}
+
+function ensureTypeRoot(targetTypesDir) {
+  repairBrokenDirectoryLink(targetTypesDir);
+  try {
+    mkdirSync(targetTypesDir, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    recreateTypeRoot(targetTypesDir);
+  }
+}
+
+function ensureTypeChildDir(targetTypesDir, childDir) {
+  ensureTypeRoot(targetTypesDir);
+  try {
+    mkdirSync(childDir, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    recreateTypeRoot(targetTypesDir);
+    mkdirSync(childDir, { recursive: true });
+  }
+}
+
 function materializeTypePackage(targetTypesDir, packageName) {
   const sourceDir = findCachedTypePackageDir(packageName);
   if (!sourceDir) {
@@ -108,7 +157,7 @@ function materializeTypePackage(targetTypesDir, packageName) {
 
   const targetDir = path.join(targetTypesDir, packageName);
   rmSync(targetDir, { recursive: true, force: true });
-  mkdirSync(targetTypesDir, { recursive: true });
+  ensureTypeRoot(targetTypesDir);
   cpSync(sourceDir, targetDir, {
     recursive: true,
     force: true,
@@ -139,23 +188,13 @@ function ensureTypeEntryPoint(targetDir, packageName) {
   }
 }
 
-function ensureBunTypesAlias(targetTypesDir) {
+export function ensureBunTypesAlias(targetTypesDir) {
   const bunTypesDir = path.join(targetTypesDir, "bun");
-  // Skip silently when the parent node_modules tree doesn't exist (this
-  // workspace just isn't installed). Otherwise create the @types dir
-  // step-by-step to defend against Node 24 + Windows mkdir-recursive
-  // returning ENOENT on perfectly-valid nested paths whose ancestors are
-  // not on disk.
   const parentNodeModules = path.dirname(targetTypesDir);
   if (!existsSync(parentNodeModules)) {
     return;
   }
-  if (!existsSync(targetTypesDir)) {
-    mkdirSync(targetTypesDir, { recursive: false });
-  }
-  if (!existsSync(bunTypesDir)) {
-    mkdirSync(bunTypesDir, { recursive: false });
-  }
+  ensureTypeChildDir(targetTypesDir, bunTypesDir);
   writeFileSync(
     path.join(bunTypesDir, "index.d.ts"),
     '/// <reference types="bun-types" />\n',

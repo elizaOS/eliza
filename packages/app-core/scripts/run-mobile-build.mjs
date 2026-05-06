@@ -202,6 +202,11 @@ function resolveExecutable(name) {
   return null;
 }
 
+function resolveBunExecutable() {
+  if (process.versions.bun) return process.execPath;
+  return resolveExecutable("bun");
+}
+
 function resolveAndroidSdkRoot() {
   return firstExisting([
     process.env.ANDROID_SDK_ROOT,
@@ -209,6 +214,19 @@ function resolveAndroidSdkRoot() {
     path.join(os.homedir(), "Library", "Android", "sdk"),
     path.join(os.homedir(), "Android", "Sdk"),
   ]);
+}
+
+function resolveViteCli() {
+  const viteCli = firstExisting([
+    path.join(appDir, "node_modules", ".bin", "vite"),
+    path.join(repoRoot, "node_modules", ".bin", "vite"),
+    path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
+    path.join(repoRoot, "node_modules", "vite", "bin", "vite.js"),
+  ]);
+  if (!viteCli) {
+    throw new Error("vite CLI not found; run bun install");
+  }
+  return viteCli;
 }
 
 function resolveJavaHome() {
@@ -522,13 +540,19 @@ async function buildWeb(platform) {
       : platform === "ios-overlay"
         ? "ios"
         : platform;
-  await run("bun", ["run", "build"], {
+  const env = {
+    ...process.env,
+    ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+  };
+  const bun = resolveBunExecutable();
+  if (bun) {
+    await run(bun, ["run", "build:web"], { cwd: appDir, env });
+    return;
+  }
+  await run(process.execPath, [resolveViteCli(), "build"], {
     cwd: appDir,
-    env: {
-      ...process.env,
-      ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
-      MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
-    },
+    env,
   });
 }
 
@@ -2369,13 +2393,26 @@ function hasSimulatorSlice(xcframeworkDir) {
   return false;
 }
 
-function patchLlamaCppCapacitorPodspecForXcframework(packageDir) {
+export function patchLlamaCppCapacitorPodspecForXcframework(
+  packageDir,
+  {
+    xcframeworkRelPath = "ios/Frameworks-xcframework/llama-cpp.xcframework",
+  } = {},
+) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
   if (!fs.existsSync(podspecPath)) return;
   const current = fs.readFileSync(podspecPath, "utf8");
   let patched = current.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
+    /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*['"]\$\(inherited\) "\$\(PODS_TARGET_SRCROOT\)\/ios\/Frameworks"['"]\s*\n\s*\}\s*/m,
+    "\n",
   );
   // The published podspec also injects `ios/Frameworks` into
   // FRAMEWORK_SEARCH_PATHS, which contains the device-only
@@ -2458,7 +2495,12 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   if (!packageDir) return;
 
   const frameworksDir = path.join(packageDir, "ios", "Frameworks");
-  const xcframeworkDir = path.join(frameworksDir, "llama-cpp.xcframework");
+  const xcframeworksDir = path.join(
+    packageDir,
+    "ios",
+    "Frameworks-xcframework",
+  );
+  const xcframeworkDir = path.join(xcframeworksDir, "llama-cpp.xcframework");
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
   if (hasSimulatorSlice(xcframeworkDir)) {
@@ -2479,6 +2521,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
     createArgs.push("-framework", deviceFramework);
   }
   createArgs.push("-framework", simulatorFramework);
+  fs.mkdirSync(xcframeworksDir, { recursive: true });
   fs.rmSync(xcframeworkDir, { recursive: true, force: true });
   await run("xcodebuild", [...createArgs, "-output", xcframeworkDir], {
     cwd: packageDir,
