@@ -248,8 +248,8 @@ export const ownerScreenTimeAction: Action = {
   ],
   description:
     "Owner-only. Quantitative screen-time and activity analytics across screen-time samples, the macOS native activity tracker, and browser extension reports. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website (screen-time queries); activity_report, time_on_app, time_on_site (focus minutes from native tracker); browser_activity (per-domain pushed by browser extension).",
-	descriptionCompressed:
-		"Report screen/activity/browser focus mins: summary today weekly avg by app/site, activity report, time on app/site. Owner macOS.",
+  descriptionCompressed:
+    "Report screen/activity/browser focus mins: summary today weekly avg by app/site, activity report, time on app/site. Owner macOS.",
 
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
 

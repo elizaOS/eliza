@@ -13,15 +13,15 @@
  * compatibility HTTP routes.
  */
 
-import { loadElizaConfig } from "@elizaos/agent/config";
-import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
-import { sendJson } from "@elizaos/app-core/api/response";
-import type { Plugin, Route } from "@elizaos/core";
-import type http from "node:http";
-import { handleN8nRoutes, type N8nRouteContext } from "./routes/n8n-routes";
+import { loadElizaConfig } from '@elizaos/agent/config';
+import { ensureRouteAuthorized } from '@elizaos/app-core/api/auth';
+import type { CompatRuntimeState } from '@elizaos/app-core/api/compat-route-shared';
+import { sendJson } from '@elizaos/app-core/api/response';
+import type { Plugin, Route } from '@elizaos/core';
+import type http from 'node:http';
+import { handleN8nRoutes, type N8nRouteContext } from './routes/n8n-routes';
 
-type AnyRuntime = N8nRouteContext["runtime"];
+type AnyRuntime = N8nRouteContext['runtime'];
 
 interface N8nCompatState extends CompatRuntimeState {
   current: AnyRuntime;
@@ -32,15 +32,11 @@ function buildState(runtime: unknown): N8nCompatState {
 }
 
 function makeN8nHandler() {
-  return async (
-    req: unknown,
-    res: unknown,
-    runtime: unknown,
-  ): Promise<void> => {
+  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
-    const url = new URL(httpReq.url ?? "/", "http://localhost");
-    const method = (httpReq.method ?? "GET").toUpperCase();
+    const url = new URL(httpReq.url ?? '/', 'http://localhost');
+    const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
 
     if (!(await ensureRouteAuthorized(httpReq, httpRes, state))) {
@@ -66,67 +62,67 @@ const n8nHandler = makeN8nHandler();
 const n8nRouteList: Route[] = [
   // Status surface
   {
-    type: "GET",
-    path: "/api/n8n/status",
+    type: 'GET',
+    path: '/api/n8n/status',
     rawPath: true,
     handler: n8nHandler,
   },
   // Sidecar lifecycle
   {
-    type: "POST",
-    path: "/api/n8n/sidecar/start",
+    type: 'POST',
+    path: '/api/n8n/sidecar/start',
     rawPath: true,
     handler: n8nHandler,
   },
   // Workflow CRUD
   {
-    type: "GET",
-    path: "/api/n8n/workflows",
+    type: 'GET',
+    path: '/api/n8n/workflows',
     rawPath: true,
     handler: n8nHandler,
   },
   {
-    type: "POST",
-    path: "/api/n8n/workflows",
+    type: 'POST',
+    path: '/api/n8n/workflows',
     rawPath: true,
     handler: n8nHandler,
   },
   {
-    type: "POST",
-    path: "/api/n8n/workflows/generate",
+    type: 'POST',
+    path: '/api/n8n/workflows/generate',
     rawPath: true,
     handler: n8nHandler,
   },
   {
-    type: "PUT",
-    path: "/api/n8n/workflows/:id",
+    type: 'PUT',
+    path: '/api/n8n/workflows/:id',
     rawPath: true,
     handler: n8nHandler,
   },
   {
-    type: "POST",
-    path: "/api/n8n/workflows/:id/activate",
+    type: 'POST',
+    path: '/api/n8n/workflows/:id/activate',
     rawPath: true,
     handler: n8nHandler,
   },
   {
-    type: "POST",
-    path: "/api/n8n/workflows/:id/deactivate",
+    type: 'POST',
+    path: '/api/n8n/workflows/:id/deactivate',
     rawPath: true,
     handler: n8nHandler,
   },
   {
-    type: "DELETE",
-    path: "/api/n8n/workflows/:id",
+    type: 'DELETE',
+    path: '/api/n8n/workflows/:id',
     rawPath: true,
     handler: n8nHandler,
   },
 ];
 
 export const n8nWorkflowRoutePlugin: Plugin = {
-  name: "@elizaos/plugin-n8n-workflow:routes",
+  name: '@elizaos/plugin-n8n-workflow:routes',
   description:
-    "n8n workflow routes — status, sidecar lifecycle, and workflow CRUD proxy (extracted from app-core/server.ts)",
+    'n8n workflow routes — status, sidecar lifecycle, and workflow CRUD proxy (extracted from app-core/server.ts)',
   routes: n8nRouteList,
 };
 

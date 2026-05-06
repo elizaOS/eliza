@@ -121,8 +121,8 @@ export const ownerCheckinAction: Action & {
     "priority inbox, X/socials, GitHub, calendar changes, follow-ups, contacted people, yesterday's wins) or " +
     "night (end-of-day picture: today's meetings, completed wins, outstanding todos, X/socials, GitHub, " +
     "follow-ups, inbox/calendar loose ends for tomorrow).",
-	descriptionCompressed:
-		"Run owner checkin: morning overview for meetings inbox socials GitHub followups wins; night wrap for wins loose ends tomorrow.",
+  descriptionCompressed:
+    "Run owner checkin: morning overview for meetings inbox socials GitHub followups wins; night wrap for wins loose ends tomorrow.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   parameters: [

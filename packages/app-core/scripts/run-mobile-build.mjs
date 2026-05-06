@@ -166,7 +166,14 @@ function runCapacitor(args) {
   return run(
     process.execPath,
     [
-      path.join(appDir, "node_modules", "@capacitor", "cli", "bin", "capacitor"),
+      path.join(
+        appDir,
+        "node_modules",
+        "@capacitor",
+        "cli",
+        "bin",
+        "capacitor",
+      ),
       ...args,
     ],
     { cwd: appDir },
@@ -2121,7 +2128,14 @@ async function loadImageToolForBrandAssets(platform) {
   }
 }
 
-async function writeCoverPng(tool, source, output, width, height, options = {}) {
+async function writeCoverPng(
+  tool,
+  source,
+  output,
+  width,
+  height,
+  options = {},
+) {
   if (tool.kind === "sharp") {
     let image = tool.sharp(source).resize(width, height, {
       fit: "cover",
