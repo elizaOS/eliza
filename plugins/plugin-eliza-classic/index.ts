@@ -57,12 +57,18 @@ async function handleText(
   params: GenerateTextParams,
 ): Promise<string> {
   const reply = generateElizaResponse(extractUserMessage(params.prompt));
-  return [
-    "thought: Responding with deterministic ELIZA pattern matching.",
-    "actions: REPLY",
-    "providers:",
-    `text: ${reply}`,
-  ].join("\n");
+  return JSON.stringify({
+    thought: "Responding with deterministic ELIZA pattern matching.",
+    actions: ["REPLY"],
+    providers: [],
+    text: reply,
+    simple: true,
+    useKnowledgeProviders: false,
+  });
+}
+
+async function handleEmbedding(): Promise<number[]> {
+  return Array.from({ length: 1536 }, (_, index) => (index === 0 ? 1 : 0));
 }
 
 export const elizaClassicPlugin: Plugin = {
@@ -70,8 +76,15 @@ export const elizaClassicPlugin: Plugin = {
   description: "Deterministic offline ELIZA-style text responses.",
   priority: 200,
   models: {
+    [ModelType.TEXT_NANO]: handleText,
     [ModelType.TEXT_LARGE]: handleText,
+    [ModelType.TEXT_MEDIUM]: handleText,
     [ModelType.TEXT_SMALL]: handleText,
+    [ModelType.TEXT_MEGA]: handleText,
+    [ModelType.RESPONSE_HANDLER]: handleText,
+    [ModelType.ACTION_PLANNER]: handleText,
+    [ModelType.TEXT_COMPLETION]: handleText,
+    [ModelType.TEXT_EMBEDDING]: handleEmbedding,
   },
 };
 

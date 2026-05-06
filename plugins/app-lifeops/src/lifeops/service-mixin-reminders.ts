@@ -17,6 +17,7 @@ import {
   type IAgentRuntime,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
@@ -112,6 +113,7 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
+import { STRETCH_ROUTINE_TITLE } from "./seed-routines.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
   DEFAULT_REMINDER_PROCESS_LIMIT,
@@ -161,6 +163,7 @@ import {
   buildReminderResponseClaim,
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
+  isReminderBusyDay,
   isReminderReviewClosed,
   normalizeReminderIntensityInput,
   parseReminderOwnerResponseSemanticClassification,
@@ -173,17 +176,11 @@ import {
   resolveReminderEscalationDelayMinutes,
   resolveReminderEscalationProfileDecision,
   resolveReminderReviewDelayMinutes,
-  isReminderBusyDay,
   shouldDeferReminderUntilComputerActive,
   shouldDeliverReminderForIntensity,
   shouldEscalateImmediately,
   withReminderPreferenceMetadata,
 } from "./service-helpers-reminder.js";
-import { STRETCH_ROUTINE_TITLE } from "./seed-routines.js";
-import {
-  pickStretchReminderCopy,
-  shouldStretchNow,
-} from "./stretch-decider.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -201,6 +198,10 @@ import {
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
 } from "./sleep-wake-events.js";
+import {
+  pickStretchReminderCopy,
+  shouldStretchNow,
+} from "./stretch-decider.js";
 import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
@@ -1098,9 +1099,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         `text: ${formatReminderPromptValue(input.text)}`,
       ].join("\n");
       try {
-        const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        });
+        const response = await runWithTrajectoryContext(
+          { purpose: "lifeops-reminders-classify-reply" },
+          () =>
+            this.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt,
+            }),
+        );
         if (typeof response !== "string") {
           return null;
         }
@@ -1364,9 +1369,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ].join("\n");
 
       try {
-        const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        });
+        const response = await runWithTrajectoryContext(
+          { purpose: "lifeops-reminders-render-body" },
+          () =>
+            this.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt,
+            }),
+        );
         const text =
           typeof response === "string"
             ? normalizeGeneratedReminderBody(response)
@@ -1425,9 +1434,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ].join("\n");
 
       try {
-        const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt,
-        });
+        const response = await runWithTrajectoryContext(
+          { purpose: "lifeops-reminders-workflow-body" },
+          () =>
+            this.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt,
+            }),
+        );
         const text =
           typeof response === "string"
             ? normalizeGeneratedWorkflowBody(response)
@@ -4522,7 +4535,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       );
       const privacyClass = normalizePrivacyClass(request.privacyClass);
       const baseMetadata = {
-        ...(normalizeOptionalRecord(request.metadata, "metadata") ?? {}),
+        ...normalizeOptionalRecord(request.metadata, "metadata"),
         phoneNumber,
         consentCapturedAt: new Date().toISOString(),
         consentGiven: true,

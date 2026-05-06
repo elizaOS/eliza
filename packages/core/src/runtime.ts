@@ -2696,7 +2696,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			if (params.actionResult) {
 				params.actionResult.data = {
-					...(params.actionResult.data ?? {}),
+					...params.actionResult.data,
 					actionResultClipboard: {
 						id: item.id,
 						title: item.title,
@@ -2827,8 +2827,8 @@ export class AgentRuntime implements IAgentRuntime {
 		let actionIndex = 0;
 		// Track which action names have already been executed in this
 		// processActions invocation. The LLM sometimes emits the same action
-		// twice in `actions` (e.g. ["GMAIL_ACTION", "CALENDAR_ACTION",
-		// "CALENDAR_ACTION"] when the user has multiple sub-intents the LLM
+		// twice in `actions` (e.g. ["SEND_MESSAGE", "OWNER_CALENDAR",
+		// "OWNER_CALENDAR"] when the user has multiple sub-intents the LLM
 		// can't split into per-action params). Without dedupe the second run
 		// uses the same params as the first → identical output → discord
 		// dedup layer rejects it as a duplicate callback. Two identical
@@ -3308,7 +3308,7 @@ export class AgentRuntime implements IAgentRuntime {
 							...accumulatedState,
 							values: { ...accumulatedState.values, ...actionResult.values },
 							data: {
-								...(accumulatedState.data || {}),
+								...accumulatedState.data,
 								actionResults: [...existingActionResults, actionResult],
 								actionPlan,
 							},
@@ -4168,16 +4168,16 @@ export class AgentRuntime implements IAgentRuntime {
 				providerName: string;
 			}
 		> = {
-			...((cachedState.data &&
-				(cachedState.data.providers as Record<
-					string,
-					{
-						text?: string;
-						values?: Record<string, ProviderValue>;
-						providerName: string;
-					}
-				>)) ||
-				{}),
+			...(cachedState.data?.providers as
+				| Record<
+						string,
+						{
+							text?: string;
+							values?: Record<string, ProviderValue>;
+							providerName: string;
+						}
+				  >
+				| undefined),
 		};
 		for (const freshResult of providerData) {
 			// Redact secrets from individual provider text results
@@ -4217,7 +4217,7 @@ export class AgentRuntime implements IAgentRuntime {
 			"conversation",
 		);
 		const aggregatedStateValues: Record<string, StateValue> = {
-			...(cachedState.values || {}),
+			...cachedState.values,
 		};
 		for (const provider of providersToGet) {
 			const providerResult = currentProviderResults[provider.name];
@@ -4248,7 +4248,7 @@ export class AgentRuntime implements IAgentRuntime {
 				providers: providersText,
 			},
 			data: {
-				...(cachedState.data || {}),
+				...cachedState.data,
 				__conversationSeed: conversationSeed,
 				providerOrder: providersToGet.map((provider) => provider.name),
 				providers: currentProviderResults,

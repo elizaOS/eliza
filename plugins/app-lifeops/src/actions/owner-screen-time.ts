@@ -117,8 +117,7 @@ const SUBACTIONS: SubactionsMap<Subaction> = {
   time_on_app: {
     description:
       "Focus time for one app (matched by app name or bundle id) over the last N hours. macOS-only.",
-    descriptionCompressed:
-      "focus time one app name or bundle id last N hours",
+    descriptionCompressed: "focus time one app name or bundle id last N hours",
     required: ["appNameOrBundleId"],
     optional: ["windowHours"],
   },
@@ -161,7 +160,8 @@ function formatMinutes(totalMs: number): number {
 }
 
 function clampDays(value: number | undefined, fallback: number): number {
-  const raw = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  const raw =
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
   return Math.min(31, Math.max(1, Math.floor(raw)));
 }
 
@@ -248,8 +248,8 @@ export const ownerScreenTimeAction: Action = {
   ],
   description:
     "Owner-only. Quantitative screen-time and activity analytics across screen-time samples, the macOS native activity tracker, and browser extension reports. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website (screen-time queries); activity_report, time_on_app, time_on_site (focus minutes from native tracker); browser_activity (per-domain pushed by browser extension).",
-  descriptionCompressed:
-    "screen-time + activity + browser focus mins: summary today weekly weekly-avg-by-app by-app by-website; activity-report time-on-app time-on-site browser-activity owner macOS",
+	descriptionCompressed:
+		"Report screen/activity/browser focus mins: summary today weekly avg by app/site, activity report, time on app/site. Owner macOS.",
 
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
 
@@ -547,9 +547,7 @@ export const ownerScreenTimeAction: Action = {
         return respond({
           success: true,
           scenario:
-            source === "app"
-              ? "screen_time_by_app"
-              : "screen_time_by_website",
+            source === "app" ? "screen_time_by_app" : "screen_time_by_website",
           fallback,
           context: {
             source,

@@ -209,7 +209,7 @@ function parseReleaseVersion(raw: string): ReleaseVersion | null {
     return null;
   }
   const match = normalized.match(
-    /^(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc|nightly)\.([0-9A-Za-z.-]+))?$/,
+    /^(\d+)\.(\d+)\.(\d+)(?:-(beta|rc|nightly)\.([0-9A-Za-z.-]+))?$/,
   );
   if (!match) {
     return null;
@@ -296,9 +296,7 @@ function buildChromeExtensionVersion(release: ReleaseVersion): string {
         ? 50000 + ordinal
         : release.prereleaseLabel === "beta"
           ? 40000 + ordinal
-          : release.prereleaseLabel === "alpha"
-            ? 30000 + ordinal
-            : 10000 + ordinal;
+          : 10000 + ordinal;
   }
   return [release.major, release.minor, release.patch, buildSegment].join(".");
 }
@@ -315,9 +313,7 @@ function buildSafariExtensionVersions(release: ReleaseVersion): {
         ? 8000 + ordinal
         : release.prereleaseLabel === "beta"
           ? 7000 + ordinal
-          : release.prereleaseLabel === "alpha"
-            ? 6000 + ordinal
-            : 5000 + ordinal;
+          : 5000 + ordinal;
 
   return {
     marketingVersion: release.baseVersion,

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import type http from "node:http";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
@@ -297,13 +297,8 @@ function sanitizeUsernameBase(name: string, maxLength: number): string {
 }
 
 function generateBotUsername(agentName: string): string {
-  const word =
-    USERNAME_SUFFIX_WORDS[
-      Math.floor(Math.random() * USERNAME_SUFFIX_WORDS.length)
-    ];
-  const num = Math.floor(Math.random() * 100)
-    .toString()
-    .padStart(2, "0");
+  const word = USERNAME_SUFFIX_WORDS[randomInt(USERNAME_SUFFIX_WORDS.length)];
+  const num = randomInt(100).toString().padStart(2, "0");
   const suffixLength = word.length + num.length;
   const maxNameLength = Math.max(1, 12 - suffixLength);
   const sanitized = sanitizeUsernameBase(agentName, maxNameLength);
@@ -312,10 +307,10 @@ function generateBotUsername(agentName: string): string {
 }
 
 function generateBotPassword(length = 16): string {
-  const bytes = randomBytes(length);
-  return Array.from(bytes)
-    .map((b) => PASSWORD_CHARS[b % PASSWORD_CHARS.length])
-    .join("");
+  return Array.from(
+    { length },
+    () => PASSWORD_CHARS[randomInt(PASSWORD_CHARS.length)],
+  ).join("");
 }
 
 async function prepareCredentials(
@@ -762,7 +757,12 @@ function resolveRouteSessionRecord(
   });
 }
 
+const MAX_HTML_REWRITE_BYTES = 10 * 1024 * 1024; // 10 MB guard against ReDoS on large payloads
+
 function rewriteViewerHtml(html: string): string {
+  if (html.length > MAX_HTML_REWRITE_BYTES) {
+    return html;
+  }
   return html
     .replace(/(src|href|action)=("|')\/(?!\/)/g, `$1=$2${VIEWER_PROXY_PREFIX}/`)
     .replace(/url\((["']?)\/(?!\/)/g, `url($1${VIEWER_PROXY_PREFIX}/`);

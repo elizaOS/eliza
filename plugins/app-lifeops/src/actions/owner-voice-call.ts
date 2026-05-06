@@ -44,7 +44,7 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
     description:
       "Place a generic Twilio voice call to a specific E.164 phone number. Drafts first; requires confirmed:true to dispatch.",
     descriptionCompressed:
-      "Twilio voice call to phone number; draft-confirm required",
+      "Twilio voice call E.164 phone draft-confirm required",
     required: ["phoneNumber"],
     optional: ["bodyText", "confirmed"],
   },
@@ -52,7 +52,7 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
     description:
       "Call the owner as an escalation when the agent is blocked. Acknowledges standing escalation policies and uses the approval queue.",
     descriptionCompressed:
-      "call owner escalation when agent blocked; standing escalation policies acknowledged; approval-queue",
+      "call owner escalation agent-blocked standing-policy approval-queue",
     required: [],
     optional: ["bodyText", "confirmed", "reason"],
   },
@@ -60,7 +60,7 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
     description:
       "Call a third party. Recipient name resolved via relationships, then normalized against the allow-list. Uses the approval queue.",
     descriptionCompressed:
-      "call third party; name→phone via relationships; allowlist normalized; approval-queue",
+      "call third-party name->phone relationships allowlist-normalized approval-queue",
     required: ["recipient"],
     optional: ["bodyText", "confirmed", "reason"],
   },
@@ -405,7 +405,12 @@ async function handlePlace(
     };
   }
   if (isPlaceholderOrNonNumeric(to)) {
-    return invalidPhoneResult(to, undefined, "place", "PLACEHOLDER_PHONE_NUMBER");
+    return invalidPhoneResult(
+      to,
+      undefined,
+      "place",
+      "PLACEHOLDER_PHONE_NUMBER",
+    );
   }
   if (!isE164(to)) {
     return invalidPhoneResult(to, undefined, "place", "INVALID_PHONE_NUMBER");
@@ -701,8 +706,7 @@ async function handleCallExternal(
         subaction: "call_external",
         requiresConfirmation: true,
         to,
-        matchedRelationshipId:
-          resolvedRecipient.matchedRelationshipId ?? null,
+        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
         approvalTaskId,
       },
     };
@@ -727,8 +731,7 @@ async function handleCallExternal(
         subaction: "call_external",
         reason: "disallowed-recipient",
         to,
-        matchedRelationshipId:
-          resolvedRecipient.matchedRelationshipId ?? null,
+        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
       },
     };
   }

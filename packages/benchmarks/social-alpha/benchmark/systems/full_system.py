@@ -155,7 +155,7 @@ def _call_openai(message: str, model: str, api_key: str) -> dict:
 
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
                 data = json.loads(resp.read().decode())
             content = data["choices"][0]["message"]["content"]
             content = content.strip()
@@ -241,7 +241,7 @@ def _call_openai_batch_single(
 
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=60) as resp:  # nosec B310
                 data = json.loads(resp.read().decode())
             content = data["choices"][0]["message"]["content"].strip()
             if content.startswith("```"):

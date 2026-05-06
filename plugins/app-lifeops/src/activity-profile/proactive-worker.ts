@@ -8,6 +8,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
   stringToUuid,
 } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
@@ -27,7 +28,6 @@ import {
   type InboxDigestSlim,
   type OccurrenceSlim,
   type ProactiveRelativeTimeSlim,
-  type SocialHabitSummarySlim,
   planDowntimeNudges,
   planGm,
   planGn,
@@ -35,6 +35,7 @@ import {
   planNudges,
   planSocialOveruseCheck,
   SOCIAL_OVERUSE_WINDOW_MINUTES,
+  type SocialHabitSummarySlim,
 } from "./proactive-planner.js";
 import {
   buildActivityProfile,
@@ -97,7 +98,7 @@ function buildProactiveMetadata(
   current: Record<string, unknown> | null = null,
 ): TaskMetadata {
   return {
-    ...(current ?? {}),
+    ...current,
     updateInterval: PROACTIVE_TASK_INTERVAL_MS,
     baseInterval: PROACTIVE_TASK_INTERVAL_MS,
     blocking: true,
@@ -256,7 +257,10 @@ export async function classifyCalendarEventsForProactivePlanning(
   ].join("\n");
 
   try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-proactive-worker" },
+      () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+    );
     const raw = typeof result === "string" ? result : "";
     const parsed = parseCalendarEventProactiveOutput(raw);
     if (!parsed) {

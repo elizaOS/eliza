@@ -90,30 +90,34 @@ async function runTests(): Promise<void> {
   }
   console.log("   ✅ Health check passed\n");
 
-  // Test 2: Chat message (this uses the full elizaOS runtime!)
-  console.log("2️⃣  Testing chat endpoint with elizaOS runtime...");
-  const chatEvent = createEvent(
-    "POST",
-    "/chat",
-    JSON.stringify({ message: "Hello! What's 2 + 2?" }),
-  );
+  // Test 2: Chat message (requires a configured model provider)
+  if (process.env.OPENAI_API_KEY) {
+    console.log("2️⃣  Testing chat endpoint with elizaOS runtime...");
+    const chatEvent = createEvent(
+      "POST",
+      "/chat",
+      JSON.stringify({ message: "Hello! What's 2 + 2?" }),
+    );
 
-  const startTime = Date.now();
-  const chatResult = getResultData(await handler(chatEvent, mockContext));
-  const duration = Date.now() - startTime;
+    const startTime = Date.now();
+    const chatResult = getResultData(await handler(chatEvent, mockContext));
+    const duration = Date.now() - startTime;
 
-  console.log(`   Status: ${chatResult.statusCode}`);
-  console.log(`   Duration: ${duration}ms`);
+    console.log(`   Status: ${chatResult.statusCode}`);
+    console.log(`   Duration: ${duration}ms`);
 
-  if (chatResult.statusCode !== 200) {
-    console.error(`❌ Chat failed: ${chatResult.body}`);
-    process.exit(1);
+    if (chatResult.statusCode !== 200) {
+      console.error(`❌ Chat failed: ${chatResult.body}`);
+      process.exit(1);
+    }
+
+    const response = JSON.parse(chatResult.body);
+    console.log(`   Response: ${response.response.substring(0, 100)}...`);
+    console.log(`   Conversation ID: ${response.conversationId}\n`);
+    console.log("   ✅ Chat endpoint passed (elizaOS runtime working!)\n");
+  } else {
+    console.log("2️⃣  Skipping live chat endpoint (OPENAI_API_KEY not set)\n");
   }
-
-  const response = JSON.parse(chatResult.body);
-  console.log(`   Response: ${response.response.substring(0, 100)}...`);
-  console.log(`   Conversation ID: ${response.conversationId}\n`);
-  console.log("   ✅ Chat endpoint passed (elizaOS runtime working!)\n");
 
   // Test 3: Invalid request
   console.log("3️⃣  Testing validation (empty message)...");

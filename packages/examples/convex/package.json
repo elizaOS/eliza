@@ -1,12 +1,12 @@
 {
   "name": "@elizaos/example-convex",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "elizaOS agent running on Convex — messages processed via messageService.handleMessage with real-time persistence",
   "type": "module",
   "scripts": {
     "dev": "npx convex dev",
     "start": "npx convex dev",
-    "test": "bun run test-client.ts",
+    "test": "bun run test-client.ts --once",
     "deploy": "npx convex deploy",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "if [ -d convex/_generated ]; then tsc --noEmit; else echo 'Convex generated types missing; run convex dev/codegen for full typecheck'; fi",

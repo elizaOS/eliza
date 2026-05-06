@@ -2,12 +2,9 @@
 // Suppress elizaOS logs before any imports
 process.env.LOG_LEVEL = "fatal";
 
-import { App } from "./App.js";
+import type { AgentRuntime } from "@elizaos/core";
 import { main as cliMain } from "./cli.js";
-import { initializeAgent, shutdownAgent } from "./lib/agent.js";
-import { resetAgentClient } from "./lib/agent-client.js";
 import { loadEnv } from "./lib/load-env.js";
-import { useStore } from "./lib/store.js";
 
 loadEnv();
 
@@ -56,15 +53,18 @@ function shouldRunInteractive(): boolean {
 
 let isShuttingDown = false;
 
-async function cleanup(
-  runtime: ReturnType<typeof initializeAgent> extends Promise<infer T>
-    ? T
-    : never,
-) {
+async function cleanup(runtime: AgentRuntime): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
   try {
+    const [{ shutdownAgent }, { resetAgentClient }, { useStore }] =
+      await Promise.all([
+        import("./lib/agent.js"),
+        import("./lib/agent-client.js"),
+        import("./lib/store.js"),
+      ]);
+
     // Save session before shutdown
     await useStore.getState().saveSessionState();
 
@@ -89,8 +89,13 @@ async function runInteractive(): Promise<void> {
     process.exit(1);
   }
 
-  let runtime: Awaited<ReturnType<typeof initializeAgent>> | undefined;
-  let app: App | undefined;
+  const [{ App }, { initializeAgent }] = await Promise.all([
+    import("./App.js"),
+    import("./lib/agent.js"),
+  ]);
+
+  let runtime: AgentRuntime | undefined;
+  let app: InstanceType<typeof App> | undefined;
 
   // Initialize the agent
   runtime = await initializeAgent();

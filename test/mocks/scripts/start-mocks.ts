@@ -359,10 +359,9 @@ function escapeTemplateString(value: string): string {
 }
 
 function randomFromAlphabet(alphabet: string, length: number): string {
-  const bytes = crypto.randomBytes(length);
   let out = "";
-  for (const byte of bytes) {
-    out += alphabet[byte % alphabet.length];
+  for (let i = 0; i < length; i++) {
+    out += alphabet[crypto.randomInt(alphabet.length)];
   }
   return out;
 }

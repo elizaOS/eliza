@@ -3,7 +3,7 @@
   "name": "Openrouter",
   "description": "OpenRouter provider for routing requests across many hosted models through one API.",
   "npmName": "@elizaos/plugin-openrouter",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["ai-provider", "llm", "openrouter", "routing"],
   "config": {

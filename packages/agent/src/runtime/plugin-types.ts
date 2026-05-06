@@ -35,7 +35,7 @@ export interface ResolvedPlugin {
 export interface PluginModuleShape {
   default?: Plugin;
   plugin?: Plugin;
-  [key: string]: Plugin | undefined;
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------

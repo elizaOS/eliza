@@ -150,17 +150,6 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     order: 11,
     windowPath: "/apps/logs",
   },
-  {
-    name: "@elizaos/app-workflow-builder",
-    displayName: "Workflow Builder",
-    description:
-      "Build and inspect automation workflows from the Automations workspace.",
-    heroImage: "/api/apps/hero/workflow-builder",
-    targetTab: "automations",
-    capabilities: ["automations", "workflows", "builder"],
-    order: 12,
-    windowPath: "/automations",
-  },
 ] as const;
 
 const INTERNAL_TOOL_APP_BY_NAME = new Map(

@@ -252,8 +252,7 @@ const messageReceivedHandler = async ({
 				recommendations?: ExtractedRec[];
 			} | null;
 
-			const extractedRecommendations =
-				extractionResult?.recommendations ?? [];
+			const extractedRecommendations = extractionResult?.recommendations ?? [];
 
 			if (extractedRecommendations.length === 0) {
 				logger.debug(

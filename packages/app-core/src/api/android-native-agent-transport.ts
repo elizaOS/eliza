@@ -24,8 +24,17 @@ type NativeAgentPlugin = {
 };
 
 const agentPluginId = "@elizaos/capacitor-agent";
+const agentPluginName = "Agent";
 
 let nativeTransportPromise: Promise<AgentRequestTransport | null> | null = null;
+
+function toNativeAgentPlugin(
+  plugin: NativeAgentPlugin | null | undefined,
+): NativeAgentPlugin | null {
+  if (!plugin?.request) return null;
+  const request = plugin.request.bind(plugin);
+  return { request };
+}
 
 function isNativeAndroid(): boolean {
   try {
@@ -34,6 +43,30 @@ function isNativeAndroid(): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
+  try {
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, NativeAgentPlugin | undefined>;
+    };
+    const registeredAgent =
+      capacitorWithPlugins.Plugins?.[agentPluginName] ??
+      Capacitor.registerPlugin<NativeAgentPlugin>(agentPluginName);
+    const agent = toNativeAgentPlugin(registeredAgent);
+    if (agent) return agent;
+  } catch {
+    // Fall through to the package import for browser/package-mode test builds.
+  }
+
+  try {
+    const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
+      Agent?: NativeAgentPlugin;
+    };
+    return toNativeAgentPlugin(mod.Agent);
+  } catch {
+    return null;
   }
 }
 
@@ -110,10 +143,8 @@ export async function androidNativeAgentTransportForUrl(
 ): Promise<AgentRequestTransport | null> {
   if (!isAndroidLocalAgentUrl(url) || !isNativeAndroid()) return null;
 
-  nativeTransportPromise ??= import(/* @vite-ignore */ agentPluginId)
-    .then((mod: { Agent?: NativeAgentPlugin }) =>
-      mod.Agent ? createAndroidNativeAgentTransport(mod.Agent) : null,
-    )
+  nativeTransportPromise ??= resolveNativeAgentPlugin()
+    .then((agent) => (agent ? createAndroidNativeAgentTransport(agent) : null))
     .catch(() => null);
 
   return nativeTransportPromise;

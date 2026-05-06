@@ -1,6 +1,5 @@
 import { type Memory, MemoryType, ModelType } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { v4 as uuidv4 } from "uuid";
 import { LipSyncPlayer } from "./components/LipSyncPlayer";
 import { SettingsModal } from "./components/SettingsModal";
 import type { VrmEngine, VrmEngineState } from "./components/VrmEngine";
@@ -20,6 +19,10 @@ import {
   type DemoConfig,
   type DemoMode,
 } from "./runtime/types";
+
+function uuidv4(): string {
+  return globalThis.crypto.randomUUID();
+}
 
 type UiMessage = {
   id: string;

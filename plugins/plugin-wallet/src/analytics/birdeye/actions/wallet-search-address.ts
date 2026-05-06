@@ -9,63 +9,80 @@ import {
   type State,
 } from "@elizaos/core";
 import { BirdeyeProvider } from "../birdeye";
+import { searchBirdeyeTokens } from "../search-category";
 import type { WalletPortfolioResponse } from "../types/api/wallet";
 import type { BaseAddress } from "../types/shared";
 import { extractAddresses } from "../utils";
 
+export type BirdeyeLookupKind =
+  | "wallet-address"
+  | "token-address"
+  | "token-symbol";
+
+function readKind(
+  options: Record<string, unknown> | undefined,
+  text: string,
+): BirdeyeLookupKind {
+  const raw = String(options?.kind ?? "").toLowerCase();
+  if (
+    raw === "wallet-address" ||
+    raw === "token-address" ||
+    raw === "token-symbol"
+  ) {
+    return raw;
+  }
+  // Auto-infer: explicit address → wallet-address (preserves legacy behavior),
+  // otherwise token-symbol search via the token search category.
+  return extractAddresses(text).length > 0 ? "wallet-address" : "token-symbol";
+}
+
 export const walletSearchAddressAction = {
-  name: "BIRDEYE_WALLET_SEARCH_ADDRESS",
+  name: "BIRDEYE_LOOKUP",
   similes: [
+    "BIRDEYE_WALLET_SEARCH_ADDRESS",
     "SEARCH_WALLET_ADDRESS",
-    "FIND_WALLET_ADDRESS",
     "LOOKUP_WALLET_ADDRESS",
     "CHECK_WALLET_ADDRESS",
-    "GET_WALLET_BY_ADDRESS",
     "WALLET_ADDRESS_INFO",
     "WALLET_ADDRESS_LOOKUP",
-    "WALLET_ADDRESS_SEARCH",
-    "WALLET_ADDRESS_CHECK",
-    "WALLET_ADDRESS_DETAILS",
-    "WALLET_CONTRACT_SEARCH",
-    "WALLET_CONTRACT_LOOKUP",
-    "WALLET_CONTRACT_INFO",
-    "WALLET_CONTRACT_CHECK",
-    "VERIFY_WALLET_ADDRESS",
-    "VALIDATE_WALLET_ADDRESS",
-    "GET_WALLET_INFO",
     "WALLET_INFO",
-    "WALLET_REPORT",
-    "WALLET_ANALYSIS",
     "WALLET_OVERVIEW",
-    "WALLET_SUMMARY",
-    "WALLET_INSIGHT",
-    "WALLET_DATA",
-    "WALLET_STATS",
-    "WALLET_METRICS",
-    "WALLET_PROFILE",
-    "WALLET_REVIEW",
-    "WALLET_CHECK",
     "WALLET_LOOKUP",
-    "WALLET_FIND",
-    "WALLET_DISCOVER",
-    "WALLET_EXPLORE",
+    "BIRDEYE_TOKEN_SEARCH",
+    "TOKEN_LOOKUP",
+    "TOKEN_SEARCH",
   ],
   description:
-    "Search for detailed wallet information including portfolio and transaction data by address",
+    "Look up Birdeye intel for a wallet, token contract, or token symbol via { kind: 'wallet-address' | 'token-address' | 'token-symbol', query }.",
   descriptionCompressed:
-    "Search Birdeye wallet portfolio and transaction data by chain address.",
+    "Birdeye lookup: token-symbol, token-address, wallet-address.",
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
-    _options: Record<string, unknown>,
+    options: Record<string, unknown> | undefined,
     callback?: HandlerCallback,
   ) => {
     try {
+      const text = String(message.content?.text ?? "");
+      const queryParam =
+        typeof options?.query === "string" ? options.query : "";
+      const query = queryParam.trim() || text;
+      const kind = readKind(options, query);
+
+      if (kind === "token-symbol" || kind === "token-address") {
+        const result = await searchBirdeyeTokens(runtime, {
+          query,
+          mode: kind === "token-address" ? "address" : "symbol",
+        });
+        callback?.({ text: result.text });
+        return;
+      }
+
       const provider = new BirdeyeProvider(runtime);
 
-      // get all wallet addresses from the message
-      const addresses = extractAddresses(message.content?.text ?? "");
+      // get all wallet addresses from the message (legacy wallet-address path)
+      const addresses = extractAddresses(query);
 
       elizaLogger.info(
         `Searching Birdeye provider for ${addresses.length} addresses`,
@@ -109,8 +126,14 @@ export const walletSearchAddressAction = {
     }
   },
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const addresses = extractAddresses(message.content?.text ?? "");
-    return addresses.length > 0;
+    const text = message.content?.text ?? "";
+    if (!text || typeof text !== "string") return false;
+    if (extractAddresses(text).length > 0) return true;
+    // Allow token-symbol lookups when text contains $TICKER or "lookup/search/birdeye"
+    if (/\$[A-Z]{2,10}\b/.test(text)) return true;
+    return /\b(birdeye|lookup|search\s+(?:token|wallet|symbol|address))\b/i.test(
+      text,
+    );
   },
   examples: [
     [

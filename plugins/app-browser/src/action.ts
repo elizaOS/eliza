@@ -118,17 +118,6 @@ function normalizeSubaction(
   }
 }
 
-function inferSubactionFromMessage(
-  messageText: string,
-  url: string | undefined,
-): BrowserWorkspaceSubaction | null {
-  if (!url) return null;
-  const lower = messageText.toLowerCase();
-  if (/\b(open|launch|new tab)\b/.test(lower)) return "open";
-  if (/\b(navigate|go to|visit|load)\b/.test(lower)) return "navigate";
-  return null;
-}
-
 function normalizeGetMode(
   value: string | undefined,
 ): BrowserWorkspaceGetMode | null {
@@ -525,8 +514,7 @@ export function parseBrowserWorkspaceActionRequest(
       : (messageText.match(TAB_ID_RE)?.[1] ?? undefined);
   const steps =
     parseStepsParam(params.steps) ?? parseStepsParam(params.stepsJson);
-  const subaction =
-    fromParams ?? (steps ? "batch" : inferSubactionFromMessage(messageText, url));
+  const subaction = fromParams ?? (steps ? "batch" : null);
   const resolvedFindBy =
     normalizeFindBy(
       typeof params.findBy === "string"
@@ -940,7 +928,7 @@ export const manageElizaBrowserWorkspaceAction: Action = {
     },
   }),
   descriptionCompressed:
-    "Browser workspace: navigate, click, fill, type, screenshot, DOM, eval, tabs, cookies, network, console.",
+    "Browser workspace: navigate/click/type/fill | screenshot/snapshot/inspect/dom | tabs/cookies/storage/network/console | eval | batch.",
   similes: [
     "browser command",
     "browser subaction",
@@ -1375,7 +1363,7 @@ export const manageElizaBrowserWorkspaceAction: Action = {
           const stepResult = await runWithTrajectoryContext(
             {
               ...(parentCtx ?? {}),
-              purpose: "browser-batch-step",
+              purpose: `browser-batch-step:${step.subaction}`,
             },
             () => executeBrowserWorkspaceCommand(step),
           );

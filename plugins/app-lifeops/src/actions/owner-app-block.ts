@@ -6,7 +6,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, parseToonKeyValue } from "@elizaos/core";
+import {
+  ModelType,
+  parseToonKeyValue,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
@@ -17,11 +21,11 @@ import {
   startAppBlock,
   stopAppBlock,
 } from "../app-blocker/engine.ts";
+import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import { formatPromptSection } from "./prompt-format.js";
 
 const ACTION_NAME = "OWNER_APP_BLOCK";
@@ -42,7 +46,7 @@ const SUBACTIONS: SubactionsMap<AppBlockSubaction> = {
       "Android: requires packageNames from the installed-app inventory. " +
       "iOS: requires appTokens from a previous Family Controls picker selection.",
     descriptionCompressed:
-      "start phone-app block selected packages/tokens duration-minutes; iOS-FamilyControls Android-UsageAccess",
+      "phone-app block packages/tokens duration-minutes iOS-FamilyControls Android-UsageAccess",
     required: ["intent"],
     optional: ["packageNames", "appTokens", "durationMinutes"],
   },
@@ -186,9 +190,13 @@ async function resolveAppBlockPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-app-block-planner" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {

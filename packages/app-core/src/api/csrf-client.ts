@@ -14,7 +14,12 @@
  */
 
 import { getBootConfig } from "../config/boot-config";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
+import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
+import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
+import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { fetchAgentTransport } from "./transport";
 
 /**
  * Reads the current CSRF token from `document.cookie`.
@@ -49,15 +54,22 @@ export async function fetchWithCsrf(
   }
 
   if (!headers.has("Authorization")) {
+    await hydrateAndroidLocalAgentTokenForUrl(url);
     const apiToken = getBootConfig().apiToken?.trim();
     if (apiToken) {
       headers.set("Authorization", `Bearer ${apiToken}`);
     }
   }
 
-  return fetch(url, {
+  const requestInit: RequestInit = {
     ...init,
     credentials: "include",
     headers,
-  });
+  };
+  const transport =
+    (await androidNativeAgentTransportForUrl(url)) ??
+    (await iosInProcessAgentTransportForUrl(url)) ??
+    nativeCloudHttpTransportForUrl(url) ??
+    fetchAgentTransport;
+  return transport.request(url, requestInit);
 }

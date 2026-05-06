@@ -12,8 +12,6 @@ import type { FarcasterService } from "../services/FarcasterService";
 import { DEFAULT_MAX_CAST_LENGTH, FARCASTER_SERVICE_NAME } from "../types";
 import { getFarcasterFid } from "../utils/config";
 
-type FarcasterCastSubaction = "post" | "reply";
-
 function readStringOption(
   options: Record<string, unknown> | undefined,
   key: string
@@ -35,34 +33,14 @@ function readNumberOption(
   return null;
 }
 
-function normalizeSubaction(value: string | null): FarcasterCastSubaction | null {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === "post" || normalized === "create" || normalized === "cast") {
-    return "post";
-  }
-  if (normalized === "reply" || normalized === "respond") {
-    return "reply";
-  }
-  return null;
-}
-
-function inferSubaction(message: Memory): FarcasterCastSubaction {
-  const text = message.content.text?.toLowerCase() ?? "";
-  if (/\b(reply|respond|answer|comment)\b/.test(text)) {
-    return "reply";
-  }
-  return "post";
-}
-
 async function generateCastText(
   runtime: IAgentRuntime,
   message: Memory,
-  subaction: FarcasterCastSubaction
+  isReply: boolean
 ): Promise<string> {
-  const prompt =
-    subaction === "reply"
-      ? `Based on this request: "${message.content.text}", generate a helpful Farcaster cast reply under ${DEFAULT_MAX_CAST_LENGTH} characters.`
-      : `Based on this request: "${message.content.text}", generate a concise Farcaster cast under ${DEFAULT_MAX_CAST_LENGTH} characters.`;
+  const prompt = isReply
+    ? `Based on this request: "${message.content.text}", generate a helpful Farcaster cast reply under ${DEFAULT_MAX_CAST_LENGTH} characters.`
+    : `Based on this request: "${message.content.text}", generate a concise Farcaster cast under ${DEFAULT_MAX_CAST_LENGTH} characters.`;
 
   const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
   return typeof response === "string" ? response : String(response);
@@ -77,15 +55,10 @@ function truncateCast(text: string): string {
 export const farcasterCastAction: Action = {
   name: "FARCASTER_CAST",
   similes: ["SEND_CAST", "REPLY_TO_CAST", "POST_CAST", "FARCASTER_POST", "SHARE_ON_FARCASTER"],
-  description: "Create or reply to a public Farcaster cast with subaction post or reply.",
-  descriptionCompressed: "public Farcaster cast router; subaction post reply",
+  description:
+    "Post a public Farcaster cast, or reply to an existing cast when replyToHash is provided.",
+  descriptionCompressed: "Farcaster cast: post or reply (with replyToHash).",
   parameters: [
-    {
-      name: "subaction",
-      description: "post or reply.",
-      required: true,
-      schema: { type: "string", enum: ["post", "reply"] },
-    },
     {
       name: "text",
       description: "Cast text.",
@@ -93,16 +66,11 @@ export const farcasterCastAction: Action = {
       schema: { type: "string" },
     },
     {
-      name: "parentCastHash",
-      description: "Parent cast hash for replies.",
+      name: "replyToHash",
+      description:
+        "Hash of the parent cast. When set, posts as a reply; otherwise posts a new cast.",
       required: false,
       schema: { type: "string" },
-    },
-    {
-      name: "parentFid",
-      description: "Parent cast author FID for replies.",
-      required: false,
-      schema: { type: "number" },
     },
   ],
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
@@ -126,10 +94,9 @@ export const farcasterCastAction: Action = {
     }
 
     const metadata = message.content.metadata as Record<string, unknown> | undefined;
-    const subaction =
-      normalizeSubaction(readStringOption(options, "subaction")) ?? inferSubaction(message);
     const optionText = readStringOption(options, "text");
-    const parentCastHash =
+    const replyToHash =
+      readStringOption(options, "replyToHash") ??
       readStringOption(options, "parentCastHash") ??
       (typeof metadata?.parentCastHash === "string" ? metadata.parentCastHash : null);
     const parentFid =
@@ -137,11 +104,8 @@ export const farcasterCastAction: Action = {
       (typeof metadata?.parentFid === "number" ? metadata.parentFid : null) ??
       getFarcasterFid(runtime);
 
-    if (subaction === "reply" && !parentCastHash) {
-      return { success: false, error: "FARCASTER_CAST reply requires parentCastHash" };
-    }
-
-    const generatedText = optionText ?? (await generateCastText(runtime, message, subaction));
+    const isReply = Boolean(replyToHash);
+    const generatedText = optionText ?? (await generateCastText(runtime, message, isReply));
     const castText = truncateCast(generatedText.trim());
     if (!castText) {
       return { success: false, error: "FARCASTER_CAST requires text" };
@@ -152,24 +116,23 @@ export const farcasterCastAction: Action = {
       roomId: message.roomId ?? createUniqueUuid(runtime, "farcaster-timeline"),
       text: castText,
       replyTo:
-        subaction === "reply" && parentCastHash && parentFid
-          ? { hash: parentCastHash, fid: parentFid }
-          : undefined,
+        isReply && replyToHash && parentFid ? { hash: replyToHash, fid: parentFid } : undefined,
     });
 
     runtime.logger.info(
-      { castId: cast.id, subaction },
+      { castId: cast.id, isReply, replyToHash },
       "[FARCASTER_CAST] Successfully published cast"
     );
 
     return {
       success: true,
-      text: subaction === "reply" ? `Replied with cast: ${cast.id}` : `Posted cast: ${cast.id}`,
+      text: isReply ? `Replied with cast: ${cast.id}` : `Posted cast: ${cast.id}`,
       data: {
-        subaction,
+        isReply,
         castId: cast.id,
         castHash: cast.metadata?.castHash,
         text: castText,
+        ...(replyToHash ? { replyToHash } : {}),
       },
     };
   },

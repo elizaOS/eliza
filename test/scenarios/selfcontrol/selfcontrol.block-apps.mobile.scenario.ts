@@ -30,7 +30,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "BLOCK_WEBSITES",
+      actionName: "OWNER_WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

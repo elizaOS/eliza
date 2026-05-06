@@ -143,6 +143,8 @@ export const ownerScheduleAction: Action = {
     "Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals. " +
     "Use this for questions like 'did I sleep?', 'when did I wake up?', 'what do you think my schedule is?', or 'why do you think I ate lunch?'. " +
     "Subactions: summary (default high-level answer) or inspect (show the evidence windows, sleep episodes, and meal candidates).",
+  descriptionCompressed:
+    "passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows) owner",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {

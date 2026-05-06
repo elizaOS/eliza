@@ -107,6 +107,9 @@ export interface INostrService extends Service {
 
   /** Publish profile (kind:0) */
   publishProfile(profile: NostrProfile): Promise<NostrSendResult>;
+
+  /** Publish a text note (kind:1) */
+  publishNote(text: string, tags?: string[][]): Promise<NostrSendResult>;
 }
 
 // Custom error classes

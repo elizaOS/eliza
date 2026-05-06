@@ -59,9 +59,9 @@
   -->
 
   <releases>
-    <release version="2.0.0-alpha.7" date="2026-02-07">
+    <release version="2.0.0-beta.0" date="2026-05-05">
       <description>
-        <p>Initial Flatpak release of elizaOS App.</p>
+        <p>Beta Flatpak release of elizaOS App.</p>
       </description>
     </release>
   </releases>

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-signal",
-  "version": "2.0.0-alpha.537",
+  "version": "2.0.0-beta.0",
   "description": "Signal messaging integration plugin for ElizaOS agents",
   "type": "module",
   "main": "dist/index.js",
@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@toon-format/toon": "2.1.0",
     "qrcode": "^1.5.4",
     "zod": "^4.4.3"
   },

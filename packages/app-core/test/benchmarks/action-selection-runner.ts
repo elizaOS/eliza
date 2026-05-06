@@ -612,7 +612,7 @@ async function seedBenchmarkCaseFixtures(
   try {
     const seedModule = (await import(
       // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../../eliza/test/mocks/helpers/seed-grants.ts"
+      "../../../../test/mocks/helpers/seed-grants.ts"
     )) as {
       seedGoogleConnectorGrant: (
         runtime: AgentRuntime,
@@ -659,7 +659,7 @@ async function seedBenchmarkCaseFixtures(
 
     const seedModule = (await import(
       // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../../eliza/test/mocks/helpers/seed-grants.ts"
+      "../../../../test/mocks/helpers/seed-grants.ts"
     )) as {
       seedXConnectorGrant: (
         runtime: AgentRuntime,

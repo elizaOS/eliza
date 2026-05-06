@@ -1,12 +1,14 @@
 import {
   parseToonKeyValue,
   type Action,
+  type ActionResult as CoreActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   type State,
 } from "@elizaos/core";
+import type { ActionResult as PluginActionResult } from "../sdk/types.js";
 import { getCurrentLlmResponse } from "../shared-state.js";
 import { getRsSdkGameService } from "./game-service.js";
 import {
@@ -17,6 +19,40 @@ import {
 
 type ParamsRecord = Record<string, unknown>;
 
+/**
+ * Bridge the plugin's internal ActionResult ({ success, action, message, details })
+ * to the core Handler's expected ActionResult ({ success, text, data }), while
+ * preserving the action / details fields on the returned object so existing
+ * callers and tests that read `result.action` continue to work.
+ */
+type RouterActionResult = CoreActionResult & {
+  action: string;
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+function toRouterResult(result: PluginActionResult): RouterActionResult {
+  return {
+    success: result.success,
+    text: result.message,
+    action: result.action,
+    message: result.message,
+    details: result.details,
+    data: { action: result.action, message: result.message },
+  };
+}
+
+function routerError(actionName: string, message: string): RouterActionResult {
+  return {
+    success: false,
+    text: message,
+    action: actionName,
+    message,
+    error: message,
+    data: { action: actionName, message },
+  };
+}
+
 function isRecord(value: unknown): value is ParamsRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -24,7 +60,8 @@ function isRecord(value: unknown): value is ParamsRecord {
 function normalizeParams(params: ParamsRecord, dispatch: string): ParamsRecord {
   const normalized = { ...params };
 
-  if (normalized.npc && !normalized.npcName) normalized.npcName = normalized.npc;
+  if (normalized.npc && !normalized.npcName)
+    normalized.npcName = normalized.npc;
   if (normalized.item && !normalized.itemName)
     normalized.itemName = normalized.item;
   if (normalized.object && !normalized.objectName)
@@ -176,10 +213,10 @@ function createRouterAction(definition: Rs2004RouterDefinition): Action {
       _state: State | undefined,
       options: HandlerOptions | ParamsRecord | undefined,
       callback?: HandlerCallback,
-    ): Promise<unknown> => {
+    ): Promise<RouterActionResult> => {
       const service = getRsSdkGameService(runtime);
       if (!service) {
-        return { success: false, message: "Game service not available." };
+        return routerError(definition.name, "Game service not available.");
       }
 
       const params = {
@@ -194,7 +231,7 @@ function createRouterAction(definition: Rs2004RouterDefinition): Action {
       if (!resolved) {
         const errMessage = `${definition.name} requires a valid op.`;
         callback?.({ text: errMessage, action: definition.name });
-        return { success: false, message: errMessage };
+        return routerError(definition.name, errMessage);
       }
 
       const result = await service.executeAction(
@@ -202,7 +239,7 @@ function createRouterAction(definition: Rs2004RouterDefinition): Action {
         normalizeParams(params, resolved.dispatch),
       );
       callback?.({ text: result.message, action: definition.name });
-      return result;
+      return toRouterResult(result);
     },
   };
 }
@@ -256,10 +293,10 @@ export const rs2004WalkToAction: Action = {
     _state: State | undefined,
     options: HandlerOptions | ParamsRecord | undefined,
     callback?: HandlerCallback,
-  ): Promise<unknown> => {
+  ): Promise<RouterActionResult> => {
     const service = getRsSdkGameService(runtime);
     if (!service) {
-      return { success: false, message: "Game service not available." };
+      return routerError("WALK_TO", "Game service not available.");
     }
 
     const params = {
@@ -268,7 +305,7 @@ export const rs2004WalkToAction: Action = {
     };
     const result = await service.executeAction("walkTo", params);
     callback?.({ text: result.message, action: "WALK_TO" });
-    return result;
+    return toRouterResult(result);
   },
 };
 

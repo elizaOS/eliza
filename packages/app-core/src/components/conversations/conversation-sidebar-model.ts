@@ -151,7 +151,10 @@ function buildInboxRows(
 ): ConversationsSidebarRow[] {
   return inboxChats
     .map((chat) => {
-      const isoDate = new Date(chat.lastMessageAt).toISOString();
+      const sortKey = Number.isFinite(chat.lastMessageAt)
+        ? chat.lastMessageAt
+        : Date.now();
+      const isoDate = new Date(sortKey).toISOString();
       const normalizedSource = normalizeConnectorSource(chat.source);
       const normalizedWorldLabel = normalizeWorldLabel(chat, t);
       return {
@@ -159,7 +162,7 @@ function buildInboxRows(
         canSend: chat.canSend,
         id: chat.id,
         kind: "inbox" as const,
-        sortKey: chat.lastMessageAt,
+        sortKey,
         source: normalizedSource,
         sourceKey: normalizedSource,
         transportSource: chat.transportSource ?? chat.source,

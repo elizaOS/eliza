@@ -8,7 +8,13 @@
  * @module eliza
  */
 import crypto from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -84,9 +90,6 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
-import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
-import * as pluginPdf from "@elizaos/plugin-pdf";
 import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
@@ -384,9 +387,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
     : {}),
   ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
   // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
-  "@elizaos/plugin-agent-skills": pluginAgentSkills,
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
-  "@elizaos/plugin-pdf": pluginPdf,
   ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
   ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
@@ -398,7 +399,6 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
   // omitted from the static map — see the comment near the top of this file.
   // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
-  "@elizaos/plugin-browser-bridge": pluginBrowserBridge,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
 });
@@ -2817,7 +2817,7 @@ export async function startEliza(
     );
     const bootResult = await runVaultBootstrap();
     logger.info(
-      `[vault-bootstrap] migrated=${bootResult.migrated} already-hydrated=${bootResult.alreadyHydrated} failed=${bootResult.failed.length}`,
+      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
     );
 
     const { resolved, missing } = await resolveConfigEnvForProcess(
@@ -2906,11 +2906,13 @@ export async function startEliza(
   }
 
   // 2d-iii. OG tracking code initialization
-  try {
-    const { initializeOGCode } = await loadElizaMakerModule();
-    initializeOGCode?.();
-  } catch {
-    // Silent — OG tracking is non-critical
+  if (!isMobilePlatform()) {
+    try {
+      const { initializeOGCode } = await loadElizaMakerModule();
+      initializeOGCode?.();
+    } catch {
+      // Silent — OG tracking is non-critical
+    }
   }
 
   // 2d-ii. Allow destructive migrations (e.g. dropping tables removed between
@@ -2921,11 +2923,39 @@ export async function startEliza(
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
   }
 
-  // 2e-ii. Ensure SECRET_SALT is set to suppress the @elizaos/core default
-  //        warning and avoid using a predictable value in production.
+  // 2e-ii. SECRET_SALT must be stable across boots — multiple consumers key
+  //        durable encryption off it (core/settings.ts encryptStringValue,
+  //        encryptedCharacter for character.secrets, runtime.ts decryptSecret,
+  //        advanced-capabilities settings). Previously we generated a random
+  //        value per process, which silently invalidated every persisted
+  //        ciphertext on restart (decryptStringValue returns the encrypted
+  //        string on failure, so connector logins just stopped working
+  //        without an error). Persist to <stateDir>/secret-salt instead.
   if (!process.env.SECRET_SALT) {
-    process.env.SECRET_SALT = crypto.randomBytes(32).toString("hex");
-    logger.info("[eliza] Generated random SECRET_SALT for this session");
+    const secretSaltPath = path.join(resolveStateDir(), "secret-salt");
+    let salt: string | null = null;
+    try {
+      const cached = readFileSync(secretSaltPath, "utf8").trim();
+      if (/^[0-9a-f]{64}$/.test(cached)) {
+        salt = cached;
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+    }
+    if (!salt) {
+      salt = crypto.randomBytes(32).toString("hex");
+      mkdirSync(path.dirname(secretSaltPath), { recursive: true });
+      // 0o600: only the user account that wrote it can read it. The salt
+      // is a key-derivation input — anyone who reads it plus the
+      // ciphertext can decrypt persisted secrets.
+      writeFileSync(secretSaltPath, salt, { encoding: "utf8", mode: 0o600 });
+      logger.info(
+        `[eliza] Generated SECRET_SALT and persisted to ${secretSaltPath}`,
+      );
+    }
+    process.env.SECRET_SALT = salt;
   }
 
   // 2e-iii. Pre-flight validation for Google AI API keys.  If the key looks
@@ -3457,6 +3487,34 @@ export async function startEliza(
     },
   });
   installRuntimeMethodBindings(runtime);
+
+  // 7a. Mobile local inference must be registered before runtime.initialize().
+  // Runtime services probe TEXT_EMBEDDING during init; registering the local
+  // handler only after startEliza() returns leaves mobile local mode booting
+  // with "no provider" diagnostics and disabled embedding services.
+  if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
+    try {
+      const { ensureAospLocalInferenceHandlers } = await import(
+        "./aosp-local-inference-bootstrap.js"
+      );
+      await ensureAospLocalInferenceHandlers(runtime);
+    } catch (err) {
+      logger.warn(
+        `[eliza] AOSP local inference pre-registration skipped: ${formatError(err)}`,
+      );
+    }
+  } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
+    try {
+      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+        "./mobile-device-bridge-bootstrap.js"
+      );
+      await ensureMobileDeviceBridgeInferenceHandlers(runtime);
+    } catch (err) {
+      logger.warn(
+        `[eliza] Mobile device bridge pre-registration skipped: ${formatError(err)}`,
+      );
+    }
+  }
 
   // 7b. Pre-register plugin-sql so the adapter is ready before other plugins init.
   //     This is OPTIONAL — without it, some features (memory, todos) won't work.

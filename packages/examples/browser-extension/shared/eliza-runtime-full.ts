@@ -24,8 +24,11 @@ import googleGenAIPlugin from "@elizaos/plugin-google-genai";
 import groqPlugin from "@elizaos/plugin-groq";
 import localdbPlugin from "@elizaos/plugin-localdb";
 import openaiPlugin from "@elizaos/plugin-openai";
-import { v4 as uuidv4 } from "uuid";
 import type { ExtensionConfig, PageContent, ProviderMode } from "./types";
+
+function uuidv4(): string {
+  return globalThis.crypto.randomUUID();
+}
 
 // ============================================
 // Types

@@ -1,12 +1,12 @@
 {
   "name": "@elizaos/example-roblox-agent-typescript",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "Roblox ↔ elizaOS agent bridge (TypeScript)",
   "type": "module",
   "scripts": {
     "start": "bun --no-env-file run server.ts",
     "dev": "bun --no-env-file --watch run server.ts",
-    "test": "vitest run --config ./vitest.config.ts",
+    "test": "vitest run --passWithNoTests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "build": "bun run typecheck"

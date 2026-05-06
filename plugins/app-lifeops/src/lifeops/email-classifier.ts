@@ -17,6 +17,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { wrapUntrustedEmailContent } from "./service-normalize-gmail.js";
 
@@ -336,9 +337,7 @@ function resolveModelType(modelSetting: string): keyof typeof ModelType {
 function parseStructuredClassification(
   raw: string,
 ): Record<string, unknown> | null {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(raw)
-  );
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 function normalizeSignalList(value: unknown): string[] {
@@ -420,10 +419,13 @@ export async function classifyEmail(
 
   try {
     const modelKey = resolveModelType(modelSetting);
-    const runModel = runtime.useModel.bind(runtime);
-    const raw = await runModel(ModelType[modelKey], {
-      prompt: buildLlmPrompt(message),
-    });
+    const raw = await runWithTrajectoryContext(
+      { purpose: "lifeops-email-classifier" },
+      () =>
+        runtime.useModel(ModelType[modelKey], {
+          prompt: buildLlmPrompt(message),
+        }),
+    );
     const classification = parseLlmClassification(raw) ??
       ruleResult ?? {
         category: "personal",

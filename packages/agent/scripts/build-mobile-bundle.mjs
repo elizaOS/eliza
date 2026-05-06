@@ -7,6 +7,7 @@
 //   eliza/packages/agent/dist-mobile/
 //     agent-bundle.js              the actual bun-runnable payload
 //     pglite.wasm                  PGlite WebAssembly module
+//     initdb.wasm                  PGlite init database WebAssembly module
 //     pglite.data                  PGlite filesystem image
 //     vector.tar.gz                pgvector contrib (referenced via ../)
 //     fuzzystrmatch.tar.gz         fuzzystrmatch contrib (referenced via ../)
@@ -22,6 +23,7 @@
 // PGlite extension paths:
 //   `@electric-sql/pglite` resolves four assets via `new URL(..., import.meta.url)`:
 //     - "./pglite.wasm"            => same dir as the bundle
+//     - "./initdb.wasm"            => same dir as the bundle
 //     - "./pglite.data"            => same dir as the bundle
 //     - "../vector.tar.gz"         => one dir above the bundle
 //     - "../fuzzystrmatch.tar.gz"  => one dir above the bundle
@@ -182,11 +184,11 @@ const nativeStubs = {
 // runtime load set, so they don't try to register at boot.
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
-  // Static `import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge"`
-  // in eliza.ts pulls in puppeteer/Chromium plumbing transitively. Mobile
-  // doesn't run a headless browser, and the runtime's plugin filter strips
-  // browser-bridge from the load set anyway, so a null stub satisfies the
-  // top-level resolution without dragging in 200 MB of native deps.
+  // Browser bridge can still be resolved through workspace/plugin fallback
+  // paths when core plugins are collected. Mobile doesn't run a headless
+  // browser, and the runtime's plugin filter strips browser-bridge from the
+  // load set anyway, so a null stub prevents Chromium plumbing from entering
+  // the bundle if that optional resolution path is reached.
   "@elizaos/plugin-browser-bridge": path.join(stubsDir, "null-plugin.cjs"),
   // Server-side connectors that app-lifeops dynamically imports inside
   // its service mixins. Mobile never reaches the runtime path that
@@ -307,6 +309,30 @@ const dedupePlugin = {
   },
 };
 
+const nativeCapacitorPlugin = {
+  name: "eliza-mobile-native-capacitor-workspaces",
+  setup(build) {
+    build.onResolve(
+      { filter: /^@elizaos\/capacitor-[^/]+$/ },
+      (args) => {
+        const packageName = args.path.replace("@elizaos/capacitor-", "");
+        const target = path.resolve(
+          repoRoot,
+          "packages",
+          "native-plugins",
+          packageName,
+          "src",
+          "index.ts",
+        );
+        if (!existsSync(target)) {
+          return undefined;
+        }
+        return { path: target, namespace: "file" };
+      },
+    );
+  },
+};
+
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
@@ -329,7 +355,7 @@ const buildResult = await Bun.build({
     // branch at build time.
     "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
   },
-  plugins: [dedupePlugin, stubResolverPlugin],
+  plugins: [dedupePlugin, nativeCapacitorPlugin, stubResolverPlugin],
 });
 
 if (!buildResult.success) {
@@ -360,7 +386,7 @@ console.log(
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`
 // lands here.
-for (const asset of ["pglite.wasm", "pglite.data"]) {
+for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
     console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);
@@ -394,6 +420,7 @@ const manifest = {
   platform: "android",
   pglite: {
     wasm: "pglite.wasm",
+    initdb: "initdb.wasm",
     data: "pglite.data",
     extensions: {
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },

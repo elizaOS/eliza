@@ -33,9 +33,11 @@ export const coreActionsSpec = {
   version: "1.0.0",
   actions: [
     {
-      name: "TRANSFER",
+      name: "SOLANA_TRANSFER",
       description: "Transfer SOL or SPL tokens from the agent's Solana wallet to another address",
+      descriptionCompressed: "Solana transfer: send SOL or SPL tokens to another address.",
       similes: [
+        "TRANSFER",
         "SEND_SOL",
         "SEND_TOKEN",
         "SEND_TOKENS",
@@ -50,6 +52,7 @@ export const coreActionsSpec = {
       name: "SWAP",
       description:
         "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
+      descriptionCompressed: "Solana token swap: SOL or SPL tokens via Jupiter routing.",
       similes: [
         "SWAP_SOL",
         "SWAP_SOLANA",
@@ -75,9 +78,11 @@ export const allActionsSpec = {
   version: "1.0.0",
   actions: [
     {
-      name: "TRANSFER",
+      name: "SOLANA_TRANSFER",
       description: "Transfer SOL or SPL tokens from the agent's Solana wallet to another address",
+      descriptionCompressed: "Solana transfer: send SOL or SPL tokens to another address.",
       similes: [
+        "TRANSFER",
         "SEND_SOL",
         "SEND_TOKEN",
         "SEND_TOKENS",
@@ -92,6 +97,7 @@ export const allActionsSpec = {
       name: "SWAP",
       description:
         "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
+      descriptionCompressed: "Solana token swap: SOL or SPL tokens via Jupiter routing.",
       similes: [
         "SWAP_SOL",
         "SWAP_SOLANA",
@@ -119,6 +125,7 @@ export const coreProvidersSpec = {
     {
       name: "solana-wallet",
       description: "your solana wallet information",
+      descriptionCompressed: "Solana wallet address, balances, and SPL holdings.",
       dynamic: true,
     },
   ],
@@ -129,6 +136,7 @@ export const allProvidersSpec = {
     {
       name: "solana-wallet",
       description: "your solana wallet information",
+      descriptionCompressed: "Solana wallet address, balances, and SPL holdings.",
       dynamic: true,
     },
   ],

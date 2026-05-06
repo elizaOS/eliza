@@ -16,9 +16,10 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { isElectrobunRuntime } from "../bridge";
-import { isElizaOS, isNative } from "../platform";
+import { isAndroid, isElizaOS, isNative } from "../platform";
 import { loadPersistedOnboardingComplete } from "./persistence";
 import {
+  createAndroidPolicy,
   createDesktopPolicy,
   createElizaOSPolicy,
   createMobilePolicy,
@@ -91,6 +92,7 @@ function detectPlatformPolicy(): PlatformPolicy {
   // native, but ElizaOS bundles the on-device agent and needs the longer
   // backend timeout (vanilla mobile is cloud-only with a fast-fail budget).
   if (isElizaOS()) return createElizaOSPolicy();
+  if (isAndroid) return createAndroidPolicy();
   if (isNative) return createMobilePolicy();
   return createWebPolicy();
 }

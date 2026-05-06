@@ -2,6 +2,7 @@ import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { runExtractorPipeline } from "../extractor-pipeline.js";
@@ -324,12 +325,15 @@ async function recoverCoreLifeOperationWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-extract-life-operation" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeCoreLifeOperationPlan(parsed) : null;
   } catch (error) {
     args.runtime.logger?.warn?.(
@@ -440,8 +444,7 @@ export async function extractLifeOperationWithLlm(args: {
   ].join("\n");
 
   const parseResponse = (rawResponse: string) => {
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeOperationPlan(parsed) : null;
   };
 

@@ -1,29 +1,29 @@
 export const workflowMatchingSchema = {
-  type: 'object',
+  type: "object",
   properties: {
     matchedWorkflowId: {
-      type: 'string',
+      type: "string",
       nullable: true,
     },
     confidence: {
-      type: 'string',
-      enum: ['high', 'medium', 'low', 'none'],
+      type: "string",
+      enum: ["high", "medium", "low", "none"],
     },
     matches: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         properties: {
-          id: { type: 'string' },
-          name: { type: 'string' },
-          score: { type: 'number' },
+          id: { type: "string" },
+          name: { type: "string" },
+          score: { type: "number" },
         },
-        required: ['id', 'name', 'score'],
+        required: ["id", "name", "score"],
       },
     },
     reason: {
-      type: 'string',
+      type: "string",
     },
   },
-  required: ['matchedWorkflowId', 'confidence', 'matches', 'reason'],
+  required: ["matchedWorkflowId", "confidence", "matches", "reason"],
 };

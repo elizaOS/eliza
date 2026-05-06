@@ -12,6 +12,7 @@ import type {
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
@@ -263,10 +264,12 @@ async function extractBookTravelPlanWithLlm(args: {
 
   let parsed: Record<string, unknown> | null = null;
   try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+    const raw = await runWithTrajectoryContext(
+      { purpose: "lifeops-book-travel" },
+      () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    );
     const rawText = typeof raw === "string" ? raw : "";
-    parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawText);
+    parsed = parseToonKeyValue<Record<string, unknown>>(rawText);
   } catch {
     parsed = null;
   }

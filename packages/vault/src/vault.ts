@@ -13,6 +13,7 @@ import {
   writeStore,
 } from "./store.js";
 import { AuditLog } from "./audit.js";
+import { PgliteVaultImpl } from "./pglite-vault.js";
 import type {
   AuditRecord,
   PasswordManagerReference,
@@ -109,7 +110,29 @@ export function createVault(opts: CreateVaultOptions = {}): Vault {
   const storePath = join(root, "vault.json");
   const auditPath = join(root, "audit", "vault.jsonl");
   const masterKey = opts.masterKey ?? defaultMasterKey();
-  return new VaultImpl(storePath, auditPath, masterKey, opts.logger);
+
+  // Backend selection. Default: PGlite (consolidates state into the same
+  // database surface used by conversations/plugins). Set
+  // `MILADY_VAULT_BACKEND=file` (or legacy `ELIZA_VAULT_BACKEND=file`) to
+  // keep the legacy file-backed VaultImpl. The PGlite backend
+  // automatically migrates from `vault.json` on first construction if the
+  // table is empty and the file exists; legacy file is retained one
+  // release as a safety net.
+  const backend = (
+    process.env.MILADY_VAULT_BACKEND ??
+    process.env.ELIZA_VAULT_BACKEND ??
+    "pglite"
+  ).toLowerCase();
+  if (backend === "file" || backend === "json") {
+    return new VaultImpl(storePath, auditPath, masterKey, opts.logger);
+  }
+  return new PgliteVaultImpl({
+    dataDir: join(root, ".vault-pglite"),
+    legacyStorePath: storePath,
+    masterKey,
+    auditPath,
+    ...(opts.logger ? { logger: opts.logger } : {}),
+  });
 }
 
 class VaultImpl implements Vault {

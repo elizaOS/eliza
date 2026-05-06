@@ -4,13 +4,13 @@ import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
 import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
 import { parseBooleanFromText } from "@elizaos/core";
 import { walletSearchAddressAction } from "./actions/wallet-search-address";
+import Birdeye from "./birdeye-task";
 import { BIRDEYE_SERVICE_NAME } from "./constants";
 import { agentPortfolioProvider } from "./providers/agent-portfolio-provider";
 import { marketProvider } from "./providers/market";
 import { trendingProvider } from "./providers/trending";
 import { registerBirdeyeSearchCategories } from "./search-category";
 import { BIRDEYE_ROUTE_SPEC, BirdeyeService } from "./service";
-import Birdeye from "./tasks/birdeye";
 //import { tradePortfolioProvider } from './providers/wallet'; // trade history
 
 // create a new plugin

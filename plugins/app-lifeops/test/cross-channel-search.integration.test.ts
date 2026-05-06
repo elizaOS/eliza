@@ -3,7 +3,7 @@
  *
  * Boots a real AgentRuntime on PGLite, seeds messages into five rooms
  * (each pinned to a different platform via `source`), runs the
- * SEARCH_ACROSS_CHANNELS action (with direct query — no LLM required),
+ * SEARCH_MESSAGES action (with direct query — no LLM required),
  * and asserts merged citations across all five platforms.
  *
  * Run:
@@ -16,7 +16,7 @@ import { join } from "node:path";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
 import { searchAcrossChannelsAction } from "../src/actions/search-across-channels.js";
 import { runCrossChannelSearch } from "../src/lifeops/cross-channel-search.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
@@ -209,7 +209,7 @@ describe("cross-channel-search WS1 integration", () => {
     expect(gmailStatus).toBeTruthy();
   }, 120_000);
 
-  it("SEARCH_ACROSS_CHANNELS action returns merged clipboard-ready payload with citations", async () => {
+  it("SEARCH_MESSAGES action returns merged clipboard-ready payload with citations", async () => {
     const handler = searchAcrossChannelsAction.handler;
     if (!handler) throw new Error("searchAcrossChannelsAction.handler missing");
 

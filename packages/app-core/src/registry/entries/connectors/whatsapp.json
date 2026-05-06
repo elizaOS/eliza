@@ -3,7 +3,7 @@
   "name": "Whatsapp",
   "description": "A plugin for integrating WhatsApp Cloud API with applications, enabling messaging capabilities and webhook handling.",
   "npmName": "@elizaos/plugin-whatsapp",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["whatsapp", "connector", "social", "social-chat", "messaging"],
   "config": {

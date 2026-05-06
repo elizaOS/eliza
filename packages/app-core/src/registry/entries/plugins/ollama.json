@@ -3,7 +3,7 @@
   "name": "Ollama",
   "description": "Ollama provider for running local LLMs on your own machine.",
   "npmName": "@elizaos/plugin-ollama",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["ai-provider", "llm", "ollama", "local-models"],
   "config": {

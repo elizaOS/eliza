@@ -84,7 +84,7 @@ async function requestManagedAgent(
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
+      ...init?.headers,
     },
     redirect: "manual",
     signal: AbortSignal.timeout(20_000),

@@ -1,4 +1,4 @@
-function _show(platform, enabled, useSettingsInsteadOfPreferences) {
+function show(platform, enabled, useSettingsInsteadOfPreferences) {
   document.body.classList.add(`platform-${platform}`);
 
   if (useSettingsInsteadOfPreferences) {

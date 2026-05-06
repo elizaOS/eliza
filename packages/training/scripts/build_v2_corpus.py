@@ -39,6 +39,7 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import Iterator
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -171,7 +172,7 @@ def transform_record(rec: dict) -> dict | None:
     return rec
 
 
-def iter_synth(synth_dir: Path) -> "Iterator[dict]":
+def iter_synth(synth_dir: Path) -> Iterator[dict]:
     """Yield records from data/synthesized/{evaluators,phase3}/*.jsonl,
     repairing TOON bullets/indexed-assign as we go."""
     for sub in ("evaluators", "phase3"):

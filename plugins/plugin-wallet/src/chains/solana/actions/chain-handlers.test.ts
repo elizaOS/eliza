@@ -60,9 +60,10 @@ describe("Solana generated action specs", () => {
   it("does not expose the legacy SWAP_SOLANA action name", () => {
     const names = allActionDocs.map((doc) => doc.name);
 
-    expect(names).toContain("TRANSFER");
+    expect(names).toContain("SOLANA_TRANSFER");
     expect(names).toContain("SWAP");
     expect(names).not.toContain("SWAP_SOLANA");
+    expect(names).not.toContain("TRANSFER");
   });
 });
 
@@ -89,7 +90,7 @@ amount: 1.5`,
     expect(result?.data).toMatchObject({
       requiresConfirmation: true,
       confirmation: {
-        actionName: "TRANSFER",
+        actionName: "SOLANA_TRANSFER",
         parameters: {
           confirmed: true,
           tokenAddress: null,

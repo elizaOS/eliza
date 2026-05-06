@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-matrix",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@toon-format/toon": "2.1.0",
     "matrix-js-sdk": "^41.4.0",
     "zod": "^4.4.3"
   },

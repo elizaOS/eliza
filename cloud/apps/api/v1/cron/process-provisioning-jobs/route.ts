@@ -1,31 +1,25 @@
 /**
  * /api/v1/cron/process-provisioning-jobs
- * Claims and executes pending provisioning jobs from the `jobs` table using
- * FOR UPDATE SKIP LOCKED to prevent double-processing across overlapping
- * cron invocations. Also recovers stale in_progress jobs.
+ * Claims and executes pending provisioning jobs from the `jobs` table.
  *
- * NOTE: provisioningJobService transitively imports node:net (eliza-sandbox)
- * and is currently considered Workers-incompatible. This route stays as a
- * 501 stub until the sandbox provisioning path is split out for the sidecar.
- *
- * Protected by CRON_SECRET. Schedule: every minute (matches deployment-monitor)
- * once it migrates off the sidecar.
+ * The actual processor is Node-only because agent provisioning uses SSH and
+ * Docker-node management. Cloudflare Workers validate cron auth here and
+ * forward the call to the container control-plane sidecar.
  */
 
 import { Hono } from "hono";
+import { verifyCronSecret } from "@/lib/api/cron-auth";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
-const app = new Hono();
+async function handleProcessProvisioningJobs(c: AppContext, env?: AppEnv["Bindings"]) {
+  const authError = verifyCronSecret(c.req.raw, "[Provisioning Jobs]", env);
+  if (authError) return authError;
+  return forwardCronToContainerControlPlane(c);
+}
 
-app.all("/", (c) =>
-  c.json(
-    {
-      success: false,
-      error: "not_yet_migrated",
-      reason:
-        "depends on @/lib/services/provisioning-jobs which transitively imports node:net via eliza-sandbox; runs on the Node sidecar",
-    },
-    501,
-  ),
-);
+const app = new Hono<AppEnv>();
+app.get("/", async (c) => handleProcessProvisioningJobs(c, c.env));
+app.post("/", async (c) => handleProcessProvisioningJobs(c, c.env));
 
 export default app;

@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "If you get stuck in the browser or on my computer, call me and let me jump in to unblock it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALL_USER", "LIFEOPS_COMPUTER_USE"],
+        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
         description: "stuck-agent escalation",
         includesAny: ["call", "stuck", "browser", "computer", "unblock"],
       }),
@@ -47,7 +47,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALL_USER", "LIFEOPS_COMPUTER_USE"],
+      actionName: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
     },
     {
       type: "interventionRequestExists",
@@ -60,13 +60,13 @@ export default scenario({
     {
       type: "connectorDispatchOccurred",
       channel: "phone_call",
-      actionName: ["CALL_USER"],
+      actionName: ["OWNER_VOICE_CALL"],
     },
     {
       type: "custom",
       name: "ea-stuck-agent-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALL_USER", "LIFEOPS_COMPUTER_USE"],
+        acceptedActions: ["OWNER_VOICE_CALL", "OWNER_COMPUTER_USE"],
         description: "stuck-agent escalation",
         includesAny: ["call", "stuck", "browser", "computer", "unblock"],
       }),
@@ -76,7 +76,7 @@ export default scenario({
       name: "ea-stuck-agent-call-dispatch",
       predicate: expectConnectorDispatch({
         channel: "phone_call",
-        actionName: ["CALL_USER"],
+        actionName: ["OWNER_VOICE_CALL"],
         description:
           "stuck-agent escalation goes through the voice/phone dispatcher",
       }),

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-music-library",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -36,6 +36,7 @@
     "prepare": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",

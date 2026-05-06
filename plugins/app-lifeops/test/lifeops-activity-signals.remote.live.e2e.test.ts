@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 
 const REMOTE_API_BASE =
   process.env.ELIZA_LIFEOPS_REMOTE_E2E_URL?.trim().replace(/\/+$/, "") ?? "";
@@ -24,14 +24,17 @@ async function requestJson(
   path: string,
   body?: Record<string, unknown>,
 ): Promise<JsonResponse> {
-  const response = await fetch(`${REMOTE_API_BASE}${path}`, {
+  const init: RequestInit = {
     method,
     headers: {
       Authorization: `Bearer ${REMOTE_API_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  };
+  if (body && method !== "GET" && method !== "HEAD") {
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetch(`${REMOTE_API_BASE}${path}`, init);
   const parsed: unknown = await response.json();
   if (!isRecord(parsed)) {
     throw new Error(`Expected JSON object from ${method} ${path}`);

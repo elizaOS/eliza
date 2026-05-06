@@ -3,7 +3,7 @@
   "name": "Roblox",
   "description": "Roblox app integration for agent-driven gameplay and interactive experiences.",
   "npmName": "@elizaos/plugin-roblox",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["app", "games", "roblox", "interactive"],
   "config": {

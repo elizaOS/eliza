@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
-import { createConversation, req } from "../../../../eliza/test/helpers/http";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { createConversation, req } from "../../../test/helpers/http";
 import {
   assertNoProviderIssue,
   getLifeOpsLiveSetupWarnings,
@@ -769,7 +769,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes itinerary questions toward CALENDAR_ACTION instead of task agents",
+      "routes itinerary questions toward OWNER_CALENDAR instead of task agents",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const { conversationId } = await createConversation(liveRuntime.port, {
@@ -794,7 +794,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
           prompt,
         );
         const plannerResponse = String(trajectory.llmCall.response ?? "");
-        expect(plannerResponse).toMatch(/CALENDAR_ACTION/i);
+        expect(plannerResponse).toMatch(/OWNER_CALENDAR/i);
         expect(plannerResponse).not.toMatch(
           /CREATE_TASK|SPAWN_AGENT|SEND_TO_AGENT|LIST_AGENTS/i,
         );
@@ -803,35 +803,39 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes sender-style Gmail searches toward GMAIL_ACTION across name and address variants",
+      "routes sender-style Gmail searches toward TRIAGE_MESSAGES across name and address variants",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [
           {
             userRequest: "find the email from suran",
-            requiredFragments: ["gmail_action", "suran"],
+            requiredFragments: ["triage_messages", "suran"],
           },
           {
             userRequest: "look for any email from suran@example.com",
-            requiredFragments: ["gmail_action", "suran@example.com"],
+            requiredFragments: ["triage_messages", "suran@example.com"],
           },
           {
             userRequest: "search my inbox for messages from Suran Lee",
-            requiredFragments: ["gmail_action", "suran lee"],
+            requiredFragments: ["triage_messages", "suran lee"],
           },
           {
             userRequest:
               "can you search my email and tell me if anyone named suran emailed me",
-            requiredFragments: ["gmail_action", "suran"],
+            requiredFragments: ["triage_messages", "suran"],
           },
           {
             userRequest:
               "look for all emails sent to me from suran in the last few weeks",
-            requiredFragments: ["gmail_action", "suran"],
+            requiredFragments: ["triage_messages", "suran"],
           },
           {
             userRequest: "show all unread emails from alex@example.com",
-            requiredFragments: ["gmail_action", "alex@example.com", "unread"],
+            requiredFragments: [
+              "triage_messages",
+              "alex@example.com",
+              "unread",
+            ],
           },
         ] as const;
 
@@ -873,26 +877,26 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes broad Gmail filters toward GMAIL_ACTION and preserves the key search terms",
+      "routes broad Gmail filters toward TRIAGE_MESSAGES and preserves the key search terms",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [
           {
             userRequest: "find emails that contain invoice",
-            requiredFragments: ["gmail_action", "invoice"],
+            requiredFragments: ["triage_messages", "invoice"],
           },
           {
             userRequest: "find all emails from alex that contain venue",
-            requiredFragments: ["gmail_action", "alex", "venue"],
+            requiredFragments: ["triage_messages", "alex", "venue"],
           },
           {
             userRequest:
               "show me all messages where the subject mentions agenda",
-            requiredFragments: ["gmail_action", "agenda"],
+            requiredFragments: ["triage_messages", "agenda"],
           },
           {
             userRequest: "which emails need a reply about venue",
-            requiredFragments: ["gmail_action", "venue"],
+            requiredFragments: ["triage_messages", "venue"],
             anyFragments: ["replyneededonly", "reply needed", "needs_response"],
           },
         ] as const;

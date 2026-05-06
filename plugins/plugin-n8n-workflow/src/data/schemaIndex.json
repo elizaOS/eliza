@@ -16237,11 +16237,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "key",
-                    "value",
-                    "type"
-                  ]
+                  "required": ["key", "value", "type"]
                 }
               },
               "date_unsubscribe": {
@@ -16309,11 +16305,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "key",
-                    "value",
-                    "type"
-                  ]
+                  "required": ["key", "value", "type"]
                 }
               },
               "date_subscribe": {
@@ -16522,11 +16514,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "key",
-                    "value",
-                    "type"
-                  ]
+                  "required": ["key", "value", "type"]
                 }
               },
               "date_unsubscribe": {
@@ -16594,11 +16582,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "key",
-                    "value",
-                    "type"
-                  ]
+                  "required": ["key", "value", "type"]
                 }
               },
               "date_subscribe": {
@@ -19047,11 +19031,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "24",
-                  "48",
-                  "96"
-                ]
+                "required": ["24", "48", "96"]
               },
               "_links": {
                 "type": "object",
@@ -19065,9 +19045,7 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "href"
-                      ]
+                      "required": ["href"]
                     }
                   },
                   "collection": {
@@ -19079,28 +19057,14 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "href"
-                      ]
+                      "required": ["href"]
                     }
                   }
                 },
-                "required": [
-                  "self",
-                  "collection"
-                ]
+                "required": ["self", "collection"]
               }
             },
-            "required": [
-              "id",
-              "name",
-              "url",
-              "description",
-              "link",
-              "slug",
-              "meta",
-              "_links"
-            ],
+            "required": ["id", "name", "url", "description", "link", "slug", "meta", "_links"],
             "version": 1
           },
           "create": {
@@ -83116,9 +83080,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "usd"
-                ]
+                "required": ["usd"]
               }
             }
           },
@@ -109495,16 +109457,10 @@
                 "type": "string"
               },
               "PermissionsBoundary": {
-                "type": [
-                  "array",
-                  "null"
-                ]
+                "type": ["array", "null"]
               },
               "Tags": {
-                "type": [
-                  "array",
-                  "null"
-                ]
+                "type": ["array", "null"]
               },
               "UserId": {
                 "type": "string"
@@ -109706,9 +109662,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "MediaFileUri"
-                ]
+                "required": ["MediaFileUri"]
               },
               "Settings": {
                 "type": "object",
@@ -109720,10 +109674,7 @@
                     "type": "boolean"
                   }
                 },
-                "required": [
-                  "ChannelIdentification",
-                  "ShowAlternatives"
-                ]
+                "required": ["ChannelIdentification", "ShowAlternatives"]
               },
               "StartTime": {
                 "type": "number"
@@ -110278,16 +110229,10 @@
                       "type": "boolean"
                     },
                     "status": {
-                      "type": [
-                        "null",
-                        "string"
-                      ]
+                      "type": ["null", "string"]
                     },
                     "text": {
-                      "type": [
-                        "null",
-                        "string"
-                      ]
+                      "type": ["null", "string"]
                     },
                     "updated_at": {
                       "type": "string"
@@ -118780,13 +118725,7 @@
                             "type": "string"
                           }
                         },
-                        "required": [
-                          "gid",
-                          "color",
-                          "enabled",
-                          "name",
-                          "resource_type"
-                        ]
+                        "required": ["gid", "color", "enabled", "name", "resource_type"]
                       }
                     },
                     "name": {
@@ -118808,11 +118747,7 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_type"
-                      ]
+                      "required": ["gid", "name", "resource_type"]
                     },
                     "resource_subtype": {
                       "type": "string"
@@ -118880,13 +118815,7 @@
                                 "type": "string"
                               }
                             },
-                            "required": [
-                              "gid",
-                              "color",
-                              "enabled",
-                              "name",
-                              "resource_type"
-                            ]
+                            "required": ["gid", "color", "enabled", "name", "resource_type"]
                           }
                         },
                         "name": {
@@ -118914,14 +118843,7 @@
                           "type": "integer"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_subtype",
-                        "resource_type",
-                        "type",
-                        "is_formula_field"
-                      ]
+                      "required": ["gid", "name", "resource_subtype", "resource_type", "type", "is_formula_field"]
                     },
                     "is_important": {
                       "type": "boolean"
@@ -118939,11 +118861,7 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_type"
-                      ]
+                      "required": ["gid", "name", "resource_type"]
                     },
                     "project": {
                       "type": "object",
@@ -118958,24 +118876,13 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_type"
-                      ]
+                      "required": ["gid", "name", "resource_type"]
                     },
                     "resource_type": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "gid",
-                    "custom_field",
-                    "is_important",
-                    "parent",
-                    "project",
-                    "resource_type"
-                  ]
+                  "required": ["gid", "custom_field", "is_important", "parent", "project", "resource_type"]
                 }
               },
               "default_access_level": {
@@ -118999,11 +118906,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "gid",
-                    "name",
-                    "resource_type"
-                  ]
+                  "required": ["gid", "name", "resource_type"]
                 }
               },
               "members": {
@@ -119021,11 +118924,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "gid",
-                    "name",
-                    "resource_type"
-                  ]
+                  "required": ["gid", "name", "resource_type"]
                 }
               },
               "minimum_access_level_for_customization": {
@@ -119056,11 +118955,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "gid",
-                  "name",
-                  "resource_type"
-                ]
+                "required": ["gid", "name", "resource_type"]
               },
               "permalink_url": {
                 "type": "string"
@@ -119087,11 +118982,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "gid",
-                  "name",
-                  "resource_type"
-                ]
+                "required": ["gid", "name", "resource_type"]
               },
               "workspace": {
                 "type": "object",
@@ -119106,11 +118997,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "gid",
-                  "name",
-                  "resource_type"
-                ]
+                "required": ["gid", "name", "resource_type"]
               }
             },
             "required": [
@@ -120519,13 +120406,7 @@
                             "type": "string"
                           }
                         },
-                        "required": [
-                          "gid",
-                          "color",
-                          "enabled",
-                          "name",
-                          "resource_type"
-                        ]
+                        "required": ["gid", "color", "enabled", "name", "resource_type"]
                       }
                     },
                     "name": {
@@ -120547,11 +120428,7 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_type"
-                      ]
+                      "required": ["gid", "name", "resource_type"]
                     },
                     "resource_subtype": {
                       "type": "string"
@@ -120619,13 +120496,7 @@
                                 "type": "string"
                               }
                             },
-                            "required": [
-                              "gid",
-                              "color",
-                              "enabled",
-                              "name",
-                              "resource_type"
-                            ]
+                            "required": ["gid", "color", "enabled", "name", "resource_type"]
                           }
                         },
                         "name": {
@@ -120653,14 +120524,7 @@
                           "type": "integer"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_subtype",
-                        "resource_type",
-                        "type",
-                        "is_formula_field"
-                      ]
+                      "required": ["gid", "name", "resource_subtype", "resource_type", "type", "is_formula_field"]
                     },
                     "is_important": {
                       "type": "boolean"
@@ -120678,11 +120542,7 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_type"
-                      ]
+                      "required": ["gid", "name", "resource_type"]
                     },
                     "project": {
                       "type": "object",
@@ -120697,24 +120557,13 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "gid",
-                        "name",
-                        "resource_type"
-                      ]
+                      "required": ["gid", "name", "resource_type"]
                     },
                     "resource_type": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "gid",
-                    "custom_field",
-                    "is_important",
-                    "parent",
-                    "project",
-                    "resource_type"
-                  ]
+                  "required": ["gid", "custom_field", "is_important", "parent", "project", "resource_type"]
                 }
               },
               "default_access_level": {
@@ -120738,11 +120587,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "gid",
-                    "name",
-                    "resource_type"
-                  ]
+                  "required": ["gid", "name", "resource_type"]
                 }
               },
               "members": {
@@ -120760,11 +120605,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "gid",
-                    "name",
-                    "resource_type"
-                  ]
+                  "required": ["gid", "name", "resource_type"]
                 }
               },
               "minimum_access_level_for_customization": {
@@ -120795,11 +120636,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "gid",
-                  "name",
-                  "resource_type"
-                ]
+                "required": ["gid", "name", "resource_type"]
               },
               "permalink_url": {
                 "type": "string"
@@ -120826,11 +120663,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "gid",
-                  "name",
-                  "resource_type"
-                ]
+                "required": ["gid", "name", "resource_type"]
               },
               "workspace": {
                 "type": "object",
@@ -120845,11 +120678,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "gid",
-                  "name",
-                  "resource_type"
-                ]
+                "required": ["gid", "name", "resource_type"]
               }
             },
             "required": [

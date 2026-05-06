@@ -3,7 +3,7 @@
   "name": "X (Twitter)",
   "description": "X (formerly Twitter) connector for posts, mentions, replies, DMs, and timeline interactions through the elizaOS plugin-x runtime.",
   "npmName": "@elizaos/plugin-x",
-  "version": "2.0.0-alpha.0",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["connector", "social", "social-chat", "twitter", "x", "dm"],
   "config": {

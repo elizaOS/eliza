@@ -75,8 +75,9 @@ type ExtractedSignal = {
 function parseRecommendationExtraction(response: string): {
 	recommendations: ExtractedSignal[];
 } | null {
-	const parsed =
-		parseToonKeyValue<{ recommendations?: ExtractedSignal[] }>(response);
+	const parsed = parseToonKeyValue<{ recommendations?: ExtractedSignal[] }>(
+		response,
+	);
 
 	if (!parsed?.recommendations || !Array.isArray(parsed.recommendations)) {
 		return null;

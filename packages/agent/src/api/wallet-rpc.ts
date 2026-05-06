@@ -2,6 +2,13 @@ import {
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared";
+import {
+  type CloudApiKeyRuntimeLike,
+  DEFAULT_CLOUD_API_BASE_URL,
+  normalizeCloudSecret as normalizeSecret,
+  resolveCloudApiBaseUrl,
+  resolveCloudApiKey,
+} from "../cloud/cloud-api-key.js";
 import type { ElizaConfig } from "../config/config.js";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
@@ -12,7 +19,15 @@ import {
   type WalletRpcSelections,
 } from "../contracts/wallet.js";
 
-export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
+export type { CloudApiKeyRuntimeLike };
+// Re-exported for backwards compatibility — the canonical source is now
+// `../cloud/cloud-api-key.ts`. Consumers that imported these from here
+// continue to work; new code should import from the cloud module directly.
+export {
+  DEFAULT_CLOUD_API_BASE_URL,
+  resolveCloudApiBaseUrl,
+  resolveCloudApiKey,
+};
 // Multiple BSC public RPCs so we have working fallbacks when Eliza
 // Cloud's proxy returns 401 (plan/account issue) AND the primary
 // Binance dataseed endpoint is blocked/rate-limited. Order matters —
@@ -68,13 +83,6 @@ type WalletCapableConfig = Pick<ElizaConfig, "cloud" | "env"> & {
     network?: "mainnet" | "testnet";
   };
 };
-
-type CloudApiKeyRuntimeLike = {
-  getSetting?: (key: string) => unknown;
-  character?: {
-    secrets?: Record<string, unknown>;
-  } | null;
-} | null;
 
 export interface InventoryProviderOption {
   id: WalletRpcChain;
@@ -165,24 +173,6 @@ function _resolveWalletNetwork(): "mainnet" | "testnet" {
   if (explicit === "testnet") return "testnet";
   if (explicit === "mainnet") return "mainnet";
   return process.env.BSC_TESTNET_RPC_URL?.trim() ? "testnet" : "mainnet";
-}
-
-function normalizeSecret(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function resolveRuntimeCloudApiKey(
-  runtime?: CloudApiKeyRuntimeLike,
-): string | null {
-  const fromSetting = runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY");
-  if (typeof fromSetting === "string") {
-    return normalizeSecret(fromSetting);
-  }
-
-  const fromSecrets = runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY;
-  return typeof fromSecrets === "string" ? normalizeSecret(fromSecrets) : null;
 }
 
 export function resolveWalletNetworkMode(
@@ -281,39 +271,6 @@ export function normalizeRpcUrl(url: string | null | undefined): string | null {
   } catch {
     return null;
   }
-}
-
-export function resolveCloudApiBaseUrl(
-  rawBaseUrl?: string | null,
-): string | null {
-  const candidate =
-    normalizeSecret(rawBaseUrl ?? process.env.ELIZAOS_CLOUD_BASE_URL) ??
-    DEFAULT_CLOUD_API_BASE_URL;
-  try {
-    const parsed = new URL(candidate);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return null;
-    }
-    parsed.hash = "";
-    parsed.search = "";
-    const normalizedBase = parsed.toString().replace(/\/+$/, "");
-    return normalizedBase.endsWith("/api/v1")
-      ? normalizedBase
-      : `${normalizedBase}/api/v1`;
-  } catch {
-    return null;
-  }
-}
-
-export function resolveCloudApiKey(
-  config?: Pick<ElizaConfig, "cloud"> | null,
-  runtime?: CloudApiKeyRuntimeLike,
-): string | null {
-  return normalizeSecret(
-    config?.cloud?.apiKey ??
-      resolveRuntimeCloudApiKey(runtime) ??
-      process.env.ELIZAOS_CLOUD_API_KEY,
-  );
 }
 
 function buildCloudRpcProxyUrl(

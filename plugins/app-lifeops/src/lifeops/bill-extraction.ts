@@ -17,6 +17,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import type { EmailLikeMessage } from "./email-classifier.js";
 import { getConfiguredEmailClassifierModel } from "./email-classifier.js";
@@ -312,9 +313,7 @@ function resolveModelType(modelSetting: string): keyof typeof ModelType {
 function parseStructuredExtraction(
   raw: string,
 ): Record<string, unknown> | null {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(raw)
-  );
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 function parseLlmExtraction(raw: unknown): BillExtraction | null {
@@ -436,10 +435,13 @@ export async function extractBill(
   if (typeof runtime.useModel === "function") {
     try {
       const modelKey = resolveModelType(modelSetting);
-      const runModel = runtime.useModel.bind(runtime);
-      const raw = await runModel(ModelType[modelKey], {
-        prompt: buildLlmPrompt(message),
-      });
+      const raw = await runWithTrajectoryContext(
+        { purpose: "lifeops-bill-extraction" },
+        () =>
+          runtime.useModel(ModelType[modelKey], {
+            prompt: buildLlmPrompt(message),
+          }),
+      );
       llmResult = parseLlmExtraction(raw);
     } catch (error) {
       logger.warn(

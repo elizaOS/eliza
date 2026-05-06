@@ -2,7 +2,7 @@
  * LifeOps cross-device intent sync tests against a real PGLite runtime.
  *
  * Exercises broadcast / receive / acknowledge / prune over the local
- * `life_intents` table as well as the INTENT_SYNC action handler. No SQL
+ * `life_intents` table as well as the OWNER_DEVICE_INTENT action handler. No SQL
  * mocks, no LLM.
  */
 
@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../eliza/test/helpers/real-runtime";
+} from "../../../test/helpers/real-runtime";
 import { intentSyncAction } from "../src/actions/intent-sync.js";
 import {
   acknowledgeIntent,

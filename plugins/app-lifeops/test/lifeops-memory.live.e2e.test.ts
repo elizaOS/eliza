@@ -21,12 +21,8 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
-import {
-  saveEnv,
-  sleep,
-  withTimeout,
-} from "../../../../eliza/test/helpers/test-utils";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { saveEnv, sleep, withTimeout } from "../../../test/helpers/test-utils";
 import { readLifeOpsOwnerProfile } from "../src/lifeops/owner-profile.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
@@ -315,7 +311,7 @@ describeIf(LIVE_SUITE_ENABLED)(
 
       const character = buildCharacterFromConfig({});
       character.settings = {
-        ...(character.settings ?? {}),
+        ...character.settings,
         ELIZA_ADMIN_ENTITY_ID: ownerId,
         MEMORY_SUMMARIZATION_THRESHOLD: 4,
         MEMORY_SUMMARIZATION_INTERVAL: 1,
@@ -585,7 +581,6 @@ describeIf(LIVE_SUITE_ENABLED)(
             unique: false,
           })) as Memory[],
         (facts) =>
-          facts.length > 0 &&
           facts.some((fact) =>
             /text|phone|invisalign/i.test(String(fact.content?.text ?? "")),
           ),

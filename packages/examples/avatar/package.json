@@ -1,6 +1,6 @@
 {
   "name": "eliza-vrm-demo",
-  "version": "0.0.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,6 @@
     "@elizaos/plugin-elevenlabs": "workspace:*",
     "@elizaos/plugin-localdb": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-simple-voice": "workspace:*",
     "@pixiv/three-vrm": "^3.4.2",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

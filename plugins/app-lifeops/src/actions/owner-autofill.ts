@@ -49,15 +49,14 @@ const SUBACTIONS: SubactionsMap<AutofillSubaction> = {
     description:
       "Request a one-field autofill via the browser extension password manager. Refused on non-whitelisted domains.",
     descriptionCompressed:
-      "request one-field autofill via extension password-manager allowlisted domain only",
+      "one-field autofill via extension password-manager allowlist-only",
     required: ["field", "domain"],
     optional: ["url"],
   },
   whitelist_add: {
     description:
       "Add a domain to the autofill allowlist. Requires confirmed:true.",
-    descriptionCompressed:
-      "add domain to autofill allowlist confirmed-true required",
+    descriptionCompressed: "add domain autofill allowlist confirmed-true",
     required: ["domain", "confirmed"],
   },
   whitelist_list: {
@@ -70,7 +69,7 @@ const SUBACTIONS: SubactionsMap<AutofillSubaction> = {
 
 interface RuntimeCacheLike {
   getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | void>;
+  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
 }
 
 function hasRuntimeCache(runtime: unknown): runtime is RuntimeCacheLike {
@@ -154,7 +153,7 @@ function failure(error: string, extra?: Record<string, unknown>): ActionResult {
       actionName: ACTION_NAME,
       error,
       ...(needsInput ? { requiresConfirmation: true } : {}),
-      ...(extra ?? {}),
+      ...extra,
     },
   };
 }
@@ -382,7 +381,9 @@ async function handleWhitelistAdd(
   };
 }
 
-async function handleWhitelistList(runtime: IAgentRuntime): Promise<ActionResult> {
+async function handleWhitelistList(
+  runtime: IAgentRuntime,
+): Promise<ActionResult> {
   const user = await loadUserDomains(runtime);
   const effective = await effectiveWhitelist(runtime);
   return {
@@ -406,12 +407,7 @@ export const ownerAutofillAction: Action & {
 } = {
   name: ACTION_NAME,
   suppressPostActionContinuation: true,
-  similes: [
-    "AUTOFILL",
-    "FILL_PASSWORD",
-    "TRUST_SITE",
-    "SHOW_AUTOFILL_DOMAINS",
-  ],
+  similes: ["AUTOFILL", "FILL_PASSWORD", "TRUST_SITE", "SHOW_AUTOFILL_DOMAINS"],
   description:
     "Owner-only. Browser autofill via the LifeOps browser extension. Subactions: " +
     "fill (request a one-field autofill from the password manager; refused on non-whitelisted domains), " +
@@ -446,7 +442,8 @@ export const ownerAutofillAction: Action & {
     },
     {
       name: "url",
-      description: "Optional explicit tab URL for fill (used for whitelist enforcement).",
+      description:
+        "Optional explicit tab URL for fill (used for whitelist enforcement).",
       required: false,
       schema: { type: "string" as const },
     },
@@ -497,7 +494,9 @@ export const ownerAutofillAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Can you log me into github? I'm on the sign-in page." },
+        content: {
+          text: "Can you log me into github? I'm on the sign-in page.",
+        },
       },
       {
         name: "{{agentName}}",

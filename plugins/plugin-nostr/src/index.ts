@@ -7,7 +7,7 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { publishProfile, sendDm } from "./actions/index.js";
+import { publishNote, publishProfile, sendDm } from "./actions/index.js";
 import { identityContextProvider } from "./providers/index.js";
 import { NostrService } from "./service.js";
 import { DEFAULT_NOSTR_RELAYS } from "./types.js";
@@ -17,7 +17,7 @@ export * from "./types.js";
 // Export service
 // Export actions
 // Export providers
-export { identityContextProvider, NostrService, publishProfile, sendDm };
+export { identityContextProvider, NostrService, publishNote, publishProfile, sendDm };
 
 /**
  * Nostr plugin definition
@@ -28,7 +28,7 @@ const nostrPlugin: Plugin = {
 
   services: [NostrService],
 
-  actions: [publishProfile],
+  actions: [publishNote, publishProfile, sendDm],
 
   providers: [identityContextProvider],
 

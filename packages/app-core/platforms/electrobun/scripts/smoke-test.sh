@@ -57,6 +57,7 @@ STATE_ERROR=""
 STATE_EXIT_CODE=""
 STATE_UPDATED_AT=""
 STATE_SOURCE_FILE=""
+DEFAULT_AVATAR_ASSET_SLUGS=(eliza-1 milady-1)
 
 if [[ "$SKIP_SIGNATURE_CHECK" == "1" && -z "$BUILD_SKIP_CODESIGN" ]]; then
   BUILD_SKIP_CODESIGN="1"
@@ -479,6 +480,7 @@ build_launcher_command() {
       ELIZA_STARTUP_STATE_FILE="$STARTUP_STATE_FILE"
       ELIZA_STARTUP_EVENTS_FILE="$STARTUP_EVENTS_FILE"
       ELIZA_FORCE_AUTOSTART_AGENT=1
+      ELIZA_DESKTOP_SKIP_STARTUP_CRASH_PROMPT=1
       "$LAUNCHER_PATH"
     )
   else
@@ -488,6 +490,7 @@ build_launcher_command() {
       ELIZA_STARTUP_STATE_FILE="$STARTUP_STATE_FILE"
       ELIZA_STARTUP_EVENTS_FILE="$STARTUP_EVENTS_FILE"
       ELIZA_FORCE_AUTOSTART_AGENT=1
+      ELIZA_DESKTOP_SKIP_STARTUP_CRASH_PROMPT=1
       "$LAUNCHER_PATH"
     )
   fi
@@ -690,13 +693,24 @@ assert_packaged_archive_asset_variants() {
 verify_packaged_renderer_assets() {
   local renderer_dir="$LAUNCH_APP_BUNDLE/Contents/Resources/app/renderer"
   local archive_bundle_root=""
+  local default_avatar_vrm_candidates=()
+  local default_avatar_background_candidates=()
+  local slug=""
+
+  for slug in "${DEFAULT_AVATAR_ASSET_SLUGS[@]}"; do
+    default_avatar_vrm_candidates+=(
+      "$renderer_dir/vrms/${slug}.vrm.gz"
+      "$renderer_dir/vrms/${slug}.vrm"
+    )
+    default_avatar_background_candidates+=("$renderer_dir/vrms/backgrounds/${slug}.png")
+  done
 
   if [[ -d "$renderer_dir" ]]; then
     assert_packaged_asset "$renderer_dir/index.html" "renderer entrypoint" 256
     assert_packaged_asset_variants "default avatar VRM" 1024 \
-      "$renderer_dir/vrms/eliza-1.vrm.gz" \
-      "$renderer_dir/vrms/eliza-1.vrm"
-    assert_packaged_asset "$renderer_dir/vrms/backgrounds/eliza-1.png" "default avatar background" 1024
+      "${default_avatar_vrm_candidates[@]}"
+    assert_packaged_asset_variants "default avatar background" 1024 \
+      "${default_avatar_background_candidates[@]}"
     assert_packaged_asset_variants "default idle animation" 1024 \
       "$renderer_dir/animations/idle.glb.gz" \
       "$renderer_dir/animations/idle.glb"
@@ -707,11 +721,20 @@ verify_packaged_renderer_assets() {
 
   if [[ -n "${RUNTIME_ARCHIVE:-}" && -f "$RUNTIME_ARCHIVE" ]]; then
     archive_bundle_root="$(basename "$LAUNCH_APP_BUNDLE")/Contents/Resources/app/renderer"
+    default_avatar_vrm_candidates=()
+    default_avatar_background_candidates=()
+    for slug in "${DEFAULT_AVATAR_ASSET_SLUGS[@]}"; do
+      default_avatar_vrm_candidates+=(
+        "$archive_bundle_root/vrms/${slug}.vrm.gz"
+        "$archive_bundle_root/vrms/${slug}.vrm"
+      )
+      default_avatar_background_candidates+=("$archive_bundle_root/vrms/backgrounds/${slug}.png")
+    done
     assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/index.html" "renderer entrypoint" 256
     assert_packaged_archive_asset_variants "$RUNTIME_ARCHIVE" "default avatar VRM" 1024 \
-      "$archive_bundle_root/vrms/eliza-1.vrm.gz" \
-      "$archive_bundle_root/vrms/eliza-1.vrm"
-    assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/vrms/backgrounds/eliza-1.png" "default avatar background" 1024
+      "${default_avatar_vrm_candidates[@]}"
+    assert_packaged_archive_asset_variants "$RUNTIME_ARCHIVE" "default avatar background" 1024 \
+      "${default_avatar_background_candidates[@]}"
     assert_packaged_archive_asset_variants "$RUNTIME_ARCHIVE" "default idle animation" 1024 \
       "$archive_bundle_root/animations/idle.glb.gz" \
       "$archive_bundle_root/animations/idle.glb"

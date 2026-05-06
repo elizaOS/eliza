@@ -1,5 +1,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import type {
   InboundMessage,
   InboxTriageConfig,
@@ -71,7 +76,10 @@ async function classifyBatch(
 
   let rawResponse = "";
   try {
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-inbox-triage" },
+      () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    );
     rawResponse = typeof result === "string" ? result : "";
   } catch (error) {
     logger.warn(

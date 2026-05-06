@@ -40,7 +40,6 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { gmailAction } from "./gmail.js";
 import {
   extractGoalCreatePlanWithLlm,
   extractGoalUpdatePlanWithLlm,
@@ -84,9 +83,11 @@ import {
   detailObject,
   detailString,
   formatCalendarFeed,
+  formatEmailTriage,
   formatNextEventContext,
   formatOverviewForQuery,
   getGoogleCapabilityStatus,
+  gmailReadUnavailableMessage,
   INTERNAL_URL,
   messageText,
   toActionData,
@@ -1992,7 +1993,7 @@ export const lifeAction: Action & {
   description:
     "Owner-only. Manage personal routines, habits, goals, todos, reminders, alarms, escalation settings, calendar/email queries about life state, and reminder mutations. The single LifeOps action for: creating/editing/deleting/completing items; logging progress; setting reminders or alarms; capturing the owner's phone number; configuring escalation; querying today's calendar, the next event, recent email, or a high-level overview.",
   descriptionCompressed:
-    "life: definitions(create update delete) goals(create update delete review) occurrences(complete skip snooze) prefs(reminder-intensity capture-phone configure-escalation) queries(calendar-today calendar-next email overview) owner",
+    "Manage life routines: definitions, goals, occurrences, reminders, prefs, calendar/email queries, overview. Owner only.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     if (looksLikeCodingTaskRequest(messageText(message))) {
@@ -2647,21 +2648,22 @@ export const lifeAction: Action & {
 
       if (operation === "query_email") {
         const limit = detailNumber(details, "limit") ?? 10;
-        return (
-          (await gmailAction.handler?.(runtime, message, state, {
-            parameters: {
-              subaction: "triage",
-              intent,
-              details: {
-                ...details,
-                maxResults: limit,
-              },
-            },
-          } as HandlerOptions)) ?? {
+        const google = await getGoogleCapabilityStatus(service);
+        if (!google.hasGmailTriage) {
+          return {
             success: false,
-            text: "I couldn't route that Gmail request yet.",
-          }
-        );
+            text: gmailReadUnavailableMessage(google),
+          };
+        }
+        const feed = await service.getGmailTriage(INTERNAL_URL, {
+          maxResults: limit,
+          forceSync: detailBoolean(details, "forceSync") ?? false,
+        });
+        return {
+          success: true,
+          text: formatEmailTriage(feed),
+          data: toActionData(feed),
+        };
       }
 
       if (operation === "query_overview") {
@@ -2783,7 +2785,7 @@ export const lifeAction: Action & {
           ) {
             goalMetadata = mergeGoalMetadataWithGrounding({
               metadata: {
-                ...(goalMetadata ?? {}),
+                ...goalMetadata,
                 source: "chat",
                 originalIntent: intent,
               },
@@ -2913,7 +2915,7 @@ export const lifeAction: Action & {
           supportStrategy: goalDraft.request.supportStrategy,
           successCriteria: goalDraft.request.successCriteria,
           metadata: {
-            ...(goalDraft.request.metadata ?? {}),
+            ...goalDraft.request.metadata,
             source: "chat",
             originalIntent: goalDraft.intent || goalDraft.request.title,
           },

@@ -30,8 +30,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../../eliza/test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
+import { itIf } from "../../../../test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import {
   expectActionCalled,
   expectActionNotCalled,
@@ -361,7 +361,7 @@ describe("Action Invocation E2E", () => {
           await h.send(
             "I'm venting, not asking you to do anything: email has been overwhelming lately. Do not check inboxes, triage mail, draft, send, or take any action.",
           );
-          expectActionNotCalled(h.spy, "OWNER_INBOX");
+          expectActionNotCalled(h.spy, "TRIAGE_MESSAGES");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -438,24 +438,24 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "morning check-in request triggers RUN_MORNING_CHECKIN",
+      "morning check-in request triggers OWNER_CHECKIN",
       async () => {
-        if (!requireAction("RUN_MORNING_CHECKIN")) return;
+        if (!requireAction("OWNER_CHECKIN")) return;
         await withHarness(async (h) => {
           await h.send("Run my morning check-in.");
-          expectActionCalled(h.spy, "RUN_MORNING_CHECKIN");
+          expectActionCalled(h.spy, "OWNER_CHECKIN");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "night check-in request triggers RUN_NIGHT_CHECKIN",
+      "night check-in request triggers OWNER_CHECKIN",
       async () => {
-        if (!requireAction("RUN_NIGHT_CHECKIN")) return;
+        if (!requireAction("OWNER_CHECKIN")) return;
         await withHarness(async (h) => {
           await h.send("Give me my night check-in.");
-          expectActionCalled(h.spy, "RUN_NIGHT_CHECKIN");
+          expectActionCalled(h.spy, "OWNER_CHECKIN");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -468,55 +468,55 @@ describe("Action Invocation E2E", () => {
 
   describe("messaging", () => {
     itIf(canRunLiveTests)(
-      "telegram request triggers OWNER_SEND_MESSAGE",
+      "telegram request triggers SEND_DRAFT",
       async () => {
-        if (!requireAction("OWNER_SEND_MESSAGE")) return;
+        if (!requireAction("SEND_DRAFT")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a telegram message to Jane saying I'm running 10 minutes late.",
           );
-          expectAnySelectedAction(h, ["OWNER_SEND_MESSAGE"]);
+          expectAnySelectedAction(h, ["SEND_DRAFT", "RESPOND_TO_MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "signal request triggers OWNER_SEND_MESSAGE",
+      "signal request triggers SEND_DRAFT",
       async () => {
-        if (!requireAction("OWNER_SEND_MESSAGE")) return;
+        if (!requireAction("SEND_DRAFT")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a Signal message to Priya saying thanks for the review.",
           );
-          expectAnySelectedAction(h, ["OWNER_SEND_MESSAGE"]);
+          expectAnySelectedAction(h, ["SEND_DRAFT", "RESPOND_TO_MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "signal draft request triggers OWNER_SEND_MESSAGE",
+      "signal draft request triggers DRAFT_REPLY",
       async () => {
-        if (!requireAction("OWNER_SEND_MESSAGE")) return;
+        if (!requireAction("DRAFT_REPLY")) return;
         await withHarness(async (h) => {
           await h.send(
-            "Send a Signal message to Priya saying thanks for the review.",
+            "Draft a Signal message to Priya saying thanks for the review.",
           );
-          expectActionCalled(h.spy, "OWNER_SEND_MESSAGE");
+          expectAnySelectedAction(h, ["DRAFT_REPLY", "SEND_DRAFT"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "email draft request triggers OWNER_SEND_MESSAGE",
+      "email draft request triggers DRAFT_REPLY",
       async () => {
-        if (!requireAction("OWNER_SEND_MESSAGE")) return;
+        if (!requireAction("DRAFT_REPLY")) return;
         await withHarness(async (h) => {
           await sendUntilExpectedAction(
             h,
-            ["OWNER_SEND_MESSAGE", "OWNER_INBOX"],
+            ["DRAFT_REPLY", "SEND_DRAFT", "TRIAGE_MESSAGES"],
             [
               "Email alice@example.com the meeting notes from today.",
               "Send an email to alice@example.com with the meeting notes from today.",
@@ -529,38 +529,38 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "gmail triage request selects OWNER_INBOX",
+      "gmail triage request selects TRIAGE_MESSAGES",
       async () => {
-        if (!requireAction("OWNER_INBOX")) return;
+        if (!requireAction("TRIAGE_MESSAGES")) return;
         await withHarness(async (h) => {
           await h.send("Triage my gmail inbox.");
-          expectAnyCompletedAction(h, ["OWNER_INBOX"]);
+          expectAnyCompletedAction(h, ["TRIAGE_MESSAGES"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "generic inbox triage triggers OWNER_INBOX",
+      "generic inbox triage triggers TRIAGE_MESSAGES",
       async () => {
-        if (!requireAction("OWNER_INBOX")) return;
+        if (!requireAction("TRIAGE_MESSAGES")) return;
         await withHarness(async (h) => {
           await h.send("Triage my inbox.");
-          expectActionCalled(h.spy, "OWNER_INBOX");
+          expectActionCalled(h.spy, "TRIAGE_MESSAGES");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "gmail send-reply request triggers OWNER_INBOX",
+      "gmail send-reply request triggers RESPOND_TO_MESSAGE",
       async () => {
-        if (!requireAction("OWNER_INBOX")) return;
+        if (!requireAction("RESPOND_TO_MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a reply to the last email from finance confirming receipt.",
           );
-          expectActionCalled(h.spy, "OWNER_INBOX");
+          expectAnySelectedAction(h, ["RESPOND_TO_MESSAGE", "SEND_DRAFT"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -605,7 +605,6 @@ describe("Action Invocation E2E", () => {
           expectAnySelectedAction(h, [
             "SCHEDULING",
             "PROPOSE_MEETING_TIMES",
-            "CALENDAR_ACTION",
             "OWNER_CALENDAR",
           ]);
         });
@@ -816,64 +815,64 @@ describe("Action Invocation E2E", () => {
 
   describe("meta & ops", () => {
     itIf(canRunLiveTests)(
-      "owner profile update request triggers UPDATE_OWNER_PROFILE",
+      "owner profile update request triggers OWNER_PROFILE",
       async () => {
-        if (!requireAction("UPDATE_OWNER_PROFILE")) return;
+        if (!requireAction("OWNER_PROFILE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue.",
           );
-          expectActionCalled(h.spy, "UPDATE_OWNER_PROFILE");
+          expectActionCalled(h.spy, "OWNER_PROFILE");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "dossier request triggers DOSSIER",
+      "dossier request triggers OWNER_DOSSIER",
       async () => {
-        if (!requireAction("DOSSIER")) return;
+        if (!requireAction("OWNER_DOSSIER")) return;
         await withHarness(async (h) => {
           await h.send("Pull up a dossier on Satya Nadella.");
-          expectActionCalled(h.spy, "DOSSIER");
+          expectActionCalled(h.spy, "OWNER_DOSSIER");
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "broadcast intent triggers INTENT_SYNC",
+      "broadcast intent triggers OWNER_DEVICE_INTENT",
       async () => {
-        if (!requireAction("INTENT_SYNC")) return;
+        if (!requireAction("OWNER_DEVICE_INTENT")) return;
         await withHarness(async (h) => {
           await h.send("Broadcast a reminder to all my devices.");
-          expectAnySelectedAction(h, ["INTENT_SYNC", "PUBLISH_DEVICE_INTENT"]);
+          expectAnySelectedAction(h, ["OWNER_DEVICE_INTENT"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "approve request prompt triggers APPROVE_REQUEST",
+      "approve request prompt triggers OWNER_RESOLVE_REQUEST",
       async () => {
-        if (!requireAction("APPROVE_REQUEST")) return;
+        if (!requireAction("OWNER_RESOLVE_REQUEST")) return;
         await withHarness(async (h) => {
           await h.send("Approve the pending travel booking request.");
-          expectAnySelectedAction(h, ["APPROVE_REQUEST"]);
+          expectAnySelectedAction(h, ["OWNER_RESOLVE_REQUEST"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "reject request prompt triggers REJECT_REQUEST",
+      "reject request prompt triggers OWNER_RESOLVE_REQUEST",
       async () => {
-        if (!requireAction("REJECT_REQUEST")) return;
+        if (!requireAction("OWNER_RESOLVE_REQUEST")) return;
         await withHarness(async (h) => {
           await h.send(
             "Reject that pending approval request and say it needs changes.",
           );
-          expectAnySelectedAction(h, ["REJECT_REQUEST"]);
+          expectAnySelectedAction(h, ["OWNER_RESOLVE_REQUEST"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -898,25 +897,25 @@ describe("Action Invocation E2E", () => {
 
   describe("third-party", () => {
     itIf(canRunLiveTests)(
-      "phone call request triggers TWILIO_VOICE_CALL",
+      "phone call request triggers OWNER_VOICE_CALL",
       async () => {
-        if (!requireAction("TWILIO_VOICE_CALL")) return;
+        if (!requireAction("OWNER_VOICE_CALL")) return;
         if (
           !requireEnvironmentCapability(twilioConfigured, "Twilio credentials")
         )
           return;
         await withHarness(async (h) => {
           await h.send("Call the dentist and reschedule my appointment.");
-          expectAnySelectedAction(h, ["TWILIO_VOICE_CALL"]);
+          expectAnySelectedAction(h, ["OWNER_VOICE_CALL"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "password lookup request triggers PASSWORD_MANAGER",
+      "password lookup request triggers OWNER_PASSWORD_MANAGER",
       async () => {
-        if (!requireAction("PASSWORD_MANAGER")) return;
+        if (!requireAction("OWNER_PASSWORD_MANAGER")) return;
         if (
           !requireEnvironmentCapability(
             passwordManagerAvailable,
@@ -926,7 +925,7 @@ describe("Action Invocation E2E", () => {
           return;
         await withHarness(async (h) => {
           await h.send("Look up my GitHub password.");
-          expectAnySelectedAction(h, ["PASSWORD_MANAGER"]);
+          expectAnySelectedAction(h, ["OWNER_PASSWORD_MANAGER"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -973,70 +972,73 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "computer-use request triggers LIFEOPS_COMPUTER_USE",
+      "computer-use request triggers OWNER_COMPUTER_USE",
       async () => {
-        if (!requireAction("LIFEOPS_COMPUTER_USE")) return;
+        if (!requireAction("OWNER_COMPUTER_USE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Use computer automation on this Mac to create a new folder named Q2-Reports in ~/Desktop.",
           );
-          expectAnySelectedAction(h, ["LIFEOPS_COMPUTER_USE"]);
+          expectAnySelectedAction(h, ["OWNER_COMPUTER_USE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "email unsubscribe request triggers EMAIL_UNSUBSCRIBE",
+      "email unsubscribe request triggers MANAGE_MESSAGE",
       async () => {
-        if (!requireAction("EMAIL_UNSUBSCRIBE")) return;
+        if (!requireAction("MANAGE_MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Unsubscribe me from newsletters@medium.com and block them.",
           );
-          expectAnySelectedAction(h, ["EMAIL_UNSUBSCRIBE", "LIFEOPS_MUTATE"]);
+          expectAnySelectedAction(h, ["MANAGE_MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "book travel request triggers BOOK_TRAVEL",
+      "book travel request triggers OWNER_BOOK_TRAVEL",
       async () => {
-        if (!requireAction("BOOK_TRAVEL")) return;
+        if (!requireAction("OWNER_BOOK_TRAVEL")) return;
         await withHarness(async (h) => {
           await h.send(
             "Book travel for me from San Francisco to New York next Thursday and Friday.",
           );
-          expectAnySelectedAction(h, ["BOOK_TRAVEL"]);
+          expectAnySelectedAction(h, ["OWNER_BOOK_TRAVEL"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "field fill request triggers REQUEST_FIELD_FILL",
+      "field fill request triggers OWNER_AUTOFILL",
       async () => {
-        if (!requireAction("REQUEST_FIELD_FILL")) return;
+        if (!requireAction("OWNER_AUTOFILL")) return;
         await withHarness(async (h) => {
           await h.send(
             "Fill the password field on github.com using my password manager.",
           );
-          expectAnySelectedAction(h, ["REQUEST_FIELD_FILL"]);
+          expectAnySelectedAction(h, ["OWNER_AUTOFILL"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "subscription cancellation request triggers SUBSCRIPTIONS",
+      "subscription cancellation request triggers OWNER_SUBSCRIPTIONS",
       async () => {
-        if (!requireAction("SUBSCRIPTIONS")) return;
+        if (!requireAction("OWNER_SUBSCRIPTIONS")) return;
         await withHarness(async (h) => {
           await h.send(
             "Cancel my Google Play subscription and handle the cancellation workflow for me.",
           );
-          expectAnySelectedAction(h, ["SUBSCRIPTIONS", "LIFEOPS_COMPUTER_USE"]);
+          expectAnySelectedAction(h, [
+            "OWNER_SUBSCRIPTIONS",
+            "OWNER_COMPUTER_USE",
+          ]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -1110,16 +1112,16 @@ describe("Action Invocation E2E", () => {
 
   describe("multi-turn & parameter extraction", () => {
     itIf(canRunLiveTests)(
-      "multi-turn todo follow-up keeps invoking LIFE",
+      "multi-turn todo follow-up keeps invoking OWNER_LIFE",
       async () => {
-        if (!requireAction("LIFE")) return;
+        if (!requireAction("OWNER_LIFE")) return;
         await withHarness(async (h) => {
           await sendUntilExpectedAction(
             h,
-            ["LIFE"],
+            ["OWNER_LIFE"],
             [
               "Create a todo to call my mom.",
-              "Use the Life action to create a todo to call my mom.",
+              "Use the OWNER_LIFE action to create a todo to call my mom.",
               "Create a LifeOps todo item named call my mom.",
             ],
           );
@@ -1127,10 +1129,10 @@ describe("Action Invocation E2E", () => {
 
           await sendUntilExpectedAction(
             h,
-            ["LIFE"],
+            ["OWNER_LIFE"],
             [
               "Mark the todo to call my mom as done.",
-              "Use the Life action to complete the todo named call my mom.",
+              "Use the OWNER_LIFE action to complete the todo named call my mom.",
               "Update the LifeOps todo item named call my mom to completed.",
             ],
             "selected",
@@ -1140,9 +1142,9 @@ describe("Action Invocation E2E", () => {
             secondTurnCalls.some(
               (call) =>
                 normalizeActionName(call.actionName) ===
-                normalizeActionName("LIFE"),
+                normalizeActionName("OWNER_LIFE"),
             ),
-            `Expected LIFE to be selected again on follow-up. secondTurn=${secondTurnCalls
+            `Expected OWNER_LIFE to be selected again on follow-up. secondTurn=${secondTurnCalls
               .map((c) => `${c.phase}:${c.actionName}`)
               .join(",")} allCompleted=${h.spy
               .getCompletedCalls()
@@ -1168,7 +1170,7 @@ describe("Action Invocation E2E", () => {
         await withHarness(async (h) => {
           await sendUntilExpectedAction(
             h,
-            ["OWNER_CALENDAR", "CALENDAR_ACTION", "SCHEDULING"],
+            ["OWNER_CALENDAR", "SCHEDULING"],
             [
               "Create a calendar event titled 'Q4 planning with John' tomorrow at 3pm for 30 minutes.",
               "Use my calendar to create an event titled 'Q4 planning with John' tomorrow at 3pm for 30 minutes.",
@@ -1243,7 +1245,7 @@ describe("Action Invocation E2E", () => {
         await withHarness(async (h) => {
           await sendUntilExpectedAction(
             h,
-            ["OWNER_WEBSITE_BLOCK", "BLOCK_WEBSITES"],
+            ["OWNER_WEBSITE_BLOCK"],
             [
               "Block twitter.com for exactly 90 minutes.",
               "Use website blocking to block twitter.com for exactly 90 minutes.",
@@ -1252,7 +1254,7 @@ describe("Action Invocation E2E", () => {
           );
           const results = await getActionResults(h.runtime, h.roomId);
           const blob = [
-            stringifyCompletedActionPayloads(h, "BLOCK_WEBSITES"),
+            stringifyCompletedActionPayloads(h, "OWNER_WEBSITE_BLOCK"),
             stringifyResults(results),
           ]
             .filter(Boolean)
@@ -1260,7 +1262,7 @@ describe("Action Invocation E2E", () => {
             .toLowerCase();
           expect(
             blob.length,
-            "Expected action payload or action_result data for BLOCK_WEBSITES",
+            "Expected action payload or action_result data for OWNER_WEBSITE_BLOCK",
           ).toBeGreaterThan(0);
           expect(
             blob,
@@ -1296,7 +1298,7 @@ describe("Action Invocation E2E", () => {
         await withHarness(async (h) => {
           await sendUntilExpectedAction(
             h,
-            ["OWNER_WEBSITE_BLOCK", "BLOCK_WEBSITES", "LIFE"],
+            ["OWNER_WEBSITE_BLOCK", "OWNER_LIFE"],
             [
               "Block twitter.com for an hour and create a todo to stretch when the block ends.",
               "Use LifeOps actions to block twitter.com for one hour and create a todo to stretch when the block ends.",

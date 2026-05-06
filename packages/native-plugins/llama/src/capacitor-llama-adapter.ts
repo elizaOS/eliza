@@ -40,7 +40,11 @@ interface LlamaCppPluginLike {
   }) => Promise<NativeLlamaContext>;
   releaseContext: (options: { contextId: number }) => Promise<void>;
   releaseAllContexts: () => Promise<void>;
-  generateText: (options: {
+  completion?: (options: {
+    contextId: number;
+    params: NativeCompletionParams;
+  }) => Promise<NativeCompletionResult>;
+  generateText?: (options: {
     contextId: number;
     prompt: string;
     params?: NativeGenerateParams;
@@ -73,6 +77,8 @@ interface LlamaCppPluginLike {
 }
 
 const CONTEXT_ID = 1;
+const DEFAULT_MAX_TOKENS = 256;
+const MOBILE_MAX_TOKENS_CAP = 256;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -84,7 +90,8 @@ function isLlamaCppPluginLike(value: unknown): value is LlamaCppPluginLike {
     typeof value.initContext === "function" &&
     typeof value.releaseContext === "function" &&
     typeof value.releaseAllContexts === "function" &&
-    typeof value.generateText === "function" &&
+    (typeof value.completion === "function" ||
+      typeof value.generateText === "function") &&
     typeof value.stopCompletion === "function" &&
     typeof value.addListener === "function"
   );
@@ -98,6 +105,36 @@ function resolveLlamaCppPlugin(mod: unknown): LlamaCppPluginLike | null {
     return mod.default.LlamaCpp;
   }
   return null;
+}
+
+function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
+  return {
+    initContext: (options) => plugin.initContext(options),
+    releaseContext: (options) => plugin.releaseContext(options),
+    releaseAllContexts: () => plugin.releaseAllContexts(),
+    completion:
+      typeof plugin.completion === "function"
+        ? (options) =>
+            plugin.completion?.(options) as Promise<NativeCompletionResult>
+        : undefined,
+    generateText:
+      typeof plugin.generateText === "function"
+        ? (options) =>
+            plugin.generateText?.(options) as Promise<NativeCompletionResult>
+        : undefined,
+    stopCompletion: (options) => plugin.stopCompletion(options),
+    embedding:
+      typeof plugin.embedding === "function"
+        ? (options) =>
+            plugin.embedding?.(options) as Promise<NativeEmbeddingResult>
+        : undefined,
+    tokenize:
+      typeof plugin.tokenize === "function"
+        ? (options) =>
+            plugin.tokenize?.(options) as Promise<{ tokens: number[] }>
+        : undefined,
+    addListener: (event, listener) => plugin.addListener(event, listener),
+  };
 }
 
 function isCapacitorNative(): boolean {
@@ -117,6 +154,13 @@ function detectPlatform(): "ios" | "android" | "web" {
   return "web";
 }
 
+function resolveMobileMaxTokens(requested?: number): number {
+  if (!Number.isFinite(requested) || requested == null || requested <= 0) {
+    return DEFAULT_MAX_TOKENS;
+  }
+  return Math.min(Math.floor(requested), MOBILE_MAX_TOKENS_CAP);
+}
+
 class CapacitorLlamaAdapter implements LlamaAdapter {
   private plugin: LlamaCppPluginLike | null = null;
   /** Cached loader promise so concurrent `load()` calls don't race to register duplicate listeners. */
@@ -130,12 +174,15 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     if (this.plugin) return this.plugin;
     if (this.pluginLoadPromise) return this.pluginLoadPromise;
     this.pluginLoadPromise = (async () => {
-      const plugin = resolveLlamaCppPlugin(await import("llama-cpp-capacitor"));
-      if (!plugin) {
+      const nativePlugin = resolveLlamaCppPlugin(
+        await import("llama-cpp-capacitor"),
+      );
+      if (!nativePlugin) {
         throw new Error(
-          "llama-cpp-capacitor did not expose an initContext method",
+          "llama-cpp-capacitor did not expose the native LlamaCpp methods",
         );
       }
+      const plugin = toPlainLlamaCppPlugin(nativePlugin);
       const tokenListenerHandle = await plugin.addListener(
         "@LlamaCpp_onToken",
         (data) => {
@@ -232,7 +279,7 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     this.tokenIndex = 0;
 
     const params: NativeGenerateParams = {
-      n_predict: options.maxTokens ?? 2048,
+      n_predict: resolveMobileMaxTokens(options.maxTokens),
       temperature: options.temperature ?? 0.7,
       top_p: options.topP ?? 0.9,
     };
@@ -244,11 +291,26 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     }
 
     const started = Date.now();
-    const result = await this.plugin.generateText({
-      contextId: CONTEXT_ID,
-      prompt: options.prompt,
-      params,
-    });
+    const result =
+      typeof this.plugin.completion === "function"
+        ? await this.plugin.completion({
+            contextId: CONTEXT_ID,
+            params: {
+              prompt: options.prompt,
+              emit_partial_completion: Boolean(params.emit_partial_completion),
+              ...params,
+            },
+          })
+        : await this.plugin.generateText?.({
+            contextId: CONTEXT_ID,
+            prompt: options.prompt,
+            params,
+          });
+    if (!result) {
+      throw new Error(
+        "llama-cpp-capacitor did not expose completion() or generateText()",
+      );
+    }
     const duration =
       result.timings?.predicted_ms != null
         ? Math.round(result.timings.predicted_ms)

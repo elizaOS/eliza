@@ -2,15 +2,17 @@
  * LifeOps scheduling-with-others tests.
  *
  * Covers:
- *   - PROPOSE_MEETING_TIMES pure slot computation (computeProposedSlots):
- *     respects busy events, preferred hours, blackout windows, and travel
- *     buffer. Runs without DB or network.
- *   - UPDATE_MEETING_PREFERENCES end-to-end against a real PGLite runtime:
- *     the action handler persists the patch to the LifeOps scheduler task's
- *     metadata, and a subsequent read returns it.
- *   - PROPOSE_MEETING_TIMES handler reports a helpful error when Google
- *     Calendar is not connected (exercises the LifeOpsServiceError path).
- *   - CHECK_AVAILABILITY handler validates its inputs.
+ *   - OWNER_CALENDAR (subaction:"propose_times") pure slot computation
+ *     (computeProposedSlots): respects busy events, preferred hours,
+ *     blackout windows, and travel buffer. Runs without DB or network.
+ *   - OWNER_CALENDAR (subaction:"update_preferences") end-to-end against a
+ *     real PGLite runtime: the action handler persists the patch to the
+ *     LifeOps scheduler task's metadata, and a subsequent read returns it.
+ *   - OWNER_CALENDAR (subaction:"propose_times") handler reports a helpful
+ *     error when Google Calendar is not connected (exercises the
+ *     LifeOpsServiceError path).
+ *   - OWNER_CALENDAR (subaction:"check_availability") handler validates
+ *     its inputs.
  *
  * The handler tests that require a seeded calendar feed live in the LifeOps
  * live-e2e suite because that path needs the full life_connector_grants +
@@ -25,7 +27,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../eliza/test/helpers/real-runtime";
+} from "../../../test/helpers/real-runtime";
 import {
   checkAvailabilityAction,
   computeProposedSlots,
@@ -245,7 +247,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     await testResult.cleanup();
   });
 
-  it("UPDATE_MEETING_PREFERENCES persists preferences to scheduler task metadata", async () => {
+  it("OWNER_CALENDAR.update_preferences persists preferences to scheduler task metadata", async () => {
     const result = await updateMeetingPreferencesAction.handler!(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
@@ -280,7 +282,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     expect(readBack.blackoutWindows[0].label).toBe("Lunch");
   });
 
-  it("UPDATE_MEETING_PREFERENCES rejects an empty patch", async () => {
+  it("OWNER_CALENDAR.update_preferences rejects an empty patch", async () => {
     const result = await updateMeetingPreferencesAction.handler!(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
@@ -294,7 +296,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     ).toBe("NO_FIELDS");
   });
 
-  it("CHECK_AVAILABILITY rejects an invalid window (end <= start)", async () => {
+  it("OWNER_CALENDAR.check_availability rejects an invalid window (end <= start)", async () => {
     const result = await checkAvailabilityAction.handler!(
       runtime,
       makeMessage(runtime, "am I free") as never,

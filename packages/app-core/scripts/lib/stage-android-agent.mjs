@@ -82,6 +82,12 @@ const APK_PACKAGES = [
   { pkg: "libgcc", file: "libgcc.apk" },
 ];
 
+function jniLoaderName(ldName) {
+  if (ldName.includes("aarch64")) return "libeliza_ld_musl_aarch64.so";
+  if (ldName.includes("x86_64")) return "libeliza_ld_musl_x86_64.so";
+  return `libeliza_${ldName.replace(/[^a-zA-Z0-9]+/g, "_")}.so`;
+}
+
 /**
  * Adapted from scripts/spike-android-agent/launch-on-device.sh. The script
  * ships *inside* the APK and is copied (with executable bit set) into the
@@ -406,14 +412,11 @@ export async function stageAndroidAgentRuntime({
   const tlog = logFor(log);
   fs.mkdirSync(cacheDir, { recursive: true });
 
-  // Runtime files ship under `assets/agent/{abi}/` and the service
-  // copies them to /data/data/<pkg>/files/agent/{abi}/ at first launch
-  // and chmods +x. The agent runs as priv_app (Android.bp does not
-  // platform-sign the APK), so AOSP's stock
-  // `allow priv_app privapp_data_file:file execute;` is enough to
-  // execve bun out of the writable data dir — no jniLibs trick, no
-  // custom SELinux domain. We also clean up any stale jniLibs/ from
-  // an earlier pivot so the APK doesn't carry duplicate binaries.
+  // Runtime files ship under `assets/agent/{abi}/` for AOSP builds that can
+  // execute from priv-app data, and under `jniLibs/{abi}/libeliza_*.so` for
+  // stock Capacitor builds where SELinux denies execute_no_trans from app
+  // writable data. ElizaAgentService prefers the packaged native-library
+  // copies when present and falls back to the extracted assets on AOSP.
   const assetsAgentDir = path.join(
     androidDir,
     "app",
@@ -424,19 +427,16 @@ export async function stageAndroidAgentRuntime({
   );
   fs.mkdirSync(assetsAgentDir, { recursive: true });
   const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
-  if (fs.existsSync(jniLibsDir)) {
-    fs.rmSync(jniLibsDir, { recursive: true, force: true });
-    tlog(
-      "Removed stale jniLibs/ tree (runtime now ships under assets/agent/).",
-    );
-  }
+  fs.mkdirSync(jniLibsDir, { recursive: true });
 
   let stagedCount = 0;
 
   for (const target of ABI_TARGETS) {
     const { androidAbi, bunArch, alpineArch, ldName } = target;
     const abiAssetsDir = path.join(assetsAgentDir, androidAbi);
+    const abiJniDir = path.join(jniLibsDir, androidAbi);
     fs.mkdirSync(abiAssetsDir, { recursive: true });
+    fs.mkdirSync(abiJniDir, { recursive: true });
 
     const bunPath = await ensureBunBinary({ cacheDir, bunArch, log: tlog });
     const extractDir = await ensureAlpineApkExtracted({
@@ -487,6 +487,26 @@ export async function stageAndroidAgentRuntime({
       log: tlog,
     });
     abiChanges += shimChanges;
+
+    const jniSources = [
+      [path.join(abiAssetsDir, "bun"), path.join(abiJniDir, "libeliza_bun.so")],
+      [
+        path.join(abiAssetsDir, ldName),
+        path.join(abiJniDir, jniLoaderName(ldName)),
+      ],
+      [
+        path.join(abiAssetsDir, libstdcxxFile),
+        path.join(abiJniDir, "libeliza_stdcpp.so"),
+      ],
+      [
+        path.join(abiAssetsDir, "libgcc_s.so.1"),
+        path.join(abiJniDir, "libeliza_gcc_s.so"),
+      ],
+    ];
+    for (const [src, dst] of jniSources) {
+      if (copyIfDifferent(src, dst)) abiChanges += 1;
+    }
+
     stagedCount += abiChanges;
     tlog(
       `Staged ${sources.length} runtime file(s) for ABI ${androidAbi}` +
@@ -575,6 +595,7 @@ export async function stageAndroidAgentRuntime({
   // Skip silently when missing so the spike-bundle path still works.
   const pgliteAssets = [
     "pglite.wasm",
+    "initdb.wasm",
     "pglite.data",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
