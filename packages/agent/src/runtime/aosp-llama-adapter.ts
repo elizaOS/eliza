@@ -590,11 +590,8 @@ async function loadBunFfi(): Promise<BunFfiLoadResult> {
      * with a generic `Fns extends Record<string, FFIFunction>` constraint
      * we don't want leaking into adapter types; we only consume the
      * weakly-typed runtime shape. */
-    // bun:ffi is a Bun built-in; tsc under @elizaos/ui's Node typecheck
-    // (Pack & Test JS Tarballs) cannot resolve it. The dynamic-import path
-    // already degrades gracefully at runtime when the module is unavailable,
-    // so suppress the resolution error rather than blocking the build.
-    // @ts-ignore — bun:ffi has no Node type declarations
+    // biome-ignore lint/suspicious/noTsIgnore: bun:ffi is a Bun runtime builtin loaded only on AOSP.
+    // @ts-ignore
     const mod = (await import("bun:ffi")) as unknown as BunFFIModule;
     return { ok: true, mod };
   } catch (err) {
