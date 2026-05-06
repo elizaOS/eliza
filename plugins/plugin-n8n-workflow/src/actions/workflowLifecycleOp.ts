@@ -195,10 +195,7 @@ async function runActivate(
   }
 
   await service.activateWorkflow(workflowId);
-  logger.info(
-    { src: 'plugin:n8n-workflow:action:lifecycle' },
-    `Activated workflow ${workflowId}`
-  );
+  logger.info({ src: 'plugin:n8n-workflow:action:lifecycle' }, `Activated workflow ${workflowId}`);
 
   if (callback) {
     await callback({

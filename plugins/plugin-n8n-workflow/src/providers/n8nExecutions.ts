@@ -111,7 +111,7 @@ export const n8nExecutionsProvider: Provider = {
           n8nExecutions: {
             status: 'ready',
             instruction:
-              'Recent execution rows for the user\'s n8n workflows. Use `error` to diagnose failed runs.',
+              "Recent execution rows for the user's n8n workflows. Use `error` to diagnose failed runs.",
             executions: rows,
           },
         }),

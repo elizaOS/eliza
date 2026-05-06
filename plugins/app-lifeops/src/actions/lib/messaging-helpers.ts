@@ -38,7 +38,12 @@ function ok(channel: string, target: string, body: string): ActionResult {
   };
 }
 
-function fail(channel: string, target: string, body: string, error: string): ActionResult {
+function fail(
+  channel: string,
+  target: string,
+  body: string,
+  error: string,
+): ActionResult {
   return {
     text: `${channel} dispatch to ${target} failed: ${error}.`,
     success: false,
@@ -54,31 +59,56 @@ export async function dispatchCrossChannelSend(
   switch (channel) {
     case "telegram": {
       try {
-        await (service as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)
-          .sendTelegramMessage?.({ target, message: body });
+        await (
+          service as unknown as Record<
+            string,
+            (...a: unknown[]) => Promise<unknown>
+          >
+        ).sendTelegramMessage?.({ target, message: body });
         return ok(channel, target, body);
       } catch (error) {
-        return fail(channel, target, body, error instanceof Error ? error.message : String(error));
+        return fail(
+          channel,
+          target,
+          body,
+          error instanceof Error ? error.message : String(error),
+        );
       }
     }
     case "discord": {
       try {
         await args.runtime.sendMessageToTarget(
-          { source: "discord", channelId: target } as Parameters<typeof args.runtime.sendMessageToTarget>[0],
+          { source: "discord", channelId: target } as Parameters<
+            typeof args.runtime.sendMessageToTarget
+          >[0],
           { text: body, source: "discord" },
         );
         return ok(channel, target, body);
       } catch (error) {
-        return fail(channel, target, body, error instanceof Error ? error.message : String(error));
+        return fail(
+          channel,
+          target,
+          body,
+          error instanceof Error ? error.message : String(error),
+        );
       }
     }
     case "imessage": {
       try {
-        await (service as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)
-          .sendIMessage?.({ to: target, text: body });
+        await (
+          service as unknown as Record<
+            string,
+            (...a: unknown[]) => Promise<unknown>
+          >
+        ).sendIMessage?.({ to: target, text: body });
         return ok(channel, target, body);
       } catch (error) {
-        return fail(channel, target, body, error instanceof Error ? error.message : String(error));
+        return fail(
+          channel,
+          target,
+          body,
+          error instanceof Error ? error.message : String(error),
+        );
       }
     }
     case "sms": {

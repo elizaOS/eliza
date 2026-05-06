@@ -617,8 +617,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
               delete (globalThis as Record<string, unknown>)
                 .__ELIZA_CLOUD_AUTH_TOKEN__;
             } catch {
-              (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-                undefined;
+              (
+                globalThis as Record<string, unknown>
+              ).__ELIZA_CLOUD_AUTH_TOKEN__ = undefined;
             }
           }
         },

@@ -156,7 +156,9 @@ function reconcilePersistedApiBaseWithLive(
 
 function mobileLoopbackActiveServer(): PersistedActiveServer {
   return {
-    id: isAndroid ? ANDROID_LOCAL_AGENT_SERVER_ID : MOBILE_LOCAL_AGENT_SERVER_ID,
+    id: isAndroid
+      ? ANDROID_LOCAL_AGENT_SERVER_ID
+      : MOBILE_LOCAL_AGENT_SERVER_ID,
     kind: "remote",
     label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
     apiBase: isAndroid

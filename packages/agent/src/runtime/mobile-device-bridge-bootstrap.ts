@@ -567,15 +567,13 @@ function resolveFromRegistry(slot: string): string | null {
     : null;
 }
 
-function resolveAssignedRegistryModel(slot: string):
-  | {
-      id: string;
-      path: string;
-      dimensions?: unknown;
-      embeddingDimension?: unknown;
-      embeddingDimensions?: unknown;
-    }
-  | null {
+function resolveAssignedRegistryModel(slot: string): {
+  id: string;
+  path: string;
+  dimensions?: unknown;
+  embeddingDimension?: unknown;
+  embeddingDimensions?: unknown;
+} | null {
   const assignments = readJsonFile<AssignmentsFile>(
     assignmentsPath(),
   )?.assignments;

@@ -91,8 +91,7 @@ let activeModelState: {
 } = { modelId: null, loadedAt: null, status: "idle" };
 
 export function getLocalInferenceActiveModelId(): string | undefined {
-  return activeModelState.status === "ready" &&
-    activeModelState.modelId?.trim()
+  return activeModelState.status === "ready" && activeModelState.modelId?.trim()
     ? activeModelState.modelId.trim()
     : undefined;
 }
@@ -257,10 +256,7 @@ async function openDownloadResponse(
       (response) => {
         const statusCode = response.statusCode ?? 0;
         const location = response.headers.location;
-        if (
-          location &&
-          [301, 302, 303, 307, 308].includes(statusCode)
-        ) {
+        if (location && [301, 302, 303, 307, 308].includes(statusCode)) {
           response.resume();
           resolve(
             openDownloadResponse(
@@ -749,7 +745,8 @@ export async function handleLocalInferenceRoutes(
           registeredAt: new Date().toISOString(),
         }),
       ),
-      preferences: preferences.preferences ?? defaultRoutingPreferences().preferences,
+      preferences:
+        preferences.preferences ?? defaultRoutingPreferences().preferences,
     });
     return true;
   }
