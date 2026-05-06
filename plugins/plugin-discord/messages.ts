@@ -62,9 +62,10 @@ export function resolveGenerationTimeoutMs(
 		String(timeoutSetting ?? fallbackSetting ?? "120000"),
 		10,
 	);
-	return Number.isFinite(parsed) && parsed > 0
-		? Math.max(30_000, parsed)
-		: null;
+	if (!Number.isFinite(parsed)) {
+		return 120_000;
+	}
+	return parsed > 0 ? Math.max(30_000, parsed) : null;
 }
 
 function escapeRegex(value: string): string {
