@@ -20,6 +20,7 @@ const STORAGE_PREFIX = "eliza:ios-local-agent";
 const CONVERSATIONS_KEY = `${STORAGE_PREFIX}:conversations:v1`;
 const ACTIVE_MODEL_KEY = `${STORAGE_PREFIX}:active-model:v1`;
 const ASSIGNMENTS_KEY = `${STORAGE_PREFIX}:assignments:v1`;
+const BROWSER_WORKSPACE_KEY = `${STORAGE_PREFIX}:browser-workspace:v1`;
 const AGENT_NAME = "Eliza";
 const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
@@ -49,6 +50,33 @@ interface LocalMessage {
 interface ConversationStore {
   conversations: LocalConversation[];
 }
+
+interface LocalBrowserWorkspaceTab {
+  id: string;
+  title: string;
+  url: string;
+  partition: string;
+  kind?: "internal" | "standard";
+  visible: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastFocusedAt: string | null;
+}
+
+interface BrowserWorkspaceStore {
+  tabs: LocalBrowserWorkspaceTab[];
+}
+
+const EMPTY_WALLET_ADDRESSES = {
+  evmAddress: null,
+  solanaAddress: null,
+};
+
+const EMPTY_WALLET_RPC_SELECTIONS = {
+  evm: "eliza-cloud",
+  bsc: "eliza-cloud",
+  solana: "eliza-cloud",
+};
 
 type CapacitorLlamaAdapter = {
   getHardwareInfo?: () => Promise<{
@@ -157,6 +185,151 @@ function writeStore(store: ConversationStore): void {
   writeJson(CONVERSATIONS_KEY, store);
 }
 
+function readBrowserWorkspaceStore(): BrowserWorkspaceStore {
+  const parsed = readJson<BrowserWorkspaceStore>(BROWSER_WORKSPACE_KEY, {
+    tabs: [],
+  });
+  return {
+    tabs: Array.isArray(parsed.tabs) ? parsed.tabs : [],
+  };
+}
+
+function writeBrowserWorkspaceStore(store: BrowserWorkspaceStore): void {
+  writeJson(BROWSER_WORKSPACE_KEY, store);
+}
+
+function normalizeBrowserWorkspaceUrl(rawUrl: unknown): string {
+  const value = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!value) return "about:blank";
+  if (value === "about:blank") return value;
+  return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value)
+    ? value
+    : `https://${value}`;
+}
+
+function normalizeBrowserWorkspaceKind(
+  value: unknown,
+): "internal" | "standard" | undefined {
+  return value === "internal" || value === "standard" ? value : undefined;
+}
+
+function browserWorkspaceSnapshot(): {
+  mode: "web";
+  tabs: LocalBrowserWorkspaceTab[];
+} {
+  return {
+    mode: "web",
+    tabs: readBrowserWorkspaceStore().tabs,
+  };
+}
+
+async function openBrowserWorkspaceTab(
+  request: Request,
+): Promise<Response> {
+  const body = await requestJson(request);
+  const now = nowIso();
+  const show = body.show !== false;
+  const tab: LocalBrowserWorkspaceTab = {
+    id: randomId("btab"),
+    title:
+      typeof body.title === "string" && body.title.trim()
+        ? body.title.trim()
+        : "New tab",
+    url: normalizeBrowserWorkspaceUrl(body.url),
+    partition:
+      typeof body.partition === "string" && body.partition.trim()
+        ? body.partition.trim()
+        : "persist:eliza-browser-user",
+    visible: show,
+    createdAt: now,
+    updatedAt: now,
+    lastFocusedAt: show ? now : null,
+  };
+  const kind = normalizeBrowserWorkspaceKind(body.kind);
+  if (kind) tab.kind = kind;
+
+  const store = readBrowserWorkspaceStore();
+  const tabs = show
+    ? store.tabs.map((entry) => ({ ...entry, visible: false }))
+    : store.tabs;
+  tabs.push(tab);
+  writeBrowserWorkspaceStore({ tabs });
+  return json({ tab });
+}
+
+async function handleBrowserWorkspaceTabRoute(
+  request: Request,
+  pathname: string,
+): Promise<Response | null> {
+  const method = request.method.toUpperCase();
+  const match = pathname.match(
+    /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|show|hide|snapshot))?$/,
+  );
+  if (!match) return null;
+
+  const tabId = decodeURIComponent(match[1]).trim();
+  const action = match[2] ?? null;
+  const store = readBrowserWorkspaceStore();
+  const index = store.tabs.findIndex((tab) => tab.id === tabId);
+
+  if (index < 0) {
+    return json({ error: "Browser tab not found" }, 404);
+  }
+
+  if (!action && method === "DELETE") {
+    store.tabs.splice(index, 1);
+    writeBrowserWorkspaceStore(store);
+    return json({ closed: true });
+  }
+
+  if (action === "snapshot" && method === "GET") {
+    return json({ data: "" });
+  }
+
+  if (action === "show" && method === "POST") {
+    const now = nowIso();
+    store.tabs = store.tabs.map((tab) =>
+      tab.id === tabId
+        ? { ...tab, visible: true, updatedAt: now, lastFocusedAt: now }
+        : { ...tab, visible: false },
+    );
+    writeBrowserWorkspaceStore(store);
+    return json({ tab: store.tabs[index] });
+  }
+
+  if (action === "hide" && method === "POST") {
+    const now = nowIso();
+    store.tabs[index] = {
+      ...store.tabs[index],
+      visible: false,
+      updatedAt: now,
+    };
+    writeBrowserWorkspaceStore(store);
+    return json({ tab: store.tabs[index] });
+  }
+
+  if (action === "navigate" && method === "POST") {
+    const body = await requestJson(request);
+    const now = nowIso();
+    const url = normalizeBrowserWorkspaceUrl(body.url);
+    store.tabs[index] = {
+      ...store.tabs[index],
+      url,
+      title: url === "about:blank" ? "New tab" : store.tabs[index].title,
+      updatedAt: now,
+      lastFocusedAt: now,
+      visible: true,
+    };
+    store.tabs = store.tabs.map((tab) =>
+      tab.id === tabId ? store.tabs[index] : { ...tab, visible: false },
+    );
+    writeBrowserWorkspaceStore(store);
+    return json({ tab: store.tabs.find((tab) => tab.id === tabId) });
+  }
+
+  return null;
+}
+
 function readActiveModelState(): ActiveModelState {
   const parsed = readJson<Partial<ActiveModelState>>(ACTIVE_MODEL_KEY, {});
   if (
@@ -234,6 +407,121 @@ function localCharacter(): Record<string, unknown> {
     topics: [],
     style: { all: [], chat: [], post: [] },
     adjectives: [],
+  };
+}
+
+function localWalletConfig(): Record<string, unknown> {
+  return {
+    ...EMPTY_WALLET_ADDRESSES,
+    selectedRpcProviders: EMPTY_WALLET_RPC_SELECTIONS,
+    walletNetwork: "mainnet",
+    legacyCustomChains: [],
+    alchemyKeySet: false,
+    infuraKeySet: false,
+    ankrKeySet: false,
+    nodeRealBscRpcSet: false,
+    quickNodeBscRpcSet: false,
+    managedBscRpcReady: false,
+    cloudManagedAccess: false,
+    evmBalanceReady: false,
+    ethereumBalanceReady: false,
+    baseBalanceReady: false,
+    bscBalanceReady: false,
+    avalancheBalanceReady: false,
+    solanaBalanceReady: false,
+    heliusKeySet: false,
+    birdeyeKeySet: false,
+    evmChains: [
+      "Ethereum",
+      "Base",
+      "Arbitrum",
+      "Optimism",
+      "Polygon",
+      "BSC",
+      "Avalanche",
+    ],
+    walletSource: "none",
+    automationMode: "connectors-only",
+    pluginEvmLoaded: false,
+    pluginEvmRequired: false,
+    executionReady: false,
+    executionBlockedReason: "No wallet is configured for local iOS mode.",
+    evmSigningCapability: "none",
+    evmSigningReason: "No wallet is configured for local iOS mode.",
+    solanaSigningAvailable: false,
+    wallets: [],
+  };
+}
+
+function emptyWalletMarketOverview(): Record<string, unknown> {
+  const unavailable = (
+    providerId: "coingecko" | "polymarket",
+    providerName: string,
+    providerUrl: string,
+  ) => ({
+    providerId,
+    providerName,
+    providerUrl,
+    available: false,
+    stale: false,
+    error: "Market data is unavailable in local iOS mode.",
+  });
+
+  return {
+    generatedAt: nowIso(),
+    cacheTtlSeconds: 0,
+    stale: false,
+    sources: {
+      prices: unavailable("coingecko", "CoinGecko", "https://www.coingecko.com"),
+      movers: unavailable("coingecko", "CoinGecko", "https://www.coingecko.com"),
+      predictions: unavailable(
+        "polymarket",
+        "Polymarket",
+        "https://polymarket.com",
+      ),
+    },
+    prices: [],
+    movers: [],
+    predictions: [],
+  };
+}
+
+function emptyWalletTradingProfile(url: URL): Record<string, unknown> {
+  const windowParam = url.searchParams.get("window");
+  const sourceParam = url.searchParams.get("source");
+  const selectedWindow =
+    windowParam === "24h" ||
+    windowParam === "7d" ||
+    windowParam === "30d" ||
+    windowParam === "all"
+      ? windowParam
+      : "30d";
+  const selectedSource =
+    sourceParam === "agent" || sourceParam === "manual" || sourceParam === "all"
+      ? sourceParam
+      : "all";
+
+  return {
+    window: selectedWindow,
+    source: selectedSource,
+    generatedAt: nowIso(),
+    summary: {
+      totalSwaps: 0,
+      buyCount: 0,
+      sellCount: 0,
+      settledCount: 0,
+      successCount: 0,
+      revertedCount: 0,
+      tradeWinRate: null,
+      txSuccessRate: null,
+      winningTrades: 0,
+      evaluatedTrades: 0,
+      realizedPnlBnb: "0",
+      volumeBnb: "0",
+    },
+    pnlSeries: [],
+    tokenBreakdown: [],
+    recentSwaps: [],
   };
 }
 
@@ -705,7 +993,59 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/wallet/addresses") {
+    return json(EMPTY_WALLET_ADDRESSES);
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/config") {
+    return json(localWalletConfig());
+  }
+
+  if (method === "PUT" && pathname === "/api/wallet/config") {
+    return json({ ok: true });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/balances") {
     return json({ evm: null, solana: null });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/nfts") {
+    return json({ evm: [], solana: null });
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/market-overview") {
+    return json(emptyWalletMarketOverview());
+  }
+
+  if (method === "GET" && pathname === "/api/wallet/trading/profile") {
+    return json(emptyWalletTradingProfile(url));
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/refresh-cloud") {
+    return json({
+      ok: false,
+      warnings: ["Cloud wallet refresh is unavailable in local iOS mode."],
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/wallet/primary") {
+    return json({ ok: false, error: "No wallet is configured." }, 400);
+  }
+
+  if (method === "GET" && pathname === "/api/browser-workspace") {
+    return json(browserWorkspaceSnapshot());
+  }
+
+  if (method === "GET" && pathname === "/api/browser-workspace/tabs") {
+    return json({ tabs: readBrowserWorkspaceStore().tabs });
+  }
+
+  if (method === "POST" && pathname === "/api/browser-workspace/tabs") {
+    return openBrowserWorkspaceTab(request);
+  }
+
+  if (pathname.startsWith("/api/browser-workspace/tabs/")) {
+    const response = await handleBrowserWorkspaceTabRoute(request, pathname);
+    if (response) return response;
   }
 
   if (method === "GET" && pathname === "/api/stream/settings") {

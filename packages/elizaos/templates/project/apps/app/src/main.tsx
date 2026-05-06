@@ -5,7 +5,7 @@ import "@elizaos/app-core/platform/native-plugin-entrypoints";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { Keyboard } from "@capacitor/keyboard";
+import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
   AGENT_READY_EVENT,
@@ -238,6 +238,8 @@ async function initializeStatusBar(): Promise<void> {
 
 async function initializeKeyboard(): Promise<void> {
   if (isIOS) {
+    await Keyboard.setResizeMode({ mode: KeyboardResize.None });
+    await Keyboard.setScroll({ isDisabled: true });
     await Keyboard.setAccessoryBarVisible({ isVisible: true });
   }
 
@@ -435,7 +437,7 @@ function mountReactApp(): void {
       <StrictMode>
         <AppProvider branding={ELIZA_BRANDING}>
           {isDetachedWindowShell(windowShellRoute) ? (
-            <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden">
+            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
               <DetachedShellRoot route={windowShellRoute} />
             </div>
           ) : (

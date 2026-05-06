@@ -641,6 +641,7 @@ export function App() {
   const {
     startupError,
     startupCoordinator,
+    onboardingComplete,
     retryStartup,
     tab,
     setTab,
@@ -657,9 +658,6 @@ export function App() {
   const { companionShell: CompanionShell } = useBootConfig();
 
   const isPopout = useIsPopout();
-  const companionShellVisible =
-    activeOverlayApp === "@elizaos/app-companion" || tab === "companion";
-
   // Auth gate — only active after the coordinator reaches "ready".
   // During onboarding / pairing / startup phases the StartupShell handles
   // its own gate (bootstrap step), so we skip the check.
@@ -868,22 +866,9 @@ export function App() {
       return;
     }
 
-    // Disable the iOS WebView scroll only while the companion shell is active.
-    void Keyboard.setScroll({ isDisabled: companionShellVisible }).catch(() => {
+    void Keyboard.setScroll({ isDisabled: true }).catch(() => {
       // Ignore bridge failures so web and desktop shells keep working.
     });
-  }, [companionShellVisible]);
-
-  useEffect(() => {
-    if (!isNative || !isIOS) {
-      return;
-    }
-
-    return () => {
-      void Keyboard.setScroll({ isDisabled: false }).catch(() => {
-        // Ignore cleanup failures when the native bridge is unavailable.
-      });
-    };
   }, []);
 
   useEffect(() => {
@@ -1195,7 +1180,7 @@ export function App() {
   // Platform init is skipped in main.tsx; AppProvider hydrates WS in background.
   if (isPopout) {
     return (
-      <div className="flex flex-col h-screen w-screen font-body text-txt bg-bg overflow-hidden">
+      <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-bg font-body text-txt">
         <LazyViewBoundary>
           <StreamView />
         </LazyViewBoundary>
@@ -1206,7 +1191,7 @@ export function App() {
   // StartupCoordinator gate — the coordinator is the sole startup authority.
   // Non-ready phases are handled by StartupShell (which renders the appropriate
   // view for each coordinator phase: loading, pairing, onboarding, or error).
-  if (startupCoordinator.phase !== "ready") {
+  if (startupCoordinator.phase !== "ready" || !onboardingComplete) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupShell />
@@ -1256,7 +1241,7 @@ export function App() {
   return (
     <BugReportProvider value={bugReport}>
       <div
-        className="flex flex-col h-screen w-screen overflow-hidden"
+        className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
         style={{
           paddingTop: "var(--safe-area-top, env(safe-area-inset-top, 0px))",
           paddingBottom:

@@ -16,6 +16,7 @@ import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
+import { enableForceFreshOnboarding } from "../platform";
 import { alertDesktopMessage, confirmDesktopAction } from "../utils";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
 import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
@@ -53,6 +54,22 @@ function logResetInfo(message: string, detail?: Record<string, unknown>): void {
 
 function logResetWarn(message: string, detail?: unknown): void {
   console.warn(`${RESET_LOG_PREFIX} ${message}`, detail);
+}
+
+async function waitForLifecycleIdle(
+  lifecycleBusyRef: MutableRefObject<boolean>,
+  timeoutMs: number,
+): Promise<boolean> {
+  const startedAt = performance.now();
+  while (lifecycleBusyRef.current) {
+    if (performance.now() - startedAt >= timeoutMs) {
+      return false;
+    }
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 100);
+    });
+  }
+  return true;
 }
 
 /** Publish server cloud snapshot for chat TTS (`useVoiceChat` + `loadVoiceConfig`). */
@@ -624,6 +641,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           }
         },
         markOnboardingReset: () => {
+          enableForceFreshOnboarding();
           onboardingCompletionCommittedRef.current = false;
           setOnboardingUiRevealNonce((n) => n + 1);
           setOnboardingLoading(false);
@@ -759,15 +777,28 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     if (lifecycleBusyRef.current) {
       const activeAction =
         lifecycleActionRef.current ?? lifecycleAction ?? "reset";
-      logResetInfo("handleReset: skipped — lifecycle busy", {
+      logResetInfo("handleReset: waiting for lifecycle to become idle", {
         activeAction,
       });
       setActionNotice(
-        `Agent action already in progress (${LIFECYCLE_MESSAGES[activeAction].inProgress}). Please wait.`,
+        `Waiting for current agent action to finish (${LIFECYCLE_MESSAGES[activeAction].inProgress}).`,
         "info",
-        2800,
+        12_000,
+        false,
+        true,
       );
-      return;
+      const idle = await waitForLifecycleIdle(lifecycleBusyRef, 10_000);
+      if (!idle) {
+        logResetInfo("handleReset: skipped — lifecycle remained busy", {
+          activeAction,
+        });
+        setActionNotice(
+          `Agent action already in progress (${LIFECYCLE_MESSAGES[activeAction].inProgress}). Please wait.`,
+          "info",
+          4200,
+        );
+        return;
+      }
     }
     logResetInfo("handleReset: showing confirm dialog");
     const confirmed = await confirmDesktopAction({
@@ -796,14 +827,36 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
 
     if (!beginLifecycleAction("reset")) {
       logResetInfo(
-        "handleReset: aborted — could not begin lifecycle (race with another action)",
+        "handleReset: beginLifecycleAction raced with another action — waiting",
       );
-      setActionNotice(
-        "Another agent operation is still running. Wait for it to finish, then try Reset again.",
-        "info",
-        4200,
+      const idle = await waitForLifecycleIdle(lifecycleBusyRef, 10_000);
+      if (!idle || !beginLifecycleAction("reset")) {
+        logResetInfo(
+          "handleReset: forcing lifecycle lock clear after confirmed reset",
+          {
+            idle,
+            activeAction: lifecycleActionRef.current,
+          },
+        );
+        finishLifecycleAction();
+        if (!beginLifecycleAction("reset")) {
+          logResetInfo(
+            "handleReset: aborted — could not begin lifecycle after forced clear",
+          );
+          setActionNotice(
+            "Another agent operation is still running. Wait for it to finish, then try Reset again.",
+            "info",
+            4200,
+          );
+          return;
+        }
+      }
+    }
+    if (lifecycleActionRef.current !== "reset") {
+      logResetInfo(
+        "handleReset: lifecycle action ref was not reset after begin; continuing reset",
+        { activeAction: lifecycleActionRef.current },
       );
-      return;
     }
     setActionNotice(
       LIFECYCLE_MESSAGES.reset.progress,
@@ -828,6 +881,10 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       logResetDebug("handleReset: calling client.resetAgent()");
       await client.resetAgent();
       logResetDebug("handleReset: client.resetAgent() completed");
+      logResetDebug(
+        "handleReset: applying local UI reset before desktop restart wait",
+      );
+      await completeResetLocalStateAfterServerWipe(null);
 
       let postResetAgentStatus: AgentStatus | null = null;
       logResetDebug(
@@ -901,6 +958,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
             state: postResetAgentStatus.state,
             port: postResetAgentStatus.port,
           });
+          setAgentStatus(postResetAgentStatus);
         } catch (httpErr) {
           postResetAgentStatus = null;
           logResetWarn(
@@ -910,7 +968,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         }
       }
 
-      await completeResetLocalStateAfterServerWipe(postResetAgentStatus);
+      if (postResetAgentStatus != null) {
+        setAgentStatus(postResetAgentStatus);
+      }
       const elapsedMs = Math.round(performance.now() - resetStartedAt);
       logResetInfo(
         "handleReset: success — local UI reset; see server logs for API",
@@ -942,9 +1002,10 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     beginLifecycleAction,
     finishLifecycleAction,
     setActionNotice,
+    setAgentStatus,
     completeResetLocalStateAfterServerWipe,
-    lifecycleActionRef.current,
-    lifecycleBusyRef.current,
+    lifecycleActionRef,
+    lifecycleBusyRef,
   ]);
 
   return {

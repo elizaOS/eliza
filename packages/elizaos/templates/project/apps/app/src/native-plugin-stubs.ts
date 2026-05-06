@@ -36,10 +36,17 @@ export interface DeviceBridgeClient {
   stop(): void;
 }
 
+export type DeviceBridgeClientState =
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "error";
+
 export interface StartDeviceBridgeClientOptions {
   agentUrl: string;
   pairingToken?: string;
   deviceId?: string;
+  onStateChange?: (state: DeviceBridgeClientState, detail?: string) => void;
 }
 
 export function startDeviceBridgeClient(
