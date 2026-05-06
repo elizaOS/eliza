@@ -76,7 +76,7 @@
     "@lifi/types": "^17.18.0",
     "@orca-so/whirlpools": "^2.2.0",
     "@orca-so/whirlpools-client": "^6.2.1",
-    "@orca-so/whirlpools-core": "^2.0.0",
+    "@orca-so/whirlpools-core": "^3.1.0",
     "@orca-so/whirlpools-sdk": "^0.20.0",
     "@solana/spl-token": "0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",

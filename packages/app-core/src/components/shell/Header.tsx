@@ -71,7 +71,7 @@ const TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME =
   "inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-md border border-transparent !bg-transparent text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent";
 const TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent";
 const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
-  "group relative inline-flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
+  "group relative mx-auto inline-flex h-11 w-full max-w-12 min-w-0 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
 const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
   "text-accent after:opacity-100";
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
@@ -469,15 +469,22 @@ export function Header({
 
   const mobileBottomNav = isMobileViewport ? (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 px-2 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
       style={{
         paddingBottom: "max(0.375rem, var(--safe-area-bottom, 0px))",
+        paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
+        paddingRight: "max(0.5rem, var(--safe-area-right, 0px))",
       }}
       aria-label={t("aria.navMenu")}
       data-testid="header-mobile-bottom-nav"
       data-no-camera-drag="true"
     >
-      <div className="scrollbar-hide flex min-w-0 items-center justify-between gap-1 overflow-x-auto">
+      <div
+        className="grid min-w-0 items-center gap-1 overflow-hidden"
+        style={{
+          gridTemplateColumns: `repeat(${tabGroups.length}, minmax(0, 1fr))`,
+        }}
+      >
         {tabGroups.map((group) => {
           const primaryTab = group.tabs[0];
           const isActive = group.tabs.includes(tab);

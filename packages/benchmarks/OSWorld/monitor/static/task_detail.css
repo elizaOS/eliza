@@ -56,11 +56,6 @@ h2 { color: #0056b3; margin-top: 36px; font-size: 1.6em; font-weight: 600; }
 .step-card { 
     border: none; 
     background: #fafdff;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08); 
-    margin-bottom: 25px; 
-    border-radius: 10px; 
-    overflow: hidden; 
-    transition: all 0.3s;
     padding: 22px 26px; 
     margin-bottom: 24px; 
     border-radius: 10px; 
@@ -262,7 +257,7 @@ pre {
     margin-left: -5px;
     border-width: 5px;
     border-style: solid;
-    border-color: #333 transparent transparent transparent;
+    border-color: #333 transparent transparent;
 }
 
 .tooltip:hover .tooltip-text {

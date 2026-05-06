@@ -327,7 +327,9 @@ const options = parseArgs(process.argv.slice(2));
 const app = readAppIdentity();
 const platforms = requestedPlatforms(options.platform);
 const registrationResults = platforms.map((platform) =>
-  platform === "ios" ? assertIosRegistration(app) : assertAndroidRegistration(app),
+  platform === "ios"
+    ? assertIosRegistration(app)
+    : assertAndroidRegistration(app),
 );
 const url = buildCallbackUrl(app, options);
 
@@ -338,7 +340,12 @@ console.log(
 if (options.registrationOnly) {
   console.log(
     JSON.stringify(
-      { appDir, app, registrationOnly: true, registrations: registrationResults },
+      {
+        appDir,
+        app,
+        registrationOnly: true,
+        registrations: registrationResults,
+      },
       null,
       2,
     ),
@@ -354,7 +361,12 @@ const simulatorResults = platforms.map((platform) =>
 
 console.log(
   JSON.stringify(
-    { appDir, app, registrations: registrationResults, simulators: simulatorResults },
+    {
+      appDir,
+      app,
+      registrations: registrationResults,
+      simulators: simulatorResults,
+    },
     null,
     2,
   ),

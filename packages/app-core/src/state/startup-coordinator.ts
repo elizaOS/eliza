@@ -121,6 +121,10 @@ export function startupReducer(
   state: StartupState,
   event: StartupEvent,
 ): StartupState {
+  if (event.type === "RESET") {
+    return INITIAL_STARTUP_STATE;
+  }
+
   switch (state.phase) {
     case "splash":
       switch (event.type) {
@@ -259,9 +263,6 @@ export function startupReducer(
 
     case "ready":
       switch (event.type) {
-        case "RESET":
-          // Agent reset — return to splash so user can re-onboard
-          return INITIAL_STARTUP_STATE;
         case "SWITCH_AGENT":
           // Switch to a different agent profile — re-enter polling
           return {

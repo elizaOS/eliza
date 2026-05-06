@@ -25,7 +25,9 @@ export function isIosInProcessLocalAgentBase(
   baseUrl: string | null | undefined,
 ): boolean {
   if (!baseUrl) return false;
-  return isIosInProcessLocalAgentUrl(`${baseUrl.replace(/\/+$/, "")}/api/health`);
+  return isIosInProcessLocalAgentUrl(
+    `${baseUrl.replace(/\/+$/, "")}/api/health`,
+  );
 }
 
 export async function iosInProcessAgentTransportForUrl(

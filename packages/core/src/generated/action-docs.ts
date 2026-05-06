@@ -2611,13 +2611,6 @@ export const allActionsSpec = {
 			similes: ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
 		},
 		{
-			name: "AUTHENTICATE_GOOGLE",
-			description: "Authenticate with Google to access Meet API",
-			parameters: [],
-			descriptionCompressed: "authenticate w/ Google access Meet API",
-			similes: ["login to google", "google auth", "sign in", "authenticate"],
-		},
-		{
 			name: "BLOCK_UNTIL_TASK_COMPLETE",
 			description:
 				"Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. ",
@@ -3047,13 +3040,6 @@ export const allActionsSpec = {
 			similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
 		},
 		{
-			name: "CLEAR_GRAPH",
-			description: "Clear all entities and relationships from the graph.",
-			parameters: [],
-			descriptionCompressed: "clear entity relationship graph",
-			similes: ["RESET_GRAPH", "CLEAR_ALL", "DELETE_ALL"],
-		},
-		{
 			name: "CLEAR_LINEAR_ACTIVITY",
 			description: "Clear the Linear activity log",
 			parameters: [],
@@ -3259,66 +3245,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "COUNT_STATISTICS",
-			description: "Get statistics about the current relational data graph.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed: "get statistic current relational data graph",
-			similes: ["STATS", "STATISTICS", "COUNT"],
-			exampleCalls: [
-				{
-					user: "Use COUNT_STATISTICS with the provided parameters.",
-					actions: ["COUNT_STATISTICS"],
-					params: {
-						COUNT_STATISTICS: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "CREATE_ENTITY",
-			description:
-				"Create a new entity with a type and name. Entities are the nodes in our relational graph.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"create new entity w/ type name entity node relational graph",
-			similes: ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
-			exampleCalls: [
-				{
-					user: "Use CREATE_ENTITY with the provided parameters.",
-					actions: ["CREATE_ENTITY"],
-					params: {
-						CREATE_ENTITY: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "CREATE_LINEAR_COMMENT",
 			description: "Add a comment to a Linear issue",
 			parameters: [
@@ -3360,49 +3286,6 @@ export const allActionsSpec = {
 			similes: ["create-linear-issue", "new-linear-issue", "add-linear-issue"],
 		},
 		{
-			name: "CREATE_MEETING",
-			description: "Create a new Google Meet meeting space",
-			parameters: [],
-			descriptionCompressed: "create new Google Meet meet space",
-			similes: [
-				"start a meeting",
-				"create a meet",
-				"new meeting",
-				"setup a call",
-			],
-		},
-		{
-			name: "CREATE_RELATIONSHIP",
-			description:
-				"Create a relationship between two entities. Relationships are the edges in our relational graph.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"create relationship between two entity relationship edge relational graph",
-			similes: ["LINK", "CONNECT", "RELATE"],
-			exampleCalls: [
-				{
-					user: "Use CREATE_RELATIONSHIP with the provided parameters.",
-					actions: ["CREATE_RELATIONSHIP"],
-					params: {
-						CREATE_RELATIONSHIP: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "DEACTIVATE_N8N_WORKFLOW",
 			description:
 				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
@@ -3415,35 +3298,6 @@ export const allActionsSpec = {
 				"STOP_WORKFLOW",
 				"PAUSE_WORKFLOW",
 				"TURN_OFF_WORKFLOW",
-			],
-		},
-		{
-			name: "DELETE_ENTITY",
-			description: "Delete the current entity and all its relationships.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed: "delete current entity relationship",
-			similes: ["REMOVE_ENTITY", "DESTROY_ENTITY"],
-			exampleCalls: [
-				{
-					user: "Use DELETE_ENTITY with the provided parameters.",
-					actions: ["DELETE_ENTITY"],
-					params: {
-						DELETE_ENTITY: {
-							values: "example",
-						},
-					},
-				},
 			],
 		},
 		{
@@ -4017,69 +3871,11 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "FIND_PATH",
-			description:
-				"Find the shortest path between two entities in the relationship graph.",
-			parameters: [
-				{
-					name: "startEntityId",
-					description:
-						"Optional entity id to use as the path start. Defaults to the first graph entity.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional entity id to use as the path start. Defaults to the first graph entity.",
-				},
-				{
-					name: "endEntityId",
-					description:
-						"Optional entity id to use as the path end. Defaults to the last graph entity.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional entity id to use as the path end. Defaults to the last graph entity.",
-				},
-			],
-			descriptionCompressed:
-				"find shortest path between two entity relationship graph",
-			similes: ["PATH", "ROUTE", "CONNECTION_PATH"],
-			exampleCalls: [
-				{
-					user: "Use FIND_PATH with the provided parameters.",
-					actions: ["FIND_PATH"],
-					params: {
-						FIND_PATH: {
-							startEntityId: "example",
-							endEntityId: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "FORM_RESTORE",
 			description: "Restore a previously stashed form session",
 			parameters: [],
 			descriptionCompressed: "Restore stashed form session.",
 			similes: ["RESUME_FORM", "CONTINUE_FORM"],
-		},
-		{
-			name: "GENERATE_REPORT",
-			description:
-				"Generate a report from Google Meet conference records, participants, transcripts, and recordings.",
-			parameters: [],
-			descriptionCompressed:
-				"generate Google Meet report conference record participants transcript recordings",
-			similes: [
-				"create report",
-				"meeting summary",
-				"get transcript",
-				"meeting notes",
-			],
 		},
 		{
 			name: "GET_LINEAR_ACTIVITY",
@@ -4175,41 +3971,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "GET_MEETING_INFO",
-			description: "Get information about a Google Meet meeting",
-			parameters: [
-				{
-					name: "meetingId",
-					description:
-						"Optional Google Meet space name or stored meeting ID. Omit to inspect the current active meeting.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional Google Meet space name or stored meeting ID. Omit to inspect the current active meeting.",
-				},
-			],
-			descriptionCompressed: "get information Google Meet meet",
-			similes: [
-				"meeting info",
-				"check meeting",
-				"meeting status",
-				"meeting details",
-			],
-			exampleCalls: [
-				{
-					user: "Use GET_MEETING_INFO with the provided parameters.",
-					actions: ["GET_MEETING_INFO"],
-					params: {
-						GET_MEETING_INFO: {
-							meetingId: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "GET_N8N_EXECUTIONS",
 			description:
 				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
@@ -4261,41 +4022,6 @@ export const allActionsSpec = {
 							workflowId: "example",
 							workflowName: "example",
 							limit: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "GET_PARTICIPANTS",
-			description: "Get the list of participants in a Google Meet conference",
-			parameters: [
-				{
-					name: "conferenceRecordName",
-					description:
-						"Optional Google Meet conference record name, for example conferenceRecords/abc123. Omit to list the current active meeting participants.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional Google Meet conference record name, for example conferenceRecords/abc123. Omit to list the current active meeting participants.",
-				},
-			],
-			descriptionCompressed: "get list participant Google Meet conference",
-			similes: [
-				"who's in the meeting",
-				"list participants",
-				"attendees",
-				"who joined",
-			],
-			exampleCalls: [
-				{
-					user: "Use GET_PARTICIPANTS with the provided parameters.",
-					actions: ["GET_PARTICIPANTS"],
-					params: {
-						GET_PARTICIPANTS: {
-							conferenceRecordName: "example",
 						},
 					},
 				},
@@ -5125,71 +4851,6 @@ export const allActionsSpec = {
 				"Mark a contact as already followed-up-with (updates lastContactedAt to now).",
 		},
 		{
-			name: "MATH_CLEAR",
-			description: "Clear all calculation buffers and reset to zero.",
-			parameters: [],
-			descriptionCompressed: "clear calculation buffer reset zero",
-			similes: ["CLEAR", "RESET", "CLEAR_ALL"],
-		},
-		{
-			name: "MATH_RECALL",
-			description: "Recall value from memory to input buffer.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed: "recall value memory input buffer",
-			similes: ["RECALL", "LOAD", "MEMORY_RECALL"],
-			exampleCalls: [
-				{
-					user: "Use MATH_RECALL with the provided parameters.",
-					actions: ["MATH_RECALL"],
-					params: {
-						MATH_RECALL: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MATH_STORE",
-			description: "Store current accumulator value to memory.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed: "store current accumulator value memory",
-			similes: ["STORE", "SAVE", "MEMORY_STORE"],
-			exampleCalls: [
-				{
-					user: "Use MATH_STORE with the provided parameters.",
-					actions: ["MATH_STORE"],
-					params: {
-						MATH_STORE: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "MATRIX_JOIN_ROOM",
 			description: "Join a Matrix room by ID or alias",
 			parameters: [],
@@ -5207,223 +4868,6 @@ export const allActionsSpec = {
 				"UPDATE_EXISTING_WORKFLOW",
 				"CHANGE_EXISTING_WORKFLOW",
 				"LOAD_WORKFLOW_FOR_EDIT",
-			],
-		},
-		{
-			name: "MULTIVERSE_ADD",
-			description:
-				"Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"perform addition multiverse number behave differently base dimensional constant (prime, quantum, chaos)",
-			similes: ["M_ADD", "MULTI_ADD", "DIMENSIONAL_ADD"],
-			exampleCalls: [
-				{
-					user: "Use MULTIVERSE_ADD with the provided parameters.",
-					actions: ["MULTIVERSE_ADD"],
-					params: {
-						MULTIVERSE_ADD: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MULTIVERSE_DIVIDE",
-			description:
-				"Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"perform division multiverse infinity zero special meaning (safe, infinite, golden)",
-			similes: ["M_DIVIDE", "MULTI_DIV", "DIMENSIONAL_DIVIDE"],
-			exampleCalls: [
-				{
-					user: "Use MULTIVERSE_DIVIDE with the provided parameters.",
-					actions: ["MULTIVERSE_DIVIDE"],
-					params: {
-						MULTIVERSE_DIVIDE: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MULTIVERSE_MODULO",
-			description:
-				"Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"perform modulo operation multiverse w/ cyclical dimensional property (cyclical, spiral, fractal)",
-			similes: ["M_MODULO", "MULTI_MOD", "DIMENSIONAL_MODULO"],
-			exampleCalls: [
-				{
-					user: "Use MULTIVERSE_MODULO with the provided parameters.",
-					actions: ["MULTIVERSE_MODULO"],
-					params: {
-						MULTIVERSE_MODULO: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MULTIVERSE_MULTIPLY",
-			description:
-				"Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"perform multiplication across dimensional boundary w/ exotic number behavior (fibonacci, exponential, harmonic)",
-			similes: ["M_MULTIPLY", "MULTI_MUL", "DIMENSIONAL_MULTIPLY"],
-			exampleCalls: [
-				{
-					user: "Use MULTIVERSE_MULTIPLY with the provided parameters.",
-					actions: ["MULTIVERSE_MULTIPLY"],
-					params: {
-						MULTIVERSE_MULTIPLY: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MULTIVERSE_POWER",
-			description:
-				"Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"raise number power multiverse w/ dimensional effect (standard, imaginary, recursive)",
-			similes: ["M_POWER", "MULTI_POW", "DIMENSIONAL_POWER"],
-			exampleCalls: [
-				{
-					user: "Use MULTIVERSE_POWER with the provided parameters.",
-					actions: ["MULTIVERSE_POWER"],
-					params: {
-						MULTIVERSE_POWER: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MULTIVERSE_SQRT",
-			description:
-				"Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"take square root multiverse w/ dimensional variation (positive, complex, quantum)",
-			similes: ["M_SQRT", "MULTI_ROOT", "DIMENSIONAL_SQRT"],
-			exampleCalls: [
-				{
-					user: "Use MULTIVERSE_SQRT with the provided parameters.",
-					actions: ["MULTIVERSE_SQRT"],
-					params: {
-						MULTIVERSE_SQRT: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MULTIVERSE_SUBTRACT",
-			description:
-				"Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"perform subtraction multiverse negative number exist dimension (absolute, mirror, void)",
-			similes: ["M_SUBTRACT", "MULTI_SUB", "DIMENSIONAL_SUBTRACT"],
-			exampleCalls: [
-				{
-					user: "Use MULTIVERSE_SUBTRACT with the provided parameters.",
-					actions: ["MULTIVERSE_SUBTRACT"],
-					params: {
-						MULTIVERSE_SUBTRACT: {
-							values: "example",
-						},
-					},
-				},
 			],
 		},
 		{
@@ -5676,6 +5120,14 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "OWNER_SEND_MESSAGE",
+			description:
+				"Legacy compatibility wrapper for owner-approved cross-channel chat sends.",
+			parameters: [],
+			descriptionCompressed:
+				"send approved owner message through registered chat connector",
 		},
 		{
 			name: "PAYMENT_OP",
@@ -6289,65 +5741,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "QUERY_ENTITIES",
-			description: "Query entities by type or attribute values.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed: "query entity type attribute value",
-			similes: ["FIND_ENTITIES", "SEARCH_ENTITIES", "LIST_ENTITIES"],
-			exampleCalls: [
-				{
-					user: "Use QUERY_ENTITIES with the provided parameters.",
-					actions: ["QUERY_ENTITIES"],
-					params: {
-						QUERY_ENTITIES: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "QUERY_RELATIONSHIPS",
-			description:
-				"Query relationships of a specific type or for a specific entity.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed: "query relationship specific type specific entity",
-			similes: ["FIND_RELATIONSHIPS", "GET_CONNECTIONS", "SHOW_LINKS"],
-			exampleCalls: [
-				{
-					user: "Use QUERY_RELATIONSHIPS with the provided parameters.",
-					actions: ["QUERY_RELATIONSHIPS"],
-					params: {
-						QUERY_RELATIONSHIPS: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "READ_MCP_RESOURCE",
 			description: "Reads a resource from an MCP server",
 			parameters: [
@@ -6837,66 +6230,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "SELECT_DIMENSION",
-			description:
-				"Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"select dimensional constant affect how mathematical operation behave multiverse",
-			similes: ["DIMENSION", "SET_DIMENSION", "CHOOSE_DIMENSION"],
-			exampleCalls: [
-				{
-					user: "Use SELECT_DIMENSION with the provided parameters.",
-					actions: ["SELECT_DIMENSION"],
-					params: {
-						SELECT_DIMENSION: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SELECT_ENTITY",
-			description: "Select an entity as the current entity for operations.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed: "select entity current entity operation",
-			similes: ["CHOOSE_ENTITY", "FOCUS_ENTITY", "SET_CURRENT_ENTITY"],
-			exampleCalls: [
-				{
-					user: "Use SELECT_ENTITY with the provided parameters.",
-					actions: ["SELECT_ENTITY"],
-					params: {
-						SELECT_ENTITY: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "SEND_TO_AGENT",
 			description:
 				"Send text input or key presses to a running task-agent session. ",
@@ -7045,37 +6378,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "SET_ATTRIBUTE",
-			description:
-				"Set an attribute on the current entity. Attributes store additional data on entities.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"set attribute current entity attribute store additional data entity",
-			similes: ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
-			exampleCalls: [
-				{
-					user: "Use SET_ATTRIBUTE with the provided parameters.",
-					actions: ["SET_ATTRIBUTE"],
-					params: {
-						SET_ATTRIBUTE: {
-							values: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "SET_FOLLOWUP_THRESHOLD",
 			description:
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact. ",
@@ -7138,7 +6440,7 @@ export const allActionsSpec = {
 			description:
 				"Read the most recent Signal messages across active conversations",
 			parameters: [],
-			descriptionCompressed: "Read recent Signal messages.",
+			descriptionCompressed: "Read recent Signal msgs.",
 			similes: [
 				"READ_SIGNAL_MESSAGES",
 				"CHECK_SIGNAL_MESSAGES",
@@ -7982,37 +7284,6 @@ export const allActionsSpec = {
 				"TURN_OFF_SKILL",
 				"ACTIVATE_SKILL",
 				"DEACTIVATE_SKILL",
-			],
-		},
-		{
-			name: "TRANSFER_TO_INPUT",
-			description:
-				"Transfer accumulator value to input buffer for next operation.",
-			parameters: [
-				{
-					name: "values",
-					description: "The values to use.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["example"],
-					descriptionCompressed: "The values to use.",
-				},
-			],
-			descriptionCompressed:
-				"transfer accumulator value input buffer next operation",
-			similes: ["TRANSFER", "MOVE_TO_INPUT", "ACCUMULATOR_TO_INPUT"],
-			exampleCalls: [
-				{
-					user: "Use TRANSFER_TO_INPUT with the provided parameters.",
-					actions: ["TRANSFER_TO_INPUT"],
-					params: {
-						TRANSFER_TO_INPUT: {
-							values: "example",
-						},
-					},
-				},
 			],
 		},
 		{

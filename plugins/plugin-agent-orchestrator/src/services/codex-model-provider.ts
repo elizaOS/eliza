@@ -463,7 +463,9 @@ function decodePercentEncodedBytes(value: string): Buffer {
     if (char === "%") {
       const hex = value.slice(index + 1, index + 3);
       if (!/^[0-9a-f]{2}$/i.test(hex)) {
-        throw new Error("IMAGE_DESCRIPTION data URL has invalid percent encoding");
+        throw new Error(
+          "IMAGE_DESCRIPTION data URL has invalid percent encoding",
+        );
       }
       bytes.push(Number.parseInt(hex, 16));
       index += 2;

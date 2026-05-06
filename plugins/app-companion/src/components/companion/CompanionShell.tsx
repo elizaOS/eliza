@@ -1,8 +1,4 @@
-import {
-  type ActionNotice,
-  type Tab,
-  useRenderGuard,
-} from "@elizaos/app-core";
+import { type ActionNotice, type Tab, useRenderGuard } from "@elizaos/app-core";
 import { LoadingScreen } from "@elizaos/app-core/components/shell/LoadingScreen";
 import { memo, useEffect, useState } from "react";
 import { getVrmCount, getVrmUrl, VRM_COUNT } from "../../vrm-assets";

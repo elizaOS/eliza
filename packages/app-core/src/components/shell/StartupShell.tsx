@@ -76,6 +76,7 @@ export function StartupShell() {
   const {
     startupCoordinator,
     startupError,
+    onboardingComplete,
     onboardingCloudProvisionedContainer,
     retryStartup,
     setActionNotice,
@@ -267,6 +268,9 @@ export function StartupShell() {
 
   // Ready — let the app through
   if (phase === "ready") {
+    if (!onboardingComplete) {
+      return <RuntimeGate />;
+    }
     return null;
   }
 

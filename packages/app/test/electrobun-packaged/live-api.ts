@@ -44,6 +44,93 @@ function closeServer(server: http.Server): Promise<void> {
   });
 }
 
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "content-length",
+  "host",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+function buildForwardHeaders(req: http.IncomingMessage): Headers {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+      continue;
+    }
+    if (typeof value === "string") {
+      headers.set(key, value);
+      continue;
+    }
+    if (Array.isArray(value)) {
+      headers.set(key, value.join(", "));
+    }
+  }
+  return headers;
+}
+
+function copyResponseHeaders(source: Headers, res: http.ServerResponse): void {
+  source.forEach((value, key) => {
+    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+      res.setHeader(key, value);
+    }
+  });
+}
+
+function writeCorsHeaders(res: http.ServerResponse): void {
+  res.setHeader("access-control-allow-origin", "*");
+  res.setHeader(
+    "access-control-allow-methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  );
+  res.setHeader(
+    "access-control-allow-headers",
+    "authorization,content-type,x-api-key",
+  );
+}
+
+function sendJson(
+  res: http.ServerResponse,
+  statusCode: number,
+  body: unknown,
+): void {
+  res.statusCode = statusCode;
+  writeCorsHeaders(res);
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(body));
+}
+
+function parseJsonBody(body: Buffer | undefined): Record<string, unknown> {
+  if (!body || body.length === 0) {
+    return {};
+  }
+  const parsed = JSON.parse(body.toString("utf8"));
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
+}
+
+function scrubResetConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...config };
+  const meta =
+    next.meta && typeof next.meta === "object" && !Array.isArray(next.meta)
+      ? { ...(next.meta as Record<string, unknown>) }
+      : {};
+  delete meta.onboardingComplete;
+  next.meta = meta;
+  delete next.serviceRouting;
+  delete next.deployment;
+  delete next.agents;
+  return next;
+}
+
 export async function startLiveApiServer(
   options: TestApiServerOptions = {},
 ): Promise<TestApiServer> {
@@ -78,42 +165,83 @@ export async function startLiveApiServer(
     }
 
     const requests: string[] = [];
+    let configPatch: Record<string, unknown> = {};
+    let resetApplied = false;
     proxy = http.createServer(async (req, res) => {
-      const method = (req.method ?? "GET").toUpperCase();
-      const targetUrl = new URL(req.url ?? "/", upstreamBaseUrl);
-      requests.push(`${method} ${targetUrl.pathname}`);
+      try {
+        const method = (req.method ?? "GET").toUpperCase();
+        const targetUrl = new URL(req.url ?? "/", upstreamBaseUrl);
+        requests.push(`${method} ${targetUrl.pathname}`);
 
-      const body =
-        method === "GET" || method === "HEAD" ? undefined : await readBody(req);
-      const headers = new Headers();
-      for (const [key, value] of Object.entries(req.headers)) {
-        if (typeof value === "string") {
-          headers.set(key, value);
-          continue;
+        if (method === "POST" && targetUrl.pathname === "/api/agent/reset") {
+          resetApplied = true;
+          configPatch = {};
+          sendJson(res, 200, { ok: true });
+          return;
         }
-        if (Array.isArray(value)) {
-          headers.set(key, value.join(", "));
+
+        if (
+          method === "GET" &&
+          resetApplied &&
+          targetUrl.pathname === "/api/onboarding/status"
+        ) {
+          sendJson(res, 200, { complete: false, cloudProvisioned: false });
+          return;
         }
+
+        if (targetUrl.pathname === "/api/config") {
+          if (method === "PUT") {
+            const body = await readBody(req);
+            configPatch = { ...configPatch, ...parseJsonBody(body) };
+            resetApplied = false;
+            sendJson(res, 200, configPatch);
+            return;
+          }
+
+          if (method === "GET") {
+            const response = await fetch(targetUrl, {
+              method,
+              headers: buildForwardHeaders(req),
+              redirect: "manual",
+            });
+            const upstreamConfig = response.ok
+              ? parseJsonBody(Buffer.from(await response.arrayBuffer()))
+              : {};
+            sendJson(res, response.ok ? 200 : response.status, {
+              ...(resetApplied
+                ? scrubResetConfig(upstreamConfig)
+                : upstreamConfig),
+              ...configPatch,
+            });
+            return;
+          }
+        }
+
+        const body =
+          method === "GET" || method === "HEAD"
+            ? undefined
+            : await readBody(req);
+        const response = await fetch(targetUrl, {
+          method,
+          headers: buildForwardHeaders(req),
+          body,
+          redirect: "manual",
+        });
+
+        res.statusCode = response.status;
+        copyResponseHeaders(response.headers, res);
+
+        if (!response.body) {
+          res.end();
+          return;
+        }
+
+        res.end(Buffer.from(await response.arrayBuffer()));
+      } catch (error) {
+        res.statusCode = 502;
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.end(error instanceof Error ? error.message : String(error));
       }
-
-      const response = await fetch(targetUrl, {
-        method,
-        headers,
-        body,
-        redirect: "manual",
-      });
-
-      res.statusCode = response.status;
-      response.headers.forEach((value, key) => {
-        res.setHeader(key, value);
-      });
-
-      if (!response.body) {
-        res.end();
-        return;
-      }
-
-      res.end(Buffer.from(await response.arrayBuffer()));
     });
 
     await listen(proxy, options.port ?? 0);

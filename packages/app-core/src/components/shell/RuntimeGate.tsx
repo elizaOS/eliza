@@ -1870,6 +1870,7 @@ function GateShell({
 
   return (
     <div
+      data-testid="onboarding-ui-overlay"
       className={`relative h-full min-h-0 w-full overflow-hidden text-white overscroll-none ${
         lightMode ? "bg-[#1a1108]" : "bg-[#0a0805]"
       }`}
