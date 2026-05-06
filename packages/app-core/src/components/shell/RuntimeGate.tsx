@@ -803,8 +803,10 @@ export function RuntimeGate() {
       // compat-created agent returns 405 (the v1/app provision endpoint
       // doesn't recognize compat-namespace agent IDs).
       let jobId: string | undefined = existingJobId;
+      let provRes:
+        | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>
+        | undefined;
       if (!jobId) {
-        let provRes: Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>;
         let startStatusTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           startStatusTimer = setTimeout(() => {
@@ -924,7 +926,7 @@ export function RuntimeGate() {
         );
         const provisionRuntimeUrl = resolveCloudJobRuntimeUrl({
           result: null,
-          data: provRes.data ?? {},
+          data: provRes?.data ?? {},
         });
         if (provisionRuntimeUrl) {
           const readyFromProvisionUrl = await client
@@ -968,7 +970,7 @@ export function RuntimeGate() {
         Date.now() +
         Math.max(
           PROVISION_JOB_WAIT_DEADLINE_MS,
-          provRes.polling?.expectedDurationMs ?? 0,
+          provRes?.polling?.expectedDurationMs ?? 0,
         );
       const pollProvisionJob = async () => {
         if (Date.now() >= provisionJobDeadlineMs) {
