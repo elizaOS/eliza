@@ -26,7 +26,9 @@ const VALID_KINDS: ReadonlySet<N8nClarificationRequest['kind']> = new Set([
 ]);
 
 function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
-  if (!v || typeof v !== 'object') {return false;}
+  if (!v || typeof v !== 'object') {
+    return false;
+  }
   const o = v as Record<string, unknown>;
   if (typeof o.question !== 'string' || o.question.trim().length === 0) {
     return false;
@@ -37,22 +39,26 @@ function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
 }
 
 export function coerceClarifications(raw: unknown): N8nClarificationRequest[] {
-  if (!Array.isArray(raw) || raw.length === 0) {return [];}
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [];
+  }
   const out: N8nClarificationRequest[] = [];
   for (const item of raw) {
     if (typeof item === 'string') {
       const trimmed = item.trim();
-      if (trimmed.length === 0) {continue;}
+      if (trimmed.length === 0) {
+        continue;
+      }
       out.push({ kind: 'free_text', question: trimmed, paramPath: '' });
       continue;
     }
-    if (!isStructuredClarification(item)) {continue;}
+    if (!isStructuredClarification(item)) {
+      continue;
+    }
     const o = item as unknown as Record<string, unknown>;
     const kindRaw = typeof o.kind === 'string' ? o.kind : 'free_text';
     const kind = (
-      VALID_KINDS.has(kindRaw as N8nClarificationRequest['kind'])
-        ? kindRaw
-        : 'free_text'
+      VALID_KINDS.has(kindRaw as N8nClarificationRequest['kind']) ? kindRaw : 'free_text'
     ) as N8nClarificationRequest['kind'];
     const platform = typeof o.platform === 'string' ? o.platform : undefined;
     let scope: { guildId?: string } | undefined;
@@ -118,7 +124,9 @@ export function parseParamPath(path: string): string[] {
     }
     // Identifier run: read until next `.` or `[`.
     let j = i;
-    while (j < n && path[j] !== '.' && path[j] !== '[') {j += 1;}
+    while (j < n && path[j] !== '.' && path[j] !== '[') {
+      j += 1;
+    }
     const ident = path.slice(i, j).trim();
     if (ident.length === 0) {
       throw new Error(`empty identifier at index ${i}`);
@@ -145,7 +153,7 @@ export function parseParamPath(path: string): string[] {
 export function setByDotPath(
   obj: Record<string, unknown>,
   paramPath: string,
-  value: unknown,
+  value: unknown
 ): void {
   const segments = parseParamPath(paramPath);
   let cur: Record<string, unknown> | unknown[] = obj;
@@ -154,9 +162,7 @@ export function setByDotPath(
     const isArrayIndex = /^[0-9]+$/.test(seg);
     if (Array.isArray(cur)) {
       if (!isArrayIndex) {
-        throw new Error(
-          `paramPath segment "${seg}" is not a valid array index at depth ${i}`,
-        );
+        throw new Error(`paramPath segment "${seg}" is not a valid array index at depth ${i}`);
       }
       const idx = Number(seg);
       let next = cur[idx];
@@ -165,9 +171,7 @@ export function setByDotPath(
         cur[idx] = next;
       }
       if (typeof next !== 'object' || next === null) {
-        throw new Error(
-          `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
-        );
+        throw new Error(`paramPath cannot descend into non-object at "${seg}" (depth ${i})`);
       }
       cur = next as Record<string, unknown> | unknown[];
       continue;
@@ -178,18 +182,14 @@ export function setByDotPath(
       (cur as Record<string, unknown>)[seg] = next;
     }
     if (typeof next !== 'object' || next === null) {
-      throw new Error(
-        `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
-      );
+      throw new Error(`paramPath cannot descend into non-object at "${seg}" (depth ${i})`);
     }
     cur = next as Record<string, unknown> | unknown[];
   }
   const last = segments[segments.length - 1];
   if (Array.isArray(cur)) {
     if (!/^[0-9]+$/.test(last)) {
-      throw new Error(
-        `paramPath terminal segment "${last}" must be numeric at array`,
-      );
+      throw new Error(`paramPath terminal segment "${last}" must be numeric at array`);
     }
     cur[Number(last)] = value;
   } else {
@@ -199,7 +199,7 @@ export function setByDotPath(
 
 export function applyResolutions(
   draft: Record<string, unknown>,
-  resolutions: ReadonlyArray<N8nClarificationResolution>,
+  resolutions: ReadonlyArray<N8nClarificationResolution>
 ): { ok: true } | { ok: false; error: string; paramPath?: string } {
   for (const r of resolutions) {
     if (!r || typeof r.paramPath !== 'string') {
@@ -229,9 +229,7 @@ export function applyResolutions(
         notes = meta.userNotes as string[];
       } else {
         notes =
-          meta.userNotes !== null && meta.userNotes !== undefined
-            ? [String(meta.userNotes)]
-            : [];
+          meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
         meta.userNotes = notes;
       }
       notes.push(r.value);
@@ -271,12 +269,16 @@ export function applyResolutions(
 export function pruneResolvedClarifications(
   draft: Record<string, unknown>,
   resolved: ReadonlySet<string>,
-  freeFormCount = 0,
+  freeFormCount = 0
 ): void {
   const meta = (draft as { _meta?: Record<string, unknown> })._meta;
-  if (!meta || typeof meta !== 'object') {return;}
+  if (!meta || typeof meta !== 'object') {
+    return;
+  }
   const list = meta.requiresClarification;
-  if (!Array.isArray(list)) {return;}
+  if (!Array.isArray(list)) {
+    return;
+  }
   let toDropFreeForm = freeFormCount;
   const remaining = list.filter((item) => {
     if (typeof item === 'string') {
@@ -292,10 +294,7 @@ export function pruneResolvedClarifications(
         return false;
       }
       // Empty-paramPath object-form: also positional.
-      if (
-        (typeof path !== 'string' || path.length === 0) &&
-        toDropFreeForm > 0
-      ) {
+      if ((typeof path !== 'string' || path.length === 0) && toDropFreeForm > 0) {
         toDropFreeForm -= 1;
         return false;
       }
@@ -328,20 +327,26 @@ export interface CatalogLike {
  */
 export async function buildCatalogSnapshot(
   catalog: CatalogLike,
-  clarifications: ReadonlyArray<N8nClarificationRequest>,
+  clarifications: ReadonlyArray<N8nClarificationRequest>
 ): Promise<N8nClarificationTargetGroup[]> {
   const platforms = new Set<string>();
   for (const c of clarifications) {
-    if (c.platform) {platforms.add(c.platform);}
+    if (c.platform) {
+      platforms.add(c.platform);
+    }
   }
-  if (platforms.size === 0) {return [];}
+  if (platforms.size === 0) {
+    return [];
+  }
   const out: N8nClarificationTargetGroup[] = [];
   const seen = new Set<string>();
   for (const platform of platforms) {
     const groups = await catalog.listGroups({ platform });
     for (const g of groups) {
       const key = `${g.platform}::${g.groupId}`;
-      if (seen.has(key)) {continue;}
+      if (seen.has(key)) {
+        continue;
+      }
       seen.add(key);
       out.push(g);
     }
