@@ -97,7 +97,6 @@ function resolveSystemApkStagingDir() {
   };
 }
 const systemApkStaging = resolveSystemApkStagingDir();
-const elizaOsVendorDir = systemApkStaging.vendorDir;
 const elizaOsApkDir = systemApkStaging.apkDir;
 const elizaOsApkName = systemApkStaging.apkName;
 const platformsDir = path.join(appCoreRoot, "platforms");
@@ -511,18 +510,18 @@ async function buildWeb(platform) {
       : platform === "ios-overlay"
         ? "ios"
         : platform;
-  await run(
-    process.execPath,
-    [path.join(repoRoot, "scripts/run-app-web-build.mjs")],
-    {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
-        MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
-      },
+  const hostBuildScript = path.join(repoRoot, "scripts/run-app-web-build.mjs");
+  const buildScript = fs.existsSync(hostBuildScript)
+    ? hostBuildScript
+    : path.join(appCoreRoot, "scripts/build-capacitor-app.mjs");
+  await run(process.execPath, [buildScript], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
+      MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
     },
-  );
+  });
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
