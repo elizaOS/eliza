@@ -1599,7 +1599,7 @@ const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
 const ACTION_METADATA_FUTURE_HINTS =
 	/\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
 
-type ActionOwnershipSuggestion = {
+export type ActionOwnershipSuggestion = {
 	actionName: string;
 	score: number;
 	secondBestScore: number;
@@ -2258,21 +2258,16 @@ export function shouldRunMetadataActionRescue(
 	return true;
 }
 
-function shouldPromoteExplicitReplyToOwnedAction(
+export function shouldPromoteExplicitReplyToOwnedAction(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 	suggestion: ActionOwnershipSuggestion | null,
 ): boolean {
 	if (!suggestion || !hasExplicitReplyIntent(responseContent)) {
 		return false;
 	}
-	const normalizedAction = normalizeActionIdentifier(suggestion.actionName);
 	return (
-		(normalizedAction === normalizeActionIdentifier("SHELL_COMMAND") &&
-			suggestion.reasons.includes("direct:local-shell-check")) ||
-		(normalizedAction === normalizeActionIdentifier("SEARCH") &&
-			suggestion.reasons.includes("direct:web-search")) ||
-		(normalizedAction === normalizeActionIdentifier("WEB_SEARCH") &&
-			suggestion.reasons.includes("direct:web-search"))
+		suggestion.reasons.includes("direct:local-shell-check") ||
+		suggestion.reasons.includes("direct:web-search")
 	);
 }
 

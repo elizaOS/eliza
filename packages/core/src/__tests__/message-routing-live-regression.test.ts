@@ -5,6 +5,7 @@ import {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
+	shouldPromoteExplicitReplyToOwnedAction,
 	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
 	suggestOwnedActionFromMetadata,
@@ -86,6 +87,42 @@ describe("live routing regressions", () => {
 				"what is the current BTC price in USD? answer briefly.",
 			),
 		).toBe("current BTC price in USD");
+	});
+
+	it("promotes explicit reply to direct shell/search action aliases", () => {
+		expect(
+			shouldPromoteExplicitReplyToOwnedAction(
+				{ actions: ["REPLY"] },
+				{
+					actionName: "TERMINAL",
+					score: 1,
+					secondBestScore: 0,
+					reasons: ["direct:local-shell-check"],
+				},
+			),
+		).toBe(true);
+		expect(
+			shouldPromoteExplicitReplyToOwnedAction(
+				{ actions: ["REPLY"] },
+				{
+					actionName: "BRAVE_SEARCH",
+					score: 1,
+					secondBestScore: 0,
+					reasons: ["direct:web-search"],
+				},
+			),
+		).toBe(true);
+		expect(
+			shouldPromoteExplicitReplyToOwnedAction(
+				{ actions: ["REPLY"] },
+				{
+					actionName: "MANAGE_ISSUES",
+					score: 1,
+					secondBestScore: 0,
+					reasons: ["metadata:keyword-overlap"],
+				},
+			),
+		).toBe(false);
 	});
 
 	it("does not route generic current status questions to web search", () => {
