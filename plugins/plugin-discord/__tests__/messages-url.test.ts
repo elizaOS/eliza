@@ -106,5 +106,6 @@ describe("MessageManager generation timeout config", () => {
 		expect(resolveGenerationTimeoutMs(undefined, "0")).toBeNull();
 		expect(resolveGenerationTimeoutMs("1000", undefined)).toBe(30_000);
 		expect(resolveGenerationTimeoutMs(undefined, "45000")).toBe(45_000);
+		expect(resolveGenerationTimeoutMs("disabled", undefined)).toBe(120_000);
 	});
 });

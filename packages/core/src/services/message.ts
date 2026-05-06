@@ -2469,7 +2469,7 @@ export function looksLikeSelfPolicyExplanationRequest(
 		/\bdo not run commands?\b/iu.test(text);
 	const asksMonetizedAppGuidance =
 		/\b(?:monetized|monetised)\b/iu.test(text) &&
-		/\b(?:workflow|skill|sdk|example app|edad[- ]?chat|build[- ]?monetized[- ]?app)\b/iu.test(
+		/\b(?:workflow|skill|sdk|example app|reference app|build[- ]?monetized[- ]?app)\b/iu.test(
 			text,
 		);
 	const asksWorkspaceMap =
@@ -2482,8 +2482,7 @@ export function looksLikeSelfPolicyExplanationRequest(
 	const asksAgentMethod =
 		/\b(?:what|which|how)\b[\s\S]{0,120}\b(?:workflow|workflows|skill|skills|sdk|example app|routing|configured|allowed|supposed to use|should you use)\b/iu.test(
 			text,
-		) &&
-		/\b(?:you|your|nubilio|agent|codex|task agent|subagent)\b/iu.test(text);
+		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/iu.test(text);
 	const asksQuestion =
 		/\?/.test(text) || /\b(?:what|which|where|how|should)\b/iu.test(text);
 	const asksActualWork =
@@ -2523,20 +2522,24 @@ export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
 		return true;
 	}
 
-	if (looksLikeSelfPolicyExplanationRequest(message)) {
-		return true;
-	}
-
 	const asksSelfPolicy =
 		/\b(?:configured|routing|workflow|workflows?|folders?|repos?|repositories|source|workspace|workspaces|skills?|sdk|example app|read-only|pr work)\b/.test(
 			text,
-		) && /\b(?:you|your|agent|nubilio|codex|task agent|subagent)\b/.test(text);
+		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/.test(text);
 	const asksDocumentOrKnowledge =
 		/\b(uploaded|upload|attachment|attached|document|documents?|file|files?|knowledge base|kb)\b/.test(
 			text,
 		);
 
-	return asksSelfPolicy && !asksDocumentOrKnowledge;
+	if (asksDocumentOrKnowledge) {
+		return false;
+	}
+
+	if (looksLikeSelfPolicyExplanationRequest(message)) {
+		return true;
+	}
+
+	return asksSelfPolicy;
 }
 
 function buildProviderSelectionPrompt(draftReply?: string): string {

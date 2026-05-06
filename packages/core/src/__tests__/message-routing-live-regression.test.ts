@@ -133,6 +133,16 @@ describe("live routing regressions", () => {
 		).toBe(false);
 	});
 
+	it("does not skip document rescue for self-policy questions about documents", () => {
+		expect(
+			shouldSkipDocumentProviderRescue({
+				content: {
+					text: "what workflow should you use for processing documents in your knowledge base?",
+				},
+			} as unknown as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
+		).toBe(false);
+	});
+
 	it("stops continuation when an action result blocks the turn", () => {
 		expect(
 			actionResultsSuppressPostActionContinuation([
