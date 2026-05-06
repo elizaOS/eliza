@@ -6,7 +6,7 @@
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
-import { ModelType } from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import type { LifeOpsDossier } from "@elizaos/shared";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
@@ -253,9 +253,13 @@ export function withDossier<TBase extends Constructor<LifeOpsServiceBase>>(
         "Return only the markdown briefing.",
       ].join("\n");
 
-      const llmResult = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-      });
+      const llmResult = await runWithTrajectoryContext(
+        { purpose: "lifeops-dossier" },
+        () =>
+          this.runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt,
+          }),
+      );
       const contentMd =
         typeof llmResult === "string"
           ? llmResult.trim()

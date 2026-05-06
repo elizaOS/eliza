@@ -5,6 +5,10 @@ import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { logger } from "@/lib/utils/logger";
@@ -38,6 +42,12 @@ function sanitizeEnqueueFailureMessage(error: string, status: 404 | 409 | 500): 
   }
 
   return "Failed to start provisioning";
+}
+
+function createFailureId(): string {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `provision-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 /**
@@ -155,6 +165,21 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       );
     }
 
+    const workerHealth = await checkProvisioningWorkerHealth();
+    if (!workerHealth.ok) {
+      logger.warn("[agent-api] Provision blocked: provisioning worker unavailable", {
+        agentId,
+        orgId: user.organization_id,
+        code: workerHealth.code,
+      });
+      return applyCorsHeaders(
+        Response.json(provisioningWorkerFailureBody(workerHealth), {
+          status: workerHealth.status,
+        }),
+        CORS_METHODS,
+      );
+    }
+
     // ── Async path (default) ──────────────────────────────────────────
     const webhookUrl = request.headers.get("x-webhook-url") ?? undefined;
     if (webhookUrl) {
@@ -192,9 +217,11 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
           : message === "Agent state changed while starting"
             ? 409
             : 500;
+      const failureId = status === 500 ? createFailureId() : undefined;
 
       if (status === 500) {
         logger.error("[agent-api] Failed to enqueue provisioning job", {
+          failureId,
           agentId,
           orgId: user.organization_id,
           error: message,
@@ -205,7 +232,10 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
         Response.json(
           {
             success: false,
+            code: status === 500 ? "provision_enqueue_failed" : "provision_enqueue_rejected",
             error: sanitizeEnqueueFailureMessage(message, status),
+            ...(failureId ? { failureId } : {}),
+            retryable: status === 500 || status === 409,
           },
           { status },
         ),

@@ -108,25 +108,25 @@ export const QUICK_BENCHMARK_CASES: BenchmarkCase[] = [
   {
     id: "goal-set",
     userMessage: "Set a goal to save $5,000 by the end of the year",
-    expectedAction: "LIFE",
+    expectedAction: "OWNER_LIFE",
     tags: ["goals", "critical"],
   },
   {
     id: "cal-schedule",
     userMessage: "Schedule a dentist appointment next Tuesday at 3pm",
-    expectedAction: "CALENDAR_ACTION",
+    expectedAction: "OWNER_CALENDAR",
     tags: ["calendar", "critical"],
   },
   {
     id: "cal-check",
     userMessage: "What's my next meeting?",
-    expectedAction: "CALENDAR_ACTION",
+    expectedAction: "OWNER_CALENDAR",
     tags: ["calendar", "critical"],
   },
   {
     id: "email-triage",
     userMessage: "Triage my gmail inbox",
-    expectedAction: "GMAIL_ACTION",
+    expectedAction: "TRIAGE_MESSAGES",
     tags: ["email", "critical"],
   },
   {
@@ -138,20 +138,20 @@ export const QUICK_BENCHMARK_CASES: BenchmarkCase[] = [
   {
     id: "send-telegram",
     userMessage: "Send a telegram message to Jane saying I'm running late",
-    expectedAction: "CROSS_CHANNEL_SEND",
+    expectedAction: "SEND_DRAFT",
     tags: ["messaging", "critical"],
   },
   {
     id: "block-sites",
     userMessage: "Block twitter and reddit for the next 2 hours",
-    expectedAction: "BLOCK_WEBSITES",
+    expectedAction: "OWNER_WEBSITE_BLOCK",
     tags: ["focus", "critical"],
   },
   {
     id: "habit-create",
     userMessage:
       "I want to start a daily habit of meditating for 10 minutes each morning",
-    expectedAction: "LIFE",
+    expectedAction: "OWNER_LIFE",
     tags: ["habits", "critical"],
   },
 ];

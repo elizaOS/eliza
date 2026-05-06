@@ -10,6 +10,7 @@ import type {
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
@@ -177,9 +178,13 @@ async function resolveSubscriptionsPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-subscriptions" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {

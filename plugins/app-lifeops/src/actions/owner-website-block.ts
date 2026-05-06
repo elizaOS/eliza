@@ -10,6 +10,7 @@ import type {
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import {
   getSelfControlAccess,
@@ -52,7 +53,7 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     description:
       "Start a hosts-file block on a set of public hostnames for a fixed duration or indefinitely. Always drafts first; requires confirmed:true to actually edit the hosts file. Heuristic and LLM extract hosts from intent.",
     descriptionCompressed:
-      "start hosts-file block on hostnames duration-minutes confirmed-true required heuristic+LLM extracts hosts from intent",
+      "hosts-file block hostnames duration-minutes confirmed-true heuristic+LLM extract-hosts",
     required: ["intent"],
     optional: ["hostnames", "durationMinutes", "confirmed"],
   },
@@ -60,7 +61,7 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     description:
       "Clear the active hosts-file block and restore the entries Eliza added. Blocked when a harsh-no-bypass rule is set.",
     descriptionCompressed:
-      "clear hosts-file block restore entries; blocked if harsh-no-bypass set",
+      "clear hosts-file block restore entries blocked-if-harsh-no-bypass",
     required: [],
   },
   status: {
@@ -73,7 +74,7 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     description:
       "Request administrator/root approval for hosts-file edits, or explain the manual change needed when the OS does not support an elevation prompt.",
     descriptionCompressed:
-      "request admin approval hosts-file edits or explain manual change",
+      "request admin approval hosts-file edits OR explain manual change",
     required: [],
   },
 };
@@ -384,9 +385,13 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-website-block-planner" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
@@ -446,9 +451,13 @@ async function recoverWebsiteContextWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-website-block-recovery" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     return normalizeWebsiteCandidates(parsed?.websites);
@@ -945,9 +954,7 @@ export const ownerWebsiteBlockAction: Action & {
 function makeSubactionShim(
   shimName: string,
   fixedSubaction: WebsiteBlockSubaction,
-  translate?: (
-    legacy: Record<string, unknown>,
-  ) => Record<string, unknown>,
+  translate?: (legacy: Record<string, unknown>) => Record<string, unknown>,
 ): Action {
   return {
     name: shimName,
@@ -959,13 +966,14 @@ function makeSubactionShim(
     validate: ownerWebsiteBlockAction.validate,
     handler: async (runtime, message, state, options, callback) => {
       const legacyParams =
-        options && typeof options === "object" && "parameters" in options &&
-        options.parameters && typeof options.parameters === "object"
+        options &&
+        typeof options === "object" &&
+        "parameters" in options &&
+        options.parameters &&
+        typeof options.parameters === "object"
           ? (options.parameters as Record<string, unknown>)
           : {};
-      const translated = translate
-        ? translate(legacyParams)
-        : legacyParams;
+      const translated = translate ? translate(legacyParams) : legacyParams;
       const pinned: HandlerOptions = {
         ...(options as HandlerOptions | undefined),
         parameters: { ...translated, subaction: fixedSubaction },

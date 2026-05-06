@@ -2827,8 +2827,8 @@ export class AgentRuntime implements IAgentRuntime {
 		let actionIndex = 0;
 		// Track which action names have already been executed in this
 		// processActions invocation. The LLM sometimes emits the same action
-		// twice in `actions` (e.g. ["GMAIL_ACTION", "CALENDAR_ACTION",
-		// "CALENDAR_ACTION"] when the user has multiple sub-intents the LLM
+		// twice in `actions` (e.g. ["SEND_MESSAGE", "OWNER_CALENDAR",
+		// "OWNER_CALENDAR"] when the user has multiple sub-intents the LLM
 		// can't split into per-action params). Without dedupe the second run
 		// uses the same params as the first → identical output → discord
 		// dedup layer rejects it as a duplicate callback. Two identical

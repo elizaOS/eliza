@@ -489,7 +489,11 @@ function captureConnectorDispatchesFromAction(
     });
   };
 
-  if (actionName === "CROSS_CHANNEL_SEND") {
+  if (
+    actionName === "SEND_DRAFT" ||
+    actionName === "RESPOND_TO_MESSAGE" ||
+    actionName === "CROSS_CHANNEL_SEND"
+  ) {
     const channels = [
       ...toStringArray(params?.channel),
       ...toStringArray(resultData?.channel),
@@ -501,7 +505,11 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (actionName === "PUBLISH_DEVICE_INTENT" || actionName === "INTENT_SYNC") {
+  if (
+    actionName === "OWNER_DEVICE_INTENT" ||
+    actionName === "PUBLISH_DEVICE_INTENT" ||
+    actionName === "INTENT_SYNC"
+  ) {
     const channels = [
       ...toStringArray(params?.channel),
       ...toStringArray(params?.channels),
@@ -519,7 +527,11 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (actionName === "CALL_USER" || actionName === "CALL_EXTERNAL") {
+  if (
+    actionName === "OWNER_VOICE_CALL" ||
+    actionName === "CALL_USER" ||
+    actionName === "CALL_EXTERNAL"
+  ) {
     const channel = blob.includes("sms") ? "sms" : "phone_call";
     push(channel, params ?? resultData ?? {});
   }

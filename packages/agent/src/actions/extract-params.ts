@@ -19,9 +19,9 @@
  *
  *   const filled = await extractActionParamsViaLlm<MyParams>({
  *     runtime, message, state,
- *     actionName: "OWNER_INBOX",
+ *     actionName: "TRIAGE_MESSAGES",
  *     actionDescription: "Cross-channel inbox: triage / digest / respond / search...",
- *     paramSchema: ownerInboxAction.parameters,
+ *     paramSchema: triageMessagesAction.parameters,
  *     existingParams: planParams,
  *     requiredFields: ["subaction"],
  *   });

@@ -40,7 +40,6 @@ Common:
 
 - `VOICEBENCH_AUDIO_PATH` (optional; if unset, `run.sh` will try these defaults in order):
   - `benchmarks/voicebench/shared/audio/default.wav`
-  - `examples/town/public/assets/background.mp3`
   - `agent-town/public/assets/background.mp3`
   - `run.sh` resolves the selected path to an absolute path before invoking the TypeScript runner
   - `mock` profile additionally falls back to `benchmarks/voicebench/shared/mock-audio.txt`

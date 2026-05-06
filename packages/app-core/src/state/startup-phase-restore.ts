@@ -21,9 +21,12 @@ import {
   ANDROID_LOCAL_AGENT_API_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
+  MOBILE_LOCAL_AGENT_API_BASE,
+  MOBILE_LOCAL_AGENT_LABEL,
+  MOBILE_LOCAL_AGENT_SERVER_ID,
   readPersistedMobileRuntimeMode,
 } from "../onboarding/mobile-runtime-mode";
-import { isAndroid } from "../platform";
+import { isAndroid, isIOS } from "../platform";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {
@@ -104,7 +107,7 @@ export interface RestoringSessionCtx {
   hadPriorOnboarding: boolean;
 }
 
-function isAndroidLocalAgentApiBase(value: string | undefined): boolean {
+function isMobileLocalAgentApiBase(value: string | undefined): boolean {
   if (!value) return false;
   try {
     const parsed = new URL(value);
@@ -120,8 +123,8 @@ function isAndroidLocalAgentApiBase(value: string | undefined): boolean {
   }
 }
 
-function isAndroidLocalActiveServer(server: PersistedActiveServer): boolean {
-  return server.kind === "local" || isAndroidLocalAgentApiBase(server.apiBase);
+function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
+  return server.kind === "local" || isMobileLocalAgentApiBase(server.apiBase);
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -151,12 +154,14 @@ function reconcilePersistedApiBaseWithLive(
   }
 }
 
-function androidLoopbackActiveServer(): PersistedActiveServer {
+function mobileLoopbackActiveServer(): PersistedActiveServer {
   return {
-    id: ANDROID_LOCAL_AGENT_SERVER_ID,
+    id: isAndroid ? ANDROID_LOCAL_AGENT_SERVER_ID : MOBILE_LOCAL_AGENT_SERVER_ID,
     kind: "remote",
-    label: ANDROID_LOCAL_AGENT_LABEL,
-    apiBase: ANDROID_LOCAL_AGENT_API_BASE,
+    label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
+    apiBase: isAndroid
+      ? ANDROID_LOCAL_AGENT_API_BASE
+      : MOBILE_LOCAL_AGENT_API_BASE,
   };
 }
 
@@ -198,9 +203,11 @@ export async function applyRestoredConnection(args: {
 }
 
 function activeServerToTarget(
-  kind: PersistedActiveServer["kind"],
+  server: PersistedActiveServer,
 ): "embedded-local" | "cloud-managed" | "remote-backend" {
-  switch (kind) {
+  if (isMobileLocalActiveServer(server)) return "embedded-local";
+
+  switch (server.kind) {
     case "local":
       return "embedded-local";
     case "cloud":
@@ -291,10 +298,10 @@ export async function runRestoringSession(
   let restoredActiveServer =
     persistedActiveServer ?? (probed ? probed.activeServer : null);
 
-  if (isAndroid && restoredActiveServer) {
+  if ((isAndroid || isIOS) && restoredActiveServer) {
     const mobileRuntimeMode = readPersistedMobileRuntimeMode();
     if (
-      isAndroidLocalActiveServer(restoredActiveServer) &&
+      isMobileLocalActiveServer(restoredActiveServer) &&
       mobileRuntimeMode !== "local"
     ) {
       clearPersistedActiveServer();
@@ -304,7 +311,7 @@ export async function runRestoringSession(
       hadPrior = false;
       deps.onboardingCompletionCommittedRef.current = false;
     } else if (restoredActiveServer.kind === "local") {
-      restoredActiveServer = androidLoopbackActiveServer();
+      restoredActiveServer = mobileLoopbackActiveServer();
       persistedActiveServer = restoredActiveServer;
       savePersistedActiveServer(restoredActiveServer);
     } else if (!restoredActiveServer.apiBase) {
@@ -413,6 +420,6 @@ export async function runRestoringSession(
   };
   dispatch({
     type: "SESSION_RESTORED",
-    target: activeServerToTarget(restoredActiveServer.kind),
+    target: activeServerToTarget(restoredActiveServer),
   });
 }

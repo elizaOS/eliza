@@ -64,8 +64,8 @@ export default scenario({
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
           "READ_MESSAGES",
-          "SEARCH_ACROSS_CHANNELS",
-          "OWNER_INBOX",
+          "SEARCH_MESSAGES",
+          "TRIAGE_MESSAGES",
         ],
         description:
           "cross-platform conversation lookup for one canonical person",
@@ -100,8 +100,8 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: [
           "READ_MESSAGES",
-          "SEARCH_ACROSS_CHANNELS",
-          "OWNER_INBOX",
+          "SEARCH_MESSAGES",
+          "TRIAGE_MESSAGES",
         ],
         description:
           "cross-platform conversation lookup for one canonical person",

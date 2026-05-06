@@ -55,3 +55,39 @@ index 0000000..0000001 100644
          }
      }
  
+diff --git a/android/src/main/jni.cpp b/android/src/main/jni.cpp
+index 0000000..0000001 100644
+--- a/android/src/main/jni.cpp
++++ b/android/src/main/jni.cpp
+@@ -1481,19 +1481,23 @@ Java_ai_annadata_plugin_capacitor_LlamaCpp_embeddingNative(
+         if (params != nullptr) {
+             jclass jsObjectClass = env->GetObjectClass(params);
+             if (jsObjectClass != nullptr && !env->ExceptionCheck()) {
+-                // Try to get embd_normalize
+-                jmethodID getDoubleMethod = env->GetMethodID(jsObjectClass, "getDouble", "(Ljava/lang/String;)Ljava/lang/Double;");
+-                if (getDoubleMethod != nullptr && !env->ExceptionCheck()) {
++                // Capacitor 8 JSObject extends JSONObject and does not expose
++                // getDouble(String); use JSONObject's inherited optDouble
++                // signature so a missing helper cannot leave a pending JNI
++                // exception and abort the app after embedding completes.
++                jmethodID optDoubleMethod = env->GetMethodID(jsObjectClass, "optDouble", "(Ljava/lang/String;D)D");
++                if (env->ExceptionCheck()) {
++                    env->ExceptionClear();
++                    optDoubleMethod = nullptr;
++                }
++                if (optDoubleMethod != nullptr) {
+                     jstring normalizeKey = jni_utils::string_to_jstring(env, "embd_normalize");
+-                    jobject normalizeObj = env->CallObjectMethod(params, getDoubleMethod, normalizeKey);
+-                    if (normalizeObj != nullptr && !env->ExceptionCheck()) {
+-                        embd_normalize = env->CallDoubleMethod(normalizeObj, 
+-                            env->GetMethodID(env->FindClass("java/lang/Double"), "doubleValue", "()D"));
+-                        env->DeleteLocalRef(normalizeObj);
+-                    }
++                    embd_normalize = env->CallDoubleMethod(params, optDoubleMethod, normalizeKey, embd_normalize);
+                     env->DeleteLocalRef(normalizeKey);
+                     if (env->ExceptionCheck()) {
+                         env->ExceptionClear();
++                        embd_normalize = 1.0;
+                     }
+                 }
+             }

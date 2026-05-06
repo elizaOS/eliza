@@ -7,6 +7,7 @@ import {
   HetznerClientError,
 } from "@/lib/services/containers/hetzner-client";
 import { dockerNodeManager } from "@/lib/services/docker-node-manager";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 
 interface ForwardedAuth {
   userId: string;
@@ -218,6 +219,26 @@ function agentHotPoolResponse(c: Context) {
 app.get("/api/v1/cron/agent-hot-pool", agentHotPoolResponse);
 
 app.post("/api/v1/cron/agent-hot-pool", agentHotPoolResponse);
+
+function processProvisioningJobsResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const rawLimit = Number(c.req.query("limit") ?? "5");
+    const batchSize = Number.isFinite(rawLimit) ? Math.max(1, Math.min(25, rawLimit)) : 5;
+    const result = await provisioningJobService.processPendingJobs(batchSize);
+    return c.json({
+      success: true,
+      data: {
+        ...result,
+        batchSize,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
+}
+
+app.get("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsResponse);
+
+app.post("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsResponse);
 
 app.post("/api/v1/admin/docker-nodes/:nodeId/health-check", (c) =>
   handle(c, async () => {

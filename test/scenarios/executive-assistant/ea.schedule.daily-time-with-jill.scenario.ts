@@ -37,7 +37,7 @@ export default scenario({
       room: "main",
       text: "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR_ACTION", "PROPOSE_MEETING_TIMES"],
+        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
         description: "recurring Jill time block",
         includesAny: ["jill", "daily", "hour", "sleep"],
       }),
@@ -52,11 +52,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR_ACTION", "PROPOSE_MEETING_TIMES"],
+      actionName: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["CALENDAR_ACTION", "PROPOSE_MEETING_TIMES"],
+      actionName: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
       includesAny: ["jill", "daily", "hour", "recurring"],
     },
     {
@@ -67,7 +67,7 @@ export default scenario({
       type: "custom",
       name: "ea-jill-time-block-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR_ACTION", "PROPOSE_MEETING_TIMES"],
+        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
         description: "recurring Jill time block",
         includesAny: ["jill", "daily", "hour", "sleep"],
       }),

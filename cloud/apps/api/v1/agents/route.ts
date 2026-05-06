@@ -17,6 +17,10 @@ import { failureResponse, ValidationError } from "@/lib/api/cloud-worker-errors"
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { charactersService } from "@/lib/services/characters/characters";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
 import { logger } from "@/lib/utils/logger";
@@ -64,6 +68,17 @@ app.post("/", async (c) => {
     const p = parsed.data;
     const sync = c.req.query("sync") === "true";
     const agentName = p.character?.name || p.tokenName;
+
+    if (!sync) {
+      const workerHealth = await checkProvisioningWorkerHealth();
+      if (!workerHealth.ok) {
+        logger.warn("[service-api] Agent provisioning blocked: worker unavailable", {
+          orgId: identity.organizationId,
+          code: workerHealth.code,
+        });
+        return c.json(provisioningWorkerFailureBody(workerHealth), workerHealth.status);
+      }
+    }
 
     const normalizedTokenAddress = normalizeTokenAddress(p.tokenContractAddress, p.chain);
 

@@ -19,6 +19,7 @@
  * control to the main app shell.
  */
 
+import { Capacitor } from "@capacitor/core";
 import {
   Button,
   Card,
@@ -41,7 +42,14 @@ import {
 } from "../../bridge/gateway-discovery";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
-import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
+import {
+  ANDROID_LOCAL_AGENT_LABEL,
+  ANDROID_LOCAL_AGENT_SERVER_ID,
+  MOBILE_LOCAL_AGENT_API_BASE,
+  MOBILE_LOCAL_AGENT_LABEL,
+  MOBILE_LOCAL_AGENT_SERVER_ID,
+  persistMobileRuntimeModeForServerTarget,
+} from "../../onboarding/mobile-runtime-mode";
 import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
 import {
   isAndroid,
@@ -69,6 +77,11 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
 const DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+const LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
+const PROVISION_START_STILL_WAITING_MS = 5_000;
+const PROVISION_START_TIMEOUT_MS = 20_000;
+const PROVISION_JOB_WAIT_DEADLINE_MS = 600_000;
+const AGENT_URL_WAIT_DEADLINE_MS = 300_000;
 
 // Resolve the local-agent base at call time. The dev orchestrator may
 // port-shift the API away from 31337 when that port is taken; Electrobun
@@ -78,6 +91,28 @@ const DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
 // stuck on the wrong port.
 function resolveLocalAgentApiBase(): string {
   return getElizaApiBase() ?? DEFAULT_LOCAL_AGENT_API_BASE;
+}
+
+type NativeAgentPlugin = {
+  start?: () => Promise<unknown>;
+};
+
+async function startMobileLocalAgent(): Promise<void> {
+  if (!isAndroid && !isIOS) return;
+  try {
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, NativeAgentPlugin | undefined>;
+    };
+    const registeredAgent =
+      capacitorWithPlugins.Plugins?.Agent ??
+      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
+    await registeredAgent.start?.();
+  } catch (err) {
+    console.warn(
+      "[RuntimeGate] Failed to start mobile local agent",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 /**
@@ -190,6 +225,68 @@ function resolveCloudAgentApiBase(agent: CloudCompatAgent): string | undefined {
   return candidates.find((value) => !isCloudControlPlaneUrl(value));
 }
 
+function resolveCloudJobRuntimeUrl(
+  job: Pick<CloudCompatJob, "result" | "data">,
+): string | undefined {
+  const payloads = [job.result, job.data].filter(
+    (value): value is Record<string, unknown> =>
+      Boolean(value) && typeof value === "object",
+  );
+  const keys = [
+    "apiBase",
+    "api_base",
+    "bridgeUrl",
+    "bridge_url",
+    "runtimeUrl",
+    "runtime_url",
+    "containerUrl",
+    "container_url",
+    "webUiUrl",
+    "web_ui_url",
+  ];
+
+  for (const payload of payloads) {
+    for (const key of keys) {
+      const url = normalizeRuntimeUrl(payload[key]);
+      if (url && !isCloudControlPlaneUrl(url)) return url;
+    }
+  }
+}
+
+function mergeCloudRuntimeUrl(
+  agent: CloudCompatAgent,
+  runtimeUrl: string | undefined,
+): CloudCompatAgent {
+  if (!runtimeUrl || resolveCloudAgentApiBase(agent)) return agent;
+  return {
+    ...agent,
+    bridge_url: runtimeUrl,
+    containerUrl: runtimeUrl,
+  };
+}
+
+async function withProvisionStartTimeout<T>(
+  request: Promise<T>,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(message));
+    }, PROVISION_START_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function displayErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 // TODO: replace with real onboarding artwork per runtime choice
 // const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
 //   cloud: "app-heroes/agentDOD.png",
@@ -205,9 +302,10 @@ export function resolveRuntimeChoices(args: {
   showLocalOption: boolean;
   localProbePending: boolean;
 }): RuntimeChoice[] {
-  if (args.isAndroid || args.isIOS) {
+  if (args.isAndroid) {
     return ["cloud", "local", "remote"];
   }
+  if (args.isIOS) return ["cloud", "local", "remote"];
   if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
   if (args.showLocalOption || args.localProbePending) {
     return ["cloud", "local", "remote"];
@@ -364,15 +462,15 @@ export function RuntimeGate() {
 
   // Local-tile readiness. Desktop/dev are local-capable synchronously.
   // Android probes the on-device agent's `/api/health` so ElizaOS can
-  // auto-complete once the bundled runtime is ready, but the mobile picker
-  // still offers Local while that probe is pending. iOS also presents the
-  // Local path from onboarding; web can include it when a caller reports
-  // local availability or an in-progress probe through `resolveRuntimeChoices`.
+  // auto-complete once the bundled runtime is ready. iOS uses the in-process
+  // ITTP route kernel, so native iOS can expose Local without a TCP probe.
+  // Plain web can include it when a caller reports local availability or an
+  // in-progress probe through `resolveRuntimeChoices`.
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;
   const [localProbeResult, setLocalProbeResult] = useState<boolean | null>(
-    synchronousLocal ? true : isAndroid ? null : false,
+    synchronousLocal ? true : isAndroid || isIOS ? null : false,
   );
 
   // ElizaOS: the picker is bypassed entirely unless the user explicitly asks
@@ -389,7 +487,7 @@ export function RuntimeGate() {
 
   useEffect(() => {
     if (synchronousLocal) return;
-    if (!isAndroid) return;
+    if (!isAndroid && !isIOS) return;
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
     // Re-poll every 4 s while the gate is mounted and the agent is not yet
@@ -400,7 +498,7 @@ export function RuntimeGate() {
     // result is in — `probe-local-agent`'s positive cache then keeps it
     // stable for the rest of the session.
     const poll = () => {
-      shouldShowLocalOption({ isDesktop, isDev, isAndroid })
+      shouldShowLocalOption({ isDesktop, isDev, isAndroid, isIOS })
         .then((ok) => {
           if (cancelled) return;
           setLocalProbeResult(ok);
@@ -538,29 +636,31 @@ export function RuntimeGate() {
   );
 
   const finishAsLocal = useCallback(() => {
+    setError(null);
     const localApiBase = resolveLocalAgentApiBase();
-    if (isAndroid) {
-      // Android: the local agent runs as a foreground service inside the
-      // app and always listens on loopback `127.0.0.1:31337`. The WebView
-      // origin is `https://localhost` (Capacitor) or `file://`, so a null
-      // base URL does not reach the agent — pin it explicitly. We persist
-      // it as a `remote` active server pointing at loopback so the
-      // existing startup-phase-restore branch hydrates the API base on
-      // next launch; the `local` mobile runtime mode records the
-      // distinction for any UI that needs it.
-      client.setBaseUrl(localApiBase);
+    if (isAndroid || isIOS) {
+      // Mobile local mode always pins the loopback-shaped base URL. Android
+      // serves it from the foreground service; iOS intercepts the same URL
+      // through the in-process ITTP transport before any TCP request is made.
+      // Persisting it as a `remote` active server keeps the existing startup
+      // restore branch working while `local` mobile runtime mode records the
+      // user-visible distinction.
+      client.setBaseUrl(LOCAL_AGENT_API_BASE);
       client.setToken(null);
       savePersistedActiveServer({
-        id: "local:android",
+        id: isAndroid
+          ? ANDROID_LOCAL_AGENT_SERVER_ID
+          : MOBILE_LOCAL_AGENT_SERVER_ID,
         kind: "remote",
-        label: "On-device agent",
-        apiBase: localApiBase,
+        label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
+        apiBase: LOCAL_AGENT_API_BASE,
       });
       addAgentProfile({
         kind: "remote",
-        label: "On-device agent",
-        apiBase: localApiBase,
+        label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
+        apiBase: LOCAL_AGENT_API_BASE,
       });
+      void startMobileLocalAgent();
     } else {
       // Desktop: the local agent IS the bundled API on loopback.
       // The dev orchestrator may bind a port other than 31337 when that
@@ -704,7 +804,37 @@ export function RuntimeGate() {
       // doesn't recognize compat-namespace agent IDs).
       let jobId: string | undefined = existingJobId;
       if (!jobId) {
-        const provRes = await client.provisionCloudCompatAgent(agentId);
+        let provRes: Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>;
+        let startStatusTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          startStatusTimer = setTimeout(() => {
+            setProvisionStatus(
+              t("runtimegate.waitingForProvisioningJob", {
+                defaultValue: "Waiting for Cloud to accept provisioning...",
+              }),
+            );
+          }, PROVISION_START_STILL_WAITING_MS);
+          provRes = await withProvisionStartTimeout(
+            client.provisionCloudCompatAgent(agentId),
+            t("runtimegate.provisioningStartTimeout", {
+              defaultValue:
+                "Cloud did not return a provisioning job. Please retry.",
+            }),
+          );
+        } catch (err) {
+          setError(
+            displayErrorMessage(
+              err,
+              t("runtimegate.provisioningFailed", {
+                defaultValue: "Provisioning failed",
+              }),
+            ),
+          );
+          setCloudStage("agent-list");
+          return;
+        } finally {
+          if (startStatusTimer) clearTimeout(startStatusTimer);
+        }
         if (!provRes.success) {
           setError(
             provRes.error ||
@@ -734,7 +864,6 @@ export function RuntimeGate() {
       //     `bridge_url` is filled from the same DB column. Eliza Cloud's
       //     non-admin route does NOT return webUiUrl, so we must accept
       //     bridgeUrl here.
-      const AGENT_URL_WAIT_DEADLINE_MS = 300_000;
       const fetchAgentWithUrl = async (
         deadlineMs: number,
       ): Promise<CloudCompatAgent | null> => {
@@ -793,6 +922,24 @@ export function RuntimeGate() {
         setProvisionStatus(
           t("runtimegate.connecting", { defaultValue: "Connecting..." }),
         );
+        const provisionRuntimeUrl = resolveCloudJobRuntimeUrl({
+          result: null,
+          data: provRes.data ?? {},
+        });
+        if (provisionRuntimeUrl) {
+          const readyFromProvisionUrl = await client
+            .getCloudCompatAgent(agentId)
+            .then((agentRes) =>
+              agentRes.success
+                ? mergeCloudRuntimeUrl(agentRes.data, provisionRuntimeUrl)
+                : null,
+            )
+            .catch(() => null);
+          if (readyFromProvisionUrl) {
+            finishAsCloud(readyFromProvisionUrl);
+            return;
+          }
+        }
         const ready = await fetchAgentWithUrl(
           Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
         );
@@ -817,7 +964,23 @@ export function RuntimeGate() {
         setError(message);
         setCloudStage("agent-list");
       };
+      const provisionJobDeadlineMs =
+        Date.now() +
+        Math.max(
+          PROVISION_JOB_WAIT_DEADLINE_MS,
+          provRes.polling?.expectedDurationMs ?? 0,
+        );
       const pollProvisionJob = async () => {
+        if (Date.now() >= provisionJobDeadlineMs) {
+          stopPollingWithError(
+            t("runtimegate.provisioningStillRunning", {
+              defaultValue:
+                "Cloud provisioning is still running after several minutes. Retry to resume status checks.",
+            }),
+          );
+          return;
+        }
+
         let jobRes: Awaited<ReturnType<typeof client.getCloudCompatJobStatus>>;
         try {
           jobRes = await client.getCloudCompatJobStatus(jobId);
@@ -856,9 +1019,21 @@ export function RuntimeGate() {
           setProvisionStatus(
             t("runtimegate.connecting", { defaultValue: "Connecting..." }),
           );
-          const ready = await fetchAgentWithUrl(
-            Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
-          );
+          const jobRuntimeUrl = resolveCloudJobRuntimeUrl(job);
+          const readyFromJob =
+            jobRuntimeUrl && !isCloudControlPlaneUrl(jobRuntimeUrl)
+              ? await client
+                  .getCloudCompatAgent(agentId)
+                  .then((agentRes) =>
+                    agentRes.success
+                      ? mergeCloudRuntimeUrl(agentRes.data, jobRuntimeUrl)
+                      : null,
+                  )
+                  .catch(() => null)
+              : null;
+          const ready =
+            readyFromJob ??
+            (await fetchAgentWithUrl(Date.now() + AGENT_URL_WAIT_DEADLINE_MS));
           if (ready) {
             finishAsCloud(ready);
           } else {
@@ -925,9 +1100,10 @@ export function RuntimeGate() {
 
       if (!res.success) {
         setError(
-          t("runtimegate.failedLoadAgents", {
-            defaultValue: "Failed to load agents",
-          }),
+          (res as { error?: string }).error ||
+            t("runtimegate.failedLoadAgents", {
+              defaultValue: "Failed to load agents",
+            }),
         );
         setCloudStage("agent-list");
         return;
@@ -970,9 +1146,10 @@ export function RuntimeGate() {
       if (cancelled) return;
       if (!createRes.success || !createRes.data?.agentId) {
         setError(
-          t("runtimegate.failedCreate", {
-            defaultValue: "Failed to create agent. Try again.",
-          }),
+          createRes.data?.message ||
+            t("runtimegate.failedCreate", {
+              defaultValue: "Failed to create agent. Try again.",
+            }),
         );
         setCloudStage("agent-list");
         return;
@@ -1074,6 +1251,14 @@ export function RuntimeGate() {
                 })}
               </span>
             </div>
+            {error && (
+              <p
+                style={{ fontFamily: MONO_FONT }}
+                className="mt-3 text-3xs text-red-400"
+              >
+                {error}
+              </p>
+            )}
           </>
         ) : (
           <WelcomeChooser

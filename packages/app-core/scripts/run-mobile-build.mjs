@@ -162,9 +162,35 @@ function run(command, args, { cwd, env = process.env } = {}) {
   });
 }
 
+function runCapacitor(args) {
+  return run(
+    process.execPath,
+    [
+      path.join(appDir, "node_modules", "@capacitor", "cli", "bin", "capacitor"),
+      ...args,
+    ],
+    { cwd: appDir },
+  );
+}
+
 function firstExisting(paths) {
   for (const p of paths) {
     if (p && fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function resolveExecutable(name) {
+  const pathValue = process.env.PATH ?? "";
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, name);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // Keep searching PATH.
+    }
   }
   return null;
 }
@@ -250,6 +276,32 @@ function ensurePlistArrayStrings(content, key, values) {
     }
   }
   return content.replace(arrayRe, `$1${body}$3`);
+}
+
+function ensurePlistUrlScheme(content, urlScheme) {
+  const escapedScheme = escapeXmlText(urlScheme);
+  const urlTypesRe =
+    /(<key>CFBundleURLTypes<\/key>\s*<array>)([\s\S]*?)(\s*<\/array>)/;
+  const entry = `
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>${escapedScheme}</string>
+			</array>
+		</dict>`;
+  const match = content.match(urlTypesRe);
+  if (!match) {
+    return content.replace(
+      "</dict>",
+      `\t<key>CFBundleURLTypes</key>\n\t<array>${entry}\n\t</array>\n</dict>`,
+    );
+  }
+  if (match[2].includes(`<string>${escapedScheme}</string>`)) {
+    return content;
+  }
+  return content.replace(urlTypesRe, `$1${match[2]}${entry}$3`);
 }
 
 /**
@@ -439,8 +491,25 @@ export function applyIosAppIdentity({
 
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-async function buildWeb() {
-  await run("bun", ["run", "build"], { cwd: appDir });
+async function buildWeb(platform) {
+  const capacitorTarget =
+    platform === "android-system"
+      ? "android"
+      : platform === "ios-overlay"
+        ? "ios"
+        : platform;
+  await run(
+    process.execPath,
+    [path.join(repoRoot, "scripts/run-app-web-build.mjs")],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
+        MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+      },
+    },
+  );
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
@@ -451,7 +520,7 @@ async function ensurePlatform(platform) {
     const copied = syncPlatformTemplateFiles(platform);
     if (copied.length === 0) {
       console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
-      await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+      await runCapacitor(["add", platform]);
     }
   }
   if (!isCapacitorPlatformReady(platform)) {
@@ -604,54 +673,35 @@ export function injectNoCompressTarGz(content) {
 }
 
 /**
- * Inject an app-thinning hook that strips the AOSP-only `assets/agent/`
- * payload (bundled bun runtime, libllama, agent-bundle, PGlite payload,
- * GGUF models) from the Capacitor APK while preserving it for the AOSP
- * privileged-system-app build.
+ * Inject an optional app-thinning hook for `assets/agent/`.
  *
- * Why: the same gradle module produces two distinct APK shapes depending
- * on whether `-PelizaAospBuild=true` is set. The AOSP path must ship the
- * full local-inference runtime under assets/agent/* (~250 MB). The
- * Capacitor path uses @elizaos/llama-cpp-capacitor's jniLibs path for
- * inference (DeviceBridge over loopback) and doesn't need any of those
- * blobs — shipping them bloats the store APK from ~30 MB → ~250 MB and
- * triggers the 200 MB Play Store size cap.
- *
- * Implementation note: AGP's `sourceSets.assets.exclude` pattern is
- * silently ignored for the assets dir (verified with AGP 9.x + cuttlefish
- * APK build — pattern is accepted but never applied to mergeReleaseAssets
- * output). The reliable mechanism is a `doLast` action on the merge task
- * that deletes the agent/ subtree post-merge, which we install at the
- * project level via `afterEvaluate`.
+ * Local mode on stock Capacitor APKs now depends on the staged bun runtime,
+ * agent-bundle, and PGlite payload, so the default mobile build must keep
+ * assets/agent/*. CI/release jobs that deliberately want a cloud-only slim APK
+ * can opt into stripping with `-PelizaStripAgentAssets=true`.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
 export function injectAospAssetThinning(content) {
   if (/\[app-thinning\]/.test(content)) return content;
   const block =
-    `\n// App thinning: strip the AOSP-only assets (bun runtime, libllama,\n` +
-    `// agent-bundle, PGlite payload, GGUF models) from the Capacitor APK.\n` +
-    `// Preserved for the AOSP privileged-system-app build that sets\n` +
-    `// -PelizaAospBuild=true. See SETUP_AOSP.md for the dual-build map.\n` +
-    `// AGP's sourceSets.assets.exclude is a no-op for the assets dir, so\n` +
-    `// we hook the merge task and delete agent/ post-merge.\n` +
+    `\n// Optional app thinning: keep assets/agent/ by default so stock\n` +
+    `// Capacitor APKs can run the bundled local agent. Set\n` +
+    `// -PelizaStripAgentAssets=true only for an explicitly cloud-only slim APK.\n` +
     `afterEvaluate {\n` +
     `    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->\n` +
-    `        // Track the build mode as a task input so switching between\n` +
-    `        // Capacitor and AOSP forces a re-merge. Without this the merge\n` +
-    `        // task is UP-TO-DATE on the second invocation and reuses the\n` +
-    `        // shape the previous build left in merged_assets.\n` +
     `        mergeTask.inputs.property('elizaAospBuild', project.findProperty('elizaAospBuild') ?: 'false')\n` +
+    `        mergeTask.inputs.property('elizaStripAgentAssets', project.findProperty('elizaStripAgentAssets') ?: 'false')\n` +
     `        mergeTask.doLast {\n` +
-    `            if (project.findProperty('elizaAospBuild') != 'true') {\n` +
+    `            if (project.findProperty('elizaAospBuild') != 'true' && project.findProperty('elizaStripAgentAssets') == 'true') {\n` +
     `                def assetsDir = mergeTask.outputDir.get().asFile\n` +
     `                def agentDir = new File(assetsDir, 'agent')\n` +
     `                if (agentDir.exists()) {\n` +
-    `                    println "[app-thinning] removing assets/agent/ from \${mergeTask.name} (Capacitor build)"\n` +
+    `                    println "[app-thinning] removing assets/agent/ from \${mergeTask.name} (explicit slim Capacitor build)"\n` +
     `                    agentDir.deleteDir()\n` +
     `                }\n` +
     `            } else {\n` +
-    `                println "[app-thinning] keeping assets/agent/ in \${mergeTask.name} (AOSP build)"\n` +
+    `                println "[app-thinning] keeping assets/agent/ in \${mergeTask.name} (local-agent capable build)"\n` +
     `            }\n` +
     `        }\n` +
     `    }\n` +
@@ -837,6 +887,31 @@ function ensureElizaOsActivityFilters(xml) {
   return xml.replace(mainActivityRe, `$1${homeFilter}$2`);
 }
 
+function ensureAndroidMainActivityUrlSchemeFilter(xml) {
+  const mainActivityRe =
+    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
+  const match = xml.match(mainActivityRe);
+  if (!match) return xml;
+
+  const mainActivity = `${match[1]}${match[2]}`;
+  const hasCustomSchemeFilter =
+    mainActivity.includes("android.intent.action.VIEW") &&
+    mainActivity.includes("android.intent.category.BROWSABLE") &&
+    (mainActivity.includes('android:scheme="@string/custom_url_scheme"') ||
+      mainActivity.includes(`android:scheme="${APP.urlScheme}"`));
+  if (hasCustomSchemeFilter) return xml;
+
+  const authFilter = `
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="@string/custom_url_scheme" />
+            </intent-filter>
+`;
+  return xml.replace(mainActivityRe, `$1${authFilter}$2`);
+}
+
 function overlayAndroid() {
   const srcJava = path.join(
     platformsDir,
@@ -963,7 +1038,16 @@ function overlayAndroid() {
       "android.hardware.telephony",
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
-    xml = ensureElizaOsActivityFilters(xml);
+    const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml);
+    if (withElizaOsActivityFilters !== xml) {
+      xml = withElizaOsActivityFilters;
+      dirty = true;
+    }
+    const withUrlSchemeFilter = ensureAndroidMainActivityUrlSchemeFilter(xml);
+    if (withUrlSchemeFilter !== xml) {
+      xml = withUrlSchemeFilter;
+      dirty = true;
+    }
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
     const gatewayServicePattern =
       /\n\s*<service\b[^>]*android:name="[^"]*GatewayConnectionService"[^>]*\/>\s*/g;
@@ -1496,18 +1580,21 @@ function overlayIos() {
         dirty = true;
       }
     }
-    const nextPlist = ensurePlistArrayStrings(
+    const nextPlist = ensurePlistUrlScheme(
       ensurePlistArrayStrings(
-        replaceOrInsertPlistString(
-          plist,
-          "CFBundleDisplayName",
-          "$(ELIZA_DISPLAY_NAME)",
+        ensurePlistArrayStrings(
+          replaceOrInsertPlistString(
+            plist,
+            "CFBundleDisplayName",
+            "$(ELIZA_DISPLAY_NAME)",
+          ),
+          "NSBonjourServices",
+          IOS_BONJOUR_SERVICES,
         ),
-        "NSBonjourServices",
-        IOS_BONJOUR_SERVICES,
+        "UIBackgroundModes",
+        ["fetch"],
       ),
-      "UIBackgroundModes",
-      ["fetch"],
+      APP.urlScheme,
     );
     if (nextPlist !== plist) {
       plist = nextPlist;
@@ -2015,16 +2102,95 @@ const ANDROID_SPLASH_SIZES = {
   "drawable-land-xxxhdpi": [1920, 1280],
 };
 
-async function loadSharpForBrandAssets(platform) {
+async function loadImageToolForBrandAssets(platform) {
   try {
-    return (await import("sharp")).default;
+    return { kind: "sharp", sharp: (await import("sharp")).default };
   } catch (error) {
+    const magick = resolveExecutable("magick");
+    if (magick) {
+      console.warn(
+        `[mobile-build] sharp is unavailable for ${platform} brand assets; using ImageMagick fallback.`,
+      );
+      return { kind: "magick", magick };
+    }
     throw new Error(
       `sharp is required to generate ${platform} brand assets for ${APP.appName}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
   }
+}
+
+async function writeCoverPng(tool, source, output, width, height, options = {}) {
+  if (tool.kind === "sharp") {
+    let image = tool.sharp(source).resize(width, height, {
+      fit: "cover",
+      position: "center",
+    });
+    if (options.flattenBackground) {
+      image = image.flatten({ background: options.flattenBackground });
+    }
+    await image.png().toFile(output);
+    return;
+  }
+
+  const args = [
+    source,
+    "-resize",
+    `${width}x${height}^`,
+    "-gravity",
+    "center",
+    "-extent",
+    `${width}x${height}`,
+  ];
+  if (options.flattenBackground) {
+    args.push(
+      "-background",
+      options.flattenBackground,
+      "-alpha",
+      "remove",
+      "-alpha",
+      "off",
+    );
+  }
+  args.push(output);
+  await run(tool.magick, args);
+}
+
+async function writeAndroidForegroundPng(tool, source, output, size) {
+  if (tool.kind === "sharp") {
+    const foregroundSize = Math.round(size * 0.7);
+    const padding = Math.round(size * 0.4);
+    await tool
+      .sharp(source)
+      .resize(foregroundSize, foregroundSize, { fit: "contain" })
+      .extend({
+        top: padding,
+        bottom: padding,
+        left: padding,
+        right: padding,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .resize(Math.round(size * 1.5), Math.round(size * 1.5), {
+        fit: "contain",
+      })
+      .png()
+      .toFile(output);
+    return;
+  }
+
+  await run(tool.magick, [
+    source,
+    "-resize",
+    `${Math.round(size * 0.7)}x${Math.round(size * 0.7)}`,
+    "-background",
+    "none",
+    "-gravity",
+    "center",
+    "-extent",
+    `${Math.round(size * 1.5)}x${Math.round(size * 1.5)}`,
+    output,
+  ]);
 }
 
 function resolveBrandSources() {
@@ -2048,7 +2214,7 @@ async function generateIosBrandAssets() {
   const { iconSource, splashSource } = resolveBrandSources();
   if (!iconSource && !splashSource) return;
 
-  const sharp = await loadSharpForBrandAssets("iOS");
+  const imageTool = await loadImageToolForBrandAssets("iOS");
 
   if (iconSource) {
     const iconSetDir = path.join(assetDir, "AppIcon.appiconset");
@@ -2061,11 +2227,14 @@ async function generateIosBrandAssets() {
         const scale = Number.parseFloat(String(image.scale));
         const pixels = Math.round(Number.parseFloat(width) * scale);
         if (!Number.isFinite(pixels) || pixels <= 0) continue;
-        await sharp(iconSource)
-          .resize(pixels, pixels, { fit: "cover" })
-          .flatten({ background: "#000000" })
-          .png()
-          .toFile(path.join(iconSetDir, image.filename));
+        await writeCoverPng(
+          imageTool,
+          iconSource,
+          path.join(iconSetDir, image.filename),
+          pixels,
+          pixels,
+          { flattenBackground: "#000000" },
+        );
       }
     }
   }
@@ -2077,10 +2246,13 @@ async function generateIosBrandAssets() {
       const contents = JSON.parse(fs.readFileSync(contentsPath, "utf8"));
       for (const image of contents.images ?? []) {
         if (!image.filename) continue;
-        await sharp(splashSource)
-          .resize(2732, 2732, { fit: "cover", position: "center" })
-          .png()
-          .toFile(path.join(splashSetDir, image.filename));
+        await writeCoverPng(
+          imageTool,
+          splashSource,
+          path.join(splashSetDir, image.filename),
+          2732,
+          2732,
+        );
       }
     }
   }
@@ -2095,37 +2267,32 @@ async function generateAndroidBrandAssets() {
   const { iconSource, splashSource } = resolveBrandSources();
   if (!iconSource && !splashSource) return;
 
-  const sharp = await loadSharpForBrandAssets("Android");
+  const imageTool = await loadImageToolForBrandAssets("Android");
 
   if (iconSource) {
     for (const [dir, size] of Object.entries(ANDROID_LAUNCHER_ICON_SIZES)) {
       const out = path.join(resDir, dir);
       fs.mkdirSync(out, { recursive: true });
-      await sharp(iconSource)
-        .resize(size, size, { fit: "cover" })
-        .png()
-        .toFile(path.join(out, "ic_launcher.png"));
-      await sharp(iconSource)
-        .resize(size, size, { fit: "cover" })
-        .png()
-        .toFile(path.join(out, "ic_launcher_round.png"));
-
-      const foregroundSize = Math.round(size * 0.7);
-      const padding = Math.round(size * 0.4);
-      await sharp(iconSource)
-        .resize(foregroundSize, foregroundSize, { fit: "contain" })
-        .extend({
-          top: padding,
-          bottom: padding,
-          left: padding,
-          right: padding,
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-        })
-        .resize(Math.round(size * 1.5), Math.round(size * 1.5), {
-          fit: "contain",
-        })
-        .png()
-        .toFile(path.join(out, "ic_launcher_foreground.png"));
+      await writeCoverPng(
+        imageTool,
+        iconSource,
+        path.join(out, "ic_launcher.png"),
+        size,
+        size,
+      );
+      await writeCoverPng(
+        imageTool,
+        iconSource,
+        path.join(out, "ic_launcher_round.png"),
+        size,
+        size,
+      );
+      await writeAndroidForegroundPng(
+        imageTool,
+        iconSource,
+        path.join(out, "ic_launcher_foreground.png"),
+        size,
+      );
     }
   }
 
@@ -2133,10 +2300,13 @@ async function generateAndroidBrandAssets() {
     for (const [dir, [width, height]] of Object.entries(ANDROID_SPLASH_SIZES)) {
       const out = path.join(resDir, dir);
       fs.mkdirSync(out, { recursive: true });
-      await sharp(splashSource)
-        .resize(width, height, { fit: "cover", position: "center" })
-        .png()
-        .toFile(path.join(out, "splash.png"));
+      await writeCoverPng(
+        imageTool,
+        splashSource,
+        path.join(out, "splash.png"),
+        width,
+        height,
+      );
     }
   }
 
@@ -2203,9 +2373,9 @@ async function buildAndroid() {
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
-  await buildWeb();
+  await buildWeb("android");
   await ensurePlatform("android");
-  await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
+  await runCapacitor(["sync", "android"]);
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -2309,9 +2479,9 @@ async function buildAndroidSystem() {
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
-  await buildWeb();
+  await buildWeb("android-system");
   await ensurePlatform("android");
-  await run("bun", ["x", "capacitor", "sync", "android"], { cwd: appDir });
+  await runCapacitor(["sync", "android"]);
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -2362,12 +2532,12 @@ async function buildIos() {
     "prepare-ios-cocoapods.sh",
   );
 
-  await buildWeb();
+  await buildWeb("ios");
   await ensurePlatform("ios");
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
-  await run("bun", ["x", "capacitor", "sync", "ios"], { cwd: appDir });
+  await runCapacitor(["sync", "ios"]);
 
   const buildTarget = resolveIosBuildTarget();
   console.log(

@@ -34,9 +34,9 @@ export default scenario({
       text: "If missing this could trigger a cancellation fee, warn me clearly and offer to handle it now.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "PUBLISH_DEVICE_INTENT",
-          "CALL_USER",
-          "CALENDAR_ACTION",
+          "OWNER_DEVICE_INTENT",
+          "OWNER_VOICE_CALL",
+          "OWNER_CALENDAR",
         ],
         description: "financial-risk escalation",
         includesAny: ["fee", "cancellation", "warn", "handle"],
@@ -52,7 +52,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["PUBLISH_DEVICE_INTENT", "CALL_USER", "CALENDAR_ACTION"],
+      actionName: ["OWNER_DEVICE_INTENT", "OWNER_VOICE_CALL", "OWNER_CALENDAR"],
     },
     {
       type: "pushSent",
@@ -61,20 +61,20 @@ export default scenario({
     {
       type: "approvalRequestExists",
       expected: true,
-      actionName: ["PUBLISH_DEVICE_INTENT", "CALENDAR_ACTION"],
+      actionName: ["OWNER_DEVICE_INTENT", "OWNER_CALENDAR"],
     },
     {
       type: "noSideEffectOnReject",
-      actionName: ["PUBLISH_DEVICE_INTENT", "CALENDAR_ACTION"],
+      actionName: ["OWNER_DEVICE_INTENT", "OWNER_CALENDAR"],
     },
     {
       type: "custom",
       name: "ea-cancellation-fee-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "PUBLISH_DEVICE_INTENT",
-          "CALL_USER",
-          "CALENDAR_ACTION",
+          "OWNER_DEVICE_INTENT",
+          "OWNER_VOICE_CALL",
+          "OWNER_CALENDAR",
         ],
         description: "financial-risk escalation",
         includesAny: ["fee", "cancellation", "warn", "handle"],
@@ -94,7 +94,7 @@ export default scenario({
       predicate: expectApprovalRequest({
         description:
           "the offered fix is gated on approval rather than executed silently",
-        actionName: ["PUBLISH_DEVICE_INTENT", "CALENDAR_ACTION"],
+        actionName: ["OWNER_DEVICE_INTENT", "OWNER_CALENDAR"],
       }),
     },
     judgeRubric({

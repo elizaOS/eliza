@@ -1,11 +1,11 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import {
-  musicLibrary,
-  musicMetadataSearch,
-  musicPlaylist,
-} from "./actions/musicRouters";
+import downloadMusic from "./actions/downloadMusic";
+import playlistOp from "./actions/playlistOp";
+import playMusicQuery from "./actions/playMusicQuery";
+import searchYouTube from "./actions/searchYouTube";
 import { musicInfoProvider } from "./providers/musicInfoProvider";
 import musicLibraryProvider from "./providers/musicLibraryProvider";
+import musicPlaylistsProvider from "./providers/musicPlaylistsProvider";
 import { wikipediaProvider } from "./providers/wikipediaProvider";
 import { registerMusicLibrarySearchCategories } from "./search-category";
 import { MusicLibraryService } from "./services/musicLibraryService";
@@ -102,8 +102,13 @@ const musicLibraryPlugin: Plugin = {
   description:
     "Plugin for music data storage, preferences, analytics, external APIs, smart music downloading, and YouTube functionality",
   services: [MusicLibraryService],
-  providers: [musicInfoProvider, wikipediaProvider, musicLibraryProvider],
-  actions: [musicLibrary, musicPlaylist, musicMetadataSearch],
+  providers: [
+    musicInfoProvider,
+    wikipediaProvider,
+    musicLibraryProvider,
+    musicPlaylistsProvider,
+  ],
+  actions: [playlistOp, playMusicQuery, searchYouTube, downloadMusic],
   // Self-declared auto-enable: activate when any of the music service API
   // keys are present. The hardcoded AUTH_PROVIDER_PLUGINS map still serves
   // as fallback.

@@ -240,6 +240,13 @@ export function diagnoseNoAIProvider(
   // At least one AI provider loaded — no issue.
   if (loadedProviders.length > 0) return null;
 
+  if (
+    process.env.ELIZA_LOCAL_LLAMA?.trim() === "1" ||
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+  ) {
+    return null;
+  }
+
   // Check if any AI provider plugins were attempted but failed.
   const failedProviders = failedPlugins.filter((f) =>
     AI_PROVIDER_PLUGINS.includes(f.name),

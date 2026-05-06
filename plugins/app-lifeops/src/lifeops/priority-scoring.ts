@@ -15,7 +15,12 @@
  *   can fall back to the v1 heuristic.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
 
 export type PriorityCategory = "important" | "planning" | "casual";
@@ -335,7 +340,10 @@ async function scoreBatch(
       ? { prompt, model: opts.model.trim() }
       : { prompt }
   ) as { prompt: string };
-  const raw = await runtime.useModel(ModelType.TEXT_SMALL, params);
+  const raw = await runWithTrajectoryContext(
+    { purpose: "lifeops-priority-scoring" },
+    () => runtime.useModel(ModelType.TEXT_SMALL, params),
+  );
   const text = typeof raw === "string" ? raw : "";
   return parseScores(text, batch.length);
 }

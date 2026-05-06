@@ -42,6 +42,7 @@ type AgentInbound =
       maxTokens?: number;
       temperature?: number;
     }
+  | { type: "embed"; correlationId: string; input: string }
   | { type: "ping"; at: number };
 
 type DeviceOutbound =
@@ -68,6 +69,14 @@ type DeviceOutbound =
       durationMs: number;
     }
   | { type: "generateResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "embedResult";
+      correlationId: string;
+      ok: true;
+      embedding: number[];
+      tokens: number;
+    }
+  | { type: "embedResult"; correlationId: string; ok: false; error: string }
   | { type: "pong"; at: number };
 
 export interface DeviceBridgeClientConfig {
@@ -86,6 +95,7 @@ export interface DeviceBridgeClientConfig {
 
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
+const CONNECT_TIMEOUT_MS = 5_000;
 
 export class DeviceBridgeClient {
   private socket: WebSocket | null = null;
@@ -140,8 +150,28 @@ export class DeviceBridgeClient {
       return;
     }
     this.socket = ws;
+    let timedOut = false;
+    const connectTimeout = setTimeout(() => {
+      if (
+        this.stopped ||
+        this.socket !== ws ||
+        ws.readyState !== WebSocket.CONNECTING
+      ) {
+        return;
+      }
+      timedOut = true;
+      this.socket = null;
+      this.config.onStateChange?.("error", "websocket connect timeout");
+      try {
+        ws.close();
+      } catch {
+        /* best effort */
+      }
+      this.scheduleReconnect();
+    }, CONNECT_TIMEOUT_MS);
 
     ws.onopen = () => {
+      clearTimeout(connectTimeout);
       this.reconnectAttempt = 0;
       void this.sendRegister(ws);
     };
@@ -161,8 +191,10 @@ export class DeviceBridgeClient {
     };
 
     ws.onclose = () => {
-      this.socket = null;
+      clearTimeout(connectTimeout);
+      if (this.socket === ws) this.socket = null;
       this.config.onStateChange?.("disconnected");
+      if (timedOut) return;
       this.scheduleReconnect();
     };
   }
@@ -286,6 +318,28 @@ export class DeviceBridgeClient {
       } catch (err) {
         this.send(ws, {
           type: "generateResult",
+          correlationId: msg.correlationId,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return;
+    }
+
+    if (msg.type === "embed") {
+      try {
+        const capacitorLlama = await loadCapacitorLlama();
+        const result = await capacitorLlama.embed({ input: msg.input });
+        this.send(ws, {
+          type: "embedResult",
+          correlationId: msg.correlationId,
+          ok: true,
+          embedding: result.embedding,
+          tokens: result.tokens,
+        });
+      } catch (err) {
+        this.send(ws, {
+          type: "embedResult",
           correlationId: msg.correlationId,
           ok: false,
           error: err instanceof Error ? err.message : String(err),

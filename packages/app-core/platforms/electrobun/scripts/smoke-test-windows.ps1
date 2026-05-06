@@ -62,6 +62,7 @@ $defaultStartupLog = Join-Path $env:APPDATA "elizaOS\\eliza-startup.log"
 $miladyStartupLog = Join-Path $env:APPDATA "Milady\\eliza-startup.log"
 $startupLog = Join-Path $env:APPDATA "Milady\\milady-startup.log"
 $startupLogs = @($startupLog, $miladyStartupLog, $defaultStartupLog, $legacyStartupLog) | Select-Object -Unique
+$defaultAvatarAssetSlugs = @("eliza-1", "milady-1")
 $selfExtractionRoot = Join-Path $env:LOCALAPPDATA "com.elizaai.eliza"
 $tempExtractDir = Join-Path $tempRoot ("eliza-windows-smoke-" + [Guid]::NewGuid().ToString("N"))
 $persistLauncherDir = $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR
@@ -252,21 +253,25 @@ function Verify-PackagedRendererAssets([string]$LauncherPath) {
   $launcherDir = Split-Path -Parent $LauncherPath
   $appRoot = Split-Path -Parent $launcherDir
   $rendererDir = Join-Path $appRoot "resources\\app\\renderer"
+  $defaultAvatarVrmCandidates = @()
+  $defaultAvatarPreviewCandidates = @()
+  $defaultAvatarBackgroundCandidates = @()
+  foreach ($slug in $defaultAvatarAssetSlugs) {
+    $defaultAvatarVrmCandidates += @(
+      (Join-Path $rendererDir "vrms\\$slug.vrm.gz"),
+      (Join-Path $rendererDir "vrms\\$slug.vrm")
+    )
+    $defaultAvatarPreviewCandidates += (Join-Path $rendererDir "vrms\\previews\\$slug.png")
+    $defaultAvatarBackgroundCandidates += (Join-Path $rendererDir "vrms\\backgrounds\\$slug.png")
+  }
 
   if (Test-Path $rendererDir) {
     Assert-PackagedAssetVariants -Description "renderer entrypoint" -MinSizeBytes 256 -Candidates @(
       (Join-Path $rendererDir "index.html")
     )
-    Assert-PackagedAssetVariants -Description "default avatar VRM" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\eliza-1.vrm.gz"),
-      (Join-Path $rendererDir "vrms\\eliza-1.vrm")
-    )
-    Assert-PackagedAssetVariants -Description "default avatar preview" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\previews\\eliza-1.png")
-    )
-    Assert-PackagedAssetVariants -Description "default avatar background" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\backgrounds\\eliza-1.png")
-    )
+    Assert-PackagedAssetVariants -Description "default avatar VRM" -MinSizeBytes 1024 -Candidates $defaultAvatarVrmCandidates
+    Assert-PackagedAssetVariants -Description "default avatar preview" -MinSizeBytes 1024 -Candidates $defaultAvatarPreviewCandidates
+    Assert-PackagedAssetVariants -Description "default avatar background" -MinSizeBytes 1024 -Candidates $defaultAvatarBackgroundCandidates
     Write-Host "Packaged renderer asset check PASSED (direct app bundle)."
     return
   }
@@ -283,16 +288,20 @@ function Verify-PackagedRendererAssets([string]$LauncherPath) {
   Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "renderer entrypoint" -MinSizeBytes 256 -Suffixes @(
     "renderer/index.html"
   )
-  Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar VRM" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/eliza-1.vrm.gz",
-    "renderer/vrms/eliza-1.vrm"
-  )
-  Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar preview" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/previews/eliza-1.png"
-  )
-  Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar background" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/backgrounds/eliza-1.png"
-  )
+  $archiveAvatarVrmSuffixes = @()
+  $archiveAvatarPreviewSuffixes = @()
+  $archiveAvatarBackgroundSuffixes = @()
+  foreach ($slug in $defaultAvatarAssetSlugs) {
+    $archiveAvatarVrmSuffixes += @(
+      "renderer/vrms/$slug.vrm.gz",
+      "renderer/vrms/$slug.vrm"
+    )
+    $archiveAvatarPreviewSuffixes += "renderer/vrms/previews/$slug.png"
+    $archiveAvatarBackgroundSuffixes += "renderer/vrms/backgrounds/$slug.png"
+  }
+  Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar VRM" -MinSizeBytes 1024 -Suffixes $archiveAvatarVrmSuffixes
+  Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar preview" -MinSizeBytes 1024 -Suffixes $archiveAvatarPreviewSuffixes
+  Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar background" -MinSizeBytes 1024 -Suffixes $archiveAvatarBackgroundSuffixes
   Write-Host "Packaged renderer asset check PASSED (runtime archive)."
 }
 

@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "I'm in Tokyo for limited time, so schedule PendingReality and Ryan at the same time if possible.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["PROPOSE_MEETING_TIMES", "CALENDAR_ACTION"],
+        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
         description: "city-limited meeting bundling",
         includesAny: [
           "tokyo",
@@ -53,7 +53,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["PROPOSE_MEETING_TIMES", "CALENDAR_ACTION"],
+      actionName: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
     },
     {
       type: "memoryWriteOccurred",
@@ -63,7 +63,7 @@ export default scenario({
       type: "custom",
       name: "ea-bundle-meetings-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["PROPOSE_MEETING_TIMES", "CALENDAR_ACTION"],
+        acceptedActions: ["OWNER_CALENDAR", "OWNER_CALENDAR"],
         description: "city-limited meeting bundling",
         includesAny: [
           "tokyo",

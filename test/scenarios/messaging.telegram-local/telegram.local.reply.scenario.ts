@@ -29,7 +29,7 @@ export default scenario({
       room: "main",
       text: "Reply to the last Telegram message from Carol saying I'm on my way.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "telegram draft reply",
         includesAny: ["telegram", "Carol", "draft", "reply"],
       }),
@@ -46,7 +46,7 @@ export default scenario({
       room: "main",
       text: "Send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "telegram send after confirmation",
         includesAny: ["send", "telegram", "reply"],
       }),
@@ -61,7 +61,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["INBOX", "CROSS_CHANNEL_SEND"],
+      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
     },
     {
       type: "custom",
@@ -77,7 +77,7 @@ export default scenario({
           return "first turn appears to have sent the Telegram reply instead of drafting it";
         }
         const sendAction = secondActions.find((entry) =>
-          ["CROSS_CHANNEL_SEND", "OWNER_SEND_MESSAGE"].includes(
+          ["SEND_DRAFT", "SEND_DRAFT"].includes(
             entry.actionName,
           ),
         );
@@ -96,7 +96,7 @@ export default scenario({
       type: "custom",
       name: "telegram-local-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "telegram draft then send",
         includesAny: ["telegram", "draft", "send", "reply"],
         minCount: 2,

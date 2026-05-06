@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "Give me today's itinerary with all the event links, locations, and time slots.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR_ACTION", "DOSSIER"],
+        acceptedActions: ["OWNER_CALENDAR", "OWNER_DOSSIER"],
         description: "event itinerary briefing",
         includesAny: ["itinerary", "links", "location", "time"],
       }),
@@ -47,7 +47,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR_ACTION", "DOSSIER"],
+      actionName: ["OWNER_CALENDAR", "OWNER_DOSSIER"],
     },
     {
       type: "connectorDispatchOccurred",
@@ -57,7 +57,7 @@ export default scenario({
       type: "custom",
       name: "ea-itinerary-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR_ACTION", "DOSSIER"],
+        acceptedActions: ["OWNER_CALENDAR", "OWNER_DOSSIER"],
         description: "event itinerary briefing",
         includesAny: ["itinerary", "links", "location", "time"],
       }),

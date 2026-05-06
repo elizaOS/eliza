@@ -486,9 +486,9 @@ function readOptionalBoolean(
   return typeof field === "boolean" ? field : null;
 }
 
-function describeError(error: unknown): { message: string; stack?: string } {
+function describeError(error: unknown): { message: string } {
   if (error instanceof Error) {
-    return { message: error.message, stack: error.stack };
+    return { message: error.message };
   }
   return { message: String(error) };
 }

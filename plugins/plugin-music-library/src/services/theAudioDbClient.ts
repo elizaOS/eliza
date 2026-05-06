@@ -119,11 +119,12 @@ export class TheAudioDbClient {
       }
 
       const data = (await response.json()) as AudioDbArtistSearchResponse;
-      if (data.artists.length === 0) {
+      const artists = data.artists ?? [];
+      if (artists.length === 0) {
         return null;
       }
 
-      return data.artists;
+      return artists;
     }).catch((error) => {
       logger.error(`Error searching TheAudioDB artist after retries: ${error}`);
       return null;
@@ -171,11 +172,12 @@ export class TheAudioDbClient {
         return (await detailResponse.json()) as AudioDbArtistDetailResponse;
       });
 
-      if (!detailData?.artists || detailData.artists.length === 0) {
+      const detailArtists = detailData.artists ?? [];
+      if (detailArtists.length === 0) {
         return null;
       }
 
-      const detailArtist = detailData.artists[0];
+      const detailArtist = detailArtists[0];
       return {
         strArtist: detailArtist.strArtist || artist.strArtist,
         strArtistThumb: detailArtist.strArtistThumb || artist.strArtistThumb,
@@ -227,11 +229,12 @@ export class TheAudioDbClient {
       }
 
       const data = (await response.json()) as AudioDbAlbumSearchResponse;
-      if (data.album.length === 0) {
+      const albums = data.album ?? [];
+      if (albums.length === 0) {
         return null;
       }
 
-      return data.album;
+      return albums;
     }).catch((error) => {
       logger.error(`Error searching TheAudioDB album after retries: ${error}`);
       return null;
@@ -280,11 +283,12 @@ export class TheAudioDbClient {
         return (await detailResponse.json()) as AudioDbAlbumDetailResponse;
       });
 
-      if (!detailData?.album || detailData.album.length === 0) {
+      const detailAlbums = detailData.album ?? [];
+      if (detailAlbums.length === 0) {
         return null;
       }
 
-      const detailAlbum = detailData.album[0];
+      const detailAlbum = detailAlbums[0];
       return {
         strAlbum: detailAlbum.strAlbum || album.strAlbum,
         strArtist: detailAlbum.strArtist || album.strArtist,

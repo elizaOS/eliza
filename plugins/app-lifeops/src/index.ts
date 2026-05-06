@@ -1,9 +1,42 @@
-export { calendarAction } from "./actions/calendar.ts";
-export { gmailAction } from "./actions/gmail.ts";
-export { inboxAction } from "./actions/inbox.ts";
+// Surviving owner-* action exports.
+
+export { intentSyncAction } from "./actions/intent-sync.ts";
+export { ownerAppBlockAction } from "./actions/owner-app-block.ts";
+export { ownerAutofillAction } from "./actions/owner-autofill.ts";
+export { bookTravelAction } from "./actions/owner-book-travel.ts";
+export { ownerCalendarAction } from "./actions/owner-calendar.ts";
+export { chatThreadControlAction } from "./actions/owner-chat-thread.ts";
+export { ownerCheckinAction } from "./actions/owner-checkin.ts";
+export { lifeOpsComputerUseAction } from "./actions/owner-computer-use.ts";
+export { lifeOpsConnectorAction } from "./actions/owner-connector.ts";
+export { ownerDigestAction } from "./actions/owner-digest.ts";
+export { dossierAction } from "./actions/owner-dossier.ts";
+export { healthAction } from "./actions/owner-health.ts";
+export { lifeAction } from "./actions/owner-life.ts";
+export { passwordManagerAction } from "./actions/owner-password-manager.ts";
+export { paymentsAction } from "./actions/owner-payments.ts";
+export { updateOwnerProfileAction } from "./actions/owner-profile.ts";
+export { relationshipAction } from "./actions/owner-relationship.ts";
+export { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.ts";
+export { ownerResolveRequestAction } from "./actions/owner-resolve-request.ts";
+export { ownerScheduleAction } from "./actions/owner-schedule.ts";
+export { ownerScreenTimeAction } from "./actions/owner-screen-time.ts";
+export { subscriptionsAction } from "./actions/owner-subscriptions.ts";
+export { toggleLifeOpsFeatureAction } from "./actions/owner-toggle-feature.ts";
+export { ownerVoiceCallAction } from "./actions/owner-voice-call.ts";
+export {
+  blockWebsitesAction,
+  getWebsiteBlockStatusAction,
+  ownerWebsiteBlockAction,
+  requestWebsiteBlockingPermissionAction,
+  unblockWebsitesAction,
+} from "./actions/owner-website-block.ts";
+export { xReadAction } from "./actions/owner-x.ts";
 export { getAppBlockerStatus } from "./app-blocker/engine.ts";
 export * from "./contracts/index.ts";
 export { detectHealthBackend } from "./lifeops/health-bridge.ts";
+// Messaging surface — owner send policy + first-party adapters.
+export * from "./lifeops/messaging/index.ts";
 export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.ts";
 export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.ts";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.ts";
@@ -26,12 +59,10 @@ export {
   LIFEOPS_TASK_JITTER_MS,
   LIFEOPS_TASK_NAME,
   LIFEOPS_TASK_TAGS,
-  lifeAction,
   lifeOpsProvider,
   manageBrowserBridgeAction,
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
-  updateOwnerProfileAction,
 } from "./plugin.ts";
 export {
   type CloudFeaturesRouteState,
@@ -57,27 +88,23 @@ export type {
   SelfControlStatus,
 } from "./website-blocker/public.ts";
 export {
-  blockWebsitesAction,
   clearWebsiteBlockerExpiryTasks,
   executeWebsiteBlockerExpiryTask,
   getNativeWebsiteBlockerBackend,
   getSelfControlAccess,
   getSelfControlPermissionState,
   getSelfControlStatus,
-  getWebsiteBlockStatusAction,
   openSelfControlPermissionLocation,
   parseSelfControlBlockRequest,
   registerNativeWebsiteBlockerBackend,
   registerWebsiteBlockerTaskWorker,
   requestSelfControlPermission,
-  requestWebsiteBlockingPermissionAction,
   SELFCONTROL_ACCESS_ERROR,
   SelfControlBlockerService,
   setSelfControlPluginConfig,
   startSelfControlBlock,
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
-  unblockWebsitesAction,
   WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
   WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS,
   WebsiteBlockerService,

@@ -1851,6 +1851,9 @@ async function main(): Promise<void> {
 		bundle_path: resolveStartupBundlePath(process.execPath),
 	});
 	await loadTheAppEnvFilesForMain();
+	recordStartupPhase("env_loaded", {
+		pid: process.pid,
+	});
 	console.log(`[Main] Starting ${BRAND.appName} (Electrobun)`);
 	const normalizedModuleDir = import.meta.dir.replaceAll("\\", "/");
 	const runtimeResolution = resolveDesktopRuntimeMode(
@@ -1871,6 +1874,9 @@ async function main(): Promise<void> {
 	);
 
 	await maybePromptStartupCrashReport();
+	recordStartupPhase("crash_prompt_checked", {
+		pid: process.pid,
+	});
 	// On Windows (CEF renderer), clear stale CEF profile data when the app
 	// version changes.  A leftover Partitions/default profile from a previous
 	// install causes "Cannot create profile at path" errors that cascade into
@@ -1924,10 +1930,19 @@ async function main(): Promise<void> {
 	}
 
 	initializeBundledWebGPU();
+	recordStartupPhase("webgpu_initialized", {
+		pid: process.pid,
+	});
 	checkWebGpuBrowserSupport();
 	cleanupFns.length = 0;
 	cleanupFns.push(await startBrowserWorkspaceBridgeServer());
+	recordStartupPhase("browser_workspace_bridge_ready", {
+		pid: process.pid,
+	});
 	const stopDesktopTestBridgeServer = await startDesktopTestBridgeServer();
+	recordStartupPhase("desktop_test_bridge_ready", {
+		pid: process.pid,
+	});
 	if (stopDesktopTestBridgeServer) {
 		cleanupFns.push(stopDesktopTestBridgeServer);
 	}
@@ -1963,6 +1978,9 @@ async function main(): Promise<void> {
 	// Create window first — on Windows (CEF) the UI message loop must be
 	// running before any synchronous FFI calls like setApplicationMenu().
 	// Calling setupApplicationMenu() before createMainWindow() deadlocks.
+	recordStartupPhase("creating_window", {
+		pid: process.pid,
+	});
 	const mainWin = attachMainWindow(await createMainWindow());
 	recordStartupPhase("window_ready", {
 		pid: process.pid,
@@ -2247,6 +2265,13 @@ function markStartupCrashPrompted(updatedAt: string): void {
 }
 
 async function maybePromptStartupCrashReport(): Promise<void> {
+	if (
+		process.env.ELIZA_DESKTOP_SKIP_STARTUP_CRASH_PROMPT === "1" ||
+		process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1"
+	) {
+		return;
+	}
+
 	const diagnostics = getStartupDiagnosticsSnapshot();
 	const looksLikeStartupFailure =
 		diagnostics.state === "error" &&

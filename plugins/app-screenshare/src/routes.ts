@@ -70,6 +70,28 @@ const BASE_PATH = "/api/apps/screenshare";
 const VIEWER_SANDBOX =
   "allow-scripts allow-same-origin allow-forms allow-pointer-lock";
 const MAX_TEXT_INPUT_LENGTH = 4096;
+
+// Simple in-process rate limiter for session-creation requests.
+const SESSION_CREATE_LIMIT = 10; // max requests per window
+const SESSION_CREATE_WINDOW_MS = 60_000; // 1 minute
+const sessionCreateCounts = new Map<string, { count: number; resetAt: number }>();
+
+function getRemoteIp(req: http.IncomingMessage | undefined): string {
+  const addr = req?.socket?.remoteAddress ?? req?.headers?.["x-forwarded-for"];
+  return (Array.isArray(addr) ? addr[0] : (addr ?? "unknown")).split(",")[0].trim();
+}
+
+function sessionCreateRateLimitExceeded(req: http.IncomingMessage | undefined): boolean {
+  const ip = getRemoteIp(req);
+  const now = Date.now();
+  const entry = sessionCreateCounts.get(ip);
+  if (!entry || entry.resetAt <= now) {
+    sessionCreateCounts.set(ip, { count: 1, resetAt: now + SESSION_CREATE_WINDOW_MS });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > SESSION_CREATE_LIMIT;
+}
 const MAX_KEYPRESS_LENGTH = 128;
 const SAFE_KEYPRESS_PATTERN = /^[A-Za-z0-9+_.,: -]+$/;
 
@@ -155,6 +177,10 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${BASE_PATH}/session`) {
+    if (sessionCreateRateLimitExceeded(ctx.req)) {
+      ctx.error(ctx.res, "Too many session creation requests. Please wait before trying again.", 429);
+      return true;
+    }
     const body = await ctx.readJsonBody<StartSessionBody>();
     if (body === null) {
       return true;

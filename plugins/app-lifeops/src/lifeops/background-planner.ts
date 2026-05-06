@@ -84,6 +84,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
   ApprovalAction,
@@ -504,8 +505,10 @@ export async function planJob(
   }
 
   const prompt = buildPrompt(jobContext);
-  // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
-  const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+  const result = await runWithTrajectoryContext(
+    { purpose: "lifeops-background-planner" },
+    () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+  );
   const raw = typeof result === "string" ? result : "";
   const parsed = parsePlannerOutput(raw);
 

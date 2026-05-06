@@ -84,7 +84,7 @@
       "connector": "gmail",
       "axis": "core",
       "providers": ["Gmail API"],
-      "actions": ["GMAIL_ACTION", "INBOX"],
+      "actions": ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
       "capabilities": ["read", "draft", "send-after-approval", "degraded-auth"],
       "requiredFinalCheckTypes": [
         "draftExists",
@@ -98,7 +98,7 @@
       "axis": "missing-scope",
       "degraded": true,
       "providers": ["Gmail API"],
-      "actions": ["GMAIL_ACTION", "INBOX"],
+      "actions": ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
       "capabilities": ["missing-send-scope", "draft-hold", "reauth-required"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["interventionRequestExists", "draftExists"]
@@ -109,9 +109,9 @@
       "axis": "core",
       "providers": ["Google Calendar API"],
       "actions": [
-        "CALENDAR_ACTION",
-        "PROPOSE_MEETING_TIMES",
-        "UPDATE_MEETING_PREFERENCES"
+        "OWNER_CALENDAR",
+        "OWNER_CALENDAR",
+        "OWNER_CALENDAR"
       ],
       "capabilities": [
         "availability",
@@ -132,9 +132,9 @@
       "degraded": true,
       "providers": ["Google Calendar API"],
       "actions": [
-        "CALENDAR_ACTION",
-        "PROPOSE_MEETING_TIMES",
-        "UPDATE_MEETING_PREFERENCES"
+        "OWNER_CALENDAR",
+        "OWNER_CALENDAR",
+        "OWNER_CALENDAR"
       ],
       "capabilities": [
         "availability",
@@ -149,7 +149,7 @@
       "connector": "calendly",
       "axis": "core",
       "providers": ["Calendly API"],
-      "actions": ["CALENDLY", "PROPOSE_MEETING_TIMES"],
+      "actions": ["OWNER_CALENDAR", "OWNER_CALENDAR"],
       "capabilities": [
         "availability-handoff",
         "booking-reconciliation",
@@ -163,7 +163,7 @@
       "axis": "disconnected",
       "degraded": true,
       "providers": ["Calendly API"],
-      "actions": ["CALENDLY", "PROPOSE_MEETING_TIMES"],
+      "actions": ["OWNER_CALENDAR", "OWNER_CALENDAR"],
       "capabilities": ["disconnect-surfacing", "reconnect-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["clarificationRequested"]
@@ -173,7 +173,7 @@
       "connector": "discord",
       "axis": "core",
       "providers": ["Discord bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -189,7 +189,7 @@
       "axis": "disconnected",
       "degraded": true,
       "providers": ["Discord bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": ["disconnect-surfacing", "reconnect-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["clarificationRequested"]
@@ -199,7 +199,7 @@
       "connector": "telegram",
       "axis": "core",
       "providers": ["Telegram bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -215,7 +215,7 @@
       "axis": "auth-expired",
       "degraded": true,
       "providers": ["Telegram bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": ["auth-expiry-surfacing", "reauth-request"],
       "requiredSeedTypes": ["connectorAuthSession"],
       "requiredFinalCheckTypes": ["interventionRequestExists"]
@@ -225,7 +225,7 @@
       "connector": "x-dm",
       "axis": "core",
       "providers": ["X bridge"],
-      "actions": ["X_READ", "INBOX"],
+      "actions": ["OWNER_X", "TRIAGE_MESSAGES"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -240,7 +240,7 @@
       "axis": "disconnected",
       "degraded": true,
       "providers": ["X bridge"],
-      "actions": ["X_READ", "INBOX"],
+      "actions": ["OWNER_X", "TRIAGE_MESSAGES"],
       "capabilities": ["disconnect-surfacing", "reconnect-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["clarificationRequested"]
@@ -250,7 +250,7 @@
       "connector": "signal",
       "axis": "core",
       "providers": ["Signal bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -270,7 +270,7 @@
       "axis": "session-revoked",
       "degraded": true,
       "providers": ["Signal bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": ["revoked-session-surfacing", "relink-request"],
       "requiredSeedTypes": ["connectorAuthSession"],
       "requiredFinalCheckTypes": ["interventionRequestExists"]
@@ -280,7 +280,7 @@
       "connector": "whatsapp",
       "axis": "core",
       "providers": ["WhatsApp bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -300,7 +300,7 @@
       "axis": "delivery-degraded",
       "degraded": true,
       "providers": ["WhatsApp bridge"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": ["delivery-surfacing", "failed-send-followup"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [
@@ -313,7 +313,7 @@
       "connector": "imessage",
       "axis": "core",
       "providers": ["BlueBubbles / Blooio"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": ["bridge-health", "send", "delivery-state", "reconnect"],
       "requiredFinalCheckTypes": [
         "draftExists",
@@ -327,7 +327,7 @@
       "axis": "helper-disconnected",
       "degraded": true,
       "providers": ["BlueBubbles / Blooio"],
-      "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
+      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       "capabilities": ["helper-health-surfacing", "repair-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["interventionRequestExists"]
@@ -337,7 +337,7 @@
       "connector": "twilio-sms",
       "axis": "core",
       "providers": ["Twilio"],
-      "actions": ["CROSS_CHANNEL_SEND"],
+      "actions": ["SEND_DRAFT"],
       "capabilities": [
         "send-after-approval",
         "delivery-state",
@@ -352,7 +352,7 @@
       "axis": "retry-idempotent",
       "degraded": true,
       "providers": ["Twilio"],
-      "actions": ["CROSS_CHANNEL_SEND"],
+      "actions": ["SEND_DRAFT"],
       "capabilities": ["retry-safe-send", "idempotent-resend"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [
@@ -365,7 +365,7 @@
       "connector": "twilio-voice",
       "axis": "core",
       "providers": ["Twilio"],
-      "actions": ["CALL_USER", "CALL_EXTERNAL"],
+      "actions": ["OWNER_VOICE_CALL", "OWNER_VOICE_CALL"],
       "capabilities": [
         "call-after-approval",
         "outcome-state",
@@ -379,7 +379,7 @@
       "axis": "retry-idempotent",
       "degraded": true,
       "providers": ["Twilio"],
-      "actions": ["CALL_EXTERNAL"],
+      "actions": ["OWNER_VOICE_CALL"],
       "capabilities": ["retry-safe-call", "idempotent-redial"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [
@@ -392,7 +392,7 @@
       "connector": "google-drive-docs-sheets",
       "axis": "core",
       "providers": ["Google Drive API", "Google Docs API", "Google Sheets API"],
-      "actions": ["LIFEOPS_COMPUTER_USE"],
+      "actions": ["OWNER_COMPUTER_USE"],
       "capabilities": [
         "file-fetch",
         "upload",
@@ -412,7 +412,7 @@
       "axis": "missing-scope",
       "degraded": true,
       "providers": ["Google Drive API", "Google Docs API", "Google Sheets API"],
-      "actions": ["LIFEOPS_COMPUTER_USE"],
+      "actions": ["OWNER_COMPUTER_USE"],
       "capabilities": [
         "missing-write-scope",
         "reauth-request",
@@ -426,7 +426,7 @@
       "connector": "travel-booking",
       "axis": "core",
       "providers": ["Travel adapter"],
-      "actions": ["CALENDAR_ACTION", "CROSS_CHANNEL_SEND", "CALL_EXTERNAL"],
+      "actions": ["OWNER_CALENDAR", "SEND_DRAFT", "OWNER_VOICE_CALL"],
       "capabilities": [
         "search",
         "hold",
@@ -442,7 +442,7 @@
       "axis": "hold-expired",
       "degraded": true,
       "providers": ["Travel adapter"],
-      "actions": ["CALENDAR_ACTION", "CROSS_CHANNEL_SEND", "CALL_EXTERNAL"],
+      "actions": ["OWNER_CALENDAR", "SEND_DRAFT", "OWNER_VOICE_CALL"],
       "capabilities": ["expired-hold-repair", "reprice", "reapproval"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [
@@ -455,7 +455,7 @@
       "connector": "notifications",
       "axis": "core",
       "providers": ["Desktop notification bridge", "Mobile companion"],
-      "actions": ["PUBLISH_DEVICE_INTENT", "INTENT_SYNC"],
+      "actions": ["OWNER_DEVICE_INTENT", "OWNER_DEVICE_INTENT"],
       "capabilities": ["dispatch", "ack-sync", "suppression-after-ack"],
       "requiredFinalCheckTypes": [
         "pushSent",
@@ -469,7 +469,7 @@
       "axis": "transport-offline",
       "degraded": true,
       "providers": ["Desktop notification bridge", "Mobile companion"],
-      "actions": ["PUBLISH_DEVICE_INTENT", "INTENT_SYNC"],
+      "actions": ["OWNER_DEVICE_INTENT", "OWNER_DEVICE_INTENT"],
       "capabilities": ["push-failure-surfacing", "fallback-request"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [
@@ -482,7 +482,7 @@
       "connector": "browser-portal",
       "axis": "core",
       "providers": ["Browser bridge"],
-      "actions": ["LIFEOPS_COMPUTER_USE", "REQUEST_FIELD_FILL"],
+      "actions": ["OWNER_COMPUTER_USE", "OWNER_AUTOFILL"],
       "capabilities": [
         "upload",
         "blocked-state-intervention",
@@ -496,7 +496,7 @@
       "axis": "blocked-resume",
       "degraded": true,
       "providers": ["Browser bridge"],
-      "actions": ["LIFEOPS_COMPUTER_USE", "REQUEST_FIELD_FILL"],
+      "actions": ["OWNER_COMPUTER_USE", "OWNER_AUTOFILL"],
       "capabilities": ["needs-human", "resume-after-intervention"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": [

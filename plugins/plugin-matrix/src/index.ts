@@ -14,12 +14,11 @@ export { MatrixService } from "./service.js";
 export * from "./types.js";
 
 import { joinRoom } from "./actions/joinRoom.js";
-import { listRooms } from "./actions/listRooms.js";
 // Actions
-import { sendMessage } from "./actions/sendMessage.js";
-import { sendReaction } from "./actions/sendReaction.js";
+import { MATRIX_MESSAGE_OP_ACTION, messageOp } from "./actions/messageOp.js";
+import { matrixRoomsProvider } from "./providers/index.js";
 
-export { joinRoom, listRooms, sendMessage, sendReaction };
+export { joinRoom, MATRIX_MESSAGE_OP_ACTION, matrixRoomsProvider, messageOp };
 
 // Import service for plugin
 import { MatrixService } from "./service.js";
@@ -33,9 +32,9 @@ const matrixPlugin: Plugin = {
 
   services: [MatrixService],
 
-  actions: [sendReaction, listRooms, joinRoom],
+  actions: [messageOp, joinRoom],
 
-  providers: [],
+  providers: [matrixRoomsProvider],
 
   tests: [],
 

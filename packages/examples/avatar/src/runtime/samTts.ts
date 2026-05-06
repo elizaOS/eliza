@@ -1,5 +1,11 @@
+/**
+ * SAM TTS shim. The original implementation depended on
+ * `@elizaos/plugin-simple-voice`'s SamTTSService. That plugin has been
+ * removed; this stub keeps the avatar example compiling. Calling
+ * `synthesizeSamWav` throws so the caller falls through to ElevenLabs.
+ */
+
 import type { AgentRuntime } from "@elizaos/core";
-import { SamTTSService } from "@elizaos/plugin-simple-voice";
 
 export type SamOptions = {
   speed: number;
@@ -8,57 +14,20 @@ export type SamOptions = {
   mouth: number;
 };
 
-/**
- * Sanitize text for SAM TTS by replacing or removing characters it can't handle.
- * SAM only supports basic ASCII characters.
- */
-function sanitizeForSam(text: string): string {
-  const normalized = text
-    // Replace em/en dashes with regular hyphen
-    .replace(/[—–]/g, "-")
-    // Replace smart quotes with regular quotes
-    .replace(/[""]/g, '"')
-    .replace(/['']/g, "'")
-    // Replace ellipsis with three dots
-    .replace(/…/g, "...")
-    // Replace other common Unicode punctuation
-    .replace(/[•·]/g, "-")
-    .replace(/[«»]/g, '"');
-
-  return Array.from(normalized)
-    .filter((char) => char.charCodeAt(0) <= 0x7f)
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 export function synthesizeSamWav(
-  runtime: AgentRuntime,
-  text: string,
-  options: SamOptions,
+  _runtime: AgentRuntime,
+  _text: string,
+  _options: SamOptions,
 ): ArrayBuffer {
-  const service = runtime.getService(
-    SamTTSService.serviceType,
-  ) as SamTTSService | null;
-  if (!service) {
-    throw new Error(
-      `${SamTTSService.serviceType} service is not available (plugin-simple-voice not loaded?)`,
-    );
-  }
-  const sanitized = sanitizeForSam(text);
-  const audio = service.generateAudio(sanitized, options);
-  const wav = service.createWAVBuffer(audio);
-  // Ensure return is a plain ArrayBuffer (not SharedArrayBuffer)
-  const out = new Uint8Array(wav.byteLength);
-  out.set(wav);
-  return out.buffer;
+  throw new Error(
+    "SAM TTS is no longer bundled. Configure ELEVENLABS_API_KEY to use ElevenLabs TTS.",
+  );
 }
 
 export function splitForTts(text: string, maxChunkChars = 220): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
 
-  // Basic sentence-ish splitting with a hard cap.
   const parts = trimmed
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
@@ -70,7 +39,6 @@ export function splitForTts(text: string, maxChunkChars = 220): string[] {
       out.push(part);
       continue;
     }
-    // If a sentence is huge, chunk it.
     for (let i = 0; i < part.length; i += maxChunkChars) {
       out.push(part.slice(i, i + maxChunkChars));
     }

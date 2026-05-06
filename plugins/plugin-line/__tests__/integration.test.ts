@@ -16,6 +16,7 @@ import linePlugin, {
   hasMarkdownContent,
   isGroupChat,
   isValidLineId,
+  LINE_MESSAGE_OP_ACTION,
   LINE_SERVICE_NAME,
   LINE_TEXT_CHUNK_LIMIT,
   LineApiError,
@@ -24,12 +25,10 @@ import linePlugin, {
   LineService,
   MAX_LINE_BATCH_SIZE,
   markdownToLineChunks,
+  messageOp,
   normalizeLineTarget,
   processLineMessage,
   resolveLineSystemLocation,
-  sendFlexMessage,
-  sendLocation,
-  sendMessage,
   splitMessageForLine,
   stripMarkdown,
   truncateText,
@@ -45,9 +44,10 @@ describe("Plugin metadata", () => {
     expect(linePlugin.description).toContain("LINE");
   });
 
-  it("registers unified-send connector actions instead of platform send actions", () => {
+  it("registers a single LINE_MESSAGE_OP router action", () => {
     expect(Array.isArray(linePlugin.actions)).toBe(true);
-    expect(linePlugin.actions?.length).toBe(0);
+    expect(linePlugin.actions?.length).toBe(1);
+    expect(linePlugin.actions?.[0]?.name).toBe(LINE_MESSAGE_OP_ACTION);
   });
 
   it("uses core platform context providers", () => {
@@ -60,9 +60,7 @@ describe("Plugin metadata", () => {
   });
 
   it("exports all expected components", () => {
-    expect(sendMessage).toBeDefined();
-    expect(sendFlexMessage).toBeDefined();
-    expect(sendLocation).toBeDefined();
+    expect(messageOp).toBeDefined();
     expect(LineService).toBeDefined();
   });
 });
@@ -527,27 +525,14 @@ describe("Messaging utilities", () => {
 // ===========================================================================
 
 describe("Action validation", () => {
-  it("sendMessage action has correct metadata", () => {
-    expect(sendMessage.name).toBe("LINE_SEND_MESSAGE");
-    expect(sendMessage.description).toContain("LINE");
-    expect(sendMessage.similes).toContain("SEND_LINE_MESSAGE");
-    expect(sendMessage.similes).toContain("LINE_MESSAGE");
-    expect(Array.isArray(sendMessage.examples)).toBe(true);
-    expect(sendMessage.examples.length).toBeGreaterThan(0);
-  });
-
-  it("sendFlexMessage action has correct metadata", () => {
-    expect(sendFlexMessage.name).toBe("LINE_SEND_FLEX_MESSAGE");
-    expect(sendFlexMessage.description).toContain("LINE");
-    expect(sendFlexMessage.similes).toContain("LINE_FLEX");
-    expect(sendFlexMessage.similes).toContain("LINE_CARD");
-  });
-
-  it("sendLocation action has correct metadata", () => {
-    expect(sendLocation.name).toBe("LINE_SEND_LOCATION");
-    expect(sendLocation.description).toContain("LINE");
-    expect(sendLocation.similes).toContain("LINE_LOCATION");
-    expect(sendLocation.similes).toContain("LINE_MAP");
+  it("messageOp action has correct metadata", () => {
+    expect(messageOp.name).toBe(LINE_MESSAGE_OP_ACTION);
+    expect(messageOp.description).toContain("LINE");
+    expect(messageOp.similes).toContain("LINE_SEND_MESSAGE");
+    expect(messageOp.similes).toContain("LINE_SEND_FLEX_MESSAGE");
+    expect(messageOp.similes).toContain("LINE_SEND_LOCATION");
+    expect(Array.isArray(messageOp.examples)).toBe(true);
+    expect((messageOp.examples ?? []).length).toBeGreaterThan(0);
   });
 });
 

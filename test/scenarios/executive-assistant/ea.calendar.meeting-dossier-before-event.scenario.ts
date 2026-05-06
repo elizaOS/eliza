@@ -33,7 +33,7 @@ export default scenario({
       room: "main",
       text: "Give me the dossier for my next meeting or event.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["DOSSIER", "CALENDAR_ACTION"],
+        acceptedActions: ["OWNER_DOSSIER", "OWNER_CALENDAR"],
         description: "meeting dossier planning",
         includesAny: ["meeting", "event", "brief", "dossier"],
       }),
@@ -48,7 +48,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["DOSSIER", "CALENDAR_ACTION"],
+      actionName: ["OWNER_DOSSIER", "OWNER_CALENDAR"],
     },
     {
       type: "memoryWriteOccurred",
@@ -62,7 +62,7 @@ export default scenario({
       type: "custom",
       name: "ea-meeting-dossier-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["DOSSIER", "CALENDAR_ACTION"],
+        acceptedActions: ["OWNER_DOSSIER", "OWNER_CALENDAR"],
         description: "meeting dossier planning",
         includesAny: ["meeting", "event", "brief", "dossier"],
       }),

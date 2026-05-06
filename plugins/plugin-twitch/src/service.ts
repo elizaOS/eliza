@@ -65,6 +65,44 @@ function scoreTwitchChannelMatch(query: string, channel: string): number {
   return 0;
 }
 
+async function logTwurpleCall<T>(
+  op: string,
+  context: Record<string, unknown>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  logger.debug(
+    { sdk: "twurple", op, ...context },
+    `[TwitchService] ${op} started`,
+  );
+  try {
+    const result = await fn();
+    logger.info(
+      {
+        sdk: "twurple",
+        op,
+        ...context,
+        durationMs: Date.now() - startedAt,
+      },
+      `[TwitchService] ${op} ok`,
+    );
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(
+      {
+        sdk: "twurple",
+        op,
+        ...context,
+        durationMs: Date.now() - startedAt,
+        error: message,
+      },
+      `[TwitchService] ${op} failed`,
+    );
+    throw error;
+  }
+}
+
 /**
  * Twitch chat service for ElizaOS agents.
  */
@@ -669,11 +707,19 @@ export class TwitchService extends Service implements ITwitchService {
     let lastMessageId: string | undefined;
 
     for (const chunk of chunks) {
-      if (options?.replyTo) {
-        await this.client.say(channel, chunk, { replyTo: options.replyTo });
-      } else {
-        await this.client.say(channel, chunk);
-      }
+      await logTwurpleCall(
+        "say",
+        { channel, chunkLen: chunk.length, replyTo: options?.replyTo },
+        async () => {
+          if (options?.replyTo) {
+            await this.client.say(channel, chunk, {
+              replyTo: options.replyTo,
+            });
+          } else {
+            await this.client.say(channel, chunk);
+          }
+        },
+      );
 
       // Generate a message ID since Twurple doesn't return one
       lastMessageId = crypto.randomUUID();
@@ -696,13 +742,17 @@ export class TwitchService extends Service implements ITwitchService {
 
   async joinChannel(channel: string): Promise<void> {
     const normalized = normalizeChannel(channel);
-    await this.client.join(normalized);
+    await logTwurpleCall("join", { channel: normalized }, async () => {
+      await this.client.join(normalized);
+    });
     this.joinedChannels.add(normalized);
   }
 
   async leaveChannel(channel: string): Promise<void> {
     const normalized = normalizeChannel(channel);
-    await this.client.part(normalized);
+    await logTwurpleCall("part", { channel: normalized }, async () => {
+      await this.client.part(normalized);
+    });
     this.joinedChannels.delete(normalized);
   }
 }

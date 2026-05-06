@@ -92,6 +92,7 @@ android {
 
     packaging {
         jniLibs {
+            useLegacyPackaging = true
             keepDebugSymbols += ["**/libimage_processing_util_jni.so"]
         }
     }

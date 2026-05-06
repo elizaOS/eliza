@@ -3,6 +3,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
   LifeOpsGoalDefinition,
@@ -241,7 +242,10 @@ export async function evaluateGoalProgressWithLlm(args: {
   }
   const prompt = buildSemanticEvaluationPrompt(args);
   try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const raw = await runWithTrajectoryContext(
+      { purpose: "lifeops-goal-evaluator-first-pass" },
+      () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+    );
     const parsed = parseSemanticEvaluationOutput(
       typeof raw === "string" ? raw : "",
     );
@@ -251,14 +255,18 @@ export async function evaluateGoalProgressWithLlm(args: {
     if (evaluation) {
       return evaluation;
     }
-    const repairedRaw = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildSemanticRepairPrompt({
-        evidence: args.evidence,
-        goal: args.goal,
-        nowIso: args.nowIso,
-        rawResponse: typeof raw === "string" ? raw : "",
-      }),
-    });
+    const repairedRaw = await runWithTrajectoryContext(
+      { purpose: "lifeops-goal-evaluator-repair-pass" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: buildSemanticRepairPrompt({
+            evidence: args.evidence,
+            goal: args.goal,
+            nowIso: args.nowIso,
+            rawResponse: typeof raw === "string" ? raw : "",
+          }),
+        }),
+    );
     const repairedParsed = parseSemanticEvaluationOutput(
       typeof repairedRaw === "string" ? repairedRaw : "",
     );
