@@ -40,11 +40,21 @@ jobs:
     steps:
       - name: Set environment
         id: env
+        # Interpolate Actions context values into env: rather than the run: body
+        # so a malicious branch name (github.ref) cannot break out of the shell.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ENV: ${{ github.event.inputs.environment }}
+          REF: ${{ github.ref }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "environment=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
-            echo "branch=${{ github.event.inputs.environment == 'production' && 'main' || 'develop' }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "environment=$INPUT_ENV" >> "$GITHUB_OUTPUT"
+            if [ "$INPUT_ENV" = "production" ]; then
+              echo "branch=main" >> "$GITHUB_OUTPUT"
+            else
+              echo "branch=develop" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ "$REF" = "refs/heads/main" ]; then
             echo "environment=production" >> "$GITHUB_OUTPUT"
             echo "branch=main" >> "$GITHUB_OUTPUT"
           else
@@ -136,8 +146,16 @@ jobs:
             set -euo pipefail
             for attempt in $(seq 1 18); do
               if sudo systemctl is-active --quiet eliza-provisioning-worker; then
-                if sudo journalctl -u eliza-provisioning-worker --since '2 min ago' --no-pager \
-                    | grep -q "\[provisioning-worker\] starting"; then
+                JOURNAL=$(sudo journalctl -u eliza-provisioning-worker --since '2 min ago' --no-pager 2>/dev/null || true)
+                # Detect a restart loop: the worker prints "starting" each boot,
+                # then crashes if env or DB is misconfigured. Treat any fatal log
+                # since deploy as a hard failure even if the unit is currently active.
+                if echo "$JOURNAL" | grep -qE "\[provisioning-worker\] (fatal|unhandled rejection)"; then
+                  echo "::error::Worker logged a fatal/unhandled rejection since deploy."
+                  echo "$JOURNAL" | tail -n 50
+                  exit 1
+                fi
+                if echo "$JOURNAL" | grep -q "\[provisioning-worker\] starting"; then
                   echo "Worker is active and emitted startup log on attempt $attempt."
                   exit 0
                 fi
