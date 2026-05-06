@@ -1,5 +1,13 @@
-import type { IAgentRuntime, IDatabaseAdapter, Plugin, UUID } from "@elizaos/core";
-import { InMemoryDatabaseAdapter, type IStorage } from "@elizaos/plugin-inmemorydb";
+import type {
+  IAgentRuntime,
+  IDatabaseAdapter,
+  Plugin,
+  UUID,
+} from "@elizaos/core";
+import {
+  InMemoryDatabaseAdapter,
+  type IStorage,
+} from "@elizaos/plugin-inmemorydb";
 
 type RuntimeWithDatabase = IAgentRuntime & {
   registerDatabaseAdapter?: (adapter: IDatabaseAdapter) => void;
@@ -60,7 +68,10 @@ class BrowserLocalStorage implements IStorage {
     return Array.from(this.getCollection(collection).values()) as T[];
   }
 
-  async getWhere<T>(collection: string, predicate: (item: T) => boolean): Promise<T[]> {
+  async getWhere<T>(
+    collection: string,
+    predicate: (item: T) => boolean,
+  ): Promise<T[]> {
     return (await this.getAll<T>(collection)).filter(predicate);
   }
 
@@ -122,7 +133,10 @@ export const plugin: Plugin = {
   name: "@elizaos/plugin-localdb",
   description: "Browser localStorage database storage for elizaOS examples.",
 
-  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+  async init(
+    _config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ): Promise<void> {
     const r = runtime as RuntimeWithDatabase;
     const hasAdapter =
       r.adapter !== undefined ||

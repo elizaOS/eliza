@@ -1,10 +1,10 @@
-import type { IAgentRuntime } from '@elizaos/core';
-import { describe, expect, it, vi } from 'vitest';
-import { TelegramService } from './service';
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { TelegramService } from "./service";
 
 function createRuntime() {
   return {
-    agentId: 'agent-1',
+    agentId: "agent-1",
     registerMessageConnector: vi.fn(),
     registerSendHandler: vi.fn(),
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -26,8 +26,8 @@ function createTelegramService(
   );
 }
 
-describe('Telegram message connector adapter', () => {
-  it('registers connector metadata with chat and thread support', () => {
+describe("Telegram message connector adapter", () => {
+  it("registers connector metadata with chat and thread support", () => {
     const runtime = createRuntime();
     const service = createTelegramService({
       bot: {},
@@ -43,20 +43,20 @@ describe('Telegram message connector adapter', () => {
     TelegramService.registerSendHandlers(runtime, service);
 
     expect(runtime.registerMessageConnector.mock.calls[0][0]).toMatchObject({
-      source: 'telegram',
-      label: 'Telegram',
+      source: "telegram",
+      label: "Telegram",
       capabilities: expect.arrayContaining([
-        'send_message',
-        'resolve_targets',
-        'chat_context',
-        'user_context',
+        "send_message",
+        "resolve_targets",
+        "chat_context",
+        "user_context",
       ]),
-      supportedTargetKinds: ['channel', 'group', 'thread', 'user'],
-      contexts: ['social', 'connectors'],
+      supportedTargetKinds: ["channel", "group", "thread", "user"],
+      contexts: ["social", "connectors"],
     });
   });
 
-  it('parses forum-topic channel IDs for unified sends', async () => {
+  it("parses forum-topic channel IDs for unified sends", async () => {
     const runtime = createRuntime();
     const sendMessage = vi.fn().mockResolvedValue([]);
     const service = createTelegramService({
@@ -66,42 +66,42 @@ describe('Telegram message connector adapter', () => {
 
     await service.handleSendMessage(
       runtime,
-      { source: 'telegram', channelId: '-1001234567890-42' },
-      { text: 'hello' },
+      { source: "telegram", channelId: "-1001234567890-42" },
+      { text: "hello" },
     );
 
     expect(sendMessage).toHaveBeenCalledWith(
-      '-1001234567890',
-      { text: 'hello' },
+      "-1001234567890",
+      { text: "hello" },
       undefined,
       42,
     );
   });
 
-  it('resolves known chats into connector targets', async () => {
+  it("resolves known chats into connector targets", async () => {
     const runtime = createRuntime();
     const service = createTelegramService({
       runtime,
       bot: null,
       knownChats: new Map([
         [
-          '-100123',
+          "-100123",
           {
             id: -100123,
-            type: 'supergroup',
-            title: 'Ops Room',
+            type: "supergroup",
+            title: "Ops Room",
             is_forum: true,
           },
         ],
       ]),
     });
 
-    const targets = await service.resolveConnectorTargets('ops', { runtime });
+    const targets = await service.resolveConnectorTargets("ops", { runtime });
 
     expect(targets[0]).toMatchObject({
-      label: 'Ops Room',
-      kind: 'group',
-      target: { source: 'telegram', channelId: '-100123' },
+      label: "Ops Room",
+      kind: "group",
+      target: { source: "telegram", channelId: "-100123" },
     });
   });
 });

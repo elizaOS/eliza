@@ -313,9 +313,7 @@ function resolveModelType(modelSetting: string): keyof typeof ModelType {
 function parseStructuredExtraction(
   raw: string,
 ): Record<string, unknown> | null {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(raw)
-  );
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 function parseLlmExtraction(raw: unknown): BillExtraction | null {

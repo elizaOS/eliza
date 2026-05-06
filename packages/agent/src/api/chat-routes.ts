@@ -169,7 +169,9 @@ function getLatestVisibleResponseMessageText(
   return "";
 }
 
-function isMobileLocalSimpleChat(message: ReturnType<typeof createMessageMemory>): boolean {
+function isMobileLocalSimpleChat(
+  message: ReturnType<typeof createMessageMemory>,
+): boolean {
   const conversationMode = (message.content as { conversationMode?: unknown })
     .conversationMode;
   return (
@@ -212,7 +214,9 @@ async function generateMobileLocalSimpleReply(
   agentName: string,
   opts?: ChatGenerateOptions,
 ): Promise<ChatGenerationResult | null> {
-  const userText = String(extractCompatTextContent(message.content) ?? "").trim();
+  const userText = String(
+    extractCompatTextContent(message.content) ?? "",
+  ).trim();
   if (!userText) return null;
   const exactReply = extractExactWordsReplyRequest(userText);
   if (exactReply) {
