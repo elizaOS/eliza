@@ -93,9 +93,7 @@ function promptText(value: string): string {
 }
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(raw)
-  );
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 // ── Prompt ────────────────────────────────────────────

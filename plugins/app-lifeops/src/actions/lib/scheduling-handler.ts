@@ -1139,8 +1139,7 @@ async function resolveSchedulingPlanWithLlm(args: {
         }),
     );
     const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseToonKeyValue<Record<string, unknown>>(rawResponse);
+    const parsed = parseToonKeyValue<Record<string, unknown>>(rawResponse);
     if (!parsed) {
       return {
         subaction: null,
