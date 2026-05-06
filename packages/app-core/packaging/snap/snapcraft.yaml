@@ -304,6 +304,16 @@ parts:
       # trying to build the (now-removed) plugin-agent-orchestrator from source.
       bun install --ignore-scripts
 
+      # app-core still carries compatibility re-exports for wallet route
+      # helpers that live in plugin-wallet. The snap workspace rewrite keeps
+      # plugin-wallet on disk, but Bun may not link workspace packages unless
+      # a surviving manifest declares them. Link the local workspace explicitly
+      # so app-core's declaration build can resolve those compatibility imports.
+      mkdir -p node_modules/@elizaos "$APP_CORE_DIR/node_modules/@elizaos"
+      rm -rf node_modules/@elizaos/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
+      ln -s ../../plugins/plugin-wallet node_modules/@elizaos/plugin-wallet
+      ln -s ../../../../plugins/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
+
       # `bun install --ignore-scripts` skips the npm bun package postinstall,
       # leaving node_modules/bun/bin/bun as a non-executable JS shim. Turbo
       # package builds can then fail with "Exec format error" when they spawn
