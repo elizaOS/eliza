@@ -8,6 +8,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
   stringToUuid,
 } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
@@ -256,7 +257,10 @@ export async function classifyCalendarEventsForProactivePlanning(
   ].join("\n");
 
   try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-proactive-worker" },
+      () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+    );
     const raw = typeof result === "string" ? result : "";
     const parsed = parseCalendarEventProactiveOutput(raw);
     if (!parsed) {

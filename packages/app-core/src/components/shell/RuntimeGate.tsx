@@ -19,6 +19,7 @@
  * control to the main app shell.
  */
 
+import { Capacitor } from "@capacitor/core";
 import {
   Button,
   Card,
@@ -41,7 +42,12 @@ import {
 } from "../../bridge/gateway-discovery";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
-import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
+import {
+  ANDROID_LOCAL_AGENT_API_BASE,
+  ANDROID_LOCAL_AGENT_LABEL,
+  ANDROID_LOCAL_AGENT_SERVER_ID,
+  persistMobileRuntimeModeForServerTarget,
+} from "../../onboarding/mobile-runtime-mode";
 import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
 import {
   isAndroid,
@@ -67,20 +73,41 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
-const CLOUD_AGENT_PROBE_TIMEOUT_MS = 4_000;
-
-const PROVISION_JOB_DEADLINE_MS = 120_000;
-
+const LOCAL_AGENT_API_BASE = ANDROID_LOCAL_AGENT_API_BASE;
 const DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+const CLOUD_AGENT_PROBE_TIMEOUT_MS = 4_000;
+const PROVISION_START_STILL_WAITING_MS = 5_000;
+const PROVISION_START_TIMEOUT_MS = 20_000;
+const PROVISION_JOB_WAIT_DEADLINE_MS = 600_000;
+const AGENT_URL_WAIT_DEADLINE_MS = 300_000;
 
-// Resolve the local-agent base at call time. The dev orchestrator may
-// port-shift the API away from 31337 when that port is taken; Electrobun
-// pushes the resolved base into `window.__ELIZA_API_BASE__` either via
-// HTML injection (production static-server) or via the `apiBaseUpdate`
-// RPC (Vite dev). A frozen constant misses both, leaving the renderer
-// stuck on the wrong port.
+// Resolve the desktop local-agent base at call time. The dev orchestrator may
+// port-shift the API away from 31337, and Electrobun pushes the resolved base
+// through the HTML boot config or apiBaseUpdate RPC before onboarding finishes.
 function resolveLocalAgentApiBase(): string {
   return getElizaApiBase() ?? DEFAULT_LOCAL_AGENT_API_BASE;
+}
+
+type NativeAgentPlugin = {
+  start?: () => Promise<unknown>;
+};
+
+async function startAndroidLocalAgent(): Promise<void> {
+  if (!isAndroid) return;
+  try {
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, NativeAgentPlugin | undefined>;
+    };
+    const registeredAgent =
+      capacitorWithPlugins.Plugins?.Agent ??
+      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
+    await registeredAgent.start?.();
+  } catch (err) {
+    console.warn(
+      "[RuntimeGate] Failed to start Android local agent",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 /**
@@ -212,6 +239,68 @@ async function probeCloudAgentReachable(
   }
 }
 
+function resolveCloudJobRuntimeUrl(
+  job: Pick<CloudCompatJob, "result" | "data">,
+): string | undefined {
+  const payloads = [job.result, job.data].filter(
+    (value): value is Record<string, unknown> =>
+      Boolean(value) && typeof value === "object",
+  );
+  const keys = [
+    "apiBase",
+    "api_base",
+    "bridgeUrl",
+    "bridge_url",
+    "runtimeUrl",
+    "runtime_url",
+    "containerUrl",
+    "container_url",
+    "webUiUrl",
+    "web_ui_url",
+  ];
+
+  for (const payload of payloads) {
+    for (const key of keys) {
+      const url = normalizeRuntimeUrl(payload[key]);
+      if (url && !isCloudControlPlaneUrl(url)) return url;
+    }
+  }
+}
+
+function mergeCloudRuntimeUrl(
+  agent: CloudCompatAgent,
+  runtimeUrl: string | undefined,
+): CloudCompatAgent {
+  if (!runtimeUrl || resolveCloudAgentApiBase(agent)) return agent;
+  return {
+    ...agent,
+    bridge_url: runtimeUrl,
+    containerUrl: runtimeUrl,
+  };
+}
+
+async function withProvisionStartTimeout<T>(
+  request: Promise<T>,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(message));
+    }, PROVISION_START_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function displayErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 // TODO: replace with real onboarding artwork per runtime choice
 // const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
 //   cloud: "app-heroes/agentDOD.png",
@@ -227,9 +316,10 @@ export function resolveRuntimeChoices(args: {
   showLocalOption: boolean;
   localProbePending: boolean;
 }): RuntimeChoice[] {
-  if (args.isAndroid || args.isIOS) {
+  if (args.isAndroid) {
     return ["cloud", "local", "remote"];
   }
+  if (args.isIOS) return ["cloud", "remote"];
   if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
   if (args.showLocalOption || args.localProbePending) {
     return ["cloud", "local", "remote"];
@@ -254,6 +344,92 @@ function statusBadge(status: string): { label: string; className: string } {
         label: status.toUpperCase(),
         className: "bg-black/10 text-black/60",
       };
+  }
+}
+
+function runtimeChoiceDetails(
+  choice: RuntimeChoice,
+  t: (key: string, values?: Record<string, unknown>) => string,
+  androidLocal: boolean,
+): {
+  label: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  imageSrc?: string;
+} {
+  switch (choice) {
+    case "cloud":
+      return {
+        label: t("runtimegate.cloudOptionLabel", { defaultValue: "CLOUD" }),
+        eyebrow: t("runtimegate.cloudEyebrow", {
+          defaultValue: "Eliza Cloud",
+        }),
+        title: t("runtimegate.cloudTitle", {
+          defaultValue: "Run in Eliza Cloud",
+        }),
+        description: t("runtimegate.cloudDesc", {
+          defaultValue:
+            "Hosted agent with managed LLMs and connectors. Fastest start.",
+        }),
+      };
+    case "local":
+      return {
+        label: t("runtimegate.localOptionLabel", { defaultValue: "LOCAL" }),
+        eyebrow: androidLocal
+          ? t("runtimegate.localEyebrowOnDevice", {
+              defaultValue: "On device",
+            })
+          : t("runtimegate.localEyebrow", {
+              defaultValue: "This device",
+            }),
+        title: androidLocal
+          ? t("runtimegate.localTitleAndroid", {
+              defaultValue: "Local Agent (Beta)",
+            })
+          : t("runtimegate.localTitle", {
+              defaultValue: "Run a local agent",
+            }),
+        description: androidLocal
+          ? t("runtimegate.localDescAndroid", {
+              defaultValue:
+                "Runs the full Eliza agent on this device. No cloud needed.",
+            })
+          : t("runtimegate.localDesc", {
+              defaultValue:
+                "Keep the agent on this machine. You'll pick a provider after start.",
+            }),
+      };
+    case "remote":
+      return {
+        label: t("runtimegate.remoteOptionLabel", { defaultValue: "REMOTE" }),
+        eyebrow: t("runtimegate.remoteEyebrow", {
+          defaultValue: "Remote agent",
+        }),
+        title: t("runtimegate.remoteTitle", {
+          defaultValue: "Connect to an existing agent",
+        }),
+        description: t("runtimegate.remoteDesc", {
+          defaultValue:
+            "Point at an agent you're already running (e.g. on your Mac).",
+        }),
+      };
+  }
+}
+
+function selectChoiceLabel(
+  choice: RuntimeChoice,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string {
+  switch (choice) {
+    case "cloud":
+      return t("runtimegate.selectCloud", { defaultValue: "Select Cloud" });
+    case "local":
+      return t("runtimegate.selectLocal", {
+        defaultValue: "Start Local Agent",
+      });
+    case "remote":
+      return t("runtimegate.selectRemote", { defaultValue: "Select Remote" });
   }
 }
 
@@ -301,9 +477,9 @@ export function RuntimeGate() {
   // Local-tile readiness. Desktop/dev are local-capable synchronously.
   // Android probes the on-device agent's `/api/health` so ElizaOS can
   // auto-complete once the bundled runtime is ready, but the mobile picker
-  // still offers Local while that probe is pending. iOS also presents the
-  // Local path from onboarding; web can include it when a caller reports
-  // local availability or an in-progress probe through `resolveRuntimeChoices`.
+  // still offers Local while that probe is pending. iOS does not host a
+  // local agent today; web can include it when a caller reports local
+  // availability or an in-progress probe through `resolveRuntimeChoices`.
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;
@@ -474,7 +650,19 @@ export function RuntimeGate() {
   );
 
   const finishAsLocal = useCallback(() => {
-    const localApiBase = resolveLocalAgentApiBase();
+    if (isIOS && !isAndroid) {
+      setError(
+        t("runtimegate.localUnsupportedIos", {
+          defaultValue:
+            "Local agent mode is not available on iOS yet. Use Eliza Cloud or connect to a remote agent.",
+        }),
+      );
+      return;
+    }
+    setError(null);
+    const localApiBase = isAndroid
+      ? LOCAL_AGENT_API_BASE
+      : resolveLocalAgentApiBase();
     if (isAndroid) {
       // Android: the local agent runs as a foreground service inside the
       // app and always listens on loopback `127.0.0.1:31337`. The WebView
@@ -487,36 +675,29 @@ export function RuntimeGate() {
       client.setBaseUrl(localApiBase);
       client.setToken(null);
       savePersistedActiveServer({
-        id: "local:android",
+        id: ANDROID_LOCAL_AGENT_SERVER_ID,
         kind: "remote",
-        label: "On-device agent",
+        label: ANDROID_LOCAL_AGENT_LABEL,
         apiBase: localApiBase,
       });
       addAgentProfile({
         kind: "remote",
-        label: "On-device agent",
+        label: ANDROID_LOCAL_AGENT_LABEL,
         apiBase: localApiBase,
       });
+      void startAndroidLocalAgent();
     } else {
-      // Desktop: the local agent IS the bundled API on loopback.
-      // The dev orchestrator may bind a port other than 31337 when that
-      // port is taken — `resolveLocalAgentApiBase()` reads the resolved
-      // base from `window.__ELIZA_API_BASE__` (set by Electrobun's
-      // HTML injection or `apiBaseUpdate` RPC). Setting `baseUrl(null)`
-      // would fall back to the page origin (Electrobun static server or
-      // Vite), which has no `/api` routes — every fetch 404s and the
-      // app gets stuck in a reconnect loop.
       client.setBaseUrl(localApiBase);
       client.setToken(null);
       savePersistedActiveServer({
         id: "local:desktop",
         kind: "remote",
-        label: "On-device agent",
+        label: "Local agent",
         apiBase: localApiBase,
       });
       addAgentProfile({
         kind: "remote",
-        label: "On-device agent",
+        label: "Local agent",
         apiBase: localApiBase,
       });
     }
@@ -526,7 +707,7 @@ export function RuntimeGate() {
     // Always land on chat. The composer lock + "Set up an LLM provider"
     // placeholder handles the missing-provider case.
     completeOnboarding();
-  }, [completeOnboarding, setState, startupCoordinator]);
+  }, [completeOnboarding, setState, startupCoordinator, t]);
 
   // Auto-pick the on-device agent on ElizaOS. The picker is bypassed by
   // default — the only legitimate way to see it is `?runtime=picker`, set
@@ -606,6 +787,20 @@ export function RuntimeGate() {
     t,
   ]);
 
+  const handleSelectChoice = useCallback(() => {
+    switch (selectedChoice) {
+      case "cloud":
+        setSubView("cloud");
+        return;
+      case "local":
+        finishAsLocal();
+        return;
+      case "remote":
+        setSubView("remote");
+        return;
+    }
+  }, [finishAsLocal, selectedChoice]);
+
   // ── Cloud: provision + connect ─────────────────────────────────────
 
   const provisionAndConnect = useCallback(
@@ -620,13 +815,43 @@ export function RuntimeGate() {
           defaultValue: "Starting provisioning...",
         }),
       );
-      // If create already queued a job (compat-namespace flow), use that
-      // jobId directly. Calling provisionCloudCompatAgent again on a
-      // compat-created agent returns 405 (the v1/app provision endpoint
-      // doesn't recognize compat-namespace agent IDs).
-      let jobId: string | undefined = existingJobId;
+      let jobId = existingJobId;
+      let pollingIntervalMs: number | undefined;
+      let expectedDurationMs = 0;
+      let provisionRuntimeUrl: string | undefined;
+
       if (!jobId) {
-        const provRes = await client.provisionCloudCompatAgent(agentId);
+        let provRes: Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>;
+        let startStatusTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          startStatusTimer = setTimeout(() => {
+            setProvisionStatus(
+              t("runtimegate.waitingForProvisioningJob", {
+                defaultValue: "Waiting for Cloud to accept provisioning...",
+              }),
+            );
+          }, PROVISION_START_STILL_WAITING_MS);
+          provRes = await withProvisionStartTimeout(
+            client.provisionCloudCompatAgent(agentId),
+            t("runtimegate.provisioningStartTimeout", {
+              defaultValue:
+                "Cloud did not return a provisioning job. Please retry.",
+            }),
+          );
+        } catch (err) {
+          setError(
+            displayErrorMessage(
+              err,
+              t("runtimegate.provisioningFailed", {
+                defaultValue: "Provisioning failed",
+              }),
+            ),
+          );
+          setCloudStage("agent-list");
+          return;
+        } finally {
+          if (startStatusTimer) clearTimeout(startStatusTimer);
+        }
         if (!provRes.success) {
           setError(
             provRes.error ||
@@ -638,6 +863,12 @@ export function RuntimeGate() {
           return;
         }
         jobId = provRes.data?.jobId;
+        pollingIntervalMs = provRes.polling?.intervalMs;
+        expectedDurationMs = provRes.polling?.expectedDurationMs ?? 0;
+        provisionRuntimeUrl = resolveCloudJobRuntimeUrl({
+          result: null,
+          data: provRes.data ?? {},
+        });
       }
 
       // Poll the agent until it has a connectable URL. The provision job
@@ -656,7 +887,6 @@ export function RuntimeGate() {
       //     `bridge_url` is filled from the same DB column. Eliza Cloud's
       //     non-admin route does NOT return webUiUrl, so we must accept
       //     bridgeUrl here.
-      const AGENT_URL_WAIT_DEADLINE_MS = 300_000;
       const fetchAgentWithUrl = async (
         deadlineMs: number,
       ): Promise<CloudCompatAgent | null> => {
@@ -715,6 +945,20 @@ export function RuntimeGate() {
         setProvisionStatus(
           t("runtimegate.connecting", { defaultValue: "Connecting..." }),
         );
+        if (provisionRuntimeUrl) {
+          const readyFromProvisionUrl = await client
+            .getCloudCompatAgent(agentId)
+            .then((agentRes) =>
+              agentRes.success
+                ? mergeCloudRuntimeUrl(agentRes.data, provisionRuntimeUrl)
+                : null,
+            )
+            .catch(() => null);
+          if (readyFromProvisionUrl) {
+            finishAsCloud(readyFromProvisionUrl);
+            return;
+          }
+        }
         const ready = await fetchAgentWithUrl(
           Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
         );
@@ -733,23 +977,26 @@ export function RuntimeGate() {
       }
 
       let consecutivePollFailures = 0;
-      const provisionDeadline = Date.now() + PROVISION_JOB_DEADLINE_MS;
       const stopPollingWithError = (message: string) => {
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
         setError(message);
         setCloudStage("agent-list");
       };
+      const provisionJobDeadlineMs =
+        Date.now() +
+        Math.max(PROVISION_JOB_WAIT_DEADLINE_MS, expectedDurationMs);
       const pollProvisionJob = async () => {
-        if (Date.now() > provisionDeadline) {
+        if (Date.now() >= provisionJobDeadlineMs) {
           stopPollingWithError(
-            t("runtimegate.provisioningTimeout", {
+            t("runtimegate.provisioningStillRunning", {
               defaultValue:
-                "Cloud agent provisioning is taking too long. The hosting service may be unavailable.",
+                "Cloud provisioning is still running after several minutes. Retry to resume status checks.",
             }),
           );
           return;
         }
+
         let jobRes: Awaited<ReturnType<typeof client.getCloudCompatJobStatus>>;
         try {
           jobRes = await client.getCloudCompatJobStatus(jobId);
@@ -788,9 +1035,21 @@ export function RuntimeGate() {
           setProvisionStatus(
             t("runtimegate.connecting", { defaultValue: "Connecting..." }),
           );
-          const ready = await fetchAgentWithUrl(
-            Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
-          );
+          const jobRuntimeUrl = resolveCloudJobRuntimeUrl(job);
+          const readyFromJob =
+            jobRuntimeUrl && !isCloudControlPlaneUrl(jobRuntimeUrl)
+              ? await client
+                  .getCloudCompatAgent(agentId)
+                  .then((agentRes) =>
+                    agentRes.success
+                      ? mergeCloudRuntimeUrl(agentRes.data, jobRuntimeUrl)
+                      : null,
+                  )
+                  .catch(() => null)
+              : null;
+          const ready =
+            readyFromJob ??
+            (await fetchAgentWithUrl(Date.now() + AGENT_URL_WAIT_DEADLINE_MS));
           if (ready) {
             finishAsCloud(ready);
           } else {
@@ -815,7 +1074,7 @@ export function RuntimeGate() {
       void pollProvisionJob();
       pollTimerRef.current = setInterval(() => {
         void pollProvisionJob();
-      }, 2500);
+      }, pollingIntervalMs ?? 2500);
     },
     [finishAsCloud, t],
   );
@@ -857,9 +1116,10 @@ export function RuntimeGate() {
 
       if (!res.success) {
         setError(
-          t("runtimegate.failedLoadAgents", {
-            defaultValue: "Failed to load agents",
-          }),
+          (res as { error?: string }).error ||
+            t("runtimegate.failedLoadAgents", {
+              defaultValue: "Failed to load agents",
+            }),
         );
         setCloudStage("agent-list");
         return;
@@ -908,9 +1168,10 @@ export function RuntimeGate() {
       if (cancelled) return;
       if (!createRes.success || !createRes.data?.agentId) {
         setError(
-          t("runtimegate.failedCreate", {
-            defaultValue: "Failed to create agent. Try again.",
-          }),
+          createRes.data?.message ||
+            t("runtimegate.failedCreate", {
+              defaultValue: "Failed to create agent. Try again.",
+            }),
         );
         setCloudStage("agent-list");
         return;
@@ -925,15 +1186,8 @@ export function RuntimeGate() {
         setCloudStage("agent-list");
         return;
       }
-      // MUST stay below the createCloudCompatAgent await — setting cloudStage
-      // earlier fires this effect's cleanup (cloudStage is in deps), flips
-      // cancelled=true, and the post-await guard then bails before
-      // provisionAndConnect runs.
-      setCloudStage("auto-creating");
 
-      // Compat create returns a jobId because the cloud queues provisioning
-      // automatically. Pass it through so we skip the redundant provision call
-      // (which would 405 on a compat-namespace agent) and poll the job directly.
+      setCloudStage("auto-creating");
       await provisionAndConnect(
         createRes.data.agentId,
         createRes.data.jobId ?? undefined,
@@ -986,24 +1240,6 @@ export function RuntimeGate() {
 
   if (subView === "chooser") {
     const localOnly = runtimeChoiceKey === "local";
-    const cloudAvailable = runtimeChoices.includes("cloud");
-    const localAvailable = runtimeChoices.includes("local");
-    const remoteAvailable = runtimeChoices.includes("remote");
-    // Default fast-track: cloud when available (90% case),
-    // local when this is a local-only build, remote as last resort.
-    const handleGetStarted = () => {
-      if (cloudAvailable) {
-        setSubView("cloud");
-        return;
-      }
-      if (localAvailable) {
-        finishAsLocal();
-        return;
-      }
-      if (remoteAvailable) setSubView("remote");
-    };
-    const showAdvancedDisclosure =
-      !localOnly && (localAvailable || remoteAvailable) && cloudAvailable;
 
     return (
       <GateShell
@@ -1013,44 +1249,96 @@ export function RuntimeGate() {
         setUiTheme={setUiTheme}
         t={t}
       >
+        <GateHeader t={t} />
+
         {runtimeChoices.length === 0 ? (
-          <>
-            <GateHeader t={t} />
-            <div className="mt-8 flex w-full items-center justify-center gap-3 border-2 border-[#f0b90b]/45 bg-black/70 px-5 py-5 text-[#ffe88a]">
-              <Spinner className="h-4 w-4" />
-              <span
-                style={{ fontFamily: MONO_FONT }}
-                className="text-3xs uppercase tracking-[0.16em]"
-              >
-                {t("runtimegate.localProbing", {
-                  defaultValue: "Checking for on-device agent...",
-                })}
-              </span>
-            </div>
-          </>
+          <div className="mt-8 flex w-full items-center justify-center gap-3 border-2 border-[#f0b90b]/45 bg-black/70 px-5 py-5 text-[#ffe88a]">
+            <Spinner className="h-4 w-4" />
+            <span
+              style={{ fontFamily: MONO_FONT }}
+              className="text-3xs uppercase tracking-[0.16em]"
+            >
+              {t("runtimegate.localProbing", {
+                defaultValue: "Checking for on-device agent...",
+              })}
+            </span>
+          </div>
         ) : (
-          <WelcomeChooser
-            onGetStarted={handleGetStarted}
-            getStartedLabel={
-              cloudAvailable
-                ? t("runtimegate.welcomeGetStarted", {
-                    defaultValue: "Get started",
-                  })
-                : localAvailable
-                  ? t("runtimegate.welcomeStartLocal", {
-                      defaultValue: "Start your local agent",
+          <>
+            <fieldset
+              className={`mt-5 grid w-full gap-2.5 text-left md:mt-7 md:gap-3 ${
+                runtimeChoices.length === 3 ? "md:grid-cols-3" : ""
+              }`}
+            >
+              <legend className="sr-only">
+                {t("runtimegate.subtitle", {
+                  defaultValue: "Where should your agent run?",
+                })}
+              </legend>
+              {runtimeChoices.map((choice) => {
+                const details = runtimeChoiceDetails(choice, t, isAndroid);
+                return (
+                  <ChoiceCard
+                    key={choice}
+                    choice={choice}
+                    selected={selectedChoice === choice}
+                    disabled={localOnly}
+                    statusLabel={
+                      selectedChoice === choice
+                        ? t("runtimegate.optionSelected", {
+                            defaultValue: "Selected",
+                          })
+                        : t("runtimegate.optionAvailable", {
+                            defaultValue: "Available",
+                          })
+                    }
+                    {...details}
+                    onClick={() => setSelectedChoice(choice)}
+                  />
+                );
+              })}
+            </fieldset>
+
+            <div className="mt-3 flex w-full flex-col gap-2 sm:mt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p
+                style={{ fontFamily: MONO_FONT }}
+                className="hidden min-w-0 text-3xs uppercase tracking-[0.16em] text-white/70 sm:block"
+              >
+                {localOnly
+                  ? t("runtimegate.localOnlyHint", {
+                      defaultValue:
+                        "This build runs your agent on this device.",
                     })
-                  : t("runtimegate.welcomeConnectRemote", {
-                      defaultValue: "Connect to your agent",
-                    })
-            }
-            showAdvanced={showAdvancedDisclosure}
-            advancedShowsLocal={!localOnly && localAvailable && cloudAvailable}
-            advancedShowsRemote={remoteAvailable && cloudAvailable}
-            onUseLocal={finishAsLocal}
-            onConnectRemote={() => setSubView("remote")}
-            t={t}
-          />
+                  : t("runtimegate.selectedHint", {
+                      defaultValue: "{{target}} selected",
+                      target: runtimeChoiceDetails(selectedChoice, t, isAndroid)
+                        .label,
+                    })}
+              </p>
+              <Button
+                type="button"
+                variant="default"
+                className="min-h-12 w-full border-2 border-black bg-[#ffe600] px-8 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0 sm:w-auto"
+                style={{
+                  borderRadius: 0,
+                  clipPath:
+                    "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
+                  fontFamily: MONO_FONT,
+                }}
+                onClick={handleSelectChoice}
+              >
+                {selectChoiceLabel(selectedChoice, t)}
+              </Button>
+            </div>
+            {error && (
+              <p
+                style={{ fontFamily: MONO_FONT }}
+                className="mt-3 text-3xs text-red-400"
+              >
+                {error}
+              </p>
+            )}
+          </>
         )}
       </GateShell>
     );
@@ -1067,28 +1355,7 @@ export function RuntimeGate() {
         setUiTheme={setUiTheme}
         t={t}
       >
-        <SubviewHeader
-          title={
-            cloudStage === "login"
-              ? t("runtimegate.cloudHeaderLogin", {
-                  defaultValue: "Sign in to Eliza Cloud",
-                })
-              : cloudStage === "auto-creating" || cloudStage === "loading"
-                ? t("runtimegate.cloudHeaderProvisioning", {
-                    defaultValue: "Setting up your agent",
-                  })
-                : t("runtimegate.cloudHeaderConnect", {
-                    defaultValue: "Connect to your cloud agent",
-                  })
-          }
-          subtitle={
-            cloudStage === "login"
-              ? t("runtimegate.cloudHeaderLoginSubtitle", {
-                  defaultValue: "We'll handle the heavy lifting for you.",
-                })
-              : undefined
-          }
-        />
+        <GateHeader t={t} />
 
         {/* Local embeddings preference — visible whenever the cloud path is
             active and the user can still interact (not yet connecting). */}
@@ -1100,10 +1367,10 @@ export function RuntimeGate() {
         )}
 
         {cloudStage === "login" && (
-          <div className="mt-4 flex w-full max-w-[28rem] flex-col gap-4 text-left">
+          <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
             <p
-              className="text-3xs uppercase tracking-[0.22em] text-[#ffe600]/80"
               style={{ fontFamily: MONO_FONT }}
+              className="text-3xs uppercase text-white/60"
             >
               {t("runtimegate.cloudLoginEyebrow", {
                 defaultValue: "Sign in to Eliza Cloud",
@@ -1112,13 +1379,7 @@ export function RuntimeGate() {
             <Button
               type="button"
               variant="default"
-              className="min-h-12 justify-center border-2 border-black bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0"
-              style={{
-                borderRadius: 0,
-                clipPath:
-                  "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
-                fontFamily: MONO_FONT,
-              }}
+              className="justify-center rounded-xl border border-[#f0b90b]/40 bg-[#f0b90b]/15 px-3 py-5 text-[#f0b90b] font-semibold shadow-lg hover:bg-[#f0b90b]/25 hover:border-[#f0b90b]/60"
               onClick={handleLogin}
               disabled={elizaCloudLoginBusy}
             >
@@ -1137,8 +1398,8 @@ export function RuntimeGate() {
             </Button>
             {(error || elizaCloudLoginError) && (
               <p
-                className="text-3xs uppercase tracking-wide text-red-400"
                 style={{ fontFamily: MONO_FONT }}
+                className="text-3xs text-red-400"
               >
                 {error || elizaCloudLoginError}
               </p>
@@ -1152,11 +1413,11 @@ export function RuntimeGate() {
           cloudStage === "creating" ||
           cloudStage === "provisioning" ||
           cloudStage === "connecting") && (
-          <div className="mt-6 flex w-full max-w-[28rem] flex-col items-center gap-3">
-            <Spinner className="h-6 w-6 text-[#ffe600]/80" />
+          <div className="mt-6 flex w-full max-w-[34rem] flex-col items-center gap-3">
+            <Spinner className="h-6 w-6 text-white/60" />
             <p
-              className="text-3xs uppercase tracking-[0.2em] text-white/75"
               style={{ fontFamily: MONO_FONT }}
+              className="text-3xs uppercase text-white/50"
             >
               {cloudStage === "loading" &&
                 t("runtimegate.loadingAgents", {
@@ -1187,8 +1448,8 @@ export function RuntimeGate() {
           <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
             <div className="flex items-center justify-between">
               <p
-                className="text-3xs uppercase tracking-[0.2em] text-[#ffe600]/80"
                 style={{ fontFamily: MONO_FONT }}
+                className="text-3xs uppercase text-white/60"
               >
                 {t("runtimegate.yourAgents", {
                   defaultValue: "Your cloud agents",
@@ -1197,8 +1458,8 @@ export function RuntimeGate() {
               <button
                 type="button"
                 onClick={handleRefreshAgents}
-                className="text-3xs uppercase tracking-[0.2em] text-white/55 underline hover:text-white"
                 style={{ fontFamily: MONO_FONT }}
+                className="text-3xs uppercase text-white/50 hover:text-white underline"
               >
                 {t("runtimegate.retry", { defaultValue: "Retry" })}
               </button>
@@ -1206,35 +1467,30 @@ export function RuntimeGate() {
 
             {error && (
               <p
-                className="text-3xs uppercase tracking-wide text-red-400"
                 style={{ fontFamily: MONO_FONT }}
+                className="text-3xs text-red-400"
               >
                 {error}
               </p>
             )}
 
             {agents.length > 0 && (
-              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">
+              <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
                 {agents.map((agent) => {
                   const badge = statusBadge(agent.status);
                   return (
                     <Card
                       key={agent.agent_id}
-                      className="border-2 border-[#f0b90b]/45 bg-black/65 shadow-[4px_4px_0_rgba(0,0,0,0.62)]"
-                      style={{ borderRadius: 0 }}
+                      className="border border-white/20 bg-white/[0.07] shadow-lg backdrop-blur-xl"
                     >
                       <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <p
-                              className="truncate text-sm font-bold uppercase text-white/95"
-                              style={{ fontFamily: MONO_FONT }}
-                            >
+                            <p className="truncate text-sm font-semibold text-white/95">
                               {agent.agent_name}
                             </p>
                             <span
-                              className={`shrink-0 rounded-none px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide ${badge.className}`}
-                              style={{ fontFamily: MONO_FONT }}
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-2xs font-bold ${badge.className}`}
                             >
                               {badge.label}
                             </span>
@@ -1244,8 +1500,7 @@ export function RuntimeGate() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.14em] text-black shadow-[3px_3px_0_rgba(0,0,0,0.65)] hover:bg-white"
-                          style={{ fontFamily: MONO_FONT }}
+                          className="shrink-0 rounded-lg border-[#f0b90b]/40 bg-[#f0b90b]/15 text-[#f0b90b] font-semibold hover:bg-[#f0b90b]/25 hover:border-[#f0b90b]/60"
                           onClick={() => handleConnectCloudAgent(agent)}
                           disabled={agent.status === "failed"}
                         >
@@ -1277,19 +1532,12 @@ export function RuntimeGate() {
       setUiTheme={setUiTheme}
       t={t}
     >
-      <SubviewHeader
-        title={t("runtimegate.remoteHeader", {
-          defaultValue: "Connect to your agent",
-        })}
-        subtitle={t("runtimegate.remoteHeaderSubtitle", {
-          defaultValue: "Point at an agent URL you already have running.",
-        })}
-      />
+      <GateHeader t={t} />
 
-      <div className="mt-4 flex w-full max-w-[28rem] flex-col gap-3 text-left">
+      <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
         <p
-          className="text-3xs uppercase tracking-[0.22em] text-[#ffe600]/80"
           style={{ fontFamily: MONO_FONT }}
+          className="text-3xs uppercase text-white/60"
         >
           {t("runtimegate.remoteConnectEyebrow", {
             defaultValue: "Connect to a remote agent",
@@ -1301,14 +1549,14 @@ export function RuntimeGate() {
             {discoveredGateways.map((gateway) => (
               <Card
                 key={gateway.stableId}
-                className="border-2 border-[#f0b90b]/45 bg-black/65 text-white shadow-[4px_4px_0_rgba(0,0,0,0.62)]"
+                className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
                 style={{ borderRadius: 0 }}
               >
                 <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
                   <div className="min-w-0">
                     <p
-                      className="text-3xs uppercase tracking-[0.2em] text-[#ffe600]/80"
                       style={{ fontFamily: MONO_FONT }}
+                      className="text-3xs uppercase text-[#ffe600]/80"
                     >
                       {gateway.isLocal
                         ? t("startupshell.LocalNetworkAgent", {
@@ -1318,16 +1566,10 @@ export function RuntimeGate() {
                             defaultValue: "Network agent",
                           })}
                     </p>
-                    <p
-                      className="truncate text-sm font-bold uppercase text-white/95"
-                      style={{ fontFamily: MONO_FONT }}
-                    >
+                    <p className="truncate text-sm font-semibold text-white/95">
                       {gateway.name}
                     </p>
-                    <p
-                      className="truncate text-xs text-white/55"
-                      style={{ fontFamily: MONO_FONT }}
-                    >
+                    <p className="truncate text-xs-tight text-white/52">
                       {gateway.host}
                     </p>
                   </div>
@@ -1335,8 +1577,7 @@ export function RuntimeGate() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.14em] text-black shadow-[3px_3px_0_rgba(0,0,0,0.65)] hover:bg-white"
-                    style={{ fontFamily: MONO_FONT }}
+                    className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
                     onClick={() => finishAsRemoteGateway(gateway)}
                   >
                     {t("common.connect", { defaultValue: "Connect" })}
@@ -1355,8 +1596,7 @@ export function RuntimeGate() {
           onChange={(e) => setRemoteUrl(e.target.value)}
           onInput={(e) => setRemoteUrl((e.target as HTMLInputElement).value)}
           onBlur={(e) => setRemoteUrl(e.target.value)}
-          className="h-11 rounded-none border-2 border-[#f0b90b]/45 bg-black/55 text-sm text-white placeholder:text-white/40 focus:border-[#ffe600]"
-          style={{ fontFamily: MONO_FONT }}
+          className="h-11 rounded-none border-2 border-[#f0b90b]/35 bg-black/48 text-white text-sm placeholder:text-white/40"
         />
 
         <Input
@@ -1368,14 +1608,13 @@ export function RuntimeGate() {
           onChange={(e) => setRemoteToken(e.target.value)}
           onInput={(e) => setRemoteToken((e.target as HTMLInputElement).value)}
           onBlur={(e) => setRemoteToken(e.target.value)}
-          className="h-11 rounded-none border-2 border-[#f0b90b]/45 bg-black/55 text-sm text-white placeholder:text-white/40 focus:border-[#ffe600]"
-          style={{ fontFamily: MONO_FONT }}
+          className="h-11 rounded-none border-2 border-[#f0b90b]/35 bg-black/48 text-white text-sm placeholder:text-white/40"
         />
 
         {error && (
           <p
-            className="text-3xs uppercase tracking-wide text-red-400"
             style={{ fontFamily: MONO_FONT }}
+            className="text-3xs text-red-400"
           >
             {error}
           </p>
@@ -1384,13 +1623,7 @@ export function RuntimeGate() {
         <Button
           type="button"
           variant="default"
-          className="min-h-12 justify-center border-2 border-black bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            borderRadius: 0,
-            clipPath:
-              "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
-            fontFamily: MONO_FONT,
-          }}
+          className="justify-center rounded-none border-2 border-black bg-[#ffe600] px-3 py-4 text-sm font-black uppercase tracking-[0.14em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.68)] hover:bg-white"
           onClick={finishAsRemote}
           disabled={!remoteUrl.trim()}
         >
@@ -1425,32 +1658,29 @@ function GateShell({
   const lightMode = uiTheme === "light";
 
   return (
-    <div
-      className={`relative h-full min-h-0 w-full overflow-hidden text-white overscroll-none ${
-        lightMode ? "bg-[#1a1108]" : "bg-[#0a0805]"
-      }`}
-    >
+    <div className="relative h-full min-h-0 w-full overflow-hidden bg-black text-white overscroll-none">
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 overflow-hidden"
       >
-        {/* Theme-paired Milady zine backgrounds:
-            light → gold-on-cream collage (splash-bg.png)
-            dark  → gold-on-black collage (splash-bg-dark.png).
-            Use `object-contain` so the dense side panels of the collage
-            (I AM the effect, elizaOS runtime, etc.) aren't cropped. The
-            wrapper bg fills any letterbox area with a complementary brand
-            tone so it blends. */}
         <img
-          src={resolveAppAssetUrl(
-            lightMode ? "splash-bg.png" : "splash-bg-dark.png",
-          )}
+          src={resolveAppAssetUrl("splash-bg.png")}
           alt=""
-          className="absolute inset-0 h-full w-full object-contain object-center"
+          className="absolute inset-0 h-full w-full object-cover"
         />
-        {/* Subtle vignette to keep panel content readable when window is large
-            and the image sits centered with letterbox. */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.55)_100%)]" />
+        <div
+          className={`absolute inset-0 ${
+            lightMode ? "bg-[#f6d969]/38" : "bg-black/58"
+          }`}
+        />
+        <div
+          className="absolute inset-0 opacity-35"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
       </div>
 
       <div
@@ -1480,18 +1710,11 @@ function GateShell({
 
       <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[max(0.75rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div
-          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-hidden border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
+          className="flex max-h-full min-h-0 w-full max-w-[72rem] flex-col items-center gap-3 overflow-hidden border-2 border-black bg-[rgba(9,10,14,0.82)] px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
           style={{
             borderRadius: 0,
             clipPath:
               "polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)",
-            // Dark zine panel for both modes — white text reads consistently
-            // against either the gold-on-black or gold-on-cream collage. The
-            // dark theme image is busy (lots of gold accents) so the panel is
-            // slightly more opaque to keep content focus.
-            background: lightMode
-              ? "rgba(20,16,10,0.78)"
-              : "rgba(9,10,14,0.84)",
           }}
         >
           {children}
@@ -1526,237 +1749,106 @@ function GateHeader({
   );
 }
 
-interface SubviewHeaderProps {
-  title: string;
-  subtitle?: string;
-}
-
-/**
- * Cleaner header for the cloud + remote subviews. Replaces the legacy
- * `GateHeader` ("Choose your setup / Where should your agent run?") which
- * was misleading once the user was already past the chooser.
- */
-function SubviewHeader({ title, subtitle }: SubviewHeaderProps) {
-  return (
-    <div className="flex w-full max-w-xl flex-col items-center gap-2 text-center">
-      <h1
-        style={{
-          fontFamily: MONO_FONT,
-          textShadow: "2px 2px 0 rgba(0,0,0,0.85)",
-        }}
-        className="text-2xl font-light uppercase tracking-tight text-white sm:text-3xl"
-      >
-        {title}
-      </h1>
-      {subtitle && (
-        <p
-          className="max-w-md text-sm leading-relaxed text-white/80"
-          style={{
-            fontFamily: MONO_FONT,
-            textShadow: "1px 1px 0 rgba(0,0,0,0.7)",
-          }}
-        >
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
-
-interface WelcomeChooserProps {
-  onGetStarted: () => void;
-  getStartedLabel: string;
-  showAdvanced: boolean;
-  advancedShowsLocal: boolean;
-  advancedShowsRemote: boolean;
-  onUseLocal: () => void;
-  onConnectRemote: () => void;
-  t: (key: string, values?: Record<string, unknown>) => string;
-}
-
-/**
- * One primary action ("Get started") for the 90% case, with power-user
- * options (local agent / connect remote) progressively disclosed under a
- * collapsed "I want to run it myself" link. Replaces the prior 3-equal-tiles
- * + select-then-confirm layout, which forced every fresh user to make a
- * mechanics-level choice before they knew what the product was.
- */
-function WelcomeChooser({
-  onGetStarted,
-  getStartedLabel,
-  showAdvanced,
-  advancedShowsLocal,
-  advancedShowsRemote,
-  onUseLocal,
-  onConnectRemote,
-  t,
-}: WelcomeChooserProps) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
-  return (
-    <div className="flex w-full flex-col items-center gap-6 text-center sm:gap-7">
-      <div className="flex w-full max-w-xl flex-col items-center gap-3">
-        <p
-          style={{ fontFamily: MONO_FONT }}
-          className="text-3xs uppercase tracking-[0.22em] text-[#ffe600]/80"
-        >
-          {t("runtimegate.welcomeEyebrow", {
-            defaultValue: "elizaOS — immersion agent runtime",
-          })}
-        </p>
-        <h1
-          style={{
-            fontFamily: MONO_FONT,
-            textShadow: "2px 2px 0 rgba(0,0,0,0.85)",
-          }}
-          className="text-3xl font-light uppercase tracking-tight text-white sm:text-4xl md:text-5xl"
-        >
-          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Milady" })}
-        </h1>
-        <p
-          className="max-w-md text-sm leading-relaxed text-white/85 sm:text-base"
-          style={{
-            fontFamily: MONO_FONT,
-            textShadow: "1px 1px 0 rgba(0,0,0,0.75)",
-          }}
-        >
-          {t("runtimegate.welcomeSubtitle", {
-            defaultValue: "Your personal AI. Ready in seconds, hosted by us.",
-          })}
-        </p>
-      </div>
-
-      <Button
-        type="button"
-        variant="default"
-        className="min-h-14 w-full max-w-sm border-2 border-black bg-[#ffe600] px-10 py-4 text-base font-black uppercase tracking-[0.18em] text-black shadow-[6px_6px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0"
-        style={{
-          borderRadius: 0,
-          clipPath:
-            "polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)",
-          fontFamily: MONO_FONT,
-        }}
-        onClick={onGetStarted}
-      >
-        {getStartedLabel}
-      </Button>
-
-      {showAdvanced && (
-        <div className="flex w-full max-w-2xl flex-col items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setAdvancedOpen((open) => !open)}
-            aria-expanded={advancedOpen}
-            className="inline-flex items-center gap-1.5 text-3xs uppercase tracking-[0.2em] text-[#ffe600]/75 transition-colors hover:text-[#ffe600]"
-            style={{ fontFamily: MONO_FONT }}
-          >
-            {t("runtimegate.welcomeAdvancedToggle", {
-              defaultValue: "I want to run it myself",
-            })}
-            <span aria-hidden="true">{advancedOpen ? "▴" : "▾"}</span>
-          </button>
-
-          {advancedOpen && (
-            <div
-              className={`grid w-full gap-3 text-left ${
-                advancedShowsLocal && advancedShowsRemote
-                  ? "sm:grid-cols-2"
-                  : ""
-              }`}
-            >
-              {advancedShowsLocal && (
-                <PowerUserCard
-                  eyebrow={t("runtimegate.welcomeLocalEyebrow", {
-                    defaultValue: "Power user",
-                  })}
-                  title={t("runtimegate.welcomeLocalTitle", {
-                    defaultValue: "Run on this machine",
-                  })}
-                  description={t("runtimegate.welcomeLocalDesc", {
-                    defaultValue:
-                      "Bring your own AI provider key. The agent runs on your hardware. Privacy-first.",
-                  })}
-                  ctaLabel={t("runtimegate.welcomeLocalCta", {
-                    defaultValue: "Use local",
-                  })}
-                  onClick={onUseLocal}
-                />
-              )}
-              {advancedShowsRemote && (
-                <PowerUserCard
-                  eyebrow={t("runtimegate.welcomeRemoteEyebrow", {
-                    defaultValue: "Already running an agent?",
-                  })}
-                  title={t("runtimegate.welcomeRemoteTitle", {
-                    defaultValue: "Connect to your own server",
-                  })}
-                  description={t("runtimegate.welcomeRemoteDesc", {
-                    defaultValue:
-                      "Point at an agent URL you already have running.",
-                  })}
-                  ctaLabel={t("runtimegate.welcomeRemoteCta", {
-                    defaultValue: "Connect remote",
-                  })}
-                  onClick={onConnectRemote}
-                />
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface PowerUserCardProps {
+interface ChoiceCardProps {
+  choice: RuntimeChoice;
+  label: string;
   eyebrow: string;
   title: string;
   description: string;
-  ctaLabel: string;
+  imageSrc?: string;
+  selected: boolean;
+  statusLabel: string;
+  disabled?: boolean;
   onClick: () => void;
 }
 
-function PowerUserCard({
+function ChoiceCard({
+  choice,
+  label,
   eyebrow,
   title,
   description,
-  ctaLabel,
+  imageSrc,
+  selected,
+  statusLabel,
+  disabled,
   onClick,
-}: PowerUserCardProps) {
+}: ChoiceCardProps) {
+  const className = [
+    "group flex w-full min-w-0 border-2 p-1.5 text-left shadow-[5px_5px_0_rgba(0,0,0,0.62)] transition-[background-color,border-color,color,transform,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black md:min-h-[21rem] md:flex-col md:p-3",
+    selected
+      ? "border-[#ffe600] bg-black/88 text-[#fff3a8]"
+      : "border-black bg-[#fff1ac]/90 text-black hover:-translate-y-0.5 hover:bg-white",
+    disabled ? "cursor-default" : "cursor-pointer",
+  ].join(" ");
+  const imageBorderClassName = selected
+    ? "border-[#ffe600] bg-[#17100a]"
+    : "border-black bg-black";
+  const eyebrowClassName = selected ? "text-[#ffe600]/82" : "text-black/60";
+  const titleClassName = selected ? "text-white/92" : "text-black/76";
+  const descriptionClassName = selected ? "text-white/66" : "text-black/62";
+
   return (
     <button
       type="button"
-      onClick={onClick}
-      className="group flex w-full flex-col items-start gap-2 border-2 border-[#f0b90b]/45 bg-black/65 p-4 text-left shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 hover:border-[#ffe600] hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+      className={className}
+      onClick={disabled ? undefined : onClick}
+      aria-pressed={selected}
+      aria-disabled={disabled}
+      data-runtime-choice={choice}
       style={{
         borderRadius: 0,
         clipPath:
-          "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
+          "polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)",
       }}
     >
-      <span
-        className="text-3xs uppercase tracking-[0.2em] text-[#ffe600]/85"
-        style={{ fontFamily: MONO_FONT }}
-      >
-        {eyebrow}
+      {imageSrc && (
+        <span
+          className={`relative h-20 w-24 shrink-0 overflow-hidden border-2 sm:h-24 sm:w-28 md:h-36 md:w-full ${imageBorderClassName}`}
+          style={{
+            clipPath:
+              "polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)",
+          }}
+        >
+          <img
+            src={imageSrc}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover opacity-90 saturate-[1.05]"
+          />
+        </span>
+      )}
+      <span className="flex min-w-0 flex-1 flex-col px-2 py-0.5 sm:px-3 sm:py-1.5 md:px-1 md:pt-3">
+        <span
+          style={{ fontFamily: MONO_FONT }}
+          className={`text-3xs uppercase tracking-[0.18em] ${eyebrowClassName}`}
+        >
+          {eyebrow}
+        </span>
+        <span
+          style={{ fontFamily: MONO_FONT }}
+          className="mt-1 text-base font-black uppercase leading-none tracking-[0.08em] sm:text-lg md:text-2xl"
+        >
+          {label}
+        </span>
+        <span
+          className={`mt-1.5 text-[11px] font-bold leading-snug sm:mt-2 sm:text-xs ${titleClassName}`}
+        >
+          {title}
+        </span>
+        <span
+          className={`mt-1 text-[12px] leading-[1.25] sm:text-xs-tight sm:leading-snug ${descriptionClassName}`}
+        >
+          {description}
+        </span>
       </span>
       <span
-        className="text-base font-bold uppercase tracking-wide text-white/95"
         style={{ fontFamily: MONO_FONT }}
+        className={`ml-auto hidden self-start px-2 py-1 text-3xs font-bold uppercase sm:inline-block md:ml-0 md:mt-3 md:self-start ${
+          selected ? "bg-[#ffe600] text-black" : "bg-black text-[#ffe600]"
+        }`}
       >
-        {title}
-      </span>
-      <span
-        className="text-xs leading-relaxed text-white/70"
-        style={{ fontFamily: MONO_FONT }}
-      >
-        {description}
-      </span>
-      <span
-        className="mt-2 inline-flex items-center gap-1 text-3xs uppercase tracking-[0.22em] text-[#ffe600] group-hover:text-white"
-        style={{ fontFamily: MONO_FONT }}
-      >
-        {ctaLabel} →
+        {statusLabel}
       </span>
     </button>
   );
@@ -1819,9 +1911,9 @@ function BackButton({
       type="button"
       onClick={onClick}
       style={{ fontFamily: MONO_FONT }}
-      className="mt-2 self-center text-3xs uppercase tracking-[0.2em] text-white/60 underline hover:text-[#ffe600]"
+      className="mt-2 self-center text-3xs uppercase text-white/60 underline hover:text-white"
     >
-      ← {t("common.back", { defaultValue: "Back" })}
+      {t("common.back", { defaultValue: "Back" })}
     </button>
   );
 }

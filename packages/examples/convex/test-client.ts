@@ -15,14 +15,15 @@ import * as readline from "node:readline";
 // ============================================================================
 
 const CONVEX_URL = process.env.CONVEX_URL;
+const RUN_ONCE = process.argv.includes("--once");
 
 if (!CONVEX_URL) {
-  console.error(
-    "Error: CONVEX_URL is not set.\n" +
+  console.log(
+    "Skipping live Convex test: CONVEX_URL is not set.\n" +
       "Run `npx convex dev` and copy the HTTP Actions URL, then:\n" +
       '  CONVEX_URL="https://your-deployment.convex.cloud" bun run test-client.ts\n',
   );
-  process.exit(1);
+  process.exit(0);
 }
 
 const CHAT_ENDPOINT = `${CONVEX_URL.replace(/\/$/, "")}/chat`;
@@ -91,6 +92,14 @@ async function main() {
 
   const conversationId = crypto.randomUUID();
   console.log(`Conversation: ${conversationId}`);
+  if (RUN_ONCE) {
+    const result = await sendMessage(
+      "Hello from the smoke test.",
+      conversationId,
+    );
+    console.log(`${result.agentName}: ${result.response}`);
+    return;
+  }
   console.log('Type "exit" to quit.\n');
 
   const rl = readline.createInterface({

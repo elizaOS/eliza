@@ -24,6 +24,8 @@ import {
 } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 
+const SPEC_NAME = "DISCORD_CHAT_WITH_ATTACHMENTS";
+
 /**
  * Retrieves attachment IDs from a model using a prompt generated from the current state and a template.
  * @param {IAgentRuntime} runtime - The agent runtime to use for interaction with models
@@ -72,7 +74,7 @@ const getAttachmentIds = async (
  * @property {Object[]} examples - Examples demonstrating how to use the action with message content and expected responses
  */
 
-const spec = requireActionSpec("CHAT_WITH_ATTACHMENTS");
+const spec = requireActionSpec(SPEC_NAME);
 
 export const chatWithAttachments: Action = {
 	name: spec.name,

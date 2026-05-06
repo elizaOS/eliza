@@ -42,6 +42,7 @@ type AgentInbound =
       maxTokens?: number;
       temperature?: number;
     }
+  | { type: "embed"; correlationId: string; input: string }
   | { type: "ping"; at: number };
 
 type DeviceOutbound =
@@ -68,6 +69,14 @@ type DeviceOutbound =
       durationMs: number;
     }
   | { type: "generateResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "embedResult";
+      correlationId: string;
+      ok: true;
+      embedding: number[];
+      tokens: number;
+    }
+  | { type: "embedResult"; correlationId: string; ok: false; error: string }
   | { type: "pong"; at: number };
 
 export interface DeviceBridgeClientConfig {
@@ -286,6 +295,28 @@ export class DeviceBridgeClient {
       } catch (err) {
         this.send(ws, {
           type: "generateResult",
+          correlationId: msg.correlationId,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return;
+    }
+
+    if (msg.type === "embed") {
+      try {
+        const capacitorLlama = await loadCapacitorLlama();
+        const result = await capacitorLlama.embed({ input: msg.input });
+        this.send(ws, {
+          type: "embedResult",
+          correlationId: msg.correlationId,
+          ok: true,
+          embedding: result.embedding,
+          tokens: result.tokens,
+        });
+      } catch (err) {
+        this.send(ws, {
+          type: "embedResult",
           correlationId: msg.correlationId,
           ok: false,
           error: err instanceof Error ? err.message : String(err),

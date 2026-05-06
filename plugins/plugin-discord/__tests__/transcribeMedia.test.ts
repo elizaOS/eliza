@@ -7,7 +7,7 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { transcribeMedia } from "../actions/transcribeMedia";
+import { mediaOp } from "../actions/mediaOp";
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
@@ -69,7 +69,7 @@ async function run(
 ) {
 	const testRuntime = runtime(recentMessages);
 	const callback = vi.fn(async () => []) as HandlerCallback;
-	const result = await transcribeMedia.handler?.(
+	const result = await mediaOp.handler?.(
 		testRuntime,
 		message(request, attachments),
 		undefined,
@@ -79,14 +79,14 @@ async function run(
 	return { callback, result, runtime: testRuntime };
 }
 
-describe("TRANSCRIBE_MEDIA", () => {
+describe("DISCORD_MEDIA_OP transcribe", () => {
 	it("owns the media turn after emitting a transcript or fallback", () => {
-		expect(transcribeMedia.suppressPostActionContinuation).toBe(true);
+		expect(mediaOp.suppressPostActionContinuation).toBe(true);
 	});
 
 	it("validates current media attachments without requiring transcription keywords", async () => {
 		await expect(
-			transcribeMedia.validate?.(
+			mediaOp.validate?.(
 				runtime(),
 				message("what is this?", [media({ text: "hello world" })]),
 			),
@@ -104,7 +104,7 @@ describe("TRANSCRIBE_MEDIA", () => {
 
 		expect(callback).toHaveBeenCalledWith({
 			text: expect.stringContaining("hello from the recording"),
-			actions: ["TRANSCRIBE_MEDIA_RESPONSE"],
+			actions: ["DISCORD_MEDIA_OP_RESPONSE"],
 			source: "discord",
 			attachments: [],
 		});
@@ -121,7 +121,7 @@ describe("TRANSCRIBE_MEDIA", () => {
 
 		expect(callback).toHaveBeenCalledWith({
 			text: "I don't have a transcript for that audio attachment yet.",
-			actions: ["TRANSCRIBE_MEDIA_FAILED"],
+			actions: ["DISCORD_MEDIA_OP_FAILED"],
 			source: "discord",
 		});
 		expect(result).toEqual({

@@ -7,7 +7,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseToonKeyValue,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
@@ -16,16 +21,16 @@ import {
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { executeApprovedBookTravel } from "./owner-book-travel.js";
 import {
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,
-} from "./cross-channel-send.js";
+} from "./lib/messaging-helpers.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { executeApprovedBookTravel } from "./owner-book-travel.js";
 import { formatPromptValue } from "./prompt-format.js";
 
 const ACTION_NAME = "OWNER_RESOLVE_REQUEST";
@@ -36,15 +41,13 @@ const SUBACTIONS: SubactionsMap<ResolveSubaction> = {
   approve: {
     description:
       "Approve a queued action; reason optional in the user's language.",
-    descriptionCompressed:
-      "approve queued action; reason optional in user language",
+    descriptionCompressed: "approve queued action reason-optional",
     required: [],
   },
   reject: {
     description:
       "Reject a queued action; reason optional in the user's language.",
-    descriptionCompressed:
-      "reject queued action; reason optional in user language",
+    descriptionCompressed: "reject queued action reason-optional",
     required: [],
   },
 };
@@ -97,8 +100,10 @@ ${formatPending(pending)}
 Return TOON only with exactly these keys:
 requestId: id of the single targeted request, or null if ambiguous
 reason: short human-readable reason in the user's language, or null if none given`;
-  // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
-  const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+  const raw = await runWithTrajectoryContext(
+    { purpose: "lifeops-resolve-request" },
+    () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+  );
   const parsed = parseToonKeyValue<Record<string, unknown>>(
     typeof raw === "string" ? raw : "",
   );
@@ -233,7 +238,9 @@ export async function executeApprovedRequest(args: {
     };
   }
 
-  logger.info(`[OwnerResolveRequest] approved ${args.request.id} without executor`);
+  logger.info(
+    `[OwnerResolveRequest] approved ${args.request.id} without executor`,
+  );
   const text = "Approved.";
   await args.callback?.({ text });
   return {
@@ -305,7 +312,9 @@ async function resolveApprovalRequest(
         callback,
       });
     }
-    logger.info(`[OwnerResolveRequest] ${intent} ${updated.id} by ${subjectUserId}`);
+    logger.info(
+      `[OwnerResolveRequest] ${intent} ${updated.id} by ${subjectUserId}`,
+    );
     const text = `Rejected request ${updated.id}.`;
     if (callback) await callback({ text });
     return {
@@ -379,7 +388,12 @@ export const ownerResolveRequestAction: Action & {
         data: { actionName: ACTION_NAME, missing: resolved.missing },
       };
     }
-    return resolveApprovalRequest(runtime, message, resolved.subaction, callback);
+    return resolveApprovalRequest(
+      runtime,
+      message,
+      resolved.subaction,
+      callback,
+    );
   },
   examples: [
     [

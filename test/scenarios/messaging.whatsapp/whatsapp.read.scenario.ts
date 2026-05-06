@@ -29,7 +29,7 @@ export default scenario({
       room: "main",
       text: "What's new on WhatsApp?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX"],
+        acceptedActions: ["TRIAGE_MESSAGES"],
         description: "whatsapp chat read",
         includesAny: ["whatsapp", "message", "chat"],
       }),
@@ -44,18 +44,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "INBOX",
+      actionName: "TRIAGE_MESSAGES",
     },
     {
       type: "selectedActionArguments",
-      actionName: "INBOX",
+      actionName: "TRIAGE_MESSAGES",
       includesAny: ["whatsapp", "message", "chat"],
     },
     {
       type: "custom",
       name: "whatsapp-read-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX"],
+        acceptedActions: ["TRIAGE_MESSAGES"],
         description: "whatsapp chat read",
         includesAny: ["whatsapp", "message", "chat"],
       }),
@@ -65,7 +65,7 @@ export default scenario({
       name: "whatsapp-read-requires-channel-context",
       predicate: async (ctx) => {
         const inboxActions = ctx.actionsCalled.filter((action) =>
-          ["INBOX", "OWNER_INBOX"].includes(action.actionName),
+          ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"].includes(action.actionName),
         );
         const blob = JSON.stringify(inboxActions).toLowerCase();
         if (!blob.includes("whatsapp")) {

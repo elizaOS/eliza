@@ -12,7 +12,7 @@ vi.mock("@elizaos/capacitor-contacts", () => ({
 import { appContactsPlugin } from "../plugin";
 import { contactsProvider } from "./contacts";
 
-describe("CONTACTS provider", () => {
+describe("androidContacts provider", () => {
   beforeEach(() => {
     contactsMock.listContacts.mockReset();
   });
@@ -20,12 +20,12 @@ describe("CONTACTS provider", () => {
   it("replaces the read-only LIST_CONTACTS action with a dynamic provider", () => {
     expect(appContactsPlugin.actions ?? []).toHaveLength(0);
     expect((appContactsPlugin.providers ?? []).map((p) => p.name)).toContain(
-      "CONTACTS",
+      "androidContacts",
     );
     expect(contactsProvider.dynamic).toBe(true);
   });
 
-  it("returns bounded address-book context without importing the React UI", async () => {
+  it("returns bounded address-book context as a TOON document", async () => {
     const contacts = [
       {
         id: "1",
@@ -45,12 +45,24 @@ describe("CONTACTS provider", () => {
     );
 
     expect(contactsMock.listContacts).toHaveBeenCalledWith({ limit: 50 });
-    expect(result.text).toContain("contacts[1]:");
+    expect(typeof result.text).toBe("string");
+    expect(result.text).toContain("android_contacts");
     expect(result.text).toContain("Ada Lovelace");
     expect(result.values).toMatchObject({
       contactsAvailable: true,
       contactsCount: 1,
     });
-    expect(result.data).toMatchObject({ contacts, count: 1, limit: 50 });
+    const data = result.data as {
+      contacts: { id: string; displayName: string }[];
+      count: number;
+      limit: number;
+    };
+    expect(data.count).toBe(1);
+    expect(data.limit).toBe(50);
+    expect(data.contacts[0]).toMatchObject({
+      id: "1",
+      displayName: "Ada Lovelace",
+      starred: true,
+    });
   });
 });

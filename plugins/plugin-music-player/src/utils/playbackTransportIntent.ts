@@ -1,7 +1,7 @@
 /**
  * True when the user message is only playback transport (pause/skip/stop/resume),
  * not a request to play new audio. Used so PLAY_AUDIO validate returns false and
- * the runtime picks PAUSE_MUSIC, SKIP_TRACK, etc. instead.
+ * the runtime picks PLAYBACK_OP (op=pause|resume|skip|stop) instead.
  */
 export function isPlaybackTransportControlOnlyMessage(text: string): boolean {
   const raw = (text || "").trim().toLowerCase();

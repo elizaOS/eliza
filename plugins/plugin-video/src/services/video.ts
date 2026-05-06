@@ -337,11 +337,18 @@ export class VideoService extends IVideoService {
   }
 
   public isVideoUrl(url: string): boolean {
-    return (
-      url.includes("youtube.com") ||
-      url.includes("youtu.be") ||
-      url.includes("vimeo.com")
-    );
+    try {
+      const { hostname } = new URL(url);
+      return (
+        hostname === "youtube.com" ||
+        hostname.endsWith(".youtube.com") ||
+        hostname === "youtu.be" ||
+        hostname === "vimeo.com" ||
+        hostname.endsWith(".vimeo.com")
+      );
+    } catch {
+      return false;
+    }
   }
 
   public async downloadMedia(url: string): Promise<string> {

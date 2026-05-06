@@ -29,7 +29,7 @@ export default scenario({
       room: "main",
       text: "Reply on Signal to Dana saying I confirmed the booking.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "signal draft reply",
         includesAny: ["signal", "Dana", "draft", "reply"],
       }),
@@ -46,7 +46,7 @@ export default scenario({
       room: "main",
       text: "Send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "signal send after confirmation",
         includesAny: ["send", "signal", "reply"],
       }),
@@ -61,7 +61,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["INBOX", "CROSS_CHANNEL_SEND"],
+      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
     },
     {
       type: "custom",
@@ -87,7 +87,7 @@ export default scenario({
       type: "custom",
       name: "signal-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
         description: "signal draft then send",
         includesAny: ["signal", "draft", "send", "reply"],
         minCount: 2,

@@ -12,7 +12,7 @@ function findActiveGuildId(musicService: MusicService): string | null {
 }
 
 /**
- * Resolve the music queue guild id the same way as playAudio / queueMusic.
+ * Resolve the music queue guild id the same way as playAudio / PLAYBACK_OP queue.
  * WHY: Control actions used `room.serverId` alone; on web that is often a raw
  * id while playback uses `web-${roomId}` or `web-${serverId}`, so pause/skip
  * hit a non-existent queue and no-op'd while the agent still replied "Paused".

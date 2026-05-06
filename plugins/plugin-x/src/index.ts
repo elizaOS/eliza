@@ -1,9 +1,9 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { fetchFeedTopAction } from "./actions/fetchFeedTop.js";
-import { readUnreadXDmsAction } from "./actions/readUnreadXDms.js";
 import { searchXAction } from "./actions/searchX.js";
+import { sendXPostAction } from "./actions/sendXPost.js";
 import { summarizeFeedAction } from "./actions/summarizeFeed.js";
-import { xPostAction } from "./actions/xPost.js";
+import { xTimelineProvider } from "./providers/xTimeline.js";
+import { xUnreadDmsProvider } from "./providers/xUnreadDms.js";
 import { registerXSearchCategory } from "./search-category.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
@@ -12,13 +12,8 @@ export const XPlugin: Plugin = {
   name: "x",
   description:
     "X (formerly Twitter) connector with posting, interactions, and timeline actions",
-  actions: [
-    xPostAction,
-    fetchFeedTopAction,
-    searchXAction,
-    summarizeFeedAction,
-    readUnreadXDmsAction,
-  ],
+  actions: [sendXPostAction, searchXAction, summarizeFeedAction],
+  providers: [xTimelineProvider, xUnreadDmsProvider],
   services: [XService],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerXSearchCategory(runtime);

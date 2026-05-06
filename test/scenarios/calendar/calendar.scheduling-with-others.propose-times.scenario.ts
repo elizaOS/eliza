@@ -70,7 +70,7 @@ export default scenario({
       name: "propose-three-slots",
       text: "Give me three 30-minute slots I can offer Alex next week.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["PROPOSE_MEETING_TIMES"],
+        acceptedActions: ["OWNER_CALENDAR"],
         description: "three meeting slots for Alex",
       }),
       responseIncludesAny: ["three", "slot", "Alex", "30"],
@@ -79,13 +79,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "PROPOSE_MEETING_TIMES",
+      actionName: "OWNER_CALENDAR",
     },
     {
       type: "custom",
       name: "meeting-slots-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["PROPOSE_MEETING_TIMES"],
+        acceptedActions: ["OWNER_CALENDAR"],
         description: "three meeting slots for Alex",
       }),
     },
@@ -94,7 +94,7 @@ export default scenario({
       name: "meeting-slots-result-shape",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "PROPOSE_MEETING_TIMES",
+          (action) => action.actionName === "OWNER_CALENDAR",
         );
         if (!hit) {
           return "expected PROPOSE_MEETING_TIMES action result";

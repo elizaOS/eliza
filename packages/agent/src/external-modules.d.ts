@@ -228,18 +228,18 @@ declare module "@elizaos/app-contacts/plugin" {
 }
 
 declare module "@elizaos/app-phone/plugin" {
-  import type { Action, Plugin } from "@elizaos/core";
+  import type { Action, Plugin, Provider } from "@elizaos/core";
 
   export const placeCallAction: Action;
-  export const readCallLogAction: Action;
+  export const phoneCallLogProvider: Provider;
   export const appPhonePlugin: Plugin;
   export default appPhonePlugin;
 }
 
 declare module "@elizaos/app-wifi/plugin" {
-  import type { Action, Plugin } from "@elizaos/core";
+  import type { Plugin, Provider } from "@elizaos/core";
 
-  export const scanWifiAction: Action;
+  export const wifiNetworksProvider: Provider;
   export const appWifiPlugin: Plugin;
   export default appWifiPlugin;
 }

@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "Show me the urgent blockers first and separate them from low-priority inbound.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX", "GMAIL_ACTION"],
+        acceptedActions: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
         description: "priority-ranked inbox brief",
         includesAny: ["urgent", "low", "priority", "blocker"],
       }),
@@ -53,11 +53,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["INBOX", "GMAIL_ACTION"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["INBOX", "GMAIL_ACTION"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
       includesAny: ["urgent", "low", "priority", "blocker"],
     },
     {
@@ -68,7 +68,7 @@ export default scenario({
       type: "custom",
       name: "ea-priority-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX", "GMAIL_ACTION"],
+        acceptedActions: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
         description: "priority-ranked inbox brief",
         includesAny: ["urgent", "low", "priority", "blocker"],
       }),

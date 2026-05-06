@@ -81,39 +81,60 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
   }
 
   const createdAt = data.created_at ?? context.created_at ?? new Date();
+  const forceInlineData = data.data_storage === "inline";
+  const forceInlineResult = data.result_storage === "inline";
+  const forceInlineError = data.error_storage === "inline";
   const [payloadData, result, error] = await Promise.all([
     data.data === undefined
       ? Promise.resolve(null)
-      : offloadJsonField<Record<string, unknown>>({
-          namespace: ObjectNamespaces.JobPayloads,
-          organizationId: context.organization_id,
-          objectId: context.id,
-          field: "data",
-          createdAt,
-          value: data.data,
-          inlineValueWhenOffloaded: inlineJobData(data.data),
-        }),
+      : forceInlineData
+        ? Promise.resolve({
+            value: data.data,
+            storage: "inline" as const,
+            key: null,
+          })
+        : offloadJsonField<Record<string, unknown>>({
+            namespace: ObjectNamespaces.JobPayloads,
+            organizationId: context.organization_id,
+            objectId: context.id,
+            field: "data",
+            createdAt,
+            value: data.data,
+            inlineValueWhenOffloaded: inlineJobData(data.data),
+          }),
     data.result === undefined
       ? Promise.resolve(null)
-      : offloadJsonField<Record<string, unknown>>({
-          namespace: ObjectNamespaces.JobPayloads,
-          organizationId: context.organization_id,
-          objectId: context.id,
-          field: "result",
-          createdAt,
-          value: data.result,
-          inlineValueWhenOffloaded: null,
-        }),
+      : forceInlineResult
+        ? Promise.resolve({
+            value: data.result,
+            storage: "inline" as const,
+            key: null,
+          })
+        : offloadJsonField<Record<string, unknown>>({
+            namespace: ObjectNamespaces.JobPayloads,
+            organizationId: context.organization_id,
+            objectId: context.id,
+            field: "result",
+            createdAt,
+            value: data.result,
+            inlineValueWhenOffloaded: null,
+          }),
     data.error === undefined
       ? Promise.resolve(null)
-      : offloadTextField({
-          namespace: ObjectNamespaces.JobPayloads,
-          organizationId: context.organization_id,
-          objectId: context.id,
-          field: "error",
-          createdAt,
-          value: data.error,
-        }),
+      : forceInlineError
+        ? Promise.resolve({
+            value: data.error,
+            storage: "inline" as const,
+            key: null,
+          })
+        : offloadTextField({
+            namespace: ObjectNamespaces.JobPayloads,
+            organizationId: context.organization_id,
+            objectId: context.id,
+            field: "error",
+            createdAt,
+            value: data.error,
+          }),
   ]);
 
   return {

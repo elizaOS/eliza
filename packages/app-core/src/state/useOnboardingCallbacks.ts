@@ -10,6 +10,7 @@
  * and applyDetectedProviders.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { getDefaultStylePreset } from "@elizaos/shared";
 import { type RefObject, useCallback } from "react";
 import type { StylePreset } from "../api";
@@ -27,6 +28,26 @@ const ensureOnboardedAgentRunning = async (
     // Non-fatal: agent manager may not be ready yet. Onboarding will retry.
   }
 };
+
+type NativeAgentPlugin = {
+  start?: () => Promise<unknown>;
+};
+
+async function startNativeAgentIfAvailable(): Promise<void> {
+  try {
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, NativeAgentPlugin | undefined>;
+    };
+    const registeredAgent =
+      capacitorWithPlugins.Plugins?.Agent ??
+      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
+    await registeredAgent.start?.();
+  } catch {
+    const agentPluginId = "@elizaos/capacitor-agent";
+    const { Agent } = await import(/* @vite-ignore */ agentPluginId);
+    await (Agent as NativeAgentPlugin | undefined)?.start?.();
+  }
+}
 
 import { buildWalletRpcUpdateRequest } from "@elizaos/app-wallet/wallet-rpc";
 import {
@@ -637,11 +658,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               });
             } catch {
               try {
-                const agentPluginId = "@elizaos/capacitor-agent";
-                const { Agent } = await import(
-                  /* @vite-ignore */ agentPluginId
-                );
-                await Agent.start();
+                await startNativeAgentIfAvailable();
               } catch {
                 /* dev mode where agent is already running */
               }

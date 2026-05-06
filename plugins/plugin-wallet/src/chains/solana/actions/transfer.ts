@@ -14,6 +14,7 @@ import {
   type State,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import { runIntentModel } from "../../../utils/intent-trajectory";
 import { SOLANA_SERVICE_NAME } from "../constants";
 import type { SolanaService, SolanaTransferParams, SolanaTransferResult } from "../service";
 import { confirmationRequired, isConfirmed } from "./confirmation";
@@ -57,8 +58,11 @@ async function extractTransferContent(runtime: IAgentRuntime, prompt: string): P
       },
     },
     () =>
-      runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
+      runIntentModel({
+        runtime,
+        taskName: "solana.transfer.intent",
+        template: prompt,
+        modelType: ModelType.TEXT_LARGE,
       })
   );
 
@@ -81,7 +85,7 @@ function recentMessagesFromState(state: State | undefined): unknown[] {
 import { transferTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 
-const spec = requireActionSpec("TRANSFER");
+const spec = requireActionSpec("SOLANA_TRANSFER");
 
 export default {
   name: spec.name,

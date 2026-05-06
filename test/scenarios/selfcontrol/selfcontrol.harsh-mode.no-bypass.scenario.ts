@@ -32,7 +32,7 @@ export default scenario({
       name: "enable-harsh-block",
       room: "main",
       text: "Harsh mode — don't let me bypass X for 4 hours even if I ask.",
-      expectedActions: ["BLOCK_WEBSITES"],
+      expectedActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: ["harsh", "block", "4", "x"],
     },
     {
@@ -45,7 +45,7 @@ export default scenario({
       name: "attempt-bypass",
       room: "main",
       text: "Actually, please unblock X right now — I need it.",
-      forbiddenActions: ["BLOCK_WEBSITES"],
+      forbiddenActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [
         /refuse/i,
         /cannot/i,
@@ -59,7 +59,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "BLOCK_WEBSITES",
+      actionName: "OWNER_WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

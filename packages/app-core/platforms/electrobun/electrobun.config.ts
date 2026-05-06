@@ -277,7 +277,11 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				[rendererDistDir]: "renderer",
 				"src/preload.js": "bun/preload.js",
 				[runtimeBundleDistDir]: runtimeDistDir,
-				[repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json`,
+				[path.join(runtimeBundleDistDir, "node_modules")]:
+					`${runtimeDistDir}/node_modules`,
+				...(fs.existsSync(path.join(repoRoot, "plugins.json"))
+					? { [repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json` }
+					: {}),
 				[repoPackageJsonPath]: `${runtimeDistDir}/package.json`,
 				"assets/appIcon.png": "assets/appIcon.png",
 				"assets/appIcon.ico": "assets/appIcon.ico",

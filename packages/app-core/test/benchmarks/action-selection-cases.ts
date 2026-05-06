@@ -119,20 +119,22 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "checkin-morning",
     userMessage: "run my morning check-in",
-    expectedAction: "RUN_MORNING_CHECKIN",
+    expectedAction: "OWNER_CHECKIN",
+    expectedParams: { subaction: "morning" },
     tags: ["checkin", "standard"],
   },
   {
     id: "checkin-night",
     userMessage: "give me my night check-in",
-    expectedAction: "RUN_NIGHT_CHECKIN",
+    expectedAction: "OWNER_CHECKIN",
+    expectedParams: { subaction: "night" },
     tags: ["checkin", "standard"],
   },
   {
     id: "owner-profile-travel-prefs",
     userMessage:
       "remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue",
-    expectedAction: "UPDATE_OWNER_PROFILE",
+    expectedAction: "OWNER_PROFILE",
     tags: ["profile", "standard"],
   },
 
@@ -176,70 +178,63 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["calendar", "standard"],
   },
 
-  // ─── Email triage (OWNER_INBOX, channel=gmail) ────────────────────────
+  // ─── Email triage (TRIAGE_MESSAGES, channel=gmail) ────────────────────
   {
     id: "email-triage-inbox",
     userMessage: "triage my gmail inbox",
-    expectedAction: "OWNER_INBOX",
-    acceptableActions: ["TRIAGE", "OWNER_INBOX"],
-    expectedParams: { intent: "triage" },
+    expectedAction: "TRIAGE_MESSAGES",
+    acceptableActions: ["TRIAGE"],
     tags: ["email", "critical"],
   },
   {
     id: "email-unread",
     userMessage: "summarize my unread emails",
-    expectedAction: "OWNER_INBOX",
-    acceptableActions: ["TRIAGE", "DIGEST"],
+    expectedAction: "TRIAGE_MESSAGES",
+    acceptableActions: ["LIST_INBOX", "OWNER_DIGEST"],
     tags: ["email", "standard"],
   },
   {
     id: "email-draft-reply",
     userMessage:
       "draft a reply to the latest email from Sarah saying I'll review it tomorrow",
-    expectedAction: "OWNER_INBOX",
-    acceptableActions: ["DRAFT_REPLY"],
-    expectedParams: { intent: "draft_reply" },
+    expectedAction: "DRAFT_REPLY",
     tags: ["email", "critical"],
   },
   {
     id: "email-send-reply",
     userMessage:
       "send a reply to the last email from finance confirming receipt",
-    expectedAction: "OWNER_INBOX",
-    acceptableActions: ["SEND_REPLY"],
-    expectedParams: { intent: "send_reply" },
+    expectedAction: "RESPOND_TO_MESSAGE",
+    acceptableActions: ["SEND_DRAFT"],
     tags: ["email", "critical"],
   },
   {
     id: "email-unsubscribe-sender",
     userMessage: "unsubscribe me from newsletters@medium.com and block them",
-    expectedAction: "EMAIL_UNSUBSCRIBE",
+    expectedAction: "MANAGE_MESSAGE",
+    expectedParams: { operation: "unsubscribe" },
     tags: ["email", "standard"],
   },
 
-  // ─── Inbox (generic INBOX) ────────────────────────────────────────────
+  // ─── Inbox (generic) ──────────────────────────────────────────────────
   {
     id: "inbox-triage",
     userMessage: "triage my inbox",
-    expectedAction: "OWNER_INBOX",
-    acceptableActions: ["TRIAGE"],
-    expectedParams: { intent: "triage" },
+    expectedAction: "TRIAGE_MESSAGES",
     tags: ["inbox", "critical"],
   },
   {
     id: "inbox-digest",
     userMessage: "give me my inbox digest",
-    expectedAction: "OWNER_INBOX",
-    acceptableActions: ["DIGEST"],
-    expectedParams: { intent: "digest" },
+    expectedAction: "OWNER_DIGEST",
+    acceptableActions: ["LIST_INBOX"],
     tags: ["inbox", "standard"],
   },
   {
     id: "inbox-respond",
     userMessage: "respond to the messages that need an answer in my inbox",
-    expectedAction: "OWNER_INBOX",
-    acceptableActions: ["RESPOND"],
-    expectedParams: { intent: "respond" },
+    expectedAction: "RESPOND_TO_MESSAGE",
+    acceptableActions: ["TRIAGE_MESSAGES"],
     tags: ["inbox", "standard"],
   },
 
@@ -309,19 +304,22 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "cross-send-telegram",
     userMessage:
       "send a telegram message to Jane saying I'm running 10 minutes late",
-    expectedAction: "OWNER_SEND_MESSAGE",
+    expectedAction: "SEND_DRAFT",
+    acceptableActions: ["RESPOND_TO_MESSAGE"],
     tags: ["messaging", "critical"],
   },
   {
     id: "cross-send-discord",
     userMessage: "post 'standup in 5' to the engineering discord channel",
-    expectedAction: "OWNER_SEND_MESSAGE",
+    expectedAction: "SEND_DRAFT",
+    acceptableActions: ["RESPOND_TO_MESSAGE"],
     tags: ["messaging", "standard"],
   },
   {
     id: "cross-send-signal",
     userMessage: "send a Signal message to Priya saying thanks for the review",
-    expectedAction: "OWNER_SEND_MESSAGE",
+    expectedAction: "SEND_DRAFT",
+    acceptableActions: ["RESPOND_TO_MESSAGE"],
     tags: ["messaging", "standard"],
   },
 
@@ -329,7 +327,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "x-read-dms",
     userMessage: "check my twitter DMs",
-    expectedAction: "X_READ",
+    expectedAction: "OWNER_X",
     acceptableActions: ["READ_DMS"],
     expectedParams: { intent: "read_dms" },
     tags: ["x", "standard"],
@@ -337,7 +335,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "x-read-feed",
     userMessage: "what's on my X timeline?",
-    expectedAction: "X_READ",
+    expectedAction: "OWNER_X",
     acceptableActions: ["READ_FEED"],
     expectedParams: { intent: "read_feed" },
     tags: ["x", "standard"],
@@ -345,7 +343,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "x-search",
     userMessage: "search twitter for posts about elizaOS",
-    expectedAction: "X_READ",
+    expectedAction: "OWNER_X",
     acceptableActions: ["SEARCH"],
     expectedParams: { intent: "search" },
     tags: ["x", "standard"],
@@ -386,7 +384,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     acceptableActions: [
       "PROPOSE",
       "PROPOSE_MEETING_TIMES",
-      "CALENDAR_ACTION",
+      "OWNER_CALENDAR",
       "SCHEDULING",
     ],
     expectedParams: { intent: "propose" },
@@ -397,14 +395,14 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "dossier-person",
     userMessage: "pull up a dossier on Satya Nadella",
-    expectedAction: "DOSSIER",
+    expectedAction: "OWNER_DOSSIER",
     tags: ["dossier", "standard"],
   },
   {
     id: "dossier-prep",
     userMessage:
       "give me the background on the person I'm meeting next: Julia Chen",
-    expectedAction: "DOSSIER",
+    expectedAction: "OWNER_DOSSIER",
     tags: ["dossier", "standard"],
   },
 
@@ -412,22 +410,22 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "twilio-call-dentist",
     userMessage: "call the dentist and reschedule my appointment",
-    expectedAction: "CALL_EXTERNAL",
-    acceptableActions: ["TWILIO_VOICE_CALL"],
+    expectedAction: "OWNER_VOICE_CALL",
+    expectedParams: { subaction: "call_external" },
     tags: ["voice", "critical"],
   },
   {
     id: "twilio-call-support",
     userMessage: "phone my cable company and ask about the outage",
-    expectedAction: "CALL_EXTERNAL",
-    acceptableActions: ["TWILIO_VOICE_CALL"],
+    expectedAction: "OWNER_VOICE_CALL",
+    expectedParams: { subaction: "call_external" },
     tags: ["voice", "standard"],
   },
   {
     id: "book-travel-flight",
     userMessage:
       "book travel for me from San Francisco to New York next Thursday and Friday",
-    expectedAction: "BOOK_TRAVEL",
+    expectedAction: "OWNER_BOOK_TRAVEL",
     tags: ["travel", "standard"],
   },
   {
@@ -440,20 +438,23 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "autofill-password-field",
     userMessage:
       "fill the password field on github.com using my password manager",
-    expectedAction: "REQUEST_FIELD_FILL",
+    expectedAction: "OWNER_AUTOFILL",
+    expectedParams: { subaction: "fill" },
     tags: ["browser", "standard"],
   },
   {
     id: "approval-approve-request",
     userMessage: "approve the pending travel booking request",
-    expectedAction: "APPROVE_REQUEST",
+    expectedAction: "OWNER_RESOLVE_REQUEST",
+    expectedParams: { subaction: "approve" },
     tags: ["approval", "standard"],
   },
   {
     id: "approval-reject-request",
     userMessage:
       "reject that pending approval request and say it needs changes",
-    expectedAction: "REJECT_REQUEST",
+    expectedAction: "OWNER_RESOLVE_REQUEST",
+    expectedParams: { subaction: "reject" },
     tags: ["approval", "standard"],
   },
 
@@ -462,41 +463,41 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "computer-use-click",
     userMessage:
       "open the Finder and create a new folder called Q2-Reports on my desktop",
-    expectedAction: "LIFEOPS_COMPUTER_USE",
+    expectedAction: "OWNER_COMPUTER_USE",
     tags: ["computer-use", "standard"],
   },
   {
     id: "computer-use-screenshot",
     userMessage: "take a screenshot of my desktop",
-    expectedAction: "LIFEOPS_COMPUTER_USE",
+    expectedAction: "OWNER_COMPUTER_USE",
     tags: ["computer-use", "standard"],
   },
   {
     id: "subscriptions-cancel-netflix",
     userMessage: "cancel my Netflix subscription",
-    expectedAction: "SUBSCRIPTIONS",
-    acceptableActions: ["LIFEOPS_COMPUTER_USE"],
+    expectedAction: "OWNER_SUBSCRIPTIONS",
+    acceptableActions: ["OWNER_COMPUTER_USE"],
     tags: ["subscriptions", "critical"],
   },
   {
     id: "subscriptions-cancel-hulu-browser",
     userMessage: "cancel Hulu in my browser",
-    expectedAction: "SUBSCRIPTIONS",
-    acceptableActions: ["MANAGE_LIFEOPS_BROWSER", "LIFEOPS_COMPUTER_USE"],
+    expectedAction: "OWNER_SUBSCRIPTIONS",
+    acceptableActions: ["MANAGE_LIFEOPS_BROWSER", "OWNER_COMPUTER_USE"],
     tags: ["subscriptions", "critical"],
   },
   {
     id: "subscriptions-cancel-google-play",
     userMessage: "cancel my Google Play subscription",
-    expectedAction: "SUBSCRIPTIONS",
-    acceptableActions: ["LIFEOPS_COMPUTER_USE"],
+    expectedAction: "OWNER_SUBSCRIPTIONS",
+    acceptableActions: ["OWNER_COMPUTER_USE"],
     tags: ["subscriptions", "critical"],
   },
   {
     id: "subscriptions-cancel-app-store",
     userMessage: "cancel my App Store subscription on this Mac",
-    expectedAction: "SUBSCRIPTIONS",
-    acceptableActions: ["LIFEOPS_COMPUTER_USE"],
+    expectedAction: "OWNER_SUBSCRIPTIONS",
+    acceptableActions: ["OWNER_COMPUTER_USE"],
     tags: ["subscriptions", "critical"],
   },
 
@@ -579,15 +580,15 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "intent-sync-broadcast-reminder",
     userMessage: "broadcast a reminder to all my devices",
-    expectedAction: "INTENT_SYNC",
-    acceptableActions: ["PUBLISH_DEVICE_INTENT", "CROSS_CHANNEL_SEND"],
+    expectedAction: "OWNER_DEVICE_INTENT",
+    acceptableActions: ["SEND_DRAFT"],
     tags: ["intent-sync", "standard"],
   },
   {
     id: "intent-sync-mobile-routine-reminder",
     userMessage:
       "broadcast a routine reminder to my mobile titled 'Stretch break' saying 'Get up and stretch for five minutes'",
-    expectedAction: "INTENT_SYNC",
+    expectedAction: "OWNER_DEVICE_INTENT",
     expectedParams: {
       subaction: "broadcast",
       kind: "routine_reminder",

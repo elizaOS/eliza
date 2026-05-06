@@ -8,6 +8,7 @@ import {
 } from "@elizaos/core";
 import { getToken } from "@lifi/sdk";
 import { type Address, formatUnits, parseAbi } from "viem";
+import { runIntentModel } from "../../../utils/intent-trajectory";
 import { tokenBalanceTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { EVMError, EVMErrorCode, type SupportedChain } from "../types";
@@ -40,9 +41,12 @@ export const tokenBalanceProvider: Provider = {
 
     const prompt = tokenBalanceTemplate.replace("{{userMessage}}", inputText);
 
-    const runModel = runtime.useModel.bind(runtime);
-    const response = await runModel(ModelType.TEXT_SMALL, {
-      prompt,
+    const response = await runIntentModel({
+      runtime,
+      taskName: "evm.token-balance.intent",
+      purpose: "provider",
+      template: prompt,
+      modelType: ModelType.TEXT_SMALL,
       maxTokens: 100,
     });
 

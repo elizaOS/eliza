@@ -2906,11 +2906,13 @@ export async function startEliza(
   }
 
   // 2d-iii. OG tracking code initialization
-  try {
-    const { initializeOGCode } = await loadElizaMakerModule();
-    initializeOGCode?.();
-  } catch {
-    // Silent — OG tracking is non-critical
+  if (!isMobilePlatform()) {
+    try {
+      const { initializeOGCode } = await loadElizaMakerModule();
+      initializeOGCode?.();
+    } catch {
+      // Silent — OG tracking is non-critical
+    }
   }
 
   // 2d-ii. Allow destructive migrations (e.g. dropping tables removed between
@@ -3485,6 +3487,34 @@ export async function startEliza(
     },
   });
   installRuntimeMethodBindings(runtime);
+
+  // 7a. Mobile local inference must be registered before runtime.initialize().
+  // Runtime services probe TEXT_EMBEDDING during init; registering the local
+  // handler only after startEliza() returns leaves mobile local mode booting
+  // with "no provider" diagnostics and disabled embedding services.
+  if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
+    try {
+      const { ensureAospLocalInferenceHandlers } = await import(
+        "./aosp-local-inference-bootstrap.js"
+      );
+      await ensureAospLocalInferenceHandlers(runtime);
+    } catch (err) {
+      logger.warn(
+        `[eliza] AOSP local inference pre-registration skipped: ${formatError(err)}`,
+      );
+    }
+  } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
+    try {
+      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+        "./mobile-device-bridge-bootstrap.js"
+      );
+      await ensureMobileDeviceBridgeInferenceHandlers(runtime);
+    } catch (err) {
+      logger.warn(
+        `[eliza] Mobile device bridge pre-registration skipped: ${formatError(err)}`,
+      );
+    }
+  }
 
   // 7b. Pre-register plugin-sql so the adapter is ready before other plugins init.
   //     This is OPTIONAL — without it, some features (memory, todos) won't work.

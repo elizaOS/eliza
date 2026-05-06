@@ -2,6 +2,4 @@
  * LINE plugin actions.
  */
 
-export { sendFlexMessage } from "./sendFlexMessage.js";
-export { sendLocation } from "./sendLocation.js";
-export { sendMessage } from "./sendMessage.js";
+export { LINE_MESSAGE_OP_ACTION, messageOp } from "./messageOp.js";

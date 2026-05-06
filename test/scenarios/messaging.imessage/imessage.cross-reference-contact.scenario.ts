@@ -59,9 +59,9 @@ export default scenario({
           actionNames.has("READ_ENTITY")
         ) {
           const fallbackActions = [
-            "HEALTH",
-            "CALL_EXTERNAL",
-            "OWNER_INBOX",
+            "OWNER_HEALTH",
+            "OWNER_VOICE_CALL",
+            "TRIAGE_MESSAGES",
             "OWNER_RELATIONSHIP",
           ].filter((actionName) => actionNames.has(actionName));
           if (fallbackActions.length > 0) {

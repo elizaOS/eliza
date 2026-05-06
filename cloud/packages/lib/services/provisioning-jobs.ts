@@ -105,6 +105,7 @@ export class ProvisioningJobService {
       type: JOB_TYPES.AGENT_PROVISION,
       status: "pending",
       data: jobData as unknown as Record<string, unknown>,
+      data_storage: "inline",
       organization_id: params.organizationId,
       user_id: params.userId,
       webhook_url: params.webhookUrl,

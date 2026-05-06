@@ -25,7 +25,7 @@ import type { ActionSpy, ActionSpyCall } from "./action-spy.js";
  * `action_result` memory persisted by the runtime.
  */
 export interface ActionInvocation {
-  /** Canonical action name as recorded by the runtime (e.g. "CALENDAR_ACTION"). */
+  /** Canonical action name as recorded by the runtime (e.g. "OWNER_CALENDAR"). */
   actionName: string;
   /** Whether the action succeeded or failed. */
   actionStatus: "success" | "failed" | string;
@@ -325,7 +325,7 @@ export function expectActionOrder(
 /**
  * Assert that at least one of the given action names was called. Useful when
  * multiple actions could satisfy a user request (e.g. the agent might choose
- * SEND_EMAIL or GMAIL_ACTION for an email task).
+ * SEND_DRAFT or RESPOND_TO_MESSAGE for an email task).
  */
 export function expectAnyActionCalled(
   spy: ActionSpy,

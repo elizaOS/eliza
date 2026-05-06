@@ -223,6 +223,9 @@ export interface CloudCompatAgentProvisionResponse {
     status?: string;
     jobId?: string;
     bridgeUrl?: string | null;
+    webUiUrl?: string | null;
+    runtimeUrl?: string | null;
+    containerUrl?: string | null;
     healthUrl?: string | null;
     estimatedCompletionAt?: string | null;
   };

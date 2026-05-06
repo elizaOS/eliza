@@ -12,6 +12,7 @@ import {
   type State,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import { runIntentModel } from "../../../utils/intent-trajectory";
 import { SOLANA_SERVICE_NAME } from "../constants";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { SolanaService, SolanaSwapParams, SolanaSwapResult } from "../service";
@@ -70,8 +71,11 @@ async function extractSwapParams(
       },
     },
     () =>
-      runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
+      runIntentModel({
+        runtime,
+        taskName: "solana.swap.intent",
+        template: prompt,
+        modelType: ModelType.TEXT_LARGE,
       })
   );
 

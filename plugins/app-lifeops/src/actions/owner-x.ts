@@ -12,6 +12,7 @@ import {
   logger,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
   LifeOpsXDm,
@@ -156,9 +157,13 @@ async function resolveXReadPlanWithLlm(args: {
   ].join("\n");
 
   try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: "lifeops-x-planner" },
+      () =>
+        args.runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        }),
+    );
     const rawResponse = typeof result === "string" ? result : "";
     const parsed =
       parseToonKeyValue<Record<string, unknown>>(rawResponse);

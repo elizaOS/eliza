@@ -25,7 +25,7 @@ export default scenario({
       name: "propose-block",
       room: "main",
       text: "I feel distracted. Should I block X?",
-      forbiddenActions: ["BLOCK_WEBSITES"],
+      forbiddenActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [/block/i, /focus/i, /x/i, /\?/],
     },
     {
@@ -33,7 +33,7 @@ export default scenario({
       name: "decline-block",
       room: "main",
       text: "No, don't block that. I'll just close the tab.",
-      forbiddenActions: ["BLOCK_WEBSITES"],
+      forbiddenActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [
         /ok/i,
         /sure/i,

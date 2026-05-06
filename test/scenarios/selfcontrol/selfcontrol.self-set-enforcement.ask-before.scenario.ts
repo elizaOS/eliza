@@ -26,7 +26,7 @@ export default scenario({
       name: "loose-block-request",
       room: "main",
       text: "I think I need to block some distractions today.",
-      forbiddenActions: ["BLOCK_WEBSITES"],
+      forbiddenActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [/which/i, /what/i, /how long/i, /confirm/i, /\?/],
     },
   ],

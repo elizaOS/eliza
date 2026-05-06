@@ -590,6 +590,8 @@ async function loadBunFfi(): Promise<BunFfiLoadResult> {
      * with a generic `Fns extends Record<string, FFIFunction>` constraint
      * we don't want leaking into adapter types; we only consume the
      * weakly-typed runtime shape. */
+    // biome-ignore lint/suspicious/noTsIgnore: bun:ffi is a Bun runtime builtin loaded only on AOSP.
+    // @ts-ignore
     const mod = (await import("bun:ffi")) as unknown as BunFFIModule;
     return { ok: true, mod };
   } catch (err) {

@@ -9,7 +9,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType];
 
@@ -76,7 +76,10 @@ export async function runExtractorPipeline<TParsed>(
   }
 
   try {
-    const firstResult = await runtime.useModel(modelType, { prompt });
+    const firstResult = await runWithTrajectoryContext(
+      { purpose: "lifeops-extractor-first-pass" },
+      () => runtime.useModel(modelType, { prompt }),
+    );
     const firstRaw = asString(firstResult);
     const firstParsed = parser(firstRaw);
     if (firstParsed !== null) {
@@ -87,9 +90,13 @@ export async function runExtractorPipeline<TParsed>(
       return { parsed: null, raw: firstRaw, repaired: false };
     }
 
-    const repairResult = await runtime.useModel(modelType, {
-      prompt: buildRepairPrompt(firstRaw),
-    });
+    const repairResult = await runWithTrajectoryContext(
+      { purpose: "lifeops-extractor-repair-pass" },
+      () =>
+        runtime.useModel(modelType, {
+          prompt: buildRepairPrompt(firstRaw),
+        }),
+    );
     const repairRaw = asString(repairResult);
     const repairParsed = parser(repairRaw);
     return { parsed: repairParsed, raw: repairRaw, repaired: true };

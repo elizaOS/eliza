@@ -10,6 +10,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { formatEther, type Hex, parseEther } from "viem";
+import { runIntentModel } from "../../../utils/intent-trajectory";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
 import { transferTemplate } from "../templates";
@@ -88,9 +89,11 @@ export async function buildTransferDetails(
     template: transferTemplate,
   });
 
-  const runModel = runtime.useModel.bind(runtime);
-  const llmResponse = await runModel(ModelType.TEXT_SMALL, {
-    prompt: context,
+  const llmResponse = await runIntentModel({
+    runtime,
+    taskName: "evm.transfer.intent",
+    template: context,
+    modelType: ModelType.TEXT_SMALL,
   });
 
   const parsedResponse = parseToonKeyValue(llmResponse);
@@ -122,7 +125,7 @@ export async function buildTransferDetails(
   return transferDetails;
 }
 
-const spec = requireActionSpec("TRANSFER");
+const spec = requireActionSpec("EVM_TRANSFER");
 
 export const transferAction: Action = {
   name: spec.name,

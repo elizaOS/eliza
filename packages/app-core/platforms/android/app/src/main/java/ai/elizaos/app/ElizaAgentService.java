@@ -312,6 +312,8 @@ public class ElizaAgentService extends Service {
             if (launchScript.exists() && !launchScript.delete()) Log.w(TAG, "Could not delete stale launch.sh");
             File pgWasm = new File(root, "pglite.wasm");
             if (pgWasm.exists()) pgWasm.delete();
+            File initDbWasm = new File(root, "initdb.wasm");
+            if (initDbWasm.exists()) initDbWasm.delete();
             File pgData = new File(root, "pglite.data");
             if (pgData.exists()) pgData.delete();
             File vec = new File(getFilesDir(), "vector.tar.gz");
@@ -323,7 +325,11 @@ public class ElizaAgentService extends Service {
             File[] abiContents = abiDir.listFiles();
             if (abiContents != null) {
                 for (File f : abiContents) {
-                    if (f.isFile() && !f.delete()) Log.w(TAG, "Could not delete " + f.getName());
+                    try {
+                        java.nio.file.Files.deleteIfExists(f.toPath());
+                    } catch (IOException | SecurityException error) {
+                        Log.w(TAG, "Could not delete stale ABI asset " + f.getName() + ": " + error.getMessage());
+                    }
                 }
             }
         }
@@ -333,8 +339,8 @@ public class ElizaAgentService extends Service {
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(root, AGENT_BUNDLE_NAME));
         copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(root, AGENT_LAUNCH_SCRIPT));
 
-        // PGlite runtime assets. pglite.wasm + pglite.data sit next to
-        // the bundle (`new URL("./pglite.X", import.meta.url)`);
+        // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data
+        // sit next to the bundle (`new URL("./pglite.X", import.meta.url)`);
         // vector.tar.gz and fuzzystrmatch.tar.gz must live one directory
         // ABOVE the bundle because PGlite resolves them via
         // `new URL("../X.tar.gz", ...)`.
@@ -351,6 +357,7 @@ public class ElizaAgentService extends Service {
         // name and write to the runtime-expected `.tar.gz` name so the
         // loader contract is preserved without changing the bundle.
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
+        copyAssetIfPresent(assets, "agent/initdb.wasm", new File(root, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
         // aapt2 not only strips `.gz` from `*.tar.gz` asset names, it also
         // DECOMPRESSES them into raw tar bytes. PGlite's loader does
@@ -374,7 +381,15 @@ public class ElizaAgentService extends Service {
             throw new IOException("APK is missing assets/" + abiAssetDir + " for runtime ABI " + abi);
         }
         for (String name : abiFiles) {
-            copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(abiDir, name));
+            try {
+                copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(abiDir, name));
+            } catch (java.io.FileNotFoundException error) {
+                if ("libgcc_s.so.1".equals(name)) {
+                    Log.w(TAG, "Optional runtime library missing from APK assets: " + abiAssetDir + "/" + name);
+                    continue;
+                }
+                throw error;
+            }
         }
 
         File bun = new File(abiDir, BUN_BINARY);
@@ -393,6 +408,13 @@ public class ElizaAgentService extends Service {
             }
         }
 
+        boolean stdcxxLinkedFromNative = linkPackagedRuntimeLibrary(
+            abiDir,
+            "libstdc++.so.6",
+            "libeliza_stdcpp.so"
+        );
+        linkPackagedRuntimeLibrary(abiDir, "libgcc_s.so.1", "libeliza_gcc_s.so");
+
         // bun's binary requests `libstdc++.so.6` at runtime (the soname),
         // but the actual file we shipped is the versioned realpath
         // (`libstdc++.so.6.0.33`). Without a symlink the musl loader
@@ -400,18 +422,25 @@ public class ElizaAgentService extends Service {
         // "Error relocating: symbol not found" lines. Create the symlink
         // pointing from the soname to the realpath inside the same abi
         // dir so LD_LIBRARY_PATH resolution works without LD_PRELOAD.
-        for (String name : abiFiles) {
-            if (name.startsWith("libstdc++.so.6.")) {
-                File realPath = new File(abiDir, name);
-                File symlink = new File(abiDir, "libstdc++.so.6");
-                if (realPath.exists() && !symlink.exists()) {
-                    try {
-                        java.nio.file.Files.createSymbolicLink(
-                            symlink.toPath(),
-                            java.nio.file.Paths.get(name)
-                        );
-                    } catch (IOException error) {
-                        Log.w(TAG, "Could not symlink libstdc++.so.6 → " + name + ": " + error.getMessage());
+        if (!stdcxxLinkedFromNative) {
+            for (String name : abiFiles) {
+                if (name.startsWith("libstdc++.so.6.")) {
+                    File realPath = new File(abiDir, name);
+                    File symlink = new File(abiDir, "libstdc++.so.6");
+                    if (realPath.exists()) {
+                        try {
+                            if (java.nio.file.Files.isSymbolicLink(symlink.toPath()) && !symlink.exists()) {
+                                java.nio.file.Files.deleteIfExists(symlink.toPath());
+                            }
+                            if (!symlink.exists() && !java.nio.file.Files.isSymbolicLink(symlink.toPath())) {
+                                java.nio.file.Files.createSymbolicLink(
+                                    symlink.toPath(),
+                                    java.nio.file.Paths.get(name)
+                                );
+                            }
+                        } catch (IOException error) {
+                            Log.w(TAG, "Could not symlink libstdc++.so.6 → " + name + ": " + error.getMessage());
+                        }
                     }
                 }
             }
@@ -473,6 +502,45 @@ public class ElizaAgentService extends Service {
             }
         }
         return null;
+    }
+
+    private File nativeLibraryDir() {
+        return new File(getApplicationInfo().nativeLibraryDir);
+    }
+
+    private String packagedMuslLoaderName(String abi) {
+        if ("arm64-v8a".equals(abi)) return "libeliza_ld_musl_aarch64.so";
+        if ("x86_64".equals(abi)) return "libeliza_ld_musl_x86_64.so";
+        return null;
+    }
+
+    private File preferPackagedExecutable(File extractedFile, String packagedName) {
+        File packaged = new File(nativeLibraryDir(), packagedName);
+        if (packaged.exists() && packaged.length() > 0) {
+            return packaged;
+        }
+        return extractedFile;
+    }
+
+    private boolean linkPackagedRuntimeLibrary(
+        File abiDir,
+        String soname,
+        String packagedName
+    ) {
+        File packaged = new File(nativeLibraryDir(), packagedName);
+        if (!packaged.exists() || packaged.length() <= 0) return false;
+        File symlink = new File(abiDir, soname);
+        try {
+            java.nio.file.Files.deleteIfExists(symlink.toPath());
+            java.nio.file.Files.createSymbolicLink(
+                symlink.toPath(),
+                packaged.toPath()
+            );
+            return true;
+        } catch (IOException | UnsupportedOperationException error) {
+            Log.w(TAG, "Could not symlink " + soname + " to packaged native lib: " + error.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -641,6 +709,11 @@ public class ElizaAgentService extends Service {
                 return;
             }
             File loader = new File(abiDir, loaderName);
+            String packagedLoaderName = packagedMuslLoaderName(abi);
+            if (packagedLoaderName != null) {
+                loader = preferPackagedExecutable(loader, packagedLoaderName);
+            }
+            bun = preferPackagedExecutable(bun, "libeliza_bun.so");
 
             // Generate a fresh per-boot token for the WebView↔agent loopback.
             // Without this the loopback API would accept any local request
@@ -670,7 +743,10 @@ public class ElizaAgentService extends Service {
             pb.directory(root);
             Map<String, String> env = pb.environment();
             Map<String, String> agentEnv = new LinkedHashMap<>();
-            agentEnv.put("LD_LIBRARY_PATH", abiDir.getAbsolutePath());
+            agentEnv.put(
+                "LD_LIBRARY_PATH",
+                nativeLibraryDir().getAbsolutePath() + ":" + abiDir.getAbsolutePath()
+            );
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
             // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
@@ -1329,10 +1405,6 @@ public class ElizaAgentService extends Service {
      * - On stock Android, only start when the user has explicitly picked
      *   the Local runtime in the onboarding picker (mobile-runtime-mode
      *   == "local"). Cloud and Remote modes do not need this service.
-     *   Capacitor APKs strip assets/agent/ post-merge
-     *   (apps/app/android/app/build.gradle:82), so unconditional start
-     *   would surface a FileNotFoundException in
-     *   ElizaAgentService.copyAssetIfMissing on stock-Android Capacitor.
      */
     public static boolean shouldAutoStart(Context context) {
         if (isBrandedDevice()) {

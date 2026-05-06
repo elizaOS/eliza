@@ -224,7 +224,8 @@ export async function executeFallbackParsedActions(
             : ""
           : "";
       const shouldSuppressSuccessFallbackText =
-        parsed.name === "BLOCK_WEBSITES" &&
+        (parsed.name === "OWNER_WEBSITE_BLOCK" ||
+          parsed.name === "BLOCK_WEBSITES") &&
         actionSucceeded === true &&
         /\b(block|blocking|self ?control)\b/i.test(currentText);
       if (fallbackText) {

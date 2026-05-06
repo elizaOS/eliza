@@ -40,11 +40,11 @@ export default scenario({
       name: "confirm-block-after-detour",
       room: "main",
       text: "Actually do it now.",
-      expectedActions: ["BLOCK_WEBSITES"],
+      expectedActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [/x/i, /instagram/i, /block/i],
       assertTurn: (turn) => {
         const hit = turn.actionsCalled.find(
-          (action) => action.actionName === "BLOCK_WEBSITES",
+          (action) => action.actionName === "OWNER_WEBSITE_BLOCK",
         );
         if (!hit) {
           return "Expected BLOCK_WEBSITES to fire after the follow-up confirmation.";
@@ -62,7 +62,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "BLOCK_WEBSITES",
+      actionName: "OWNER_WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

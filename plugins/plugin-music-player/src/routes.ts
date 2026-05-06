@@ -1,8 +1,34 @@
 import { Transform } from "node:stream";
-import type { IAgentRuntime, Route } from "@elizaos/core";
-import type { Request, Response } from "express";
+import type {
+  IAgentRuntime,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core";
 import type { MusicService } from "./service";
 import { musicDebug } from "./utils/musicDebug";
+
+type StreamingRouteRequest = RouteRequest & {
+  get?: (name: string) => string | undefined;
+  on?: (event: "close", listener: () => void) => unknown;
+  protocol?: string;
+};
+
+type StreamingRouteResponse = RouteResponse & NodeJS.WritableStream;
+
+function firstRouteValue(
+  value: string | string[] | undefined,
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function routeGuildId(req: RouteRequest): string | undefined {
+  return firstRouteValue(req.query?.guildId) || req.params?.guildId;
+}
+
+function setRouteHeader(res: RouteResponse, name: string, value: string): void {
+  res.setHeader?.(name, value);
+}
 
 /**
  * Encode metadata for Shoutcast/Icecast format
@@ -59,15 +85,16 @@ function createShoutcastStream(
  * Supports both 'webm' (default) and 'shoutcast' formats
  */
 async function streamAudioHandler(
-  req: Request,
-  res: Response,
+  req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const guildId =
-    (req.query.guildId as string) || (req.params.guildId as string);
-  const format = (req.query.format as string) || "ogg";
+  const guildId = routeGuildId(req);
+  const format = firstRouteValue(req.query?.format) || "ogg";
   const supportsShoutcast =
     format.toLowerCase() === "shoutcast" || format.toLowerCase() === "icecast";
+  const streamingReq = req as StreamingRouteRequest;
+  const streamingRes = res as StreamingRouteResponse;
 
   if (!guildId) {
     res.status(400).json({ error: "guildId is required" });
@@ -142,25 +169,29 @@ async function streamAudioHandler(
 
     if (supportsShoutcast) {
       // Shoutcast/Icecast format with metadata injection
-      res.setHeader("Content-Type", "audio/mpeg");
-      res.setHeader("icy-name", runtime.character.name || "Music Player");
-      res.setHeader("icy-genre", "Various");
-      res.setHeader("icy-url", req.protocol + "://" + req.get("host"));
-      res.setHeader("icy-pub", "1");
-      res.setHeader("icy-br", "128"); // Bitrate (approximate)
-      res.setHeader("icy-metaint", "8192"); // Metadata interval in bytes
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Content-Type-Options", "nosniff");
+      setRouteHeader(res, "Content-Type", "audio/mpeg");
+      setRouteHeader(res, "icy-name", runtime.character.name || "Music Player");
+      setRouteHeader(res, "icy-genre", "Various");
+      setRouteHeader(
+        res,
+        "icy-url",
+        `${streamingReq.protocol ?? "http"}://${streamingReq.get?.("host") ?? "localhost"}`,
+      );
+      setRouteHeader(res, "icy-pub", "1");
+      setRouteHeader(res, "icy-br", "128"); // Bitrate (approximate)
+      setRouteHeader(res, "icy-metaint", "8192"); // Metadata interval in bytes
+      setRouteHeader(res, "Cache-Control", "no-cache");
+      setRouteHeader(res, "Connection", "keep-alive");
+      setRouteHeader(res, "X-Content-Type-Options", "nosniff");
 
       // Create stream with metadata injection
       const shoutcastStream = createShoutcastStream(currentTrack.title, 8192);
 
       // Pipe broadcast stream through metadata injector to response
-      listenerStream.pipe(shoutcastStream).pipe(res);
+      listenerStream.pipe(shoutcastStream).pipe(streamingRes);
 
       // Clean up on client disconnect
-      req.on("close", () => {
+      streamingReq.on?.("close", () => {
         subscription.unsubscribe();
         shoutcastStream.destroy();
         runtime.logger.debug(
@@ -170,16 +201,16 @@ async function streamAudioHandler(
     } else {
       // Ogg Opus: matches StreamCore output after ELIZA_MUSIC_BROADCAST_NORMALIZE
       // (yt-dlp cache/temp files are Ogg Opus; `audio/webm` mislabeling = silent playback).
-      res.setHeader("Content-Type", "audio/ogg; codecs=opus");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Content-Type-Options", "nosniff");
+      setRouteHeader(res, "Content-Type", "audio/ogg; codecs=opus");
+      setRouteHeader(res, "Cache-Control", "no-cache");
+      setRouteHeader(res, "Connection", "keep-alive");
+      setRouteHeader(res, "X-Content-Type-Options", "nosniff");
 
       // Pipe broadcast stream to response
-      listenerStream.pipe(res);
+      listenerStream.pipe(streamingRes);
 
       // Clean up on client disconnect
-      req.on("close", () => {
+      streamingReq.on?.("close", () => {
         subscription.unsubscribe();
         runtime.logger.debug(
           `[WebStream] Client ${clientId} disconnected (Ogg Opus)`,
@@ -207,12 +238,11 @@ async function streamAudioHandler(
  * GET /music-player/now-playing?guildId=<guildId>
  */
 async function nowPlayingHandler(
-  req: Request,
-  res: Response,
+  req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const guildId =
-    (req.query.guildId as string) || (req.params.guildId as string);
+  const guildId = routeGuildId(req);
 
   if (!guildId) {
     res.status(400).json({ error: "guildId is required" });
@@ -249,12 +279,11 @@ async function nowPlayingHandler(
  * GET /music-player/queue?guildId=<guildId>
  */
 async function queueHandler(
-  req: Request,
-  res: Response,
+  req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const guildId =
-    (req.query.guildId as string) || (req.params.guildId as string);
+  const guildId = routeGuildId(req);
 
   if (!guildId) {
     res.status(400).json({ error: "guildId is required" });
@@ -315,8 +344,8 @@ function findActiveGuild(musicService: MusicService): {
  * Returns the first active guild + its current track, or 404 if nothing is playing.
  */
 async function statusHandler(
-  _req: Request,
-  res: Response,
+  _req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
   const musicService = runtime.getService("music") as MusicService;
@@ -352,10 +381,18 @@ async function statusHandler(
  * Parse optional JSON body for POST /control/* (no express.json on plugin routes).
  */
 async function readControlJsonBody(
-  req: Request,
+  req: RouteRequest,
 ): Promise<Record<string, unknown>> {
+  if (req.body) {
+    return req.body;
+  }
+  const stream = req as RouteRequest &
+    AsyncIterable<Buffer | string | Uint8Array>;
+  if (typeof stream[Symbol.asyncIterator] !== "function") {
+    return {};
+  }
   const chunks: Buffer[] = [];
-  for await (const chunk of req as NodeJS.ReadableStream) {
+  for await (const chunk of stream) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   const raw = Buffer.concat(chunks).toString("utf8").trim();
@@ -376,7 +413,7 @@ async function readControlJsonBody(
  * Resolve guildId from JSON body, query string, or first active guild.
  */
 function resolveControlGuildId(
-  req: Request,
+  req: RouteRequest,
   body: Record<string, unknown>,
   musicService: MusicService,
 ): string | null {
@@ -398,8 +435,8 @@ function resolveControlGuildId(
 }
 
 async function controlPauseHandler(
-  req: Request,
-  res: Response,
+  req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
   const musicService = runtime.getService("music") as MusicService;
@@ -419,8 +456,8 @@ async function controlPauseHandler(
 }
 
 async function controlResumeHandler(
-  req: Request,
-  res: Response,
+  req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
   const musicService = runtime.getService("music") as MusicService;
@@ -440,8 +477,8 @@ async function controlResumeHandler(
 }
 
 async function controlStopHandler(
-  req: Request,
-  res: Response,
+  req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
   const musicService = runtime.getService("music") as MusicService;
@@ -462,8 +499,8 @@ async function controlStopHandler(
 }
 
 async function controlSkipHandler(
-  req: Request,
-  res: Response,
+  req: RouteRequest,
+  res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
   const musicService = runtime.getService("music") as MusicService;
@@ -505,8 +542,8 @@ async function controlSkipHandler(
  *   dashboard (`Authorization: Bearer`, `X-Eliza-Token`, or `X-Api-Key`).
  *   Operators and automation use this; it is not mixed with public GET paths.
  *
- * **Agentic path:** chat actions (STOP_MUSIC, PAUSE_MUSIC, RESUME_MUSIC,
- * SKIP_TRACK) still route control through the agent for natural language.
+ * **Agentic path:** the chat action PLAYBACK_OP (op=pause|resume|skip|stop|queue)
+ * still routes control through the agent for natural language.
  */
 export const musicPlayerRoutes: Route[] = [
   {

@@ -49,6 +49,7 @@ import type {
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
 const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
+const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
 const DIRECT_ELIZA_CLOUD_WEB_HOSTS = new Set([
   "elizacloud.ai",
   "www.elizacloud.ai",
@@ -88,14 +89,26 @@ type DirectCloudAgent = {
 
 type DirectCloudJob = {
   id?: string;
+  jobId?: string;
+  job_id?: string;
   type?: string;
   status?: string;
+  state?: string;
+  phase?: string;
+  data?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;
-  error?: string | null;
+  error?: unknown;
+  message?: string | null;
+  reason?: string | null;
   attempts?: number;
+  retryCount?: number;
+  retry_count?: number;
   startedAt?: string | null;
+  started_at?: string | null;
   completedAt?: string | null;
+  completed_at?: string | null;
   createdAt?: string;
+  created_at?: string;
 };
 
 function isCloudRouteNotFound(error: unknown): error is ApiError {
@@ -135,6 +148,45 @@ function isDirectCloudBase(client: ElizaClient): boolean {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function recordOrNull(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const stringValue = stringOrNull(value);
+    if (stringValue) return stringValue;
+  }
+  return null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const numberValue = numberOrNull(value);
+    if (numberValue !== null) return numberValue;
+  }
+  return null;
+}
+
+function errorStringOrNull(value: unknown): string | null {
+  const direct = stringOrNull(value);
+  if (direct) return direct;
+  const record = recordOrNull(value);
+  if (!record) return null;
+  return firstString(record.error, record.message, record.reason);
 }
 
 function generateCloudLoginSessionId(): string {
@@ -206,6 +258,18 @@ function readDirectCloudToken(client: ElizaClient): string | null {
   return typeof token === "string" && token.trim() ? token.trim() : null;
 }
 
+function isNativeDirectCloudAuthMissing(client: ElizaClient): boolean {
+  return (
+    shouldUseNativeCloudHttp() &&
+    Boolean(resolveDirectCloudClientApiBase(client)) &&
+    !readDirectCloudToken(client)
+  );
+}
+
+function nativeDirectCloudAuthMissingMessage(): string {
+  return "Eliza Cloud login session is missing. Sign in again.";
+}
+
 function parseDirectCloudJson(data: unknown): unknown {
   if (typeof data !== "string") return data;
   if (!data.trim()) return {};
@@ -242,6 +306,73 @@ function directCloudBodyData(body: BodyInit | null | undefined): unknown {
   }
 }
 
+async function withDirectCloudHttpTimeout<T>(
+  request: Promise<T>,
+  args: { method: string; url: string },
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(
+        new Error(
+          `Eliza Cloud request timed out after ${Math.round(
+            DIRECT_CLOUD_HTTP_TIMEOUT_MS / 1000,
+          )}s (${args.method} ${args.url})`,
+        ),
+      );
+    }, DIRECT_CLOUD_HTTP_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function fetchDirectCloudWithTimeout(
+  url: string,
+  init: RequestInit,
+  args: { method: string; url: string },
+): Promise<Response> {
+  const controller = new AbortController();
+  let abortListener: (() => void) | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  if (init.signal) {
+    if (init.signal.aborted) {
+      throw new Error(
+        `Eliza Cloud request aborted (${args.method} ${args.url})`,
+      );
+    }
+    abortListener = () => controller.abort();
+    init.signal.addEventListener("abort", abortListener, { once: true });
+  }
+
+  timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, DIRECT_CLOUD_HTTP_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) {
+      throw new Error(
+        `Eliza Cloud request timed out after ${Math.round(
+          DIRECT_CLOUD_HTTP_TIMEOUT_MS / 1000,
+        )}s (${args.method} ${args.url})`,
+      );
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (init.signal && abortListener) {
+      init.signal.removeEventListener("abort", abortListener);
+    }
+  }
+}
+
 async function directCloudJsonResponse<T>(
   url: string,
   init?: RequestInit,
@@ -254,15 +385,18 @@ async function directCloudJsonResponse<T>(
 
   if (shouldUseNativeCloudHttp()) {
     const data = directCloudBodyData(init?.body);
-    const res = await CapacitorHttp.request({
-      url,
-      method,
-      headers,
-      ...(data !== undefined ? { data } : {}),
-      responseType: "json",
-      connectTimeout: 10_000,
-      readTimeout: 10_000,
-    });
+    const res = await withDirectCloudHttpTimeout(
+      CapacitorHttp.request({
+        url,
+        method,
+        headers,
+        ...(data !== undefined ? { data } : {}),
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      }),
+      { method, url },
+    );
     const parsed = parseDirectCloudJsonSafe(res.data) as T;
     return {
       ok: res.status >= 200 && res.status < 300,
@@ -272,7 +406,11 @@ async function directCloudJsonResponse<T>(
     };
   }
 
-  const res = await fetch(url, { ...init, method, headers });
+  const res = await fetchDirectCloudWithTimeout(
+    url,
+    { ...init, method, headers },
+    { method, url },
+  );
   const text = await res.text().catch(() => res.statusText);
   const parsed = parseDirectCloudJsonSafe(text) as T;
   return {
@@ -281,6 +419,25 @@ async function directCloudJsonResponse<T>(
     data: parsed,
     text,
   };
+}
+
+function directCloudResponseErrorMessage(
+  status: number,
+  body: unknown,
+): string {
+  let detail: string | null = null;
+  if (typeof body === "object" && body !== null) {
+    const record = body as Record<string, unknown>;
+    const candidate = record.error ?? record.message ?? record.reason;
+    if (typeof candidate === "string" && candidate.trim()) {
+      detail = candidate.trim();
+    }
+  } else if (typeof body === "string" && body.trim()) {
+    detail = body.trim();
+  }
+  return detail
+    ? `Cloud request failed (${status}): ${detail}`
+    : `Cloud request failed (${status})`;
 }
 
 async function directCloudRequest<T>(
@@ -307,59 +464,49 @@ async function directCloudRequest<T>(
 
   if (shouldUseNativeCloudHttp()) {
     const data = directCloudBodyData(init?.body);
-    const res = await CapacitorHttp.request({
-      url,
-      method,
-      headers,
-      ...(data !== undefined ? { data } : {}),
-      responseType: "json",
-      connectTimeout: 10_000,
-      readTimeout: 10_000,
-    });
+    const res = await withDirectCloudHttpTimeout(
+      CapacitorHttp.request({
+        url,
+        method,
+        headers,
+        ...(data !== undefined ? { data } : {}),
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      }),
+      { method, url },
+    );
     const parsed = parseDirectCloudJson(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
-      throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
-        status: res.status,
-        data: res.data,
-        url,
-      });
+      throw Object.assign(
+        new Error(directCloudResponseErrorMessage(res.status, parsed)),
+        {
+          status: res.status,
+          data: res.data,
+          url,
+        },
+      );
     }
     return parsed;
   }
 
-  // 30s wall clock — long enough for cloud to provision an agent, short
-  // enough that a hung request surfaces as an error instead of an infinite
-  // spinner in onboarding.
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      ...init,
-      method,
-      headers,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw Object.assign(
-        new Error(`Cloud request timed out after 30s: ${url}`),
-        { status: 0, data: null, url, code: "timeout" },
-      );
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const res = await fetchDirectCloudWithTimeout(
+    url,
+    { ...init, method, headers },
+    { method, url },
+  );
   const data = await res.json().catch(async () => ({
     error: await res.text().catch(() => res.statusText),
   }));
   if (!isAcceptableDirectCloudResponse(res.status, data)) {
-    throw Object.assign(new Error(`Cloud request failed (${res.status})`), {
-      status: res.status,
-      data,
-      url,
-    });
+    throw Object.assign(
+      new Error(directCloudResponseErrorMessage(res.status, data)),
+      {
+        status: res.status,
+        data,
+        url,
+      },
+    );
   }
   return data as T;
 }
@@ -443,38 +590,217 @@ function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
   };
 }
 
+function normalizeCloudCompatProvisionResponse(
+  input: CloudCompatAgentProvisionResponse,
+  agentId: string,
+): CloudCompatAgentProvisionResponse {
+  const root = recordOrNull(input) ?? {};
+  const rawData = recordOrNull(root.data) ?? {};
+  const rawJob = recordOrNull(rawData.job) ?? recordOrNull(root.job) ?? {};
+  const rawPolling = recordOrNull(root.polling) ?? {};
+
+  const explicitJobId = firstString(
+    rawData.jobId,
+    rawData.job_id,
+    rawJob.jobId,
+    rawJob.job_id,
+    rawJob.id,
+    root.jobId,
+    root.job_id,
+  );
+  const fallbackJobId = firstString(rawData.id, root.id);
+  const jobId =
+    explicitJobId ?? (fallbackJobId !== agentId ? fallbackJobId : null);
+  const normalizedAgentId =
+    firstString(
+      rawData.agentId,
+      rawData.agent_id,
+      root.agentId,
+      root.agent_id,
+    ) ?? agentId;
+  const status = firstString(
+    rawData.status,
+    rawData.state,
+    rawData.phase,
+    rawJob.status,
+    rawJob.state,
+    root.status,
+    root.state,
+    root.phase,
+  );
+  const bridgeUrl = firstString(
+    rawData.bridgeUrl,
+    rawData.bridge_url,
+    rawData.runtimeUrl,
+    rawData.runtime_url,
+    root.bridgeUrl,
+    root.bridge_url,
+    root.runtimeUrl,
+    root.runtime_url,
+  );
+  const webUiUrl = firstString(
+    rawData.webUiUrl,
+    rawData.web_ui_url,
+    root.webUiUrl,
+    root.web_ui_url,
+  );
+  const healthUrl = firstString(
+    rawData.healthUrl,
+    rawData.health_url,
+    root.healthUrl,
+    root.health_url,
+  );
+  const estimatedCompletionAt = firstString(
+    rawData.estimatedCompletionAt,
+    rawData.estimated_completion_at,
+    root.estimatedCompletionAt,
+    root.estimated_completion_at,
+  );
+
+  const normalizedData: NonNullable<CloudCompatAgentProvisionResponse["data"]> =
+    {
+      ...(rawData as NonNullable<CloudCompatAgentProvisionResponse["data"]>),
+      agentId: normalizedAgentId,
+    };
+  if (jobId) normalizedData.jobId = jobId;
+  if (status) normalizedData.status = status;
+  if (bridgeUrl) normalizedData.bridgeUrl = bridgeUrl;
+  if (webUiUrl) normalizedData.webUiUrl = webUiUrl;
+  if (healthUrl) normalizedData.healthUrl = healthUrl;
+  if (estimatedCompletionAt) {
+    normalizedData.estimatedCompletionAt = estimatedCompletionAt;
+  }
+
+  const intervalMs = firstNumber(
+    rawPolling.intervalMs,
+    rawPolling.interval_ms,
+    root.pollIntervalMs,
+    root.poll_interval_ms,
+  );
+  const expectedDurationMs = firstNumber(
+    rawPolling.expectedDurationMs,
+    rawPolling.expected_duration_ms,
+    root.expectedDurationMs,
+    root.expected_duration_ms,
+  );
+  const endpoint = firstString(
+    rawPolling.endpoint,
+    root.pollingEndpoint,
+    root.polling_endpoint,
+  );
+  const polling =
+    endpoint || intervalMs !== null || expectedDurationMs !== null
+      ? {
+          ...(input.polling ?? {}),
+          ...(endpoint ? { endpoint } : {}),
+          ...(intervalMs !== null ? { intervalMs } : {}),
+          ...(expectedDurationMs !== null ? { expectedDurationMs } : {}),
+        }
+      : input.polling;
+  const explicitError = firstString(root.error, rawData.error);
+  const success =
+    typeof root.success === "boolean"
+      ? root.success
+      : !explicitError && Boolean(jobId || bridgeUrl || webUiUrl || status);
+
+  return {
+    ...input,
+    success,
+    ...(explicitError && !input.error ? { error: explicitError } : {}),
+    data: normalizedData,
+    ...(polling ? { polling } : {}),
+  };
+}
+
+function normalizeCloudJobStatus(value: unknown): CloudCompatJob["status"] {
+  switch (stringOrNull(value)?.toLowerCase()) {
+    case "completed":
+    case "complete":
+    case "succeeded":
+    case "success":
+    case "done":
+      return "completed";
+    case "failed":
+    case "failure":
+    case "error":
+    case "cancelled":
+    case "canceled":
+      return "failed";
+    case "retrying":
+    case "retry":
+      return "retrying";
+    case "in_progress":
+    case "processing":
+    case "provisioning":
+    case "running":
+    case "starting":
+      return "processing";
+    default:
+      return "queued";
+  }
+}
+
 function toCloudCompatJob(input: DirectCloudJob): CloudCompatJob {
-  const status: CloudCompatJob["status"] = (() => {
-    switch (input.status) {
-      case "completed":
-      case "failed":
-      case "retrying":
-        return input.status;
-      case "in_progress":
-      case "processing":
-        return "processing";
-      default:
-        return "queued";
-    }
-  })();
-  const id = stringOrNull(input.id) ?? "";
-  const createdAt = stringOrNull(input.createdAt) ?? new Date(0).toISOString();
-  const completedAt = input.completedAt ?? null;
+  const data = recordOrNull(input.data) ?? {};
+  const result = recordOrNull(input.result) ?? recordOrNull(data.result);
+  const originalStatus = firstString(
+    input.status,
+    input.state,
+    input.phase,
+    data.status,
+    data.state,
+    data.phase,
+  );
+  const status = normalizeCloudJobStatus(originalStatus);
+  const id = firstString(input.id, input.jobId, input.job_id, data.id) ?? "";
+  const type = firstString(input.type, data.type) ?? "agent_provision";
+  const createdAt =
+    firstString(
+      input.createdAt,
+      input.created_at,
+      data.createdAt,
+      data.created_at,
+    ) ?? new Date(0).toISOString();
+  const startedAt =
+    firstString(
+      input.startedAt,
+      input.started_at,
+      data.startedAt,
+      data.started_at,
+    ) ?? null;
+  const completedAt =
+    firstString(
+      input.completedAt,
+      input.completed_at,
+      data.completedAt,
+      data.completed_at,
+    ) ?? null;
+  const retryCount =
+    firstNumber(
+      input.retryCount,
+      input.retry_count,
+      input.attempts,
+      data.retryCount,
+    ) ?? 0;
+  const error =
+    errorStringOrNull(input.error) ??
+    errorStringOrNull(data.error) ??
+    firstString(input.message, input.reason, data.message, data.reason);
 
   return {
     jobId: id,
-    type: stringOrNull(input.type) ?? "agent_provision",
+    type,
     status,
-    data: {},
-    result: input.result ?? null,
-    error: input.error ?? null,
+    data,
+    result: result ?? null,
+    error,
     createdAt,
-    startedAt: input.startedAt ?? null,
+    startedAt,
     completedAt,
-    retryCount: input.attempts ?? 0,
+    retryCount,
     id,
-    name: stringOrNull(input.type) ?? "agent_provision",
-    state: status,
+    name: type,
+    state: originalStatus ?? status,
     created_on: createdAt,
     completed_on: completedAt,
   };
@@ -1048,6 +1374,14 @@ ElizaClient.prototype.getCloudCompatAgents = async function (
     };
   }
 
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      data: [],
+      error: nativeDirectCloudAuthMissingMessage(),
+    };
+  }
+
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
@@ -1096,6 +1430,20 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         status: direct.data?.status ?? "pending",
         nodeId: null,
         message: direct.success ? "Agent created" : (direct.error ?? ""),
+      },
+    };
+  }
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      data: {
+        agentId: "",
+        agentName: opts.agentName,
+        jobId: "",
+        status: "error",
+        nodeId: null,
+        message: nativeDirectCloudAuthMissingMessage(),
       },
     };
   }
@@ -1157,26 +1505,32 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
     { method: "POST" },
   );
   if (direct) {
-    return direct;
+    return normalizeCloudCompatProvisionResponse(direct, agentId);
+  }
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      error: nativeDirectCloudAuthMissingMessage(),
+      data: { agentId, status: "auth-missing" },
+    };
   }
 
   if (isDirectCloudBase(this)) {
-    return this.fetch(
+    const response = await this.fetch<CloudCompatAgentProvisionResponse>(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
       { method: "POST" },
       { allowNonOk: true },
     );
+    return normalizeCloudCompatProvisionResponse(response, agentId);
   }
 
-  // Proxy fallback (only hit when direct cloud token is not available — see
-  // `directCloudRequest` token plumbing). The compat namespace doesn't have
-  // a `/provision` sub-resource, so we use the v1/app proxy path here. With
-  // a properly-wired direct token we never hit this branch in normal flow.
-  return this.fetch(
+  const response = await this.fetch<CloudCompatAgentProvisionResponse>(
     `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/provision`,
     { method: "POST" },
     { allowNonOk: true },
   );
+  return normalizeCloudCompatProvisionResponse(response, agentId);
 };
 
 ElizaClient.prototype.getCloudCompatAgent = async function (
@@ -1192,6 +1546,14 @@ ElizaClient.prototype.getCloudCompatAgent = async function (
     return {
       success: direct.success,
       data: toCloudCompatAgent(direct.data ?? { id: agentId }),
+    };
+  }
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      data: toCloudCompatAgent({ id: agentId, status: "auth-missing" }),
+      error: nativeDirectCloudAuthMissingMessage(),
     };
   }
 
@@ -1452,6 +1814,23 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
       },
     };
   }
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      data: {
+        status: "auth-missing",
+        lastHeartbeat: null,
+        bridgeUrl: null,
+        webUiUrl: null,
+        currentNode: null,
+        suspendedReason: nativeDirectCloudAuthMissingMessage(),
+        databaseStatus: "unknown",
+      },
+      error: nativeDirectCloudAuthMissingMessage(),
+    };
+  }
+
   return this.fetch(
     `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/status`,
   );
@@ -1536,6 +1915,18 @@ ElizaClient.prototype.getCloudCompatJobStatus = async function (
     return {
       success: direct.success,
       data: toCloudCompatJob(direct.data ?? { id: jobId }),
+    };
+  }
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      data: toCloudCompatJob({
+        id: jobId,
+        status: "failed",
+        error: nativeDirectCloudAuthMissingMessage(),
+      }),
+      error: nativeDirectCloudAuthMissingMessage(),
     };
   }
 

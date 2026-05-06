@@ -1,9 +1,10 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
+import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import type { ElizaConfig } from "../config/config.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
-import { resolveCloudApiKey } from "./wallet-rpc.js";
+import { getLocalInferenceActiveSnapshot } from "./local-inference-routes.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -381,6 +382,15 @@ export async function handleHealthRoutes(
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
     const uptime = state.startedAt ? Date.now() - state.startedAt : undefined;
+    const localInferenceActive = await getLocalInferenceActiveSnapshot().catch(
+      () => null,
+    );
+    const activeLocalModel =
+      localInferenceActive?.status === "ready" &&
+      localInferenceActive.modelId?.trim()
+        ? localInferenceActive.modelId.trim()
+        : undefined;
+    const model = state.model ?? activeLocalModel;
     const cloudProvisioned = isCloudProvisionedContainer();
     const hasCloudApiKey = Boolean(
       resolveCloudApiKey(state.config, state.runtime),
@@ -396,7 +406,7 @@ export async function handleHealthRoutes(
     json(res, {
       state: state.agentState,
       agentName: state.agentName,
-      model: state.model,
+      model,
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
