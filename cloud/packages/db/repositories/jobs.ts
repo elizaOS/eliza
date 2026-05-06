@@ -20,7 +20,7 @@ function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
 
 function stringField(
   data: Record<string, unknown>,
-  field: "agentId" | "characterId",
+  field: "agentId" | "agentName" | "characterId" | "organizationId" | "userId",
 ): string | null {
   const value = data[field];
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -35,10 +35,16 @@ function indexedJobFields(data: Record<string, unknown>): Pick<Job, "agent_id" |
 
 function inlineJobData(data: Record<string, unknown>): Record<string, unknown> {
   const inline: Record<string, unknown> = {};
-  const agentId = stringField(data, "agentId");
-  const characterId = stringField(data, "characterId");
-  if (agentId) inline.agentId = agentId;
-  if (characterId) inline.characterId = characterId;
+  for (const field of [
+    "agentId",
+    "agentName",
+    "characterId",
+    "organizationId",
+    "userId",
+  ] as const) {
+    const value = stringField(data, field);
+    if (value) inline[field] = value;
+  }
   return inline;
 }
 

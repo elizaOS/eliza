@@ -837,7 +837,7 @@ export function RuntimeGate() {
         | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>["data"]
         | undefined;
       let pollingIntervalMs: number | undefined;
-      let expectedDurationMs = 0;
+      let provisionExpectedDurationMs = 0;
       if (!jobId) {
         let provRes: Awaited<
           ReturnType<typeof client.provisionCloudCompatAgent>
@@ -885,7 +885,7 @@ export function RuntimeGate() {
         provisionData = provRes.data;
         jobId = provRes.data?.jobId;
         pollingIntervalMs = provRes.polling?.intervalMs;
-        expectedDurationMs = provRes.polling?.expectedDurationMs ?? 0;
+        provisionExpectedDurationMs = provRes.polling?.expectedDurationMs ?? 0;
       }
 
       // Poll the agent until it has a connectable URL. The provision job
@@ -1006,7 +1006,7 @@ export function RuntimeGate() {
       };
       const provisionJobDeadlineMs =
         Date.now() +
-        Math.max(PROVISION_JOB_WAIT_DEADLINE_MS, expectedDurationMs);
+        Math.max(PROVISION_JOB_WAIT_DEADLINE_MS, provisionExpectedDurationMs);
       const pollProvisionJob = async () => {
         if (Date.now() >= provisionJobDeadlineMs) {
           stopPollingWithError(
@@ -1215,10 +1215,19 @@ export function RuntimeGate() {
       // Compat create returns a jobId because the cloud queues provisioning
       // automatically. Pass it through so we skip the redundant provision call
       // (which would 405 on a compat-namespace agent) and poll the job directly.
-      await provisionAndConnect(
-        createRes.data.agentId,
-        createRes.data.jobId ?? undefined,
-      );
+      try {
+        await provisionAndConnect(
+          createRes.data.agentId,
+          createRes.data.jobId ?? undefined,
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("runtimegate.unknownError", { defaultValue: "Unknown error" }),
+        );
+        setCloudStage("agent-list");
+      }
     })().catch((err) => {
       if (cancelled) return;
       setError(
@@ -1587,33 +1596,48 @@ export function RuntimeGate() {
 
           {localStage === "provider" && (
             <div className="flex flex-col gap-2">
-              {localProviderCatalog.map((provider) => (
+              {localProviderCatalog.length === 0 ? (
                 <Card
-                  key={provider.id}
                   className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
                   style={{ borderRadius: 0 }}
                 >
-                  <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white/95">
-                        {provider.name}
-                      </p>
-                      <p className="truncate text-xs-tight text-white/52">
-                        {provider.description}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
-                      onClick={() => handleLocalSelectProvider(provider.id)}
-                    >
-                      {t("common.choose", { defaultValue: "Choose" })}
-                    </Button>
+                  <CardContent className="px-3 py-3">
+                    <p className="text-sm font-semibold text-white/90">
+                      {t("runtimegate.localProviderCatalogEmpty", {
+                        defaultValue: "No local providers are available.",
+                      })}
+                    </p>
                   </CardContent>
                 </Card>
-              ))}
+              ) : (
+                localProviderCatalog.map((provider) => (
+                  <Card
+                    key={provider.id}
+                    className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                    style={{ borderRadius: 0 }}
+                  >
+                    <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white/95">
+                          {provider.name}
+                        </p>
+                        <p className="truncate text-xs-tight text-white/52">
+                          {provider.description}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                        onClick={() => handleLocalSelectProvider(provider.id)}
+                      >
+                        {t("common.choose", { defaultValue: "Choose" })}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
               <BackButton t={t} onClick={() => setSubView("chooser")} />
             </div>
           )}

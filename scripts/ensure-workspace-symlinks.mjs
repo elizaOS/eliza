@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Ensure every workspace package under `plugins/*`, `packages/*`,
- * `packages/native-plugins/*`, and `packages/examples/*` is symlinked
+ * Ensure every workspace package under the repo workspace roots is symlinked
  * into `node_modules/@elizaos/<basename>`.
  *
  * Why this exists: `bun install --frozen-lockfile` matches the workspace
@@ -38,36 +37,34 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Workspace globs to walk (mirrors package.json `workspaces`).
 const WORKSPACE_DIRS = [
   "packages",
+  "packages/app-core/platforms",
   "packages/native-plugins",
   "packages/examples",
+  "cloud/packages",
   "plugins",
 ];
 
-// Subdirs of `packages/examples` that contain further nested examples.
-const NESTED_EXAMPLE_GLOBS = ["packages/examples"];
+const MAX_WORKSPACE_SCAN_DEPTH = 3;
 
 function listWorkspacePackageDirs() {
   const dirs = new Set();
   for (const root of WORKSPACE_DIRS) {
     const absolute = join(REPO_ROOT, root);
     if (!existsSync(absolute)) continue;
-    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const pkgDir = join(absolute, entry.name);
-      if (existsSync(join(pkgDir, "package.json"))) dirs.add(pkgDir);
-    }
-  }
-  // One extra level for nested examples (`packages/examples/<scope>/<pkg>`).
-  for (const root of NESTED_EXAMPLE_GLOBS) {
-    const absolute = join(REPO_ROOT, root);
-    if (!existsSync(absolute)) continue;
-    for (const scope of readdirSync(absolute, { withFileTypes: true })) {
-      if (!scope.isDirectory()) continue;
-      const scopeDir = join(absolute, scope.name);
-      for (const entry of readdirSync(scopeDir, { withFileTypes: true })) {
+    const stack = [{ dir: absolute, depth: 0 }];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) continue;
+      for (const entry of readdirSync(current.dir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
-        const pkgDir = join(scopeDir, entry.name);
-        if (existsSync(join(pkgDir, "package.json"))) dirs.add(pkgDir);
+        const pkgDir = join(current.dir, entry.name);
+        if (existsSync(join(pkgDir, "package.json"))) {
+          dirs.add(pkgDir);
+          continue;
+        }
+        if (current.depth < MAX_WORKSPACE_SCAN_DEPTH - 1) {
+          stack.push({ dir: pkgDir, depth: current.depth + 1 });
+        }
       }
     }
   }

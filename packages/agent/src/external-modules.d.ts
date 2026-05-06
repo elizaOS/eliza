@@ -140,6 +140,7 @@ declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/signal-native";
 declare module "qrcode";
+declare module "bun:ffi";
 
 declare module "@elizaos/app-knowledge/routes" {
   export type KnowledgeRouteContext = unknown;
@@ -231,14 +232,16 @@ declare module "@elizaos/app-phone/plugin" {
   import type { Action, Plugin, Provider } from "@elizaos/core";
 
   export const placeCallAction: Action;
+  export const readCallLogAction: Action;
   export const phoneCallLogProvider: Provider;
   export const appPhonePlugin: Plugin;
   export default appPhonePlugin;
 }
 
 declare module "@elizaos/app-wifi/plugin" {
-  import type { Plugin, Provider } from "@elizaos/core";
+  import type { Action, Plugin, Provider } from "@elizaos/core";
 
+  export const scanWifiAction: Action;
   export const wifiNetworksProvider: Provider;
   export const appWifiPlugin: Plugin;
   export default appWifiPlugin;
