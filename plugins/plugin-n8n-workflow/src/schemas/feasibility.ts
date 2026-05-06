@@ -1,8 +1,8 @@
 export const feasibilitySchema = {
-  type: 'object',
+  type: "object",
   properties: {
-    feasible: { type: 'boolean' },
-    reason: { type: 'string' },
+    feasible: { type: "boolean" },
+    reason: { type: "string" },
   },
-  required: ['feasible', 'reason'],
+  required: ["feasible", "reason"],
 };

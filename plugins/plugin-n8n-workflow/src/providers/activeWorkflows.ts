@@ -1,5 +1,14 @@
-import { type IAgentRuntime, logger, type Memory, type Provider, type State } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type State,
+} from "@elizaos/core";
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from "../services/index";
 
 /**
  * Provider that enriches state with user's active workflows
@@ -10,16 +19,18 @@ import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/
  * Example: User says "run my Stripe workflow" → LLM can see all workflows and extract the right ID
  */
 export const activeWorkflowsProvider: Provider = {
-  name: 'ACTIVE_N8N_WORKFLOWS',
+  name: "ACTIVE_N8N_WORKFLOWS",
   description: "User's active n8n workflows with IDs and descriptions",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
-      const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+      const service = runtime.getService<N8nWorkflowService>(
+        N8N_WORKFLOW_SERVICE_TYPE,
+      );
 
       if (!service) {
         return {
-          text: '',
+          text: "",
           data: {},
           values: {},
         };
@@ -30,7 +41,7 @@ export const activeWorkflowsProvider: Provider = {
 
       if (workflows.length === 0) {
         return {
-          text: '',
+          text: "",
           data: { workflows: [] },
           values: { hasWorkflows: false },
         };
@@ -39,11 +50,11 @@ export const activeWorkflowsProvider: Provider = {
       const workflowList = workflows
         .slice(0, 20)
         .map((wf) => {
-          const status = wf.active ? 'ACTIVE' : 'INACTIVE';
+          const status = wf.active ? "ACTIVE" : "INACTIVE";
           const nodeCount = wf.nodes?.length || 0;
           return `- **${wf.name}** (ID: ${wf.id}, Status: ${status}, Nodes: ${nodeCount})`;
         })
-        .join('\n');
+        .join("\n");
 
       const text = `# Available Workflows\n\n${workflowList}`;
 
@@ -64,11 +75,11 @@ export const activeWorkflowsProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        { src: 'plugin:n8n-workflow:providers:active-workflows' },
-        `Failed to get active workflows: ${error instanceof Error ? error.message : String(error)}`
+        { src: "plugin:n8n-workflow:providers:active-workflows" },
+        `Failed to get active workflows: ${error instanceof Error ? error.message : String(error)}`,
       );
       return {
-        text: '',
+        text: "",
         data: {},
         values: {},
       };

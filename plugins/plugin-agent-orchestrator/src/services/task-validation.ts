@@ -7,7 +7,11 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-import { parseToonKeyValue, type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  parseToonKeyValue,
+  type IAgentRuntime,
+  ModelType,
+} from "@elizaos/core";
 import type {
   SwarmCoordinatorContext,
   TaskContext,
@@ -70,7 +74,9 @@ type ScreenshotSemanticResult = {
   contentVerificationError?: string;
 };
 
-function normalizeValidationResponse(parsed: unknown): ValidationResponse | null {
+function normalizeValidationResponse(
+  parsed: unknown,
+): ValidationResponse | null {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return null;
   }
@@ -103,7 +109,9 @@ function normalizeValidationResponse(parsed: unknown): ValidationResponse | null
 }
 
 function parseValidationResponse(raw: string): ValidationResponse | null {
-  return normalizeValidationResponse(parseToonKeyValue<Record<string, unknown>>(raw));
+  return normalizeValidationResponse(
+    parseToonKeyValue<Record<string, unknown>>(raw),
+  );
 }
 
 function getValidationRootDir(): string {
