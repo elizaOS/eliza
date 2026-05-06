@@ -2362,14 +2362,28 @@ function patchLlamaCppCapacitorPodspecForXcframework(packageDir) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
   if (!fs.existsSync(podspecPath)) return;
   const current = fs.readFileSync(podspecPath, "utf8");
-  const patched = current.replace(
+  let patched = current.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+  );
+  // The published podspec also injects `ios/Frameworks` into
+  // FRAMEWORK_SEARCH_PATHS, which contains the device-only
+  // `llama-cpp.framework` next to the xcframework. The linker scans
+  // -F paths in order and resolves `-framework llama-cpp` against the
+  // device-only slice first, producing
+  //   ld: building for 'iOS-simulator', but linking in dylib (...
+  //   /llama-cpp.framework/llama-cpp) built for 'iOS'
+  // on iphonesimulator builds. Drop the explicit search path so the
+  // xcframework's per-platform slice is picked up via the standard
+  // XCFrameworkIntermediates path the Xcode build system maintains.
+  patched = patched.replace(
+    /\s*s\.pod_target_xcconfig\s*=\s*\{[^}]*'FRAMEWORK_SEARCH_PATHS'\s*=>\s*'[^']*'[^}]*\}\s*/,
+    "\n",
   );
   if (patched !== current) {
     fs.writeFileSync(podspecPath, patched, "utf8");
     console.log(
-      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework.",
+      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework + dropped FRAMEWORK_SEARCH_PATHS device-only override.",
     );
   }
 }
