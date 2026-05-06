@@ -1,10 +1,5 @@
-import type {
-  Route,
-  RouteRequest,
-  RouteResponse,
-  IAgentRuntime,
-} from "@elizaos/core";
-import { getService, validateLimit } from "./_helpers";
+import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
+import { getService, validateLimit } from './_helpers';
 
 /**
  * GET /executions?workflowId=x&status=y&limit=z&cursor=c
@@ -12,16 +7,16 @@ import { getService, validateLimit } from "./_helpers";
 async function listExecutions(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   try {
     const workflowId = req.query?.workflowId as string | undefined;
     const status = req.query?.status as
-      | "canceled"
-      | "error"
-      | "running"
-      | "success"
-      | "waiting"
+      | 'canceled'
+      | 'error'
+      | 'running'
+      | 'success'
+      | 'waiting'
       | undefined;
     const limit = validateLimit(req.query?.limit, 50, 250);
     const cursor = req.query?.cursor as string | undefined;
@@ -41,8 +36,8 @@ async function listExecutions(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: "failed_to_list_executions",
-      message: error instanceof Error ? error.message : "Unknown error",
+      error: 'failed_to_list_executions',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 }
@@ -53,12 +48,12 @@ async function listExecutions(
 async function getExecution(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   try {
     const id = req.params?.id;
     if (!id) {
-      res.status(400).json({ success: false, error: "execution_id_required" });
+      res.status(400).json({ success: false, error: 'execution_id_required' });
       return;
     }
 
@@ -68,13 +63,13 @@ async function getExecution(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: "failed_to_fetch_execution",
-      message: error instanceof Error ? error.message : "Unknown error",
+      error: 'failed_to_fetch_execution',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 }
 
 export const executionRoutes: Route[] = [
-  { type: "GET", path: "/executions", handler: listExecutions },
-  { type: "GET", path: "/executions/:id", handler: getExecution },
+  { type: 'GET', path: '/executions', handler: listExecutions },
+  { type: 'GET', path: '/executions/:id', handler: getExecution },
 ];
