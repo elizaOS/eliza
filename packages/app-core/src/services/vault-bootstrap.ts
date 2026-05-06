@@ -16,8 +16,6 @@
  * failures are isolated; if every write fails the function throws.
  */
 
-import fs from "node:fs/promises";
-import path from "node:path";
 import { persistConfigEnv, readConfigEnv } from "@elizaos/agent/api/config-env";
 import {
   type ElizaConfig,

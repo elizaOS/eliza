@@ -28,17 +28,13 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-schema";
 import { runFinalCheck } from "./final-checks/index.ts";
-import {
-  attachInterceptor,
-  ensureInterceptorRuntimeHooks,
-} from "./interceptor.ts";
+import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
   RunnerContext,
   ScenarioReport,
-  TurnReport,
 } from "./types.ts";
 
 export interface ExecutorOptions {
@@ -371,14 +367,25 @@ function resolveTurnRoom(
   turn: ScenarioTurn,
   rooms: readonly ScenarioRoomDefinition[],
 ): ScenarioRoomDefinition {
+  const defaultRoom = getDefaultScenarioRoom(rooms);
   const requestedRoom =
     typeof turn.room === "string" && turn.room.trim().length > 0
       ? turn.room.trim()
       : null;
   if (!requestedRoom) {
-    return rooms[0]!;
+    return defaultRoom;
   }
-  return rooms.find((room) => room.id === requestedRoom) ?? rooms[0]!;
+  return rooms.find((room) => room.id === requestedRoom) ?? defaultRoom;
+}
+
+function getDefaultScenarioRoom(
+  rooms: readonly ScenarioRoomDefinition[],
+): ScenarioRoomDefinition {
+  const firstRoom = rooms[0];
+  if (!firstRoom) {
+    throw new Error("Scenario must resolve at least one room");
+  }
+  return firstRoom;
 }
 
 function matchRoutePath(
@@ -1198,7 +1205,7 @@ async function executeTickTurn(args: {
   );
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {
-      ...(asRecord(options) ?? {}),
+      ...asRecord(options),
       ...(now ? { now } : {}),
     }),
     typeof args.turn.timeoutMs === "number"
@@ -1402,7 +1409,7 @@ export async function runScenario(
 
   let interceptor = attachInterceptor(runtime);
   const rooms = resolveScenarioRooms(scenario);
-  const primaryRoom = rooms[0]!;
+  const primaryRoom = getDefaultScenarioRoom(rooms);
   const variables: ScenarioVariableState = {
     baseNow: new Date(startedAt),
     definitionIdsByTitle: new Map<string, string>(),
@@ -1495,6 +1502,7 @@ export async function runScenario(
     interceptor.detach();
     interceptor = attachInterceptor(runtime);
     apiServer = await startScenarioApiServer(runtime);
+    const activeApiServer = apiServer;
 
     for (const turn of scenario.turns) {
       const kind = typeof turn.kind === "string" ? turn.kind : "message";
@@ -1521,7 +1529,7 @@ export async function runScenario(
               actionsCalled: [],
               ...(await executeApiTurn({
                 turn,
-                apiServer: apiServer!,
+                apiServer: activeApiServer,
                 variables,
                 turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
               })),
@@ -1531,7 +1539,7 @@ export async function runScenario(
                 actionsCalled: [],
                 ...(await executeTickTurn({
                   turn,
-                  apiServer: apiServer!,
+                  apiServer: activeApiServer,
                   variables,
                   turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
                   runtime,

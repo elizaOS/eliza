@@ -3,7 +3,7 @@
   "name": "Browser",
   "description": "Web scraping and content extraction with Playwright",
   "npmName": "@elizaos/plugin-browser",
-  "version": "2.0.0-alpha.6",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["browser", "automation", "stagehand", "playwright", "web-scraping"],
   "config": {

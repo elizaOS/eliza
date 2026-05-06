@@ -389,13 +389,38 @@ export class ElizaClient {
         .json()
         .catch(() => ({ error: res.statusText }))) as Record<
         string,
-        string
+        unknown
       > | null;
+      const message =
+        typeof body?.error === "string"
+          ? body.error
+          : typeof body?.message === "string"
+            ? body.message
+            : `HTTP ${res.status}`;
+      const code = typeof body?.code === "string" ? body.code : undefined;
+      // `Number(null) === 0` and `Number(undefined) === NaN`, so we must guard
+      // each source before coercing — otherwise an absent `Retry-After` header
+      // produces a spurious `retryAfter = 0` on every non-rate-limit error
+      // path, polluting the shared `ApiError` surface for unrelated callers.
+      const headerValue = res.headers.get("Retry-After");
+      const headerRetryAfter =
+        headerValue !== null && Number.isFinite(Number(headerValue))
+          ? Number(headerValue)
+          : undefined;
+      const rawBodyRetryAfter = body?.retryAfter;
+      const bodyRetryAfter =
+        typeof rawBodyRetryAfter === "number" &&
+        Number.isFinite(rawBodyRetryAfter)
+          ? rawBodyRetryAfter
+          : undefined;
+      const retryAfter = bodyRetryAfter ?? headerRetryAfter;
       throw new ApiError({
         kind: "http",
         path,
         status: res.status,
-        message: body?.error ?? `HTTP ${res.status}`,
+        message,
+        code,
+        retryAfter,
       });
     }
     return res;

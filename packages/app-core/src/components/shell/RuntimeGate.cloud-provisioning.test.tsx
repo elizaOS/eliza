@@ -38,10 +38,10 @@ const {
   clientMock: {
     getCloudCompatAgents: vi.fn(),
     getCloudCompatAgent: vi.fn(),
-    getCloudCompatAgentStatus: vi.fn(),
     createCloudCompatAgent: vi.fn(),
     provisionCloudCompatAgent: vi.fn(),
     getCloudCompatJobStatus: vi.fn(),
+    getCloudCompatAgentStatus: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
     switchProvider: vi.fn(),
     setBaseUrl: vi.fn(),
@@ -234,11 +234,7 @@ describe("RuntimeGate onboarding choices", () => {
     resetPlatformState();
   });
 
-  // SKIP: the welcome-redesign moved [data-runtime-choice] tiles behind
-  // WelcomeChooser's "Get started" / advanced disclosure. Same on the next
-  // 6 render tests below. Restore as `it(...)` once the welcome flow has
-  // its own test that interacts with the WelcomeChooser surface.
-  it.skip("offers Local on iOS through the in-process local agent", () => {
+  it("offers Local on iOS through the in-process local agent", () => {
     platformState.isIOS = true;
 
     const { container } = render(<RuntimeGate />);
@@ -254,7 +250,38 @@ describe("RuntimeGate onboarding choices", () => {
     expect(runtimeChoiceNames(container)).toEqual(["cloud", "local", "remote"]);
   });
 
-  it.skip("starts iOS local mode through the shared mobile local target", async () => {
+  it("starts the Android local service without waiting for model downloads", async () => {
+    platformState.isAndroid = true;
+
+    const { container } = render(<RuntimeGate />);
+
+    fireEvent.click(
+      container.querySelector('[data-runtime-choice="local"]') as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /start local agent/i }));
+
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "http://127.0.0.1:31337",
+    );
+    expect(clientMock.setToken).toHaveBeenCalledWith(null);
+    expect(clearPersistedActiveServerMock).not.toHaveBeenCalled();
+    expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
+      id: "local:android",
+      kind: "remote",
+      label: "On-device agent",
+      apiBase: "http://127.0.0.1:31337",
+    });
+    expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
+      "local",
+    );
+    expect(startupDispatchMock).toHaveBeenCalledWith({
+      type: "SPLASH_CONTINUE",
+    });
+    expect(completeOnboardingMock).toHaveBeenCalled();
+    await waitFor(() => expect(agentStartMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("starts iOS local mode through the shared mobile local target", async () => {
     platformState.isIOS = true;
 
     const { container } = render(<RuntimeGate />);
@@ -342,8 +369,12 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
       success: true,
       data: {
         status: "running",
+        lastHeartbeat: null,
         bridgeUrl: "https://agent-1.elizacloud.ai",
         webUiUrl: null,
+        currentNode: null,
+        suspendedReason: null,
+        databaseStatus: "ready",
       },
     });
     clientMock.createCloudCompatAgent.mockResolvedValue({
@@ -374,6 +405,15 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
         completed_on: "2026-01-01T00:00:02.000Z",
       },
     });
+    clientMock.getCloudCompatAgentStatus.mockResolvedValue({
+      success: true,
+      data: {
+        status: "running",
+        bridgeUrl: "https://agent-1.elizacloud.ai",
+        webUiUrl: null,
+        suspendedReason: null,
+      },
+    });
     clientMock.switchProvider.mockResolvedValue({
       success: true,
       provider: "elizacloud",
@@ -396,7 +436,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -440,7 +480,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
-  it.skip("uses the completed provisioning job bridge URL when agent status has not hydrated yet", async () => {
+  it("uses the completed provisioning job bridge URL when agent status has not hydrated yet", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: true,
@@ -500,7 +540,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
-  it.skip("logs in from the Cloud screen, provisions the first agent, and completes startup", async () => {
+  it("logs in from the Cloud screen, provisions the first agent, and completes startup", async () => {
     vi.useFakeTimers();
     const handleCloudLoginMock = vi.fn(async () => {
       setupApp({
@@ -555,7 +595,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).toHaveBeenCalledTimes(1);
   });
 
-  it.skip("surfaces provisioning API failures without completing onboarding", async () => {
+  it("surfaces provisioning API failures without completing onboarding", async () => {
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: false,
       error: "Insufficient credits",
@@ -565,7 +605,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await waitFor(() =>
@@ -576,7 +616,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("times out before the first provisioning response instead of hanging on startup", async () => {
+  it("times out before the first provisioning response instead of hanging on startup", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockImplementation(
       () => new Promise(() => undefined),
@@ -617,7 +657,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("stops polling when a provisioning job never leaves the queued or processing states", async () => {
+  it("stops polling when a provisioning job never leaves the queued or processing states", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: true,
@@ -671,7 +711,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(completeOnboardingMock).not.toHaveBeenCalled();
   });
 
-  it.skip("surfaces repeated async provisioning poll failures without hanging startup", async () => {
+  it("surfaces repeated async provisioning poll failures without hanging startup", async () => {
     vi.useFakeTimers();
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: true,
@@ -683,7 +723,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
 
     render(<RuntimeGate />);
     await act(async () => {
-      fireEvent.click(screen.getByText("Select Cloud"));
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
     });
 
     await vi.waitFor(() =>
@@ -702,5 +742,127 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     expect(clientMock.getCloudCompatJobStatus).toHaveBeenCalledTimes(3);
     expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
     expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces 'hosting unavailable' when create returns nodeId=null and skips provision", async () => {
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    clientMock.createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { agentId: "agent-1", nodeId: null, status: "queued" },
+    });
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(clientMock.provisionCloudCompatAgent).not.toHaveBeenCalled();
+    expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("times out async provisioning that stays queued past PROVISION_JOB_DEADLINE_MS", async () => {
+    vi.useFakeTimers();
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    clientMock.createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { agentId: "agent-1", nodeId: "node-1", status: "queued" },
+    });
+    clientMock.provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-1", agentId: "agent-1", status: "queued" },
+    });
+    clientMock.getCloudCompatJobStatus.mockResolvedValue({
+      success: true,
+      data: {
+        id: "job-1",
+        jobId: "job-1",
+        type: "agent_provision",
+        status: "queued",
+        data: {},
+        result: null,
+        error: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        startedAt: null,
+        completedAt: null,
+        retryCount: 0,
+        name: "agent_provision",
+        state: "queued",
+        created_on: "2026-01-01T00:00:00.000Z",
+        completed_on: null,
+      },
+    });
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
+    });
+
+    await vi.waitFor(() =>
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(125_000);
+    });
+
+    await vi.waitFor(() =>
+      expect(
+        screen.getByText(
+          "Cloud agent provisioning is taking too long. The hosting service may be unavailable.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(completeOnboardingMock).not.toHaveBeenCalled();
+  });
+
+  it("re-provisions an existing agent whose /api/health probe fails", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("Network unreachable");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [RUNNING_AGENT],
+    });
+    clientMock.provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "", agentId: "agent-1", status: "running" },
+    });
+
+    render(<RuntimeGate />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /get started/i }));
+    });
+
+    await vi.waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://agent-1.elizacloud.ai/api/health",
+        expect.objectContaining({ method: "GET" }),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(clientMock.provisionCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+
+    vi.unstubAllGlobals();
   });
 });

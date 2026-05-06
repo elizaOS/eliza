@@ -124,12 +124,12 @@ declare module "./client-base" {
     installRegistryPlugin(
       name: string,
       autoRestart?: boolean,
-      options?: { stream?: "latest" | "alpha"; version?: string },
+      options?: { stream?: "latest" | "beta"; version?: string },
     ): Promise<PluginInstallResult>;
     updateRegistryPlugin(
       name: string,
       autoRestart?: boolean,
-      options?: { stream?: "latest" | "alpha"; version?: string },
+      options?: { stream?: "latest" | "beta"; version?: string },
     ): Promise<PluginInstallResult>;
     uninstallRegistryPlugin(
       name: string,

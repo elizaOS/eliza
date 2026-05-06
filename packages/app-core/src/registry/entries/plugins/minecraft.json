@@ -3,7 +3,7 @@
   "name": "Minecraft",
   "description": "Minecraft automation app for driving Mineflayer bots from Eliza agents.",
   "npmName": "@elizaos/plugin-minecraft",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["app", "games", "minecraft", "automation", "mineflayer"],
   "config": {

@@ -24,11 +24,11 @@ import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { stripReservedElizaConfigKeys } from "@/lib/services/eliza-agent-config";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
 } from "@/lib/services/provisioning-worker-health";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -119,7 +119,8 @@ app.post("/", async (c) => {
     // Strip reserved __agent* keys from user-supplied agentConfig to prevent
     // callers from spoofing internal lifecycle flags.
     const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
-    const autoProvision = (c.env as { WAIFU_AUTO_PROVISION?: string }).WAIFU_AUTO_PROVISION === "true";
+    const autoProvision =
+      (c.env as { WAIFU_AUTO_PROVISION?: string }).WAIFU_AUTO_PROVISION === "true";
 
     if (autoProvision) {
       const workerHealth = await checkProvisioningWorkerHealth();

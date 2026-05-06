@@ -58,8 +58,11 @@ import {
   isIOS,
 } from "../../platform/init";
 import {
+  ONBOARDING_PROVIDER_CATALOG,
+  type OnboardingProviderOption,
+} from "../../providers";
+import {
   addAgentProfile,
-  clearPersistedActiveServer,
   savePersistedActiveServer,
   type UiTheme,
   useApp,
@@ -76,22 +79,11 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
-const DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
-const LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
+const CLOUD_AGENT_PROBE_TIMEOUT_MS = 4_000;
 const PROVISION_START_STILL_WAITING_MS = 5_000;
 const PROVISION_START_TIMEOUT_MS = 20_000;
 const PROVISION_JOB_WAIT_DEADLINE_MS = 600_000;
 const AGENT_URL_WAIT_DEADLINE_MS = 300_000;
-
-// Resolve the local-agent base at call time. The dev orchestrator may
-// port-shift the API away from 31337 when that port is taken; Electrobun
-// pushes the resolved base into `window.__ELIZA_API_BASE__` either via
-// HTML injection (production static-server) or via the `apiBaseUpdate`
-// RPC (Vite dev). A frozen constant misses both, leaving the renderer
-// stuck on the wrong port.
-function resolveLocalAgentApiBase(): string {
-  return getElizaApiBase() ?? DEFAULT_LOCAL_AGENT_API_BASE;
-}
 
 type NativeAgentPlugin = {
   start?: () => Promise<unknown>;
@@ -113,6 +105,18 @@ async function startMobileLocalAgent(): Promise<void> {
       err instanceof Error ? err.message : err,
     );
   }
+}
+
+const DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+
+// Resolve the local-agent base at call time. The dev orchestrator may
+// port-shift the API away from 31337 when that port is taken; Electrobun
+// pushes the resolved base into `window.__ELIZA_API_BASE__` either via
+// HTML injection (production static-server) or via the `apiBaseUpdate`
+// RPC (Vite dev). A frozen constant misses both, leaving the renderer
+// stuck on the wrong port.
+function resolveLocalAgentApiBase(): string {
+  return getElizaApiBase() ?? DEFAULT_LOCAL_AGENT_API_BASE;
 }
 
 /**
@@ -162,7 +166,7 @@ function normalizeRemoteTarget(value: string): string | null {
   }
 }
 
-type SubView = "chooser" | "cloud" | "remote";
+type SubView = "chooser" | "cloud" | "remote" | "local";
 type RuntimeChoice = "cloud" | "local" | "remote";
 
 type CloudStage =
@@ -173,6 +177,8 @@ type CloudStage =
   | "creating"
   | "provisioning"
   | "connecting";
+
+type LocalStage = "provider" | "config";
 
 function normalizeRuntimeUrl(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -287,6 +293,25 @@ function displayErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+async function probeCloudAgentReachable(
+  apiBase: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${apiBase.replace(/\/$/, "")}/api/health`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // TODO: replace with real onboarding artwork per runtime choice
 // const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
 //   cloud: "app-heroes/agentDOD.png",
@@ -333,92 +358,6 @@ function statusBadge(status: string): { label: string; className: string } {
   }
 }
 
-function runtimeChoiceDetails(
-  choice: RuntimeChoice,
-  t: (key: string, values?: Record<string, unknown>) => string,
-  androidLocal: boolean,
-): {
-  label: string;
-  eyebrow: string;
-  title: string;
-  description: string;
-  imageSrc?: string;
-} {
-  switch (choice) {
-    case "cloud":
-      return {
-        label: t("runtimegate.cloudOptionLabel", { defaultValue: "CLOUD" }),
-        eyebrow: t("runtimegate.cloudEyebrow", {
-          defaultValue: "Eliza Cloud",
-        }),
-        title: t("runtimegate.cloudTitle", {
-          defaultValue: "Run in Eliza Cloud",
-        }),
-        description: t("runtimegate.cloudDesc", {
-          defaultValue:
-            "Hosted agent with managed LLMs and connectors. Fastest start.",
-        }),
-      };
-    case "local":
-      return {
-        label: t("runtimegate.localOptionLabel", { defaultValue: "LOCAL" }),
-        eyebrow: androidLocal
-          ? t("runtimegate.localEyebrowOnDevice", {
-              defaultValue: "On device",
-            })
-          : t("runtimegate.localEyebrow", {
-              defaultValue: "This device",
-            }),
-        title: androidLocal
-          ? t("runtimegate.localTitleAndroid", {
-              defaultValue: "Local Agent (Beta)",
-            })
-          : t("runtimegate.localTitle", {
-              defaultValue: "Run a local agent",
-            }),
-        description: androidLocal
-          ? t("runtimegate.localDescAndroid", {
-              defaultValue:
-                "Runs the full Eliza agent on this device. No cloud needed.",
-            })
-          : t("runtimegate.localDesc", {
-              defaultValue:
-                "Keep the agent on this machine. You'll pick a provider after start.",
-            }),
-      };
-    case "remote":
-      return {
-        label: t("runtimegate.remoteOptionLabel", { defaultValue: "REMOTE" }),
-        eyebrow: t("runtimegate.remoteEyebrow", {
-          defaultValue: "Remote agent",
-        }),
-        title: t("runtimegate.remoteTitle", {
-          defaultValue: "Connect to an existing agent",
-        }),
-        description: t("runtimegate.remoteDesc", {
-          defaultValue:
-            "Point at an agent you're already running (e.g. on your Mac).",
-        }),
-      };
-  }
-}
-
-function selectChoiceLabel(
-  choice: RuntimeChoice,
-  t: (key: string, values?: Record<string, unknown>) => string,
-): string {
-  switch (choice) {
-    case "cloud":
-      return t("runtimegate.selectCloud", { defaultValue: "Select Cloud" });
-    case "local":
-      return t("runtimegate.selectLocal", {
-        defaultValue: "Start Local Agent",
-      });
-    case "remote":
-      return t("runtimegate.selectRemote", { defaultValue: "Select Remote" });
-  }
-}
-
 export function RuntimeGate() {
   const {
     setState,
@@ -459,6 +398,29 @@ export function RuntimeGate() {
 
   // Local embeddings toggle (elizacloud only, default unchecked)
   const [useLocalEmbeddings, setUseLocalEmbeddings] = useState(false);
+
+  // Local-runtime setup wizard. When the user picks "Local" in the
+  // chooser we render an in-place wizard (provider list → API key entry)
+  // before completing onboarding. Without this, finishAsLocal() drops
+  // the user straight into chat with no model provider configured —
+  // their first send hits the no_provider gate (commit 28e19c8023) and
+  // they have to backtrack to Settings. The wizard saves the round-trip.
+  const [localStage, setLocalStage] = useState<LocalStage>("provider");
+  const [localProviderId, setLocalProviderId] = useState<string | null>(null);
+  const [localApiKey, setLocalApiKey] = useState("");
+  const [localSaving, setLocalSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // Filter catalog to direct API-key providers (group:"local" excludes
+  // managed cloud + subscription paths — those have their own flows).
+  const localProviderCatalog = useMemo<readonly OnboardingProviderOption[]>(
+    () =>
+      ONBOARDING_PROVIDER_CATALOG.filter(
+        (provider) =>
+          provider.group === "local" && provider.authMode === "api-key",
+      ),
+    [],
+  );
 
   // Local-tile readiness. Desktop/dev are local-capable synchronously.
   // Android probes the on-device agent's `/api/health` so ElizaOS can
@@ -637,7 +599,10 @@ export function RuntimeGate() {
 
   const finishAsLocal = useCallback(() => {
     setError(null);
-    const localApiBase = resolveLocalAgentApiBase();
+    const localApiBase =
+      isAndroid || isIOS
+        ? MOBILE_LOCAL_AGENT_API_BASE
+        : resolveLocalAgentApiBase();
     if (isAndroid || isIOS) {
       // Mobile local mode always pins the loopback-shaped base URL. Android
       // serves it from the foreground service; iOS intercepts the same URL
@@ -645,7 +610,7 @@ export function RuntimeGate() {
       // Persisting it as a `remote` active server keeps the existing startup
       // restore branch working while `local` mobile runtime mode records the
       // user-visible distinction.
-      client.setBaseUrl(LOCAL_AGENT_API_BASE);
+      client.setBaseUrl(localApiBase);
       client.setToken(null);
       savePersistedActiveServer({
         id: isAndroid
@@ -653,12 +618,12 @@ export function RuntimeGate() {
           : MOBILE_LOCAL_AGENT_SERVER_ID,
         kind: "remote",
         label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
-        apiBase: LOCAL_AGENT_API_BASE,
+        apiBase: localApiBase,
       });
       addAgentProfile({
         kind: "remote",
         label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
-        apiBase: LOCAL_AGENT_API_BASE,
+        apiBase: localApiBase,
       });
       void startMobileLocalAgent();
     } else {
@@ -776,13 +741,78 @@ export function RuntimeGate() {
         setSubView("cloud");
         return;
       case "local":
-        finishAsLocal();
+        // ElizaOS / Android pre-seed paths still want the immediate
+        // finishAsLocal() — the on-device runtime is the only legitimate
+        // option there and the chooser is bypassed entirely on stock
+        // builds. Desktop/iOS/web users actively pick Local and need a
+        // provider before the runtime can answer chat.
+        if (elizaOSAutoLocal || isAndroid) {
+          finishAsLocal();
+          return;
+        }
+        setLocalStage("provider");
+        setLocalProviderId(null);
+        setLocalApiKey("");
+        setLocalError(null);
+        setSubView("local");
         return;
       case "remote":
         setSubView("remote");
         return;
     }
-  }, [finishAsLocal, selectedChoice]);
+  }, [elizaOSAutoLocal, finishAsLocal, selectedChoice]);
+
+  const handleLocalSelectProvider = useCallback((providerId: string) => {
+    setLocalProviderId(providerId);
+    setLocalApiKey("");
+    setLocalError(null);
+    setLocalStage("config");
+  }, []);
+
+  const handleLocalConfigBack = useCallback(() => {
+    setLocalStage("provider");
+    setLocalError(null);
+  }, []);
+
+  const handleLocalSave = useCallback(async () => {
+    if (!localProviderId) {
+      setLocalError(
+        t("runtimegate.localPickProvider", {
+          defaultValue: "Pick a provider first.",
+        }),
+      );
+      return;
+    }
+    const trimmedKey = localApiKey.trim();
+    if (!trimmedKey) {
+      setLocalError(
+        t("runtimegate.localApiKeyRequired", {
+          defaultValue: "Enter an API key for the selected provider.",
+        }),
+      );
+      return;
+    }
+
+    setLocalSaving(true);
+    setLocalError(null);
+    try {
+      // switchProvider writes the canonical config (cloud.* off,
+      // serviceRouting.llmText.{backend,transport:"direct"}, env key).
+      // Routing-mode "local-only" + the provider's API key = the runtime
+      // boots with a registered provider and chat works immediately.
+      await client.switchProvider(localProviderId, trimmedKey);
+      finishAsLocal();
+    } catch (err) {
+      setLocalSaving(false);
+      setLocalError(
+        err instanceof Error
+          ? err.message
+          : t("runtimegate.localSaveFailed", {
+              defaultValue: "Failed to save provider — please try again.",
+            }),
+      );
+    }
+  }, [finishAsLocal, localApiKey, localProviderId, t]);
 
   // ── Cloud: provision + connect ─────────────────────────────────────
 
@@ -803,10 +833,13 @@ export function RuntimeGate() {
       // compat-created agent returns 405 (the v1/app provision endpoint
       // doesn't recognize compat-namespace agent IDs).
       let jobId: string | undefined = existingJobId;
-      let provRes:
-        | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>
+      let provisionData:
+        | Awaited<ReturnType<typeof client.provisionCloudCompatAgent>>["data"]
         | undefined;
       if (!jobId) {
+        let provRes: Awaited<
+          ReturnType<typeof client.provisionCloudCompatAgent>
+        >;
         let startStatusTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           startStatusTimer = setTimeout(() => {
@@ -847,6 +880,7 @@ export function RuntimeGate() {
           setCloudStage("agent-list");
           return;
         }
+        provisionData = provRes.data;
         jobId = provRes.data?.jobId;
       }
 
@@ -926,7 +960,7 @@ export function RuntimeGate() {
         );
         const provisionRuntimeUrl = resolveCloudJobRuntimeUrl({
           result: null,
-          data: provRes?.data ?? {},
+          data: provisionData ?? {},
         });
         if (provisionRuntimeUrl) {
           const readyFromProvisionUrl = await client
@@ -970,7 +1004,7 @@ export function RuntimeGate() {
         Date.now() +
         Math.max(
           PROVISION_JOB_WAIT_DEADLINE_MS,
-          provRes?.polling?.expectedDurationMs ?? 0,
+          provRes.polling?.expectedDurationMs ?? 0,
         );
       const pollProvisionJob = async () => {
         if (Date.now() >= provisionJobDeadlineMs) {
@@ -982,7 +1016,6 @@ export function RuntimeGate() {
           );
           return;
         }
-
         let jobRes: Awaited<ReturnType<typeof client.getCloudCompatJobStatus>>;
         try {
           jobRes = await client.getCloudCompatJobStatus(jobId);
@@ -1127,10 +1160,17 @@ export function RuntimeGate() {
             setCloudStage("agent-list");
             return;
           }
-          if (
-            primary.status !== "running" ||
-            !resolveCloudAgentApiBase(primary)
-          ) {
+          const primaryApiBase = resolveCloudAgentApiBase(primary);
+          if (primary.status !== "running" || !primaryApiBase) {
+            await provisionAndConnect(primary.agent_id);
+            return;
+          }
+          const reachable = await probeCloudAgentReachable(
+            primaryApiBase,
+            CLOUD_AGENT_PROBE_TIMEOUT_MS,
+          );
+          if (cancelled) return;
+          if (!reachable) {
             await provisionAndConnect(primary.agent_id);
             return;
           }
@@ -1140,7 +1180,6 @@ export function RuntimeGate() {
       }
 
       // No agents yet — auto-create "My Agent" and provision.
-      setCloudStage("auto-creating");
       setError(null);
       const createRes = await client.createCloudCompatAgent({
         agentName: DEFAULT_AUTO_AGENT_NAME,
@@ -1156,6 +1195,21 @@ export function RuntimeGate() {
         setCloudStage("agent-list");
         return;
       }
+      if (createRes.data.nodeId == null) {
+        setError(
+          t("runtimegate.cloudHostingUnavailable", {
+            defaultValue:
+              "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
+          }),
+        );
+        setCloudStage("agent-list");
+        return;
+      }
+      // MUST stay below the createCloudCompatAgent await — setting cloudStage
+      // earlier fires this effect's cleanup (cloudStage is in deps), flips
+      // cancelled=true, and the post-await guard then bails before
+      // provisionAndConnect runs.
+      setCloudStage("auto-creating");
 
       // Compat create returns a jobId because the cloud queues provisioning
       // automatically. Pass it through so we skip the redundant provision call
@@ -1497,6 +1551,139 @@ export function RuntimeGate() {
             <BackButton t={t} onClick={() => setSubView("chooser")} />
           </div>
         )}
+      </GateShell>
+    );
+  }
+
+  // ── Render: local setup wizard ─────────────────────────────────────
+  if (subView === "local") {
+    const selectedProvider = localProviderId
+      ? localProviderCatalog.find((p) => p.id === localProviderId)
+      : null;
+    return (
+      <GateShell
+        uiLanguage={uiLanguage}
+        setUiLanguage={setUiLanguage}
+        uiTheme={uiTheme}
+        setUiTheme={setUiTheme}
+        t={t}
+      >
+        <GateHeader t={t} />
+
+        <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
+          <p
+            style={{ fontFamily: MONO_FONT }}
+            className="text-3xs uppercase text-white/60"
+          >
+            {localStage === "provider"
+              ? t("runtimegate.localPickEyebrow", {
+                  defaultValue: "Pick a model provider",
+                })
+              : t("runtimegate.localConfigEyebrow", {
+                  defaultValue: "Add your API key",
+                })}
+          </p>
+
+          {localStage === "provider" && (
+            <div className="flex flex-col gap-2">
+              {localProviderCatalog.map((provider) => (
+                <Card
+                  key={provider.id}
+                  className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                  style={{ borderRadius: 0 }}
+                >
+                  <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white/95">
+                        {provider.name}
+                      </p>
+                      <p className="truncate text-xs-tight text-white/52">
+                        {provider.description}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                      onClick={() => handleLocalSelectProvider(provider.id)}
+                    >
+                      {t("common.choose", { defaultValue: "Choose" })}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+              <BackButton t={t} onClick={() => setSubView("chooser")} />
+            </div>
+          )}
+
+          {localStage === "config" && selectedProvider && (
+            <div className="flex flex-col gap-3">
+              <Card
+                className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                style={{ borderRadius: 0 }}
+              >
+                <CardContent className="flex flex-col gap-1 px-3 py-3">
+                  <p className="text-sm font-semibold text-white/95">
+                    {selectedProvider.name}
+                  </p>
+                  <p className="text-xs-tight text-white/52">
+                    {selectedProvider.description}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Input
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  selectedProvider.keyPrefix
+                    ? t("runtimegate.localApiKeyPlaceholderPrefixed", {
+                        defaultValue: "{{prefix}}…",
+                        prefix: selectedProvider.keyPrefix,
+                      })
+                    : t("runtimegate.localApiKeyPlaceholder", {
+                        defaultValue: "API key",
+                      })
+                }
+                value={localApiKey}
+                onChange={(e) => setLocalApiKey(e.target.value)}
+                disabled={localSaving}
+                className="!h-11 !rounded-none !border-2 !border-black !bg-white !px-3 !text-sm !text-black"
+              />
+
+              {localError ? (
+                <p className="text-xs text-danger">{localError}</p>
+              ) : null}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                  onClick={() => void handleLocalSave()}
+                  disabled={localSaving || !localApiKey.trim()}
+                >
+                  {localSaving ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner className="h-3 w-3" />
+                      {t("common.saving", { defaultValue: "Saving…" })}
+                    </span>
+                  ) : (
+                    t("runtimegate.localSaveContinue", {
+                      defaultValue: "Continue to chat",
+                    })
+                  )}
+                </Button>
+                <BackButton
+                  t={t}
+                  onClick={handleLocalConfigBack}
+                  disabled={localSaving}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </GateShell>
     );
   }
@@ -1996,111 +2183,6 @@ function PowerUserCard({
   );
 }
 
-interface ChoiceCardProps {
-  choice: RuntimeChoice;
-  label: string;
-  eyebrow: string;
-  title: string;
-  description: string;
-  imageSrc?: string;
-  selected: boolean;
-  statusLabel: string;
-  disabled?: boolean;
-  onClick: () => void;
-}
-
-function ChoiceCard({
-  choice,
-  label,
-  eyebrow,
-  title,
-  description,
-  imageSrc,
-  selected,
-  statusLabel,
-  disabled,
-  onClick,
-}: ChoiceCardProps) {
-  const className = [
-    "group flex w-full min-w-0 border-2 p-1.5 text-left shadow-[5px_5px_0_rgba(0,0,0,0.62)] transition-[background-color,border-color,color,transform,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black md:min-h-[21rem] md:flex-col md:p-3",
-    selected
-      ? "border-[#ffe600] bg-black/88 text-[#fff3a8]"
-      : "border-black bg-[#fff1ac]/90 text-black hover:-translate-y-0.5 hover:bg-white",
-    disabled ? "cursor-default" : "cursor-pointer",
-  ].join(" ");
-  const imageBorderClassName = selected
-    ? "border-[#ffe600] bg-[#17100a]"
-    : "border-black bg-black";
-  const eyebrowClassName = selected ? "text-[#ffe600]/82" : "text-black/60";
-  const titleClassName = selected ? "text-white/92" : "text-black/76";
-  const descriptionClassName = selected ? "text-white/66" : "text-black/62";
-
-  return (
-    <button
-      type="button"
-      className={className}
-      onClick={disabled ? undefined : onClick}
-      aria-pressed={selected}
-      aria-disabled={disabled}
-      data-runtime-choice={choice}
-      style={{
-        borderRadius: 0,
-        clipPath:
-          "polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)",
-      }}
-    >
-      {imageSrc && (
-        <span
-          className={`relative h-20 w-24 shrink-0 overflow-hidden border-2 sm:h-24 sm:w-28 md:h-36 md:w-full ${imageBorderClassName}`}
-          style={{
-            clipPath:
-              "polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)",
-          }}
-        >
-          <img
-            src={imageSrc}
-            alt=""
-            aria-hidden="true"
-            className="h-full w-full object-cover opacity-90 saturate-[1.05]"
-          />
-        </span>
-      )}
-      <span className="flex min-w-0 flex-1 flex-col px-2 py-0.5 sm:px-3 sm:py-1.5 md:px-1 md:pt-3">
-        <span
-          style={{ fontFamily: MONO_FONT }}
-          className={`text-3xs uppercase tracking-[0.18em] ${eyebrowClassName}`}
-        >
-          {eyebrow}
-        </span>
-        <span
-          style={{ fontFamily: MONO_FONT }}
-          className="mt-1 text-base font-black uppercase leading-none tracking-[0.08em] sm:text-lg md:text-2xl"
-        >
-          {label}
-        </span>
-        <span
-          className={`mt-1.5 text-[11px] font-bold leading-snug sm:mt-2 sm:text-xs ${titleClassName}`}
-        >
-          {title}
-        </span>
-        <span
-          className={`mt-1 text-[12px] leading-[1.25] sm:text-xs-tight sm:leading-snug ${descriptionClassName}`}
-        >
-          {description}
-        </span>
-      </span>
-      <span
-        style={{ fontFamily: MONO_FONT }}
-        className={`ml-auto hidden self-start px-2 py-1 text-3xs font-bold uppercase sm:inline-block md:ml-0 md:mt-3 md:self-start ${
-          selected ? "bg-[#ffe600] text-black" : "bg-black text-[#ffe600]"
-        }`}
-      >
-        {statusLabel}
-      </span>
-    </button>
-  );
-}
-
 /**
  * ElizaOS-only "starting your local agent" splash. Matches the yellow
  * segmented-bar style of `StartupShell`'s loading screens so the transition
@@ -2149,16 +2231,19 @@ function ElizaOSLocalSplash({ message }: { message: string }) {
 function BackButton({
   t,
   onClick,
+  disabled = false,
 }: {
   t: (key: string, values?: Record<string, unknown>) => string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       style={{ fontFamily: MONO_FONT }}
-      className="mt-2 self-center text-3xs uppercase tracking-[0.2em] text-white/60 underline hover:text-[#ffe600]"
+      className="mt-2 self-center text-3xs uppercase tracking-[0.2em] text-white/60 underline hover:text-[#ffe600] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-white/60"
     >
       ← {t("common.back", { defaultValue: "Back" })}
     </button>

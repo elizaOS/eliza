@@ -17,8 +17,8 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { selectLiveProvider } from "../../../../eliza/test/helpers/live-provider";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
+import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import { lifeAction } from "../src/actions/life.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
@@ -210,9 +210,8 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       expect(goalGrounding).toBeTruthy();
       expect(goalGrounding?.groundingState).toBe("grounded");
       expect(typeof goalGrounding?.summary).toBe("string");
-      expect((goalGrounding?.summary as string).trim().length).toBeGreaterThan(
-        0,
-      );
+      const groundingSummary = goalGrounding.summary as string;
+      expect(groundingSummary.trim().length).toBeGreaterThan(0);
       expect(goalGrounding?.missingCriticalFields).toEqual([]);
     },
     { perRunTimeoutMs: 120_000 },

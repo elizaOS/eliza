@@ -25,7 +25,7 @@ interface SlackPinEntry {
 export const slackPinsProvider: Provider = {
   name: "slackPins",
   description: "Lists pinned messages in the current Slack channel.",
-  descriptionCompressed: "Pinned messages in current Slack channel.",
+  descriptionCompressed: "List pinned Slack channel msgs.",
   dynamic: true,
   contexts: ["social", "connectors"],
   relevanceKeywords: [...RELEVANCE_KEYWORDS],

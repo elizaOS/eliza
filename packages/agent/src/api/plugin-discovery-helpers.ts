@@ -975,7 +975,7 @@ export function discoverInstalledPlugins(
       name,
       npmName: packageName,
       version: installedVersion,
-      releaseStream: (record as { releaseStream?: "latest" | "alpha" })
+      releaseStream: (record as { releaseStream?: "latest" | "beta" })
         .releaseStream,
       requestedVersion: (record as { requestedVersion?: string })
         .requestedVersion,

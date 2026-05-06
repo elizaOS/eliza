@@ -3,7 +3,7 @@
   "name": "Line",
   "description": "LINE connector for bot messaging and customer conversations.",
   "npmName": "@elizaos/plugin-line",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["connector", "messaging", "line", "social", "social-chat"],
   "config": {

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../packages/app-core/test/helpers/http.ts";
 import { startLiveRuntimeServer } from "../../../packages/app-core/test/helpers/live-runtime-server.ts";
 import type { RuntimeHarness } from "../../../packages/app-core/test/live-agent/helpers/runtime-harness.ts";

@@ -6,8 +6,8 @@ import type { ManagedWindowSnapshot } from "./surface-windows";
 // list is the source of truth (it owns hero images, capabilities, ordering);
 // the menu only needs slug + display + windowPath, so we duplicate that
 // minimal slice here to avoid pulling renderer modules into the bun bundle.
-// TODO: if the bun bundler grows safe access to the renderer module graph,
-// import this from there instead.
+// Keep this duplicated until the bun bundler exposes safe access to the
+// renderer module graph.
 export interface AppMenuEntry {
 	readonly slug: string;
 	readonly name: string;

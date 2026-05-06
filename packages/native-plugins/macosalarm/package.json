@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/macosalarm",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.0",
   "description": "macOS native alarm helper plugin. Schedules UNUserNotificationCenter calendar-trigger alarms via a self-contained Swift CLI invoked from the Eliza runtime.",
   "type": "module",
   "main": "./dist/index.js",

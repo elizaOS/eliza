@@ -142,12 +142,12 @@ function getElizaPinnedElizaCoreVersion(): string {
   } catch {
     /* fall through */
   }
-  return "2.0.0-alpha.109";
+  return "2.0.0-beta.0";
 }
 
-/** Bun cache dir names look like `@elizaos+core@2.0.0-alpha.109+<hash>`. */
-function elizaCoreAlphaPrerelease(dir: string): number {
-  const m = dir.match(/@elizaos\+core@[\d.]+-alpha\.(\d+)/);
+/** Bun cache dir names look like `@elizaos+core@2.0.0-beta.0+<hash>`. */
+function elizaCoreBetaPrerelease(dir: string): number {
+  const m = dir.match(/@elizaos\+core@[\d.]+-beta\.(\d+)/);
   return m?.[1] ? parseInt(m[1], 10) : -1;
 }
 
@@ -155,7 +155,7 @@ function elizaCoreAlphaPrerelease(dir: string): number {
  * Bun stores a full npm tarball under node_modules/.bun even when the workspace
  * symlink for @elizaos/core points at an unbuilt local eliza checkout.
  *
- * **WHY sort:** `readdir` order is arbitrary; picking `alpha.12` over `alpha.109`
+ * **WHY sort:** `readdir` order is arbitrary; picking `beta.0` over a later beta
  * mismatches the API and tends to blank the Electrobun webview.
  */
 function findElizaCoreBundleInBunStore(
@@ -202,7 +202,7 @@ function findElizaCoreBundleInBunStore(
   if (candidates.length === 0) return null;
 
   candidates.sort(
-    (a, b) => elizaCoreAlphaPrerelease(b.dir) - elizaCoreAlphaPrerelease(a.dir),
+    (a, b) => elizaCoreBetaPrerelease(b.dir) - elizaCoreBetaPrerelease(a.dir),
   );
   const best = candidates[0];
   return best ? path.join(best.bunDir, best.dir, rel) : null;

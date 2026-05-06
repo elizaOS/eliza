@@ -117,7 +117,7 @@ export const containersEnv = {
   /** Hetzner Cloud API token for elastic node provisioning. Optional. */
   hetznerCloudToken(): string | undefined {
     const env = getCloudAwareEnv();
-    return pick(env.HCLOUD_TOKEN, env.HETZNER_CLOUD_TOKEN);
+    return pick(env.HCLOUD_TOKEN, env.HETZNER_CLOUD_TOKEN, env.HETZNER_CLOUD_API_KEY);
   },
 
   /**

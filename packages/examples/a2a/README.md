@@ -40,7 +40,7 @@ Response:
 {
   "name": "Eliza",
   "bio": "A helpful AI assistant",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "capabilities": ["chat", "reasoning", "tool-use"],
   "powered_by": "elizaOS"
 }

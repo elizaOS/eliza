@@ -39,6 +39,8 @@ import {
   type WalletTradingProfileWindow,
   type WorkbenchOverview,
 } from "../api";
+import type { UiLanguage } from "../i18n";
+import { normalizeOwnerName } from "../utils/owner-name";
 import {
   type AutonomyRunHealthMap,
   buildAutonomyGapReplayRequests,
@@ -46,8 +48,6 @@ import {
   markPendingAutonomyGapsPartial,
   mergeAutonomyEvents,
 } from "./autonomy";
-import type { UiLanguage } from "../i18n";
-import { normalizeOwnerName } from "../utils/owner-name";
 import { normalizeConversationList } from "./chat-conversation-guards";
 import type { LoadConversationMessagesResult } from "./internal";
 

@@ -1,6 +1,6 @@
 {
   "name": "elizaos-cloudflare-worker",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "elizaOS AI agent running on Cloudflare Workers using canonical runtime.messageService.handleMessage()",
   "type": "module",
   "scripts": {

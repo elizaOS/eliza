@@ -30,13 +30,13 @@ import { afterAll, beforeAll, expect } from "vitest";
 import {
   describeIf,
   itIf,
-} from "../../../../../eliza/test/helpers/conditional-tests.ts";
+} from "../../../../test/helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
   isLiveTestEnabled,
   LIVE_PROVIDER_ENV_KEYS,
   selectLiveProvider,
-} from "../../../../../eliza/test/helpers/live-provider";
+} from "../../../../test/helpers/live-provider";
 import {
   disposeN8nSidecar,
   getN8nSidecar,

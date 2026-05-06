@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-app-capacitor-backend",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "dev": "bun --watch run src/server.ts",

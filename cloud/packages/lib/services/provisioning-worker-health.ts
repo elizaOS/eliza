@@ -98,7 +98,9 @@ export async function checkProvisioningWorkerHealth(
   }
 }
 
-export function provisioningWorkerFailureBody(health: Extract<ProvisioningWorkerHealth, { ok: false }>) {
+export function provisioningWorkerFailureBody(
+  health: Extract<ProvisioningWorkerHealth, { ok: false }>,
+) {
   return {
     success: false,
     code: health.code,

@@ -148,6 +148,7 @@ function rateLimitPairing(ip: string | null): boolean {
  *
  * - `GET  /api/onboarding/status`
  * - `GET  /api/auth/status`
+ * - `GET  /api/auth/pair-code`
  * - `POST /api/auth/pair`
  */
 export async function handleAuthPairingCompatRoutes(
@@ -232,6 +233,23 @@ export async function handleAuthPairingCompatRoutes(
       pairingEnabled: enabled,
       expiresAt: enabled ? pairingExpiresAt : null,
     });
+    return true;
+  }
+
+  // ── GET /api/auth/pair-code ─────────────────────────────────────────
+  // Loopback-only helper for local dashboards/operators. External clients
+  // must use the normal pairing flow and never receive the code directly.
+  if (method === "GET" && url.pathname === "/api/auth/pair-code") {
+    if (!isTrustedLocalRequest(req)) {
+      sendJsonErrorResponse(res, 403, "Pair code visible on loopback only");
+      return true;
+    }
+    const code = ensurePairingCode();
+    if (!code) {
+      sendJsonErrorResponse(res, 503, "Pairing not enabled");
+      return true;
+    }
+    sendJsonResponse(res, 200, { code, expiresAt: pairingExpiresAt });
     return true;
   }
 

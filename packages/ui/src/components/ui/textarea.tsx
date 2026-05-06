@@ -1,14 +1,9 @@
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-export interface TextareaVariantProps {
-  variant?: "default" | "form" | "config" | null;
-  density?: "default" | "compact" | "relaxed" | null;
-}
-
-const _textareaVariants = cva(
+const textareaVariants = cva(
   "w-full border text-sm resize-y transition-[border-color,box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
@@ -32,12 +27,9 @@ const _textareaVariants = cva(
   },
 );
 
-const textareaVariants: (props?: TextareaVariantProps) => string =
-  _textareaVariants as (props?: TextareaVariantProps) => string;
-
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement>,
-    TextareaVariantProps {
+    VariantProps<typeof textareaVariants> {
   hasError?: boolean;
 }
 
