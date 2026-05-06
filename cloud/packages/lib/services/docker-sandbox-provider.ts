@@ -101,6 +101,25 @@ function resolveStewardContainerEnvUrl(): string {
   return resolveStewardContainerUrl(resolveStewardHostUrl(), env.STEWARD_CONTAINER_URL);
 }
 
+/**
+ * When USE_STEWARD_PROXY=true, route LLM and EVM RPC calls through the
+ * Steward proxy reachable from the container at host.docker.internal:8080
+ * (the proxy listens on the docker host). Returns an empty object when
+ * proxy mode is disabled so callers can spread it unconditionally.
+ */
+export function buildStewardProxyEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  if (env.USE_STEWARD_PROXY !== "true") return {};
+  const base = "http://host.docker.internal:8080";
+  return {
+    STEWARD_PROXY_URL: base,
+    OPENAI_BASE_URL: `${base}/openai/v1`,
+    ANTHROPIC_BASE_URL: `${base}/anthropic`,
+    BSC_RPC_URL: "https://bsc-dataseed.binance.org",
+    BASE_RPC_URL: "https://mainnet.base.org",
+    ETHEREUM_RPC_URL: "https://eth.llamarpc.com",
+  };
+}
+
 /** Health-check polling: interval between retries (ms). */
 const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
 
@@ -407,9 +426,11 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // 5. Build the base environment (spread to avoid mutating caller's environmentVars)
     const stewardContainerUrl = resolveStewardContainerEnvUrl();
+    const proxyEnv = buildStewardProxyEnv();
     const baseEnv: Record<string, string> = {
       ...environmentVars,
       ...vpnEnvVars,
+      ...proxyEnv,
       AGENT_NAME: agentName,
       ELIZA_CLOUD_PROVISIONED: "1",
       STEWARD_API_URL: stewardContainerUrl,
@@ -495,7 +516,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         `--name ${shellQuote(containerName)}`,
         "--restart unless-stopped",
         `--network ${shellQuote(DOCKER_NETWORK)}`,
-        ...(requiresDockerHostGateway(stewardContainerUrl)
+        ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
           ? ["--add-host host.docker.internal:host-gateway"]
           : []),
         `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || DEFAULT_AGENT_PORT))}`,
