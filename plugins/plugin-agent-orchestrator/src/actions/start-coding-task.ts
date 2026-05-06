@@ -40,6 +40,7 @@ import type { CodingWorkspaceService } from "../services/workspace-service.js";
 import {
   type CodingTaskContext,
   handleMultiAgent,
+  splitAgentSpecsParam,
 } from "./coding-task-handlers.js";
 
 /**
@@ -633,12 +634,7 @@ export const startCodingTaskAction: BackgroundAction = {
     const agentsParam =
       (params?.agents as string) ?? (content.agents as string);
 
-    const llmSegments = agentsParam
-      ? agentsParam
-          .split("|")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+    const llmSegments = agentsParam ? splitAgentSpecsParam(agentsParam) : [];
     const userSegments = splitMultiIntentTask(userText);
 
     if (userSegments.length > llmSegments.length && userSegments.length > 1) {

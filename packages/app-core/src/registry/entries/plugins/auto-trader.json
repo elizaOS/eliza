@@ -3,7 +3,7 @@
   "name": "Auto Trader",
   "description": "Autonomous trading plugin with LLM-powered strategies for Solana",
   "npmName": "@elizaos/plugin-auto-trader",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": [
     "trading",

@@ -3,7 +3,7 @@
   "name": "Elizacloud",
   "description": "elizaOS plugin to connect with elizaOS Cloud services",
   "npmName": "@elizaos/plugin-elizacloud",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["elizacloud"],
   "config": {
@@ -183,7 +183,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "2.0.0-alpha",
+      "default": "2.0.0-beta.0",
       "label": "Cloud App Version",
       "help": "Application version sent during device authentication.",
       "advanced": false

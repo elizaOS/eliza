@@ -2,14 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
-import {
-  googleCapabilitiesToScopes,
-  normalizeGoogleCapabilities,
-} from "@elizaos/app-lifeops/lifeops/google-scopes";
-import {
-  createLifeOpsConnectorGrant,
-  LifeOpsRepository,
-} from "@elizaos/app-lifeops/lifeops/repository";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   LIFEOPS_X_CAPABILITIES,
@@ -17,6 +9,14 @@ import {
   type LifeOpsGoogleCapability,
   type LifeOpsXCapability,
 } from "@elizaos/shared/contracts/lifeops";
+import {
+  googleCapabilitiesToScopes,
+  normalizeGoogleCapabilities,
+} from "../../../plugins/app-lifeops/src/lifeops/google-scopes.ts";
+import {
+  createLifeOpsConnectorGrant,
+  LifeOpsRepository,
+} from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");

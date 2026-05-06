@@ -115,7 +115,7 @@ export const installPluginAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Plugin @elizaos/plugin-openai@2.0.0-alpha.4 installed successfully. The agent will restart to load it.",
+          text: "Plugin @elizaos/plugin-openai@2.0.0-beta.0 installed successfully. The agent will restart to load it.",
         },
       },
     ],

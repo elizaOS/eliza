@@ -37,7 +37,7 @@ export function buildLinkedSpawnMetadata(
 ): Record<string, unknown> {
   const parentStepId = cleanParentStepId(handle);
   return {
-    ...(metadata ?? {}),
+    ...metadata,
     ...(parentStepId
       ? {
           [TRAJECTORY_PARENT_STEP_METADATA_KEY]: parentStepId,
@@ -54,7 +54,7 @@ export function buildLinkedSpawnEnv(
   const parentStepId = cleanParentStepId(handle);
   if (!parentStepId) return env;
   return {
-    ...(env ?? {}),
+    ...env,
     [TRAJECTORY_PARENT_STEP_ENV_KEY]: parentStepId,
   };
 }

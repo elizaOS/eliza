@@ -3,7 +3,7 @@
   "name": "Discord",
   "description": "Discord connector for elizaOS servers, voice, and message management with Eliza Cloud OAuth gateway or local bot-token setup.",
   "npmName": "@elizaos/plugin-discord",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["connector", "social", "social-chat", "messaging", "discord"],
   "config": {

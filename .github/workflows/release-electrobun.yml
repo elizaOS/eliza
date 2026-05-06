@@ -36,7 +36,7 @@ on:
   workflow_call:
     inputs:
       tag:
-        description: "Release tag override (e.g. v2.0.0-alpha.3)"
+        description: "Release tag override (e.g. v2.0.0-beta.0)"
         required: false
         type: string
       draft:
@@ -57,7 +57,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v2.0.0-alpha.3)"
+        description: "Release tag (e.g. v2.0.0-beta.0)"
         required: false
         type: string
       draft:
@@ -94,10 +94,7 @@ jobs:
       ${{
         github.event_name != 'push' ||
         (
-          !contains(github.ref_name, '-alpha') &&
-          !contains(github.ref_name, '-beta') &&
-          !contains(github.ref_name, '-rc') &&
-          !contains(github.ref_name, '-nightly')
+          !contains(github.ref_name, '-')
         )
       }}
     runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
@@ -126,7 +123,7 @@ jobs:
           fi
           VERSION="${TAG#v}"
           # canary for pre-release tags, stable for everything else
-          if echo "$VERSION" | grep -qE '(alpha|beta|rc|nightly)'; then
+          if [[ "$VERSION" == *"-"* ]]; then
             BUILD_ENV="canary"
           else
             BUILD_ENV="stable"
@@ -1659,7 +1656,7 @@ jobs:
           target_commitish: ${{ needs.prepare.outputs.source_sha }}
           name: Eliza ${{ needs.prepare.outputs.tag }}
           draft: ${{ inputs.draft || false }}
-          prerelease: ${{ contains(needs.prepare.outputs.version, 'alpha') || contains(needs.prepare.outputs.version, 'beta') || contains(needs.prepare.outputs.version, 'rc') || contains(needs.prepare.outputs.version, 'nightly') }}
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
           generate_release_notes: true
           files: release-files/*
         env:

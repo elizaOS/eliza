@@ -221,7 +221,7 @@ const commonFields = {
   description: z.string().optional(),
   npmName: z.string().optional(),
   version: z.string().optional(),
-  releaseStream: z.enum(["latest", "alpha"]).optional(),
+  releaseStream: z.enum(["latest", "beta"]).optional(),
   source: z.enum(["bundled", "store"]).default("bundled"),
   tags: z.array(z.string()).default([]),
   config: z.record(z.string(), configFieldSchema).default({}),

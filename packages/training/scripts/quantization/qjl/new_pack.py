@@ -78,9 +78,8 @@ def triton_quantize_and_pack_along_last_dim(data: torch.Tensor, group_size: int,
 
 	def grid2(meta):
 		return (triton.cdiv(data.shape[0], BLOCK_SIZE_N), data.shape[1] // feat_per_int,)
-	_pack_along_last_dim[grid2](bit, data, code, data.shape[0], 
-								data.shape[1], feat_per_int, 
-								BLOCK_SIZE_N=BLOCK_SIZE_N, 
-								num_warps=8)
-	return code.view(B, nh, D, -1), scale.reshape(scale_mn_shape), mn.reshape(scale_mn_shape)
-	
+		_pack_along_last_dim[grid2](bit, data, code, data.shape[0],
+									data.shape[1], feat_per_int,
+									BLOCK_SIZE_N=BLOCK_SIZE_N,
+									num_warps=8)
+		return code.view(B, nh, D, -1), scale.reshape(scale_mn_shape), mn.reshape(scale_mn_shape)
