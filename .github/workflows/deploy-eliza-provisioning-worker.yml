@@ -107,9 +107,9 @@ jobs:
             git fetch origin "$DEPLOY_BRANCH"
             git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
 
-            # Ensure bun + tsx are available. Bun installs the workspace; npx tsx runs the daemon.
+            # Pin bun version on first install to narrow `curl | bash` blast radius.
             if ! command -v bun >/dev/null 2>&1; then
-              curl -fsSL https://bun.sh/install | bash
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
@@ -144,9 +144,11 @@ jobs:
           command_timeout: 5m
           script: |
             set -euo pipefail
+            # Anchor the journal window once so it does not shrink across retries.
+            SINCE_TS="$(date -u -d '30 seconds ago' '+%Y-%m-%d %H:%M:%S')"
             for attempt in $(seq 1 18); do
               if sudo systemctl is-active --quiet eliza-provisioning-worker; then
-                JOURNAL=$(sudo journalctl -u eliza-provisioning-worker --since '2 min ago' --no-pager 2>/dev/null || true)
+                JOURNAL=$(sudo journalctl -u eliza-provisioning-worker --since "$SINCE_TS" --no-pager 2>/dev/null || true)
                 # Detect a restart loop: the worker prints "starting" each boot,
                 # then crashes if env or DB is misconfigured. Treat any fatal log
                 # since deploy as a hard failure even if the unit is currently active.
