@@ -6,4 +6,8 @@ describe("agent hot-pool cron schedule", () => {
     expect(CRON_FANOUT["*/5 * * * *"]).toContain("/api/v1/cron/node-autoscale");
     expect(CRON_FANOUT["*/5 * * * *"]).toContain("/api/v1/cron/agent-hot-pool");
   });
+
+  test("runs provisioning job processing every minute", () => {
+    expect(CRON_FANOUT["* * * * *"]).toContain("/api/v1/cron/process-provisioning-jobs");
+  });
 });

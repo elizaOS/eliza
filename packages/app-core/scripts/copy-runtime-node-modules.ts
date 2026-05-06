@@ -121,6 +121,15 @@ const bunPackageIndex = new Map<string, Set<string>>();
 const registryPackageIndex = new Map<string, ResolvedPackage>();
 const trackedPackageIndex = new Map<string, ResolvedPackage>();
 
+function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
+  const normalizedPath = entryPath.split(path.sep).join("/");
+  return (
+    normalizedPath.endsWith("/yaml/dist/doc") ||
+    normalizedPath.endsWith("/viem/_esm/actions/test") ||
+    normalizedPath.endsWith("/viem/actions/test")
+  );
+}
+
 function parseArgs(argv: string[]): Options {
   const opts: Record<string, string> = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -345,7 +354,8 @@ function pruneCopiedPackageDir(packageDir: string): void {
 
       if (
         entry.name === "node_modules" ||
-        RUNTIME_COPY_PRUNED_DIR_NAMES.has(entry.name)
+        (RUNTIME_COPY_PRUNED_DIR_NAMES.has(entry.name) &&
+          !isRequiredRuntimeDocDirectory(entryPath))
       ) {
         fs.rmSync(entryPath, { recursive: true, force: true });
         continue;
@@ -627,7 +637,8 @@ export function shouldCopyPackageEntry(entry: string): boolean {
   const basename = path.basename(entry);
   if (
     basename === "node_modules" ||
-    RUNTIME_COPY_PRUNED_DIR_NAMES.has(basename)
+    (RUNTIME_COPY_PRUNED_DIR_NAMES.has(basename) &&
+      !isRequiredRuntimeDocDirectory(entry))
   ) {
     return false;
   }

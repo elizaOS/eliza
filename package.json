@@ -179,7 +179,6 @@
     "@elizaos/plugin-starter",
     "@nestjs/core",
     "@openapitools/openapi-generator-cli",
-    "@polyagent/app",
     "@swc/core",
     "@tensorflow/tfjs-node",
     "bigint-buffer",
