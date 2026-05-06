@@ -1,5 +1,7 @@
 /**
- * Router action for Twitch channel management.
+ * Router action for Twitch channel join/leave ops.
+ *
+ * Listing joined channels lives on the `twitchChannels` provider.
  */
 
 import type {
@@ -12,25 +14,21 @@ import type {
 import { composePromptFromState, ModelType } from "@elizaos/core";
 import type { TwitchService } from "../service.js";
 import { parseToonKeyValue } from "../toon.js";
-import {
-  formatChannelForDisplay,
-  normalizeChannel,
-  TWITCH_SERVICE_NAME,
-} from "../types.js";
+import { normalizeChannel, TWITCH_SERVICE_NAME } from "../types.js";
 
-type TwitchChannelSubaction = "join" | "leave" | "list";
+type TwitchChannelOp = "join" | "leave";
 
-const CHANNEL_TEMPLATE = `You are helping to extract Twitch channel management parameters.
+const CHANNEL_TEMPLATE = `You are helping to extract Twitch channel join/leave parameters.
 
 Recent conversation:
 {{recentMessages}}
 
 Extract:
-subaction: join, leave, or list
-channel: channel name without #, or empty for list
+op: join or leave
+channel: channel name without #
 
 Respond with TOON only:
-subaction: list
+op: join
 channel:`;
 
 function readStringOption(
@@ -41,25 +39,18 @@ function readStringOption(
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function normalizeSubaction(
-  value: string | null,
-): TwitchChannelSubaction | null {
+function normalizeOp(value: string | null): TwitchChannelOp | null {
   const normalized = value?.trim().toLowerCase();
-  if (
-    normalized === "join" ||
-    normalized === "leave" ||
-    normalized === "list"
-  ) {
+  if (normalized === "join" || normalized === "leave") {
     return normalized;
   }
   return null;
 }
 
-function inferSubaction(text: string): TwitchChannelSubaction | null {
+function inferOp(text: string): TwitchChannelOp | null {
   const normalized = text.toLowerCase();
   if (/\b(join|enter|connect)\b/.test(normalized)) return "join";
   if (/\b(leave|part|exit|disconnect)\b/.test(normalized)) return "leave";
-  if (/\b(list|show|get|current)\b/.test(normalized)) return "list";
   return null;
 }
 
@@ -67,10 +58,7 @@ async function extractChannelParams(
   runtime: IAgentRuntime,
   message: Memory,
   state?: State,
-): Promise<{
-  subaction: TwitchChannelSubaction;
-  channel: string | null;
-} | null> {
+): Promise<{ op: TwitchChannelOp; channel: string | null } | null> {
   const currentState = state ?? (await runtime.composeState(message));
   const prompt = await composePromptFromState({
     template: CHANNEL_TEMPLATE,
@@ -80,12 +68,10 @@ async function extractChannelParams(
   for (let attempt = 0; attempt < 3; attempt++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const parsed = parseToonKeyValue<Record<string, unknown>>(String(response));
-    const subaction = normalizeSubaction(
-      parsed?.subaction ? String(parsed.subaction) : null,
-    );
-    if (subaction) {
+    const op = normalizeOp(parsed?.op ? String(parsed.op) : null);
+    if (op) {
       return {
-        subaction,
+        op,
         channel: parsed?.channel
           ? normalizeChannel(String(parsed.channel))
           : null,
@@ -96,62 +82,27 @@ async function extractChannelParams(
   return null;
 }
 
-function listChannelsResult(
-  twitchService: TwitchService,
-  source: string,
-  callback?: (response: { text: string; source?: string }) => void,
-): ActionResult {
-  const joinedChannels = twitchService.getJoinedChannels();
-  const primaryChannel = twitchService.getPrimaryChannel();
-  const channelList = joinedChannels.map((channel) => {
-    const displayName = formatChannelForDisplay(channel);
-    return channel === primaryChannel
-      ? `${displayName} (primary)`
-      : displayName;
-  });
-
-  const text =
-    joinedChannels.length > 0
-      ? `Currently in ${joinedChannels.length} channel(s):\n${channelList
-          .map((channel) => `- ${channel}`)
-          .join("\n")}`
-      : "Not currently in any channels.";
-
-  callback?.({ text, source });
-  return {
-    success: true,
-    data: {
-      subaction: "list",
-      channelCount: joinedChannels.length,
-      channels: joinedChannels,
-      primaryChannel,
-    },
-  };
-}
-
 export const twitchChannelAction: Action = {
-  name: "TWITCH_CHANNEL",
+  name: "TWITCH_CHANNEL_OP",
   similes: [
+    "TWITCH_CHANNEL",
     "TWITCH_JOIN_CHANNEL",
     "TWITCH_LEAVE_CHANNEL",
-    "TWITCH_LIST_CHANNELS",
     "MANAGE_TWITCH_CHANNEL",
   ],
-  description:
-    "Manage Twitch channel membership with subaction join, leave, or list.",
-  descriptionCompressed:
-    "manage Twitch channel membership; subaction join leave list",
+  description: "Join or leave a Twitch channel.",
+  descriptionCompressed: "Twitch channel ops: join, leave.",
   parameters: [
     {
-      name: "subaction",
-      description: "One of join, leave, or list.",
+      name: "op",
+      description: "Either join or leave.",
       required: true,
-      schema: { type: "string", enum: ["join", "leave", "list"] },
+      schema: { type: "string", enum: ["join", "leave"] },
     },
     {
       name: "channel",
-      description: "Twitch channel name without # for join/leave.",
-      required: false,
+      description: "Twitch channel name without #.",
+      required: true,
       schema: { type: "string" },
     },
   ],
@@ -162,7 +113,7 @@ export const twitchChannelAction: Action = {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       message.content.source === "twitch" &&
-      /\b(twitch|channel|join|leave|list|channels)\b/.test(text) &&
+      /\b(twitch|channel|join|leave)\b/.test(text) &&
       !/\b(send|say|message)\b/.test(text)
     );
   },
@@ -184,38 +135,27 @@ export const twitchChannelAction: Action = {
       return { success: false, error: "Twitch service not available" };
     }
 
-    const optionSubaction = normalizeSubaction(
-      readStringOption(options, "subaction"),
-    );
+    const optionOp = normalizeOp(readStringOption(options, "op"));
     const optionChannel = readStringOption(options, "channel");
-    const inferredSubaction = inferSubaction(message.content.text ?? "");
+    const inferredOp = inferOp(message.content.text ?? "");
     const extracted =
-      optionSubaction && (optionChannel || optionSubaction === "list")
+      optionOp && optionChannel
         ? null
         : await extractChannelParams(runtime, message, state);
 
-    const subaction =
-      optionSubaction ?? inferredSubaction ?? extracted?.subaction;
+    const op = optionOp ?? inferredOp ?? extracted?.op ?? null;
     const channel = optionChannel
       ? normalizeChannel(optionChannel)
       : extracted?.channel
         ? normalizeChannel(extracted.channel)
         : null;
 
-    if (subaction === "list") {
-      return listChannelsResult(
-        twitchService,
-        String(message.content.source ?? "twitch"),
-        callback,
-      );
-    }
-
-    if (!subaction) {
+    if (!op) {
       callback?.({
-        text: "I couldn't determine whether to join, leave, or list Twitch channels.",
+        text: "I couldn't determine whether to join or leave the Twitch channel.",
         source: "twitch",
       });
-      return { success: false, error: "Missing subaction" };
+      return { success: false, error: "Missing op" };
     }
 
     if (!channel) {
@@ -226,7 +166,7 @@ export const twitchChannelAction: Action = {
       return { success: false, error: "Missing channel" };
     }
 
-    if (subaction === "join") {
+    if (op === "join") {
       if (twitchService.getJoinedChannels().includes(channel)) {
         callback?.({
           text: `Already in channel #${channel}.`,
@@ -234,7 +174,7 @@ export const twitchChannelAction: Action = {
         });
         return {
           success: true,
-          data: { subaction, channel, alreadyJoined: true },
+          data: { op, channel, alreadyJoined: true },
         };
       }
 
@@ -243,7 +183,7 @@ export const twitchChannelAction: Action = {
         text: `Joined channel #${channel}.`,
         source: String(message.content.source ?? "twitch"),
       });
-      return { success: true, data: { subaction, channel } };
+      return { success: true, data: { op, channel } };
     }
 
     const joinedChannels = twitchService.getJoinedChannels();
@@ -268,7 +208,7 @@ export const twitchChannelAction: Action = {
       text: `Left channel #${channel}.`,
       source: String(message.content.source ?? "twitch"),
     });
-    return { success: true, data: { subaction, channel } };
+    return { success: true, data: { op, channel } };
   },
   examples: [
     [
@@ -280,7 +220,7 @@ export const twitchChannelAction: Action = {
         name: "{{agent}}",
         content: {
           text: "I'll join that channel.",
-          actions: ["TWITCH_CHANNEL"],
+          actions: ["TWITCH_CHANNEL_OP"],
         },
       },
     ],

@@ -317,6 +317,34 @@ describe("eliza agent provision route", () => {
     expect(state.enqueueCalls).toHaveLength(1);
   });
 
+  test("returns a safe diagnostic code when enqueueing fails unexpectedly", async () => {
+    const state = makeState({
+      enqueueError: new Error("SQL_HEAVY_PAYLOAD_STORAGE=r2 but no storage is configured"),
+    });
+    installMocks(state);
+
+    const app = await loadProvisionRoute();
+    const res = await buildProvisionRequest(app);
+
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as {
+      success: boolean;
+      code: string;
+      error: string;
+      failureId: string;
+      retryable: boolean;
+    };
+    expect(body).toEqual({
+      success: false,
+      code: "provision_enqueue_failed",
+      error: "Failed to start provisioning",
+      failureId: expect.any(String),
+      retryable: true,
+    });
+    expect(body.error).not.toContain("SQL_HEAVY_PAYLOAD_STORAGE");
+    expect(state.enqueueCalls).toHaveLength(1);
+  });
+
   test("returns 402 and skips enqueueing when credits are insufficient", async () => {
     const state = makeState({
       creditGate: {

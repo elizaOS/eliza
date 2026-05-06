@@ -229,7 +229,26 @@ export class BlueSkyClient {
 			record.embed = request.content.embed;
 		}
 
+		logger.info(
+			{
+				src: "plugin:bluesky",
+				op: "atproto:post",
+				textLength: rt.text.length,
+				hasReply: Boolean(request.replyTo),
+				hasEmbed: Boolean(request.content.embed),
+			},
+			"Publishing Bluesky post via atproto",
+		);
 		const response = await this.agent.post(record);
+		logger.info(
+			{
+				src: "plugin:bluesky",
+				op: "atproto:post",
+				uri: response.uri,
+				cid: response.cid,
+			},
+			"Bluesky post published",
+		);
 		const thread = await this.agent.getPostThread({
 			uri: response.uri,
 			depth: 0,

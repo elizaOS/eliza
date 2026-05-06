@@ -40,7 +40,6 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { gmailAction } from "./gmail.js";
 import {
   extractGoalCreatePlanWithLlm,
   extractGoalUpdatePlanWithLlm,
@@ -84,9 +83,11 @@ import {
   detailObject,
   detailString,
   formatCalendarFeed,
+  formatEmailTriage,
   formatNextEventContext,
   formatOverviewForQuery,
   getGoogleCapabilityStatus,
+  gmailReadUnavailableMessage,
   INTERNAL_URL,
   messageText,
   toActionData,
@@ -2647,21 +2648,22 @@ export const lifeAction: Action & {
 
       if (operation === "query_email") {
         const limit = detailNumber(details, "limit") ?? 10;
-        return (
-          (await gmailAction.handler?.(runtime, message, state, {
-            parameters: {
-              subaction: "triage",
-              intent,
-              details: {
-                ...details,
-                maxResults: limit,
-              },
-            },
-          } as HandlerOptions)) ?? {
+        const google = await getGoogleCapabilityStatus(service);
+        if (!google.hasGmailTriage) {
+          return {
             success: false,
-            text: "I couldn't route that Gmail request yet.",
-          }
-        );
+            text: gmailReadUnavailableMessage(google),
+          };
+        }
+        const feed = await service.getGmailTriage(INTERNAL_URL, {
+          maxResults: limit,
+          forceSync: detailBoolean(details, "forceSync") ?? false,
+        });
+        return {
+          success: true,
+          text: formatEmailTriage(feed),
+          data: toActionData(feed),
+        };
       }
 
       if (operation === "query_overview") {

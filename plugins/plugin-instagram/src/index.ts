@@ -1,5 +1,5 @@
 import type { Plugin } from "@elizaos/core";
-import { postCommentAction } from "./actions";
+import { instagramReplyAction } from "./actions";
 import { INSTAGRAM_SERVICE_NAME } from "./constants";
 import { userStateProvider } from "./providers";
 import { InstagramService } from "./service";
@@ -7,12 +7,12 @@ import { InstagramService } from "./service";
 const instagramPlugin: Plugin = {
   name: INSTAGRAM_SERVICE_NAME,
   description: "Instagram client plugin for elizaOS",
-  actions: [postCommentAction],
+  actions: [instagramReplyAction],
   providers: [userStateProvider],
   services: [InstagramService],
 };
 
-export { postCommentAction, sendDmAction } from "./actions";
+export { instagramReplyAction } from "./actions";
 export * from "./constants";
 export { userStateProvider } from "./providers";
 export * from "./types";

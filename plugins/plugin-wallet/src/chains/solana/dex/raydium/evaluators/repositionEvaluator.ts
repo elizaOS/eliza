@@ -1,6 +1,6 @@
 // @ts-nocheck — legacy export kept for direct Raydium plugin imports
 import { createLpRepositionEvaluator } from "../../../../../lp/evaluators/repositionEvaluator.ts";
-import { extractAndValidateConfiguration } from "../actions/managePositions";
+import { extractManageLpConfig } from "../../manage-lp-positions";
 
 export const managePositionActionRetriggerEvaluator = createLpRepositionEvaluator({
   name: "RAYDIUM_REPOSITION_EVALUATOR",
@@ -9,5 +9,5 @@ export const managePositionActionRetriggerEvaluator = createLpRepositionEvaluato
     "Schedules and monitors ongoing repositioning actions for Raydium positions to ensure continuous operation.",
   logLabel: "Raydium",
   memoryType: "raydium_reposition_message",
-  extractConfiguration: extractAndValidateConfiguration,
+  extractConfiguration: (text, runtime) => extractManageLpConfig(runtime, text),
 });

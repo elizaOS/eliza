@@ -13,6 +13,7 @@ import {
   resumeRoute,
 } from "@lifi/sdk";
 import { type Address, parseAbi, parseUnits } from "viem";
+import { runIntentModel } from "../../../utils/intent-trajectory";
 import {
   BRIDGE_POLL_INTERVAL_MS,
   DEFAULT_SLIPPAGE_PERCENT,
@@ -480,9 +481,11 @@ async function buildBridgeDetails(
     template: bridgeTemplate,
   });
 
-  const runModel = runtime.useModel.bind(runtime);
-  const llmResponse = await runModel(ModelType.TEXT_LARGE, {
-    prompt: bridgeContext,
+  const llmResponse = await runIntentModel({
+    runtime,
+    taskName: "evm.bridge.intent",
+    template: bridgeContext,
+    modelType: ModelType.TEXT_LARGE,
   });
 
   const content = parseToonKeyValue(llmResponse);

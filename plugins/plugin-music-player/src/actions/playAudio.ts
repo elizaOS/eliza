@@ -443,8 +443,8 @@ export const playAudio: Action = {
   description:
     "Start playing a new song: provide a track name, artist, search words, or a media URL. " +
     "Requires confirmed:true before playback or queue changes. " +
-    "Never use PLAY_AUDIO for pause, resume, stop, or skip — those are separate actions: " +
-    "PAUSE_MUSIC, RESUME_MUSIC, STOP_MUSIC, SKIP_TRACK. Do not pass action=pause or similar params to PLAY_AUDIO. " +
+    "Never use PLAY_AUDIO for pause, resume, stop, skip, or queue — those go through PLAYBACK_OP " +
+    "with op=pause|resume|skip|stop|queue. Do not pass action=pause or similar params to PLAY_AUDIO. " +
     MUSIC_PLAYER_ACTION_DOCS,
   descriptionCompressed:
     "Play new song by name/artist/URL. Not for pause/resume/stop/skip.",
@@ -496,7 +496,7 @@ export const playAudio: Action = {
     const messageText = message.content.text || "";
     if (isPlaybackTransportControlOnlyMessage(messageText)) {
       await callback({
-        text: "To pause, resume, stop, or skip, use the dedicated actions (PAUSE_MUSIC, RESUME_MUSIC, STOP_MUSIC, SKIP_TRACK) — not PLAY_AUDIO.",
+        text: "To pause, resume, stop, skip, or queue, use PLAYBACK_OP with op=pause|resume|skip|stop|queue — not PLAY_AUDIO.",
         source: message.content.source || "discord",
       });
       return { success: false, error: "Transport control is not PLAY_AUDIO" };

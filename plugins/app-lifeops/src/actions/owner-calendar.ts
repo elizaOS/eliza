@@ -227,7 +227,8 @@ function normalizeSubaction(value: unknown): OwnerCalendarSubaction | null {
 
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
-    description: "List calendar events over a time window (today, this week, etc).",
+    description:
+      "List calendar events over a time window (today, this week, etc).",
     descriptionCompressed: "list events over time window",
     required: [],
     optional: ["intent", "details"],
@@ -239,7 +240,8 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["intent", "details"],
   },
   search_events: {
-    description: "Search calendar events by title, attendee, location, or date.",
+    description:
+      "Search calendar events by title, attendee, location, or date.",
     descriptionCompressed: "search events",
     required: [],
     optional: ["intent", "query", "queries", "details"],
@@ -295,7 +297,8 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     ],
   },
   update_preferences: {
-    description: "Update meeting preferences (preferred hours, blackouts, travel buffer).",
+    description:
+      "Update meeting preferences (preferred hours, blackouts, travel buffer).",
     descriptionCompressed: "update meeting preferences",
     required: [],
     optional: [
@@ -656,11 +659,7 @@ export const ownerCalendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
-  similes: [
-    "CALENDAR",
-    "SCHEDULE",
-    "MEETING",
-  ],
+  similes: ["CALENDAR", "SCHEDULE", "MEETING"],
   tags: [
     "always-include",
     "calendar",
@@ -692,7 +691,7 @@ export const ownerCalendarAction: Action & {
     "negotiate_start, negotiate_propose, negotiate_respond, negotiate_finalize, negotiate_cancel, " +
     "negotiate_list_active, negotiate_list_proposals.",
   descriptionCompressed:
-    "owner calendar umbrella: google calendar + calendly + availability + meeting preferences + negotiation, routed via subaction.",
+    "calendar+calendly+availability+prefs+negotiation: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs calendly-(list-event-types availability upcoming single-use-link) negotiate-(start propose respond finalize cancel list-active list-proposals) owner",
   suppressPostActionContinuation: true,
   validate: async (
     runtime: IAgentRuntime,

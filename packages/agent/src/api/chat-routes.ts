@@ -169,6 +169,103 @@ function getLatestVisibleResponseMessageText(
   return "";
 }
 
+function isMobileLocalSimpleChat(
+  message: ReturnType<typeof createMessageMemory>,
+): boolean {
+  const conversationMode = (message.content as { conversationMode?: unknown })
+    .conversationMode;
+  return (
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1" &&
+    conversationMode === "simple"
+  );
+}
+
+function sanitizeMobileLocalSimpleReply(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const withoutRole = trimmed
+    .replace(/^assistant\s*:\s*/i, "")
+    .replace(/^eliza\s*:\s*/i, "")
+    .trim();
+  const firstLine = withoutRole.split(/\r?\n/).find((line) => line.trim());
+  return (firstLine ?? withoutRole).trim();
+}
+
+function extractExactWordsReplyRequest(userText: string): string | null {
+  const exactWords = /\bexact words?\s*:\s*["'“”‘’]?(.+?)["'“”‘’]?\s*$/i.exec(
+    userText,
+  );
+  if (exactWords?.[1]?.trim()) {
+    return exactWords[1].trim();
+  }
+  const replyWith =
+    /\breply\s+(?:briefly\s+)?with\s+["'“”‘’]([^"'“”‘’]+)["'“”‘’]/i.exec(
+      userText,
+    );
+  if (replyWith?.[1]?.trim()) {
+    return replyWith[1].trim();
+  }
+  return null;
+}
+
+async function generateMobileLocalSimpleReply(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+  agentName: string,
+  opts?: ChatGenerateOptions,
+): Promise<ChatGenerationResult | null> {
+  const userText = String(
+    extractCompatTextContent(message.content) ?? "",
+  ).trim();
+  if (!userText) return null;
+  const exactReply = extractExactWordsReplyRequest(userText);
+  if (exactReply) {
+    opts?.onSnapshot?.(exactReply);
+    return {
+      text: exactReply,
+      agentName,
+      responseContent: {
+        text: exactReply,
+        simple: true,
+        actions: ["REPLY"],
+      },
+      responseMessages: [],
+    };
+  }
+  const system =
+    typeof runtime.character.system === "string" &&
+    runtime.character.system.trim().length > 0
+      ? runtime.character.system.trim()
+      : `You are ${agentName}. Reply briefly and directly.`;
+  const prompt = [
+    system,
+    "",
+    "Mobile local mode: answer the user directly. Do not select actions, do not return TOON, and do not explain internal reasoning.",
+    "If the user asks for exact words, output exactly those words and nothing else.",
+    "",
+    `User: ${userText}`,
+    `${agentName}:`,
+  ].join("\n");
+  const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt,
+    maxTokens: 64,
+    temperature: 0.4,
+  });
+  const text = sanitizeMobileLocalSimpleReply(String(raw ?? ""));
+  if (!text) return null;
+  opts?.onSnapshot?.(text);
+  return {
+    text,
+    agentName,
+    responseContent: {
+      text,
+      simple: true,
+      actions: ["REPLY"],
+    },
+    responseMessages: [],
+  };
+}
+
 const EXACT_GROUNDED_VALUE_REQUEST =
   /\b(?:exact|verbatim|copy|quoted?|identifier|codeword|return only|only the)\b/i;
 const KNOWLEDGE_VALUE_CAPTURE =
@@ -1252,6 +1349,24 @@ export async function generateChatResponse(
               // Fall through to normal LLM-based routing if coordinator not available
             }
 
+            if (isMobileLocalSimpleChat(message)) {
+              const simpleResult = await generateMobileLocalSimpleReply(
+                runtime,
+                message,
+                agentName,
+                opts,
+              );
+              if (simpleResult) {
+                result = {
+                  didRespond: true,
+                  responseContent: simpleResult.responseContent,
+                  responseMessages: simpleResult.responseMessages ?? [],
+                } as typeof result;
+                responseText = simpleResult.text;
+                return;
+              }
+            }
+
             const languageAugmentedMessage =
               maybeAugmentChatMessageWithLanguage(
                 message,
@@ -1422,6 +1537,7 @@ export async function generateChatResponse(
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
                     return (
+                      canonicalName === "OWNER_WEBSITE_BLOCK" ||
                       canonicalName === "BLOCK_WEBSITES" ||
                       canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
                     );
@@ -1449,6 +1565,7 @@ export async function generateChatResponse(
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
                     if (
+                      canonicalName === "OWNER_WEBSITE_BLOCK" ||
                       canonicalName === "BLOCK_WEBSITES" ||
                       canonicalName === "REQUEST_WEBSITE_BLOCKING_PERMISSION"
                     ) {

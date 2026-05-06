@@ -1,10 +1,18 @@
 {
-  "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "types": ["node"],
-    "outDir": "dist",
-    "rootDir": "../../..",
-    "composite": false
+    "declaration": false,
+    "esModuleInterop": true,
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "outDir": "./dist",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["bun-types", "node"]
   },
+  "exclude": ["node_modules", "dist"],
   "include": ["*.ts", "**/*.ts"]
 }

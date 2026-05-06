@@ -53,7 +53,7 @@ export default scenario({
       room: "main",
       text: "What's the latest per-site data the LifeOps extension has sent you?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["FETCH_BROWSER_ACTIVITY"],
+        acceptedActions: ["OWNER_SCREEN_TIME"],
         description: "browser extension activity snapshot",
       }),
       responseIncludesAny: [/extension/i, /github/i, /docs\.google\.com/i],
@@ -62,13 +62,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "FETCH_BROWSER_ACTIVITY",
+      actionName: "OWNER_SCREEN_TIME",
     },
     {
       type: "custom",
       name: "extension-feed-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["FETCH_BROWSER_ACTIVITY"],
+        acceptedActions: ["OWNER_SCREEN_TIME"],
         description: "browser extension activity snapshot",
       }),
     },
@@ -77,7 +77,7 @@ export default scenario({
       name: "extension-feed-result",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "FETCH_BROWSER_ACTIVITY",
+          (action) => action.actionName === "OWNER_SCREEN_TIME",
         );
         if (!hit) {
           return "expected FETCH_BROWSER_ACTIVITY action result";
@@ -86,6 +86,8 @@ export default scenario({
         if (!payload.includes("browser-extension-feed")) {
           return "expected seeded browser device id in activity payload";
         }
+        // These are test-assertion substring checks on a JSON serialization, not URL sanitization.
+        // lgtm[js/incomplete-url-sanitization]
         if (!payload.includes("github.com")) {
           return "expected github.com in activity payload";
         }

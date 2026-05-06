@@ -201,10 +201,11 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "email":
       return {
         category,
-        actionNames: ["OWNER_INBOX"],
+        actionNames: args.query
+          ? ["SEARCH_MESSAGES", "TRIAGE_MESSAGES"]
+          : ["TRIAGE_MESSAGES"],
         intent,
         parameters: compactParameters({
-          subaction: args.query ? "search" : "triage",
           channel: "gmail",
           query: args.query,
           intent,
@@ -213,7 +214,7 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "calendar":
       return {
         category,
-        actionNames: ["CALENDAR_ACTION", "OWNER_CALENDAR"],
+        actionNames: ["OWNER_CALENDAR"],
         intent,
         parameters: compactParameters({
           subaction: args.query ? "search_events" : "feed",
@@ -230,10 +231,12 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "priority":
       return {
         category,
-        actionNames: ["OWNER_INBOX"],
+        actionNames:
+          category === "priority"
+            ? ["OWNER_DIGEST", "LIST_INBOX"]
+            : ["TRIAGE_MESSAGES"],
         intent,
         parameters: compactParameters({
-          subaction: category === "priority" ? "digest" : "triage",
           channel: "all",
           query: args.query,
           intent,
@@ -269,7 +272,7 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "context":
       return {
         category,
-        actionNames: ["SEARCH_ACROSS_CHANNELS", "CROSS_CHANNEL_SEARCH"],
+        actionNames: ["SEARCH_MESSAGES"],
         intent,
         parameters: compactParameters({
           query: args.query,

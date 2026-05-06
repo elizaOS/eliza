@@ -2,7 +2,7 @@
  * LifeOps cross-device intent sync tests against a real PGLite runtime.
  *
  * Exercises broadcast / receive / acknowledge / prune over the local
- * `life_intents` table as well as the INTENT_SYNC action handler. No SQL
+ * `life_intents` table as well as the OWNER_DEVICE_INTENT action handler. No SQL
  * mocks, no LLM.
  */
 

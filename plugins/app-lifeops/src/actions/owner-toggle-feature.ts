@@ -12,6 +12,7 @@ import type {
 import {
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
@@ -109,7 +110,10 @@ async function extractToggleWithLlm(args: {
     `Recent conversation:\n${recentConversation}`,
   ].join("\n");
 
-  const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+  const raw = await runWithTrajectoryContext(
+    { purpose: "lifeops-toggle-feature" },
+    () => args.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+  );
   const rawText = typeof raw === "string" ? raw : "";
   const parsed =
     parseToonKeyValue<Record<string, unknown>>(rawText);

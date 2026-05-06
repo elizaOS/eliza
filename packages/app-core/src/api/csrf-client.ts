@@ -14,6 +14,7 @@
  */
 
 import { getBootConfig } from "../config/boot-config";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 
 /**
@@ -49,6 +50,7 @@ export async function fetchWithCsrf(
   }
 
   if (!headers.has("Authorization")) {
+    await hydrateAndroidLocalAgentTokenForUrl(url);
     const apiToken = getBootConfig().apiToken?.trim();
     if (apiToken) {
       headers.set("Authorization", `Bearer ${apiToken}`);

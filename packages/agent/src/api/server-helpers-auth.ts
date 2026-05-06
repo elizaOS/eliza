@@ -28,6 +28,24 @@ const LOCAL_ORIGIN_RE =
 const APP_ORIGIN_RE =
   /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
 
+export const CORS_ALLOWED_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "X-API-Token",
+  "X-Api-Key",
+  "X-Eliza-Token",
+  "X-ElizaOS-Token",
+  "X-Eliza-Export-Token",
+  "X-Eliza-Client-Id",
+  "X-ElizaOS-Client-Id",
+  "X-Eliza-Terminal-Token",
+  "X-Eliza-UI-Language",
+  "X-ElizaOS-UI-Language",
+  "X-Browser-Bridge-Companion-Id",
+  "X-Eliza-Browser-Companion-Id",
+  "X-Eliza-CSRF",
+].join(", ");
+
 /**
  * Hostname allowlist for DNS rebinding protection.
  * Requests with a Host header that doesn't match a known loopback name are
@@ -153,10 +171,8 @@ export function applyCors(
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, DELETE, OPTIONS",
     );
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id, X-Eliza-CSRF",
-    );
+    res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
   }
 
   // Security headers

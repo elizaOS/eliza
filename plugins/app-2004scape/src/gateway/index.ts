@@ -126,11 +126,20 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
 
       let stateSummary: Record<string, unknown> | null = null;
       if (state) {
+        const player = state.player;
         stateSummary = {
-          position: state.position ?? null,
-          health: state.health ?? null,
-          combat: state.combat ?? null,
-          skills: state.skills ? Object.keys(state.skills).length : 0,
+          position: player
+            ? { x: player.worldX, z: player.worldZ, level: player.level }
+            : null,
+          health: player ? { hp: player.hp, maxHp: player.maxHp } : null,
+          combat: player
+            ? {
+                level: player.combatLevel,
+                inCombat: player.inCombat,
+                target: player.combatTarget,
+              }
+            : null,
+          skills: state.skills ? state.skills.length : 0,
         };
       }
 
@@ -275,7 +284,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
     },
   });
 
-  const actualPort = server.port;
+  const actualPort = server.port ?? port;
   log(`[gateway] listening on ${hostname ?? "0.0.0.0"}:${actualPort}`);
 
   return {

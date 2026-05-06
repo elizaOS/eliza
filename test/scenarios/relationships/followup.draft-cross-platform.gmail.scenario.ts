@@ -43,7 +43,7 @@ export default scenario({
       room: "main",
       text: "Draft a follow-up email to Alice Chen at alice@acme.example.com about the Acme Inc partnership update, but hold it for approval.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["GMAIL_ACTION", "INBOX"],
+        acceptedActions: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
         description: "gmail follow-up draft",
         includesAny: ["Alice", "gmail", "follow-up", "approval"],
       }),
@@ -59,7 +59,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["GMAIL_ACTION", "INBOX"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
     },
     {
       type: "draftExists",
@@ -70,7 +70,7 @@ export default scenario({
       type: "custom",
       name: "followup-draft-gmail-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["GMAIL_ACTION", "INBOX"],
+        acceptedActions: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
         description: "gmail follow-up draft",
         includesAny: ["Alice", "gmail", "follow-up", "approval"],
       }),

@@ -20,7 +20,7 @@ export default buildConnectorCertificationScenario({
       name: "imessage-helper-disconnected",
       text: "Use the iMessage bridge to read the thread and send the reply, but if the helper is disconnected, tell me that clearly and ask me to repair it instead of claiming success.",
       responseIncludesAny: ["imessage", "helper", "disconnected", "repair"],
-      acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       includesAny: ["imessage", "helper", "disconnected", "repair"],
     },
   ],

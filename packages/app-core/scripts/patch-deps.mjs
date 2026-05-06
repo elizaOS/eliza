@@ -58,8 +58,9 @@ warnStaleBunCache(root);
 // Bun auto-installs @types/* packages into node_modules/.bun/ and can resolve
 // them at runtime instead of the real packages. The .d.ts files use
 // TypeScript-only syntax like `export as namespace X;` which causes
-// "Unexpected as" parse errors in Bun. Remove ALL @types entries from the
-// .bun cache and node_modules/@types so Bun resolves real packages instead.
+// "Unexpected as" parse errors in Bun. Remove @types entries from the virtual
+// store cache, but keep node_modules/@types intact because TypeScript builds
+// need those packages.
 // ---------------------------------------------------------------------------
 {
   let removedCount = 0;
@@ -78,19 +79,9 @@ warnStaleBunCache(root);
       } catch {}
     }
   }
-  // Also remove @types directories from node_modules root
-  for (const nmDir of [
-    resolve(root, "node_modules/@types"),
-    resolve(root, "eliza/node_modules/@types"),
-  ]) {
-    if (existsSync(nmDir)) {
-      rmSync(nmDir, { recursive: true, force: true });
-      removedCount++;
-    }
-  }
   if (removedCount > 0) {
     console.log(
-      `[patch-deps] Removed ${removedCount} @types entries from Bun cache (prevents runtime .d.ts parse errors)`,
+      `[patch-deps] Removed ${removedCount} @types entries from Bun virtual store cache (prevents runtime .d.ts parse errors)`,
     );
   }
 }
@@ -485,6 +476,76 @@ function patchLlamaCppCapacitorGradle() {
   }
 }
 patchLlamaCppCapacitorGradle();
+
+/**
+ * Patch llama-cpp-capacitor's Android embedding JNI for Capacitor 8.
+ *
+ * The published 0.1.5 Android JNI asks JSObject for getDouble(String), but
+ * Capacitor 8 exposes that helper on PluginCall, not JSObject. GetMethodID
+ * leaves a pending NoSuchMethodError, then the next JNI lookup aborts the app.
+ * Use JSONObject's inherited optDouble(String, double) instead.
+ */
+function patchLlamaCppCapacitorAndroidEmbeddingParams() {
+  const relPath = "android/src/main/jni.cpp";
+  const oldSnippet = `                // Try to get embd_normalize
+                jmethodID getDoubleMethod = env->GetMethodID(jsObjectClass, "getDouble", "(Ljava/lang/String;)Ljava/lang/Double;");
+                if (getDoubleMethod != nullptr && !env->ExceptionCheck()) {
+                    jstring normalizeKey = jni_utils::string_to_jstring(env, "embd_normalize");
+                    jobject normalizeObj = env->CallObjectMethod(params, getDoubleMethod, normalizeKey);
+                    if (normalizeObj != nullptr && !env->ExceptionCheck()) {
+                        embd_normalize = env->CallDoubleMethod(normalizeObj, 
+                            env->GetMethodID(env->FindClass("java/lang/Double"), "doubleValue", "()D"));
+                        env->DeleteLocalRef(normalizeObj);
+                    }
+                    env->DeleteLocalRef(normalizeKey);
+                    if (env->ExceptionCheck()) {
+                        env->ExceptionClear();
+                    }
+                }`;
+  const newSnippet = `                // Capacitor 8 JSObject extends JSONObject and does not expose
+                // getDouble(String); use JSONObject's inherited optDouble
+                // signature so a missing helper cannot leave a pending JNI
+                // exception and abort the app after embedding completes.
+                jmethodID optDoubleMethod = env->GetMethodID(jsObjectClass, "optDouble", "(Ljava/lang/String;D)D");
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    optDoubleMethod = nullptr;
+                }
+                if (optDoubleMethod != nullptr) {
+                    jstring normalizeKey = jni_utils::string_to_jstring(env, "embd_normalize");
+                    embd_normalize = env->CallDoubleMethod(params, optDoubleMethod, normalizeKey, embd_normalize);
+                    env->DeleteLocalRef(normalizeKey);
+                    if (env->ExceptionCheck()) {
+                        env->ExceptionClear();
+                        embd_normalize = 1.0;
+                    }
+                }`;
+  const searchDirs = collectInstalledPackageDirs("llama-cpp-capacitor", {
+    includeGlobalBunCache: true,
+  });
+
+  let patched = 0;
+  for (const dir of searchDirs) {
+    const target = resolve(dir, relPath);
+    if (!existsSync(target)) continue;
+
+    let src = readFileSync(target, "utf8");
+    if (!src.includes(oldSnippet)) continue;
+    src = src.replace(oldSnippet, newSnippet);
+    writeFileSync(target, src, "utf8");
+    patched++;
+    console.log(
+      `[patch-deps] Applied llama-cpp-capacitor Android embedding JNI patch: ${target}`,
+    );
+  }
+
+  if (patched > 0) {
+    console.log(
+      `[patch-deps] llama-cpp-capacitor: patched ${patched} Android embedding JNI path(s).`,
+    );
+  }
+}
+patchLlamaCppCapacitorAndroidEmbeddingParams();
 
 /**
  * Patch cssstyle's CommonJS parser bundle to use a CJS-compatible css-color.

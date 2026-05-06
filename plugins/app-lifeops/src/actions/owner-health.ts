@@ -10,6 +10,7 @@
  * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -20,7 +21,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
 import type { HealthDataPoint } from "../lifeops/health-bridge.js";
 import { LifeOpsService } from "../lifeops/service.js";
@@ -299,7 +299,7 @@ export const healthAction: Action = {
     "(duration, quality, stages), steps, heart rate, workouts, calories, and " +
     "other body/activity metrics. Subactions: today, trend, by_metric, status.",
   descriptionCompressed:
-    "Owner health via HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today, trend(days), by_metric(steps,heart-rate,sleep,calories,distance), status.",
+    "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status owner",
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasOwnerAccess(runtime, message),
   handler: async (
@@ -656,7 +656,7 @@ export const healthAction: Action = {
       name: "intent",
       description:
         "Free-form user intent used to infer subaction when not explicitly set.",
-      descriptionCompressed: "Free-form user intent for inferring subaction.",
+      descriptionCompressed: "free-form intent infer subaction",
       schema: { type: "string" as const },
     },
     {

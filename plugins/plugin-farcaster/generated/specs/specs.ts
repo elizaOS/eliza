@@ -6,6 +6,7 @@
 export type ActionDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   similes?: readonly string[];
   parameters?: readonly unknown[];
   examples?: readonly (readonly unknown[])[];
@@ -14,6 +15,7 @@ export type ActionDoc = {
 export type ProviderDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   position?: number;
   dynamic?: boolean;
 };
@@ -21,6 +23,7 @@ export type ProviderDoc = {
 export type EvaluatorDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   similes?: readonly string[];
   alwaysRun?: boolean;
   examples?: readonly unknown[];

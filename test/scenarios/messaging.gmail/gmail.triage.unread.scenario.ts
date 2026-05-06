@@ -42,7 +42,7 @@ export default scenario({
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: "GMAIL_ACTION",
+      actionName: "TRIAGE_MESSAGES",
       subaction: "triage",
     },
     {

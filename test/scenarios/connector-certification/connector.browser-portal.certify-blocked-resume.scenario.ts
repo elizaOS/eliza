@@ -20,7 +20,7 @@ export default buildConnectorCertificationScenario({
       name: "browser-portal-blocked-resume",
       text: "Upload the file through the portal, and if the portal blocks the browser, ask me for help and resume after that instead of pretending it already finished.",
       responseIncludesAny: ["portal", "blocked", "help", "resume"],
-      acceptedActions: ["LIFEOPS_COMPUTER_USE", "REQUEST_FIELD_FILL"],
+      acceptedActions: ["OWNER_COMPUTER_USE", "OWNER_AUTOFILL"],
       includesAny: ["portal", "blocked", "help", "resume"],
     },
   ],

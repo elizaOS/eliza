@@ -26,7 +26,7 @@ export default scenario({
       name: "propose-block",
       room: "main",
       text: "Should I block X for an hour while I do deep work?",
-      forbiddenActions: ["BLOCK_WEBSITES"],
+      forbiddenActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [/block/i, /x/i, /hour/i, /confirm/i, /\?/],
     },
     {
@@ -34,14 +34,14 @@ export default scenario({
       name: "confirm-block",
       room: "main",
       text: "Yes, block it for one hour.",
-      expectedActions: ["BLOCK_WEBSITES"],
+      expectedActions: ["OWNER_WEBSITE_BLOCK"],
       responseIncludesAny: [/blocked/i, /block/i, /hour/i, /x/i],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "BLOCK_WEBSITES",
+      actionName: "OWNER_WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import {
   type GetLifeOpsCalendarFeedRequest,
   type GetLifeOpsGmailTriageRequest,
@@ -1438,15 +1438,18 @@ export class CheckinService {
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
     const fallback = this.fallbackSummary(report);
-    const runModel = this.runtime.useModel?.bind(this.runtime);
-    if (typeof runModel !== "function") {
+    if (typeof this.runtime.useModel !== "function") {
       return fallback;
     }
     const prompt = buildCheckinSummaryPrompt(report);
     try {
-      const response = await runModel(ModelType.TEXT_LARGE, {
-        prompt,
-      });
+      const response = await runWithTrajectoryContext(
+        { purpose: "lifeops-checkin-summary" },
+        () =>
+          this.runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt,
+          }),
+      );
       const text = typeof response === "string" ? response.trim() : "";
       return text.length > 0 ? text : fallback;
     } catch (error) {

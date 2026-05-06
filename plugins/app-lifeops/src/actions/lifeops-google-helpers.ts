@@ -9,6 +9,7 @@ import {
   assertActiveTrajectoryForLlmCall,
   ModelType,
   parseToonKeyValue,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
@@ -111,9 +112,13 @@ export async function runLifeOpsTextModel(
   });
 
   try {
-    const result = await args.runtime.useModel(modelType, {
-      prompt: args.prompt,
-    });
+    const result = await runWithTrajectoryContext(
+      { purpose: args.purpose ?? `lifeops-${args.actionType}` },
+      () =>
+        args.runtime.useModel(modelType, {
+          prompt: args.prompt,
+        }),
+    );
     return typeof result === "string" ? result : "";
   } catch (error) {
     args.runtime.logger?.warn?.(

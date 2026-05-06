@@ -70,6 +70,21 @@ export async function runAutonomousCli(
       console.log("[cli] calling ensureAospLocalInferenceHandlers(runtime)…");
       const ok = await ensureAospLocalInferenceHandlers(runtime);
       console.log(`[cli] ensureAospLocalInferenceHandlers returned ${ok}`);
+    } else if (
+      runtime &&
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+    ) {
+      console.log("[cli] importing mobile-device-bridge-bootstrap…");
+      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+        "../runtime/mobile-device-bridge-bootstrap.js"
+      );
+      console.log(
+        "[cli] calling ensureMobileDeviceBridgeInferenceHandlers(runtime)…",
+      );
+      const ok = await ensureMobileDeviceBridgeInferenceHandlers(runtime);
+      console.log(
+        `[cli] ensureMobileDeviceBridgeInferenceHandlers returned ${ok}`,
+      );
     }
     return;
   }

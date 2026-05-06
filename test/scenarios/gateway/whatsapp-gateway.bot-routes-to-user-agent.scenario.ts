@@ -30,7 +30,7 @@ export default scenario({
       room: "main",
       text: "What's in this WhatsApp gateway DM? Summarize it back to me.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["INBOX"],
+        acceptedActions: ["TRIAGE_MESSAGES"],
         description: "WhatsApp gateway inbox read",
         includesAny: ["whatsapp", "chat", "message"],
       }),
@@ -39,18 +39,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["INBOX", "OWNER_INBOX"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["INBOX", "OWNER_INBOX"],
+      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
       includesAny: ["whatsapp", "chat", "message", "room"],
     },
     {
       type: "custom",
       name: "whatsapp-gateway-inbox-context-is-real",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["INBOX"],
+        acceptedActions: ["TRIAGE_MESSAGES"],
         description: "WhatsApp gateway inbox read",
         includesAny: ["whatsapp", "chat", "message"],
       }),
@@ -65,7 +65,7 @@ export default scenario({
         }
 
         const hit = ctx.actionsCalled.find((action) =>
-          ["INBOX", "OWNER_INBOX"].includes(action.actionName),
+          ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"].includes(action.actionName),
         );
         if (!hit) {
           return "expected an INBOX action";

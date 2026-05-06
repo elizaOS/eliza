@@ -1,8 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import listContacts from "./actions/listContacts";
-import listGroups from "./actions/listGroups";
+import { messageOp } from "./actions/messageOp";
 import readRecentMessages from "./actions/readRecentMessages";
-import sendReaction from "./actions/sendReaction";
+import { signalContactsProvider, signalGroupsProvider } from "./providers";
 
 // Service
 import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
@@ -17,8 +16,8 @@ const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
   services: [SignalService],
-  actions: [sendReaction, listContacts, listGroups, readRecentMessages],
-  providers: [],
+  actions: [messageOp, readRecentMessages],
+  providers: [signalContactsProvider, signalGroupsProvider],
   routes: signalSetupRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
@@ -100,12 +99,11 @@ export {
   type SignalMultiAccountConfig,
   type SignalReactionNotificationMode,
 } from "./accounts";
-export { listContacts } from "./actions/listContacts";
-export { listGroups } from "./actions/listGroups";
-export { readRecentMessages } from "./actions/readRecentMessages";
 // Export actions
-export { sendMessage } from "./actions/sendMessage";
-export { sendReaction } from "./actions/sendReaction";
+export { messageOp, SIGNAL_MESSAGE_OP_ACTION } from "./actions/messageOp";
+export { readRecentMessages } from "./actions/readRecentMessages";
+// Export providers
+export { signalContactsProvider, signalGroupsProvider } from "./providers";
 // Channel configuration types
 export type {
   SignalActionConfig,

@@ -13,7 +13,7 @@ export default buildConnectorCertificationScenario({
       name: "telegram-core",
       text: "Read the Telegram chat, draft a reply, and send it back in the same chat.",
       responseIncludesAny: ["telegram", "reply", "chat", "draft"],
-      acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       includesAny: ["telegram", "reply", "chat", "draft"],
     },
   ],

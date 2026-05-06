@@ -40,6 +40,12 @@ function sanitizeEnqueueFailureMessage(error: string, status: 404 | 409 | 500): 
   return "Failed to start provisioning";
 }
 
+function createFailureId(): string {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `provision-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 /**
  * POST /api/v1/eliza/agents/[agentId]/provision
  *
@@ -192,9 +198,11 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
           : message === "Agent state changed while starting"
             ? 409
             : 500;
+      const failureId = status === 500 ? createFailureId() : undefined;
 
       if (status === 500) {
         logger.error("[agent-api] Failed to enqueue provisioning job", {
+          failureId,
           agentId,
           orgId: user.organization_id,
           error: message,
@@ -205,7 +213,10 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
         Response.json(
           {
             success: false,
+            code: status === 500 ? "provision_enqueue_failed" : "provision_enqueue_rejected",
             error: sanitizeEnqueueFailureMessage(message, status),
+            ...(failureId ? { failureId } : {}),
+            retryable: status === 500 || status === 409,
           },
           { status },
         ),

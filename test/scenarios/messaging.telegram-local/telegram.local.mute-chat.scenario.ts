@@ -83,7 +83,7 @@ export default scenario({
       room: "main",
       text: "Mute the 'crypto signals' Telegram group for 24 hours.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CHAT_THREAD_CONTROL"],
+        acceptedActions: ["OWNER_CHAT_THREAD"],
         description: "targeted Telegram mute control",
         includesAny: ["telegram", "crypto signals", "mute"],
       }),
@@ -92,13 +92,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "CHAT_THREAD_CONTROL",
+      actionName: "OWNER_CHAT_THREAD",
     },
     {
       type: "custom",
       name: "telegram-mute-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CHAT_THREAD_CONTROL"],
+        acceptedActions: ["OWNER_CHAT_THREAD"],
         description: "targeted Telegram mute control",
         includesAny: ["telegram", "crypto signals", "mute"],
       }),
@@ -112,7 +112,7 @@ export default scenario({
           return "scenario runtime unavailable";
         }
         const hit = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "CHAT_THREAD_CONTROL",
+          (entry) => entry.actionName === "OWNER_CHAT_THREAD",
         );
         const data =
           hit?.result?.data && typeof hit.result.data === "object"

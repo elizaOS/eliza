@@ -12,6 +12,41 @@ import {
 } from "../types";
 import { neynarCastToCast, splitPostContent } from "../utils";
 
+async function logNeynarCall<T>(
+  op: string,
+  context: Record<string, unknown>,
+  fn: () => Promise<T>
+): Promise<T> {
+  const startedAt = Date.now();
+  elizaLogger.debug({ sdk: "neynar", op, ...context }, `[FarcasterClient] ${op} started`);
+  try {
+    const result = await fn();
+    elizaLogger.info(
+      {
+        sdk: "neynar",
+        op,
+        ...context,
+        durationMs: Date.now() - startedAt,
+      },
+      `[FarcasterClient] ${op} ok`
+    );
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    elizaLogger.warn(
+      {
+        sdk: "neynar",
+        op,
+        ...context,
+        durationMs: Date.now() - startedAt,
+        error: message,
+      },
+      `[FarcasterClient] ${op} failed`
+    );
+    throw error;
+  }
+}
+
 const castCache: LRUCache<string, NeynarCast> = new LRUCache({
   max: DEFAULT_CAST_CACHE_SIZE,
   ttl: DEFAULT_CAST_CACHE_TTL,
@@ -55,11 +90,16 @@ export class FarcasterClient {
 
   private async publishCast(cast: string, parentCastId?: CastId): Promise<NeynarCast> {
     try {
-      const result = await this.neynar.publishCast({
-        signerUuid: this.signerUuid,
-        text: cast,
-        parent: parentCastId?.hash,
-      });
+      const result = await logNeynarCall(
+        "publishCast",
+        { textLen: cast.length, parentHash: parentCastId?.hash ?? null },
+        async () =>
+          this.neynar.publishCast({
+            signerUuid: this.signerUuid,
+            text: cast,
+            parent: parentCastId?.hash,
+          })
+      );
       if (result.success) {
         return this.getCast(result.cast.hash);
       }
@@ -69,7 +109,6 @@ export class FarcasterClient {
         elizaLogger.error(`Neynar error: ${JSON.stringify(err.response.data)}`);
         throw err.response.data;
       } else {
-        elizaLogger.error(`Error: ${JSON.stringify(err)}`);
         throw err;
       }
     }
@@ -81,10 +120,12 @@ export class FarcasterClient {
       return cachedCast;
     }
 
-    const response = await this.neynar.lookupCastByHashOrUrl({
-      identifier: castHash,
-      type: "hash",
-    });
+    const response = await logNeynarCall("lookupCastByHashOrUrl", { castHash }, async () =>
+      this.neynar.lookupCastByHashOrUrl({
+        identifier: castHash,
+        type: "hash",
+      })
+    );
 
     castCache.set(castHash, response.cast);
 
@@ -95,11 +136,16 @@ export class FarcasterClient {
    * Get mentions for a FID.
    */
   async getMentions(request: FidRequest): Promise<NeynarCast[]> {
-    const neynarMentionsResponse = await this.neynar.fetchAllNotifications({
-      fid: request.fid,
-      type: ["mentions", "replies"],
-      limit: request.pageSize,
-    });
+    const neynarMentionsResponse = await logNeynarCall(
+      "fetchAllNotifications",
+      { fid: request.fid, pageSize: request.pageSize },
+      async () =>
+        this.neynar.fetchAllNotifications({
+          fid: request.fid,
+          type: ["mentions", "replies"],
+          limit: request.pageSize,
+        })
+    );
     const mentions: NeynarCast[] = [];
 
     for (const notification of neynarMentionsResponse.notifications) {
@@ -117,33 +163,29 @@ export class FarcasterClient {
       return profileCache.get(fid) as Profile;
     }
 
-    try {
-      const result = await this.neynar.fetchBulkUsers({ fids: [fid] });
-      if (result.users.length < 1) {
-        elizaLogger.error("Error fetching user by fid");
-        throw new Error("Profile fetch failed");
-      }
-
-      const neynarUserProfile = result.users[0];
-
-      const profile: Profile = {
-        fid,
-        name: "",
-        username: "",
-      };
-
-      profile.name = neynarUserProfile.display_name ?? "";
-      profile.username = neynarUserProfile.username;
-      profile.bio = neynarUserProfile.profile.bio.text;
-      profile.pfp = neynarUserProfile.pfp_url;
-
-      profileCache.set(fid, profile);
-
-      return profile;
-    } catch (error) {
-      elizaLogger.error(`Error fetching profile: ${JSON.stringify(error)}`);
-      throw error;
+    const result = await logNeynarCall("fetchBulkUsers", { fid }, async () =>
+      this.neynar.fetchBulkUsers({ fids: [fid] })
+    );
+    if (result.users.length < 1) {
+      throw new Error("Profile fetch failed");
     }
+
+    const neynarUserProfile = result.users[0];
+
+    const profile: Profile = {
+      fid,
+      name: "",
+      username: "",
+    };
+
+    profile.name = neynarUserProfile.display_name ?? "";
+    profile.username = neynarUserProfile.username;
+    profile.bio = neynarUserProfile.profile.bio.text;
+    profile.pfp = neynarUserProfile.pfp_url;
+
+    profileCache.set(fid, profile);
+
+    return profile;
   }
 
   async getTimeline(request: FidRequest): Promise<{
@@ -152,10 +194,15 @@ export class FarcasterClient {
   }> {
     const timeline: Cast[] = [];
 
-    const response = await this.neynar.fetchCastsForUser({
-      fid: request.fid,
-      limit: request.pageSize,
-    });
+    const response = await logNeynarCall(
+      "fetchCastsForUser",
+      { fid: request.fid, pageSize: request.pageSize },
+      async () =>
+        this.neynar.fetchCastsForUser({
+          fid: request.fid,
+          limit: request.pageSize,
+        })
+    );
 
     for (const cast of response.casts) {
       castCache.set(cast.hash, cast);
@@ -180,11 +227,16 @@ export class FarcasterClient {
     target: string;
   }): Promise<{ success: boolean }> {
     try {
-      const result = await this.neynar.publishReaction({
-        signerUuid: this.signerUuid,
-        reactionType: params.reactionType,
-        target: params.target,
-      });
+      const result = await logNeynarCall(
+        "publishReaction",
+        { reactionType: params.reactionType, target: params.target },
+        async () =>
+          this.neynar.publishReaction({
+            signerUuid: this.signerUuid,
+            reactionType: params.reactionType,
+            target: params.target,
+          })
+      );
 
       return { success: result.success ?? false };
     } catch (err) {
@@ -192,7 +244,6 @@ export class FarcasterClient {
         elizaLogger.error(`Neynar error publishing reaction: ${JSON.stringify(err.response.data)}`);
         throw err.response.data;
       }
-      elizaLogger.error(`Error publishing reaction: ${JSON.stringify(err)}`);
       throw err;
     }
   }
@@ -202,11 +253,16 @@ export class FarcasterClient {
     target: string;
   }): Promise<{ success: boolean }> {
     try {
-      const result = await this.neynar.deleteReaction({
-        signerUuid: this.signerUuid,
-        reactionType: params.reactionType,
-        target: params.target,
-      });
+      const result = await logNeynarCall(
+        "deleteReaction",
+        { reactionType: params.reactionType, target: params.target },
+        async () =>
+          this.neynar.deleteReaction({
+            signerUuid: this.signerUuid,
+            reactionType: params.reactionType,
+            target: params.target,
+          })
+      );
 
       return { success: result.success ?? false };
     } catch (err) {
@@ -214,7 +270,6 @@ export class FarcasterClient {
         elizaLogger.error(`Neynar error deleting reaction: ${JSON.stringify(err.response.data)}`);
         throw err.response.data;
       }
-      elizaLogger.error(`Error deleting reaction: ${JSON.stringify(err)}`);
       throw err;
     }
   }

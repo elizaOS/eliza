@@ -12,7 +12,7 @@ export default buildConnectorCertificationScenario({
       name: "signal-core",
       text: "Read the Signal thread, draft a reply, and deliver it or tell me if Signal is degraded.",
       responseIncludesAny: ["signal", "reply", "deliver", "degraded"],
-      acceptedActions: ["INBOX", "CROSS_CHANNEL_SEND"],
+      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
       includesAny: ["signal", "reply", "deliver", "degraded"],
     },
   ],

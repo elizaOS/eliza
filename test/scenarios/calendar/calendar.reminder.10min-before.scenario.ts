@@ -31,14 +31,14 @@ export default scenario({
       kind: "message",
       name: "ask-upcoming-10min",
       text: "What's starting in the next 10 minutes?",
-      expectedActions: ["CALENDAR_ACTION"],
+      expectedActions: ["OWNER_CALENDAR"],
       responseIncludesAny: ["alex", "sync", "10", "minute", "soon"],
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "CALENDAR_ACTION",
+      actionName: "OWNER_CALENDAR",
       minCount: 1,
     },
   ],

@@ -22,9 +22,9 @@ export default buildConnectorCertificationScenario({
       text: "Check whether I'm free tomorrow at 3pm and create the meeting if possible, but if Google Calendar is rate limited right now, say that clearly and ask whether to retry instead of pretending the event exists.",
       responseIncludesAny: ["calendar", "rate", "limited", "retry"],
       acceptedActions: [
-        "CALENDAR_ACTION",
-        "PROPOSE_MEETING_TIMES",
-        "UPDATE_MEETING_PREFERENCES",
+        "OWNER_CALENDAR",
+        "OWNER_CALENDAR",
+        "OWNER_CALENDAR",
       ],
       includesAny: ["calendar", "rate", "limited", "retry"],
     },

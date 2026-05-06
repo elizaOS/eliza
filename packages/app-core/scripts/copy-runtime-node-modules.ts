@@ -40,7 +40,7 @@ type PackagePlatformManifest = {
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, "..");
+const ROOT = process.cwd();
 const ROOT_NODE_MODULES = path.join(ROOT, "node_modules");
 const ROOT_BUN_NODE_MODULES = path.join(ROOT_NODE_MODULES, ".bun");
 const PACKAGE_JSON_PATH = path.join(ROOT, "package.json");
@@ -280,6 +280,22 @@ export function shouldKeepPackageRelativePath(
     return true;
   }
 
+  if (
+    normalizedPath === "android/build" ||
+    normalizedPath.startsWith("android/build/") ||
+    normalizedPath === "ios/App/build" ||
+    normalizedPath.startsWith("ios/App/build/")
+  ) {
+    return false;
+  }
+  if (
+    normalizedPath.includes(
+      "resources/studio/resources/projects/resources/",
+    )
+  ) {
+    return false;
+  }
+
   const prebuildMatch = normalizedPath.match(
     /(?:^|\/)prebuilds\/([^/]+)(?:\/|$)/,
   );
@@ -369,12 +385,50 @@ function copyPackageDir(
   const dest = packagePath(name, targetNodeModules);
   fs.rmSync(dest, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.cpSync(sourceDir, dest, {
+  const relativeDest = path.relative(sourceDir, dest);
+  const destIsInsideSource =
+    Boolean(relativeDest) &&
+    !relativeDest.startsWith("..") &&
+    !path.isAbsolute(relativeDest);
+  const copyDest = destIsInsideSource
+    ? fs.mkdtempSync(path.join(os.tmpdir(), "eliza-runtime-package-copy-"))
+    : dest;
+  const sourceDistDir = path.join(sourceDir, "dist");
+  fs.cpSync(sourceDir, copyDest, {
     recursive: true,
     force: true,
     dereference: true,
-    filter: shouldCopyPackageEntry,
+    filter: (entry) => {
+      if (!shouldCopyPackageEntry(entry)) {
+        return false;
+      }
+      if (name === "@elizaos/app-core") {
+        const relativeEntry = path
+          .relative(sourceDir, entry)
+          .split(path.sep)
+          .join("/");
+        if (
+          relativeEntry === "platforms/electrobun/build" ||
+          relativeEntry.startsWith("platforms/electrobun/build/") ||
+          relativeEntry === "platforms/electrobun/artifacts" ||
+          relativeEntry.startsWith("platforms/electrobun/artifacts/")
+        ) {
+          return false;
+        }
+      }
+      if (!destIsInsideSource) {
+        return true;
+      }
+      const relativeToDist = path.relative(sourceDistDir, entry);
+      return (
+        relativeToDist !== "" &&
+        (relativeToDist.startsWith("..") || path.isAbsolute(relativeToDist))
+      );
+    },
   });
+  if (destIsInsideSource) {
+    fs.renameSync(copyDest, dest);
+  }
   pruneCopiedPackageDir(dest);
   patchCopiedPackageRuntimeSurface(name, dest);
   return true;
@@ -578,6 +632,9 @@ export function shouldCopyPackageEntry(entry: string): boolean {
     return false;
   }
   if (RUNTIME_COPY_PRUNED_FILE_EXTENSIONS.has(path.extname(entry))) {
+    return false;
+  }
+  if (entry.endsWith(".d.ts") || entry.endsWith(".d.ts.map")) {
     return false;
   }
 

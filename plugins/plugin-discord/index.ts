@@ -1,27 +1,17 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import channelOp from "./actions/channelOp";
 import chatWithAttachments from "./actions/chatWithAttachments";
 import createPoll from "./actions/createPoll";
-import deleteMessage from "./actions/deleteMessage";
-import { downloadMedia } from "./actions/downloadMedia";
-import editMessage from "./actions/editMessage";
 import getUserInfo from "./actions/getUserInfo";
-import joinChannel from "./actions/joinChannel";
-import leaveChannel from "./actions/leaveChannel";
-import listChannels from "./actions/listChannels";
-import pinMessage from "./actions/pinMessage";
-import reactToMessage from "./actions/reactToMessage";
-import readChannel from "./actions/readChannel";
-import searchMessages from "./actions/searchMessages";
-import sendDM from "./actions/sendDM";
-import sendMessage from "./actions/sendMessage";
-import serverInfo from "./actions/serverInfo";
+import mediaOp from "./actions/mediaOp";
+import messageOp from "./actions/messageOp";
 import setupCredentials from "./actions/setup-credentials";
 import { summarize } from "./actions/summarizeConversation";
-import { transcribeMedia } from "./actions/transcribeMedia";
-import unpinMessage from "./actions/unpinMessage";
 import { printBanner } from "./banner";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
+import { discordChannelsProvider } from "./providers/discordChannels";
+import { discordServerInfoProvider } from "./providers/discordServerInfo";
 import { guildInfoProvider } from "./providers/guildInfo";
 import { voiceStateProvider } from "./providers/voiceState";
 import { registerDiscordSearchCategory } from "./search-category";
@@ -36,28 +26,21 @@ const discordPlugin: Plugin = {
 	services: [DiscordService, DiscordOwnerPairingServiceImpl],
 	routes: discordSetupRoutes,
 	actions: [
+		messageOp,
+		channelOp,
+		mediaOp,
 		chatWithAttachments,
-		downloadMedia,
-		joinChannel,
-		leaveChannel,
-		listChannels,
-		readChannel,
-		sendDM,
-		sendMessage,
 		summarize,
-		transcribeMedia,
-		searchMessages,
 		createPoll,
 		getUserInfo,
-		reactToMessage,
-		pinMessage,
-		unpinMessage,
-		serverInfo,
-		editMessage,
-		deleteMessage,
 		setupCredentials,
 	],
-	providers: [voiceStateProvider, guildInfoProvider],
+	providers: [
+		voiceStateProvider,
+		guildInfoProvider,
+		discordChannelsProvider,
+		discordServerInfoProvider,
+	],
 	tests: [new DiscordTestSuite()],
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
 		registerDiscordSearchCategory(runtime);

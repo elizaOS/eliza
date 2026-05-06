@@ -17,7 +17,10 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+import {
+  elizaClassicPlugin,
+  generateElizaResponse,
+} from "@elizaos/plugin-eliza-classic";
 import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
@@ -52,6 +55,12 @@ const messageServerId = stringToUuid("a2a-server");
 
 type JsonObject = Record<string, ContentValue>;
 
+function serializeBio(): string | null {
+  const bio = CHARACTER.bio;
+  if (Array.isArray(bio)) return bio.join("\n");
+  return typeof bio === "string" ? bio : null;
+}
+
 function shouldUseOpenAi(): boolean {
   const key = process.env.OPENAI_API_KEY;
   return typeof key === "string" && key.trim().length > 0;
@@ -64,6 +73,9 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   runtime = new AgentRuntime({
     character: CHARACTER,
+    enableKnowledge: shouldUseOpenAi(),
+    enableRelationships: shouldUseOpenAi(),
+    enableTrajectories: shouldUseOpenAi(),
     plugins: shouldUseOpenAi()
       ? [sqlPlugin, openaiPlugin]
       : [inmemorydbPlugin, elizaClassicPlugin],
@@ -92,6 +104,10 @@ async function handleChat(
   sessionId: string,
   opts?: { callerAgentId?: string; context?: JsonObject },
 ): Promise<string> {
+  if (!shouldUseOpenAi()) {
+    return generateElizaResponse(message);
+  }
+
   const rt = await initializeRuntime();
   const { roomId, userId } = getOrCreateSession(sessionId);
 
@@ -189,7 +205,7 @@ export function createApp(): express.Express {
     const rt = await initializeRuntime();
     res.json({
       name: CHARACTER.name,
-      bio: CHARACTER.bio,
+      bio: serializeBio(),
       agentId: rt.agentId,
       version: "1.0.0",
       capabilities: ["chat", "reasoning", "multi-turn"],
@@ -284,6 +300,15 @@ export function createApp(): express.Express {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
+
+      if (!shouldUseOpenAi()) {
+        res.write(
+          `data: ${JSON.stringify({ text: generateElizaResponse(message) })}\n\n`,
+        );
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.end();
+        return;
+      }
 
       const rt = await initializeRuntime();
       const { roomId, userId } = getOrCreateSession(sessionId);

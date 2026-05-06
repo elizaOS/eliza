@@ -235,7 +235,14 @@ function hasGmailDraftData(
 function hasConfirmedGmailSendAction(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
-  if (action.actionName !== "GMAIL_ACTION" && action.actionName !== "INBOX") {
+  const acceptedNames = new Set([
+    "SEND_DRAFT",
+    "RESPOND_TO_MESSAGE",
+    "TRIAGE_MESSAGES",
+    "GMAIL_ACTION",
+    "INBOX",
+  ]);
+  if (!acceptedNames.has(action.actionName)) {
     return false;
   }
   const params = actionParameters(action);
@@ -377,24 +384,42 @@ function actionMatchesChannel(
   }
   switch (channel) {
     case "gmail":
-      return ["GMAIL_ACTION", "INBOX", "CROSS_CHANNEL_SEND"].includes(
-        action.actionName,
-      );
+      return [
+        "SEND_DRAFT",
+        "RESPOND_TO_MESSAGE",
+        "TRIAGE_MESSAGES",
+        "GMAIL_ACTION",
+        "INBOX",
+        "CROSS_CHANNEL_SEND",
+      ].includes(action.actionName);
     case "discord":
     case "telegram":
     case "signal":
     case "imessage":
     case "whatsapp":
     case "sms":
-      return ["INBOX", "CROSS_CHANNEL_SEND"].includes(action.actionName);
+      return [
+        "SEND_DRAFT",
+        "RESPOND_TO_MESSAGE",
+        "TRIAGE_MESSAGES",
+        "INBOX",
+        "CROSS_CHANNEL_SEND",
+      ].includes(action.actionName);
     case "x-dm":
-      return ["X_READ", "INBOX", "CROSS_CHANNEL_SEND"].includes(
-        action.actionName,
-      );
+      return [
+        "OWNER_X",
+        "SEND_DRAFT",
+        "RESPOND_TO_MESSAGE",
+        "X_READ",
+        "INBOX",
+        "CROSS_CHANNEL_SEND",
+      ].includes(action.actionName);
     case "desktop":
     case "mobile":
     case "phone_call":
       return [
+        "OWNER_DEVICE_INTENT",
+        "OWNER_VOICE_CALL",
         "PUBLISH_DEVICE_INTENT",
         "INTENT_SYNC",
         "CALL_USER",
@@ -734,6 +759,7 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
   const any = ctx.actionsCalled.some((action) => {
     const blob = actionBlob(action);
     return (
+      action.actionName === "OWNER_DEVICE_INTENT" ||
       action.actionName === "INTENT_SYNC" ||
       (/acknowledge/.test(blob) && /sync/.test(blob))
     );
@@ -1000,7 +1026,14 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
     fields?: Record<string, unknown>;
     minCount?: number;
   };
-  const actionNames = actionName ?? ["GMAIL_ACTION", "INBOX"];
+  const actionNames = actionName ?? [
+    "TRIAGE_MESSAGES",
+    "SEND_DRAFT",
+    "RESPOND_TO_MESSAGE",
+    "DRAFT_REPLY",
+    "GMAIL_ACTION",
+    "INBOX",
+  ];
   const matched = ctx.actionsCalled.filter((action) => {
     if (!matchesActionName(action.actionName, actionNames)) {
       return false;
@@ -1168,6 +1201,9 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       (ctx.approvalRequests ?? []).some(
         (request) =>
           matchesActionName(request.actionName, [
+            "SEND_DRAFT",
+            "RESPOND_TO_MESSAGE",
+            "TRIAGE_MESSAGES",
             "GMAIL_ACTION",
             "send_email",
           ]) && request.state === "pending",

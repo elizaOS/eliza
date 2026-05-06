@@ -37,7 +37,7 @@ export default scenario({
       name: "ask-dossier",
       text: "Give me the dossier for my 3pm meeting.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["DOSSIER", "CALENDAR_ACTION"],
+        acceptedActions: ["OWNER_DOSSIER", "OWNER_CALENDAR"],
         description: "meeting dossier planning",
         includesAny: ["dossier", "meeting", "Alex", "3pm"],
       }),
@@ -52,18 +52,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["DOSSIER", "CALENDAR_ACTION"],
+      actionName: ["OWNER_DOSSIER", "OWNER_CALENDAR"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["DOSSIER", "CALENDAR_ACTION"],
+      actionName: ["OWNER_DOSSIER", "OWNER_CALENDAR"],
       includesAny: ["dossier", "meeting", "Alex", "3pm"],
     },
     {
       type: "custom",
       name: "meeting-dossier-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["DOSSIER", "CALENDAR_ACTION"],
+        acceptedActions: ["OWNER_DOSSIER", "OWNER_CALENDAR"],
         description: "meeting dossier planning",
         includesAny: ["dossier", "meeting", "Alex", "3pm"],
       }),

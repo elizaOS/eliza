@@ -20,6 +20,7 @@ import {
 } from "@lifi/sdk";
 
 import { type Address, encodeFunctionData, type Hex, parseAbi, parseUnits } from "viem";
+import { runIntentModel } from "../../../utils/intent-trajectory";
 import {
   BEBOP_CHAIN_MAP,
   DEFAULT_SLIPPAGE_PERCENT,
@@ -607,9 +608,11 @@ export async function buildSwapDetails(
     template: swapTemplate,
   });
 
-  const runModel = runtime.useModel.bind(runtime);
-  const llmResponse = await runModel(ModelType.TEXT_LARGE, {
-    prompt: context,
+  const llmResponse = await runIntentModel({
+    runtime,
+    taskName: "evm.swap.intent",
+    template: context,
+    modelType: ModelType.TEXT_LARGE,
   });
 
   const parsedResponse = parseToonKeyValue(llmResponse);

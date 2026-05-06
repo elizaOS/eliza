@@ -206,7 +206,7 @@ const getDateRange = async (
  * @property {Function} handler - Asynchronous function to handle the action.
  * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
  */
-const spec = requireActionSpec("SUMMARIZE_CONVERSATION");
+const spec = requireActionSpec("DISCORD_SUMMARIZE_CONVERSATION");
 
 export const summarize: Action = {
 	name: spec.name,

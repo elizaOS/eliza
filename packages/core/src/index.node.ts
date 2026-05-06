@@ -41,6 +41,61 @@ export {
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export type {
+	DraftRecord,
+	DraftRequest,
+	ListOptions,
+	ManageOperation,
+	ManageResult,
+	MessageAdapter,
+	MessageAdapterCapabilities,
+	MessageRef,
+	MessageSource,
+	ScoreContext,
+	SearchMessagesFilters,
+	SendPolicy,
+	SuggestedAction,
+	TriageOptions,
+	TriagePriority,
+	TriageScore,
+} from "./features/messaging/triage";
+// Cross-platform messaging triage (TRIAGE_MESSAGES, SEARCH_MESSAGES, MANAGE_MESSAGE,
+// SCHEDULE_DRAFT_SEND, RESPOND_TO_MESSAGE, adapters, SendPolicy, TriageService).
+// Selective re-export — `MessageParticipant` collides with an unrelated type in
+// `types/service-interfaces.ts`; consumers that need the triage-side participant type
+// import it directly from "@elizaos/core/features/messaging/triage".
+export {
+	__resetDefaultMessageRefStoreForTests,
+	__resetDefaultTriageServiceForTests,
+	BaseMessageAdapter,
+	DiscordMessageAdapter,
+	draftFollowupAction,
+	draftReplyAction,
+	GmailMessageAdapter,
+	getDefaultMessageRefStore,
+	getDefaultTriageService,
+	getSendPolicy,
+	IMessageMessageAdapter,
+	listInboxAction,
+	MessageRefStore,
+	manageMessageAction,
+	NotYetImplementedError,
+	rankScored,
+	registerSendPolicy,
+	resetMissingServiceWarning,
+	resolveContactWeight,
+	respondToMessageAction,
+	SignalMessageAdapter,
+	scheduleDraftSendAction,
+	scoreMessage,
+	scoreMessages,
+	searchMessagesAction,
+	sendDraftAction,
+	TelegramMessageAdapter,
+	TwitterMessageAdapter,
+	triageMessagesAction,
+	WhatsappMessageAdapter,
+} from "./features/messaging/triage";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
 	SECRETS_SERVICE_TYPE,

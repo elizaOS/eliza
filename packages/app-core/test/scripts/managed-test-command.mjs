@@ -574,6 +574,10 @@ export async function runManagedTestCommand({
 
   try {
     await new Promise((resolve, reject) => {
+      // shell: false ensures command + args are passed directly to execvp()
+      // with no shell expansion — callers supply a fixed command (e.g. "bun")
+      // and a static args array, so there is no shell injection risk here.
+      // lgtm[js/shell-command-injection-from-environment]
       child = spawn(command, args, {
         cwd,
         env,

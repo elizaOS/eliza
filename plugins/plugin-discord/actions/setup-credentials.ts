@@ -492,18 +492,20 @@ function resolveDeletionTarget(
 }
 
 export const setupCredentials: Action = {
-	name: "SETUP_CREDENTIALS",
+	name: "DISCORD_SETUP_CREDENTIALS",
 	similes: [
-		"ADD_CREDENTIALS",
-		"CONFIGURE_SERVICE",
-		"CONNECT_SERVICE",
-		"ADD_API_KEY",
-		"SETUP_SERVICE",
+		"DISCORD_SETUP",
+		"DISCORD_PAIR",
+		"DISCORD_CONNECT",
+		"DISCORD_ADD_CREDENTIALS",
+		"DISCORD_CONFIGURE_SERVICE",
+		"DISCORD_CONNECT_SERVICE",
+		"DISCORD_ADD_API_KEY",
+		"DISCORD_SETUP_SERVICE",
 	],
 	description:
-		"Guide the user through setting up API credentials for supported third-party services, validate them when possible, and store them securely.",
-	descriptionCompressed:
-		"Guide credential setup for third-party services, validate and store securely.",
+		"Start Discord credential setup or account pairing. Guides the user through setting up API credentials for supported third-party services, validates them when possible, and stores them securely.",
+	descriptionCompressed: "Set up Discord credentials.",
 	...terminalActionInteractionSemantics,
 	validate: async (_runtime, message) => {
 		if (message.content.source !== "discord") {
@@ -819,7 +821,7 @@ export const setupCredentials: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Setting up **GitHub** credentials.\nCreate a fine-grained PAT at the link above.\nHere's where to get one: https://github.com/settings/tokens\n\nPlease paste your **Personal Access Token** here. I'll delete your message right after reading it.",
-					action: "SETUP_CREDENTIALS",
+					action: "DISCORD_SETUP_CREDENTIALS",
 				},
 			},
 		],
@@ -832,7 +834,7 @@ export const setupCredentials: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Setting up **Vercel** credentials.\nCreate a token at the link above.\nHere's where to get one: https://vercel.com/account/tokens\n\nPlease paste your **API Token** here. I'll delete your message right after reading it.",
-					action: "SETUP_CREDENTIALS",
+					action: "DISCORD_SETUP_CREDENTIALS",
 				},
 			},
 		],
@@ -845,7 +847,7 @@ export const setupCredentials: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Which service do you want to set up? I support GitHub, Vercel, Cloudflare, Anthropic, OpenAI, fal.ai, or a custom credential.",
-					action: "SETUP_CREDENTIALS",
+					action: "DISCORD_SETUP_CREDENTIALS",
 				},
 			},
 		],
