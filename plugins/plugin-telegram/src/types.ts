@@ -4,9 +4,9 @@ import type {
   EntityPayload,
   MessagePayload,
   WorldPayload,
-} from "@elizaos/core";
-import type { Chat, Message, ReactionType } from "@telegraf/types";
-import type { Context } from "telegraf";
+} from '@elizaos/core';
+import type { Chat, Message, ReactionType } from '@telegraf/types';
+import type { Context } from 'telegraf';
 
 /**
  * Extention of the core Content type just for Telegram
@@ -21,7 +21,7 @@ export interface TelegramContent extends Content {
  */
 export type Button = {
   /** The type of button */
-  kind: "login" | "url";
+  kind: 'login' | 'url';
   /** The text to display on the button */
   text: string;
   /** The URL or endpoint the button should link to */
@@ -33,25 +33,25 @@ export type Button = {
  */
 export enum TelegramEventTypes {
   // World events
-  WORLD_JOINED = "TELEGRAM_WORLD_JOINED",
-  WORLD_CONNECTED = "TELEGRAM_WORLD_CONNECTED",
-  WORLD_LEFT = "TELEGRAM_WORLD_LEFT",
+  WORLD_JOINED = 'TELEGRAM_WORLD_JOINED',
+  WORLD_CONNECTED = 'TELEGRAM_WORLD_CONNECTED',
+  WORLD_LEFT = 'TELEGRAM_WORLD_LEFT',
 
   // Entity events
-  ENTITY_JOINED = "TELEGRAM_ENTITY_JOINED",
-  ENTITY_LEFT = "TELEGRAM_ENTITY_LEFT",
-  ENTITY_UPDATED = "TELEGRAM_ENTITY_UPDATED",
+  ENTITY_JOINED = 'TELEGRAM_ENTITY_JOINED',
+  ENTITY_LEFT = 'TELEGRAM_ENTITY_LEFT',
+  ENTITY_UPDATED = 'TELEGRAM_ENTITY_UPDATED',
 
   // Message events
-  MESSAGE_RECEIVED = "TELEGRAM_MESSAGE_RECEIVED",
-  MESSAGE_SENT = "TELEGRAM_MESSAGE_SENT",
+  MESSAGE_RECEIVED = 'TELEGRAM_MESSAGE_RECEIVED',
+  MESSAGE_SENT = 'TELEGRAM_MESSAGE_SENT',
 
   // Interaction events
-  REACTION_RECEIVED = "TELEGRAM_REACTION_RECEIVED",
-  INTERACTION_RECEIVED = "TELEGRAM_INTERACTION_RECEIVED",
+  REACTION_RECEIVED = 'TELEGRAM_REACTION_RECEIVED',
+  INTERACTION_RECEIVED = 'TELEGRAM_INTERACTION_RECEIVED',
 
   // Command events
-  SLASH_START = "TELEGRAM_SLASH_START",
+  SLASH_START = 'TELEGRAM_SLASH_START',
 }
 
 /**
@@ -71,7 +71,7 @@ export interface TelegramEventPayloadMap {
   [TelegramEventTypes.INTERACTION_RECEIVED]: TelegramReactionReceivedPayload;
 }
 
-declare module "@elizaos/core" {
+declare module '@elizaos/core' {
   interface EventPayloadMap extends TelegramEventPayloadMap {}
 }
 
@@ -102,8 +102,7 @@ export interface TelegramMessageSentPayload extends MessagePayload {
 /**
  * Telegram-specific reaction received payload
  */
-export interface TelegramReactionReceivedPayload
-  extends TelegramMessageReceivedPayload {
+export interface TelegramReactionReceivedPayload extends TelegramMessageReceivedPayload {
   /** The reaction type as a string */
   reactionString: string;
   /** The original reaction object */
