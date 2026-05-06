@@ -21,12 +21,12 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {
   saveEnv,
   sleep,
   withTimeout,
-} from "../../../../eliza/test/helpers/test-utils";
+} from "../../../test/helpers/test-utils";
 import { readLifeOpsOwnerProfile } from "../src/lifeops/owner-profile.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
