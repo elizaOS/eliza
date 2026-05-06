@@ -56,7 +56,11 @@ import {
   type UiTheme,
   useApp,
 } from "../../state";
-import { getElizaApiBase, preOpenWindow, resolveAppAssetUrl } from "../../utils";
+import {
+  getElizaApiBase,
+  preOpenWindow,
+  resolveAppAssetUrl,
+} from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 
@@ -879,7 +883,7 @@ export function RuntimeGate() {
       void pollProvisionJob();
       pollTimerRef.current = setInterval(() => {
         void pollProvisionJob();
-      }, provRes.polling?.intervalMs ?? 2500);
+      }, 2500);
     },
     [finishAsCloud, t],
   );
@@ -1664,8 +1668,7 @@ function WelcomeChooser({
           }}
         >
           {t("runtimegate.welcomeSubtitle", {
-            defaultValue:
-              "Your personal AI. Ready in seconds, hosted by us.",
+            defaultValue: "Your personal AI. Ready in seconds, hosted by us.",
           })}
         </p>
       </div>
@@ -1703,7 +1706,9 @@ function WelcomeChooser({
           {advancedOpen && (
             <div
               className={`grid w-full gap-3 text-left ${
-                advancedShowsLocal && advancedShowsRemote ? "sm:grid-cols-2" : ""
+                advancedShowsLocal && advancedShowsRemote
+                  ? "sm:grid-cols-2"
+                  : ""
               }`}
             >
               {advancedShowsLocal && (
