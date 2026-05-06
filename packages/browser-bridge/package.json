@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/browser-bridge-extension",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
     "build": "bun scripts/build.mjs chrome",

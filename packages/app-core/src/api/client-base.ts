@@ -28,6 +28,10 @@ import type {
   WsEventHandler,
 } from "./client-types";
 import { ApiError } from "./client-types";
+import {
+  iosInProcessAgentTransportForUrl,
+  isIosInProcessLocalAgentBase,
+} from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
@@ -324,6 +328,7 @@ export class ElizaClient {
         const transport =
           this.requestTransport === fetchAgentTransport
             ? ((await androidNativeAgentTransportForUrl(requestUrl)) ??
+              (await iosInProcessAgentTransportForUrl(requestUrl)) ??
               nativeCloudHttpTransportForUrl(requestUrl) ??
               this.requestTransport)
             : this.requestTransport;
@@ -384,13 +389,38 @@ export class ElizaClient {
         .json()
         .catch(() => ({ error: res.statusText }))) as Record<
         string,
-        string
+        unknown
       > | null;
+      const message =
+        typeof body?.error === "string"
+          ? body.error
+          : typeof body?.message === "string"
+            ? body.message
+            : `HTTP ${res.status}`;
+      const code = typeof body?.code === "string" ? body.code : undefined;
+      // `Number(null) === 0` and `Number(undefined) === NaN`, so we must guard
+      // each source before coercing — otherwise an absent `Retry-After` header
+      // produces a spurious `retryAfter = 0` on every non-rate-limit error
+      // path, polluting the shared `ApiError` surface for unrelated callers.
+      const headerValue = res.headers.get("Retry-After");
+      const headerRetryAfter =
+        headerValue !== null && Number.isFinite(Number(headerValue))
+          ? Number(headerValue)
+          : undefined;
+      const rawBodyRetryAfter = body?.retryAfter;
+      const bodyRetryAfter =
+        typeof rawBodyRetryAfter === "number" &&
+        Number.isFinite(rawBodyRetryAfter)
+          ? rawBodyRetryAfter
+          : undefined;
+      const retryAfter = bodyRetryAfter ?? headerRetryAfter;
       throw new ApiError({
         kind: "http",
         path,
         status: res.status,
-        message: body?.error ?? `HTTP ${res.status}`,
+        message,
+        code,
+        retryAfter,
       });
     }
     return res;
@@ -438,6 +468,17 @@ export class ElizaClient {
   // --- WebSocket ---
 
   connectWs(): void {
+    if (isIosInProcessLocalAgentBase(this.baseUrl)) {
+      this.backoffMs = 500;
+      this.reconnectAttempt = 0;
+      this.disconnectedAt = null;
+      if (this.connectionState !== "connected") {
+        this.connectionState = "connected";
+        this.emitConnectionStateChange();
+      }
+      return;
+    }
+
     if (
       this.ws?.readyState === WebSocket.OPEN ||
       this.ws?.readyState === WebSocket.CONNECTING

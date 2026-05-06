@@ -3,7 +3,7 @@
   "name": "Form",
   "description": "Structured conversational forms — FORM service, form context provider, form evaluator, and restore action provided by @elizaos/plugin-form.",
   "npmName": "@elizaos/plugin-form",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-beta.0",
   "source": "bundled",
   "tags": ["form", "conversational", "data-collection"],
   "config": {},

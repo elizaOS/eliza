@@ -243,7 +243,7 @@ export function buildDefaultElizaCloudServiceRouting(
     mediaDescriptionModel?: string;
   } = {},
 ): ServiceRoutingConfig {
-  const next: ServiceRoutingConfig = { ...(args.base ?? {}) };
+  const next: ServiceRoutingConfig = { ...args.base };
   const excluded = new Set(args.excludeServices ?? []);
 
   for (const capability of ELIZA_CLOUD_DEFAULT_SERVICE_CAPABILITIES) {

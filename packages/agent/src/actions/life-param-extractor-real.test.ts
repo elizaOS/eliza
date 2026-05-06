@@ -17,11 +17,11 @@ import {
 } from "@elizaos/app-lifeops/actions/life-param-extractor";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
+import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../../eliza/test/helpers/real-runtime";
+} from "../../../../test/helpers/real-runtime";
 
 const provider = selectLiveProvider();
 const describeWithLLM = provider ? describe : describe.skip;

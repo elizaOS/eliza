@@ -142,8 +142,7 @@ describe("lintDescriptionCompressed", () => {
 	});
 
 	it("returns multiple violations for a description that breaks several rules at once", () => {
-		const text =
-			"This action will basically simply forward messages to the user — please use this action when in order to send configuration data, currently with the agent.";
+		const text = `This action will ${"x".repeat(MAX_DESCRIPTION_LENGTH)} messages configuration basically simply please use this action in order to reach the user and the agent currently.`;
 		const result = lintDescriptionCompressed(text);
 		expect(result.ok).toBe(false);
 

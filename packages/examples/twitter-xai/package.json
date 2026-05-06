@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-xai-x",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-beta.0",
   "description": "X (Twitter) agent using Grok (xAI) + X API via elizaOS",
   "type": "module",
   "scripts": {

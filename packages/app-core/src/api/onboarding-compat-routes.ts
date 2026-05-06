@@ -74,25 +74,87 @@ async function syncCompatOnboardingConfigState(
   }
 }
 
+/**
+ * Defensive resave delay (ms). Long enough that the in-flight loopback PUT
+ * /api/config triggered by `syncCompatOnboardingConfigState` plus any
+ * concurrent renderer-driven PUT settles before we re-check disk. Tracked as
+ * a workaround pending the upstream race fix (see WHY block on
+ * `scheduleCloudApiKeyResave` below).
+ */
+const CLOUD_API_KEY_RESAVE_DELAY_MS = 3000;
+
+/**
+ * Defensive: re-write `cloud.apiKey` to disk after a delay if some concurrent
+ * config write between now and `CLOUD_API_KEY_RESAVE_DELAY_MS` clobbered it.
+ *
+ * **WHY this exists:** the synchronous path (resolve apiKey → local
+ * `saveElizaConfig` → loopback PUT /api/config) should be sufficient on its
+ * own — the upstream PUT handler safeMerges `cloud.apiKey` from the request
+ * body into `state.config` before saving. Empirically a clobber still
+ * happens in some sequences (likely a concurrent renderer-driven PUT that
+ * round-trips through GET (redacted) → PUT and strips apiKey before the
+ * `[REDACTED]` filter catches it). Removing the resave requires reproducing
+ * the race in an integration test, which is out of scope for the current
+ * cleanup batch.
+ *
+ * Failure here is best-effort (the synchronous path already wrote apiKey
+ * once), but log at warn level so a recurring failure is visible — the
+ * silent `catch {}` previously here masked real bugs.
+ */
 function scheduleCloudApiKeyResave(apiKey: string): void {
   setTimeout(() => {
     try {
       const freshConfig = loadElizaConfig();
-      if (!freshConfig.cloud?.apiKey) {
-        if (!freshConfig.cloud) {
-          (freshConfig as Record<string, unknown>).cloud = {};
-        }
-        (freshConfig.cloud as Record<string, unknown>).apiKey = apiKey;
-        migrateLegacyRuntimeConfig(freshConfig as Record<string, unknown>);
-        saveElizaConfig(freshConfig);
-        logger.info(
-          "[api] Re-saved cloud.apiKey after upstream handler clobbered it",
-        );
+      if (freshConfig.cloud?.apiKey) {
+        return;
       }
-    } catch {
-      // Non-fatal
+      if (!freshConfig.cloud) {
+        (freshConfig as Record<string, unknown>).cloud = {};
+      }
+      (freshConfig.cloud as Record<string, unknown>).apiKey = apiKey;
+      migrateLegacyRuntimeConfig(freshConfig as Record<string, unknown>);
+      saveElizaConfig(freshConfig);
+      logger.info(
+        "[api] Re-saved cloud.apiKey after upstream handler clobbered it",
+      );
+    } catch (err) {
+      logger.warn(
+        `[api] Defensive cloud.apiKey resave failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
-  }, 3000);
+  }, CLOUD_API_KEY_RESAVE_DELAY_MS);
+}
+
+/**
+ * Resolve the cloud apiKey from the three sources we accept, in priority order.
+ * Returns the first hit (or `undefined` if none) and writes it back into the
+ * `config.cloud` slot when found via the secrets/env fallbacks so the
+ * subsequent `saveElizaConfig` persists it.
+ */
+function resolveCloudApiKeyForOnboarding(
+  config: Record<string, unknown>,
+): string | undefined {
+  if (!config.cloud) {
+    config.cloud = {};
+  }
+  const cloudSlot = config.cloud as Record<string, unknown>;
+
+  const fromConfig = cloudSlot.apiKey as string | undefined;
+  if (fromConfig) return fromConfig;
+
+  const fromSealedSecret = getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? undefined;
+  if (fromSealedSecret) {
+    cloudSlot.apiKey = fromSealedSecret;
+    return fromSealedSecret;
+  }
+
+  const fromEnv = process.env.ELIZAOS_CLOUD_API_KEY;
+  if (fromEnv) {
+    cloudSlot.apiKey = fromEnv;
+    return fromEnv;
+  }
+
+  return undefined;
 }
 
 export async function handleOnboardingCompatRoute(
@@ -181,29 +243,9 @@ export async function handleOnboardingCompatRoute(
       });
 
       if (shouldResolveCloudApiKey) {
-        if (!config.cloud) {
-          (config as Record<string, unknown>).cloud = {};
-        }
-
-        resolvedCloudApiKey = (config.cloud as Record<string, unknown>)
-          .apiKey as string | undefined;
-
-        if (!resolvedCloudApiKey) {
-          resolvedCloudApiKey =
-            getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? undefined;
-          if (resolvedCloudApiKey) {
-            (config.cloud as Record<string, unknown>).apiKey =
-              resolvedCloudApiKey;
-          }
-        }
-
-        if (!resolvedCloudApiKey) {
-          resolvedCloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
-          if (resolvedCloudApiKey) {
-            (config.cloud as Record<string, unknown>).apiKey =
-              resolvedCloudApiKey;
-          }
-        }
+        resolvedCloudApiKey = resolveCloudApiKeyForOnboarding(
+          config as Record<string, unknown>,
+        );
 
         if (!resolvedCloudApiKey) {
           logger.warn(

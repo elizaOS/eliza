@@ -5,6 +5,7 @@ export { logger } from "../logger";
 export {
 	addHeader,
 	composePromptFromState,
+	parseKeyValueXml,
 	parseToonKeyValue,
 } from "../utils";
 export * from "./agent";

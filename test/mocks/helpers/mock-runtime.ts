@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { appLifeOpsPlugin } from "@elizaos/app-lifeops/plugin";
 import type { Plugin } from "@elizaos/core";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { appLifeOpsPlugin } from "../../../plugins/app-lifeops/src/plugin.ts";
 import {
   MOCK_ENVIRONMENTS,
   type MockEnvironmentName,

@@ -42,8 +42,8 @@ const detectChannel = (version: string | null): string => {
   if (!version) return "unknown";
   if (version.includes("-nightly")) return "nightly";
   if (version.includes("-beta")) return "beta";
-  if (version.includes("-alpha")) return "alpha";
   if (version.includes("-rc")) return "rc";
+  if (version.includes("-")) return "prerelease";
   return "stable";
 };
 

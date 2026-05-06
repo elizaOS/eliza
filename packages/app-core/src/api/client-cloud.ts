@@ -1525,6 +1525,10 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
     return normalizeCloudCompatProvisionResponse(response, agentId);
   }
 
+  // Proxy fallback (only hit when direct cloud token is not available — see
+  // `directCloudRequest` token plumbing). The compat namespace doesn't have
+  // a `/provision` sub-resource, so we use the v1/app proxy path here. With
+  // a properly-wired direct token we never hit this branch in normal flow.
   const response = await this.fetch<CloudCompatAgentProvisionResponse>(
     `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/provision`,
     { method: "POST" },

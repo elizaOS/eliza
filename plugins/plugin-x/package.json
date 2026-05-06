@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-x",
-  "version": "2.0.0-alpha.536",
+  "version": "2.0.0-beta.0",
   "description": "elizaOS X (formerly Twitter) connector: posting, mentions, replies, DMs, and timeline interactions.",
   "type": "module",
   "main": "dist/index.js",

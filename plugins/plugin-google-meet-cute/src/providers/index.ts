@@ -1,1 +1,0 @@
-export { meetingProvider } from "./meetingProvider";

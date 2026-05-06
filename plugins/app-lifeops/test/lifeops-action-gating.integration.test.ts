@@ -21,7 +21,7 @@
 import crypto from "node:crypto";
 import type { AgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;

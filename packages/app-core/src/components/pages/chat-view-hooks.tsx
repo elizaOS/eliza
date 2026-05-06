@@ -19,13 +19,13 @@ import {
   VOICE_CONFIG_UPDATED_EVENT,
 } from "../../events";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
-import type {
-  VoiceCaptureMode,
-  VoicePlaybackStartEvent,
-} from "../../hooks/voice-chat-types";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
+import type {
+  VoiceCaptureMode,
+  VoicePlaybackStartEvent,
+} from "../../voice/voice-chat-types";
 import { useCompanionSceneStatus } from "../companion/injected";
 
 /* ── Shared constants ──────────────────────────────────────────────── */

@@ -468,7 +468,7 @@ export type PluginInstallRecord = {
   source: "npm" | "archive" | "path";
   spec?: string;
   requestedVersion?: string;
-  releaseStream?: "latest" | "alpha";
+  releaseStream?: "latest" | "beta";
   sourcePath?: string;
   installPath?: string;
   version?: string;

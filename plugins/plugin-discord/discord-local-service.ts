@@ -1132,7 +1132,7 @@ export class DiscordLocalService extends Service {
 			`Discord ${channelId}`;
 
 		// `roomName` is accepted by the local `./eliza` source but not by
-		// the npm alpha dist-tag of `@elizaos/core`. Cast around the
+		// the npm beta dist-tag of `@elizaos/core`. Cast around the
 		// excess-property check so the call works under both resolutions;
 		// the runtime itself reads `roomName` in both versions, the type
 		// just lags in the published package.
