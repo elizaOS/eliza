@@ -17,6 +17,8 @@ import {
 import { maybeStoreTaskClipboardItem } from "../services/taskClipboardPersistence.ts";
 
 const MAX_ATTACHMENT_ANSWER_CHARS = 32_000;
+const MIN_ATTACHMENT_ANSWER_TOKENS = 1024;
+const MAX_ATTACHMENT_ANSWER_TOKENS = 4096;
 const ATTACHMENT_REQUEST_PATTERN =
 	/\b(?:attachment|file|document|doc|pdf|image|screenshot|picture|photo|audio|voice|recording|song|video|media|transcript|url|link|webpage|website|page|article)\b/i;
 type AttachmentRecord = Awaited<
@@ -34,6 +36,14 @@ function attachmentContentForAnswering(content: string): string {
 		return content;
 	}
 	return `${content.slice(0, MAX_ATTACHMENT_ANSWER_CHARS)}\n\n[Attachment content truncated before answering because it exceeded ${MAX_ATTACHMENT_ANSWER_CHARS} characters.]`;
+}
+
+function attachmentAnswerTokenBudget(content: string): number {
+	const estimatedTokens = Math.ceil(content.length / 4);
+	return Math.min(
+		Math.max(estimatedTokens, MIN_ATTACHMENT_ANSWER_TOKENS),
+		MAX_ATTACHMENT_ANSWER_TOKENS,
+	);
 }
 
 function missingReadableContentMessage(records: AttachmentRecord[]): string {
@@ -151,7 +161,7 @@ async function answerAttachmentRequest(params: {
 	const response = await params.runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 		temperature: 0,
-		maxTokens: 512,
+		maxTokens: attachmentAnswerTokenBudget(params.content),
 	});
 	const text = String(response).trim();
 	return text || params.content;
