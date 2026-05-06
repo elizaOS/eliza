@@ -202,6 +202,11 @@ function resolveExecutable(name) {
   return null;
 }
 
+function resolveBunExecutable() {
+  if (process.versions.bun) return process.execPath;
+  return resolveExecutable("bun");
+}
+
 function resolveAndroidSdkRoot() {
   return firstExisting([
     process.env.ANDROID_SDK_ROOT,
@@ -209,6 +214,19 @@ function resolveAndroidSdkRoot() {
     path.join(os.homedir(), "Library", "Android", "sdk"),
     path.join(os.homedir(), "Android", "Sdk"),
   ]);
+}
+
+function resolveViteCli() {
+  const viteCli = firstExisting([
+    path.join(appDir, "node_modules", ".bin", "vite"),
+    path.join(repoRoot, "node_modules", ".bin", "vite"),
+    path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
+    path.join(repoRoot, "node_modules", "vite", "bin", "vite.js"),
+  ]);
+  if (!viteCli) {
+    throw new Error("vite CLI not found; run bun install");
+  }
+  return viteCli;
 }
 
 function resolveJavaHome() {
@@ -511,18 +529,20 @@ async function buildWeb(platform) {
       : platform === "ios-overlay"
         ? "ios"
         : platform;
-  await run(
-    process.execPath,
-    [path.join(repoRoot, "scripts/run-app-web-build.mjs")],
-    {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
-        MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
-      },
-    },
-  );
+  const env = {
+    ...process.env,
+    ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+  };
+  const bun = resolveBunExecutable();
+  if (bun) {
+    await run(bun, ["run", "build:web"], { cwd: appDir, env });
+    return;
+  }
+  await run(process.execPath, [resolveViteCli(), "build"], {
+    cwd: appDir,
+    env,
+  });
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
