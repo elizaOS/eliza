@@ -100,21 +100,65 @@ function findCachedTypePackageDir(packageName) {
   return path.join(GLOBAL_TYPES_CACHE_DIR, matches[0]);
 }
 
+function ensureRealDirectory(dir) {
+  let shouldRecreate = false;
+
+  try {
+    const stat = lstatSync(dir);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      shouldRecreate = true;
+    } else {
+      try {
+        readlinkSync(dir);
+        shouldRecreate = true;
+      } catch {
+        // A normal directory is already usable.
+      }
+    }
+  } catch {
+    // Missing or broken paths are recreated below.
+  }
+
+  if (shouldRecreate) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  mkdirSync(dir, { recursive: true });
+}
+
 function materializeTypePackage(targetTypesDir, packageName) {
   const sourceDir = findCachedTypePackageDir(packageName);
   if (!sourceDir) {
     return false;
   }
 
+  ensureRealDirectory(targetTypesDir);
   const targetDir = path.join(targetTypesDir, packageName);
   rmSync(targetDir, { recursive: true, force: true });
-  mkdirSync(targetTypesDir, { recursive: true });
   cpSync(sourceDir, targetDir, {
     recursive: true,
     force: true,
   });
   ensureTypeEntryPoint(targetDir, packageName);
   return true;
+}
+
+function ensureChildDirectory(parentDir, childName) {
+  ensureRealDirectory(parentDir);
+  const childDir = path.join(parentDir, childName);
+
+  try {
+    mkdirSync(childDir, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+
+    rmSync(parentDir, { recursive: true, force: true });
+    mkdirSync(parentDir, { recursive: true });
+    mkdirSync(childDir, { recursive: true });
+  }
+
+  return childDir;
 }
 
 function ensureTypeEntryPoint(targetDir, packageName) {
@@ -140,9 +184,7 @@ function ensureTypeEntryPoint(targetDir, packageName) {
 }
 
 function ensureBunTypesAlias(targetTypesDir) {
-  mkdirSync(targetTypesDir, { recursive: true });
-  const bunTypesDir = path.join(targetTypesDir, "bun");
-  mkdirSync(bunTypesDir, { recursive: true });
+  const bunTypesDir = ensureChildDirectory(targetTypesDir, "bun");
   writeFileSync(
     path.join(bunTypesDir, "index.d.ts"),
     '/// <reference types="bun-types" />\n',
@@ -173,6 +215,7 @@ function main() {
   ].sort();
 
   for (const targetTypesDir of TYPE_ROOTS) {
+    ensureBunTypesAlias(targetTypesDir);
     for (const packageName of packageNames) {
       if (materializeTypePackage(targetTypesDir, packageName)) {
         materializedCount++;
