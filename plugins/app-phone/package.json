@@ -40,6 +40,16 @@
       "types": "./src/companion/services/index.ts",
       "import": "./dist/companion/services/index.js",
       "default": "./dist/companion/services/index.js"
+    },
+    "./actions/place-call": {
+      "types": "./src/actions/place-call.ts",
+      "import": "./dist/actions/place-call.js",
+      "default": "./dist/actions/place-call.js"
+    },
+    "./providers/call-log": {
+      "types": "./src/providers/call-log.ts",
+      "import": "./dist/providers/call-log.js",
+      "default": "./dist/providers/call-log.js"
     }
   },
   "scripts": {
