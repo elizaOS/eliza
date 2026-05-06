@@ -16,35 +16,21 @@
  * Mutates the workflow in place AND returns it for ergonomic chaining.
  */
 
-import { logger } from "@elizaos/core";
-import type {
-  N8nNode,
-  N8nWorkflow,
-  NodeDefinition,
-  RuntimeContext,
-} from "../types/index";
-import {
-  loadOutputSchema,
-  loadTriggerOutputSchema,
-  parseExpressions,
-} from "./outputSchema";
-import { inferSyntheticOutputSchema } from "./inferSyntheticOutputSchema";
-import {
-  isCatalogClarification,
-  CATALOG_CLARIFICATION_SUFFIX,
-} from "./clarification";
+import { logger } from '@elizaos/core';
+import type { N8nNode, N8nWorkflow, NodeDefinition, RuntimeContext } from '../types/index';
+import { loadOutputSchema, loadTriggerOutputSchema, parseExpressions } from './outputSchema';
+import { inferSyntheticOutputSchema } from './inferSyntheticOutputSchema';
+import { isCatalogClarification, CATALOG_CLARIFICATION_SUFFIX } from './clarification';
 
 export type RepairKind =
-  | "typeVersionClamp"
-  | "authenticationBackfill"
-  | "fieldNameCaseFix"
-  | "aggregationSourceFieldCaseFix"
-  | "nodeNameDeduplication"
-  | "droppedDanglingEdge";
+  | 'typeVersionClamp'
+  | 'authenticationBackfill'
+  | 'fieldNameCaseFix'
+  | 'aggregationSourceFieldCaseFix'
+  | 'nodeNameDeduplication'
+  | 'droppedDanglingEdge';
 
-export type ValidationErrorKind =
-  | "unknownOutputField"
-  | "requiredParameterMissing";
+export type ValidationErrorKind = 'unknownOutputField' | 'requiredParameterMissing';
 
 export interface Repair {
   kind: RepairKind;
@@ -73,10 +59,7 @@ export interface RepairResult {
 /** Pick the closest-but-not-greater valid version. Falls back to the maximum
  *  when all valid versions are smaller than the requested one (LLM picked
  *  a higher number — clamp down). */
-function clampTypeVersion(
-  requested: number,
-  validVersions: number[],
-): number | null {
+function clampTypeVersion(requested: number, validVersions: number[]): number | null {
   if (validVersions.length === 0) {
     return null;
   }
@@ -86,23 +69,17 @@ function clampTypeVersion(
   } // already valid
   // Highest version ≤ requested, else highest available.
   const candidates = sorted.filter((v) => v <= requested);
-  return candidates.length > 0
-    ? candidates[candidates.length - 1]
-    : sorted[sorted.length - 1];
+  return candidates.length > 0 ? candidates[candidates.length - 1] : sorted[sorted.length - 1];
 }
 
 function applyTypeVersionClamp(
   node: N8nNode,
   def: NodeDefinition,
   repairs: Repair[],
-  runtimeVersions: Map<string, number[]> | undefined,
+  runtimeVersions: Map<string, number[]> | undefined
 ): void {
-  const catalogVersions = Array.isArray(def.version)
-    ? def.version
-    : [def.version];
-  const catalogNumeric = catalogVersions.filter(
-    (v): v is number => typeof v === "number",
-  );
+  const catalogVersions = Array.isArray(def.version) ? def.version : [def.version];
+  const catalogNumeric = catalogVersions.filter((v): v is number => typeof v === 'number');
 
   // When the live n8n runtime registry is available, intersect with it.
   // The static plugin catalog is sometimes ahead of the user's running
@@ -133,11 +110,11 @@ function applyTypeVersionClamp(
   if (clamped === null) {
     return;
   }
-  const source = runtime ? "runtime∩catalog" : "catalog";
+  const source = runtime ? 'runtime∩catalog' : 'catalog';
   repairs.push({
-    kind: "typeVersionClamp",
+    kind: 'typeVersionClamp',
     node: node.name,
-    detail: `${node.type} typeVersion ${node.typeVersion} → ${clamped} (${source} valid: ${validVersions.join(", ")})`,
+    detail: `${node.type} typeVersion ${node.typeVersion} → ${clamped} (${source} valid: ${validVersions.join(', ')})`,
   });
   node.typeVersion = clamped;
 }
@@ -154,11 +131,7 @@ interface CredentialDef {
  *  shows it gates on a single authentication value (and node.parameters
  *  doesn't already set one), back-fill it. Closes the Gmail-missing-auth
  *  bug surfaced in Session 20 dogfood. */
-function applyAuthenticationBackfill(
-  node: N8nNode,
-  def: NodeDefinition,
-  repairs: Repair[],
-): void {
+function applyAuthenticationBackfill(node: N8nNode, def: NodeDefinition, repairs: Repair[]): void {
   if (!node.credentials) {
     return;
   }
@@ -181,16 +154,13 @@ function applyAuthenticationBackfill(
 
   const requiredAuth = authOpts[0];
   const params = (node.parameters ?? {}) as Record<string, unknown>;
-  if (
-    typeof params.authentication === "string" &&
-    params.authentication.length > 0
-  ) {
+  if (typeof params.authentication === 'string' && params.authentication.length > 0) {
     return; // LLM already set it
   }
 
   node.parameters = { ...params, authentication: requiredAuth };
   repairs.push({
-    kind: "authenticationBackfill",
+    kind: 'authenticationBackfill',
     node: node.name,
     detail: `set parameters.authentication="${requiredAuth}" to match attached ${credType}`,
   });
@@ -234,21 +204,17 @@ function knownOutputFieldsForNode(node: N8nNode): string[] | null {
 
   // 2. Static output-schema catalog (Gmail non-simple, Slack, Discord etc.)
   if (
-    typeof node.parameters?.resource === "string" &&
-    typeof node.parameters?.operation === "string"
+    typeof node.parameters?.resource === 'string' &&
+    typeof node.parameters?.operation === 'string'
   ) {
-    const schema = loadOutputSchema(
-      node.type,
-      node.parameters.resource,
-      node.parameters.operation,
-    );
+    const schema = loadOutputSchema(node.type, node.parameters.resource, node.parameters.operation);
     if (schema) {
       return schema.fields;
     }
   }
 
   // 3. Trigger schemas (gmailTrigger, etc.) — respect simple flag
-  if (node.type.toLowerCase().includes("trigger")) {
+  if (node.type.toLowerCase().includes('trigger')) {
     const triggerSchema = loadTriggerOutputSchema(node.type, node.parameters);
     if (triggerSchema) {
       return triggerSchema.fields;
@@ -264,7 +230,7 @@ function knownOutputFieldsForNode(node: N8nNode): string[] | null {
 function validateOutputFieldReferences(
   workflow: N8nWorkflow,
   repairs: Repair[],
-  errors: ValidationError[],
+  errors: ValidationError[]
 ): void {
   const upstream = buildUpstreamMap(workflow);
   const nodeByName = new Map<string, N8nNode>();
@@ -273,7 +239,7 @@ function validateOutputFieldReferences(
   }
 
   for (const node of workflow.nodes) {
-    if (!node.parameters || typeof node.parameters !== "object") {
+    if (!node.parameters || typeof node.parameters !== 'object') {
       continue;
     }
     const refs = parseExpressions(node.parameters as Record<string, unknown>);
@@ -314,19 +280,17 @@ function validateOutputFieldReferences(
       } // exact match
 
       // Case-insensitive deterministic correction
-      const ciMatch = fields.find(
-        (f) => f.toLowerCase() === topField.toLowerCase(),
-      );
+      const ciMatch = fields.find((f) => f.toLowerCase() === topField.toLowerCase());
       if (ciMatch) {
         rewriteParameterFieldRef(node, ref.fullExpression, topField, ciMatch);
         repairs.push({
-          kind: "fieldNameCaseFix",
+          kind: 'fieldNameCaseFix',
           node: node.name,
           detail: `${ref.fullExpression}: "${topField}" → "${ciMatch}" (matches ${sourceNode.name} output)`,
         });
       } else {
         errors.push({
-          kind: "unknownOutputField",
+          kind: 'unknownOutputField',
           node: node.name,
           detail: `expression references unknown field "${topField}" on upstream node ${sourceNode.name}`,
           expression: ref.fullExpression,
@@ -343,38 +307,27 @@ function rewriteParameterFieldRef(
   node: N8nNode,
   fullExpression: string,
   oldField: string,
-  newField: string,
+  newField: string
 ): void {
   const oldPattern = fullExpression;
-  const newPattern = fullExpression.replace(
-    new RegExp(`\\b${oldField}\\b`),
-    newField,
-  );
-  rewriteInObject(
-    node.parameters as Record<string, unknown>,
-    oldPattern,
-    newPattern,
-  );
+  const newPattern = fullExpression.replace(new RegExp(`\\b${oldField}\\b`), newField);
+  rewriteInObject(node.parameters as Record<string, unknown>, oldPattern, newPattern);
 }
 
-function rewriteInObject(
-  obj: Record<string, unknown>,
-  oldStr: string,
-  newStr: string,
-): void {
+function rewriteInObject(obj: Record<string, unknown>, oldStr: string, newStr: string): void {
   for (const key of Object.keys(obj)) {
     const val = obj[key];
-    if (typeof val === "string" && val.includes(oldStr)) {
+    if (typeof val === 'string' && val.includes(oldStr)) {
       obj[key] = val.replaceAll(oldStr, newStr);
     } else if (Array.isArray(val)) {
       for (let i = 0; i < val.length; i++) {
-        if (typeof val[i] === "string" && (val[i] as string).includes(oldStr)) {
+        if (typeof val[i] === 'string' && (val[i] as string).includes(oldStr)) {
           val[i] = (val[i] as string).replaceAll(oldStr, newStr);
-        } else if (typeof val[i] === "object" && val[i] !== null) {
+        } else if (typeof val[i] === 'object' && val[i] !== null) {
           rewriteInObject(val[i] as Record<string, unknown>, oldStr, newStr);
         }
       }
-    } else if (typeof val === "object" && val !== null) {
+    } else if (typeof val === 'object' && val !== null) {
       rewriteInObject(val as Record<string, unknown>, oldStr, newStr);
     }
   }
@@ -400,7 +353,7 @@ function rewriteInObject(
 function applyAggregationSourceFieldFix(
   workflow: N8nWorkflow,
   repairs: Repair[],
-  errors: ValidationError[],
+  errors: ValidationError[]
 ): void {
   const upstream = buildUpstreamMap(workflow);
   const nodeByName = new Map<string, N8nNode>();
@@ -409,7 +362,7 @@ function applyAggregationSourceFieldFix(
   }
 
   for (const node of workflow.nodes) {
-    if (node.type !== "n8n-nodes-base.summarize") {
+    if (node.type !== 'n8n-nodes-base.summarize') {
       continue;
     }
 
@@ -437,26 +390,24 @@ function applyAggregationSourceFieldFix(
     } // unknowable schema → skip
 
     for (const entry of values) {
-      if (typeof entry?.field !== "string" || entry.field.length === 0) {
+      if (typeof entry?.field !== 'string' || entry.field.length === 0) {
         continue;
       }
       if (fields.includes(entry.field)) {
         continue;
       } // exact match
-      const ciMatch = fields.find(
-        (f) => f.toLowerCase() === entry.field!.toLowerCase(),
-      );
+      const ciMatch = fields.find((f) => f.toLowerCase() === entry.field!.toLowerCase());
       if (ciMatch) {
         const oldField = entry.field;
         entry.field = ciMatch;
         repairs.push({
-          kind: "aggregationSourceFieldCaseFix",
+          kind: 'aggregationSourceFieldCaseFix',
           node: node.name,
           detail: `fieldsToSummarize.values[].field "${oldField}" → "${ciMatch}" (matches ${sourceNode.name} output)`,
         });
       } else {
         errors.push({
-          kind: "unknownOutputField",
+          kind: 'unknownOutputField',
           node: node.name,
           detail: `fieldsToSummarize.values[].field "${entry.field}" does not match any known field on upstream ${sourceNode.name}`,
           expression: `field: "${entry.field}"`,
@@ -473,7 +424,7 @@ function applyAggregationSourceFieldFix(
  *  required parameter is missing AND can't be inferred. Non-fatal. */
 function applyRequiredParameterPreflight(
   workflow: N8nWorkflow,
-  defByType: Map<string, NodeDefinition>,
+  defByType: Map<string, NodeDefinition>
 ): void {
   const clarifications: string[] = [];
   for (const node of workflow.nodes) {
@@ -486,9 +437,9 @@ function applyRequiredParameterPreflight(
         continue;
       }
       const params = (node.parameters ?? {}) as Record<string, unknown>;
-      if (params[prop.name] === undefined || params[prop.name] === "") {
+      if (params[prop.name] === undefined || params[prop.name] === '') {
         clarifications.push(
-          `${node.name} (${node.type}) is missing required parameter "${prop.name}" ${CATALOG_CLARIFICATION_SUFFIX}`,
+          `${node.name} (${node.type}) is missing required parameter "${prop.name}" ${CATALOG_CLARIFICATION_SUFFIX}`
         );
       }
     }
@@ -521,7 +472,7 @@ function deduplicateNodeNames(workflow: N8nWorkflow, repairs: Repair[]): void {
       seen.set(candidate, 1);
       seen.set(oldName, count + 1);
       repairs.push({
-        kind: "nodeNameDeduplication",
+        kind: 'nodeNameDeduplication',
         node: candidate,
         detail: `renamed duplicate "${oldName}" → "${candidate}"`,
       });
@@ -554,9 +505,9 @@ function dropDanglingEdges(workflow: N8nWorkflow, repairs: Repair[]): void {
       // Source node doesn't exist — drop the entire entry.
       delete workflow.connections[fromName];
       repairs.push({
-        kind: "droppedDanglingEdge",
+        kind: 'droppedDanglingEdge',
         node: fromName,
-        detail: "dropped connections entry for non-existent node",
+        detail: 'dropped connections entry for non-existent node',
       });
       continue;
     }
@@ -569,7 +520,7 @@ function dropDanglingEdges(workflow: N8nWorkflow, repairs: Repair[]): void {
           const dropped = branch.filter((e) => !nodeNames.has(e.node));
           for (const e of dropped) {
             repairs.push({
-              kind: "droppedDanglingEdge",
+              kind: 'droppedDanglingEdge',
               node: fromName,
               detail: `dropped edge ${fromName} → ${e.node} (target missing)`,
             });
@@ -587,7 +538,7 @@ export function validateAndRepair(
   workflow: N8nWorkflow,
   relevantNodes: NodeDefinition[],
   _runtimeContext: RuntimeContext | undefined,
-  runtimeVersions?: Map<string, number[]>,
+  runtimeVersions?: Map<string, number[]>
 ): RepairResult {
   const repairs: Repair[] = [];
   const errors: ValidationError[] = [];
@@ -596,9 +547,7 @@ export function validateAndRepair(
     return { workflow, repairs, errors };
   }
 
-  const defByType = new Map<string, NodeDefinition>(
-    relevantNodes.map((d) => [d.name, d]),
-  );
+  const defByType = new Map<string, NodeDefinition>(relevantNodes.map((d) => [d.name, d]));
 
   // Check 1 + 2: per-node passes
   for (const node of workflow.nodes) {
@@ -630,21 +579,21 @@ export function validateAndRepair(
   if (repairs.length > 0) {
     logger.info(
       {
-        src: "plugin:n8n-workflow:utils:validate",
+        src: 'plugin:n8n-workflow:utils:validate',
         repairCount: repairs.length,
         repairs,
       },
-      `validateAndRepair applied ${repairs.length} fix(es)`,
+      `validateAndRepair applied ${repairs.length} fix(es)`
     );
   }
   if (errors.length > 0) {
     logger.warn(
       {
-        src: "plugin:n8n-workflow:utils:validate",
+        src: 'plugin:n8n-workflow:utils:validate',
         errorCount: errors.length,
         errors,
       },
-      `validateAndRepair flagged ${errors.length} unrecoverable error(s) for retry loop`,
+      `validateAndRepair flagged ${errors.length} unrecoverable error(s) for retry loop`
     );
   }
 

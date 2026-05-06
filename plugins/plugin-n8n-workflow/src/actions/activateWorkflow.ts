@@ -8,77 +8,69 @@ import {
   logger,
   type Memory,
   type State,
-} from "@elizaos/core";
-import {
-  N8N_WORKFLOW_SERVICE_TYPE,
-  type N8nWorkflowService,
-} from "../services/index";
-import { matchWorkflow } from "../utils/generation";
-import { buildConversationContext } from "../utils/context";
-import type { WorkflowDraft } from "../types/index";
+} from '@elizaos/core';
+import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
+import { matchWorkflow } from '../utils/generation';
+import { buildConversationContext } from '../utils/context';
+import type { WorkflowDraft } from '../types/index';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
 
 const examples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: '{{user1}}',
       content: {
-        text: "Enable my payment workflow",
+        text: 'Enable my payment workflow',
       },
     },
     {
-      name: "{{agent}}",
+      name: '{{agent}}',
       content: {
         text: "I'll activate that workflow for you.",
-        actions: ["ACTIVATE_N8N_WORKFLOW"],
+        actions: ['ACTIVATE_N8N_WORKFLOW'],
       },
     },
   ],
   [
     {
-      name: "{{user1}}",
+      name: '{{user1}}',
       content: {
-        text: "Turn on the Gmail automation",
+        text: 'Turn on the Gmail automation',
       },
     },
     {
-      name: "{{agent}}",
+      name: '{{agent}}',
       content: {
-        text: "Activating Gmail workflow now.",
-        actions: ["ACTIVATE_N8N_WORKFLOW"],
+        text: 'Activating Gmail workflow now.',
+        actions: ['ACTIVATE_N8N_WORKFLOW'],
       },
     },
   ],
   [
     {
-      name: "{{user1}}",
+      name: '{{user1}}',
       content: {
-        text: "Start the Stripe workflow abc123",
+        text: 'Start the Stripe workflow abc123',
       },
     },
     {
-      name: "{{agent}}",
+      name: '{{agent}}',
       content: {
-        text: "Starting workflow abc123.",
-        actions: ["ACTIVATE_N8N_WORKFLOW"],
+        text: 'Starting workflow abc123.',
+        actions: ['ACTIVATE_N8N_WORKFLOW'],
       },
     },
   ],
 ];
 
 export const activateWorkflowAction: Action = {
-  name: "ACTIVATE_N8N_WORKFLOW",
-  similes: [
-    "ACTIVATE_WORKFLOW",
-    "ENABLE_WORKFLOW",
-    "START_WORKFLOW",
-    "TURN_ON_WORKFLOW",
-  ],
+  name: 'ACTIVATE_N8N_WORKFLOW',
+  similes: ['ACTIVATE_WORKFLOW', 'ENABLE_WORKFLOW', 'START_WORKFLOW', 'TURN_ON_WORKFLOW'],
   description:
-    "Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+    'Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.',
   descriptionCompressed:
-    "activate n8n workflow start process trigger run automatically identify workflow ID, name, semantic description language",
+    'activate n8n workflow start process trigger run automatically identify workflow ID, name, semantic description language',
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
@@ -90,20 +82,18 @@ export const activateWorkflowAction: Action = {
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(
-      N8N_WORKFLOW_SERVICE_TYPE,
-    );
+    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
     if (!service) {
       logger.error(
-        { src: "plugin:n8n-workflow:action:activate" },
-        "N8n Workflow service not available",
+        { src: 'plugin:n8n-workflow:action:activate' },
+        'N8n Workflow service not available'
       );
       if (callback) {
         await callback({
-          text: "N8n Workflow service is not available.",
+          text: 'N8n Workflow service is not available.',
           success: false,
         });
       }
@@ -125,12 +115,12 @@ export const activateWorkflowAction: Action = {
         // Don't deploy drafts that still need clarification
         if (pendingDraft.workflow._meta?.requiresClarification?.length) {
           logger.info(
-            { src: "plugin:n8n-workflow:action:activate" },
-            "Draft redirect: draft needs clarification, prompting user",
+            { src: 'plugin:n8n-workflow:action:activate' },
+            'Draft redirect: draft needs clarification, prompting user'
           );
           if (callback) {
             await callback({
-              text: "I still need a bit more information before I can create this workflow. Could you answer the questions above?",
+              text: 'I still need a bit more information before I can create this workflow. Could you answer the questions above?',
               success: false,
             });
           }
@@ -138,24 +128,19 @@ export const activateWorkflowAction: Action = {
         }
 
         logger.info(
-          { src: "plugin:n8n-workflow:action:activate" },
-          `Draft redirect: deploying pending draft "${pendingDraft.workflow.name}" (LLM misrouted to ACTIVATE)`,
+          { src: 'plugin:n8n-workflow:action:activate' },
+          `Draft redirect: deploying pending draft "${pendingDraft.workflow.name}" (LLM misrouted to ACTIVATE)`
         );
 
-        const result = await service.deployWorkflow(
-          pendingDraft.workflow,
-          message.entityId,
-        );
+        const result = await service.deployWorkflow(pendingDraft.workflow, message.entityId);
 
         // Deploy blocked — unresolved credentials
         if (result.missingCredentials.length > 0) {
           const connList = result.missingCredentials
             .map((m) =>
-              m.authUrl
-                ? `- **${m.credType}**: [Connect](${m.authUrl})`
-                : `- **${m.credType}**`,
+              m.authUrl ? `- **${m.credType}**: [Connect](${m.authUrl})` : `- **${m.credType}**`
             )
-            .join("\n");
+            .join('\n');
           if (callback) {
             await callback({
               text: `The following services need to be connected before deploying:\n\n${connList}\n\nPlease connect them and try again.`,
@@ -170,9 +155,8 @@ export const activateWorkflowAction: Action = {
         let responseText = `Workflow "${result.name}" deployed successfully!\n\n`;
         responseText += `**Workflow ID:** ${result.id}\n`;
         responseText += `**Nodes:** ${result.nodeCount}\n`;
-        responseText += `**Status:** ${result.active ? "Active" : "Inactive"}\n`;
-        responseText +=
-          "\nAll credentials configured — workflow is ready to run!";
+        responseText += `**Status:** ${result.active ? 'Active' : 'Inactive'}\n`;
+        responseText += '\nAll credentials configured — workflow is ready to run!';
 
         if (callback) {
           await callback({ text: responseText, success: true });
@@ -188,7 +172,7 @@ export const activateWorkflowAction: Action = {
       if (workflows.length === 0) {
         if (callback) {
           await callback({
-            text: "No workflows available to activate.",
+            text: 'No workflows available to activate.',
             success: false,
           });
         }
@@ -198,10 +182,8 @@ export const activateWorkflowAction: Action = {
       const context = buildConversationContext(message, state);
       const matchResult = await matchWorkflow(runtime, context, workflows);
 
-      if (!matchResult.matchedWorkflowId || matchResult.confidence === "none") {
-        const workflowList = matchResult.matches
-          .map((m) => `- ${m.name} (ID: ${m.id})`)
-          .join("\n");
+      if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
+        const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
 
         if (callback) {
           await callback({
@@ -215,24 +197,23 @@ export const activateWorkflowAction: Action = {
       await service.activateWorkflow(matchResult.matchedWorkflowId);
 
       logger.info(
-        { src: "plugin:n8n-workflow:action:activate" },
-        `Activated workflow ${matchResult.matchedWorkflowId}`,
+        { src: 'plugin:n8n-workflow:action:activate' },
+        `Activated workflow ${matchResult.matchedWorkflowId}`
       );
 
       if (callback) {
         await callback({
-          text: "✅ Workflow activated and is now running.",
+          text: '✅ Workflow activated and is now running.',
           success: true,
         });
       }
 
       return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(
-        { src: "plugin:n8n-workflow:action:activate" },
-        `Failed to activate workflow: ${errorMessage}`,
+        { src: 'plugin:n8n-workflow:action:activate' },
+        `Failed to activate workflow: ${errorMessage}`
       );
 
       if (callback) {
