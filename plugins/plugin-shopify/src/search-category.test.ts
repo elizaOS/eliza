@@ -1,7 +1,4 @@
-import type {
-  IAgentRuntime,
-  SearchCategoryRegistration,
-} from "@elizaos/core";
+import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   registerShopifySearchCategory,
@@ -24,8 +21,10 @@ function createRuntime() {
   return {
     categories,
     registerSearchCategory,
-    runtime: { getSearchCategory, registerSearchCategory } as unknown as
-      IAgentRuntime,
+    runtime: {
+      getSearchCategory,
+      registerSearchCategory,
+    } as unknown as IAgentRuntime,
   };
 }
 

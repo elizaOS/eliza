@@ -86,12 +86,16 @@ export const listActiveBlocksAction: Action = {
             null as Awaited<ReturnType<typeof getSelfControlStatus>> | null,
           ),
     ]);
-    const sections = liveStatus ? [formatLiveWebsiteBlockStatus(liveStatus)] : [];
+    const sections = liveStatus
+      ? [formatLiveWebsiteBlockStatus(liveStatus)]
+      : [];
 
     if (!includeManagedRules) {
       return {
         success: true,
-        text: sections.join("\n") || "Managed block rule listing was not requested.",
+        text:
+          sections.join("\n") ||
+          "Managed block rule listing was not requested.",
         data: { rules: [], liveStatus },
       };
     }

@@ -3,8 +3,8 @@ import {
   NodeProperty,
   NodeSearchResult,
   IntegrationFilterResult,
-} from '../types/index';
-import defaultNodesData from '../data/defaultNodes.json' with { type: 'json' };
+} from "../types/index";
+import defaultNodesData from "../data/defaultNodes.json" with { type: "json" };
 
 /**
  * n8n node catalog with keyword-based search
@@ -25,15 +25,23 @@ export function getAllNodes(): NodeDefinition[] {
  * Handles full names ("n8n-nodes-base.gmail", "@n8n/n8n-nodes-langchain.openAi")
  * and bare names ("gmail", "openAi").
  */
-export function getNodeDefinition(typeName: string): NodeDefinition | undefined {
+export function getNodeDefinition(
+  typeName: string,
+): NodeDefinition | undefined {
   const exact = NODE_CATALOG.find((n) => n.name === typeName);
   if (exact) {
     return exact;
   }
 
-  const bare = typeName.replace(/^(?:n8n-nodes-base|@n8n\/n8n-nodes-langchain)\./, '');
+  const bare = typeName.replace(
+    /^(?:n8n-nodes-base|@n8n\/n8n-nodes-langchain)\./,
+    "",
+  );
   return NODE_CATALOG.find((n) => {
-    const catalogBare = n.name.replace(/^(?:n8n-nodes-base|@n8n\/n8n-nodes-langchain)\./, '');
+    const catalogBare = n.name.replace(
+      /^(?:n8n-nodes-base|@n8n\/n8n-nodes-langchain)\./,
+      "",
+    );
     return catalogBare === bare || n.name === bare;
   });
 }
@@ -41,7 +49,7 @@ export function getNodeDefinition(typeName: string): NodeDefinition | undefined 
 /** Split a name into lowercase tokens on camelCase / dot / hyphen / underscore / @ / slash boundaries */
 function tokenize(name: string): string[] {
   return name
-    .replace(/([a-z])([A-Z])/g, '$1 $2') // camelCase → words
+    .replace(/([a-z])([A-Z])/g, "$1 $2") // camelCase → words
     .split(/[\s.\-_@/]+/)
     .map((t) => t.toLowerCase())
     .filter(Boolean);
@@ -50,7 +58,10 @@ function tokenize(name: string): string[] {
 /**
  * Scoring: exact name 10, word-boundary 7, substring 3, category 3, description 2, word 1
  */
-export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] {
+export function searchNodes(
+  keywords: string[],
+  limit = 15,
+): NodeSearchResult[] {
   if (keywords.length === 0) {
     return [];
   }
@@ -58,14 +69,14 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
   const normalizedKeywords = keywords.map((kw) => kw.toLowerCase().trim());
 
   const scoredNodes: NodeSearchResult[] = NODE_CATALOG.filter(
-    (node) => node.name && node.displayName
+    (node) => node.name && node.displayName,
   ).map((node) => {
     let score = 0;
     const matchReasons: string[] = [];
 
     const nodeName = node.name.toLowerCase();
     const nodeDisplayName = node.displayName.toLowerCase();
-    const nodeDescription = node.description?.toLowerCase() || '';
+    const nodeDescription = node.description?.toLowerCase() || "";
     const nameTokens = tokenize(node.name);
     const displayTokens = tokenize(node.displayName);
 
@@ -78,12 +89,16 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
 
       // Word-boundary match: keyword equals a token in the name
       const isWordMatch =
-        nameTokens.some((t) => t === keyword) || displayTokens.some((t) => t === keyword);
+        nameTokens.some((t) => t === keyword) ||
+        displayTokens.some((t) => t === keyword);
 
       if (isWordMatch) {
         score += 7;
         matchReasons.push(`word match: "${keyword}"`);
-      } else if (nodeName.includes(keyword) || nodeDisplayName.includes(keyword)) {
+      } else if (
+        nodeName.includes(keyword) ||
+        nodeDisplayName.includes(keyword)
+      ) {
         score += 3;
         matchReasons.push(`name contains: "${keyword}"`);
       }
@@ -107,7 +122,7 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
     return {
       node,
       score,
-      matchReason: matchReasons.join(', ') || 'no strong match',
+      matchReason: matchReasons.join(", ") || "no strong match",
     };
   });
 
@@ -119,7 +134,7 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
 
 export function filterNodesByIntegrationSupport(
   nodes: NodeSearchResult[],
-  supportedCredTypes: Set<string>
+  supportedCredTypes: Set<string>,
 ): IntegrationFilterResult {
   const remaining: NodeSearchResult[] = [];
   const removed: NodeSearchResult[] = [];
@@ -145,20 +160,20 @@ export function filterNodesByIntegrationSupport(
   return { remaining, removed };
 }
 
-const NOISE_TYPES = new Set(['notice', 'hidden']);
+const NOISE_TYPES = new Set(["notice", "hidden"]);
 const STRIP_KEYS = new Set([
-  'routing',
-  'displayOptions',
-  'typeOptions',
-  'hint',
-  'isNodeSetting',
-  'noDataExpression',
-  'validateType',
-  'ignoreValidationDuringExecution',
-  'requiresDataPath',
-  'disabledOptions',
-  'credentialTypes',
-  'modes',
+  "routing",
+  "displayOptions",
+  "typeOptions",
+  "hint",
+  "isNodeSetting",
+  "noDataExpression",
+  "validateType",
+  "ignoreValidationDuringExecution",
+  "requiresDataPath",
+  "disabledOptions",
+  "credentialTypes",
+  "modes",
 ]);
 
 function simplifyProperty(prop: NodeProperty): NodeProperty | null {
@@ -174,9 +189,9 @@ function simplifyProperty(prop: NodeProperty): NodeProperty | null {
     slim[key] = value;
   }
 
-  if (prop.type === 'resourceLocator') {
-    slim.type = 'string';
-    slim.default = '';
+  if (prop.type === "resourceLocator") {
+    slim.type = "string";
+    slim.default = "";
     slim.description = slim.description || `${prop.displayName} ID`;
   }
 
@@ -208,14 +223,19 @@ function simplifyProperty(prop: NodeProperty): NodeProperty | null {
  *
  * Returns undefined when no credential entries gate on `authentication`.
  */
-function buildCredentialAuthMatrix(node: NodeDefinition): Record<string, string> | undefined {
+function buildCredentialAuthMatrix(
+  node: NodeDefinition,
+): Record<string, string> | undefined {
   if (!node.credentials?.length) {
     return undefined;
   }
   const out: Record<string, string> = {};
   for (const cred of node.credentials) {
-    const authValues = (cred.displayOptions as { show?: { authentication?: string[] } } | undefined)
-      ?.show?.authentication;
+    const authValues = (
+      cred.displayOptions as
+        | { show?: { authentication?: string[] } }
+        | undefined
+    )?.show?.authentication;
     if (Array.isArray(authValues) && authValues.length === 1) {
       out[cred.name] = authValues[0];
     }
@@ -242,7 +262,9 @@ export function simplifyNodeForLLM(node: NodeDefinition): NodeDefinition {
   // sees the EXACT set of valid values (catches typeVersion hallucinations
   // like 2.2 when only [1, 2, 2.1] exist). Pair with the prompt rule
   // "pick the highest from version[]; never invent versions".
-  const versions: number[] = Array.isArray(node.version) ? [...node.version] : [node.version];
+  const versions: number[] = Array.isArray(node.version)
+    ? [...node.version]
+    : [node.version];
 
   // Layer 2 (Session 21): expose the credential→authentication mapping
   // so the LLM sets `parameters.authentication` correctly when it

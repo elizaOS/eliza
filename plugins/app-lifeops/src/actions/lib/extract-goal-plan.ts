@@ -125,9 +125,7 @@ function promptText(value: unknown): string {
 }
 
 function parseStructuredRecord(raw: string): Record<string, unknown> | null {
-  return (
-    parseToonKeyValue<Record<string, unknown>>(raw)
-  );
+  return parseToonKeyValue<Record<string, unknown>>(raw);
 }
 
 function normalizeText(value: unknown): string | null {

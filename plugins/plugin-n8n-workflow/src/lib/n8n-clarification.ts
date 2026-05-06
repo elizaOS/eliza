@@ -15,20 +15,22 @@ import type {
   N8nClarificationRequest,
   N8nClarificationResolution,
   N8nClarificationTargetGroup,
-} from '@elizaos/app-core/api/client-types-chat';
+} from "@elizaos/app-core/api/client-types-chat";
 
-const VALID_KINDS: ReadonlySet<N8nClarificationRequest['kind']> = new Set([
-  'target_channel',
-  'target_server',
-  'recipient',
-  'value',
-  'free_text',
+const VALID_KINDS: ReadonlySet<N8nClarificationRequest["kind"]> = new Set([
+  "target_channel",
+  "target_server",
+  "recipient",
+  "value",
+  "free_text",
 ]);
 
 function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
-  if (!v || typeof v !== 'object') {return false;}
+  if (!v || typeof v !== "object") {
+    return false;
+  }
   const o = v as Record<string, unknown>;
-  if (typeof o.question !== 'string' || o.question.trim().length === 0) {
+  if (typeof o.question !== "string" || o.question.trim().length === 0) {
     return false;
   }
   // `kind` and `paramPath` may be missing on partial / older payloads — we
@@ -37,35 +39,41 @@ function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
 }
 
 export function coerceClarifications(raw: unknown): N8nClarificationRequest[] {
-  if (!Array.isArray(raw) || raw.length === 0) {return [];}
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [];
+  }
   const out: N8nClarificationRequest[] = [];
   for (const item of raw) {
-    if (typeof item === 'string') {
+    if (typeof item === "string") {
       const trimmed = item.trim();
-      if (trimmed.length === 0) {continue;}
-      out.push({ kind: 'free_text', question: trimmed, paramPath: '' });
+      if (trimmed.length === 0) {
+        continue;
+      }
+      out.push({ kind: "free_text", question: trimmed, paramPath: "" });
       continue;
     }
-    if (!isStructuredClarification(item)) {continue;}
+    if (!isStructuredClarification(item)) {
+      continue;
+    }
     const o = item as unknown as Record<string, unknown>;
-    const kindRaw = typeof o.kind === 'string' ? o.kind : 'free_text';
+    const kindRaw = typeof o.kind === "string" ? o.kind : "free_text";
     const kind = (
-      VALID_KINDS.has(kindRaw as N8nClarificationRequest['kind'])
+      VALID_KINDS.has(kindRaw as N8nClarificationRequest["kind"])
         ? kindRaw
-        : 'free_text'
-    ) as N8nClarificationRequest['kind'];
-    const platform = typeof o.platform === 'string' ? o.platform : undefined;
+        : "free_text"
+    ) as N8nClarificationRequest["kind"];
+    const platform = typeof o.platform === "string" ? o.platform : undefined;
     let scope: { guildId?: string } | undefined;
     if (
       o.scope &&
-      typeof o.scope === 'object' &&
-      typeof (o.scope as Record<string, unknown>).guildId === 'string'
+      typeof o.scope === "object" &&
+      typeof (o.scope as Record<string, unknown>).guildId === "string"
     ) {
       scope = {
         guildId: (o.scope as Record<string, string>).guildId,
       };
     }
-    const paramPath = typeof o.paramPath === 'string' ? o.paramPath : '';
+    const paramPath = typeof o.paramPath === "string" ? o.paramPath : "";
     out.push({
       kind,
       platform,
@@ -89,12 +97,12 @@ export function parseParamPath(path: string): string[] {
   const n = path.length;
   while (i < n) {
     const ch = path[i];
-    if (ch === '.') {
+    if (ch === ".") {
       i += 1;
       continue;
     }
-    if (ch === '[') {
-      const close = path.indexOf(']', i);
+    if (ch === "[") {
+      const close = path.indexOf("]", i);
       if (close < 0) {
         throw new Error(`unterminated bracket at index ${i}`);
       }
@@ -118,7 +126,9 @@ export function parseParamPath(path: string): string[] {
     }
     // Identifier run: read until next `.` or `[`.
     let j = i;
-    while (j < n && path[j] !== '.' && path[j] !== '[') {j += 1;}
+    while (j < n && path[j] !== "." && path[j] !== "[") {
+      j += 1;
+    }
     const ident = path.slice(i, j).trim();
     if (ident.length === 0) {
       throw new Error(`empty identifier at index ${i}`);
@@ -127,7 +137,7 @@ export function parseParamPath(path: string): string[] {
     i = j;
   }
   if (segments.length === 0) {
-    throw new Error('paramPath has no segments');
+    throw new Error("paramPath has no segments");
   }
   return segments;
 }
@@ -164,7 +174,7 @@ export function setByDotPath(
         next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
         cur[idx] = next;
       }
-      if (typeof next !== 'object' || next === null) {
+      if (typeof next !== "object" || next === null) {
         throw new Error(
           `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
         );
@@ -177,7 +187,7 @@ export function setByDotPath(
       next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
       (cur as Record<string, unknown>)[seg] = next;
     }
-    if (typeof next !== 'object' || next === null) {
+    if (typeof next !== "object" || next === null) {
       throw new Error(
         `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
       );
@@ -202,13 +212,13 @@ export function applyResolutions(
   resolutions: ReadonlyArray<N8nClarificationResolution>,
 ): { ok: true } | { ok: false; error: string; paramPath?: string } {
   for (const r of resolutions) {
-    if (!r || typeof r.paramPath !== 'string') {
-      return { ok: false, error: 'resolution missing paramPath' };
+    if (!r || typeof r.paramPath !== "string") {
+      return { ok: false, error: "resolution missing paramPath" };
     }
-    if (typeof r.value !== 'string') {
+    if (typeof r.value !== "string") {
       return {
         ok: false,
-        error: 'resolution value must be a string',
+        error: "resolution value must be a string",
         paramPath: r.paramPath,
       };
     }
@@ -219,7 +229,7 @@ export function applyResolutions(
       const draftRecord = draft as Record<string, unknown>;
       const existingMeta = draftRecord._meta;
       const meta =
-        existingMeta && typeof existingMeta === 'object'
+        existingMeta && typeof existingMeta === "object"
           ? (existingMeta as Record<string, unknown>)
           : {};
       draftRecord._meta = meta;
@@ -274,26 +284,30 @@ export function pruneResolvedClarifications(
   freeFormCount = 0,
 ): void {
   const meta = (draft as { _meta?: Record<string, unknown> })._meta;
-  if (!meta || typeof meta !== 'object') {return;}
+  if (!meta || typeof meta !== "object") {
+    return;
+  }
   const list = meta.requiresClarification;
-  if (!Array.isArray(list)) {return;}
+  if (!Array.isArray(list)) {
+    return;
+  }
   let toDropFreeForm = freeFormCount;
   const remaining = list.filter((item) => {
-    if (typeof item === 'string') {
+    if (typeof item === "string") {
       if (toDropFreeForm > 0) {
         toDropFreeForm -= 1;
         return false;
       }
       return true;
     }
-    if (item && typeof item === 'object') {
+    if (item && typeof item === "object") {
       const path = (item as { paramPath?: unknown }).paramPath;
-      if (typeof path === 'string' && path.length > 0 && resolved.has(path)) {
+      if (typeof path === "string" && path.length > 0 && resolved.has(path)) {
         return false;
       }
       // Empty-paramPath object-form: also positional.
       if (
-        (typeof path !== 'string' || path.length === 0) &&
+        (typeof path !== "string" || path.length === 0) &&
         toDropFreeForm > 0
       ) {
         toDropFreeForm -= 1;
@@ -332,16 +346,22 @@ export async function buildCatalogSnapshot(
 ): Promise<N8nClarificationTargetGroup[]> {
   const platforms = new Set<string>();
   for (const c of clarifications) {
-    if (c.platform) {platforms.add(c.platform);}
+    if (c.platform) {
+      platforms.add(c.platform);
+    }
   }
-  if (platforms.size === 0) {return [];}
+  if (platforms.size === 0) {
+    return [];
+  }
   const out: N8nClarificationTargetGroup[] = [];
   const seen = new Set<string>();
   for (const platform of platforms) {
     const groups = await catalog.listGroups({ platform });
     for (const g of groups) {
       const key = `${g.platform}::${g.groupId}`;
-      if (seen.has(key)) {continue;}
+      if (seen.has(key)) {
+        continue;
+      }
       seen.add(key);
       out.push(g);
     }

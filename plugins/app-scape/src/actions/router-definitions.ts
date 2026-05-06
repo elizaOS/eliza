@@ -41,7 +41,8 @@ export const SCAPE_ACTION_ROUTER_DEFINITIONS = [
       {
         name: "complete-goal",
         legacyAction: "COMPLETE_GOAL",
-        params: "status: completed|abandoned, goalId: text optional, notes: text optional",
+        params:
+          "status: completed|abandoned, goalId: text optional, notes: text optional",
         description: "Close the active goal.",
       },
       {

@@ -23,7 +23,9 @@ type ReportParams = Partial<GenerateReportParams> & {
   transcriptName?: string;
 };
 
-function mergedOptions(options?: HandlerOptions | Record<string, unknown>): ReportParams {
+function mergedOptions(
+  options?: HandlerOptions | Record<string, unknown>,
+): ReportParams {
   const direct = (options ?? {}) as Record<string, unknown>;
   const parameters =
     direct.parameters && typeof direct.parameters === "object"
@@ -34,11 +36,17 @@ function mergedOptions(options?: HandlerOptions | Record<string, unknown>): Repo
 
 function normalizeConferenceRecord(params: ReportParams): string | null {
   const explicit = params.conferenceRecordName;
-  if (typeof explicit === "string" && explicit.startsWith("conferenceRecords/")) {
+  if (
+    typeof explicit === "string" &&
+    explicit.startsWith("conferenceRecords/")
+  ) {
     return explicit;
   }
   const meetingId = params.meetingId;
-  if (typeof meetingId === "string" && meetingId.startsWith("conferenceRecords/")) {
+  if (
+    typeof meetingId === "string" &&
+    meetingId.startsWith("conferenceRecords/")
+  ) {
     return meetingId;
   }
   return null;
@@ -54,9 +62,13 @@ function toDate(value: unknown): Date | null {
     const record = value as { seconds?: number | string; nanos?: number };
     if (record.seconds !== undefined) {
       const seconds =
-        typeof record.seconds === "string" ? Number(record.seconds) : record.seconds;
+        typeof record.seconds === "string"
+          ? Number(record.seconds)
+          : record.seconds;
       if (!Number.isNaN(seconds)) {
-        return new Date(seconds * 1000 + Math.floor((record.nanos ?? 0) / 1_000_000));
+        return new Date(
+          seconds * 1000 + Math.floor((record.nanos ?? 0) / 1_000_000),
+        );
       }
     }
   }
@@ -77,7 +89,9 @@ function parseTranscript(text: string): Transcript[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => {
-      const [speaker, ...rest] = line.includes(":") ? line.split(":") : ["Unknown", line];
+      const [speaker, ...rest] = line.includes(":")
+        ? line.split(":")
+        : ["Unknown", line];
       return {
         id: `transcript-line-${index + 1}`,
         speakerName: speaker.trim() || "Unknown",
@@ -100,14 +114,17 @@ function summarizeTranscript(text: string): {
     .filter(Boolean);
   if (lines.length === 0) {
     return {
-      summary: "No transcript entries were available for this conference record.",
+      summary:
+        "No transcript entries were available for this conference record.",
       keyPoints: [],
       actionItems: [],
     };
   }
 
   const plainText = lines
-    .map((line) => (line.includes(":") ? line.split(":").slice(1).join(":").trim() : line))
+    .map((line) =>
+      line.includes(":") ? line.split(":").slice(1).join(":").trim() : line,
+    )
     .join(" ");
   const sentences = plainText
     .split(/(?<=[.!?])\s+/)
@@ -117,12 +134,18 @@ function summarizeTranscript(text: string): {
   const keyPoints = lines
     .filter((line) => line.length >= 20)
     .slice(0, 6)
-    .map((line) => (line.includes(":") ? line.split(":").slice(1).join(":").trim() : line));
+    .map((line) =>
+      line.includes(":") ? line.split(":").slice(1).join(":").trim() : line,
+    );
   const actionItems = lines
-    .filter((line) => /\b(action item|todo|follow up|need to|will|should)\b/i.test(line))
+    .filter((line) =>
+      /\b(action item|todo|follow up|need to|will|should)\b/i.test(line),
+    )
     .slice(0, 6)
     .map((line) => ({
-      description: line.includes(":") ? line.split(":").slice(1).join(":").trim() : line,
+      description: line.includes(":")
+        ? line.split(":").slice(1).join(":").trim()
+        : line,
       priority: "medium" as const,
     }));
 
@@ -251,29 +274,44 @@ export const generateReportAction: Action = {
       const conference = (await googleMeetService.getConference(
         conferenceRecordName,
       )) as Record<string, unknown> | null;
-      const participants = await googleMeetService.listParticipants(conferenceRecordName);
+      const participants =
+        await googleMeetService.listParticipants(conferenceRecordName);
       const transcriptNames =
-        typeof params.transcriptName === "string" && params.transcriptName.length > 0
+        typeof params.transcriptName === "string" &&
+        params.transcriptName.length > 0
           ? [params.transcriptName]
           : (await googleMeetService.listTranscripts(conferenceRecordName))
               .map((transcript) => transcript?.name)
-              .filter((name): name is string => typeof name === "string" && name.length > 0);
+              .filter(
+                (name): name is string =>
+                  typeof name === "string" && name.length > 0,
+              );
       const transcriptTextParts = await Promise.all(
-        transcriptNames.map((transcriptName) => googleMeetService.getTranscript(transcriptName)),
+        transcriptNames.map((transcriptName) =>
+          googleMeetService.getTranscript(transcriptName),
+        ),
       );
       const transcriptText = transcriptTextParts.join("\n");
       const summary = summarizeTranscript(transcriptText);
-      const recordings = params.includeRecordings === false
-        ? []
-        : await googleMeetService.listRecordings(conferenceRecordName);
+      const recordings =
+        params.includeRecordings === false
+          ? []
+          : await googleMeetService.listRecordings(conferenceRecordName);
       const recordingUrls = (
         await Promise.all(
           recordings
             .map((recording) => recording?.name)
-            .filter((name): name is string => typeof name === "string" && name.length > 0)
-            .map((recordingName) => googleMeetService.getRecordingUrl(recordingName)),
+            .filter(
+              (name): name is string =>
+                typeof name === "string" && name.length > 0,
+            )
+            .map((recordingName) =>
+              googleMeetService.getRecordingUrl(recordingName),
+            ),
         )
-      ).filter((url): url is string => typeof url === "string" && url.length > 0);
+      ).filter(
+        (url): url is string => typeof url === "string" && url.length > 0,
+      );
 
       const report: MeetingReport = {
         meetingId: conferenceRecordName,
@@ -283,8 +321,12 @@ export const generateReportAction: Action = {
         participants: participants.map((participant) => participant.name),
         summary: params.includeSummary === false ? "" : summary.summary,
         keyPoints: summary.keyPoints,
-        actionItems: params.includeActionItems === false ? [] : summary.actionItems,
-        fullTranscript: params.includeTranscript === false ? [] : parseTranscript(transcriptText),
+        actionItems:
+          params.includeActionItems === false ? [] : summary.actionItems,
+        fullTranscript:
+          params.includeTranscript === false
+            ? []
+            : parseTranscript(transcriptText),
       };
 
       let reportContent = formatReport(report, recordingUrls);
