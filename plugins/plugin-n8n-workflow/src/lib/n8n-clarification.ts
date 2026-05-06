@@ -174,7 +174,7 @@ export function setByDotPath(
         next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
         cur[idx] = next;
       }
-      if (typeof next !== "object" || next === null) {
+      if (typeof next !== "object") {
         throw new Error(
           `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
         );
@@ -187,7 +187,7 @@ export function setByDotPath(
       next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
       (cur as Record<string, unknown>)[seg] = next;
     }
-    if (typeof next !== "object" || next === null) {
+    if (typeof next !== "object") {
       throw new Error(
         `paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
       );

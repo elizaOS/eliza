@@ -607,6 +607,7 @@ export function useCloudState({
       setElizaCloudDisconnecting(true);
 
       try {
+        const wasConnected = elizaCloudConnected;
         let needRendererDisconnect = true;
 
         if (isElectrobunRuntime()) {
@@ -736,7 +737,9 @@ export function useCloudState({
         setElizaCloudStatusReason(null);
         lastElizaCloudPollConnectedRef.current = false;
         elizaCloudPreferDisconnectedUntilLoginRef.current = true;
-        setActionNotice("Disconnected from Eliza Cloud.", "success");
+        if (wasConnected) {
+          setActionNotice("Disconnected from Eliza Cloud.", "success");
+        }
       } catch (err) {
         setActionNotice(
           `Failed to disconnect: ${err instanceof Error ? err.message : err}`,
@@ -748,7 +751,7 @@ export function useCloudState({
         void pollCloudCredits();
       }
     },
-    [pollCloudCredits, setActionNotice],
+    [elizaCloudConnected, pollCloudCredits, setActionNotice],
   );
 
   // ── Effects ────────────────────────────────────────────────────────
