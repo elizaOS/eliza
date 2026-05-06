@@ -35,6 +35,8 @@ export interface ChannelDebouncerOptions {
 	botUserId?: string;
 	getBotUserId?: () => string | undefined;
 	botName?: string;
+	coalesceEnabled?: boolean;
+	maxBatch?: number;
 }
 
 export interface ChannelDebouncer {
@@ -56,6 +58,8 @@ export function createChannelDebouncer(
 ): ChannelDebouncer {
 	const debounceMs = options.debounceMs ?? DEFAULT_CHANNEL_DEBOUNCE_MS;
 	const responseCooldownMs = options.responseCooldownMs ?? 30_000;
+	const coalesceEnabled = options.coalesceEnabled === true;
+	const maxBatch = Math.max(1, options.maxBatch ?? Number.POSITIVE_INFINITY);
 	const botName = options.botName?.trim();
 	const botNameRegex =
 		botName && botName.length >= 2
@@ -108,7 +112,8 @@ export function createChannelDebouncer(
 
 	const enqueue = (message: DiscordMessage) => {
 		const channelId = message.channel.id;
-		if (isBotTargeted(message)) {
+		const targeted = isBotTargeted(message);
+		if (targeted && !coalesceEnabled) {
 			const entry = pending.get(channelId);
 			if (entry) {
 				clearTimeout(entry.timer);
@@ -121,7 +126,7 @@ export function createChannelDebouncer(
 			return;
 		}
 
-		if (isInCooldown(channelId)) {
+		if (isInCooldown(channelId) && !targeted) {
 			return;
 		}
 
@@ -134,6 +139,10 @@ export function createChannelDebouncer(
 		if (existing) {
 			clearTimeout(existing.timer);
 			existing.messages.push(message);
+			if (coalesceEnabled && existing.messages.length >= maxBatch) {
+				flush(channelId);
+				return;
+			}
 			existing.timer = setTimeout(() => flush(channelId), debounceMs);
 			return;
 		}
@@ -168,8 +177,10 @@ export function createChannelDebouncer(
 export function createMessageDebouncer(
 	onFlush: DebouncerFlushCallback,
 	debounceMs: number = DEFAULT_DEBOUNCE_MS,
+	options: { maxBatch?: number } = {},
 ): MessageDebouncer {
 	const pending = new Map<string, PendingEntry>();
+	const maxBatch = Math.max(1, options.maxBatch ?? Number.POSITIVE_INFINITY);
 
 	const makeKey = (message: DiscordMessage) =>
 		`${message.channel.id}:${message.author.id}`;
@@ -213,6 +224,10 @@ export function createMessageDebouncer(
 		if (existing) {
 			clearTimeout(existing.timer);
 			existing.messages.push(message);
+			if (existing.messages.length >= maxBatch) {
+				flush(key);
+				return;
+			}
 			existing.timer = setTimeout(() => flush(key), debounceMs);
 			return;
 		}
