@@ -149,6 +149,16 @@ export class AgentSandboxesRepository {
       );
   }
 
+  async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.status, "running"));
+  }
+
   async findRunningSandbox(id: string, orgId: string): Promise<AgentSandbox | undefined> {
     // Use dbWrite (primary) instead of dbRead (replica) to ensure fresh data.
     // The VPS worker writes bridge_url/status to primary, and read replicas
