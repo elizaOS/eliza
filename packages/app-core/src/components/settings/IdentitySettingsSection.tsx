@@ -8,28 +8,25 @@ import {
 } from "@elizaos/ui";
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client, type VoiceConfig } from "../../../api";
-import {
-  dispatchWindowEvent,
-  VOICE_CONFIG_UPDATED_EVENT,
-} from "../../../events";
-import { useApp } from "../../../state";
-import { replaceNameTokens } from "../../../utils/name-tokens";
+import { client, type VoiceConfig } from "../../api";
+import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
+import { useApp } from "../../state";
+import { replaceNameTokens } from "../../utils/name-tokens";
 import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "../../../voice/types";
+} from "../../voice/types";
 import {
   DEFAULT_ELEVEN_FAST_MODEL,
   EDGE_VOICE_GROUPS,
   ELEVENLABS_VOICE_GROUPS,
-} from "../../character/character-voice-config";
+} from "../character/character-voice-config";
 import {
   SettingsField,
   SettingsFieldLabel,
-} from "../../settings/settings-control-primitives";
+} from "./settings-control-primitives";
 
 function resolveEditableVoiceSelectionKey(config: VoiceConfig | null): string {
   const elevenLabsVoiceId =
