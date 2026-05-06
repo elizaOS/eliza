@@ -22,10 +22,7 @@
     "icon": "Mic",
     "group": "voice",
     "groupOrder": 3,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/ai16z/eliza#readme",

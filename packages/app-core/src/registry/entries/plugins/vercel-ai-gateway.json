@@ -115,10 +115,7 @@
     "icon": "Triangle",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-vercel-ai-gateway#readme",

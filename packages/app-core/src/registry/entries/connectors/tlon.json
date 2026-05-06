@@ -79,11 +79,7 @@
     "icon": "Tornado",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#tlon-urbit"

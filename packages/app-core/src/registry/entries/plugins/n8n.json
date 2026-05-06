@@ -65,10 +65,7 @@
     "icon": "Settings",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

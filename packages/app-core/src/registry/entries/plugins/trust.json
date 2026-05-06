@@ -4,12 +4,7 @@
   "description": "Trust scoring, security signals, and permission helpers built into the elizaOS runtime (enable via enableTrust).",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": [
-    "trust",
-    "permissions",
-    "security",
-    "rbac"
-  ],
+  "tags": ["trust", "permissions", "security", "rbac"],
   "config": {
     "OWNER_ENTITY_ID": {
       "type": "string",
@@ -35,10 +30,7 @@
     "icon": "Handshake",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

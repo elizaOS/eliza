@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-local-storage",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": [
-    "storage",
-    "files",
-    "local"
-  ],
+  "tags": ["storage", "files", "local"],
   "config": {
     "LOCAL_STORAGE_PATH": {
       "type": "file-path",
@@ -27,10 +23,7 @@
     "icon": "FolderOpen",
     "group": "storage",
     "groupOrder": 10,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza",

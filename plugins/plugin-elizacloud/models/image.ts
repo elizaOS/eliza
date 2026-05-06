@@ -61,9 +61,7 @@ export async function handleImageDescription(
     process.env.DISABLE_IMAGE_DESCRIPTION === "true" ||
     process.env.DISABLE_IMAGE_DESCRIPTION === "1";
   if (disabled) {
-    logger.debug(
-      "[ELIZAOS_CLOUD] IMAGE_DESCRIPTION skipped — DISABLE_IMAGE_DESCRIPTION is set"
-    );
+    logger.debug("[ELIZAOS_CLOUD] IMAGE_DESCRIPTION skipped — DISABLE_IMAGE_DESCRIPTION is set");
     return {
       title: "Image description disabled",
       description: "Image description is disabled by configuration.",
@@ -136,8 +134,7 @@ export async function handleImageDescription(
           retryAfter?: unknown;
         };
         bodyRetryAfter =
-          typeof peek?.retryAfter === "number" &&
-          Number.isFinite(peek.retryAfter)
+          typeof peek?.retryAfter === "number" && Number.isFinite(peek.retryAfter)
             ? peek.retryAfter
             : undefined;
       } catch {

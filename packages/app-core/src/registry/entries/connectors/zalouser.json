@@ -105,11 +105,7 @@
     "icon": "Circle",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",
