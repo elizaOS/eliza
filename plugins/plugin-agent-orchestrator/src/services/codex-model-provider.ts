@@ -424,6 +424,38 @@ const nodeLookup: LookupFn = async (hostname, options) => {
   }));
 };
 
+async function imageFetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    IMAGE_FETCH_TIMEOUT_MS,
+  );
+  const upstreamSignal = init?.signal;
+  const abortFromUpstream = () => controller.abort();
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort();
+    } else {
+      upstreamSignal.addEventListener("abort", abortFromUpstream, {
+        once: true,
+      });
+    }
+  }
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
+  }
+}
+
 function decodePercentEncodedBytes(value: string): Buffer {
   const bytes: number[] = [];
   for (let index = 0; index < value.length; index += 1) {
@@ -510,9 +542,9 @@ async function downloadImageUrl(
   try {
     const result = await fetchRemoteMedia({
       url: parsed.toString(),
+      fetchImpl: imageFetchWithTimeout,
       maxBytes: MAX_IMAGE_BYTES,
       maxRedirects: 3,
-      timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
       lookupFn: nodeLookup,
     });
     buffer = result.buffer;
