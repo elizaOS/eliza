@@ -34,6 +34,7 @@ import type {
   WorkflowCreationResult,
   N8nCredentialStoreApi,
   NodeDefinition,
+  NodeSearchResult,
   RuntimeContext,
   TriggerContext,
 } from '../types/index';
@@ -211,6 +212,215 @@ export class N8nWorkflowService extends Service {
     }
   }
 
+  private async searchRelevantNodes(
+    prompt: string,
+    userId: string
+  ): Promise<{ relevantNodes: NodeSearchResult[]; preferredProviders?: string[] }> {
+    const earlyContext = await this.fetchRuntimeContext([], userId);
+    const preferredProviders = earlyContext?.preferredProviders;
+    const keywords = await extractKeywords(this.runtime, prompt, preferredProviders);
+    logger.debug(
+      { src: 'plugin:n8n-workflow:service:main' },
+      `Extracted keywords: ${keywords.join(', ')}${preferredProviders?.length ? ` (with bias: ${preferredProviders.join(', ')})` : ''}`
+    );
+
+    const relevantNodes = searchNodes(keywords, 15);
+    logger.debug(
+      { src: 'plugin:n8n-workflow:service:main' },
+      `Found ${relevantNodes.length} relevant nodes`
+    );
+    if (relevantNodes.length === 0) {
+      throw new Error(
+        'No relevant n8n nodes found for the given prompt. Please be more specific about the integrations you want to use (e.g., Gmail, Slack, Stripe).'
+      );
+    }
+    return { relevantNodes, preferredProviders };
+  }
+
+  private async filterNodesByCredentialSupport(
+    prompt: string,
+    relevantNodes: NodeSearchResult[]
+  ): Promise<NodeSearchResult[]> {
+    const rawProvider = this.runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
+    const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
+    if (!credProvider?.checkCredentialTypes) return relevantNodes;
+
+    const credTypes = new Set<string>();
+    for (const { node } of relevantNodes) {
+      for (const cred of node.credentials ?? []) {
+        credTypes.add(cred.name);
+      }
+    }
+    if (credTypes.size === 0) return relevantNodes;
+
+    const checkResult = credProvider.checkCredentialTypes([...credTypes]);
+    if (checkResult.unsupported.length === 0) return relevantNodes;
+
+    const { remaining, removed } = filterNodesByIntegrationSupport(
+      relevantNodes,
+      new Set(checkResult.supported)
+    );
+    const remainingServiceNodes = remaining.filter((r) => r.node.credentials?.length);
+    if (remainingServiceNodes.length === 0) {
+      throw new UnsupportedIntegrationError(
+        [...new Set(removed.map((r) => r.node.displayName))],
+        []
+      );
+    }
+
+    const feasibility = await assessFeasibility(this.runtime, prompt, removed, remaining);
+    if (!feasibility.feasible) {
+      throw new UnsupportedIntegrationError(
+        [...new Set(removed.map((r) => r.node.displayName))],
+        [...new Set(remainingServiceNodes.map((r) => r.node.displayName))]
+      );
+    }
+    logger.debug(
+      { src: 'plugin:n8n-workflow:service:main' },
+      `Feasibility OK: ${feasibility.reason}. Proceeding with ${remaining.length} nodes.`
+    );
+    return remaining;
+  }
+
+  private async resolveDraftContext(
+    prompt: string,
+    opts?: { userId?: string; triggerContext?: TriggerContext }
+  ): Promise<{ nodeDefs: NodeDefinition[]; runtimeContext?: RuntimeContext }> {
+    const userId = opts?.userId ?? 'local';
+    const { relevantNodes } = await this.searchRelevantNodes(prompt, userId);
+    const supportedNodes = await this.filterNodesByCredentialSupport(prompt, relevantNodes);
+    const nodeDefs = supportedNodes.map((r) => r.node);
+    return {
+      nodeDefs,
+      runtimeContext: await this.fetchRuntimeContext(nodeDefs, userId, opts?.triggerContext),
+    };
+  }
+
+  private appendRepairErrorsToClarification(
+    workflow: N8nWorkflow,
+    errors: Array<{
+      node: string;
+      detail: string;
+      availableFields?: string[];
+    }>
+  ): void {
+    workflow._meta = workflow._meta ?? {};
+    const errorLines = errors.map(
+      (e) =>
+        `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
+    );
+    const existing = workflow._meta.requiresClarification ?? [];
+    workflow._meta.requiresClarification = [...existing, ...errorLines];
+  }
+
+  private async repairWorkflowDraft(
+    workflow: N8nWorkflow,
+    nodeDefs: NodeDefinition[],
+    runtimeContext: RuntimeContext | undefined,
+    label = 'generate'
+  ): Promise<N8nWorkflow> {
+    let repairedWorkflow = workflow;
+    const runtimeVersions = (await this.getClient().getRuntimeNodeTypeVersions()) ?? undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const repairResult = validateAndRepair(
+        repairedWorkflow,
+        nodeDefs,
+        runtimeContext,
+        runtimeVersions
+      );
+      repairedWorkflow = repairResult.workflow;
+      if (repairResult.errors.length === 0) break;
+      if (attempt === 2) {
+        logger.warn(
+          { src: 'plugin:n8n-workflow:service:main', errors: repairResult.errors },
+          `validateAndRepair (${label}): ${repairResult.errors.length} unrecoverable error(s) after 3 retries`
+        );
+        this.appendRepairErrorsToClarification(repairedWorkflow, repairResult.errors);
+        break;
+      }
+      try {
+        repairedWorkflow = await fixWorkflowErrors(
+          this.runtime,
+          repairedWorkflow,
+          repairResult.errors,
+          nodeDefs
+        );
+      } catch (err) {
+        logger.warn(
+          {
+            src: 'plugin:n8n-workflow:service:main',
+            err: err instanceof Error ? err.message : String(err),
+          },
+          `fixWorkflowErrors (${label}) threw — exiting retry loop`
+        );
+        break;
+      }
+    }
+    return repairedWorkflow;
+  }
+
+  private async finalizeWorkflowDraft(
+    workflow: N8nWorkflow,
+    nodeDefs: NodeDefinition[],
+    runtimeContext: RuntimeContext | undefined,
+    label = 'generated'
+  ): Promise<N8nWorkflow> {
+    let finalWorkflow = await this.repairWorkflowDraft(workflow, nodeDefs, runtimeContext, label);
+    normalizeTriggerSimpleParam(finalWorkflow);
+
+    const optionFixes = correctOptionParameters(finalWorkflow);
+    if (optionFixes > 0) {
+      logger.debug(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `Corrected ${optionFixes} invalid option parameter(s)`
+      );
+    }
+
+    const unknownParams = detectUnknownParameters(finalWorkflow);
+    if (unknownParams.length > 0) {
+      logger.debug(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `Found ${unknownParams.length} node(s) with unknown parameters, auto-correcting...`
+      );
+      finalWorkflow = await correctParameterNames(this.runtime, finalWorkflow, unknownParams);
+    }
+
+    const invalidRefs = validateOutputReferences(finalWorkflow);
+    if (invalidRefs.length > 0) {
+      logger.debug(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `Found ${invalidRefs.length} invalid field reference(s), auto-correcting...`
+      );
+      finalWorkflow = await correctFieldReferences(this.runtime, finalWorkflow, invalidRefs);
+    }
+
+    const exprPrefixed = ensureExpressionPrefix(finalWorkflow);
+    if (exprPrefixed > 0) {
+      logger.debug(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `Prefixed ${exprPrefixed} expression value(s) with "="`
+      );
+    }
+
+    const validationResult = validateWorkflow(finalWorkflow);
+    if (!validationResult.valid) {
+      logger.error(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `${label} workflow validation errors: ${validationResult.errors.join(', ')}`
+      );
+      throw new Error(`${label} workflow is invalid: ${validationResult.errors[0]}`);
+    }
+    if (validationResult.warnings.length > 0) {
+      logger.warn(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `Validation warnings: ${validationResult.warnings.join(', ')}`
+      );
+    }
+
+    this.injectCatalogClarifications(finalWorkflow);
+    return positionNodes(finalWorkflow);
+  }
+
   async generateWorkflowDraft(
     prompt: string,
     opts?: { userId?: string; triggerContext?: TriggerContext }
@@ -220,103 +430,14 @@ export class N8nWorkflowService extends Service {
       'Generating workflow draft from prompt'
     );
 
-    // Fetch host-supplied bias hints early (before keyword extraction) so the
-    // LLM is told which providers the host already knows it can satisfy.
-    // We pass empty `relevantNodes` / `relevantCredTypes` here because we do
-    // not yet have searchNodes results — `preferredProviders` is derived from
-    // the host's connector config alone (independent of node search). The
-    // full runtime context (with credentials + facts) is fetched again later
-    // once we have the filtered node list.
-    const earlyContext = await this.fetchRuntimeContext([], opts?.userId ?? 'local');
-    const preferredProviders = earlyContext?.preferredProviders;
-
-    const keywords = await extractKeywords(this.runtime, prompt, preferredProviders);
-    logger.debug(
-      { src: 'plugin:n8n-workflow:service:main' },
-      `Extracted keywords: ${keywords.join(', ')}${preferredProviders?.length ? ` (with bias: ${preferredProviders.join(', ')})` : ''}`
-    );
-
-    let relevantNodes = searchNodes(keywords, 15);
-    logger.debug(
-      { src: 'plugin:n8n-workflow:service:main' },
-      `Found ${relevantNodes.length} relevant nodes`
-    );
-
-    if (relevantNodes.length === 0) {
-      throw new Error(
-        'No relevant n8n nodes found for the given prompt. Please be more specific about the integrations you want to use (e.g., Gmail, Slack, Stripe).'
-      );
-    }
-
-    // ── Integration availability check ──
-    const rawProvider = this.runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
-    const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
-
-    if (credProvider?.checkCredentialTypes) {
-      const credTypes = new Set<string>();
-      for (const { node } of relevantNodes) {
-        for (const cred of node.credentials ?? []) {
-          credTypes.add(cred.name);
-        }
-      }
-
-      if (credTypes.size > 0) {
-        const checkResult = credProvider.checkCredentialTypes([...credTypes]);
-
-        if (checkResult.unsupported.length > 0) {
-          const supportedSet = new Set(checkResult.supported);
-          const { remaining, removed } = filterNodesByIntegrationSupport(
-            relevantNodes,
-            supportedSet
-          );
-
-          const remainingServiceNodes = remaining.filter((r) => r.node.credentials?.length);
-
-          if (remainingServiceNodes.length === 0) {
-            throw new UnsupportedIntegrationError(
-              [...new Set(removed.map((r) => r.node.displayName))],
-              []
-            );
-          }
-
-          const feasibility = await assessFeasibility(this.runtime, prompt, removed, remaining);
-
-          if (!feasibility.feasible) {
-            throw new UnsupportedIntegrationError(
-              [...new Set(removed.map((r) => r.node.displayName))],
-              [...new Set(remainingServiceNodes.map((r) => r.node.displayName))]
-            );
-          }
-
-          logger.debug(
-            { src: 'plugin:n8n-workflow:service:main' },
-            `Feasibility OK: ${feasibility.reason}. Proceeding with ${remaining.length} nodes.`
-          );
-          relevantNodes = remaining;
-        }
-      }
-    }
-    // ── End integration check ──
-
-    const finalNodeDefs = relevantNodes.map((r) => r.node);
-    const runtimeContext = await this.fetchRuntimeContext(
-      finalNodeDefs,
-      opts?.userId ?? 'local',
-      opts?.triggerContext
-    );
-
-    let workflow = await generateWorkflow(this.runtime, prompt, finalNodeDefs, runtimeContext);
+    const { nodeDefs, runtimeContext } = await this.resolveDraftContext(prompt, opts);
+    const workflow = await generateWorkflow(this.runtime, prompt, nodeDefs, runtimeContext);
     logger.debug(
       { src: 'plugin:n8n-workflow:service:main' },
       `Generated workflow with ${workflow.nodes?.length || 0} nodes`
     );
 
-    // Safety net: even with the MANDATORY INVARIANT prompt rule, the LLM
-    // sometimes omits the `credentials` block on credentialed nodes. Inject
-    // it deterministically based on the node's catalog definition + the
-    // host's supported cred types so resolveCredentials can mint the
-    // credential server-side instead of falling back to a manual UI step.
-    const injectedCreds = injectMissingCredentialBlocks(workflow, finalNodeDefs, runtimeContext);
+    const injectedCreds = injectMissingCredentialBlocks(workflow, nodeDefs, runtimeContext);
     if (injectedCreds > 0) {
       logger.debug(
         { src: 'plugin:n8n-workflow:service:main' },
@@ -324,121 +445,7 @@ export class N8nWorkflowService extends Service {
       );
     }
 
-    // Layer 1+3 (Session 21): deterministic pre-deploy validation pass with
-    // bounded LLM-retry. Catches typeVersion hallucinations, missing
-    // parameters.authentication, output-field case mismatches (Subject vs
-    // subject), node-name collisions, and dangling connection edges. When
-    // an error can't be auto-fixed deterministically, fixWorkflowErrors
-    // sends a surgical fix prompt to the LLM. Cap at 3 retries to bound
-    // worst-case cost.
-    //
-    // Fetch the live n8n runtime's node-type registry once per deploy so
-    // typeVersion clamping intersects catalog ∩ runtime — necessary
-    // because the bundled `defaultNodes.json` can be ahead of the user's
-    // actually-installed n8n binary (e.g. catalog says Gmail v2.2 but
-    // runtime only ships up to v2.1).
-    const generateClient = this.getClient();
-    const runtimeVersions = (await generateClient.getRuntimeNodeTypeVersions()) ?? undefined;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const repairResult = validateAndRepair(
-        workflow,
-        finalNodeDefs,
-        runtimeContext,
-        runtimeVersions
-      );
-      workflow = repairResult.workflow;
-      if (repairResult.errors.length === 0) {
-        break;
-      }
-      if (attempt === 2) {
-        logger.warn(
-          {
-            src: 'plugin:n8n-workflow:service:main',
-            errors: repairResult.errors,
-          },
-          `validateAndRepair: ${repairResult.errors.length} unrecoverable error(s) after 3 retries — proceeding to deploy with _meta.errors`
-        );
-        workflow._meta = workflow._meta ?? {};
-        const errorLines = repairResult.errors.map(
-          (e) =>
-            `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
-        );
-        const existing = workflow._meta.requiresClarification ?? [];
-        workflow._meta.requiresClarification = [...existing, ...errorLines];
-        break;
-      }
-      try {
-        workflow = await fixWorkflowErrors(
-          this.runtime,
-          workflow,
-          repairResult.errors,
-          finalNodeDefs
-        );
-      } catch (err) {
-        logger.warn(
-          {
-            src: 'plugin:n8n-workflow:service:main',
-            err: err instanceof Error ? err.message : String(err),
-          },
-          'fixWorkflowErrors threw — exiting retry loop'
-        );
-        break;
-      }
-    }
-
-    normalizeTriggerSimpleParam(workflow);
-
-    const optionFixes = correctOptionParameters(workflow);
-    if (optionFixes > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Corrected ${optionFixes} invalid option parameter(s)`
-      );
-    }
-
-    const unknownParams = detectUnknownParameters(workflow);
-    if (unknownParams.length > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Found ${unknownParams.length} node(s) with unknown parameters, auto-correcting...`
-      );
-      workflow = await correctParameterNames(this.runtime, workflow, unknownParams);
-    }
-
-    const invalidRefs = validateOutputReferences(workflow);
-    if (invalidRefs.length > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Found ${invalidRefs.length} invalid field reference(s), auto-correcting...`
-      );
-      workflow = await correctFieldReferences(this.runtime, workflow, invalidRefs);
-    }
-
-    const exprPrefixed = ensureExpressionPrefix(workflow);
-    if (exprPrefixed > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Prefixed ${exprPrefixed} expression value(s) with "="`
-      );
-    }
-
-    const validationResult = validateWorkflow(workflow);
-    if (!validationResult.valid) {
-      logger.error(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Validation errors: ${validationResult.errors.join(', ')}`
-      );
-      throw new Error(`Generated workflow is invalid: ${validationResult.errors[0]}`);
-    }
-    if (validationResult.warnings.length > 0) {
-      logger.warn(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Validation warnings: ${validationResult.warnings.join(', ')}`
-      );
-    }
-
-    this.injectCatalogClarifications(workflow);
-    return positionNodes(workflow);
+    return this.finalizeWorkflowDraft(workflow, nodeDefs, runtimeContext, 'Generated');
   }
 
   async modifyWorkflowDraft(
@@ -480,7 +487,7 @@ export class N8nWorkflowService extends Service {
       opts?.triggerContext
     );
 
-    let workflow = await modifyWorkflow(
+    const workflow = await modifyWorkflow(
       this.runtime,
       existingWorkflow,
       modificationRequest,
@@ -488,9 +495,6 @@ export class N8nWorkflowService extends Service {
       runtimeContext
     );
 
-    // Safety net: same deterministic credential-block injection as
-    // generateWorkflowDraft. Modification regenerations are equally prone
-    // to dropping the credentials block.
     const injectedCreds = injectMissingCredentialBlocks(workflow, combinedDefs, runtimeContext);
     if (injectedCreds > 0) {
       logger.debug(
@@ -499,107 +503,7 @@ export class N8nWorkflowService extends Service {
       );
     }
 
-    // Layer 1+3 (Session 21): mirror the validate-and-repair retry loop on
-    // the modify path. Modifications can drift in the same ways generations
-    // do (typeVersion hallucination, missing authentication, etc.) so the
-    // gate must run here too. Same runtime-version intersect as the
-    // generate path — fetch once, reuse across all 3 retry attempts.
-    const modifyClient = this.getClient();
-    const runtimeVersionsForModify = (await modifyClient.getRuntimeNodeTypeVersions()) ?? undefined;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const repairResult = validateAndRepair(
-        workflow,
-        combinedDefs,
-        runtimeContext,
-        runtimeVersionsForModify
-      );
-      workflow = repairResult.workflow;
-      if (repairResult.errors.length === 0) {
-        break;
-      }
-      if (attempt === 2) {
-        logger.warn(
-          {
-            src: 'plugin:n8n-workflow:service:main',
-            errors: repairResult.errors,
-          },
-          `validateAndRepair (modify): ${repairResult.errors.length} unrecoverable error(s) after 3 retries`
-        );
-        workflow._meta = workflow._meta ?? {};
-        const errorLines = repairResult.errors.map(
-          (e) =>
-            `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
-        );
-        const existing = workflow._meta.requiresClarification ?? [];
-        workflow._meta.requiresClarification = [...existing, ...errorLines];
-        break;
-      }
-      try {
-        workflow = await fixWorkflowErrors(
-          this.runtime,
-          workflow,
-          repairResult.errors,
-          combinedDefs
-        );
-      } catch (err) {
-        logger.warn(
-          {
-            src: 'plugin:n8n-workflow:service:main',
-            err: err instanceof Error ? err.message : String(err),
-          },
-          'fixWorkflowErrors (modify) threw — exiting retry loop'
-        );
-        break;
-      }
-    }
-
-    normalizeTriggerSimpleParam(workflow);
-
-    const optionFixes = correctOptionParameters(workflow);
-    if (optionFixes > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Corrected ${optionFixes} invalid option parameter(s) in modified workflow`
-      );
-    }
-
-    const unknownParams = detectUnknownParameters(workflow);
-    if (unknownParams.length > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Found ${unknownParams.length} node(s) with unknown parameters in modified workflow, auto-correcting...`
-      );
-      workflow = await correctParameterNames(this.runtime, workflow, unknownParams);
-    }
-
-    const invalidRefs = validateOutputReferences(workflow);
-    if (invalidRefs.length > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Found ${invalidRefs.length} invalid field reference(s) in modified workflow, auto-correcting...`
-      );
-      workflow = await correctFieldReferences(this.runtime, workflow, invalidRefs);
-    }
-
-    const exprPrefixed = ensureExpressionPrefix(workflow);
-    if (exprPrefixed > 0) {
-      logger.debug(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Prefixed ${exprPrefixed} expression value(s) with "=" in modified workflow`
-      );
-    }
-
-    const validationResult = validateWorkflow(workflow);
-    if (!validationResult.valid) {
-      logger.error(
-        { src: 'plugin:n8n-workflow:service:main' },
-        `Modified workflow validation errors: ${validationResult.errors.join(', ')}`
-      );
-      throw new Error(`Modified workflow is invalid: ${validationResult.errors[0]}`);
-    }
-
-    this.injectCatalogClarifications(workflow);
-    return positionNodes(workflow);
+    return this.finalizeWorkflowDraft(workflow, combinedDefs, runtimeContext, 'Modified');
   }
 
   async deployWorkflow(workflow: N8nWorkflow, userId: string): Promise<WorkflowCreationResult> {

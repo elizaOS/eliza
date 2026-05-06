@@ -107,6 +107,18 @@ export interface RestoringSessionCtx {
   hadPriorOnboarding: boolean;
 }
 
+type DesktopInstallInspection = Awaited<
+  ReturnType<typeof inspectExistingElizaInstall>
+> | null;
+type ExistingConnectionProbe = Awaited<
+  ReturnType<typeof detectExistingOnboardingConnection>
+> | null;
+type RestoreState = {
+  persistedActiveServer: PersistedActiveServer | null;
+  restoredActiveServer: PersistedActiveServer | null;
+  hadPrior: boolean;
+};
+
 function isMobileLocalAgentApiBase(value: string | undefined): boolean {
   if (!value) return false;
   try {
@@ -264,164 +276,266 @@ export async function runRestoringSession(
   ctxRef: React.MutableRefObject<RestoringSessionCtx | null>,
   cancelled: { current: boolean },
 ): Promise<void> {
-  deps.setStartupError(null);
-  deps.setAuthRequired(false);
-  deps.setConnected(false);
-  deps.setOnboardingExistingInstallDetected(false);
-
-  const forceLocal = deps.forceLocalBootstrapRef.current;
-  deps.forceLocalBootstrapRef.current = false;
+  resetRestoringSessionFlags(deps);
+  const forceLocal = consumeForceLocalBootstrap(deps);
   let persistedActiveServer = loadPersistedActiveServer();
   let hadPrior = loadPersistedOnboardingComplete();
   if (cancelled.current) return;
 
-  const desktopInstall =
-    !persistedActiveServer && isElectrobunRuntime()
-      ? await inspectExistingElizaInstall().catch(() => null)
-      : null;
+  const desktopInstall = await inspectDesktopInstallForRestore(
+    persistedActiveServer,
+  );
   if (cancelled.current) return;
 
   const isDesktop = forceLocal || isElectrobunRuntime();
-  const _hasExistingEvidence = hadPrior || Boolean(desktopInstall?.detected);
-
-  // Probe the API when there is evidence of a prior install, or when no
-  // persisted server exists (covers headless/VPS setups where config was
-  // set via files without going through UI onboarding).
-  const probed = !persistedActiveServer
-    ? await detectExistingOnboardingConnection({
-        client,
-        timeoutMs: isDesktop
-          ? Math.min(getBackendStartupTimeoutMs(), 30_000)
-          : Math.min(getBackendStartupTimeoutMs(), 3_500),
-      })
-    : null;
+  const probed = await probeExistingRestoreConnection(
+    persistedActiveServer,
+    isDesktop,
+  );
   if (cancelled.current) return;
 
-  let restoredActiveServer =
-    persistedActiveServer ?? (probed ? probed.activeServer : null);
-
-  if ((isAndroid || isIOS) && restoredActiveServer) {
-    const mobileRuntimeMode = readPersistedMobileRuntimeMode();
-    if (
-      isMobileLocalActiveServer(restoredActiveServer) &&
-      mobileRuntimeMode !== "local"
-    ) {
-      clearPersistedActiveServer();
-      savePersistedOnboardingComplete(false);
-      persistedActiveServer = null;
-      restoredActiveServer = null;
-      hadPrior = false;
-      deps.onboardingCompletionCommittedRef.current = false;
-    } else if (restoredActiveServer.kind === "local") {
-      restoredActiveServer = mobileLoopbackActiveServer();
-      persistedActiveServer = restoredActiveServer;
-      savePersistedActiveServer(restoredActiveServer);
-    } else if (!restoredActiveServer.apiBase) {
-      clearPersistedActiveServer();
-      savePersistedOnboardingComplete(false);
-      persistedActiveServer = null;
-      restoredActiveServer = null;
-      hadPrior = false;
-      deps.onboardingCompletionCommittedRef.current = false;
-    }
-  }
-
-  if (
-    restoredActiveServer &&
-    !canRestoreActiveServer({
-      server: restoredActiveServer,
-      clientApiAvailable: client.apiAvailable,
-      forceLocal,
-      isDesktop,
-    })
-  ) {
-    preserveCloudAuthTokenForOnboarding(restoredActiveServer);
-    clearPersistedActiveServer();
-    savePersistedOnboardingComplete(false);
-    persistedActiveServer = null;
-    restoredActiveServer = null;
-    hadPrior = false;
-    deps.onboardingCompletionCommittedRef.current = false;
-  }
+  let restoreState = normalizeMobileRestoredServer(
+    persistedActiveServer ?? (probed ? probed.activeServer : null),
+    persistedActiveServer,
+    hadPrior,
+    deps,
+  );
+  restoreState = clearUnrestorableServer(
+    restoreState,
+    deps,
+    forceLocal,
+    isDesktop,
+  );
+  persistedActiveServer = restoreState.persistedActiveServer;
+  hadPrior = restoreState.hadPrior;
 
   const preserveCompleted =
     hadPrior && !deps.onboardingCompletionCommittedRef.current;
 
   deps.setOnboardingExistingInstallDetected(
-    Boolean(
-      hadPrior || desktopInstall?.detected || probed?.detectedExistingInstall,
-    ),
+    hasExistingInstallEvidence(hadPrior, desktopInstall, probed),
   );
 
-  if (!restoredActiveServer) {
-    // No saved backend found — let the user (re-)onboard.
-    deps.setOnboardingOptions({
-      names: [],
-      styles: getStylePresets(deps.uiLanguage),
-      providers: [
-        ...ONBOARDING_PROVIDER_CATALOG,
-      ] as OnboardingOptions["providers"],
-      cloudProviders: [],
-      models: {
-        nano: [],
-        small: [],
-        medium: [],
-        large: [],
-        mega: [],
-      } as OnboardingOptions["models"],
-      inventoryProviders: [],
-      sharedStyleRules: "",
-    });
-    try {
-      const det = await scanProviderCredentials();
-      if (!cancelled.current && det.length > 0) {
-        console.log(
-          `[eliza][startup] Keychain scan found ${det.length} provider(s):`,
-          det.map((p) => p.id),
-        );
-        deps.applyDetectedProviders(det);
-      }
-    } catch (scanErr) {
-      console.warn(
-        "[eliza][startup] Keychain credential scan failed:",
-        scanErr,
-      );
-    }
-    deps.setOnboardingComplete(false);
-    deps.setOnboardingLoading(false);
-    dispatch({ type: "NO_SESSION", hadPriorOnboarding: hadPrior });
+  if (!restoreState.restoredActiveServer) {
+    await finishWithoutRestoredSession(deps, dispatch, hadPrior, cancelled);
     return;
   }
 
+  await finishRestoredSession({
+    restoredActiveServer: restoreState.restoredActiveServer,
+    persistedActiveServer,
+    preserveCompleted,
+    hadPrior,
+    dispatch,
+    ctxRef,
+  });
+}
+
+function resetRestoringSessionFlags(deps: RestoringSessionDeps): void {
+  deps.setStartupError(null);
+  deps.setAuthRequired(false);
+  deps.setConnected(false);
+  deps.setOnboardingExistingInstallDetected(false);
+}
+
+function consumeForceLocalBootstrap(deps: RestoringSessionDeps): boolean {
+  const forceLocal = deps.forceLocalBootstrapRef.current;
+  deps.forceLocalBootstrapRef.current = false;
+  return forceLocal;
+}
+
+async function inspectDesktopInstallForRestore(
+  persistedActiveServer: PersistedActiveServer | null,
+): Promise<DesktopInstallInspection> {
+  if (persistedActiveServer || !isElectrobunRuntime()) return null;
+  return inspectExistingElizaInstall().catch(() => null);
+}
+
+async function probeExistingRestoreConnection(
+  persistedActiveServer: PersistedActiveServer | null,
+  isDesktop: boolean,
+): Promise<ExistingConnectionProbe> {
+  if (persistedActiveServer) return null;
+  return detectExistingOnboardingConnection({
+    client,
+    timeoutMs: restoreProbeTimeoutMs(isDesktop),
+  });
+}
+
+function restoreProbeTimeoutMs(isDesktop: boolean): number {
+  return isDesktop
+    ? Math.min(getBackendStartupTimeoutMs(), 30_000)
+    : Math.min(getBackendStartupTimeoutMs(), 3_500);
+}
+
+function clearRestoredSession(deps: RestoringSessionDeps): {
+  persistedActiveServer: null;
+  restoredActiveServer: null;
+  hadPrior: false;
+} {
+  clearPersistedActiveServer();
+  savePersistedOnboardingComplete(false);
+  deps.onboardingCompletionCommittedRef.current = false;
+  return {
+    persistedActiveServer: null,
+    restoredActiveServer: null,
+    hadPrior: false,
+  };
+}
+
+function normalizeMobileRestoredServer(
+  restoredActiveServer: PersistedActiveServer | null,
+  persistedActiveServer: PersistedActiveServer | null,
+  hadPrior: boolean,
+  deps: RestoringSessionDeps,
+): RestoreState {
+  if ((!isAndroid && !isIOS) || !restoredActiveServer) {
+    return { restoredActiveServer, persistedActiveServer, hadPrior };
+  }
+  if (shouldClearMobileRestoredServer(restoredActiveServer)) {
+    return clearRestoredSession(deps);
+  }
+  if (restoredActiveServer.kind !== "local") {
+    return { restoredActiveServer, persistedActiveServer, hadPrior };
+  }
+  const loopbackServer = mobileLoopbackActiveServer();
+  savePersistedActiveServer(loopbackServer);
+  return {
+    restoredActiveServer: loopbackServer,
+    persistedActiveServer: loopbackServer,
+    hadPrior,
+  };
+}
+
+function clearUnrestorableServer(
+  state: RestoreState,
+  deps: RestoringSessionDeps,
+  forceLocal: boolean,
+  isDesktop: boolean,
+): RestoreState {
+  if (!state.restoredActiveServer) return state;
+  if (
+    canRestoreActiveServer({
+      server: state.restoredActiveServer,
+      clientApiAvailable: client.apiAvailable,
+      forceLocal,
+      isDesktop,
+    })
+  ) {
+    return state;
+  }
+  preserveCloudAuthTokenForOnboarding(state.restoredActiveServer);
+  return clearRestoredSession(deps);
+}
+
+function hasExistingInstallEvidence(
+  hadPrior: boolean,
+  desktopInstall: DesktopInstallInspection,
+  probed: ExistingConnectionProbe,
+): boolean {
+  return Boolean(
+    hadPrior || desktopInstall?.detected || probed?.detectedExistingInstall,
+  );
+}
+
+async function startRestoredDesktopRuntime(): Promise<void> {
+  try {
+    const runtimeMode = await getDesktopRuntimeMode().catch(() => null);
+    if (runtimeMode && runtimeMode.mode !== "local") return;
+    await invokeDesktopBridgeRequest({
+      rpcMethod: "agentStart",
+      ipcChannel: "agent:start",
+    });
+  } catch (err) {
+    logger.warn(
+      `[startup-phase-restore] desktop agent bridge request failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+async function finishRestoredSession(args: {
+  restoredActiveServer: PersistedActiveServer;
+  persistedActiveServer: PersistedActiveServer | null;
+  preserveCompleted: boolean;
+  hadPrior: boolean;
+  dispatch: (event: StartupEvent) => void;
+  ctxRef: React.MutableRefObject<RestoringSessionCtx | null>;
+}): Promise<void> {
   await applyRestoredConnection({
-    restoredActiveServer,
+    restoredActiveServer: args.restoredActiveServer,
     clientRef: client,
-    startLocalRuntime: async () => {
-      try {
-        const runtimeMode = await getDesktopRuntimeMode().catch(() => null);
-        if (runtimeMode && runtimeMode.mode !== "local") {
-          return;
-        }
-        await invokeDesktopBridgeRequest({
-          rpcMethod: "agentStart",
-          ipcChannel: "agent:start",
-        });
-      } catch (err) {
-        logger.warn(
-          `[startup-phase-restore] desktop agent bridge request failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    },
+    startLocalRuntime: startRestoredDesktopRuntime,
   });
 
-  ctxRef.current = {
-    persistedActiveServer,
-    restoredActiveServer,
-    shouldPreserveCompletedOnboarding: preserveCompleted,
-    hadPriorOnboarding: hadPrior,
+  args.ctxRef.current = {
+    persistedActiveServer: args.persistedActiveServer,
+    restoredActiveServer: args.restoredActiveServer,
+    shouldPreserveCompletedOnboarding: args.preserveCompleted,
+    hadPriorOnboarding: args.hadPrior,
   };
-  dispatch({
+  args.dispatch({
     type: "SESSION_RESTORED",
-    target: activeServerToTarget(restoredActiveServer),
+    target: activeServerToTarget(args.restoredActiveServer),
   });
+}
+
+function shouldClearMobileRestoredServer(
+  server: PersistedActiveServer,
+): boolean {
+  const mobileRuntimeMode = readPersistedMobileRuntimeMode();
+  return (
+    (isMobileLocalActiveServer(server) && mobileRuntimeMode !== "local") ||
+    (server.kind !== "local" && !server.apiBase)
+  );
+}
+
+function emptyOnboardingOptions(uiLanguage: string): OnboardingOptions {
+  return {
+    names: [],
+    styles: getStylePresets(uiLanguage),
+    providers: [
+      ...ONBOARDING_PROVIDER_CATALOG,
+    ] as OnboardingOptions["providers"],
+    cloudProviders: [],
+    models: {
+      nano: [],
+      small: [],
+      medium: [],
+      large: [],
+      mega: [],
+    } as OnboardingOptions["models"],
+    inventoryProviders: [],
+    sharedStyleRules: "",
+  };
+}
+
+async function applyDetectedProviderCredentials(
+  deps: RestoringSessionDeps,
+  cancelled: { current: boolean },
+): Promise<void> {
+  try {
+    const det = await scanProviderCredentials();
+    if (!cancelled.current && det.length > 0) {
+      console.log(
+        `[eliza][startup] Keychain scan found ${det.length} provider(s):`,
+        det.map((p) => p.id),
+      );
+      deps.applyDetectedProviders(det);
+    }
+  } catch (scanErr) {
+    console.warn("[eliza][startup] Keychain credential scan failed:", scanErr);
+  }
+}
+
+async function finishWithoutRestoredSession(
+  deps: RestoringSessionDeps,
+  dispatch: (event: StartupEvent) => void,
+  hadPrior: boolean,
+  cancelled: { current: boolean },
+): Promise<void> {
+  deps.setOnboardingOptions(emptyOnboardingOptions(deps.uiLanguage));
+  await applyDetectedProviderCredentials(deps, cancelled);
+  deps.setOnboardingComplete(false);
+  deps.setOnboardingLoading(false);
+  dispatch({ type: "NO_SESSION", hadPriorOnboarding: hadPrior });
 }

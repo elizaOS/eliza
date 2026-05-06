@@ -252,43 +252,64 @@ async function runDelete(
 ): Promise<ActionResult> {
   const userId = message.entityId;
   const cacheKey = `workflow_delete_pending:${userId}`;
-
   const pending = await runtime.getCache<PendingDeletion>(cacheKey);
   if (pending && Date.now() - pending.createdAt < DELETE_CONFIRM_TTL_MS) {
-    const userText = (message.content?.text || '').toLowerCase().trim();
-    const isConfirm = /^(yes|confirm|ok|do it|go ahead|oui|y)$/i.test(userText);
+    return handleLifecyclePendingDeletion(runtime, service, cacheKey, pending, message, callback);
+  }
 
-    if (isConfirm) {
-      await service.deleteWorkflow(pending.workflowId);
-      await runtime.deleteCache(cacheKey);
+  return startLifecycleDeletionFlow(
+    runtime,
+    service,
+    message,
+    state,
+    workflowIdParam,
+    cacheKey,
+    callback
+  );
+}
 
-      logger.info(
-        { src: 'plugin:n8n-workflow:action:lifecycle' },
-        `Deleted workflow ${pending.workflowId} after confirmation`
-      );
-
-      if (callback) {
-        await callback({
-          text: `Workflow "${pending.workflowName}" deleted permanently.`,
-          success: true,
-        });
-      }
-      return { success: true };
-    }
-
+async function handleLifecyclePendingDeletion(
+  runtime: IAgentRuntime,
+  service: N8nWorkflowService,
+  cacheKey: string,
+  pending: PendingDeletion,
+  message: Memory,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const userText = (message.content?.text || '').toLowerCase().trim();
+  if (!/^(yes|confirm|ok|do it|go ahead|oui|y)$/i.test(userText)) {
     await runtime.deleteCache(cacheKey);
     if (callback) {
-      await callback({
-        text: 'Deletion cancelled.',
-        success: true,
-      });
+      await callback({ text: 'Deletion cancelled.', success: true });
     }
     return { success: true };
   }
 
-  // No pending — start a new deletion flow
-  const workflows = await service.listWorkflows(userId);
+  await service.deleteWorkflow(pending.workflowId);
+  await runtime.deleteCache(cacheKey);
+  logger.info(
+    { src: 'plugin:n8n-workflow:action:lifecycle' },
+    `Deleted workflow ${pending.workflowId} after confirmation`
+  );
+  if (callback) {
+    await callback({
+      text: `Workflow "${pending.workflowName}" deleted permanently.`,
+      success: true,
+    });
+  }
+  return { success: true };
+}
 
+async function startLifecycleDeletionFlow(
+  runtime: IAgentRuntime,
+  service: N8nWorkflowService,
+  message: Memory,
+  state: State | undefined,
+  workflowIdParam: string | null,
+  cacheKey: string,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const workflows = await service.listWorkflows(message.entityId);
   if (workflows.length === 0) {
     if (callback) {
       await callback({
@@ -299,45 +320,74 @@ async function runDelete(
     return { success: false };
   }
 
-  let matchedId: string | null = workflowIdParam;
-  let matchedName: string | null;
-  if (matchedId) {
-    matchedName = workflows.find((w) => w.id === matchedId)?.name ?? null;
-  } else {
-    const context = buildConversationContext(message, state);
-    const matchResult = await matchWorkflow(runtime, context, workflows);
-    if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-      const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
-      if (callback) {
-        await callback({
-          text: `Could not identify which workflow to delete. Available workflows:\n${workflowList}`,
-          success: false,
-        });
-      }
-      return { success: false };
+  const matched = await resolveLifecycleDeleteTarget(
+    runtime,
+    message,
+    state,
+    workflows,
+    workflowIdParam
+  );
+  if (!matched.workflowId) {
+    if (callback) {
+      await callback({
+        text: `Could not identify which workflow to delete. Available workflows:\n${matched.workflowList}`,
+        success: false,
+      });
     }
-    matchedId = matchResult.matchedWorkflowId;
-    matchedName = workflows.find((w) => w.id === matchedId)?.name ?? null;
+    return { success: false };
   }
 
-  const workflowName = matchedName || matchedId;
-
-  const pendingDeletion: PendingDeletion = {
-    workflowId: matchedId,
-    workflowName,
+  const pendingDeletion = {
+    workflowId: matched.workflowId,
+    workflowName: matched.workflowName,
     createdAt: Date.now(),
-  };
+  } satisfies PendingDeletion;
   await runtime.setCache(cacheKey, pendingDeletion);
 
   if (callback) {
     await callback({
-      text: `Are you sure you want to permanently delete "${workflowName}"? This cannot be undone. Reply "yes" to confirm.`,
+      text: `Are you sure you want to permanently delete "${matched.workflowName}"? This cannot be undone. Reply "yes" to confirm.`,
       success: true,
       data: { awaitingUserInput: true },
     });
   }
 
   return { success: true, data: { awaitingUserInput: true } };
+}
+
+async function resolveLifecycleDeleteTarget(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  workflows: Awaited<ReturnType<N8nWorkflowService['listWorkflows']>>,
+  workflowIdParam: string | null
+): Promise<{ workflowId: string | null; workflowName: string; workflowList: string }> {
+  if (workflowIdParam) {
+    return {
+      workflowId: workflowIdParam,
+      workflowName: workflows.find((w) => w.id === workflowIdParam)?.name ?? workflowIdParam,
+      workflowList: '',
+    };
+  }
+  const matchResult = await matchWorkflow(
+    runtime,
+    buildConversationContext(message, state),
+    workflows
+  );
+  if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
+    return {
+      workflowId: null,
+      workflowName: '',
+      workflowList: matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n'),
+    };
+  }
+  return {
+    workflowId: matchResult.matchedWorkflowId,
+    workflowName:
+      workflows.find((w) => w.id === matchResult.matchedWorkflowId)?.name ??
+      matchResult.matchedWorkflowId,
+    workflowList: '',
+  };
 }
 
 async function resolveWorkflowId(

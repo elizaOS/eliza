@@ -639,6 +639,14 @@ async function buildTriggerContextFromConversation(
   if (!runtime || typeof runtime.getMemories !== 'function') {
     return undefined;
   }
+  const inbound = await findInboundConversationMemory(runtime, roomId);
+  return inbound?.metadata ? triggerContextFromMetadata(inbound.metadata) : undefined;
+}
+
+async function findInboundConversationMemory(
+  runtime: AgentRuntime,
+  roomId: string
+): Promise<{ entityId?: string; metadata?: Record<string, unknown> } | undefined> {
   let memories: Array<{
     entityId?: string;
     metadata?: Record<string, unknown>;
@@ -664,76 +672,78 @@ async function buildTriggerContextFromConversation(
     return undefined;
   }
 
-  // Tail inbound = most recent memory whose entityId is NOT the agent.
-  // `runtime.getMemories` typically returns most-recent-first; defensively
-  // handle either order.
-  const inbound = memories.find((m) => m.entityId && m.entityId !== runtime.agentId);
-  if (!inbound?.metadata) {
-    return undefined;
-  }
+  return memories.find((m) => m.entityId && m.entityId !== runtime.agentId);
+}
 
-  const meta = inbound.metadata as Record<string, unknown>;
+function triggerContextFromMetadata(meta: Record<string, unknown>): TriggerContext | undefined {
   const discord = (meta.discord ?? {}) as Record<string, unknown>;
   const telegram = (meta.telegram ?? {}) as Record<string, unknown>;
   const slack = (meta.slack ?? {}) as Record<string, unknown>;
+  return (
+    discordTriggerContext(discord, meta) ??
+    telegramTriggerContext(telegram) ??
+    slackTriggerContext(slack)
+  );
+}
 
-  // Canonical wins; flat fields are the legacy de-facto shape.
-  const discordChannelId =
-    (typeof discord.channelId === 'string' ? discord.channelId : undefined) ??
-    (typeof meta.discordChannelId === 'string' ? meta.discordChannelId : undefined);
-  const discordGuildId =
-    (typeof discord.guildId === 'string' ? discord.guildId : undefined) ??
-    (typeof meta.discordServerId === 'string' ? meta.discordServerId : undefined);
-  const discordThreadId = typeof discord.threadId === 'string' ? discord.threadId : undefined;
+function discordTriggerContext(
+  discord: Record<string, unknown>,
+  meta: Record<string, unknown>
+): TriggerContext | undefined {
+  const channelId =
+    readOptionalString(discord, 'channelId') ?? readOptionalString(meta, 'discordChannelId');
+  if (!channelId) return undefined;
 
-  // No `meta.fromId` fallback for Telegram: `fromId` is the sender's user
-  // id, which equals the chat id only in private 1:1 DMs. In group chats /
-  // channels the chat id is a distinct (typically negative) integer, so
-  // falling back to fromId would silently route the workflow to the wrong
-  // entity. Only use the canonical `metadata.telegram.chatId`. If the
-  // upstream Telegram plugin hasn't populated it yet, we skip Telegram
-  // routing rather than guess.
-  const telegramChatId =
-    typeof telegram.chatId === 'string' || typeof telegram.chatId === 'number'
-      ? telegram.chatId
-      : undefined;
-  const telegramThreadId =
-    typeof telegram.threadId === 'string' || typeof telegram.threadId === 'number'
-      ? (telegram.threadId as string | number)
-      : undefined;
+  return {
+    source: 'discord',
+    discord: {
+      channelId,
+      ...((readOptionalString(discord, 'guildId') ?? readOptionalString(meta, 'discordServerId'))
+        ? {
+            guildId:
+              readOptionalString(discord, 'guildId') ?? readOptionalString(meta, 'discordServerId'),
+          }
+        : {}),
+      ...(readOptionalString(discord, 'threadId')
+        ? { threadId: readOptionalString(discord, 'threadId') }
+        : {}),
+    },
+  };
+}
 
-  const slackChannelId = typeof slack.channelId === 'string' ? slack.channelId : undefined;
-  const slackTeamId = typeof slack.teamId === 'string' ? slack.teamId : undefined;
+function telegramTriggerContext(telegram: Record<string, unknown>): TriggerContext | undefined {
+  const chatId = readStringOrNumber(telegram, 'chatId');
+  if (chatId === undefined) return undefined;
+  const threadId = readStringOrNumber(telegram, 'threadId');
+  return {
+    source: 'telegram',
+    telegram: {
+      chatId,
+      ...(threadId !== undefined ? { threadId } : {}),
+    },
+  };
+}
 
-  if (discordChannelId) {
-    return {
-      source: 'discord',
-      discord: {
-        ...(discordChannelId ? { channelId: discordChannelId } : {}),
-        ...(discordGuildId ? { guildId: discordGuildId } : {}),
-        ...(discordThreadId ? { threadId: discordThreadId } : {}),
-      },
-    };
-  }
-  if (telegramChatId !== undefined) {
-    return {
-      source: 'telegram',
-      telegram: {
-        chatId: telegramChatId,
-        ...(telegramThreadId !== undefined ? { threadId: telegramThreadId } : {}),
-      },
-    };
-  }
-  if (slackChannelId) {
-    return {
-      source: 'slack',
-      slack: {
-        channelId: slackChannelId,
-        ...(slackTeamId ? { teamId: slackTeamId } : {}),
-      },
-    };
-  }
-  return undefined;
+function slackTriggerContext(slack: Record<string, unknown>): TriggerContext | undefined {
+  const channelId = readOptionalString(slack, 'channelId');
+  if (!channelId) return undefined;
+  return {
+    source: 'slack',
+    slack: {
+      channelId,
+      ...(readOptionalString(slack, 'teamId')
+        ? { teamId: readOptionalString(slack, 'teamId') }
+        : {}),
+    },
+  };
+}
+
+function readStringOrNumber(
+  obj: Record<string, unknown>,
+  key: string
+): string | number | undefined {
+  const value = obj[key];
+  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
 }
 
 function readPosition(value: unknown): [number, number] | null {
@@ -767,6 +777,24 @@ function readCredentials(value: unknown): Record<string, { id: string; name: str
   return Object.keys(credentials).length > 0 ? credentials : undefined;
 }
 
+function setWorkflowNodeValue<K extends keyof N8nWorkflowWriteNode>(
+  target: N8nWorkflowWriteNode,
+  key: K,
+  value: N8nWorkflowWriteNode[K] | undefined
+): void {
+  if (value !== undefined) {
+    target[key] = value;
+  }
+}
+
+function readWorkflowNodeOnError(value: unknown): N8nWorkflowWriteNode['onError'] | undefined {
+  return value === 'continueErrorOutput' ||
+    value === 'continueRegularOutput' ||
+    value === 'stopWorkflow'
+    ? value
+    : undefined;
+}
+
 function normalizeWorkflowWriteNode(value: unknown, index: number): N8nWorkflowWriteNode | null {
   const obj = asRecord(value);
   if (!obj) {
@@ -783,47 +811,28 @@ function normalizeWorkflowWriteNode(value: unknown, index: number): N8nWorkflowW
   const parameters = asRecord(obj.parameters) ?? {};
   const typeVersion = readOptionalNumber(obj, 'typeVersion') ?? 1;
   const credentials = readCredentials(obj.credentials);
-
-  return {
-    ...(readOptionalString(obj, 'id') ? { id: readOptionalString(obj, 'id') } : {}),
+  const node: N8nWorkflowWriteNode = {
     name,
     type,
     typeVersion,
     position,
     parameters,
-    ...(credentials ? { credentials } : {}),
-    ...(readOptionalBoolean(obj, 'disabled') !== undefined
-      ? { disabled: readOptionalBoolean(obj, 'disabled') }
-      : {}),
-    ...(readOptionalString(obj, 'notes') ? { notes: readOptionalString(obj, 'notes') } : {}),
-    ...(readOptionalBoolean(obj, 'notesInFlow') !== undefined
-      ? { notesInFlow: readOptionalBoolean(obj, 'notesInFlow') }
-      : {}),
-    ...(readOptionalString(obj, 'color') ? { color: readOptionalString(obj, 'color') } : {}),
-    ...(readOptionalBoolean(obj, 'continueOnFail') !== undefined
-      ? { continueOnFail: readOptionalBoolean(obj, 'continueOnFail') }
-      : {}),
-    ...(readOptionalBoolean(obj, 'executeOnce') !== undefined
-      ? { executeOnce: readOptionalBoolean(obj, 'executeOnce') }
-      : {}),
-    ...(readOptionalBoolean(obj, 'alwaysOutputData') !== undefined
-      ? { alwaysOutputData: readOptionalBoolean(obj, 'alwaysOutputData') }
-      : {}),
-    ...(readOptionalBoolean(obj, 'retryOnFail') !== undefined
-      ? { retryOnFail: readOptionalBoolean(obj, 'retryOnFail') }
-      : {}),
-    ...(readOptionalNumber(obj, 'maxTries') !== undefined
-      ? { maxTries: readOptionalNumber(obj, 'maxTries') }
-      : {}),
-    ...(readOptionalNumber(obj, 'waitBetweenTries') !== undefined
-      ? { waitBetweenTries: readOptionalNumber(obj, 'waitBetweenTries') }
-      : {}),
-    ...(obj.onError === 'continueErrorOutput' ||
-    obj.onError === 'continueRegularOutput' ||
-    obj.onError === 'stopWorkflow'
-      ? { onError: obj.onError }
-      : {}),
   };
+
+  setWorkflowNodeValue(node, 'id', readOptionalString(obj, 'id'));
+  setWorkflowNodeValue(node, 'credentials', credentials);
+  setWorkflowNodeValue(node, 'disabled', readOptionalBoolean(obj, 'disabled'));
+  setWorkflowNodeValue(node, 'notes', readOptionalString(obj, 'notes'));
+  setWorkflowNodeValue(node, 'notesInFlow', readOptionalBoolean(obj, 'notesInFlow'));
+  setWorkflowNodeValue(node, 'color', readOptionalString(obj, 'color'));
+  setWorkflowNodeValue(node, 'continueOnFail', readOptionalBoolean(obj, 'continueOnFail'));
+  setWorkflowNodeValue(node, 'executeOnce', readOptionalBoolean(obj, 'executeOnce'));
+  setWorkflowNodeValue(node, 'alwaysOutputData', readOptionalBoolean(obj, 'alwaysOutputData'));
+  setWorkflowNodeValue(node, 'retryOnFail', readOptionalBoolean(obj, 'retryOnFail'));
+  setWorkflowNodeValue(node, 'maxTries', readOptionalNumber(obj, 'maxTries'));
+  setWorkflowNodeValue(node, 'waitBetweenTries', readOptionalNumber(obj, 'waitBetweenTries'));
+  setWorkflowNodeValue(node, 'onError', readWorkflowNodeOnError(obj.onError));
+  return node;
 }
 
 function normalizeWorkflowConnections(value: unknown): N8nWorkflowConnections {
@@ -959,47 +968,20 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
   const { method, pathname, config } = ctx;
   const native = ctx.isNativePlatform ?? isNativeServerPlatform();
 
-  // --- Status ---------------------------------------------------------------
   if (method === 'GET' && pathname === '/api/n8n/status') {
     const sidecar = await resolveSidecarForRequest(ctx, native);
     return handleStatus(ctx, sidecar, native);
   }
 
-  // --- Sidecar start (fire-and-forget) --------------------------------------
   if (method === 'POST' && pathname === '/api/n8n/sidecar/start') {
-    if (native) {
-      sendJson(ctx, 409, {
-        error: 'Local n8n not supported on mobile. Use Eliza Cloud.',
-        platform: 'mobile' satisfies N8nHostPlatform,
-      });
-      return true;
-    }
-    const mod = await loadSidecarModule();
-    const sidecar =
-      ctx.n8nSidecar ??
-      mod?.getN8nSidecar({
-        enabled: config.n8n?.localEnabled ?? true,
-        ...(config.n8n?.version ? { version: config.n8n.version } : {}),
-        ...(config.n8n?.startPort ? { startPort: config.n8n.startPort } : {}),
-      });
-    if (!sidecar) {
-      // Desktop path with no sidecar module reachable — treat as a hard
-      // failure rather than pretending the boot succeeded.
-      sendJson(ctx, 500, { error: 'n8n sidecar module unavailable' });
-      return true;
-    }
-    void sidecar.start();
-    sendJson(ctx, 202, { ok: true });
-    return true;
+    return handleSidecarStart(ctx, native, config);
   }
 
-  // --- Workflows list -------------------------------------------------------
   if (method === 'GET' && pathname === '/api/n8n/workflows') {
     const sidecar = await resolveSidecarForRequest(ctx, native);
     return handleListWorkflows(ctx, sidecar, native);
   }
 
-  // --- Workflow generation / creation --------------------------------------
   if (method === 'POST' && pathname === '/api/n8n/workflows/generate') {
     return handleGenerateWorkflow(ctx);
   }
@@ -1013,31 +995,72 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
     return handleCreateWorkflow(ctx, sidecar, native);
   }
 
-  // --- Workflow CRUD --------------------------------------------------------
   const parsed = parseWorkflowPath(pathname);
   if (parsed) {
-    if (method === 'POST' && parsed.action === 'activate') {
-      const sidecar = await resolveSidecarForRequest(ctx, native);
-      return handleToggleWorkflow(ctx, parsed.id, true, sidecar, native);
-    }
-    if (method === 'POST' && parsed.action === 'deactivate') {
-      const sidecar = await resolveSidecarForRequest(ctx, native);
-      return handleToggleWorkflow(ctx, parsed.id, false, sidecar, native);
-    }
-    if (method === 'GET' && parsed.action === 'get') {
-      const sidecar = await resolveSidecarForRequest(ctx, native);
-      return handleGetWorkflow(ctx, parsed.id, sidecar, native);
-    }
-    if (method === 'PUT' && parsed.action === 'get') {
-      const sidecar = await resolveSidecarForRequest(ctx, native);
-      return handleUpdateWorkflow(ctx, parsed.id, sidecar, native);
-    }
-    if (method === 'DELETE' && parsed.action === 'get') {
-      const sidecar = await resolveSidecarForRequest(ctx, native);
-      return handleDeleteWorkflow(ctx, parsed.id, sidecar, native);
-    }
+    return handleWorkflowPathRoute(ctx, parsed, native);
   }
 
+  return false;
+}
+
+async function handleSidecarStart(
+  ctx: N8nRouteContext,
+  native: boolean,
+  config: N8nRouteContext['config']
+): Promise<boolean> {
+  if (native) {
+    sendJson(ctx, 409, {
+      error: 'Local n8n not supported on mobile. Use Eliza Cloud.',
+      platform: 'mobile' satisfies N8nHostPlatform,
+    });
+    return true;
+  }
+  const sidecar = await getSidecarForStart(ctx, config);
+  if (!sidecar) {
+    sendJson(ctx, 500, { error: 'n8n sidecar module unavailable' });
+    return true;
+  }
+  void sidecar.start();
+  sendJson(ctx, 202, { ok: true });
+  return true;
+}
+
+async function getSidecarForStart(
+  ctx: N8nRouteContext,
+  config: N8nRouteContext['config']
+): Promise<N8nSidecar | null> {
+  if (ctx.n8nSidecar) return ctx.n8nSidecar;
+  const mod = await loadSidecarModule();
+  return (
+    mod?.getN8nSidecar({
+      enabled: config.n8n?.localEnabled ?? true,
+      ...(config.n8n?.version ? { version: config.n8n.version } : {}),
+      ...(config.n8n?.startPort ? { startPort: config.n8n.startPort } : {}),
+    }) ?? null
+  );
+}
+
+async function handleWorkflowPathRoute(
+  ctx: N8nRouteContext,
+  parsed: { id: string; action: 'get' | 'activate' | 'deactivate' },
+  native: boolean
+): Promise<boolean> {
+  const sidecar = await resolveSidecarForRequest(ctx, native);
+  if (ctx.method === 'POST' && parsed.action === 'activate') {
+    return handleToggleWorkflow(ctx, parsed.id, true, sidecar, native);
+  }
+  if (ctx.method === 'POST' && parsed.action === 'deactivate') {
+    return handleToggleWorkflow(ctx, parsed.id, false, sidecar, native);
+  }
+  if (ctx.method === 'GET' && parsed.action === 'get') {
+    return handleGetWorkflow(ctx, parsed.id, sidecar, native);
+  }
+  if (ctx.method === 'PUT' && parsed.action === 'get') {
+    return handleUpdateWorkflow(ctx, parsed.id, sidecar, native);
+  }
+  if (ctx.method === 'DELETE' && parsed.action === 'get') {
+    return handleDeleteWorkflow(ctx, parsed.id, sidecar, native);
+  }
   return false;
 }
 

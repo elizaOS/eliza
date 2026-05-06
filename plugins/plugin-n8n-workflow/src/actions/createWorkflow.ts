@@ -307,226 +307,63 @@ export const createWorkflowAction: Action & {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
-
     if (!service) {
-      logger.error(
-        { src: 'plugin:n8n-workflow:action:create' },
-        'N8n Workflow service not available'
-      );
-      if (callback) {
-        const text = await formatActionResponse(runtime, 'ERROR', {
-          error: 'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
-        });
-        await callback({ text, success: false });
-      }
-      return { success: false };
+      return handleMissingCreateWorkflowService(runtime, callback);
     }
 
-    const content = message.content as Content;
-    const userText = (content.text ?? '').trim();
-    const userId = message.entityId;
-    const cacheKey = `workflow_draft:${userId}`;
-    const generationContext = buildConversationContext(message, state);
-
     try {
-      let existingDraft = await runtime.getCache<WorkflowDraft>(cacheKey);
+      return await runCreateWorkflowHandler(runtime, service, message, state, callback);
+    } catch (error) {
+      return handleCreateWorkflowError(runtime, error, callback);
+    }
+  },
 
-      if (existingDraft && Date.now() - existingDraft.createdAt > DRAFT_TTL_MS) {
-        logger.debug({ src: 'plugin:n8n-workflow:action:create' }, 'Draft expired, clearing cache');
-        await runtime.deleteCache(cacheKey);
-        existingDraft = undefined;
-      }
+  examples,
+};
 
-      if (existingDraft) {
-        // Guard: if the draft was created by this same message, return silently.
-        // No callback = no new output for the multi-step agent to process = it stops looping.
-        if (existingDraft.originMessageId && existingDraft.originMessageId === message.id) {
-          logger.info(
-            { src: 'plugin:n8n-workflow:action:create' },
-            'Same message as draft origin — skipping'
-          );
-          return { success: true, data: { awaitingUserInput: true } };
-        }
+async function handleMissingCreateWorkflowService(
+  runtime: IAgentRuntime,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  logger.error({ src: 'plugin:n8n-workflow:action:create' }, 'N8n Workflow service not available');
+  if (callback) {
+    const text = await formatActionResponse(runtime, 'ERROR', {
+      error: 'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
+    });
+    await callback({ text, success: false });
+  }
+  return { success: false };
+}
 
-        const intentResult = await classifyDraftIntent(runtime, userText, existingDraft);
-        logger.info(
-          { src: 'plugin:n8n-workflow:action:create' },
-          `Draft intent: ${intentResult.intent} — ${intentResult.reason}`
-        );
+async function runCreateWorkflowHandler(
+  runtime: IAgentRuntime,
+  service: N8nWorkflowService,
+  message: Memory,
+  state: State | undefined,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const userText = ((message.content as Content).text ?? '').trim();
+  const userId = message.entityId;
+  const cacheKey = `workflow_draft:${userId}`;
+  const generationContext = buildConversationContext(message, state);
+  const existingDraft = await getFreshWorkflowDraft(runtime, cacheKey);
 
-        // If the draft was awaiting clarification and the user answered, treat "confirm" as "modify"
-        // to regenerate with the user's answers instead of deploying an incomplete draft.
-        const effectiveIntent =
-          intentResult.intent === 'confirm' &&
-          existingDraft.workflow._meta?.requiresClarification?.length
-            ? 'modify'
-            : intentResult.intent;
+  if (existingDraft) {
+    return handleExistingWorkflowDraft({
+      runtime,
+      service,
+      message,
+      userText,
+      userId,
+      cacheKey,
+      generationContext,
+      existingDraft,
+      callback,
+    });
+  }
 
-        if (effectiveIntent !== intentResult.intent) {
-          logger.info(
-            { src: 'plugin:n8n-workflow:action:create' },
-            'Draft has pending clarification — overriding "confirm" → "modify" to regenerate with user\'s answers'
-          );
-        }
-
-        switch (effectiveIntent) {
-          case 'confirm': {
-            const result = await service.deployWorkflow(existingDraft.workflow, userId);
-
-            // Deploy blocked — unresolved credentials
-            if (result.missingCredentials.length > 0) {
-              const text = await formatActionResponse(runtime, 'AUTH_REQUIRED', {
-                connections: result.missingCredentials.map((m) => ({
-                  service: m.credType,
-                  ...(m.authUrl && { authUrl: m.authUrl }),
-                })),
-              });
-              if (callback) {
-                await callback({ text, success: true });
-              }
-              return { success: true, data: { awaitingUserInput: true } };
-            }
-
-            await runtime.deleteCache(cacheKey);
-
-            const text = await formatActionResponse(runtime, 'DEPLOY_SUCCESS', {
-              workflowName: result.name,
-              workflowId: result.id,
-              nodeCount: result.nodeCount,
-              active: result.active,
-            });
-            if (callback) {
-              await callback({ text, success: true });
-            }
-            return {
-              success: true,
-              data: result as unknown as ProviderDataRecord,
-            };
-          }
-
-          case 'cancel': {
-            await runtime.deleteCache(cacheKey);
-            const text = await formatActionResponse(runtime, 'CANCELLED', {
-              workflowName: existingDraft.workflow.name,
-            });
-            if (callback) {
-              await callback({ text, success: true });
-            }
-            return { success: true };
-          }
-
-          case 'modify': {
-            const modification = intentResult.modificationRequest || userText;
-            logger.info(
-              { src: 'plugin:n8n-workflow:action:create' },
-              `Modifying draft: ${modification.slice(0, 100)}`
-            );
-
-            const modifiedWorkflow = await service.modifyWorkflowDraft(
-              existingDraft.workflow,
-              modification,
-              { userId }
-            );
-
-            const modifiedDraft: WorkflowDraft = {
-              workflow: modifiedWorkflow,
-              prompt: existingDraft.prompt,
-              userId,
-              createdAt: Date.now(),
-              originMessageId: message.id,
-            };
-            await runtime.setCache(cacheKey, modifiedDraft);
-
-            if (modifiedWorkflow._meta?.requiresClarification?.length) {
-              const text = await formatActionResponse(runtime, 'CLARIFICATION', {
-                questions: coerceClarificationRequests(
-                  modifiedWorkflow._meta.requiresClarification
-                ).map((c) => c.question),
-              });
-              if (callback) {
-                await callback({ text, success: true });
-              }
-              return { success: true, data: { awaitingUserInput: true } };
-            }
-
-            const previewData = buildPreviewData(modifiedWorkflow);
-            const changes = diffNodeParams(existingDraft.workflow, modifiedWorkflow);
-            if (Object.keys(changes).length > 0) {
-              previewData.changes = changes;
-            }
-
-            const text = await formatActionResponse(runtime, 'PREVIEW', previewData);
-            if (callback) {
-              await callback({ text, success: true });
-            }
-            return { success: true, data: { awaitingUserInput: true } };
-          }
-
-          case 'new': {
-            if (!userText) {
-              const text = await formatActionResponse(runtime, 'EMPTY_PROMPT', {});
-              if (callback) {
-                await callback({ text, success: false });
-              }
-              await runtime.deleteCache(cacheKey);
-              return { success: false };
-            }
-
-            await runtime.deleteCache(cacheKey);
-            try {
-              return await generateAndPreview(
-                runtime,
-                service,
-                generationContext,
-                userId,
-                cacheKey,
-                message.id ?? '',
-                callback
-              );
-            } catch (genError) {
-              logger.warn(
-                { src: 'plugin:n8n-workflow:action:create' },
-                `New workflow generation failed — restoring previous draft: ${genError instanceof Error ? genError.message : String(genError)}`
-              );
-              await runtime.setCache(cacheKey, existingDraft);
-              const text = await formatActionResponse(runtime, 'PREVIEW', {
-                ...buildPreviewData(existingDraft.workflow),
-                restoredAfterFailure: true,
-              });
-              if (callback) {
-                await callback({ text, success: true });
-              }
-              return { success: true, data: { awaitingUserInput: true } };
-            }
-          }
-
-          default: {
-            logger.info(
-              { src: 'plugin:n8n-workflow:action:create' },
-              'Intent classification unclear — re-showing preview'
-            );
-            const text = await formatActionResponse(
-              runtime,
-              'PREVIEW',
-              buildPreviewData(existingDraft.workflow)
-            );
-            if (callback) {
-              await callback({ text, success: true });
-            }
-            return { success: true, data: { awaitingUserInput: true } };
-          }
-        }
-      }
-
-      if (!userText) {
-        const text = await formatActionResponse(runtime, 'EMPTY_PROMPT', {});
-        if (callback) {
-          await callback({ text, success: false });
-        }
-        return { success: false };
-      }
-
-      return await generateAndPreview(
+  return userText
+    ? generateAndPreview(
         runtime,
         service,
         generationContext,
@@ -534,37 +371,233 @@ export const createWorkflowAction: Action & {
         cacheKey,
         message.id ?? '',
         callback
-      );
-    } catch (error) {
-      if (error instanceof UnsupportedIntegrationError) {
-        const text = await formatActionResponse(runtime, 'UNSUPPORTED_INTEGRATION', {
-          unsupported: error.unsupportedServices,
-          available: error.availableServices,
-        });
-        if (callback) {
-          await callback({ text, success: false });
-        }
-        return { success: false };
-      }
+      )
+    : sendCreateWorkflowEmptyPrompt(runtime, callback);
+}
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error(
-        { src: 'plugin:n8n-workflow:action:create' },
-        `Failed to create workflow: ${errorMessage}`
-      );
+async function getFreshWorkflowDraft(
+  runtime: IAgentRuntime,
+  cacheKey: string
+): Promise<WorkflowDraft | undefined> {
+  const draft = await runtime.getCache<WorkflowDraft>(cacheKey);
+  if (!draft || Date.now() - draft.createdAt <= DRAFT_TTL_MS) return draft;
+  logger.debug({ src: 'plugin:n8n-workflow:action:create' }, 'Draft expired, clearing cache');
+  await runtime.deleteCache(cacheKey);
+  return undefined;
+}
 
-      const text = await formatActionResponse(runtime, 'ERROR', {
-        error: errorMessage,
-      });
-      if (callback) {
-        await callback({ text, success: false });
-      }
-      return { success: false };
-    }
-  },
-
-  examples,
+type ExistingDraftHandlerArgs = {
+  runtime: IAgentRuntime;
+  service: N8nWorkflowService;
+  message: Memory;
+  userText: string;
+  userId: string;
+  cacheKey: string;
+  generationContext: string;
+  existingDraft: WorkflowDraft;
+  callback?: HandlerCallback;
 };
+
+async function handleExistingWorkflowDraft(args: ExistingDraftHandlerArgs): Promise<ActionResult> {
+  const { runtime, message, userText, existingDraft } = args;
+  if (existingDraft.originMessageId && existingDraft.originMessageId === message.id) {
+    logger.info(
+      { src: 'plugin:n8n-workflow:action:create' },
+      'Same message as draft origin — skipping'
+    );
+    return { success: true, data: { awaitingUserInput: true } };
+  }
+
+  const intentResult = await classifyDraftIntent(runtime, userText, existingDraft);
+  const effectiveIntent = draftEffectiveIntent(intentResult.intent, existingDraft);
+  logger.info(
+    { src: 'plugin:n8n-workflow:action:create' },
+    `Draft intent: ${intentResult.intent} — ${intentResult.reason}`
+  );
+
+  switch (effectiveIntent) {
+    case 'confirm':
+      return confirmWorkflowDraft(args);
+    case 'cancel':
+      return cancelWorkflowDraft(args);
+    case 'modify':
+      return modifyWorkflowDraft(args, intentResult.modificationRequest || userText);
+    case 'new':
+      return restartWorkflowDraft(args);
+    default:
+      return reshowWorkflowDraftPreview(runtime, existingDraft, args.callback);
+  }
+}
+
+function draftEffectiveIntent(
+  intent: Awaited<ReturnType<typeof classifyDraftIntent>>['intent'],
+  draft: WorkflowDraft
+): Awaited<ReturnType<typeof classifyDraftIntent>>['intent'] {
+  return intent === 'confirm' && draft.workflow._meta?.requiresClarification?.length
+    ? 'modify'
+    : intent;
+}
+
+async function confirmWorkflowDraft(args: ExistingDraftHandlerArgs): Promise<ActionResult> {
+  const { runtime, service, userId, cacheKey, existingDraft, callback } = args;
+  const result = await service.deployWorkflow(existingDraft.workflow, userId);
+  if (result.missingCredentials.length > 0) {
+    const text = await formatActionResponse(runtime, 'AUTH_REQUIRED', {
+      connections: result.missingCredentials.map((m) => ({
+        service: m.credType,
+        ...(m.authUrl && { authUrl: m.authUrl }),
+      })),
+    });
+    if (callback) await callback({ text, success: true });
+    return { success: true, data: { awaitingUserInput: true } };
+  }
+
+  await runtime.deleteCache(cacheKey);
+  const text = await formatActionResponse(runtime, 'DEPLOY_SUCCESS', {
+    workflowName: result.name,
+    workflowId: result.id,
+    nodeCount: result.nodeCount,
+    active: result.active,
+  });
+  if (callback) await callback({ text, success: true });
+  return { success: true, data: result as unknown as ProviderDataRecord };
+}
+
+async function cancelWorkflowDraft(args: ExistingDraftHandlerArgs): Promise<ActionResult> {
+  const { runtime, cacheKey, existingDraft, callback } = args;
+  await runtime.deleteCache(cacheKey);
+  const text = await formatActionResponse(runtime, 'CANCELLED', {
+    workflowName: existingDraft.workflow.name,
+  });
+  if (callback) await callback({ text, success: true });
+  return { success: true };
+}
+
+async function modifyWorkflowDraft(
+  args: ExistingDraftHandlerArgs,
+  modification: string
+): Promise<ActionResult> {
+  const { runtime, service, message, userId, cacheKey, existingDraft, callback } = args;
+  logger.info(
+    { src: 'plugin:n8n-workflow:action:create' },
+    `Modifying draft: ${modification.slice(0, 100)}`
+  );
+  const modifiedWorkflow = await service.modifyWorkflowDraft(existingDraft.workflow, modification, {
+    userId,
+  });
+  await runtime.setCache(cacheKey, {
+    workflow: modifiedWorkflow,
+    prompt: existingDraft.prompt,
+    userId,
+    createdAt: Date.now(),
+    originMessageId: message.id,
+  } satisfies WorkflowDraft);
+
+  if (modifiedWorkflow._meta?.requiresClarification?.length) {
+    const text = await formatActionResponse(runtime, 'CLARIFICATION', {
+      questions: coerceClarificationRequests(modifiedWorkflow._meta.requiresClarification).map(
+        (c) => c.question
+      ),
+    });
+    if (callback) await callback({ text, success: true });
+    return { success: true, data: { awaitingUserInput: true } };
+  }
+
+  const previewData = buildPreviewData(modifiedWorkflow);
+  const changes = diffNodeParams(existingDraft.workflow, modifiedWorkflow);
+  if (Object.keys(changes).length > 0) previewData.changes = changes;
+  const text = await formatActionResponse(runtime, 'PREVIEW', previewData);
+  if (callback) await callback({ text, success: true });
+  return { success: true, data: { awaitingUserInput: true } };
+}
+
+async function restartWorkflowDraft(args: ExistingDraftHandlerArgs): Promise<ActionResult> {
+  const {
+    runtime,
+    service,
+    userText,
+    userId,
+    cacheKey,
+    generationContext,
+    existingDraft,
+    callback,
+  } = args;
+  if (!userText) {
+    await runtime.deleteCache(cacheKey);
+    return sendCreateWorkflowEmptyPrompt(runtime, callback);
+  }
+  await runtime.deleteCache(cacheKey);
+  try {
+    return await generateAndPreview(
+      runtime,
+      service,
+      generationContext,
+      userId,
+      cacheKey,
+      args.message.id ?? '',
+      callback
+    );
+  } catch (genError) {
+    logger.warn(
+      { src: 'plugin:n8n-workflow:action:create' },
+      `New workflow generation failed — restoring previous draft: ${genError instanceof Error ? genError.message : String(genError)}`
+    );
+    await runtime.setCache(cacheKey, existingDraft);
+    const text = await formatActionResponse(runtime, 'PREVIEW', {
+      ...buildPreviewData(existingDraft.workflow),
+      restoredAfterFailure: true,
+    });
+    if (callback) await callback({ text, success: true });
+    return { success: true, data: { awaitingUserInput: true } };
+  }
+}
+
+async function reshowWorkflowDraftPreview(
+  runtime: IAgentRuntime,
+  draft: WorkflowDraft,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  logger.info(
+    { src: 'plugin:n8n-workflow:action:create' },
+    'Intent classification unclear — re-showing preview'
+  );
+  const text = await formatActionResponse(runtime, 'PREVIEW', buildPreviewData(draft.workflow));
+  if (callback) await callback({ text, success: true });
+  return { success: true, data: { awaitingUserInput: true } };
+}
+
+async function sendCreateWorkflowEmptyPrompt(
+  runtime: IAgentRuntime,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const text = await formatActionResponse(runtime, 'EMPTY_PROMPT', {});
+  if (callback) await callback({ text, success: false });
+  return { success: false };
+}
+
+async function handleCreateWorkflowError(
+  runtime: IAgentRuntime,
+  error: unknown,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  if (error instanceof UnsupportedIntegrationError) {
+    const text = await formatActionResponse(runtime, 'UNSUPPORTED_INTEGRATION', {
+      unsupported: error.unsupportedServices,
+      available: error.availableServices,
+    });
+    if (callback) await callback({ text, success: false });
+    return { success: false };
+  }
+
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  logger.error(
+    { src: 'plugin:n8n-workflow:action:create' },
+    `Failed to create workflow: ${errorMessage}`
+  );
+  const text = await formatActionResponse(runtime, 'ERROR', { error: errorMessage });
+  if (callback) await callback({ text, success: false });
+  return { success: false };
+}
 
 async function generateAndPreview(
   runtime: IAgentRuntime,

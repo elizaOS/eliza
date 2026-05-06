@@ -50,6 +50,31 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "dev.elizacloud.ai",
 ]);
 
+type StreamChatEvent = {
+  type?: string;
+  text?: string;
+  fullText?: string;
+  agentName?: string;
+  message?: string;
+  noResponseReason?: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    model?: string;
+  };
+};
+
+type StreamChatState = {
+  buffer: string;
+  fullText: string;
+  doneText: string | null;
+  doneAgentName: string | null;
+  doneNoResponseReason: "ignored" | null;
+  doneUsage?: ChatTokenUsage;
+  receivedDone: boolean;
+};
+
 function normalizeBaseUrl(value: string | null | undefined): string {
   const trimmed = value?.slice(0, 4096).trim() ?? "";
   let end = trimmed.length;
@@ -291,6 +316,187 @@ export class ElizaClient {
 
   // --- REST API ---
 
+  private resolveRequestUrl(path: string): string {
+    if (this.baseUrl) return `${this.baseUrl}${path}`;
+    if (typeof window === "undefined") return path;
+    const proto = window.location.protocol;
+    return proto === "http:" || proto === "https:"
+      ? new URL(path, window.location.origin).toString()
+      : path;
+  }
+
+  private async resolveRequestTransport(
+    requestUrl: string,
+  ): Promise<AgentRequestTransport> {
+    if (this.requestTransport !== fetchAgentTransport) {
+      return this.requestTransport;
+    }
+    return (
+      (await androidNativeAgentTransportForUrl(requestUrl)) ??
+      (await iosInProcessAgentTransportForUrl(requestUrl)) ??
+      nativeCloudHttpTransportForUrl(requestUrl) ??
+      this.requestTransport
+    );
+  }
+
+  private requestHeaders(
+    init: RequestInit | undefined,
+    token: string | null,
+  ): HeadersInit {
+    return {
+      "X-ElizaOS-Client-Id": this.clientId,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(this._uiLanguage
+        ? { "X-ElizaOS-UI-Language": this._uiLanguage }
+        : {}),
+      ...init?.headers,
+    };
+  }
+
+  private handleTransportError(
+    path: string,
+    timeoutMs: number,
+    timedOut: boolean,
+    signal: AbortSignal,
+    err: unknown,
+  ): never {
+    if (timedOut) {
+      throw new ApiError({
+        kind: "timeout",
+        path,
+        message: `Request timed out after ${timeoutMs}ms`,
+      });
+    }
+    if (signal.aborted) {
+      throw new ApiError({
+        kind: "network",
+        path,
+        message: "Request aborted",
+        cause: err,
+      });
+    }
+    if (err instanceof ApiError) throw err;
+    throw new ApiError({
+      kind: "network",
+      path,
+      message:
+        err instanceof Error && err.message
+          ? err.message
+          : "Network request failed",
+      cause: err,
+    });
+  }
+
+  private async executeRawRequest(
+    requestUrl: string,
+    path: string,
+    init: RequestInit | undefined,
+    token: string | null,
+    timeoutMs: number,
+  ): Promise<Response> {
+    if (init?.signal?.aborted) {
+      throw new ApiError({ kind: "network", path, message: "Request aborted" });
+    }
+
+    const abortController = new AbortController();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      abortController.abort();
+    }, timeoutMs);
+    const abortListener = () => abortController.abort();
+    init?.signal?.addEventListener("abort", abortListener, { once: true });
+
+    try {
+      const transport = await this.resolveRequestTransport(requestUrl);
+      return await transport.request(
+        requestUrl,
+        {
+          ...init,
+          signal: abortController.signal,
+          headers: this.requestHeaders(init, token),
+        },
+        { timeoutMs },
+      );
+    } catch (err) {
+      return this.handleTransportError(
+        path,
+        timeoutMs,
+        timedOut,
+        abortController.signal,
+        err,
+      );
+    } finally {
+      clearTimeout(timeoutId);
+      init?.signal?.removeEventListener("abort", abortListener);
+    }
+  }
+
+  private async retryUnauthorizedResponse(
+    response: Response,
+    requestUrl: string,
+    path: string,
+    init: RequestInit | undefined,
+    token: string | null,
+    timeoutMs: number,
+  ): Promise<Response> {
+    if (response.status !== 401) return response;
+    const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
+      requestUrl,
+      {
+        force: true,
+      },
+    );
+    const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
+    return retryToken && retryToken !== token
+      ? this.executeRawRequest(requestUrl, path, init, retryToken, timeoutMs)
+      : response;
+  }
+
+  private readRetryAfter(
+    response: Response,
+    body: Record<string, unknown> | null,
+  ): number | undefined {
+    const headerValue = response.headers.get("Retry-After");
+    const headerRetryAfter =
+      headerValue !== null && Number.isFinite(Number(headerValue))
+        ? Number(headerValue)
+        : undefined;
+    const rawBodyRetryAfter = body?.retryAfter;
+    const bodyRetryAfter =
+      typeof rawBodyRetryAfter === "number" &&
+      Number.isFinite(rawBodyRetryAfter)
+        ? rawBodyRetryAfter
+        : undefined;
+    return bodyRetryAfter ?? headerRetryAfter;
+  }
+
+  private async throwHttpError(
+    path: string,
+    response: Response,
+  ): Promise<void> {
+    const body = (await response
+      .json()
+      .catch(() => ({ error: response.statusText }))) as Record<
+      string,
+      unknown
+    > | null;
+    const message =
+      typeof body?.error === "string"
+        ? body.error
+        : typeof body?.message === "string"
+          ? body.message
+          : `HTTP ${response.status}`;
+    throw new ApiError({
+      kind: "http",
+      path,
+      status: response.status,
+      message,
+      code: typeof body?.code === "string" ? body.code : undefined,
+      retryAfter: this.readRetryAfter(response, body),
+    });
+  }
+
   protected async rawRequest(
     path: string,
     init?: RequestInit,
@@ -303,158 +509,23 @@ export class ElizaClient {
         message: "API not available (no HTTP origin)",
       });
     }
-    const requestUrl = (() => {
-      if (this.baseUrl) {
-        return `${this.baseUrl}${path}`;
-      }
-      if (typeof window !== "undefined") {
-        const proto = window.location.protocol;
-        if (proto === "http:" || proto === "https:") {
-          return new URL(path, window.location.origin).toString();
-        }
-      }
-      return path;
-    })();
-    const makeRequest = async (token: string | null): Promise<Response> => {
-      const timeoutMs = options?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
-      const abortController = new AbortController();
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      let timedOut = false;
-      let abortListener: (() => void) | undefined;
 
-      if (init?.signal?.aborted) {
-        throw new ApiError({
-          kind: "network",
-          path,
-          message: "Request aborted",
-        });
-      }
-
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        abortController.abort();
-      }, timeoutMs);
-
-      if (init?.signal) {
-        abortListener = () => {
-          abortController.abort();
-        };
-        init.signal.addEventListener("abort", abortListener, { once: true });
-      }
-
-      const requestInit: RequestInit = {
-        ...init,
-        signal: abortController.signal,
-        headers: {
-          "X-ElizaOS-Client-Id": this.clientId,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(this._uiLanguage
-            ? { "X-ElizaOS-UI-Language": this._uiLanguage }
-            : {}),
-          ...init?.headers,
-        },
-      };
-
-      try {
-        const transport =
-          this.requestTransport === fetchAgentTransport
-            ? ((await androidNativeAgentTransportForUrl(requestUrl)) ??
-              (await iosInProcessAgentTransportForUrl(requestUrl)) ??
-              nativeCloudHttpTransportForUrl(requestUrl) ??
-              this.requestTransport)
-            : this.requestTransport;
-        return await transport.request(requestUrl, requestInit, { timeoutMs });
-      } catch (err) {
-        if (timedOut) {
-          throw new ApiError({
-            kind: "timeout",
-            path,
-            message: `Request timed out after ${timeoutMs}ms`,
-          });
-        }
-        if (abortController.signal.aborted) {
-          throw new ApiError({
-            kind: "network",
-            path,
-            message: "Request aborted",
-            cause: err,
-          });
-        }
-        if (err instanceof ApiError) {
-          throw err;
-        }
-        throw new ApiError({
-          kind: "network",
-          path,
-          message:
-            err instanceof Error && err.message
-              ? err.message
-              : "Network request failed",
-          cause: err,
-        });
-      } finally {
-        if (timeoutId !== undefined) {
-          clearTimeout(timeoutId);
-        }
-        if (init?.signal && abortListener) {
-          init.signal.removeEventListener("abort", abortListener);
-        }
-      }
-    };
-
+    const requestUrl = this.resolveRequestUrl(path);
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
     const token =
       this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
-    let res = await makeRequest(token);
-    if (res.status === 401) {
-      const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
-        requestUrl,
-        { force: true },
-      );
-      const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
-      if (retryToken && retryToken !== token) {
-        res = await makeRequest(retryToken);
-      }
+    const response = await this.retryUnauthorizedResponse(
+      await this.executeRawRequest(requestUrl, path, init, token, timeoutMs),
+      requestUrl,
+      path,
+      init,
+      token,
+      timeoutMs,
+    );
+    if (!response.ok && !options?.allowNonOk) {
+      await this.throwHttpError(path, response);
     }
-    if (!res.ok && !options?.allowNonOk) {
-      const body = (await res
-        .json()
-        .catch(() => ({ error: res.statusText }))) as Record<
-        string,
-        unknown
-      > | null;
-      const message =
-        typeof body?.error === "string"
-          ? body.error
-          : typeof body?.message === "string"
-            ? body.message
-            : `HTTP ${res.status}`;
-      const code = typeof body?.code === "string" ? body.code : undefined;
-      // `Number(null) === 0` and `Number(undefined) === NaN`, so we must guard
-      // each source before coercing — otherwise an absent `Retry-After` header
-      // produces a spurious `retryAfter = 0` on every non-rate-limit error
-      // path, polluting the shared `ApiError` surface for unrelated callers.
-      const headerValue = res.headers.get("Retry-After");
-      const headerRetryAfter =
-        headerValue !== null && Number.isFinite(Number(headerValue))
-          ? Number(headerValue)
-          : undefined;
-      const rawBodyRetryAfter = body?.retryAfter;
-      const bodyRetryAfter =
-        typeof rawBodyRetryAfter === "number" &&
-        Number.isFinite(rawBodyRetryAfter)
-          ? rawBodyRetryAfter
-          : undefined;
-      const retryAfter = bodyRetryAfter ?? headerRetryAfter;
-      throw new ApiError({
-        kind: "http",
-        path,
-        status: res.status,
-        message,
-        code,
-        retryAfter,
-      });
-    }
-    return res;
+    return response;
   }
 
   async fetch<T>(
@@ -498,15 +569,125 @@ export class ElizaClient {
 
   // --- WebSocket ---
 
+  private markIosLocalAgentWsConnected(): void {
+    this.backoffMs = 500;
+    this.reconnectAttempt = 0;
+    this.disconnectedAt = null;
+    if (this.connectionState !== "connected") {
+      this.connectionState = "connected";
+      this.emitConnectionStateChange();
+    }
+  }
+
+  private resolveWebSocketEndpoint(): string | null {
+    let host: string;
+    let wsProtocol: "ws:" | "wss:";
+    if (this.baseUrl) {
+      const parsed = new URL(this.baseUrl);
+      host = parsed.host;
+      wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+    } else {
+      const loc = window.location;
+      if (loc.protocol !== "http:" && loc.protocol !== "https:") return null;
+      host = loc.host;
+      wsProtocol = loc.protocol === "https:" ? "wss:" : "ws:";
+    }
+    if (!host || this.shouldSkipImplicitNativeHost(host)) return null;
+    const params = new URLSearchParams({ clientId: this.clientId });
+    return `${wsProtocol}//${host}/ws?${params.toString()}`;
+  }
+
+  private shouldSkipImplicitNativeHost(host: string): boolean {
+    if (this.baseUrl) return false;
+    const hasPort = host.includes(":");
+    const isLoopback = host.startsWith("127.") || host.startsWith("localhost:");
+    return !hasPort && !isLoopback;
+  }
+
+  private emitWsReconnected(): void {
+    const handlers = this.wsHandlers.get("ws-reconnected");
+    if (!handlers) return;
+    for (const handler of handlers) {
+      handler({ type: "ws-reconnected" });
+    }
+  }
+
+  private flushWebSocketQueue(): void {
+    if (
+      this.wsSendQueue.length === 0 ||
+      this.ws?.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+    const pending = this.wsSendQueue;
+    this.wsSendQueue = [];
+    for (let i = 0; i < pending.length; i++) {
+      if (this.ws?.readyState !== WebSocket.OPEN) {
+        this.wsSendQueue = pending.slice(i).concat(this.wsSendQueue);
+        break;
+      }
+      try {
+        this.ws.send(pending[i]);
+      } catch {
+        this.wsSendQueue = pending.slice(i).concat(this.wsSendQueue);
+        break;
+      }
+    }
+  }
+
+  private handleWebSocketOpen(): void {
+    const token = this.apiToken;
+    if (token && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "auth", token }));
+    }
+    this.backoffMs = 500;
+    this.reconnectAttempt = 0;
+    this.disconnectedAt = null;
+    this.connectionState = "connected";
+    this.emitConnectionStateChange();
+    if (this.wsHasConnectedOnce) {
+      this.emitWsReconnected();
+    }
+    this.wsHasConnectedOnce = true;
+    this.flushWebSocketQueue();
+  }
+
+  private emitWsMessageData(data: Record<string, unknown>): void {
+    const type = data.type as string;
+    for (const handler of this.wsHandlers.get(type) ?? []) {
+      handler(data);
+    }
+    for (const handler of this.wsHandlers.get("*") ?? []) {
+      handler(data);
+    }
+  }
+
+  private handleWebSocketMessage(event: MessageEvent): void {
+    try {
+      const data = JSON.parse(event.data as string) as Record<string, unknown>;
+      this.emitWsMessageData(data);
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  private handleWebSocketClose(): void {
+    this.ws = null;
+    if (this.disconnectedAt === null) {
+      this.disconnectedAt = Date.now();
+    }
+    this.reconnectAttempt++;
+    this.connectionState =
+      this.reconnectAttempt >= this.maxReconnectAttempts
+        ? "failed"
+        : "reconnecting";
+    this.emitConnectionStateChange();
+    this.scheduleReconnect();
+  }
+
   connectWs(): void {
     if (isIosInProcessLocalAgentBase(this.baseUrl)) {
-      this.backoffMs = 500;
-      this.reconnectAttempt = 0;
-      this.disconnectedAt = null;
-      if (this.connectionState !== "connected") {
-        this.connectionState = "connected";
-        this.emitConnectionStateChange();
-      }
+      this.markIosLocalAgentWsConnected();
       return;
     }
 
@@ -517,129 +698,13 @@ export class ElizaClient {
       return;
     }
 
-    let host: string;
-    let wsProtocol: "ws:" | "wss:";
-    if (this.baseUrl) {
-      const parsed = new URL(this.baseUrl);
-      host = parsed.host;
-      wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
-    } else {
-      // In non-HTTP environments (electrobun://, file://, etc.)
-      // window.location.host may be empty or a non-routable placeholder like "-".
-      const loc = window.location;
-      if (loc.protocol !== "http:" && loc.protocol !== "https:") return;
-      host = loc.host;
-      wsProtocol = loc.protocol === "https:" ? "wss:" : "ws:";
-    }
-
-    if (!host) return;
-
-    // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
-    // is a dummy bundle host (e.g. "localhost" with no server behind it).
-    // Skip WS if we have no explicit baseUrl and the host doesn't look like a
-    // real backend (no port, not an IP, not a known API domain).
-    if (!this.baseUrl && typeof host === "string") {
-      const hasPort = host.includes(":");
-      const isLoopback =
-        host.startsWith("127.") || host.startsWith("localhost:");
-      if (!hasPort && !isLoopback) return;
-    }
-
-    let url = `${wsProtocol}//${host}/ws`;
-    const params = new URLSearchParams({ clientId: this.clientId });
-    url += `?${params.toString()}`;
-
+    const url = this.resolveWebSocketEndpoint();
+    if (!url) return;
     this.ws = new WebSocket(url);
-
-    this.ws.onopen = () => {
-      const token = this.apiToken;
-      if (token && this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "auth", token }));
-      }
-      this.backoffMs = 500;
-      // Reset connection state on successful connection
-      this.reconnectAttempt = 0;
-      this.disconnectedAt = null;
-      this.connectionState = "connected";
-      this.emitConnectionStateChange();
-
-      // Notify listeners when the WS reconnects (not on the first connect)
-      // so they can re-hydrate state that may have been lost during the gap.
-      if (this.wsHasConnectedOnce) {
-        const handlers = this.wsHandlers.get("ws-reconnected");
-        if (handlers) {
-          for (const handler of handlers) {
-            handler({ type: "ws-reconnected" });
-          }
-        }
-      }
-      this.wsHasConnectedOnce = true;
-      if (
-        this.wsSendQueue.length > 0 &&
-        this.ws?.readyState === WebSocket.OPEN
-      ) {
-        const pending = this.wsSendQueue;
-        this.wsSendQueue = [];
-        for (let i = 0; i < pending.length; i++) {
-          if (this.ws?.readyState !== WebSocket.OPEN) {
-            this.wsSendQueue = pending.slice(i).concat(this.wsSendQueue);
-            break;
-          }
-          try {
-            this.ws.send(pending[i]);
-          } catch {
-            this.wsSendQueue = pending.slice(i).concat(this.wsSendQueue);
-            break;
-          }
-        }
-      }
-    };
-
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data as string) as Record<
-          string,
-          unknown
-        >;
-        const type = data.type as string;
-        const handlers = this.wsHandlers.get(type);
-        if (handlers) {
-          for (const handler of handlers) {
-            handler(data);
-          }
-        }
-        // Also fire "all" handlers
-        const allHandlers = this.wsHandlers.get("*");
-        if (allHandlers) {
-          for (const handler of allHandlers) {
-            handler(data);
-          }
-        }
-      } catch {
-        // ignore parse errors
-      }
-    };
-
-    this.ws.onclose = () => {
-      this.ws = null;
-      // Track disconnection time if not already set
-      if (this.disconnectedAt === null) {
-        this.disconnectedAt = Date.now();
-      }
-      this.reconnectAttempt++;
-      // Update state based on attempt count
-      if (this.reconnectAttempt >= this.maxReconnectAttempts) {
-        this.connectionState = "failed";
-      } else {
-        this.connectionState = "reconnecting";
-      }
-      this.emitConnectionStateChange();
-      this.scheduleReconnect();
-    };
-
-    this.ws.onerror = () => {
-      // close handler will fire
-    };
+    this.ws.onopen = () => this.handleWebSocketOpen();
+    this.ws.onmessage = (event) => this.handleWebSocketMessage(event);
+    this.ws.onclose = () => this.handleWebSocketClose();
+    this.ws.onerror = () => {};
   }
 
   private scheduleReconnect(): void {
@@ -793,6 +858,139 @@ export class ElizaClient {
 
   // --- Streaming chat endpoint (used by chat domain methods) ---
 
+  private findSseEventBreak(
+    chunkBuffer: string,
+  ): { index: number; length: number } | null {
+    const lfBreak = chunkBuffer.indexOf("\n\n");
+    const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
+    if (lfBreak === -1 && crlfBreak === -1) return null;
+    if (lfBreak === -1) return { index: crlfBreak, length: 4 };
+    if (crlfBreak === -1) return { index: lfBreak, length: 2 };
+    return lfBreak < crlfBreak
+      ? { index: lfBreak, length: 2 }
+      : { index: crlfBreak, length: 4 };
+  }
+
+  private parseStreamChatPayload(line: string): StreamChatEvent | null {
+    const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
+    if (!payload) return null;
+    try {
+      const parsed = JSON.parse(payload) as StreamChatEvent;
+      return parsed.type || typeof parsed.text !== "string"
+        ? parsed
+        : { ...parsed, type: "token" };
+    } catch {
+      return null;
+    }
+  }
+
+  private applyStreamChatToken(
+    parsed: StreamChatEvent,
+    state: StreamChatState,
+    onToken: (token: string, accumulatedText?: string) => void,
+  ): void {
+    const chunk = parsed.text ?? "";
+    const nextFullText =
+      typeof parsed.fullText === "string"
+        ? parsed.fullText
+        : chunk
+          ? mergeStreamingText(state.fullText, chunk)
+          : state.fullText;
+    if (nextFullText === state.fullText) return;
+    state.fullText = nextFullText;
+    onToken(chunk, state.fullText);
+  }
+
+  private applyStreamChatDone(
+    parsed: StreamChatEvent,
+    state: StreamChatState,
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+  ): void {
+    state.receivedDone = true;
+    if (typeof parsed.fullText === "string") state.doneText = parsed.fullText;
+    if (typeof parsed.agentName === "string" && parsed.agentName.trim()) {
+      state.doneAgentName = parsed.agentName;
+    }
+    if (parsed.noResponseReason === "ignored") {
+      state.doneNoResponseReason = "ignored";
+    }
+    if (parsed.usage) {
+      state.doneUsage = {
+        promptTokens: parsed.usage.promptTokens ?? 0,
+        completionTokens: parsed.usage.completionTokens ?? 0,
+        totalTokens: parsed.usage.totalTokens ?? 0,
+        model: parsed.usage.model,
+      };
+    }
+    void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
+  }
+
+  private applyStreamChatEvent(
+    line: string,
+    state: StreamChatState,
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onToken: (token: string, accumulatedText?: string) => void,
+  ): void {
+    const parsed = this.parseStreamChatPayload(line);
+    if (!parsed) return;
+    if (parsed.type === "token") {
+      this.applyStreamChatToken(parsed, state, onToken);
+      return;
+    }
+    if (parsed.type === "done") {
+      this.applyStreamChatDone(parsed, state, reader);
+      return;
+    }
+    if (parsed.type === "error") {
+      throw new Error(parsed.message ?? "generation failed");
+    }
+  }
+
+  private readStreamChunk(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+  ): ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> {
+    const readPromise = reader.read();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const id = setTimeout(
+        () => reject(new Error("SSE idle timeout — no data for 60s")),
+        60_000,
+      );
+      void readPromise.finally(() => clearTimeout(id));
+    });
+    return Promise.race([readPromise, timeoutPromise]);
+  }
+
+  private flushSseEvents(
+    state: StreamChatState,
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onToken: (token: string, accumulatedText?: string) => void,
+  ): void {
+    let eventBreak = this.findSseEventBreak(state.buffer);
+    while (eventBreak) {
+      const rawEvent = state.buffer.slice(0, eventBreak.index);
+      state.buffer = state.buffer.slice(eventBreak.index + eventBreak.length);
+      for (const line of rawEvent.split(/\r?\n/)) {
+        if (line.startsWith("data:")) {
+          this.applyStreamChatEvent(line, state, reader, onToken);
+        }
+      }
+      eventBreak = this.findSseEventBreak(state.buffer);
+    }
+  }
+
+  private flushTrailingSseBuffer(
+    state: StreamChatState,
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onToken: (token: string, accumulatedText?: string) => void,
+  ): void {
+    if (!state.buffer.trim()) return;
+    for (const line of state.buffer.split(/\r?\n/)) {
+      if (line.startsWith("data:")) {
+        this.applyStreamChatEvent(line, state, reader, onToken);
+      }
+    }
+  }
+
   protected async streamChatEndpoint(
     path: string,
     text: string,
@@ -831,117 +1029,24 @@ export class ElizaClient {
 
     const decoder = new TextDecoder();
     const reader = res.body.getReader();
-    let buffer = "";
-    let fullText = "";
-    let doneText: string | null = null;
-    let doneAgentName: string | null = null;
-    let doneNoResponseReason: "ignored" | null = null;
-    let doneUsage: ChatTokenUsage | undefined;
-    let receivedDone = false;
-
-    const findSseEventBreak = (
-      chunkBuffer: string,
-    ): { index: number; length: number } | null => {
-      const lfBreak = chunkBuffer.indexOf("\n\n");
-      const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
-
-      if (lfBreak === -1 && crlfBreak === -1) return null;
-      if (lfBreak === -1) return { index: crlfBreak, length: 4 };
-      if (crlfBreak === -1) return { index: lfBreak, length: 2 };
-      return lfBreak < crlfBreak
-        ? { index: lfBreak, length: 2 }
-        : { index: crlfBreak, length: 4 };
-    };
-
-    const parseDataLine = (line: string): void => {
-      const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
-      if (!payload) return;
-
-      let parsed: {
-        type?: string;
-        text?: string;
-        fullText?: string;
-        agentName?: string;
-        message?: string;
-        noResponseReason?: string;
-        usage?: {
-          promptTokens?: number;
-          completionTokens?: number;
-          totalTokens?: number;
-          model?: string;
-        };
-      };
-      try {
-        parsed = JSON.parse(payload) as typeof parsed;
-      } catch {
-        return;
-      }
-
-      if (!parsed.type && typeof parsed.text === "string") {
-        parsed.type = "token";
-      }
-
-      if (parsed.type === "token") {
-        const chunk = parsed.text ?? "";
-        const nextFullText =
-          typeof parsed.fullText === "string"
-            ? parsed.fullText
-            : chunk
-              ? mergeStreamingText(fullText, chunk)
-              : fullText;
-        if (nextFullText === fullText) return;
-        fullText = nextFullText;
-        onToken(chunk, fullText);
-        return;
-      }
-
-      if (parsed.type === "done") {
-        receivedDone = true;
-        if (typeof parsed.fullText === "string") doneText = parsed.fullText;
-        if (typeof parsed.agentName === "string" && parsed.agentName.trim()) {
-          doneAgentName = parsed.agentName;
-        }
-        if (parsed.noResponseReason === "ignored") {
-          doneNoResponseReason = "ignored";
-        }
-        if (parsed.usage) {
-          doneUsage = {
-            promptTokens: parsed.usage.promptTokens ?? 0,
-            completionTokens: parsed.usage.completionTokens ?? 0,
-            totalTokens: parsed.usage.totalTokens ?? 0,
-            model: parsed.usage.model,
-          };
-        }
-        // Terminal event: stop reading immediately instead of waiting for the
-        // server to close the body (some stacks leave the stream open briefly).
-        void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
-        return;
-      }
-
-      if (parsed.type === "error") {
-        throw new Error(parsed.message ?? "generation failed");
-      }
+    const state: StreamChatState = {
+      buffer: "",
+      fullText: "",
+      doneText: null,
+      doneAgentName: null,
+      doneNoResponseReason: null,
+      receivedDone: false,
     };
 
     // Contract: the API must emit `data: {"type":"done",...}` or
     // `data: {"type":"error",...}` and then end the response. If the server
     // stalls mid-stream (e.g. LLM provider timeout without error propagation),
     // the idle timeout below aborts the read so the UI doesn't hang forever.
-    const SSE_IDLE_TIMEOUT_MS = 60_000;
     while (true) {
       let done = false;
       let value: Uint8Array | undefined;
       try {
-        const readPromise = reader.read();
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          const id = setTimeout(
-            () => reject(new Error("SSE idle timeout — no data for 60s")),
-            SSE_IDLE_TIMEOUT_MS,
-          );
-          // Clear timeout if the read resolves first
-          void readPromise.finally(() => clearTimeout(id));
-        });
-        ({ done, value } = await Promise.race([readPromise, timeoutPromise]));
+        ({ done, value } = await this.readStreamChunk(reader));
       } catch (streamErr) {
         console.warn("[api-client] SSE stream interrupted:", streamErr);
         void reader.cancel("elizaos-sse-idle-timeout").catch(() => {});
@@ -949,37 +1054,24 @@ export class ElizaClient {
       }
       if (done || !value) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      let eventBreak = findSseEventBreak(buffer);
-      while (eventBreak) {
-        const rawEvent = buffer.slice(0, eventBreak.index);
-        buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        for (const line of rawEvent.split(/\r?\n/)) {
-          if (!line.startsWith("data:")) continue;
-          parseDataLine(line);
-        }
-        eventBreak = findSseEventBreak(buffer);
-      }
+      state.buffer += decoder.decode(value, { stream: true });
+      this.flushSseEvents(state, reader, onToken);
     }
 
-    if (buffer.trim()) {
-      for (const line of buffer.split(/\r?\n/)) {
-        if (line.startsWith("data:")) parseDataLine(line);
-      }
-    }
+    this.flushTrailingSseBuffer(state, reader, onToken);
 
     const resolvedText =
-      doneNoResponseReason === "ignored"
+      state.doneNoResponseReason === "ignored"
         ? ""
-        : this.normalizeAssistantText(doneText ?? fullText);
+        : this.normalizeAssistantText(state.doneText ?? state.fullText);
     return {
       text: resolvedText,
-      agentName: doneAgentName ?? "Eliza",
-      completed: receivedDone,
-      ...(doneNoResponseReason
-        ? { noResponseReason: doneNoResponseReason }
+      agentName: state.doneAgentName ?? "Eliza",
+      completed: state.receivedDone,
+      ...(state.doneNoResponseReason
+        ? { noResponseReason: state.doneNoResponseReason }
         : {}),
-      ...(doneUsage ? { usage: doneUsage } : {}),
+      ...(state.doneUsage ? { usage: state.doneUsage } : {}),
     };
   }
 }

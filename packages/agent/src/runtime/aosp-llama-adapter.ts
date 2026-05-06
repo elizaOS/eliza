@@ -950,44 +950,23 @@ class AospLlamaAdapter implements AospLoader {
     this.hasDecoded = false;
   }
 
-  async generate(args: {
-    prompt: string;
-    stopSequences?: string[];
-    maxTokens?: number;
-    temperature?: number;
-  }): Promise<string> {
-    if (this.ctx === null || this.model === null || this.vocab === null) {
-      throw new Error("[aosp-llama] generate called before loadModel");
+  private clearKvCacheIfNeeded(ctx: Pointer): void {
+    if (!this.hasDecoded) return;
+    const memHandle = this.sym.llama_get_memory(ctx);
+    if (memHandle) {
+      this.sym.llama_memory_clear(memHandle, false);
     }
-    const ctx = this.ctx;
-    const vocab = this.vocab;
+  }
 
-    // 0. Reset KV cache for this turn. The b8198 cuttlefish build
-    // segfaults when llama_memory_clear runs on a freshly-initialized
-    // ctx (no positions yet), so we only wipe once we've decoded at
-    // least one batch. The first generate() / embed() against a fresh
-    // ctx skips the clear; subsequent calls always wipe before the
-    // first chunk so prompts can land cleanly without stacking on top
-    // of stale KV state.
-    if (this.hasDecoded) {
-      const memHandle = this.sym.llama_get_memory(ctx);
-      if (memHandle) {
-        this.sym.llama_memory_clear(memHandle, false);
-      }
-    }
-
-    // 1. Tokenize the prompt. Two-pass: ask for length (n_tokens_max=0,
-    // single-slot buffer — llama_tokenize never reads or writes through
-    // the pointer when the cap is zero, but bun:ffi's ptr() helper
-    // rejects zero-length TypedArrays with
-    // `ArrayBufferView must have a length > 0`. A length-1 probe is the
-    // smallest legal allocation that round-trips through ptr() without
-    // a runtime exception. Then alloc and fill on the second pass.
-    const promptBuf = encodeCString(args.prompt);
-    const promptByteLen = promptBuf.length - 1; // exclude NUL
+  private tokenizePrompt(prompt: string): {
+    tokens: Int32Array;
+    written: number;
+  } {
+    const promptBuf = encodeCString(prompt);
+    const promptByteLen = promptBuf.length - 1;
     const probe = new Int32Array(1);
     const requested = this.sym.llama_tokenize(
-      vocab,
+      this.vocab as Pointer,
       this.ffi.ptr(promptBuf),
       promptByteLen,
       this.ffi.ptr(probe),
@@ -995,15 +974,13 @@ class AospLlamaAdapter implements AospLoader {
       true,
       false,
     );
-    // llama_tokenize returns the negative of required length when n_tokens_max
-    // is too small. With n_tokens_max=0 we always get a negative number.
     const required = requested < 0 ? -requested : requested;
     if (required <= 0) {
       throw new Error("[aosp-llama] llama_tokenize returned zero tokens");
     }
     const tokens = new Int32Array(required);
     const written = this.sym.llama_tokenize(
-      vocab,
+      this.vocab as Pointer,
       this.ffi.ptr(promptBuf),
       promptByteLen,
       this.ffi.ptr(tokens),
@@ -1016,11 +993,10 @@ class AospLlamaAdapter implements AospLoader {
         `[aosp-llama] llama_tokenize second pass failed: ${written}`,
       );
     }
+    return { tokens, written };
+  }
 
-    // 2. Build a sampler chain: temp → top_p → dist (or greedy). The
-    // sampler_chain_params struct is single-field (no_perf bool); the
-    // shim materializes it with llama.cpp's default and we don't
-    // override.
+  private createSamplerChain(temperature: number): Pointer {
     const samplerParamsPtr =
       this.shim.eliza_llama_sampler_chain_params_default();
     if (!samplerParamsPtr) {
@@ -1037,26 +1013,221 @@ class AospLlamaAdapter implements AospLoader {
     if (!chain) {
       throw new Error("[aosp-llama] llama_sampler_chain_init returned NULL");
     }
-    const temperature = args.temperature ?? 0.7;
     if (temperature <= 0) {
       this.sym.llama_sampler_chain_add(
         chain,
         this.sym.llama_sampler_init_greedy(),
       );
-    } else {
-      this.sym.llama_sampler_chain_add(
-        chain,
-        this.sym.llama_sampler_init_temp(temperature),
-      );
-      this.sym.llama_sampler_chain_add(
-        chain,
-        this.sym.llama_sampler_init_top_p(0.9, 1),
-      );
-      this.sym.llama_sampler_chain_add(
-        chain,
-        this.sym.llama_sampler_init_dist(0xffffffff),
+      return chain;
+    }
+    this.sym.llama_sampler_chain_add(
+      chain,
+      this.sym.llama_sampler_init_temp(temperature),
+    );
+    this.sym.llama_sampler_chain_add(
+      chain,
+      this.sym.llama_sampler_init_top_p(0.9, 1),
+    );
+    this.sym.llama_sampler_chain_add(
+      chain,
+      this.sym.llama_sampler_init_dist(0xffffffff),
+    );
+    return chain;
+  }
+
+  private promptTokenWindow(
+    tokens: Int32Array,
+    written: number,
+    maxOutputReserve: number,
+  ): { promptTokens: Int32Array; promptLen: number } {
+    const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 2048);
+    const promptCapacity = Math.max(
+      1,
+      Math.floor((this.nCtx - maxOutputReserve - nBatch) * 0.75),
+    );
+    if (written <= promptCapacity) {
+      return { promptTokens: tokens, promptLen: written };
+    }
+    const head = written - promptCapacity;
+    logger.warn(
+      `[aosp-llama] prompt ${written} tokens > capacity ${promptCapacity} (n_ctx=${this.nCtx} - reserve ${maxOutputReserve}); dropping ${head} head tokens`,
+    );
+    return { promptTokens: tokens.subarray(head), promptLen: promptCapacity };
+  }
+
+  private async decodePromptChunk(
+    ctx: Pointer,
+    chunk: Int32Array,
+    offset: number,
+    promptLen: number,
+  ): Promise<void> {
+    const promptBatchPtr = this.shim.eliza_llama_batch_get_one(
+      this.ffi.ptr(chunk),
+      chunk.length,
+    );
+    if (!promptBatchPtr) {
+      throw new Error(
+        "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
       );
     }
+    const chunkStart = Date.now();
+    let decodeRc: number;
+    try {
+      decodeRc = this.shim.eliza_llama_decode(ctx, promptBatchPtr);
+    } finally {
+      this.shim.eliza_llama_batch_free(promptBatchPtr);
+    }
+    if (decodeRc !== 0) {
+      throw new Error(
+        `[aosp-llama] llama_decode (prompt chunk @${offset}/${promptLen}) returned ${decodeRc}`,
+      );
+    }
+    this.hasDecoded = true;
+    const chunkElapsedMs = Date.now() - chunkStart;
+    const tokPerSec =
+      chunkElapsedMs > 0 ? (chunk.length * 1000) / chunkElapsedMs : 0;
+    logger.info(
+      `[aosp-llama] decode chunk ${offset}+${chunk.length}/${promptLen}: ${chunkElapsedMs}ms (${tokPerSec.toFixed(1)} tok/s)`,
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  private async decodePromptTokens(
+    ctx: Pointer,
+    tokens: Int32Array,
+    written: number,
+    maxOutputReserve: number,
+  ): Promise<number> {
+    const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 2048);
+    const { promptTokens, promptLen } = this.promptTokenWindow(
+      tokens,
+      written,
+      maxOutputReserve,
+    );
+    const prefillStart = Date.now();
+    for (let offset = 0; offset < promptLen; offset += nBatch) {
+      const chunkLen = Math.min(nBatch, promptLen - offset);
+      await this.decodePromptChunk(
+        ctx,
+        promptTokens.subarray(offset, offset + chunkLen),
+        offset,
+        promptLen,
+      );
+    }
+    const prefillElapsedMs = Date.now() - prefillStart;
+    const prefillTokPerSec =
+      prefillElapsedMs > 0 ? (promptLen * 1000) / prefillElapsedMs : 0;
+    logger.info(
+      `[aosp-llama] prefill done: ${promptLen} tokens in ${prefillElapsedMs}ms (${prefillTokPerSec.toFixed(1)} tok/s overall)`,
+    );
+    return promptLen;
+  }
+
+  private trimStopSequence(
+    output: string,
+    stopSequences: string[],
+  ): {
+    output: string;
+    stopped: boolean;
+  } {
+    const stop = stopSequences.find((s) => s.length > 0 && output.endsWith(s));
+    return stop
+      ? { output: output.slice(0, -stop.length), stopped: true }
+      : { output, stopped: false };
+  }
+
+  private decodeGeneratedToken(ctx: Pointer, next: number): void {
+    const singleToken = new Int32Array([next]);
+    const stepBatchPtr = this.shim.eliza_llama_batch_get_one(
+      this.ffi.ptr(singleToken),
+      1,
+    );
+    if (!stepBatchPtr) {
+      throw new Error(
+        "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
+      );
+    }
+    let stepRc: number;
+    try {
+      stepRc = this.shim.eliza_llama_decode(ctx, stepBatchPtr);
+    } finally {
+      this.shim.eliza_llama_batch_free(stepBatchPtr);
+    }
+    if (stepRc !== 0) {
+      throw new Error(`[aosp-llama] llama_decode (step) returned ${stepRc}`);
+    }
+  }
+
+  private async generateOutputTokens(args: {
+    ctx: Pointer;
+    vocab: Pointer;
+    chain: Pointer;
+    maxTokens: number;
+    stopSequences: string[];
+  }): Promise<string> {
+    const pieceBuf = new Uint8Array(256);
+    let output = "";
+    const decodeStart = Date.now();
+    let lastTokRateLog = decodeStart;
+
+    for (let i = 0; i < args.maxTokens; i++) {
+      const next = this.sym.llama_sampler_sample(args.chain, args.ctx, -1);
+      if (this.sym.llama_vocab_is_eog(args.vocab, next)) break;
+      this.sym.llama_sampler_accept(args.chain, next);
+
+      const wrote = this.sym.llama_token_to_piece(
+        args.vocab,
+        next,
+        this.ffi.ptr(pieceBuf),
+        pieceBuf.length,
+        0,
+        false,
+      );
+      if (wrote > 0) {
+        output += new TextDecoder().decode(pieceBuf.subarray(0, wrote));
+        const trimmed = this.trimStopSequence(output, args.stopSequences);
+        output = trimmed.output;
+        if (trimmed.stopped) break;
+      }
+
+      this.decodeGeneratedToken(args.ctx, next);
+      if ((i & 3) === 3) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      const now = Date.now();
+      if (now - lastTokRateLog > 10_000) {
+        const elapsedMs = now - decodeStart;
+        const tokPerSec = elapsedMs > 0 ? ((i + 1) * 1000) / elapsedMs : 0;
+        logger.info(
+          `[aosp-llama] gen progress: ${i + 1}/${args.maxTokens} tokens, ${elapsedMs}ms (${tokPerSec.toFixed(1)} tok/s)`,
+        );
+        lastTokRateLog = now;
+      }
+    }
+    const decodeElapsedMs = Date.now() - decodeStart;
+    const decodeTokPerSec =
+      decodeElapsedMs > 0 ? (output.length * 1000) / decodeElapsedMs : 0;
+    logger.info(
+      `[aosp-llama] gen done: ${output.length} chars in ${decodeElapsedMs}ms (~${decodeTokPerSec.toFixed(1)} char/s)`,
+    );
+    return output;
+  }
+
+  async generate(args: {
+    prompt: string;
+    stopSequences?: string[];
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<string> {
+    if (this.ctx === null || this.model === null || this.vocab === null) {
+      throw new Error("[aosp-llama] generate called before loadModel");
+    }
+    const ctx = this.ctx;
+    const vocab = this.vocab;
+
+    this.clearKvCacheIfNeeded(ctx);
+    const { tokens, written } = this.tokenizePrompt(args.prompt);
+    const chain = this.createSamplerChain(args.temperature ?? 0.7);
 
     try {
       // 3. Decode the prompt batch.
@@ -1086,177 +1257,15 @@ class AospLlamaAdapter implements AospLoader {
       // Decode chunk size is bounded by n_batch (set in loadModel).
       // Reading it here mirrors the parameter that loadModel committed
       // to via eliza_llama_context_params_set_n_batch.
-      const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 2048);
       const maxOutputReserve = args.maxTokens ?? 512;
-      // Reserve maxOutputReserve + n_batch (one ubatch slack) + an
-      // empirical 25 % safety margin. llama.cpp's Flash-Attention sliding
-      // memory allocator on the b8198 build returns
-      //   decode: failed to find a memory slot for batch of size N
-      // when the per-sequence KV slots get fragmented by repeated
-      // back-to-back chunks even with positions still nominally free,
-      // so we leave generous headroom rather than push to the limit.
-      const promptCapacity = Math.max(
-        1,
-        Math.floor((this.nCtx - maxOutputReserve - nBatch) * 0.75),
-      );
-      let promptTokens = tokens;
-      let promptLen = written;
-      if (written > promptCapacity) {
-        const head = written - promptCapacity;
-        promptTokens = tokens.subarray(head);
-        promptLen = promptCapacity;
-        logger.warn(
-          `[aosp-llama] prompt ${written} tokens > capacity ${promptCapacity} (n_ctx=${this.nCtx} - reserve ${maxOutputReserve}); dropping ${head} head tokens`,
-        );
-      }
-      const prefillStart = Date.now();
-      for (let offset = 0; offset < promptLen; offset += nBatch) {
-        const chunkLen = Math.min(nBatch, promptLen - offset);
-        const chunk = promptTokens.subarray(offset, offset + chunkLen);
-        const promptBatchPtr = this.shim.eliza_llama_batch_get_one(
-          this.ffi.ptr(chunk),
-          chunkLen,
-        );
-        if (!promptBatchPtr) {
-          throw new Error(
-            "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
-          );
-        }
-        const chunkStart = Date.now();
-        let decodeRc: number;
-        try {
-          decodeRc = this.shim.eliza_llama_decode(ctx, promptBatchPtr);
-        } finally {
-          this.shim.eliza_llama_batch_free(promptBatchPtr);
-        }
-        if (decodeRc !== 0) {
-          throw new Error(
-            `[aosp-llama] llama_decode (prompt chunk @${offset}/${promptLen}) returned ${decodeRc}`,
-          );
-        }
-        // Mark the ctx as decoded so subsequent generate()/embed() calls
-        // will issue the leading llama_memory_clear safely.
-        this.hasDecoded = true;
-        // Per-chunk token-rate logging. Inform operators of real
-        // throughput on whatever hardware is hosting bun. On cuttlefish
-        // CPU + Llama-3.2-1B / Q4_K_M we expect ~30–60 tok/s prefill;
-        // anything below 5 tok/s indicates n_threads not set, KV cache
-        // thrashing, or the SIGSYS shim degrading something. Log at
-        // info level so it's always visible without bumping LOG_LEVEL.
-        const chunkElapsedMs = Date.now() - chunkStart;
-        const tokPerSec =
-          chunkElapsedMs > 0 ? (chunkLen * 1000) / chunkElapsedMs : 0;
-        logger.info(
-          `[aosp-llama] decode chunk ${offset}+${chunkLen}/${promptLen}: ${chunkElapsedMs}ms (${tokPerSec.toFixed(1)} tok/s)`,
-        );
-        // Yield to the event loop between chunks so the service
-        // watchdog's /api/health probe (HEALTH_TIMEOUT_MS=30s) can
-        // complete. Without this yield bun's single-threaded loop
-        // sits inside FFI for the entire prompt decode (minutes on
-        // cuttlefish CPU) and HTTP requests pile up at the listener.
-        // setImmediate yields after I/O processing has had a chance
-        // to run; queueMicrotask would yield AFTER the current task,
-        // which on bun is the FFI call that just returned, so the
-        // listener still gets to handle queued requests. We use
-        // setImmediate as the canonical "yield to the event loop"
-        // signal.
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      }
-      const prefillElapsedMs = Date.now() - prefillStart;
-      const prefillTokPerSec =
-        prefillElapsedMs > 0 ? (promptLen * 1000) / prefillElapsedMs : 0;
-      logger.info(
-        `[aosp-llama] prefill done: ${promptLen} tokens in ${prefillElapsedMs}ms (${prefillTokPerSec.toFixed(1)} tok/s overall)`,
-      );
-
-      // 4. Token loop.
-      const maxTokens = args.maxTokens ?? 512;
-      const stopSequences = args.stopSequences ?? [];
-      const pieceBuf = new Uint8Array(256);
-      const singleToken = new Int32Array(1);
-      let output = "";
-      const decodeStart = Date.now();
-      let lastTokRateLog = decodeStart;
-
-      for (let i = 0; i < maxTokens; i++) {
-        const next = this.sym.llama_sampler_sample(chain, ctx, -1);
-        if (this.sym.llama_vocab_is_eog(vocab, next)) break;
-        this.sym.llama_sampler_accept(chain, next);
-
-        const wrote = this.sym.llama_token_to_piece(
-          vocab,
-          next,
-          this.ffi.ptr(pieceBuf),
-          pieceBuf.length,
-          0,
-          false,
-        );
-        if (wrote > 0) {
-          const piece = new TextDecoder().decode(pieceBuf.subarray(0, wrote));
-          output += piece;
-          if (stopSequences.some((s) => s.length > 0 && output.endsWith(s))) {
-            for (const stop of stopSequences) {
-              if (stop.length > 0 && output.endsWith(stop)) {
-                output = output.slice(0, -stop.length);
-                break;
-              }
-            }
-            break;
-          }
-        }
-
-        singleToken[0] = next;
-        const stepBatchPtr = this.shim.eliza_llama_batch_get_one(
-          this.ffi.ptr(singleToken),
-          1,
-        );
-        if (!stepBatchPtr) {
-          throw new Error(
-            "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
-          );
-        }
-        let stepRc: number;
-        try {
-          stepRc = this.shim.eliza_llama_decode(ctx, stepBatchPtr);
-        } finally {
-          this.shim.eliza_llama_batch_free(stepBatchPtr);
-        }
-        if (stepRc !== 0) {
-          throw new Error(
-            `[aosp-llama] llama_decode (step) returned ${stepRc}`,
-          );
-        }
-        // Yield every 4 generated tokens. setImmediate every step
-        // would cut sampling throughput by ~30 %; a stride of 4 stays
-        // close to peak generation rate while keeping the listener
-        // wake-up budget tight enough that the watchdog's HTTP probe
-        // (30 s timeout) can complete mid-decode without the
-        // BUSY-but-not-DEAD distinction being needed. Llama-3.2-1B on
-        // cvd CPU lands ~3–8 tok/s, so 4 tokens = ~1 s per yield.
-        if ((i & 3) === 3) {
-          await new Promise<void>((resolve) => setImmediate(resolve));
-        }
-        // Log generation rate every ~10 s so operators can watch
-        // throughput without polling the bun process. Frequent enough
-        // to detect a stall, infrequent enough to avoid spamming logs
-        // (10 s × ~5 tok/s = ~50 tokens between log lines).
-        const now = Date.now();
-        if (now - lastTokRateLog > 10_000) {
-          const elapsedMs = now - decodeStart;
-          const tokPerSec = elapsedMs > 0 ? ((i + 1) * 1000) / elapsedMs : 0;
-          logger.info(
-            `[aosp-llama] gen progress: ${i + 1}/${maxTokens} tokens, ${elapsedMs}ms (${tokPerSec.toFixed(1)} tok/s)`,
-          );
-          lastTokRateLog = now;
-        }
-      }
-      const decodeElapsedMs = Date.now() - decodeStart;
-      const decodeTokPerSec =
-        decodeElapsedMs > 0 ? (output.length * 1000) / decodeElapsedMs : 0;
-      logger.info(
-        `[aosp-llama] gen done: ${output.length} chars in ${decodeElapsedMs}ms (~${decodeTokPerSec.toFixed(1)} char/s)`,
-      );
-      return output;
+      await this.decodePromptTokens(ctx, tokens, written, maxOutputReserve);
+      return this.generateOutputTokens({
+        ctx,
+        vocab,
+        chain,
+        maxTokens: args.maxTokens ?? 512,
+        stopSequences: args.stopSequences ?? [],
+      });
     } finally {
       this.sym.llama_sampler_free(chain);
     }

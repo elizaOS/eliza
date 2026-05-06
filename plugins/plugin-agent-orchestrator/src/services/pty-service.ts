@@ -2279,62 +2279,71 @@ export class PTYService {
     };
   }
 
-  private emitEvent(sessionId: string, event: string, data: unknown): void {
-    if (
+  private shouldSuppressEvent(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): boolean {
+    return (
       shouldSuppressCodexExecPtyManagerEvent({
         codexExecMode:
           this.sessionMetadata.get(sessionId)?.codexExecMode === true,
         event,
         data,
-      })
-    ) {
-      return;
-    }
-    if (
-      event === "blocked" &&
-      this.shouldSuppressBlockedEvent(sessionId, data)
-    ) {
-      return;
-    }
-    if (
+      }) ||
+      (event === "blocked" && this.shouldSuppressBlockedEvent(sessionId, data))
+    );
+  }
+
+  private shouldClearCompletionReconcile(event: string): boolean {
+    return (
       event === "ready" ||
       event === "task_complete" ||
       event === "stopped" ||
       event === "error"
-    ) {
-      this.clearCompletionReconcile(sessionId);
-    }
-    if (event === "stopped" || event === "error") {
-      const authRecoveryTimer = this.authRecoveryTimers.get(sessionId);
-      if (authRecoveryTimer) {
-        clearInterval(authRecoveryTimer);
-        this.authRecoveryTimers.delete(sessionId);
-      }
-      const liveSession = this.manager?.get(sessionId);
-      const createdAt =
-        liveSession?.startedAt instanceof Date
-          ? liveSession.startedAt
-          : liveSession?.startedAt
-            ? new Date(liveSession.startedAt)
-            : new Date();
-      const lastActivityAt =
-        liveSession?.lastActivityAt instanceof Date
-          ? liveSession.lastActivityAt
-          : liveSession?.lastActivityAt
-            ? new Date(liveSession.lastActivityAt)
-            : new Date();
-      const reason =
-        event === "stopped"
-          ? (data as { reason?: string } | undefined)?.reason
-          : (data as { message?: string } | undefined)?.message;
-      this.terminalSessionStates.set(sessionId, {
-        status: event,
-        createdAt,
-        lastActivityAt,
-        reason,
-      });
-    }
+    );
+  }
 
+  private coerceSessionDate(value: unknown): Date {
+    if (value instanceof Date) return value;
+    return value ? new Date(value as string | number) : new Date();
+  }
+
+  private clearAuthRecoveryTimer(sessionId: string): void {
+    const authRecoveryTimer = this.authRecoveryTimers.get(sessionId);
+    if (!authRecoveryTimer) return;
+    clearInterval(authRecoveryTimer);
+    this.authRecoveryTimers.delete(sessionId);
+  }
+
+  private terminalEventReason(
+    event: string,
+    data: unknown,
+  ): string | undefined {
+    const payload = data as { reason?: string; message?: string } | undefined;
+    return event === "stopped" ? payload?.reason : payload?.message;
+  }
+
+  private recordTerminalEventState(
+    sessionId: string,
+    event: "stopped" | "error",
+    data: unknown,
+  ): void {
+    this.clearAuthRecoveryTimer(sessionId);
+    const liveSession = this.manager?.get(sessionId);
+    this.terminalSessionStates.set(sessionId, {
+      status: event,
+      createdAt: this.coerceSessionDate(liveSession?.startedAt),
+      lastActivityAt: this.coerceSessionDate(liveSession?.lastActivityAt),
+      reason: this.terminalEventReason(event, data),
+    });
+  }
+
+  private emitRawEventCallbacks(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): void {
     for (const callback of this.eventCallbacks) {
       try {
         callback(sessionId, event, data);
@@ -2342,6 +2351,13 @@ export class PTYService {
         this.log(`Event callback error: ${err}`);
       }
     }
+  }
+
+  private emitNormalizedEventCallbacks(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): void {
     const normalized = normalizeCoordinatorEvent(sessionId, event, data);
     if (!normalized) return;
     for (const callback of this.normalizedEventCallbacks) {
@@ -2351,6 +2367,18 @@ export class PTYService {
         this.log(`Normalized event callback error: ${err}`);
       }
     }
+  }
+
+  private emitEvent(sessionId: string, event: string, data: unknown): void {
+    if (this.shouldSuppressEvent(sessionId, event, data)) return;
+    if (this.shouldClearCompletionReconcile(event)) {
+      this.clearCompletionReconcile(sessionId);
+    }
+    if (event === "stopped" || event === "error") {
+      this.recordTerminalEventState(sessionId, event, data);
+    }
+    this.emitRawEventCallbacks(sessionId, event, data);
+    this.emitNormalizedEventCallbacks(sessionId, event, data);
   }
 
   // ─── Metrics ───
@@ -2427,61 +2455,92 @@ export class PTYService {
     sessionId: string,
     data: unknown,
   ): boolean {
-    const payload = data as
-      | {
-          promptInfo?: unknown;
-          source?: unknown;
-        }
-      | undefined;
-    if (payload?.source !== "pty_manager") {
-      return false;
-    }
-    const promptInfo =
-      payload.promptInfo &&
-      typeof payload.promptInfo === "object" &&
-      !Array.isArray(payload.promptInfo)
-        ? (payload.promptInfo as Record<string, unknown>)
-        : undefined;
+    const promptInfo = this.blockedPromptInfo(data);
     if (!promptInfo) {
       return false;
     }
-    const promptType =
-      typeof promptInfo.type === "string" ? promptInfo.type.toLowerCase() : "";
-    if (promptType && promptType !== "unknown") {
+    if (this.hasKnownBlockedPromptType(promptInfo)) {
       return false;
     }
-    const promptText =
-      typeof promptInfo.prompt === "string"
-        ? cleanForChat(promptInfo.prompt)
-        : "";
-    if (!promptText) {
-      return false;
-    }
-    const compactPrompt = promptText.replace(/\s+/g, " ").trim();
-    const hasWorkspacePath = /(\/private\/|\/var\/folders\/)/.test(
-      compactPrompt,
-    );
-    const looksLikeWorkingStatus =
-      /working \(\d+s .*esc to interrupt\)/i.test(compactPrompt) ||
-      /messages to be submitted after next tool call/i.test(compactPrompt) ||
-      /find and fix a bug in @filename/i.test(compactPrompt) ||
-      /use \/skills to list available skills/i.test(compactPrompt);
-    const looksLikeSpinnerTail =
-      /\b\d+% left\b/i.test(compactPrompt) && hasWorkspacePath;
-    const looksLikeSpinnerFragments =
-      hasWorkspacePath &&
-      /(?:\bW Wo\b|• Wor|• Work|Worki|Workin|Working)/i.test(compactPrompt);
-    if (
-      !looksLikeWorkingStatus &&
-      !looksLikeSpinnerTail &&
-      !looksLikeSpinnerFragments
-    ) {
+    const compactPrompt = this.compactBlockedPromptText(promptInfo);
+    if (!compactPrompt || !this.looksLikeBlockedPromptNoise(compactPrompt)) {
       return false;
     }
     this.log(
       `Suppressing false blocked prompt noise for ${sessionId}: ${compactPrompt.slice(0, 160)}`,
     );
     return true;
+  }
+
+  private blockedPromptInfo(data: unknown): Record<string, unknown> | null {
+    const payload = data as
+      | {
+          promptInfo?: unknown;
+          source?: unknown;
+        }
+      | undefined;
+    if (payload?.source !== "pty_manager") return null;
+    if (
+      !payload.promptInfo ||
+      typeof payload.promptInfo !== "object" ||
+      Array.isArray(payload.promptInfo)
+    ) {
+      return null;
+    }
+    return payload.promptInfo as Record<string, unknown>;
+  }
+
+  private hasKnownBlockedPromptType(
+    promptInfo: Record<string, unknown>,
+  ): boolean {
+    const promptType =
+      typeof promptInfo.type === "string" ? promptInfo.type.toLowerCase() : "";
+    return Boolean(promptType && promptType !== "unknown");
+  }
+
+  private compactBlockedPromptText(
+    promptInfo: Record<string, unknown>,
+  ): string {
+    const promptText =
+      typeof promptInfo.prompt === "string"
+        ? cleanForChat(promptInfo.prompt)
+        : "";
+    return promptText.replace(/\s+/g, " ").trim();
+  }
+
+  private looksLikeBlockedPromptNoise(compactPrompt: string): boolean {
+    return (
+      this.looksLikeWorkingStatusPrompt(compactPrompt) ||
+      this.looksLikeSpinnerTailPrompt(compactPrompt) ||
+      this.looksLikeSpinnerFragmentPrompt(compactPrompt)
+    );
+  }
+
+  private looksLikeWorkingStatusPrompt(compactPrompt: string): boolean {
+    return (
+      /working \(\d+s .*esc to interrupt\)/i.test(compactPrompt) ||
+      /messages to be submitted after next tool call/i.test(compactPrompt) ||
+      /find and fix a bug in @filename/i.test(compactPrompt) ||
+      /use \/skills to list available skills/i.test(compactPrompt)
+    );
+  }
+
+  private looksLikeSpinnerTailPrompt(compactPrompt: string): boolean {
+    return (
+      /\b\d+% left\b/i.test(compactPrompt) &&
+      this.hasTransientWorkspacePath(compactPrompt)
+    );
+  }
+
+  private looksLikeSpinnerFragmentPrompt(compactPrompt: string): boolean {
+    return (
+      this.hasTransientWorkspacePath(compactPrompt) &&
+      /(?:\bW Wo\b|• Wor|• Work|Worki|Workin|Working)/i.test(compactPrompt)
+    );
+  }
+
+  private hasTransientWorkspacePath(value: string): boolean {
+    return /(\/private\/|\/var\/folders\/)/.test(value);
   }
 
   private responseLooksMeaningful(
@@ -2519,90 +2578,69 @@ export class PTYService {
     return false;
   }
 
-  private async reconcileBusySessionFromOutput(
-    sessionId: string,
-  ): Promise<void> {
-    if (!this.manager) {
-      this.clearCompletionReconcile(sessionId);
-      return;
-    }
-
+  private getBusyAdapterSession(sessionId: string): {
+    liveSession: SessionHandle;
+    agentType: AdapterType;
+    adapter: BaseCodingAdapter;
+  } | null {
+    if (!this.manager) return null;
     const liveSession = this.manager.get(sessionId);
-    if (!liveSession) {
-      this.clearCompletionReconcile(sessionId);
-      return;
-    }
-
-    if (liveSession.status !== "busy") {
-      this.clearCompletionReconcile(sessionId);
-      return;
-    }
-
+    if (!liveSession || liveSession.status !== "busy") return null;
     const agentType = this.sessionMetadata.get(sessionId)?.agentType;
-    if (!this.isAdapterBackedAgentType(agentType)) {
-      this.clearCompletionReconcile(sessionId);
-      return;
-    }
+    if (!this.isAdapterBackedAgentType(agentType)) return null;
+    return { liveSession, agentType, adapter: this.getAdapter(agentType) };
+  }
 
-    const adapter = this.getAdapter(agentType);
-    const rawOutput = await this.getSessionOutput(sessionId);
-    if (!rawOutput.trim()) {
-      this.completionSignalSince.delete(sessionId);
-      return;
-    }
+  private adapterOutputIsWaiting(
+    adapter: BaseCodingAdapter,
+    rawOutput: string,
+  ): boolean {
+    return (
+      !rawOutput.trim() ||
+      Boolean(adapter.detectLoading?.(rawOutput)) ||
+      adapter.detectLogin(rawOutput).required ||
+      adapter.detectBlockingPrompt(rawOutput).detected
+    );
+  }
 
-    if (adapter.detectLoading?.(rawOutput)) {
-      this.completionSignalSince.delete(sessionId);
-      return;
-    }
-
-    if (adapter.detectLogin(rawOutput).required) {
-      this.completionSignalSince.delete(sessionId);
-      return;
-    }
-
-    if (adapter.detectBlockingPrompt(rawOutput).detected) {
-      this.completionSignalSince.delete(sessionId);
-      return;
-    }
-
+  private detectAdapterCompletion(
+    adapter: BaseCodingAdapter,
+    rawOutput: string,
+  ): boolean {
     const completionSignal = adapter.detectTaskComplete
       ? adapter.detectTaskComplete(rawOutput)
       : adapter.detectReady(rawOutput);
-    if (!completionSignal) {
-      this.completionSignalSince.delete(sessionId);
-      return;
-    }
+    return Boolean(completionSignal);
+  }
 
-    const previewResponse = this.taskResponseMarkers.has(sessionId)
+  private previewCompletionResponse(
+    sessionId: string,
+    rawOutput: string,
+  ): string {
+    return this.taskResponseMarkers.has(sessionId)
       ? peekTaskResponse(
           sessionId,
           this.sessionOutputBuffers,
           this.taskResponseMarkers,
         )
       : cleanForChat(rawOutput);
-    if (!this.responseLooksMeaningful(previewResponse, rawOutput)) {
-      this.completionSignalSince.delete(sessionId);
-      return;
-    }
+  }
 
+  private stableCompletionSignalSeen(sessionId: string): boolean {
     const firstSeenAt = this.completionSignalSince.get(sessionId);
     if (firstSeenAt === undefined) {
       this.completionSignalSince.set(sessionId, Date.now());
-      return;
+      return false;
     }
+    return Date.now() - firstSeenAt >= 2500;
+  }
 
-    if (Date.now() - firstSeenAt < 2500) {
-      return;
-    }
-
-    const response = this.taskResponseMarkers.has(sessionId)
-      ? captureTaskResponse(
-          sessionId,
-          this.sessionOutputBuffers,
-          this.taskResponseMarkers,
-        )
-      : previewResponse;
+  private finishReconciledSession(
+    sessionId: string,
+    liveSession: SessionHandle,
+    agentType: AdapterType,
+    response: string,
+  ): void {
     const durationMs = liveSession.startedAt
       ? Date.now() - new Date(liveSession.startedAt).getTime()
       : 0;
@@ -2621,5 +2659,49 @@ export class PTYService {
       response,
       source: "output_reconcile",
     });
+  }
+
+  private async reconcileBusySessionFromOutput(
+    sessionId: string,
+  ): Promise<void> {
+    const session = this.getBusyAdapterSession(sessionId);
+    if (!session) {
+      this.clearCompletionReconcile(sessionId);
+      return;
+    }
+
+    const rawOutput = await this.getSessionOutput(sessionId);
+    if (
+      this.adapterOutputIsWaiting(session.adapter, rawOutput) ||
+      !this.detectAdapterCompletion(session.adapter, rawOutput)
+    ) {
+      this.completionSignalSince.delete(sessionId);
+      return;
+    }
+
+    const previewResponse = this.previewCompletionResponse(
+      sessionId,
+      rawOutput,
+    );
+    if (!this.responseLooksMeaningful(previewResponse, rawOutput)) {
+      this.completionSignalSince.delete(sessionId);
+      return;
+    }
+
+    if (!this.stableCompletionSignalSeen(sessionId)) return;
+
+    const response = this.taskResponseMarkers.has(sessionId)
+      ? captureTaskResponse(
+          sessionId,
+          this.sessionOutputBuffers,
+          this.taskResponseMarkers,
+        )
+      : previewResponse;
+    this.finishReconciledSession(
+      sessionId,
+      session.liveSession,
+      session.agentType,
+      response,
+    );
   }
 }

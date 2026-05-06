@@ -921,8 +921,55 @@ function ensureAndroidMainActivityUrlSchemeFilter(xml) {
   return xml.replace(mainActivityRe, `$1${authFilter}$2`);
 }
 
-function overlayAndroid() {
-  const srcJava = path.join(
+const ANDROID_JAVA_SOURCE_FILES = [
+  "GatewayConnectionService.java",
+  "MainActivity.java",
+  "ElizaAgentService.java",
+  "ElizaAssistActivity.java",
+  "ElizaBootReceiver.java",
+  "ElizaBrowserActivity.java",
+  "ElizaCalendarActivity.java",
+  "ElizaCameraActivity.java",
+  "ElizaClockActivity.java",
+  "ElizaContactsActivity.java",
+  "ElizaDialActivity.java",
+  "ElizaInCallService.java",
+  "ElizaMmsReceiver.java",
+  "ElizaRespondViaMessageService.java",
+  "ElizaSmsComposeActivity.java",
+  "ElizaSmsReceiver.java",
+];
+
+const ANDROID_COMPONENTS_TO_REMOVE = [
+  "ElizaDialActivity",
+  "ElizaAssistActivity",
+  "ElizaInCallService",
+  "ElizaSmsReceiver",
+  "ElizaMmsReceiver",
+  "ElizaRespondViaMessageService",
+  "ElizaSmsComposeActivity",
+  "ElizaBootReceiver",
+  "ElizaBrowserActivity",
+  "ElizaContactsActivity",
+  "ElizaCameraActivity",
+  "ElizaClockActivity",
+  "ElizaCalendarActivity",
+];
+
+const ANDROID_COMPONENT_CLASSES_TO_REMOVE = [
+  ...ANDROID_COMPONENTS_TO_REMOVE,
+  "MiladyDialActivity",
+  "MiladyAssistActivity",
+  "MiladyInCallService",
+  "MiladySmsReceiver",
+  "MiladyMmsReceiver",
+  "MiladyRespondViaMessageService",
+  "MiladySmsComposeActivity",
+  "MiladyBootReceiver",
+];
+
+function androidJavaSourceDir() {
+  return path.join(
     platformsDir,
     "android",
     "app",
@@ -933,9 +980,10 @@ function overlayAndroid() {
     "elizaos",
     "app",
   );
-  const gradlePath = path.join(androidDir, "app", "build.gradle");
-  const androidPackage = APP.appId;
-  const dstJava = path.join(
+}
+
+function androidPackageJavaDir(androidPackage) {
+  return path.join(
     androidDir,
     "app",
     "src",
@@ -943,219 +991,136 @@ function overlayAndroid() {
     "java",
     packageNameToPath(androidPackage),
   );
-  const legacyJava = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "java",
-    "ai",
-    "elizaos",
-    "app",
-  );
-  const appIdJava = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "java",
-    ...APP.appId.split("."),
-  );
+}
 
-  if (fs.existsSync(srcJava)) {
-    removeStaleAndroidJavaSourceRoots(dstJava);
-    for (const staleJava of [legacyJava, appIdJava]) {
-      if (staleJava !== dstJava) {
-        fs.rmSync(staleJava, { recursive: true, force: true });
-      }
+function removeAndroidJavaSourceAliases(dstJava, androidPackage) {
+  const javaRoot = path.join(androidDir, "app", "src", "main", "java");
+  for (const staleJava of [
+    path.join(javaRoot, "ai", "elizaos", "app"),
+    path.join(javaRoot, ...androidPackage.split(".")),
+  ]) {
+    if (staleJava !== dstJava) {
+      fs.rmSync(staleJava, { recursive: true, force: true });
     }
-    fs.mkdirSync(dstJava, { recursive: true });
-    for (const file of [
-      "GatewayConnectionService.java",
-      "MainActivity.java",
-      "ElizaAgentService.java",
-      "ElizaAssistActivity.java",
-      "ElizaBootReceiver.java",
-      "ElizaBrowserActivity.java",
-      "ElizaCalendarActivity.java",
-      "ElizaCameraActivity.java",
-      "ElizaClockActivity.java",
-      "ElizaContactsActivity.java",
-      "ElizaDialActivity.java",
-      "ElizaInCallService.java",
-      "ElizaMmsReceiver.java",
-      "ElizaRespondViaMessageService.java",
-      "ElizaSmsComposeActivity.java",
-      "ElizaSmsReceiver.java",
-    ]) {
-      const src = path.join(srcJava, file);
-      if (!fs.existsSync(src)) continue;
-      let code = fs.readFileSync(src, "utf8");
-      code = code.replace(
-        /^package\s+ai\.elizaos\.app;/m,
-        `package ${androidPackage};`,
-      );
-      code = code.replaceAll(
-        "ai.elizaos.app.action.",
-        `${androidPackage}.action.`,
-      );
-      code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
-      code = code.replaceAll(
-        "elizaOS Gateway",
-        `${escapeJavaString(APP.appName)} Gateway`,
-      );
-      code = code.replaceAll(
-        "Shows elizaOS gateway connection status",
-        `Shows ${escapeJavaString(APP.appName)} gateway connection status`,
-      );
-      if (file === "MainActivity.java") {
-        code = injectBrandUserAgentMarkers(code, APP.userAgentMarkers ?? []);
-      }
-      fs.writeFileSync(path.join(dstJava, file), code, "utf8");
-    }
-    console.log("[mobile-build] Overlaid Android Java sources.");
   }
+}
 
-  // Merge AndroidManifest.xml
-  const manifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
+function rewriteAndroidJavaSource(code, file, androidPackage) {
+  let rewritten = code
+    .replace(/^package\s+ai\.elizaos\.app;/m, `package ${androidPackage};`)
+    .replaceAll("ai.elizaos.app.action.", `${androidPackage}.action.`)
+    .replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`)
+    .replaceAll("elizaOS Gateway", `${escapeJavaString(APP.appName)} Gateway`)
+    .replaceAll(
+      "Shows elizaOS gateway connection status",
+      `Shows ${escapeJavaString(APP.appName)} gateway connection status`,
+    );
+  if (file === "MainActivity.java") {
+    rewritten = injectBrandUserAgentMarkers(
+      rewritten,
+      APP.userAgentMarkers ?? [],
+    );
+  }
+  return rewritten;
+}
+
+function overlayAndroidJavaSources(androidPackage) {
+  const srcJava = androidJavaSourceDir();
+  if (!fs.existsSync(srcJava)) return;
+
+  const dstJava = androidPackageJavaDir(androidPackage);
+  removeStaleAndroidJavaSourceRoots(dstJava);
+  removeAndroidJavaSourceAliases(dstJava, androidPackage);
+  fs.mkdirSync(dstJava, { recursive: true });
+
+  for (const file of ANDROID_JAVA_SOURCE_FILES) {
+    const src = path.join(srcJava, file);
+    if (!fs.existsSync(src)) continue;
+    const code = rewriteAndroidJavaSource(
+      fs.readFileSync(src, "utf8"),
+      file,
+      androidPackage,
+    );
+    fs.writeFileSync(path.join(dstJava, file), code, "utf8");
+  }
+  console.log("[mobile-build] Overlaid Android Java sources.");
+}
+
+function ensureCoreAndroidManifestEntries(xml) {
+  let nextXml = xml;
+  if (!nextXml.includes("usesCleartextTraffic")) {
+    nextXml = nextXml.replace(
+      "<application",
+      '<application\n        android:usesCleartextTraffic="true"',
+    );
+  }
+  if (!nextXml.includes("<queries>")) {
+    nextXml = nextXml.replace(
+      /(\s*)<application/,
+      '\n    <queries>\n        <package android:name="com.google.android.apps.healthdata" />\n    </queries>\n\n    <application',
+    );
+  }
+  nextXml = appendMissingAndroidManifestBlock(
+    nextXml,
+    "android.hardware.telephony",
+    '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
   );
-  if (fs.existsSync(manifestPath)) {
-    let xml = fs.readFileSync(manifestPath, "utf8");
-    let dirty = false;
+  return ensureAndroidMainActivityUrlSchemeFilter(
+    ensureElizaOsActivityFilters(nextXml),
+  );
+}
 
-    if (!xml.includes("usesCleartextTraffic")) {
-      xml = xml.replace(
-        "<application",
-        '<application\n        android:usesCleartextTraffic="true"',
-      );
-      dirty = true;
-    }
-    if (!xml.includes("<queries>")) {
-      xml = xml.replace(
-        /(\s*)<application/,
-        '\n    <queries>\n        <package android:name="com.google.android.apps.healthdata" />\n    </queries>\n\n    <application',
-      );
-      dirty = true;
-    }
-    xml = appendMissingAndroidManifestBlock(
-      xml,
-      "android.hardware.telephony",
-      '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
-    );
-    const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml);
-    if (withElizaOsActivityFilters !== xml) {
-      xml = withElizaOsActivityFilters;
-      dirty = true;
-    }
-    const withUrlSchemeFilter = ensureAndroidMainActivityUrlSchemeFilter(xml);
-    if (withUrlSchemeFilter !== xml) {
-      xml = withUrlSchemeFilter;
-      dirty = true;
-    }
-    const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
-    const gatewayServicePattern =
-      /\n\s*<service\b[^>]*android:name="[^"]*GatewayConnectionService"[^>]*\/>\s*/g;
-    const withoutGatewayServices = xml.replace(gatewayServicePattern, "\n");
-    if (withoutGatewayServices !== xml) {
-      xml = withoutGatewayServices;
-      dirty = true;
-    }
-    xml = xml.replace(
-      "</application>",
-      `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
-    );
-    dirty = true;
-
-    // ElizaAgentService — special-use foreground service that owns the
-    // local Eliza agent process. Nested <property> tag carries the Android
-    // 14+ specialUse subtype. Pattern matches both self-closing and
-    // explicit-close forms so re-runs collapse cleanly.
-    const agentServiceName = `${androidPackage}.ElizaAgentService`;
-    const agentServiceSelfClosingPattern =
-      /\n\s*<service\b[^>]*android:name="[^"]*ElizaAgentService"[^>]*\/>\s*/g;
-    const agentServicePairedPattern =
-      /\n\s*<service\b[^>]*android:name="[^"]*ElizaAgentService"[\s\S]*?<\/service>\s*/g;
-    const withoutAgentServiceSelfClose = xml.replace(
-      agentServiceSelfClosingPattern,
+function removeExistingAndroidServiceBlocks(xml, serviceClassName) {
+  return xml
+    .replace(
+      new RegExp(
+        `\\n\\s*<service\\b[^>]*android:name="[^"]*${serviceClassName}"[^>]*/>\\s*`,
+        "g",
+      ),
+      "\n",
+    )
+    .replace(
+      new RegExp(
+        `\\n\\s*<service\\b[^>]*android:name="[^"]*${serviceClassName}"[\\s\\S]*?<\\/service>\\s*`,
+        "g",
+      ),
       "\n",
     );
-    if (withoutAgentServiceSelfClose !== xml) {
-      xml = withoutAgentServiceSelfClose;
-      dirty = true;
-    }
-    const withoutAgentServicePaired = xml.replace(
-      agentServicePairedPattern,
-      "\n",
+}
+
+function appendAndroidCoreServices(xml, androidPackage) {
+  let nextXml = removeExistingAndroidServiceBlocks(
+    xml,
+    "GatewayConnectionService",
+  );
+  nextXml = removeExistingAndroidServiceBlocks(nextXml, "ElizaAgentService");
+  nextXml = nextXml.replace(
+    "</application>",
+    `\n        <service\n            android:name="${androidPackage}.GatewayConnectionService"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
+  );
+  return nextXml.replace(
+    "</application>",
+    `\n        <service\n            android:name="${androidPackage}.ElizaAgentService"\n            android:exported="false"\n            android:foregroundServiceType="specialUse">\n            <property\n                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n                android:value="local-agent-runtime" />\n        </service>\n    </application>`,
+  );
+}
+
+function removeAndroidApplicationComponents(xml, androidPackage) {
+  let nextXml = xml;
+  for (const component of ANDROID_COMPONENTS_TO_REMOVE) {
+    nextXml = removeApplicationComponentBlock(
+      nextXml,
+      `${androidPackage}.${component}`,
     );
-    if (withoutAgentServicePaired !== xml) {
-      xml = withoutAgentServicePaired;
-      dirty = true;
-    }
-    xml = xml.replace(
-      "</application>",
-      `\n        <service\n            android:name="${agentServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="specialUse">\n            <property\n                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n                android:value="local-agent-runtime" />\n        </service>\n    </application>`,
-    );
-    dirty = true;
-    for (const component of [
-      "ElizaDialActivity",
-      "ElizaAssistActivity",
-      "ElizaInCallService",
-      "ElizaSmsReceiver",
-      "ElizaMmsReceiver",
-      "ElizaRespondViaMessageService",
-      "ElizaSmsComposeActivity",
-      "ElizaBootReceiver",
-      "ElizaBrowserActivity",
-      "ElizaContactsActivity",
-      "ElizaCameraActivity",
-      "ElizaClockActivity",
-      "ElizaCalendarActivity",
-    ]) {
-      const nextXml = removeApplicationComponentBlock(
-        xml,
-        `${androidPackage}.${component}`,
-      );
-      if (nextXml !== xml) {
-        xml = nextXml;
-        dirty = true;
-      }
-    }
-    for (const component of [
-      "ElizaDialActivity",
-      "ElizaAssistActivity",
-      "ElizaInCallService",
-      "ElizaSmsReceiver",
-      "ElizaMmsReceiver",
-      "ElizaRespondViaMessageService",
-      "ElizaSmsComposeActivity",
-      "ElizaBootReceiver",
-      "ElizaBrowserActivity",
-      "ElizaContactsActivity",
-      "ElizaCameraActivity",
-      "ElizaClockActivity",
-      "ElizaCalendarActivity",
-      "MiladyDialActivity",
-      "MiladyAssistActivity",
-      "MiladyInCallService",
-      "MiladySmsReceiver",
-      "MiladyMmsReceiver",
-      "MiladyRespondViaMessageService",
-      "MiladySmsComposeActivity",
-      "MiladyBootReceiver",
-    ]) {
-      const nextXml = removeApplicationComponentClassBlock(xml, component);
-      if (nextXml !== xml) {
-        xml = nextXml;
-        dirty = true;
-      }
-    }
-    xml = appendMissingApplicationBlock(
-      xml,
+  }
+  for (const component of ANDROID_COMPONENT_CLASSES_TO_REMOVE) {
+    nextXml = removeApplicationComponentClassBlock(nextXml, component);
+  }
+  return nextXml;
+}
+
+function androidApplicationBlocks(androidPackage) {
+  return [
+    [
       `${androidPackage}.ElizaDialActivity`,
       `
         <activity
@@ -1172,9 +1137,8 @@ function overlayAndroid() {
                 <data android:scheme="tel" />
             </intent-filter>
         </activity>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaAssistActivity`,
       `
         <activity
@@ -1186,9 +1150,8 @@ function overlayAndroid() {
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaInCallService`,
       `
         <service
@@ -1205,9 +1168,8 @@ function overlayAndroid() {
                 <action android:name="android.telecom.InCallService" />
             </intent-filter>
         </service>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaSmsReceiver`,
       `
         <receiver
@@ -1218,9 +1180,8 @@ function overlayAndroid() {
                 <action android:name="android.provider.Telephony.SMS_DELIVER" />
             </intent-filter>
         </receiver>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaMmsReceiver`,
       `
         <receiver
@@ -1232,9 +1193,8 @@ function overlayAndroid() {
                 <data android:mimeType="application/vnd.wap.mms-message" />
             </intent-filter>
         </receiver>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaRespondViaMessageService`,
       `
         <service
@@ -1249,9 +1209,8 @@ function overlayAndroid() {
                 <data android:scheme="mmsto" />
             </intent-filter>
         </service>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaSmsComposeActivity`,
       `
         <activity
@@ -1267,9 +1226,8 @@ function overlayAndroid() {
                 <data android:scheme="mmsto" />
             </intent-filter>
         </activity>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaBootReceiver`,
       `
         <receiver
@@ -1281,10 +1239,8 @@ function overlayAndroid() {
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>`,
-    );
-    // Browser: replaces stripped Browser2 as the only http(s) handler.
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaBrowserActivity`,
       `
         <activity
@@ -1303,10 +1259,8 @@ function overlayAndroid() {
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
-    );
-    // Contacts: replaces stripped Contacts. Handles content://contacts.
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaContactsActivity`,
       `
         <activity
@@ -1332,10 +1286,8 @@ function overlayAndroid() {
                 <data android:mimeType="vnd.android.cursor.item/person" />
             </intent-filter>
         </activity>`,
-    );
-    // Camera: replaces stripped Camera2. STILL_IMAGE_CAMERA + IMAGE_CAPTURE.
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaCameraActivity`,
       `
         <activity
@@ -1360,10 +1312,8 @@ function overlayAndroid() {
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
-    );
-    // Clock: replaces stripped DeskClock. SET_ALARM is critical.
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaClockActivity`,
       `
         <activity
@@ -1396,10 +1346,8 @@ function overlayAndroid() {
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
-    );
-    // Calendar: replaces stripped Calendar.
-    xml = appendMissingApplicationBlock(
-      xml,
+    ],
+    [
       `${androidPackage}.ElizaCalendarActivity`,
       `
         <activity
@@ -1428,79 +1376,118 @@ function overlayAndroid() {
                 <data android:mimeType="vnd.android.cursor.item/event" />
             </intent-filter>
         </activity>`,
-    );
-    dirty = true;
-    for (const perm of ANDROID_PERMISSIONS) {
-      const full = `android.permission.${perm}`;
-      if (!xml.includes(full)) {
-        xml = xml.replace(
-          "</manifest>",
-          `    <uses-permission android:name="${full}" />\n</manifest>`,
-        );
-        dirty = true;
-      }
-    }
-    // Storage permissions with maxSdkVersion
-    if (!xml.includes("WRITE_EXTERNAL_STORAGE")) {
-      xml = xml.replace(
+    ],
+  ];
+}
+
+function appendAndroidApplicationBlocks(xml, androidPackage) {
+  let nextXml = xml;
+  for (const [marker, block] of androidApplicationBlocks(androidPackage)) {
+    nextXml = appendMissingApplicationBlock(nextXml, marker, block);
+  }
+  return nextXml;
+}
+
+function ensureAndroidManifestPermissions(xml) {
+  let nextXml = xml;
+  for (const perm of ANDROID_PERMISSIONS) {
+    const full = `android.permission.${perm}`;
+    if (!nextXml.includes(full)) {
+      nextXml = nextXml.replace(
         "</manifest>",
-        '    <uses-permission\n        android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n        android:maxSdkVersion="28" />\n</manifest>',
-      );
-      dirty = true;
-    }
-    if (!xml.includes("READ_EXTERNAL_STORAGE")) {
-      xml = xml.replace(
-        "</manifest>",
-        '    <uses-permission\n        android:name="android.permission.READ_EXTERNAL_STORAGE"\n        android:maxSdkVersion="32" />\n</manifest>',
-      );
-      dirty = true;
-    }
-    if (dirty) {
-      fs.writeFileSync(manifestPath, xml, "utf8");
-      console.log(
-        "[mobile-build] Merged permissions and service into AndroidManifest.xml.",
+        `    <uses-permission android:name="${full}" />\n</manifest>`,
       );
     }
   }
+  if (!nextXml.includes("WRITE_EXTERNAL_STORAGE")) {
+    nextXml = nextXml.replace(
+      "</manifest>",
+      '    <uses-permission\n        android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n        android:maxSdkVersion="28" />\n</manifest>',
+    );
+  }
+  if (!nextXml.includes("READ_EXTERNAL_STORAGE")) {
+    nextXml = nextXml.replace(
+      "</manifest>",
+      '    <uses-permission\n        android:name="android.permission.READ_EXTERNAL_STORAGE"\n        android:maxSdkVersion="32" />\n</manifest>',
+    );
+  }
+  return nextXml;
+}
 
-  // Copy ProGuard rules, rewriting the elizaOS default package to match the
-  // app's actual namespace. Without this rewrite, R8 may strip Eliza-only
-  // manifest-referenced classes (Dial/Assist/InCall/Boot) when the app is
-  // namespaced as e.g. com.elizaai.eliza.
+function mergeAndroidManifest(androidPackage) {
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (!fs.existsSync(manifestPath)) return;
+
+  const original = fs.readFileSync(manifestPath, "utf8");
+  const xml = ensureAndroidManifestPermissions(
+    appendAndroidApplicationBlocks(
+      removeAndroidApplicationComponents(
+        appendAndroidCoreServices(
+          ensureCoreAndroidManifestEntries(original),
+          androidPackage,
+        ),
+        androidPackage,
+      ),
+      androidPackage,
+    ),
+  );
+  if (xml !== original) {
+    fs.writeFileSync(manifestPath, xml, "utf8");
+    console.log(
+      "[mobile-build] Merged permissions and service into AndroidManifest.xml.",
+    );
+  }
+}
+
+function copyAndroidProguardRules(androidPackage) {
   const srcPro = path.join(
     platformsDir,
     "android",
     "app",
     "proguard-rules.pro",
   );
-  if (fs.existsSync(srcPro)) {
-    let proguardRules = fs.readFileSync(srcPro, "utf8");
-    if (androidPackage && androidPackage !== "ai.elizaos.app") {
-      proguardRules = proguardRules.replaceAll(
-        "ai.elizaos.app.**",
-        `${androidPackage}.**`,
-      );
-    }
-    fs.writeFileSync(
-      path.join(androidDir, "app", "proguard-rules.pro"),
-      proguardRules,
-      "utf8",
-    );
-    console.log("[mobile-build] Copied ProGuard rules.");
-  }
+  if (!fs.existsSync(srcPro)) return;
 
-  // Enable release minification
-  if (fs.existsSync(gradlePath)) {
-    let g = fs.readFileSync(gradlePath, "utf8");
-    if (g.includes("minifyEnabled false")) {
-      g = g.replace(
-        "minifyEnabled false",
-        "minifyEnabled true\n            shrinkResources true",
-      );
-      fs.writeFileSync(gradlePath, g, "utf8");
-      console.log("[mobile-build] Enabled release minification.");
-    }
+  let proguardRules = fs.readFileSync(srcPro, "utf8");
+  if (androidPackage && androidPackage !== "ai.elizaos.app") {
+    proguardRules = proguardRules.replaceAll(
+      "ai.elizaos.app.**",
+      `${androidPackage}.**`,
+    );
   }
+  fs.writeFileSync(
+    path.join(androidDir, "app", "proguard-rules.pro"),
+    proguardRules,
+    "utf8",
+  );
+  console.log("[mobile-build] Copied ProGuard rules.");
+}
+
+function enableAndroidReleaseMinification(gradlePath) {
+  if (!fs.existsSync(gradlePath)) return;
+  let gradle = fs.readFileSync(gradlePath, "utf8");
+  if (!gradle.includes("minifyEnabled false")) return;
+  gradle = gradle.replace(
+    "minifyEnabled false",
+    "minifyEnabled true\n            shrinkResources true",
+  );
+  fs.writeFileSync(gradlePath, gradle, "utf8");
+  console.log("[mobile-build] Enabled release minification.");
+}
+
+function overlayAndroid() {
+  const gradlePath = path.join(androidDir, "app", "build.gradle");
+  const androidPackage = APP.appId;
+  overlayAndroidJavaSources(androidPackage);
+  mergeAndroidManifest(androidPackage);
+  copyAndroidProguardRules(androidPackage);
+  enableAndroidReleaseMinification(gradlePath);
 }
 
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
@@ -2185,6 +2172,53 @@ function resolveBrandSources() {
   };
 }
 
+function readAssetContentsJson(contentsPath) {
+  return JSON.parse(fs.readFileSync(contentsPath, "utf8"));
+}
+
+async function generateIosIconAssets(assetDir, imageTool, iconSource) {
+  if (!iconSource) return;
+  const iconSetDir = path.join(assetDir, "AppIcon.appiconset");
+  const contentsPath = path.join(iconSetDir, "Contents.json");
+  if (!fs.existsSync(contentsPath)) return;
+
+  const contents = readAssetContentsJson(contentsPath);
+  for (const image of contents.images ?? []) {
+    if (!image.filename || !image.size || !image.scale) continue;
+    const [width] = String(image.size).split("x");
+    const scale = Number.parseFloat(String(image.scale));
+    const pixels = Math.round(Number.parseFloat(width) * scale);
+    if (!Number.isFinite(pixels) || pixels <= 0) continue;
+    await writeCoverPng(
+      imageTool,
+      iconSource,
+      path.join(iconSetDir, image.filename),
+      pixels,
+      pixels,
+      { flattenBackground: "#000000" },
+    );
+  }
+}
+
+async function generateIosSplashAssets(assetDir, imageTool, splashSource) {
+  if (!splashSource) return;
+  const splashSetDir = path.join(assetDir, "Splash.imageset");
+  const contentsPath = path.join(splashSetDir, "Contents.json");
+  if (!fs.existsSync(contentsPath)) return;
+
+  const contents = readAssetContentsJson(contentsPath);
+  for (const image of contents.images ?? []) {
+    if (!image.filename) continue;
+    await writeCoverPng(
+      imageTool,
+      splashSource,
+      path.join(splashSetDir, image.filename),
+      2732,
+      2732,
+    );
+  }
+}
+
 async function generateIosBrandAssets() {
   const assetDir = path.join(iosDir, "App", "Assets.xcassets");
   if (!fs.existsSync(assetDir)) return;
@@ -2193,48 +2227,8 @@ async function generateIosBrandAssets() {
   if (!iconSource && !splashSource) return;
 
   const imageTool = await loadImageToolForBrandAssets("iOS");
-
-  if (iconSource) {
-    const iconSetDir = path.join(assetDir, "AppIcon.appiconset");
-    const contentsPath = path.join(iconSetDir, "Contents.json");
-    if (fs.existsSync(contentsPath)) {
-      const contents = JSON.parse(fs.readFileSync(contentsPath, "utf8"));
-      for (const image of contents.images ?? []) {
-        if (!image.filename || !image.size || !image.scale) continue;
-        const [width] = String(image.size).split("x");
-        const scale = Number.parseFloat(String(image.scale));
-        const pixels = Math.round(Number.parseFloat(width) * scale);
-        if (!Number.isFinite(pixels) || pixels <= 0) continue;
-        await writeCoverPng(
-          imageTool,
-          iconSource,
-          path.join(iconSetDir, image.filename),
-          pixels,
-          pixels,
-          { flattenBackground: "#000000" },
-        );
-      }
-    }
-  }
-
-  if (splashSource) {
-    const splashSetDir = path.join(assetDir, "Splash.imageset");
-    const contentsPath = path.join(splashSetDir, "Contents.json");
-    if (fs.existsSync(contentsPath)) {
-      const contents = JSON.parse(fs.readFileSync(contentsPath, "utf8"));
-      for (const image of contents.images ?? []) {
-        if (!image.filename) continue;
-        await writeCoverPng(
-          imageTool,
-          splashSource,
-          path.join(splashSetDir, image.filename),
-          2732,
-          2732,
-        );
-      }
-    }
-  }
-
+  await generateIosIconAssets(assetDir, imageTool, iconSource);
+  await generateIosSplashAssets(assetDir, imageTool, splashSource);
   console.log(`[mobile-build] Generated iOS brand assets for ${APP.appName}.`);
 }
 

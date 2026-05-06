@@ -226,7 +226,32 @@ async function generateTextWithModel(
   logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
   logger.log(prompt);
 
-  const reasoning = isReasoningModel(modelName);
+  const response = await requestResponsesApi(runtime, modelType, modelName, prompt, params);
+  const data = await parseResponsesApiResponse(response);
+  assertResponsesApiOk(response, data);
+
+  if (data.usage) {
+    emitModelUsageEvent(runtime, modelType, prompt, {
+      inputTokens: data.usage.input_tokens ?? 0,
+      outputTokens: data.usage.output_tokens ?? 0,
+      totalTokens: data.usage.total_tokens ?? 0,
+    });
+  }
+
+  const text = extractResponsesOutputText(data);
+  if (!text.trim()) {
+    throw new Error("elizaOS Cloud returned no text response");
+  }
+
+  return text;
+}
+
+function buildResponsesApiBody(
+  runtime: IAgentRuntime,
+  modelName: string,
+  prompt: string,
+  params: GenerateTextParams
+): Record<string, unknown> {
   const input: Array<{
     role: "system" | "user";
     content: Array<{ type: "input_text"; text: string }>;
@@ -247,62 +272,59 @@ async function generateTextWithModel(
     input,
     max_output_tokens: params.maxTokens ?? 8192,
   };
-  if (!reasoning && typeof params.temperature === "number") {
+  if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
+  return requestBody;
+}
 
-  const response = await createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+async function requestResponsesApi(
+  runtime: IAgentRuntime,
+  modelType: TextModelType,
+  modelName: string,
+  prompt: string,
+  params: GenerateTextParams
+): Promise<Response> {
+  return createCloudApiClient(runtime).requestRaw("POST", "/responses", {
     headers: {
       "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
       "X-Eliza-Model-Type": modelType,
     },
-    json: requestBody,
+    json: buildResponsesApiBody(runtime, modelName, prompt, params),
   });
+}
+
+async function parseResponsesApiResponse(response: Response): Promise<ResponsesApiResponse> {
   const responseText = await response.text();
-  let data: ResponsesApiResponse = {};
-  if (responseText) {
-    try {
-      data = JSON.parse(responseText) as ResponsesApiResponse;
-    } catch (parseErr) {
-      logger.error(
-        `[ELIZAOS_CLOUD] Failed to parse responses JSON: ${
-          parseErr instanceof Error ? parseErr.message : String(parseErr)
-        }`
-      );
-    }
+  if (!responseText) return {};
+  try {
+    return JSON.parse(responseText) as ResponsesApiResponse;
+  } catch (parseErr) {
+    logger.error(
+      `[ELIZAOS_CLOUD] Failed to parse responses JSON: ${
+        parseErr instanceof Error ? parseErr.message : String(parseErr)
+      }`
+    );
+    return {};
   }
+}
 
-  if (!response.ok) {
-    const errorBody = typeof data === "object" && data ? data.error : undefined;
-    const errorMessage =
-      typeof errorBody?.message === "string" && errorBody.message.trim()
-        ? errorBody.message.trim()
-        : `elizaOS Cloud error ${response.status}`;
-    const requestError = new Error(errorMessage) as Error & {
-      status?: number;
-      error?: unknown;
-    };
-    requestError.status = response.status;
-    if (errorBody) {
-      requestError.error = errorBody;
-    }
-    throw requestError;
+function assertResponsesApiOk(response: Response, data: ResponsesApiResponse): void {
+  if (response.ok) return;
+  const errorBody = typeof data === "object" && data ? data.error : undefined;
+  const errorMessage =
+    typeof errorBody?.message === "string" && errorBody.message.trim()
+      ? errorBody.message.trim()
+      : `elizaOS Cloud error ${response.status}`;
+  const requestError = new Error(errorMessage) as Error & {
+    status?: number;
+    error?: unknown;
+  };
+  requestError.status = response.status;
+  if (errorBody) {
+    requestError.error = errorBody;
   }
-
-  if (data.usage) {
-    emitModelUsageEvent(runtime, modelType, prompt, {
-      inputTokens: data.usage.input_tokens ?? 0,
-      outputTokens: data.usage.output_tokens ?? 0,
-      totalTokens: data.usage.total_tokens ?? 0,
-    });
-  }
-
-  const text = extractResponsesOutputText(data);
-  if (!text.trim()) {
-    throw new Error("elizaOS Cloud returned no text response");
-  }
-
-  return text;
+  throw requestError;
 }
 
 export async function handleTextSmall(

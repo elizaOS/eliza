@@ -233,10 +233,7 @@ function validateOutputFieldReferences(
   errors: ValidationError[]
 ): void {
   const upstream = buildUpstreamMap(workflow);
-  const nodeByName = new Map<string, N8nNode>();
-  for (const n of workflow.nodes) {
-    nodeByName.set(n.name, n);
-  }
+  const nodeByName = new Map(workflow.nodes.map((n) => [n.name, n]));
 
   for (const node of workflow.nodes) {
     if (!node.parameters || typeof node.parameters !== 'object') {
@@ -248,57 +245,54 @@ function validateOutputFieldReferences(
     }
 
     for (const ref of refs) {
-      // Determine which upstream node's output this reference reads from.
-      let sourceNode: N8nNode | null = null;
-      if (ref.sourceNodeName) {
-        sourceNode = nodeByName.get(ref.sourceNodeName) ?? null;
-      } else {
-        // `{{ $json.X }}` → first immediate upstream node
-        const parents = upstream.get(node.name) ?? [];
-        if (parents.length === 1) {
-          sourceNode = nodeByName.get(parents[0]) ?? null;
-        } else if (parents.length > 1) {
-          // Ambiguous — skip silently rather than false-error
-          continue;
-        }
-      }
-      if (!sourceNode) {
-        continue;
-      }
-
-      const fields = knownOutputFieldsForNode(sourceNode);
-      if (!fields) {
-        continue;
-      } // unknowable schema → skip
-
-      const topField = ref.path[0];
-      if (!topField) {
-        continue;
-      }
-      if (fields.includes(topField)) {
-        continue;
-      } // exact match
-
-      // Case-insensitive deterministic correction
-      const ciMatch = fields.find((f) => f.toLowerCase() === topField.toLowerCase());
-      if (ciMatch) {
-        rewriteParameterFieldRef(node, ref.fullExpression, topField, ciMatch);
-        repairs.push({
-          kind: 'fieldNameCaseFix',
-          node: node.name,
-          detail: `${ref.fullExpression}: "${topField}" → "${ciMatch}" (matches ${sourceNode.name} output)`,
-        });
-      } else {
-        errors.push({
-          kind: 'unknownOutputField',
-          node: node.name,
-          detail: `expression references unknown field "${topField}" on upstream node ${sourceNode.name}`,
-          expression: ref.fullExpression,
-          availableFields: fields,
-        });
-      }
+      validateOutputFieldReference(node, ref, upstream, nodeByName, repairs, errors);
     }
   }
+}
+
+function resolveReferenceSourceNode(
+  node: N8nNode,
+  ref: ReturnType<typeof parseExpressions>[number],
+  upstream: Map<string, string[]>,
+  nodeByName: Map<string, N8nNode>
+): N8nNode | null {
+  if (ref.sourceNodeName) {
+    return nodeByName.get(ref.sourceNodeName) ?? null;
+  }
+  const parents = upstream.get(node.name) ?? [];
+  return parents.length === 1 ? (nodeByName.get(parents[0]) ?? null) : null;
+}
+
+function validateOutputFieldReference(
+  node: N8nNode,
+  ref: ReturnType<typeof parseExpressions>[number],
+  upstream: Map<string, string[]>,
+  nodeByName: Map<string, N8nNode>,
+  repairs: Repair[],
+  errors: ValidationError[]
+): void {
+  const sourceNode = resolveReferenceSourceNode(node, ref, upstream, nodeByName);
+  const fields = sourceNode ? knownOutputFieldsForNode(sourceNode) : null;
+  const topField = ref.path[0];
+  if (!sourceNode || !fields || !topField || fields.includes(topField)) return;
+
+  const ciMatch = fields.find((f) => f.toLowerCase() === topField.toLowerCase());
+  if (ciMatch) {
+    rewriteParameterFieldRef(node, ref.fullExpression, topField, ciMatch);
+    repairs.push({
+      kind: 'fieldNameCaseFix',
+      node: node.name,
+      detail: `${ref.fullExpression}: "${topField}" → "${ciMatch}" (matches ${sourceNode.name} output)`,
+    });
+    return;
+  }
+  errors.push({
+    kind: 'unknownOutputField',
+    node: node.name,
+    detail: `expression references unknown field "${topField}" on upstream node ${sourceNode.name}`,
+    expression: ref.fullExpression,
+    availableFields: fields,
+  });
 }
 
 /** Replace `oldField` with `newField` in node.parameters everywhere the

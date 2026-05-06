@@ -105,155 +105,187 @@ export const modifyExistingWorkflowAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
-
     if (!service) {
-      logger.error(
-        { src: 'plugin:n8n-workflow:action:modify-existing' },
-        'N8n Workflow service not available'
-      );
-      if (callback) {
-        const text = await formatActionResponse(runtime, 'ERROR', {
-          error: 'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
-        });
-        await callback({ text, success: false });
-      }
-      return { success: false };
+      return handleModifyExistingMissingService(runtime, callback);
     }
 
     try {
-      const userId = message.entityId;
-      const cacheKey = `workflow_draft:${userId}`;
-
-      // Check for existing draft — if one exists, user should use CREATE_N8N_WORKFLOW
-      const existingDraft = await runtime.getCache<WorkflowDraft>(cacheKey);
-      if (existingDraft && Date.now() - existingDraft.createdAt < DRAFT_TTL_MS) {
-        if (callback) {
-          await callback({
-            text:
-              'You already have a workflow draft in progress. ' +
-              'Please confirm, modify, or cancel that draft first before loading another workflow.',
-            success: false,
-          });
-        }
-        return { success: false };
-      }
-
-      // List user's workflows
-      const workflows = await service.listWorkflows(userId);
-
-      if (workflows.length === 0) {
-        if (callback) {
-          await callback({
-            text: 'No deployed workflows found. Would you like to create a new one?',
-            success: false,
-          });
-        }
-        return { success: false };
-      }
-
-      // Match user's description to a workflow
-      const context = buildConversationContext(message, state);
-      const matchResult = await matchWorkflow(runtime, context, workflows);
-
-      logger.info(
-        { src: 'plugin:n8n-workflow:action:modify-existing' },
-        `Workflow match: ${matchResult.matchedWorkflowId || 'none'} (confidence: ${matchResult.confidence})`
-      );
-
-      // No match or low confidence — show available workflows
-      if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-        const workflowList = workflows
-          .map((wf) => `- "${wf.name}" (${wf.active ? 'active' : 'inactive'})`)
-          .join('\n');
-
-        if (callback) {
-          await callback({
-            text: `I couldn't identify which workflow you want to modify. Here are your workflows:\n\n${workflowList}\n\nPlease specify which one you'd like to edit.`,
-            success: false,
-          });
-        }
-        return { success: false };
-      }
-
-      // Low confidence — ask for confirmation
-      if (matchResult.confidence === 'low') {
-        const matchedWorkflow = workflows.find((wf) => wf.id === matchResult.matchedWorkflowId);
-        if (callback) {
-          await callback({
-            text: `Did you mean the workflow "${matchedWorkflow?.name}"? Please confirm or be more specific.`,
-            success: false,
-          });
-        }
-        return { success: false };
-      }
-
-      // Medium/High confidence — load the workflow
-      const workflowId = matchResult.matchedWorkflowId;
-      const fullWorkflow = await service.getWorkflow(workflowId);
-
-      logger.info(
-        { src: 'plugin:n8n-workflow:action:modify-existing' },
-        `Loading workflow "${fullWorkflow.name}" (${fullWorkflow.id}) with ${fullWorkflow.nodes?.length || 0} nodes`
-      );
-
-      // Create draft from the existing workflow
-      const draft: WorkflowDraft = {
-        workflow: fullWorkflow,
-        prompt: `Modify existing workflow: ${fullWorkflow.name}`,
-        userId,
-        createdAt: Date.now(),
-      };
-      await runtime.setCache(cacheKey, draft);
-
-      // Build preview data
-      const nodes = (fullWorkflow.nodes || []).map((n) => ({
-        name: n.name,
-        type: n.type.replace('n8n-nodes-base.', ''),
-      }));
-
-      const creds = new Set<string>();
-      for (const node of fullWorkflow.nodes || []) {
-        if (node.credentials) {
-          for (const c of Object.keys(node.credentials)) {
-            creds.add(c);
-          }
-        }
-      }
-
-      const text = await formatActionResponse(runtime, 'WORKFLOW_LOADED', {
-        workflowName: fullWorkflow.name,
-        workflowId: fullWorkflow.id,
-        active: fullWorkflow.active,
-        nodes,
-        credentials: [...creds],
-        message: 'Workflow loaded for editing. Tell me what changes you want to make.',
-      });
-
-      if (callback) {
-        await callback({
-          text,
-          success: true,
-          data: { awaitingUserInput: true },
-        });
-      }
-
-      return { success: true, data: { workflowId, awaitingUserInput: true } };
+      return await runModifyExistingWorkflowHandler(runtime, service, message, state, callback);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error(
-        { src: 'plugin:n8n-workflow:action:modify-existing' },
-        `Failed to load workflow for modification: ${errorMessage}`
-      );
-
-      const text = await formatActionResponse(runtime, 'ERROR', {
-        error: errorMessage,
-      });
-      if (callback) {
-        await callback({ text, success: false });
-      }
-      return { success: false };
+      return handleModifyExistingError(runtime, error, callback);
     }
   },
 
   examples,
 };
+
+async function handleModifyExistingMissingService(
+  runtime: IAgentRuntime,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  logger.error(
+    { src: 'plugin:n8n-workflow:action:modify-existing' },
+    'N8n Workflow service not available'
+  );
+  if (callback) {
+    const text = await formatActionResponse(runtime, 'ERROR', {
+      error: 'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
+    });
+    await callback({ text, success: false });
+  }
+  return { success: false };
+}
+
+async function runModifyExistingWorkflowHandler(
+  runtime: IAgentRuntime,
+  service: N8nWorkflowService,
+  message: Memory,
+  state: State | undefined,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const userId = message.entityId;
+  const cacheKey = `workflow_draft:${userId}`;
+  const existingDraft = await runtime.getCache<WorkflowDraft>(cacheKey);
+  if (existingDraft && Date.now() - existingDraft.createdAt < DRAFT_TTL_MS) {
+    if (callback) {
+      await callback({
+        text:
+          'You already have a workflow draft in progress. ' +
+          'Please confirm, modify, or cancel that draft first before loading another workflow.',
+        success: false,
+      });
+    }
+    return { success: false };
+  }
+
+  const workflows = await service.listWorkflows(userId);
+  if (workflows.length === 0) {
+    if (callback) {
+      await callback({
+        text: 'No deployed workflows found. Would you like to create a new one?',
+        success: false,
+      });
+    }
+    return { success: false };
+  }
+
+  const matchResult = await matchWorkflow(
+    runtime,
+    buildConversationContext(message, state),
+    workflows
+  );
+  logger.info(
+    { src: 'plugin:n8n-workflow:action:modify-existing' },
+    `Workflow match: ${matchResult.matchedWorkflowId || 'none'} (confidence: ${matchResult.confidence})`
+  );
+  if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
+    return sendModifyWorkflowNoMatch(workflows, callback);
+  }
+  if (matchResult.confidence === 'low') {
+    const matchedWorkflow = workflows.find((wf) => wf.id === matchResult.matchedWorkflowId);
+    if (callback) {
+      await callback({
+        text: `Did you mean the workflow "${matchedWorkflow?.name}"? Please confirm or be more specific.`,
+        success: false,
+      });
+    }
+    return { success: false };
+  }
+  return loadExistingWorkflowDraft(
+    runtime,
+    service,
+    userId,
+    cacheKey,
+    matchResult.matchedWorkflowId,
+    callback
+  );
+}
+
+async function sendModifyWorkflowNoMatch(
+  workflows: Awaited<ReturnType<N8nWorkflowService['listWorkflows']>>,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const workflowList = workflows
+    .map((wf) => `- "${wf.name}" (${wf.active ? 'active' : 'inactive'})`)
+    .join('\n');
+  if (callback) {
+    await callback({
+      text: `I couldn't identify which workflow you want to modify. Here are your workflows:\n\n${workflowList}\n\nPlease specify which one you'd like to edit.`,
+      success: false,
+    });
+  }
+  return { success: false };
+}
+
+function workflowLoadedPreviewData(
+  fullWorkflow: Awaited<ReturnType<N8nWorkflowService['getWorkflow']>>
+): {
+  nodes: Array<{ name: string; type: string }>;
+  credentials: string[];
+} {
+  const nodes = (fullWorkflow.nodes || []).map((n) => ({
+    name: n.name,
+    type: n.type.replace('n8n-nodes-base.', ''),
+  }));
+  const credentials = new Set<string>();
+  for (const node of fullWorkflow.nodes || []) {
+    for (const credential of Object.keys(node.credentials ?? {})) {
+      credentials.add(credential);
+    }
+  }
+  return { nodes, credentials: [...credentials] };
+}
+
+async function loadExistingWorkflowDraft(
+  runtime: IAgentRuntime,
+  service: N8nWorkflowService,
+  userId: string,
+  cacheKey: string,
+  workflowId: string,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const fullWorkflow = await service.getWorkflow(workflowId);
+  logger.info(
+    { src: 'plugin:n8n-workflow:action:modify-existing' },
+    `Loading workflow "${fullWorkflow.name}" (${fullWorkflow.id}) with ${fullWorkflow.nodes?.length || 0} nodes`
+  );
+  await runtime.setCache(cacheKey, {
+    workflow: fullWorkflow,
+    prompt: `Modify existing workflow: ${fullWorkflow.name}`,
+    userId,
+    createdAt: Date.now(),
+  } satisfies WorkflowDraft);
+
+  const preview = workflowLoadedPreviewData(fullWorkflow);
+  const text = await formatActionResponse(runtime, 'WORKFLOW_LOADED', {
+    workflowName: fullWorkflow.name,
+    workflowId: fullWorkflow.id,
+    active: fullWorkflow.active,
+    nodes: preview.nodes,
+    credentials: preview.credentials,
+    message: 'Workflow loaded for editing. Tell me what changes you want to make.',
+  });
+  if (callback) {
+    await callback({
+      text,
+      success: true,
+      data: { awaitingUserInput: true },
+    });
+  }
+  return { success: true, data: { workflowId, awaitingUserInput: true } };
+}
+
+async function handleModifyExistingError(
+  runtime: IAgentRuntime,
+  error: unknown,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  logger.error(
+    { src: 'plugin:n8n-workflow:action:modify-existing' },
+    `Failed to load workflow for modification: ${errorMessage}`
+  );
+  const text = await formatActionResponse(runtime, 'ERROR', { error: errorMessage });
+  if (callback) await callback({ text, success: false });
+  return { success: false };
+}

@@ -1,6 +1,6 @@
 import {
-  MODEL_CATALOG,
   findCatalogModel,
+  MODEL_CATALOG,
 } from "../services/local-inference/catalog";
 import type { ProviderStatus } from "../services/local-inference/providers";
 import type { RoutingPreferences } from "../services/local-inference/routing-preferences";
@@ -613,6 +613,483 @@ export function startIosLocalAgentKernel(): void {
   startedAt = startedAt || Date.now();
 }
 
+function simpleIosLocalAgentRoutes(): Map<
+  string,
+  () => Response | Promise<Response>
+> {
+  const routes: Array<readonly [string, () => Response | Promise<Response>]> = [
+    [
+      "GET /api/health",
+      () =>
+        json({
+          ready: running,
+          runtime: "ok",
+          database: "localStorage",
+          plugins: { loaded: 0, failed: 0 },
+          coordinator: "not_wired",
+          connectors: {},
+          uptime: Math.floor((Date.now() - startedAt) / 1000),
+          agentState: running ? "running" : "not_started",
+        }),
+    ],
+    [
+      "GET /api/status",
+      () =>
+        json({
+          state: running ? "running" : "not_started",
+          agentName: AGENT_NAME,
+          model:
+            activeState.status === "ready" ? activeState.modelId : undefined,
+          startedAt,
+          uptime: Date.now() - startedAt,
+          cloud: {
+            connectionStatus: "disconnected",
+            activeAgentId: null,
+            cloudProvisioned: false,
+            hasApiKey: false,
+          },
+          pendingRestart: false,
+          pendingRestartReasons: [],
+        }),
+    ],
+    [
+      "GET /api/auth/status",
+      () => json({ required: false, pairingEnabled: false, expiresAt: null }),
+    ],
+    [
+      "GET /api/auth/me",
+      () =>
+        json({
+          identity: {
+            id: "local-agent",
+            displayName: "Local Agent",
+            kind: "machine",
+          },
+          session: { id: "local", kind: "local", expiresAt: null },
+          access: {
+            mode: "local",
+            passwordConfigured: false,
+            ownerConfigured: false,
+          },
+        }),
+    ],
+    [
+      "GET /api/onboarding/status",
+      () =>
+        json({
+          complete: true,
+          cloudProvisioned: false,
+          deploymentTarget: "local",
+        }),
+    ],
+    ["GET /api/config", () => json(localConfig())],
+    ["PUT /api/config", () => json(localConfig())],
+    [
+      "GET /api/config/schema",
+      () => json({ schema: {}, defaults: localConfig() }),
+    ],
+    ["GET /api/character", () => json(localCharacter())],
+    ["PUT /api/character", () => json(localCharacter())],
+    ["GET /api/wallet/addresses", () => json({ evm: null, solana: null })],
+    ["GET /api/stream/settings", () => json({ settings: {} })],
+    ["GET /api/agent/events", () => json({ events: [] })],
+    [
+      "GET /api/workbench/overview",
+      () =>
+        json({
+          tasks: [],
+          triggers: [],
+          todos: [],
+          autonomy: { enabled: false, thinking: false, lastEventAt: null },
+        }),
+    ],
+    ["GET /api/apps", () => json([])],
+    ["GET /api/catalog/apps", () => json([])],
+    ["GET /api/plugins", () => json({ plugins: [] })],
+    ["GET /api/skills", () => json({ skills: [] })],
+    [
+      "GET /api/local-inference/hub",
+      () => hubSnapshot().then((snapshot) => json(snapshot)),
+    ],
+    [
+      "GET /api/local-inference/hardware",
+      () => hardwareProbe().then((probe) => json(probe)),
+    ],
+    ["GET /api/local-inference/catalog", () => json({ models: MODEL_CATALOG })],
+    [
+      "GET /api/local-inference/installed",
+      () => listInstalledModels().then((models) => json({ models })),
+    ],
+    [
+      "GET /api/local-inference/downloads",
+      () => json({ downloads: [...downloads.values()] }),
+    ],
+    [
+      "GET /api/local-inference/downloads/stream",
+      () =>
+        textEventStream([
+          {
+            type: "snapshot",
+            downloads: [...downloads.values()],
+            active: activeState,
+          },
+        ]),
+    ],
+    ["GET /api/local-inference/active", () => json(activeState)],
+    [
+      "DELETE /api/local-inference/active",
+      () => {
+        writeActiveModelState({
+          modelId: null,
+          loadedAt: null,
+          status: "idle",
+        });
+        return json(activeState);
+      },
+    ],
+    [
+      "GET /api/local-inference/assignments",
+      () => json({ assignments: readAssignments() }),
+    ],
+    [
+      "GET /api/local-inference/providers",
+      () =>
+        capacitorLlamaProviderStatus().then((provider) =>
+          json({ providers: [provider] }),
+        ),
+    ],
+    [
+      "GET /api/local-inference/routing",
+      () => json({ registrations: [], preferences: EMPTY_ROUTING_PREFERENCES }),
+    ],
+    [
+      "POST /api/local-inference/routing/preferred",
+      () => json({ preferences: EMPTY_ROUTING_PREFERENCES }),
+    ],
+    [
+      "POST /api/local-inference/routing/policy",
+      () => json({ preferences: EMPTY_ROUTING_PREFERENCES }),
+    ],
+    [
+      "GET /api/local-inference/device",
+      () =>
+        json({
+          enabled: true,
+          connected: true,
+          devices: [
+            {
+              id: "ios-local",
+              label: "This iPhone",
+              platform: "ios",
+              connectedAt: startedAt,
+              lastSeenAt: Date.now(),
+            },
+          ],
+        }),
+    ],
+  ];
+  return new Map(routes);
+}
+
+async function handleSimpleIosLocalAgentRoute(
+  method: string,
+  pathname: string,
+): Promise<Response | null> {
+  if (method === "OPTIONS") return new Response(null, { status: 204 });
+  if (method === "HEAD" && pathname.startsWith("/api/avatar/")) {
+    return new Response(null, { status: 404 });
+  }
+  const route = simpleIosLocalAgentRoutes().get(`${method} ${pathname}`);
+  return route ? await route() : null;
+}
+
+function resolveDownloadModelId(body: Record<string, unknown>): string {
+  if (typeof body.modelId === "string") return body.modelId;
+  const spec = body.spec;
+  return typeof spec === "object" &&
+    spec &&
+    !Array.isArray(spec) &&
+    typeof (spec as { id?: unknown }).id === "string"
+    ? (spec as { id: string }).id
+    : "";
+}
+
+async function handleDownloadCreateRoute(request: Request): Promise<Response> {
+  const body = await requestJson(request);
+  const modelId = resolveDownloadModelId(body);
+  const catalog = findCatalogModel(modelId);
+  return catalog
+    ? json({ job: startDownload(catalog) })
+    : json({ error: `Unknown model id: ${modelId}` }, 404);
+}
+
+function handleDownloadItemRoute(
+  method: string,
+  pathname: string,
+): Response | null {
+  const downloadMatch = pathname.match(
+    /^\/api\/local-inference\/downloads\/([^/]+)$/,
+  );
+  if (!downloadMatch) return null;
+  const modelId = decodeURIComponent(downloadMatch[1]);
+  const job = downloads.get(modelId);
+  if (method === "GET") {
+    return job ? json({ job }) : json({ error: "Download not found" }, 404);
+  }
+  if (method === "DELETE") {
+    if (job && ["queued", "downloading"].includes(job.state)) {
+      updateDownload(job, { state: "cancelled", etaMs: 0 });
+    }
+    return json({ ok: true, job: downloads.get(modelId) ?? null });
+  }
+  return null;
+}
+
+async function handleLocalInferenceMutationRoute(
+  request: Request,
+  method: string,
+  pathname: string,
+): Promise<Response | null> {
+  if (method === "POST" && pathname === "/api/local-inference/downloads") {
+    return handleDownloadCreateRoute(request);
+  }
+  if (method === "POST" && pathname === "/api/local-inference/active") {
+    return handleActivateModelRoute(request);
+  }
+  if (method === "POST" && pathname === "/api/local-inference/assignments") {
+    return handleAssignmentsRoute(request);
+  }
+  return handleDownloadItemRoute(method, pathname);
+}
+
+async function handleActivateModelRoute(request: Request): Promise<Response> {
+  const body = await requestJson(request);
+  const modelId = typeof body.modelId === "string" ? body.modelId.trim() : "";
+  return modelId
+    ? json(await activateModel(modelId))
+    : json({ error: "modelId is required" }, 400);
+}
+
+async function handleAssignmentsRoute(request: Request): Promise<Response> {
+  const body = await requestJson(request);
+  const slot = typeof body.slot === "string" ? body.slot : "";
+  const modelId = typeof body.modelId === "string" ? body.modelId : null;
+  if (!isAgentModelSlot(slot)) {
+    return json({ error: "slot is required" }, 400);
+  }
+  const assignments = { ...readAssignments(), [slot]: modelId };
+  if (modelId === null) delete assignments[slot];
+  writeAssignments(assignments);
+  return json({ assignments });
+}
+
+async function handleInstalledModelRoute(
+  method: string,
+  pathname: string,
+): Promise<Response | null> {
+  const installedMatch = pathname.match(
+    /^\/api\/local-inference\/installed\/([^/]+)(?:\/verify)?$/,
+  );
+  if (!installedMatch) return null;
+  const id = decodeURIComponent(installedMatch[1]);
+  const model = (await listInstalledModels()).find((entry) => entry.id === id);
+  if (!model) return json({ error: "Model not found" }, 404);
+  if (method === "GET") return json({ model });
+  if (method === "DELETE") {
+    return json(
+      { ok: false, error: "Uninstall is not supported on iOS yet." },
+      400,
+    );
+  }
+  return method === "POST" && pathname.endsWith("/verify")
+    ? json({ ok: true, model, errors: [] })
+    : null;
+}
+
+async function handleConversationsCollectionRoute(
+  request: Request,
+  method: string,
+  pathname: string,
+): Promise<Response | null> {
+  if (pathname !== "/api/conversations") return null;
+  if (method === "GET") {
+    const store = readStore();
+    return json({
+      conversations: store.conversations
+        .map(conversationDto)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    });
+  }
+  if (method !== "POST") return null;
+  const body = await requestJson(request);
+  const conversation = createConversation(
+    typeof body.title === "string" ? body.title : undefined,
+  );
+  const store = readStore();
+  store.conversations.unshift(conversation);
+  writeStore(store);
+  return json({ conversation: conversationDto(conversation) });
+}
+
+function handleGreetingRoute(
+  method: string,
+  pathname: string,
+): Response | null {
+  const greetingMatch = pathname.match(
+    /^\/api\/conversations\/([^/]+)\/greeting$/,
+  );
+  return greetingMatch && method === "POST"
+    ? json({
+        text: "I'm running locally on this device.",
+        agentName: AGENT_NAME,
+        generated: true,
+        persisted: false,
+      })
+    : null;
+}
+
+async function handleConversationMessagesRoute(
+  request: Request,
+  method: string,
+  pathname: string,
+): Promise<Response | null> {
+  const messageMatch = pathname.match(
+    /^\/api\/conversations\/([^/]+)\/messages(?:\/stream|\/truncate)?$/,
+  );
+  if (!messageMatch) return null;
+  const conversationId = decodeURIComponent(messageMatch[1]);
+  const store = readStore();
+  const conversation = store.conversations.find(
+    (entry) => entry.id === conversationId,
+  );
+  if (!conversation) return json({ error: "Conversation not found" }, 404);
+
+  if (method === "GET" && pathname.endsWith("/messages")) {
+    return json({ messages: conversation.messages });
+  }
+  if (method === "POST" && pathname.endsWith("/messages/truncate")) {
+    return handleConversationTruncateRoute(request, store, conversation);
+  }
+  return method === "POST"
+    ? handleConversationPostMessageRoute(request, store, conversation, pathname)
+    : null;
+}
+
+async function handleConversationTruncateRoute(
+  request: Request,
+  store: ConversationStore,
+  conversation: LocalConversation,
+): Promise<Response> {
+  const body = await requestJson(request);
+  const messageId = typeof body.messageId === "string" ? body.messageId : null;
+  if (!messageId) return json({ error: "messageId is required" }, 400);
+  const index = conversation.messages.findIndex((m) => m.id === messageId);
+  if (index < 0) return json({ ok: true, deletedCount: 0 });
+  const deleteFrom = body.inclusive === true ? index : index + 1;
+  const deletedCount = conversation.messages.length - deleteFrom;
+  conversation.messages.splice(deleteFrom);
+  conversation.updatedAt = nowIso();
+  writeStore(store);
+  return json({ ok: true, deletedCount });
+}
+
+async function handleConversationPostMessageRoute(
+  request: Request,
+  store: ConversationStore,
+  conversation: LocalConversation,
+  pathname: string,
+): Promise<Response> {
+  const body = await requestJson(request);
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!text) return json({ error: "text is required" }, 400);
+  conversation.messages.push({
+    id: randomId("msg"),
+    role: "user",
+    text,
+    timestamp: Date.now(),
+  });
+  if (conversation.title === "New chat") {
+    conversation.title = text.slice(0, 60) || conversation.title;
+  }
+  const reply = await generateLocalReply(conversation, text);
+  conversation.messages.push({
+    id: randomId("msg"),
+    role: "assistant",
+    text: reply.text,
+    timestamp: Date.now(),
+  });
+  conversation.updatedAt = nowIso();
+  writeStore(store);
+  return pathname.endsWith("/stream")
+    ? localReplyStream(reply)
+    : localReplyJson(reply);
+}
+
+function localReplyStream(
+  reply: Awaited<ReturnType<typeof generateLocalReply>>,
+): Response {
+  return textEventStream([
+    { type: "token", text: reply.text, fullText: reply.text },
+    {
+      type: "done",
+      fullText: reply.text,
+      agentName: AGENT_NAME,
+      usage: reply.usage,
+    },
+  ]);
+}
+
+function localReplyJson(
+  reply: Awaited<ReturnType<typeof generateLocalReply>>,
+): Response {
+  return json({
+    text: reply.text,
+    agentName: AGENT_NAME,
+    blocks: [{ type: "text", text: reply.text }],
+  });
+}
+
+async function handleConversationEntityRoute(
+  request: Request,
+  method: string,
+  pathname: string,
+): Promise<Response | null> {
+  const conversationMatch = pathname.match(/^\/api\/conversations\/([^/]+)$/);
+  if (!conversationMatch) return null;
+  const conversationId = decodeURIComponent(conversationMatch[1]);
+  const store = readStore();
+  const index = store.conversations.findIndex(
+    (entry) => entry.id === conversationId,
+  );
+  if (index < 0) return json({ error: "Conversation not found" }, 404);
+  if (method === "DELETE") {
+    store.conversations.splice(index, 1);
+    writeStore(store);
+    return json({ ok: true });
+  }
+  if (method !== "PATCH") return null;
+  const body = await requestJson(request);
+  if (typeof body.title === "string" && body.title.trim()) {
+    store.conversations[index].title = body.title.trim();
+  }
+  store.conversations[index].updatedAt = nowIso();
+  writeStore(store);
+  return json({ conversation: conversationDto(store.conversations[index]) });
+}
+
+async function handleConversationRoutes(
+  request: Request,
+  method: string,
+  pathname: string,
+): Promise<Response | null> {
+  return (
+    (await handleConversationsCollectionRoute(request, method, pathname)) ??
+    handleGreetingRoute(method, pathname) ??
+    (await handleConversationMessagesRoute(request, method, pathname)) ??
+    (await handleConversationEntityRoute(request, method, pathname))
+  );
+}
+
 export async function handleIosLocalAgentRequest(
   request: Request,
   _context: IttpAgentRequestContext = {},
@@ -623,416 +1100,11 @@ export async function handleIosLocalAgentRequest(
   const method = request.method.toUpperCase();
   const pathname = url.pathname;
 
-  if (method === "OPTIONS") return new Response(null, { status: 204 });
-
-  if (method === "GET" && pathname === "/api/health") {
-    return json({
-      ready: running,
-      runtime: "ok",
-      database: "localStorage",
-      plugins: { loaded: 0, failed: 0 },
-      coordinator: "not_wired",
-      connectors: {},
-      uptime: Math.floor((Date.now() - startedAt) / 1000),
-      agentState: running ? "running" : "not_started",
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/status") {
-    return json({
-      state: running ? "running" : "not_started",
-      agentName: AGENT_NAME,
-      model: activeState.status === "ready" ? activeState.modelId : undefined,
-      startedAt,
-      uptime: Date.now() - startedAt,
-      cloud: {
-        connectionStatus: "disconnected",
-        activeAgentId: null,
-        cloudProvisioned: false,
-        hasApiKey: false,
-      },
-      pendingRestart: false,
-      pendingRestartReasons: [],
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/auth/status") {
-    return json({ required: false, pairingEnabled: false, expiresAt: null });
-  }
-
-  if (method === "GET" && pathname === "/api/auth/me") {
-    return json({
-      identity: {
-        id: "local-agent",
-        displayName: "Local Agent",
-        kind: "machine",
-      },
-      session: { id: "local", kind: "local", expiresAt: null },
-      access: {
-        mode: "local",
-        passwordConfigured: false,
-        ownerConfigured: false,
-      },
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/onboarding/status") {
-    return json({
-      complete: true,
-      cloudProvisioned: false,
-      deploymentTarget: "local",
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/config") {
-    return json(localConfig());
-  }
-
-  if (method === "PUT" && pathname === "/api/config") {
-    return json(localConfig());
-  }
-
-  if (method === "GET" && pathname === "/api/config/schema") {
-    return json({ schema: {}, defaults: localConfig() });
-  }
-
-  if (method === "GET" && pathname === "/api/character") {
-    return json(localCharacter());
-  }
-
-  if (method === "PUT" && pathname === "/api/character") {
-    return json(localCharacter());
-  }
-
-  if (method === "GET" && pathname === "/api/wallet/addresses") {
-    return json({ evm: null, solana: null });
-  }
-
-  if (method === "GET" && pathname === "/api/stream/settings") {
-    return json({ settings: {} });
-  }
-
-  if (method === "HEAD" && pathname.startsWith("/api/avatar/")) {
-    return new Response(null, { status: 404 });
-  }
-
-  if (method === "GET" && pathname === "/api/agent/events") {
-    return json({ events: [] });
-  }
-
-  if (method === "GET" && pathname === "/api/workbench/overview") {
-    return json({
-      tasks: [],
-      triggers: [],
-      todos: [],
-      autonomy: { enabled: false, thinking: false, lastEventAt: null },
-    });
-  }
-
-  if (
-    method === "GET" &&
-    (pathname === "/api/apps" || pathname === "/api/catalog/apps")
-  ) {
-    return json([]);
-  }
-
-  if (method === "GET" && pathname === "/api/plugins") {
-    return json({ plugins: [] });
-  }
-
-  if (method === "GET" && pathname === "/api/skills") {
-    return json({ skills: [] });
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/hub") {
-    return json(await hubSnapshot());
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/hardware") {
-    return json(await hardwareProbe());
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/catalog") {
-    return json({ models: MODEL_CATALOG });
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/installed") {
-    return json({ models: await listInstalledModels() });
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/downloads") {
-    return json({ downloads: [...downloads.values()] });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/local-inference/downloads/stream"
-  ) {
-    return textEventStream([
-      {
-        type: "snapshot",
-        downloads: [...downloads.values()],
-        active: activeState,
-      },
-    ]);
-  }
-
-  if (method === "POST" && pathname === "/api/local-inference/downloads") {
-    const body = await requestJson(request);
-    const modelId =
-      typeof body.modelId === "string"
-        ? body.modelId
-        : typeof body.spec === "object" &&
-            body.spec &&
-            !Array.isArray(body.spec) &&
-            typeof (body.spec as { id?: unknown }).id === "string"
-          ? (body.spec as { id: string }).id
-          : "";
-    const catalog = findCatalogModel(modelId);
-    if (!catalog) return json({ error: `Unknown model id: ${modelId}` }, 404);
-    return json({ job: startDownload(catalog) });
-  }
-
-  const downloadMatch = pathname.match(
-    /^\/api\/local-inference\/downloads\/([^/]+)$/,
+  return (
+    (await handleSimpleIosLocalAgentRoute(method, pathname)) ??
+    (await handleLocalInferenceMutationRoute(request, method, pathname)) ??
+    (await handleInstalledModelRoute(method, pathname)) ??
+    (await handleConversationRoutes(request, method, pathname)) ??
+    json({ error: "Not found" }, 404)
   );
-  if (downloadMatch) {
-    const modelId = decodeURIComponent(downloadMatch[1]);
-    const job = downloads.get(modelId);
-    if (method === "GET") {
-      return job ? json({ job }) : json({ error: "Download not found" }, 404);
-    }
-    if (method === "DELETE") {
-      if (job && ["queued", "downloading"].includes(job.state)) {
-        updateDownload(job, { state: "cancelled", etaMs: 0 });
-      }
-      return json({ ok: true, job: downloads.get(modelId) ?? null });
-    }
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/active") {
-    return json(activeState);
-  }
-
-  if (method === "POST" && pathname === "/api/local-inference/active") {
-    const body = await requestJson(request);
-    const modelId = typeof body.modelId === "string" ? body.modelId.trim() : "";
-    if (!modelId) return json({ error: "modelId is required" }, 400);
-    return json(await activateModel(modelId));
-  }
-
-  if (method === "DELETE" && pathname === "/api/local-inference/active") {
-    writeActiveModelState({ modelId: null, loadedAt: null, status: "idle" });
-    return json(activeState);
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/assignments") {
-    return json({ assignments: readAssignments() });
-  }
-
-  if (method === "POST" && pathname === "/api/local-inference/assignments") {
-    const body = await requestJson(request);
-    const slot = typeof body.slot === "string" ? body.slot : "";
-    const modelId = typeof body.modelId === "string" ? body.modelId : null;
-    if (!isAgentModelSlot(slot)) {
-      return json({ error: "slot is required" }, 400);
-    }
-    const assignments = { ...readAssignments(), [slot]: modelId };
-    if (modelId === null) delete assignments[slot];
-    writeAssignments(assignments);
-    return json({ assignments });
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/providers") {
-    return json({ providers: [await capacitorLlamaProviderStatus()] });
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/routing") {
-    return json({
-      registrations: [],
-      preferences: EMPTY_ROUTING_PREFERENCES,
-    });
-  }
-
-  if (
-    method === "POST" &&
-    (pathname === "/api/local-inference/routing/preferred" ||
-      pathname === "/api/local-inference/routing/policy")
-  ) {
-    return json({
-      preferences: EMPTY_ROUTING_PREFERENCES,
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/local-inference/device") {
-    return json({
-      enabled: true,
-      connected: true,
-      devices: [
-        {
-          id: "ios-local",
-          label: "This iPhone",
-          platform: "ios",
-          connectedAt: startedAt,
-          lastSeenAt: Date.now(),
-        },
-      ],
-    });
-  }
-
-  const installedMatch = pathname.match(
-    /^\/api\/local-inference\/installed\/([^/]+)(?:\/verify)?$/,
-  );
-  if (installedMatch) {
-    const id = decodeURIComponent(installedMatch[1]);
-    const installed = await listInstalledModels();
-    const model = installed.find((entry) => entry.id === id);
-    if (!model) return json({ error: "Model not found" }, 404);
-    if (method === "GET") return json({ model });
-    if (method === "DELETE") {
-      return json(
-        { ok: false, error: "Uninstall is not supported on iOS yet." },
-        400,
-      );
-    }
-    if (method === "POST" && pathname.endsWith("/verify")) {
-      return json({ ok: true, model, errors: [] });
-    }
-  }
-
-  if (method === "GET" && pathname === "/api/conversations") {
-    const store = readStore();
-    return json({
-      conversations: store.conversations
-        .map(conversationDto)
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/conversations") {
-    const body = await requestJson(request);
-    const conversation = createConversation(
-      typeof body.title === "string" ? body.title : undefined,
-    );
-    const store = readStore();
-    store.conversations.unshift(conversation);
-    writeStore(store);
-    return json({ conversation: conversationDto(conversation) });
-  }
-
-  const greetingMatch = pathname.match(
-    /^\/api\/conversations\/([^/]+)\/greeting$/,
-  );
-  if (greetingMatch && method === "POST") {
-    return json({
-      text: "I'm running locally on this device.",
-      agentName: AGENT_NAME,
-      generated: true,
-      persisted: false,
-    });
-  }
-
-  const messageMatch = pathname.match(
-    /^\/api\/conversations\/([^/]+)\/messages(?:\/stream|\/truncate)?$/,
-  );
-  if (messageMatch) {
-    const conversationId = decodeURIComponent(messageMatch[1]);
-    const store = readStore();
-    const conversation = store.conversations.find(
-      (entry) => entry.id === conversationId,
-    );
-    if (!conversation) return json({ error: "Conversation not found" }, 404);
-
-    if (method === "GET" && pathname.endsWith("/messages")) {
-      return json({ messages: conversation.messages });
-    }
-
-    if (method === "POST" && pathname.endsWith("/messages/truncate")) {
-      const body = await requestJson(request);
-      const messageId =
-        typeof body.messageId === "string" ? body.messageId : null;
-      if (!messageId) return json({ error: "messageId is required" }, 400);
-      const index = conversation.messages.findIndex((m) => m.id === messageId);
-      if (index < 0) return json({ ok: true, deletedCount: 0 });
-      const inclusive = body.inclusive === true;
-      const deleteFrom = inclusive ? index : index + 1;
-      const deletedCount = conversation.messages.length - deleteFrom;
-      conversation.messages.splice(deleteFrom);
-      conversation.updatedAt = nowIso();
-      writeStore(store);
-      return json({ ok: true, deletedCount });
-    }
-
-    if (method === "POST") {
-      const body = await requestJson(request);
-      const text = typeof body.text === "string" ? body.text.trim() : "";
-      if (!text) return json({ error: "text is required" }, 400);
-      const userMessage: LocalMessage = {
-        id: randomId("msg"),
-        role: "user",
-        text,
-        timestamp: Date.now(),
-      };
-      conversation.messages.push(userMessage);
-      if (conversation.title === "New chat") {
-        conversation.title = text.slice(0, 60) || conversation.title;
-      }
-      const reply = await generateLocalReply(conversation, text);
-      const assistantMessage: LocalMessage = {
-        id: randomId("msg"),
-        role: "assistant",
-        text: reply.text,
-        timestamp: Date.now(),
-      };
-      conversation.messages.push(assistantMessage);
-      conversation.updatedAt = nowIso();
-      writeStore(store);
-
-      if (pathname.endsWith("/stream")) {
-        return textEventStream([
-          { type: "token", text: reply.text, fullText: reply.text },
-          {
-            type: "done",
-            fullText: reply.text,
-            agentName: AGENT_NAME,
-            usage: reply.usage,
-          },
-        ]);
-      }
-
-      return json({
-        text: reply.text,
-        agentName: AGENT_NAME,
-        blocks: [{ type: "text", text: reply.text }],
-      });
-    }
-  }
-
-  const conversationMatch = pathname.match(/^\/api\/conversations\/([^/]+)$/);
-  if (conversationMatch) {
-    const conversationId = decodeURIComponent(conversationMatch[1]);
-    const store = readStore();
-    const index = store.conversations.findIndex(
-      (entry) => entry.id === conversationId,
-    );
-    if (index < 0) return json({ error: "Conversation not found" }, 404);
-    if (method === "DELETE") {
-      store.conversations.splice(index, 1);
-      writeStore(store);
-      return json({ ok: true });
-    }
-    if (method === "PATCH") {
-      const body = await requestJson(request);
-      if (typeof body.title === "string" && body.title.trim()) {
-        store.conversations[index].title = body.title.trim();
-      }
-      store.conversations[index].updatedAt = nowIso();
-      writeStore(store);
-      return json({
-        conversation: conversationDto(store.conversations[index]),
-      });
-    }
-  }
-
-  return json({ error: "Not found" }, 404);
 }

@@ -234,52 +234,54 @@ function parseFieldPath(field: string): string[] {
 
   while (i < field.length) {
     const char = field[i];
-
     if (char === '.') {
-      if (current) {
-        path.push(current);
-        current = '';
-      }
-      i++;
-    } else if (char === '[') {
-      if (current) {
-        path.push(current);
-        current = '';
-      }
-      i++;
-      if (i >= field.length) {
-        break;
-      }
-      if (field[i] === "'" || field[i] === '"') {
-        const quote = field[i];
-        i++;
-        while (i < field.length && field[i] !== quote) {
-          current += field[i];
-          i++;
-        }
-        i++;
-      } else {
-        while (i < field.length && field[i] !== ']') {
-          current += field[i];
-          i++;
-        }
-      }
-      if (current) {
-        path.push(current);
-        current = '';
-      }
-      i++;
-    } else {
-      current += char;
-      i++;
+      current = flushPathSegment(path, current);
+      i += 1;
+      continue;
     }
+    if (char === '[') {
+      current = flushPathSegment(path, current);
+      const bracket = readBracketSegment(field, i + 1);
+      current = flushPathSegment(path, bracket.segment);
+      i = bracket.nextIndex;
+      continue;
+    }
+    current += char;
+    i += 1;
   }
 
+  flushPathSegment(path, current);
+  return path;
+}
+
+function flushPathSegment(path: string[], current: string): string {
   if (current) {
     path.push(current);
   }
+  return '';
+}
 
-  return path;
+function readBracketSegment(
+  field: string,
+  startIndex: number
+): { segment: string; nextIndex: number } {
+  if (startIndex >= field.length) {
+    return { segment: '', nextIndex: field.length };
+  }
+  const quote = field[startIndex] === "'" || field[startIndex] === '"' ? field[startIndex] : '';
+  const valueStart = quote ? startIndex + 1 : startIndex;
+  const terminator = quote || ']';
+  let i = valueStart;
+  let segment = '';
+  while (i < field.length && field[i] !== terminator) {
+    segment += field[i];
+    i += 1;
+  }
+  const closeBracketIndex = quote ? field.indexOf(']', i + 1) : i;
+  return {
+    segment,
+    nextIndex: closeBracketIndex === -1 ? field.length : closeBracketIndex + 1,
+  };
 }
 
 export function fieldExistsInSchema(path: string[], schema: SchemaContent): boolean {
@@ -330,35 +332,66 @@ export function fieldExistsInSchema(path: string[], schema: SchemaContent): bool
 
 export function formatSchemaForPrompt(schema: SchemaContent, maxDepth = 2): string {
   const lines: string[] = [];
-
-  function format(obj: SchemaContent, depth: number, prefix: string) {
-    const properties = obj.properties;
-    if (!properties || depth > maxDepth) {
-      return;
-    }
-
-    for (const [key, value] of Object.entries(properties)) {
-      const prop = value as SchemaContent;
-      const type = prop.type as string;
-      const path = prefix ? `${prefix}.${key}` : key;
-
-      if (type === 'object' && prop.properties) {
-        lines.push(`${path}: object`);
-        format(prop, depth + 1, path);
-      } else if (type === 'array' && prop.items) {
-        const items = prop.items as SchemaContent;
-        if (items.type === 'object' && items.properties) {
-          lines.push(`${path}: array of objects`);
-          format(items, depth + 1, `${path}[0]`);
-        } else {
-          lines.push(`${path}: array of ${items.type || 'unknown'}`);
-        }
-      } else {
-        lines.push(`${path}: ${type || 'unknown'}`);
-      }
-    }
-  }
-
-  format(schema, 0, '');
+  formatSchemaProperties(schema, 0, '', maxDepth, lines);
   return lines.join('\n');
+}
+
+function formatSchemaProperties(
+  obj: SchemaContent,
+  depth: number,
+  prefix: string,
+  maxDepth: number,
+  lines: string[]
+): void {
+  const properties = obj.properties;
+  if (!properties || depth > maxDepth) return;
+
+  for (const [key, value] of Object.entries(properties)) {
+    formatSchemaProperty(
+      value as SchemaContent,
+      schemaPromptPath(prefix, key),
+      depth,
+      maxDepth,
+      lines
+    );
+  }
+}
+
+function schemaPromptPath(prefix: string, key: string): string {
+  return prefix ? `${prefix}.${key}` : key;
+}
+
+function formatSchemaProperty(
+  prop: SchemaContent,
+  path: string,
+  depth: number,
+  maxDepth: number,
+  lines: string[]
+): void {
+  const type = prop.type as string;
+  if (type === 'object' && prop.properties) {
+    lines.push(`${path}: object`);
+    formatSchemaProperties(prop, depth + 1, path, maxDepth, lines);
+    return;
+  }
+  if (type === 'array' && prop.items) {
+    formatArraySchemaProperty(prop.items as SchemaContent, path, depth, maxDepth, lines);
+    return;
+  }
+  lines.push(`${path}: ${type || 'unknown'}`);
+}
+
+function formatArraySchemaProperty(
+  items: SchemaContent,
+  path: string,
+  depth: number,
+  maxDepth: number,
+  lines: string[]
+): void {
+  if (items.type === 'object' && items.properties) {
+    lines.push(`${path}: array of objects`);
+    formatSchemaProperties(items, depth + 1, `${path}[0]`, maxDepth, lines);
+    return;
+  }
+  lines.push(`${path}: array of ${items.type || 'unknown'}`);
 }
