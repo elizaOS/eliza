@@ -187,6 +187,14 @@ declare module "./client-base" {
       agentName: string;
       blocks?: ContentBlock[];
       noResponseReason?: "ignored";
+      /**
+       * Set when chat generation threw and the server returned a
+       * fallback message in `text`. Renderer keys off
+       * `failureKind === "no_provider"` to gate the chat input on a
+       * "Connect a provider" CTA instead of treating the fallback
+       * as a normal assistant reply.
+       */
+      failureKind?: "insufficient_credits" | "no_provider" | "provider_issue";
     }>;
     sendConversationMessageStream(
       id: string,
@@ -203,6 +211,8 @@ declare module "./client-base" {
       completed: boolean;
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
+      /** See sendConversationMessage above. */
+      failureKind?: "insufficient_credits" | "no_provider" | "provider_issue";
     }>;
     requestGreeting(
       id: string,

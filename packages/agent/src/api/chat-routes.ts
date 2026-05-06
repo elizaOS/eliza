@@ -320,7 +320,8 @@ const INSUFFICIENT_CREDITS_CHAT_REPLY =
 // Used by paths #1-#3: planner picked IGNORE/NONE/empty REPLY, action ran but
 // emitted no text callback, or normalized text became a placeholder. None of
 // these are provider failures, so the message must not blame the provider.
-const NO_RESPONSE_FALLBACK_REPLY = "I don't have a reply for that — try rephrasing?";
+const NO_RESPONSE_FALLBACK_REPLY =
+  "I don't have a reply for that — try rephrasing?";
 // Routed-model errors raised by the model router when no provider plugin is
 // loaded for a requested model class (e.g. TEXT_SMALL). Identifies the OOB
 // "no provider configured" case so chat routes can return a structured 503
@@ -526,7 +527,37 @@ export function getChatFailureReply(
   ) {
     return pickInsufficientCreditsChatReply();
   }
+  if (isNoProviderError(err)) {
+    return NO_PROVIDER_CHAT_MESSAGE;
+  }
   return getProviderIssueChatReply();
+}
+
+/**
+ * Discriminator the conversation route includes in its 200 response so the
+ * renderer can distinguish "provider configured but throwing" from "no
+ * provider configured at all" — the latter is a UX gate ("Connect a
+ * provider"), not a chat reply.
+ */
+export type ChatFailureKind =
+  | "insufficient_credits"
+  | "no_provider"
+  | "provider_issue";
+
+export function classifyChatFailure(
+  err: unknown,
+  logBuffer: LogEntry[],
+): ChatFailureKind {
+  if (
+    isInsufficientCreditsError(err) ||
+    findRecentInsufficientCreditsLog(logBuffer)
+  ) {
+    return "insufficient_credits";
+  }
+  if (isNoProviderError(err)) {
+    return "no_provider";
+  }
+  return "provider_issue";
 }
 
 export function normalizeChatResponseText(
