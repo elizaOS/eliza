@@ -165,7 +165,8 @@
     "three": "^0.184.0"
   },
   "optionalDependencies": {
-    "node-llama-cpp": "3.18.1"
+    "node-llama-cpp": "3.18.1",
+    "sharp": "^0.34.5"
   },
   "trustedDependencies": [
     "node-llama-cpp"

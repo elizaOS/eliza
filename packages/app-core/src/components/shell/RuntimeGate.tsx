@@ -678,22 +678,69 @@ export function RuntimeGate() {
       }
       const jobId = provRes.data?.jobId;
 
-      // Poll the agent record until it has a connectable URL. The provision
-      // job can report "completed" before the cloud surface attaches a
-      // web_ui_url / bridge_url to the agent (the URL is provisioned after
-      // the container reaches "running"). Calling finishAsCloud with no URL
-      // persists a broken active-server record and dead-ends the next boot
-      // in a https://localhost/api/auth/status loop. Cap the wait so a
-      // genuinely stuck provision still surfaces an error.
-      const AGENT_URL_WAIT_DEADLINE_MS = 90_000;
+      // Poll the agent until it has a connectable URL. The provision job
+      // can report "completed" before the cloud attaches a bridgeUrl —
+      // that URL only exists once the container reaches "running" and
+      // reports its bridge endpoint, which can take several minutes on
+      // cold-start. Calling finishAsCloud with no URL persists a broken
+      // active-server record and dead-ends the next boot in a
+      // https://localhost/api/auth/status loop, so wait long enough for
+      // a genuine cold-start and surface the live status to the user.
+      //
+      // We poll BOTH endpoints because they hydrate at different points:
+      //   - getCloudCompatAgentStatus → exposes `bridgeUrl` directly off
+      //     the agent's runtime status (typically the first to populate).
+      //   - getCloudCompatAgent → returns a `DirectCloudAgent` whose
+      //     `bridge_url` is filled from the same DB column. Eliza Cloud's
+      //     non-admin route does NOT return webUiUrl, so we must accept
+      //     bridgeUrl here.
+      const AGENT_URL_WAIT_DEADLINE_MS = 300_000;
       const fetchAgentWithUrl = async (
         deadlineMs: number,
       ): Promise<CloudCompatAgent | null> => {
         while (Date.now() < deadlineMs) {
-          const agentRes = await client.getCloudCompatAgent(agentId);
-          if (agentRes.success) {
+          const statusRes = await client
+            .getCloudCompatAgentStatus(agentId)
+            .catch(() => null);
+          if (statusRes?.success && statusRes.data) {
+            const s = statusRes.data;
+            if (s.status === "failed" || s.status === "suspended") {
+              setError(
+                t("runtimegate.agentFailed", {
+                  defaultValue: "Cloud agent failed to start ({status}).",
+                  status: s.suspendedReason ?? s.status,
+                }),
+              );
+              return null;
+            }
+            if (s.status) {
+              setProvisionStatus(
+                t("runtimegate.cloudAgentStatus", {
+                  defaultValue: "Agent {status}…",
+                  status: s.status,
+                }),
+              );
+            }
+            if (s.bridgeUrl || s.webUiUrl) {
+              const agentRes = await client
+                .getCloudCompatAgent(agentId)
+                .catch(() => null);
+              if (agentRes?.success) {
+                return {
+                  ...agentRes.data,
+                  bridge_url: s.bridgeUrl ?? agentRes.data.bridge_url ?? null,
+                  web_ui_url: s.webUiUrl ?? agentRes.data.web_ui_url ?? null,
+                  webUiUrl: s.webUiUrl ?? agentRes.data.webUiUrl ?? null,
+                };
+              }
+            }
+          }
+          const agentRes = await client
+            .getCloudCompatAgent(agentId)
+            .catch(() => null);
+          if (agentRes?.success) {
             const agent = agentRes.data;
-            if (agent.web_ui_url || agent.webUiUrl || agent.bridge_url) {
+            if (agent.bridge_url || agent.webUiUrl || agent.web_ui_url) {
               return agent;
             }
           }

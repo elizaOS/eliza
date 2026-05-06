@@ -52,6 +52,7 @@ export function loadAospVariantConfig({ appConfigPath }) {
   const modelSourceLabel = matchString(blockBody, "modelSourceLabel");
   const bootanimationAssetDir = matchString(blockBody, "bootanimationAssetDir");
   const cuttlefishDeviceDir = matchString(blockBody, "cuttlefishDeviceDir");
+  const propertyPrefix = matchString(blockBody, "propertyPrefix");
 
   const required = {
     productLunch,
@@ -82,6 +83,13 @@ export function loadAospVariantConfig({ appConfigPath }) {
     appName,
     commonMk,
     modelSourceLabel,
+    // System-property prefix used by `init.<vendorDir>.rc` (e.g.
+    // `miladyos.boot_phase`, `elizaos.boot_phase`). Defaults to the
+    // vendor dir when forks haven't customized — that's the common
+    // Android convention. Forks like Milady whose property namespace
+    // differs from the vendor dir name (vendor=milady, props=miladyos)
+    // declare it explicitly.
+    propertyPrefix: propertyPrefix ?? vendorDir,
     bootanimationAssetDir: bootanimationAssetDir ?? undefined,
     cuttlefishDeviceDir: cuttlefishDeviceDir ?? undefined,
   };
