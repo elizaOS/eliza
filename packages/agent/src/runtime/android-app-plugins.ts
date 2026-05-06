@@ -13,17 +13,15 @@ import {
   contactsProvider,
   appContactsPlugin as rawContactsPlugin,
 } from "@elizaos/app-contacts/plugin";
-// Import named providers/actions from their dedicated subpath exports.
-// Importing them via `@elizaos/app-phone/plugin` works at runtime but trips
-// tsc TS2614 in the JS-tarball build because the dist/plugin.js is built by
-// tsup without dts emit, and tsc reads only the value-typing of the default
-// export when the dist .js is on disk alongside the .ts. Use dedicated
-// subpath exports so each value is resolved against its own .ts file.
-import { placeCallAction } from "@elizaos/app-phone/actions/place-call";
-import { phoneCallLogProvider } from "@elizaos/app-phone/providers/call-log";
-import { appPhonePlugin as rawPhonePlugin } from "@elizaos/app-phone/plugin";
-import { appWifiPlugin as rawWifiPlugin } from "@elizaos/app-wifi/plugin";
-import { wifiNetworksProvider } from "@elizaos/app-wifi/providers/networks";
+import {
+  phoneCallLogProvider,
+  placeCallAction,
+  appPhonePlugin as rawPhonePlugin,
+} from "@elizaos/app-phone/plugin";
+import {
+  appWifiPlugin as rawWifiPlugin,
+  wifiNetworksProvider,
+} from "@elizaos/app-wifi/plugin";
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.js";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.js";
 
