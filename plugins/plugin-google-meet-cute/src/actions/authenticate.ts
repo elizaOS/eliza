@@ -72,7 +72,11 @@ export const authenticateAction: Action = {
         if (callback) {
           await callback({ text });
         }
-        return { success: true, text, data: { actionName: "AUTHENTICATE_GOOGLE" } };
+        return {
+          success: true,
+          text,
+          data: { actionName: "AUTHENTICATE_GOOGLE" },
+        };
       }
 
       // Check if we should do interactive auth

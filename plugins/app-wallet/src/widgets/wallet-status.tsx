@@ -1,7 +1,10 @@
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "@elizaos/app-core/state";
-import { EmptyWidgetState, WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
+import {
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,

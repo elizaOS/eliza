@@ -12,7 +12,9 @@ import { GetMeetingInfoParams } from "../types";
 
 function getParams(params?: unknown): GetMeetingInfoParams {
   const direct =
-    params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+    params && typeof params === "object"
+      ? (params as Record<string, unknown>)
+      : {};
   const nested =
     direct.parameters && typeof direct.parameters === "object"
       ? (direct.parameters as Record<string, unknown>)
