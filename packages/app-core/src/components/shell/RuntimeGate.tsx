@@ -68,6 +68,7 @@ import {
   type UiTheme,
   useApp,
 } from "../../state";
+import { fetchWithTimeout } from "../../utils/api-request";
 import { preOpenWindow, resolveAppAssetUrl } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
@@ -77,6 +78,7 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
 const LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
+const CLOUD_AGENT_PROBE_TIMEOUT_MS = 4_000;
 const PROVISION_START_STILL_WAITING_MS = 5_000;
 const PROVISION_START_TIMEOUT_MS = 20_000;
 const PROVISION_JOB_WAIT_DEADLINE_MS = 600_000;
@@ -276,6 +278,22 @@ async function withProvisionStartTimeout<T>(
 
 function displayErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function probeCloudAgentReachable(
+  apiBase: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  try {
+    const res = await fetchWithTimeout(
+      `${apiBase.replace(/\/$/, "")}/api/health`,
+      { method: "GET" },
+      timeoutMs,
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // TODO: replace with real onboarding artwork per runtime choice
@@ -1033,7 +1051,6 @@ export function RuntimeGate() {
           );
           return;
         }
-
         let jobRes: Awaited<ReturnType<typeof client.getCloudCompatJobStatus>>;
         try {
           jobRes = await client.getCloudCompatJobStatus(jobId);
@@ -1178,10 +1195,17 @@ export function RuntimeGate() {
             setCloudStage("agent-list");
             return;
           }
-          if (
-            primary.status !== "running" ||
-            !resolveCloudAgentApiBase(primary)
-          ) {
+          const primaryApiBase = resolveCloudAgentApiBase(primary);
+          if (primary.status !== "running" || !primaryApiBase) {
+            await provisionAndConnect(primary.agent_id);
+            return;
+          }
+          const reachable = await probeCloudAgentReachable(
+            primaryApiBase,
+            CLOUD_AGENT_PROBE_TIMEOUT_MS,
+          );
+          if (cancelled) return;
+          if (!reachable) {
             await provisionAndConnect(primary.agent_id);
             return;
           }
@@ -1191,7 +1215,6 @@ export function RuntimeGate() {
       }
 
       // No agents yet — auto-create "My Agent" and provision.
-      setCloudStage("auto-creating");
       setError(null);
       const createRes = await client.createCloudCompatAgent({
         agentName: DEFAULT_AUTO_AGENT_NAME,
@@ -1207,6 +1230,21 @@ export function RuntimeGate() {
         setCloudStage("agent-list");
         return;
       }
+      if (createRes.data.nodeId == null) {
+        setError(
+          t("runtimegate.cloudHostingUnavailable", {
+            defaultValue:
+              "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
+          }),
+        );
+        setCloudStage("agent-list");
+        return;
+      }
+      // MUST stay below the createCloudCompatAgent await — setting cloudStage
+      // earlier fires this effect's cleanup (cloudStage is in deps), flips
+      // cancelled=true, and the post-await guard then bails before
+      // provisionAndConnect runs.
+      setCloudStage("auto-creating");
 
       await provisionAndConnect(createRes.data.agentId);
     })().catch((err) => {
