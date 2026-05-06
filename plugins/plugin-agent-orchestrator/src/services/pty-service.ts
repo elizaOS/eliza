@@ -1071,6 +1071,7 @@ export class PTYService {
     const codexExecMode = shouldUseCodexExecMode({
       agentType: resolvedAgentType,
       initialTask: resolvedInitialTask,
+      metadata: linkedMetadata,
     });
     const codexExecOutputDir = codexExecMode
       ? await mkdtemp(join(tmpdir(), `eliza-codex-${sessionId}-`))

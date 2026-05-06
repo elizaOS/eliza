@@ -30,6 +30,9 @@ function createRuntime(overrides: Record<string, string> = {}) {
       }
       return undefined;
     },
+    getService() {
+      return null;
+    },
     emitEvent() {},
   };
 }

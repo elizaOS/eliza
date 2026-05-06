@@ -35,6 +35,28 @@ describe("buildSpawnConfig", () => {
     expect(config.adapterConfig).not.toHaveProperty("addDirs");
   });
 
+  it("keeps reusable Codex sessions interactive", () => {
+    const config = buildSpawnConfig(
+      "session-1",
+      {
+        name: "codex",
+        agentType: "codex",
+        approvalPreset: "autonomous",
+        initialTask: "write the smoke app",
+        metadata: {
+          keepAliveAfterComplete: true,
+        },
+      },
+      "/tmp/workdir",
+    );
+
+    expect(config.adapterConfig).toMatchObject({
+      interactive: true,
+    });
+    expect(config.adapterConfig).not.toHaveProperty("initialPrompt");
+  });
+
+
   it("passes Codex exec output file path through adapter config", () => {
     const config = buildSpawnConfig(
       "session-1",

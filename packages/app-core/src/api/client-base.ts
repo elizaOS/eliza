@@ -71,6 +71,36 @@ function isElizaCloudControlPlaneBase(
   }
 }
 
+function getWindowStorage(
+  kind: "localStorage" | "sessionStorage",
+): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const storage = window[kind];
+    if (
+      storage &&
+      typeof storage.getItem === "function" &&
+      typeof storage.setItem === "function" &&
+      typeof storage.removeItem === "function"
+    ) {
+      return storage;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function getStoredApiBase(): string | null {
+  const storage = getWindowStorage("localStorage");
+  if (!storage) return null;
+  try {
+    return storage.getItem(LOCAL_STORAGE_API_BASE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -127,10 +157,7 @@ export class ElizaClient {
 
     const bootBase = getBootConfig().apiBase;
     const injectedBase = getElizaApiBase();
-    const storedBaseRaw =
-      typeof window !== "undefined" && window.localStorage
-        ? window.localStorage.getItem(LOCAL_STORAGE_API_BASE_KEY)
-        : null;
+    const storedBaseRaw = getStoredApiBase();
     const storedBase = isElizaCloudControlPlaneBase(storedBaseRaw)
       ? null
       : storedBaseRaw;
@@ -226,14 +253,18 @@ export class ElizaClient {
     // Update boot config so other consumers (resolveApiUrl, etc.) see the new base.
     const config = getBootConfig();
     setBootConfig({ ...config, apiBase: normalized || undefined });
-    if (typeof window !== "undefined") {
+    const localStorage = getWindowStorage("localStorage");
+    const sessionStorage = getWindowStorage("sessionStorage");
+    if (localStorage) {
       if (normalized) {
-        window.localStorage.setItem(LOCAL_STORAGE_API_BASE_KEY, normalized);
+        localStorage.setItem(LOCAL_STORAGE_API_BASE_KEY, normalized);
       } else {
-        window.localStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
+        localStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
       }
+    }
+    if (sessionStorage) {
       // Clean up legacy sessionStorage entry (same key was used historically)
-      window.sessionStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
+      sessionStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
     }
     // Mirror to window.__ELIZA_API_BASE__ so the Capacitor agent plugin's web
     // fallback (native-plugins/agent/src/web.ts) and any other consumers that

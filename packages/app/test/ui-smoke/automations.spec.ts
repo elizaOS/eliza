@@ -589,8 +589,10 @@ test("automations can create event tasks and inspect workflow data flow", async 
   await openAppPath(page, "/automations");
 
   const sidebar = page.getByTestId("automations-sidebar");
-  await expect(sidebar.getByText("Tasks")).toBeVisible();
-  await expect(sidebar.getByText("Workflows")).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Tasks" })).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Workflows" }),
+  ).toBeVisible();
   await expect(
     sidebar.getByRole("button", { name: "Message triage" }),
   ).toBeVisible();

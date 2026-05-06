@@ -43,10 +43,19 @@ test("onboarding starts with setup choices before capability settings", async ({
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
   await expect(
-    page.getByRole("heading", { name: "Choose your setup" }),
+    page.getByRole("heading", { name: "Welcome to Milady" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /Eliza Cloud/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Get started/ })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Remote agent/ }),
+    page.getByRole("button", { name: /I want to run it myself/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("switch", { name: "Enable Computer Use" }),
+  ).toBeHidden();
+
+  await page.getByRole("button", { name: /I want to run it myself/ }).click();
+
+  await expect(
+    page.getByRole("button", { name: /Connect to your own server/ }),
   ).toBeVisible();
 });

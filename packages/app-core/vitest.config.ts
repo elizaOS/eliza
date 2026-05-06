@@ -41,6 +41,7 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 120_000,
     maxWorkers: 2,
+    setupFiles: [path.join(fileDir, "test/setup.ts")],
     // Bootstrap-token tests spin up a real PGlite database + jose-signed
     // RS256 key material per test, and have intermittently exited the
     // vitest worker fork unexpectedly on CI (Worker exited unexpectedly /

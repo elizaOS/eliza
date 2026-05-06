@@ -7,20 +7,33 @@
 
 import type { AgentRuntime, EventPayload, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { GuildMember, Interaction, Message } from "discord.js";
+
+interface DiscordInteraction {
+  commandName: string;
+  isChatInputCommand(): boolean;
+  reply(response: { content: string; ephemeral?: boolean }): Promise<void>;
+}
+
+interface DiscordMessage {
+  id?: string;
+}
+
+interface DiscordGuildMember {
+  user: { username: string };
+}
 
 // Type definitions for Discord events
 interface DiscordSlashCommandPayload extends EventPayload {
-  interaction: Interaction;
+  interaction: DiscordInteraction;
 }
 
 interface DiscordReactionPayload extends EventPayload {
-  reaction: { emoji: { name: string }; message: Message };
+  reaction: { emoji: { name: string }; message: DiscordMessage };
   user: { id: string; username: string };
 }
 
 interface DiscordMemberPayload extends EventPayload {
-  member: GuildMember;
+  member: DiscordGuildMember;
 }
 
 interface DiscordSlashCommand {

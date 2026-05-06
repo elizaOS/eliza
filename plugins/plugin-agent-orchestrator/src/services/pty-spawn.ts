@@ -295,8 +295,13 @@ export interface SpawnContext {
 export function shouldUseCodexExecMode(options: {
   agentType: string;
   initialTask?: string;
+  metadata?: Record<string, unknown>;
 }): boolean {
-  return options.agentType === "codex" && Boolean(options.initialTask?.trim());
+  return (
+    options.agentType === "codex" &&
+    Boolean(options.initialTask?.trim()) &&
+    options.metadata?.keepAliveAfterComplete !== true
+  );
 }
 
 const CURSOR_POSITION_QUERY = "\x1b[6n";

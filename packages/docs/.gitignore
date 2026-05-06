@@ -5,6 +5,7 @@
 *_report.md
 *_report.json
 *-report.md
+!rest/bug-report.md
 *-report.json
 link_check_report.md
 link_check_results.json
