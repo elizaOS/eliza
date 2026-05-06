@@ -1438,9 +1438,10 @@ export async function generateChatResponse(
                 }
 
                 const chunk = extractCompatTextContent(content);
-                if (chunk) {
-                  recordActionCallback(extractCallbackActionTag(content), true);
-                }
+                recordActionCallback(
+                  extractCallbackActionTag(content),
+                  Boolean(chunk),
+                );
                 if (!chunk) return [];
                 if (!claimStreamSource("callback")) return [];
                 applyCallbackTextUpdate(content, chunk);
