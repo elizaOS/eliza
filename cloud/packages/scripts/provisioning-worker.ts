@@ -15,7 +15,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ProcessingResult } from "../lib/services/provisioning-jobs";
+import type { HeartbeatResult, ProcessingResult } from "../lib/services/provisioning-jobs";
 
 type WorkerLogger = typeof import("../lib/utils/logger").logger;
 type WorkerService = typeof import("../lib/services/provisioning-jobs").provisioningJobService;
@@ -118,6 +118,11 @@ export async function processProvisioningWorkerCycle(
   return provisioningJobService.processPendingJobs(batchSize);
 }
 
+export async function processHeartbeatCycle(concurrency = 5): Promise<HeartbeatResult> {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.processRunningHeartbeats(concurrency);
+}
+
 let running = true;
 
 async function sleep(ms: number): Promise<void> {
@@ -132,6 +137,21 @@ async function pollCycle(logger: WorkerLogger, config: ProvisioningWorkerConfig)
     }
   } catch (error) {
     logger.error("[provisioning-worker] cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const heartbeats = await processHeartbeatCycle();
+    if (heartbeats.total > 0) {
+      logger.info("[provisioning-worker] heartbeat cycle complete", {
+        total: heartbeats.total,
+        succeeded: heartbeats.succeeded,
+        failed: heartbeats.failed,
+      });
+    }
+  } catch (error) {
+    logger.error("[provisioning-worker] heartbeat cycle failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   }

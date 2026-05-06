@@ -149,6 +149,16 @@ export class AgentSandboxesRepository {
       );
   }
 
+  async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.status, "running"));
+  }
+
   async findRunningSandbox(id: string, orgId: string): Promise<AgentSandbox | undefined> {
     // Use dbWrite (primary) instead of dbRead (replica) to ensure fresh data.
     // The VPS worker writes bridge_url/status to primary, and read replicas
@@ -203,7 +213,11 @@ export class AgentSandboxesRepository {
     return r;
   }
 
-  /** Atomically set provisioning — only from pending/stopped/disconnected/error. */
+  /**
+   * Atomically take the provisioning lock. `provisioning` is included so a
+   * row left stuck by a crashed worker can be retaken; the job-level stale
+   * recovery in ProvisioningJobService is the time-based gate.
+   */
   async trySetProvisioning(id: string): Promise<AgentSandbox | undefined> {
     const [r] = await dbWrite
       .update(agentSandboxes)
@@ -215,7 +229,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.id, id),
-          sql`${agentSandboxes.status} IN ('pending', 'stopped', 'disconnected', 'error')`,
+          sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'disconnected', 'error')`,
         ),
       )
       .returning();

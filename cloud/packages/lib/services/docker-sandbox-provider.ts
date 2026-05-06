@@ -455,7 +455,10 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     try {
       // Ensure volume directory exists
-      await ssh.exec(`mkdir -p ${shellQuote(volumePath)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/milady`)} ${shellQuote(`${volumePath}/eliza`)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
 
       // Pull image (may take a while on first run)
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -526,6 +529,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-retries 6",
         ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
+        `-v ${shellQuote(`${volumePath}/milady`)}:/root/.milady`,
+        `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 2139).
         // Publish both externally allocated host ports to that live listener so
         // nginx can reach /api/* via bridge_url and the UI via web_ui_port.
@@ -542,6 +547,34 @@ export class DockerSandboxProvider implements SandboxProvider {
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
+
+      // Write ~/.eliza/eliza.json so the runtime sees cloud config even if
+      // it bypasses env vars. Best-effort: a failure here is logged but
+      // does not abort provisioning — the env vars on the container still
+      // carry the same values.
+      try {
+        const elizaConfig = JSON.stringify({
+          logging: { level: "info" },
+          cloud: {
+            enabled: Boolean(allEnv.ELIZAOS_CLOUD_API_KEY),
+            apiKey: allEnv.ELIZAOS_CLOUD_API_KEY || "",
+            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL || "https://www.elizacloud.ai/api/v1",
+          },
+        });
+        // Base64-encode the JSON before passing it through the shell so an
+        // apiKey/baseUrl containing single quotes can't break out of the
+        // outer sh -c quoting or inject commands on the remote host.
+        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
+        const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
+          `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
+        )}`;
+        await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
+        logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
+      } catch (configErr) {
+        logger.warn(
+          `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
+        );
+      }
     } catch (err) {
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so we try to clean up the Steward record.

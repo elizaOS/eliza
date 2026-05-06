@@ -317,14 +317,11 @@ export class NodeAutoscaler {
 
     if (options.deprovision !== true) return;
 
-    const meta = (node.metadata ?? {}) as Record<string, unknown>;
-    const hcloudServerId =
-      typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
+    const hcloudServerId = getHcloudServerId(node);
     if (!hcloudServerId) {
       logger.warn("[autoscaler] Cannot deprovision: no hcloudServerId on node metadata", {
         nodeId,
       });
-      await dockerNodesRepository.delete(node.id);
       return;
     }
 
@@ -362,7 +359,9 @@ export class NodeAutoscaler {
     if (enabled.length <= 1) return [];
 
     const ageThreshold = this.nowFn() - this.policy.idleNodeMinAgeMs;
-    const oldEnough = enabled.filter((n) => n.created_at.getTime() < ageThreshold);
+    const oldEnough = enabled.filter(
+      (n) => isAutoscaledHetznerNode(n) && n.created_at.getTime() < ageThreshold,
+    );
     if (oldEnough.length === 0) return [];
 
     const counts = await Promise.all(
@@ -383,6 +382,16 @@ function generateNodeId(): string {
   // Short hex id with a deterministic prefix — easy to scan in the dashboard.
   const random = Math.random().toString(16).slice(2, 10);
   return `node-${random}`;
+}
+
+function getHcloudServerId(node: DockerNode): number | undefined {
+  const meta = (node.metadata ?? {}) as Record<string, unknown>;
+  return typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
+}
+
+function isAutoscaledHetznerNode(node: DockerNode): boolean {
+  const meta = (node.metadata ?? {}) as Record<string, unknown>;
+  return meta.provider === "hetzner-cloud" && getHcloudServerId(node) !== undefined;
 }
 
 let cachedAutoscaler: NodeAutoscaler | null = null;
