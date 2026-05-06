@@ -1867,6 +1867,10 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		return false;
 	}
 
+	if (looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+
 	const mentionsCommand =
 		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh)\b/iu.test(
 			normalized,
@@ -1882,6 +1886,27 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 
 	return mentionsCommand && asksToInspect && mentionsLocalSurface;
+}
+
+function looksLikeActionExplanationRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	const asksForExplanation =
+		/\b(?:explain|describe|teach|walk\s+me\s+through|what\s+does|what\s+is|how\s+(?:does|do|to)|why)\b/iu.test(
+			normalized,
+		);
+	if (!asksForExplanation) {
+		return false;
+	}
+
+	const asksToExecuteAfterExplanation =
+		/\b(?:and|then|also|after(?:wards)?|next)\s+(?:please\s+)?(?:run|execute)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:run|execute)\b.*\b(?:after|once)\s+(?:you\s+)?(?:explain|describe|teach|walk\s+me\s+through)\b/iu.test(
+			normalized,
+		);
+
+	return !asksToExecuteAfterExplanation;
 }
 
 function looksLikeWebSearchRequest(text: string): boolean {
@@ -2261,8 +2286,12 @@ export function shouldRunMetadataActionRescue(
 export function shouldPromoteExplicitReplyToOwnedAction(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 	suggestion: ActionOwnershipSuggestion | null,
+	messageText = "",
 ): boolean {
 	if (!suggestion || !hasExplicitReplyIntent(responseContent)) {
+		return false;
+	}
+	if (looksLikeActionExplanationRequest(messageText)) {
 		return false;
 	}
 	return (
@@ -6542,6 +6571,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 				shouldPromoteExplicitReplyToOwnedAction(
 					responseContent,
 					metadataSuggestion,
+					getUserMessageText(message),
 				))
 		) {
 			runtime.logger.info(

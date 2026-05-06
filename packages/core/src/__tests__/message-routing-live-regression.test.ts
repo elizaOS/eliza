@@ -59,6 +59,19 @@ describe("live routing regressions", () => {
 				"check git status in /home/alice/project and tell me the branch",
 			),
 		).toContain("git -C '/home/alice/project' status --short --branch");
+		expect(
+			inferLocalShellCommandFromMessageText(
+				"explain how df -h checks disk space on this VPS",
+			),
+		).toBeNull();
+		expect(
+			inferLocalShellCommandFromMessageText(
+				"explain how to run df -h on this VPS",
+			),
+		).toBeNull();
+		expect(inferLocalShellCommandFromMessageText("run df -h on this VPS")).toBe(
+			"df -h",
+		);
 	});
 
 	it("recognizes current-info requests as web search without spawning work", () => {
@@ -121,6 +134,54 @@ describe("live routing regressions", () => {
 					secondBestScore: 0,
 					reasons: ["metadata:keyword-overlap"],
 				},
+			),
+		).toBe(false);
+	});
+
+	it("does not promote explanation-only shell questions into execution", () => {
+		const runtime = {
+			actions: [
+				{
+					name: "SHELL_COMMAND",
+					description: "Run local shell commands",
+				},
+			],
+		} as unknown as Pick<IAgentRuntime, "actions">;
+		const text = "explain how df -h checks disk space on this VPS";
+		const howToRunText = "explain how to run df -h on this VPS";
+
+		expect(
+			suggestOwnedActionFromMetadata(runtime, {
+				content: { text },
+			}),
+		).toBeNull();
+		expect(
+			suggestOwnedActionFromMetadata(runtime, {
+				content: { text: howToRunText },
+			}),
+		).toBeNull();
+		expect(
+			shouldPromoteExplicitReplyToOwnedAction(
+				{ actions: ["REPLY"] },
+				{
+					actionName: "SHELL_COMMAND",
+					score: 100,
+					secondBestScore: 0,
+					reasons: ["direct:local-shell-check"],
+				},
+				text,
+			),
+		).toBe(false);
+		expect(
+			shouldPromoteExplicitReplyToOwnedAction(
+				{ actions: ["REPLY"] },
+				{
+					actionName: "SHELL_COMMAND",
+					score: 100,
+					secondBestScore: 0,
+					reasons: ["direct:local-shell-check"],
+				},
+				howToRunText,
 			),
 		).toBe(false);
 	});
