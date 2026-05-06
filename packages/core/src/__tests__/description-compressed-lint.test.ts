@@ -142,16 +142,8 @@ describe("lintDescriptionCompressed", () => {
 	});
 
 	it("returns multiple violations for a description that breaks several rules at once", () => {
-		// Text length must exceed MAX_DESCRIPTION_LENGTH (160) so the length
-		// hit fires alongside the phrase / word / lead-imperative hits the
-		// rest of the test asserts. Earlier wording (155 chars) sat just
-			// below the limit, so the lengthHits assertion failed even though
-			// the violation classes were correct.
-			const text =
-				"This action will basically simply forward messages to the user — please use this action when in order to send configuration data, currently with the agent, while actually forwarding messages and configuration details.";
-			expect(text.length).toBeGreaterThan(MAX_DESCRIPTION_LENGTH);
-
-			const result = lintDescriptionCompressed(text);
+		const text = `This action will ${"x".repeat(MAX_DESCRIPTION_LENGTH)} messages configuration basically simply please use this action in order to reach the user and the agent currently.`;
+		const result = lintDescriptionCompressed(text);
 		expect(result.ok).toBe(false);
 
 		const lengthHits = result.violations.filter((v) => v.startsWith("length:"));

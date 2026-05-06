@@ -26,7 +26,9 @@ const VALID_KINDS: ReadonlySet<N8nClarificationRequest['kind']> = new Set([
 ]);
 
 function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
-  if (!v || typeof v !== 'object') return false;
+  if (!v || typeof v !== 'object') {
+    return false;
+  }
   const o = v as Record<string, unknown>;
   if (typeof o.question !== 'string' || o.question.trim().length === 0) {
     return false;
@@ -37,16 +39,22 @@ function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
 }
 
 export function coerceClarifications(raw: unknown): N8nClarificationRequest[] {
-  if (!Array.isArray(raw) || raw.length === 0) return [];
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [];
+  }
   const out: N8nClarificationRequest[] = [];
   for (const item of raw) {
     if (typeof item === 'string') {
       const trimmed = item.trim();
-      if (trimmed.length === 0) continue;
+      if (trimmed.length === 0) {
+        continue;
+      }
       out.push({ kind: 'free_text', question: trimmed, paramPath: '' });
       continue;
     }
-    if (!isStructuredClarification(item)) continue;
+    if (!isStructuredClarification(item)) {
+      continue;
+    }
     const o = item as unknown as Record<string, unknown>;
     const kindRaw = typeof o.kind === 'string' ? o.kind : 'free_text';
     const kind = (
@@ -116,7 +124,9 @@ export function parseParamPath(path: string): string[] {
     }
     // Identifier run: read until next `.` or `[`.
     let j = i;
-    while (j < n && path[j] !== '.' && path[j] !== '[') j += 1;
+    while (j < n && path[j] !== '.' && path[j] !== '[') {
+      j += 1;
+    }
     const ident = path.slice(i, j).trim();
     if (ident.length === 0) {
       throw new Error(`empty identifier at index ${i}`);
@@ -218,7 +228,8 @@ export function applyResolutions(
       if (Array.isArray(meta.userNotes)) {
         notes = meta.userNotes as string[];
       } else {
-        notes = meta.userNotes != null ? [String(meta.userNotes)] : [];
+        notes =
+          meta.userNotes !== null && meta.userNotes !== undefined ? [String(meta.userNotes)] : [];
         meta.userNotes = notes;
       }
       notes.push(r.value);
@@ -261,9 +272,13 @@ export function pruneResolvedClarifications(
   freeFormCount = 0
 ): void {
   const meta = (draft as { _meta?: Record<string, unknown> })._meta;
-  if (!meta || typeof meta !== 'object') return;
+  if (!meta || typeof meta !== 'object') {
+    return;
+  }
   const list = meta.requiresClarification;
-  if (!Array.isArray(list)) return;
+  if (!Array.isArray(list)) {
+    return;
+  }
   let toDropFreeForm = freeFormCount;
   const remaining = list.filter((item) => {
     if (typeof item === 'string') {
@@ -316,16 +331,22 @@ export async function buildCatalogSnapshot(
 ): Promise<N8nClarificationTargetGroup[]> {
   const platforms = new Set<string>();
   for (const c of clarifications) {
-    if (c.platform) platforms.add(c.platform);
+    if (c.platform) {
+      platforms.add(c.platform);
+    }
   }
-  if (platforms.size === 0) return [];
+  if (platforms.size === 0) {
+    return [];
+  }
   const out: N8nClarificationTargetGroup[] = [];
   const seen = new Set<string>();
   for (const platform of platforms) {
     const groups = await catalog.listGroups({ platform });
     for (const g of groups) {
       const key = `${g.platform}::${g.groupId}`;
-      if (seen.has(key)) continue;
+      if (seen.has(key)) {
+        continue;
+      }
       seen.add(key);
       out.push(g);
     }
