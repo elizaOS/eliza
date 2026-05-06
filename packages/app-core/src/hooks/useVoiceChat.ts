@@ -20,6 +20,7 @@ import {
   useState,
 } from "react";
 import type { VoiceConfig } from "../api/client";
+import { fetchWithCsrf } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -894,7 +895,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const fetchViaBestAvailableProxy = async (): Promise<Response> => {
           const cloudTarget = resolveApiUrl("/api/tts/cloud");
           try {
-            const cloudRes = await fetch(cloudTarget, makeProxyRequestInit());
+            const cloudRes = await fetchWithCsrf(
+              cloudTarget,
+              makeProxyRequestInit(),
+            );
             if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) {
               return cloudRes;
             }
@@ -910,7 +914,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             });
           }
 
-          return await fetch(
+          return await fetchWithCsrf(
             resolveApiUrl("/api/tts/elevenlabs"),
             makeProxyRequestInit(),
           );

@@ -28,11 +28,13 @@ import type {
   WsEventHandler,
 } from "./client-types";
 import { ApiError } from "./client-types";
+import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import {
   iosInProcessAgentTransportForUrl,
   isIosInProcessLocalAgentBase,
 } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { defaultFetchTimeoutMs } from "./request-timeout";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -41,7 +43,6 @@ import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 const GENERIC_NO_RESPONSE_TEXT =
   "Sorry, I couldn't generate a response right now. Please try again.";
-const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 const LOCAL_STORAGE_API_BASE_KEY = "elizaos_api_base";
 const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "api.elizacloud.ai",
@@ -285,7 +286,7 @@ export class ElizaClient {
       return path;
     })();
     const makeRequest = async (token: string | null): Promise<Response> => {
-      const timeoutMs = options?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+      const timeoutMs = options?.timeoutMs ?? defaultFetchTimeoutMs(path, init);
       const abortController = new AbortController();
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       let timedOut = false;
@@ -329,6 +330,7 @@ export class ElizaClient {
           this.requestTransport === fetchAgentTransport
             ? ((await androidNativeAgentTransportForUrl(requestUrl)) ??
               (await iosInProcessAgentTransportForUrl(requestUrl)) ??
+              desktopHttpTransportForUrl(requestUrl) ??
               nativeCloudHttpTransportForUrl(requestUrl) ??
               this.requestTransport)
             : this.requestTransport;

@@ -15,6 +15,7 @@ import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
+import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import { getFloatingChatManager } from "./floating-chat-window";
 import { getAgentManager } from "./native/agent";
@@ -246,6 +247,7 @@ export function registerRpcHandlers(
 				externalApiSource: runtimeMode.externalApi.source,
 			};
 		},
+		desktopHttpRequest,
 
 		// ---- Renderer diagnostics ----
 		rendererReportDiagnostic: async (

@@ -1,5 +1,6 @@
 import { Music, Pause, Play, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchWithCsrf } from "../../../api/csrf-client";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
@@ -44,7 +45,7 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
   const pollOnce = useCallback(async () => {
     setPlayer((prev) => (prev.kind === "idle" ? { kind: "loading" } : prev));
     try {
-      const res = await fetch(resolveApiUrl("/music-player/status"));
+      const res = await fetchWithCsrf(resolveApiUrl("/music-player/status"));
       const data = (await res.json()) as {
         error?: string;
         guildId?: string;

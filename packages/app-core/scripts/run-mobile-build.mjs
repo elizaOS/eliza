@@ -97,7 +97,6 @@ function resolveSystemApkStagingDir() {
   };
 }
 const systemApkStaging = resolveSystemApkStagingDir();
-const elizaOsVendorDir = systemApkStaging.vendorDir;
 const elizaOsApkDir = systemApkStaging.apkDir;
 const elizaOsApkName = systemApkStaging.apkName;
 const platformsDir = path.join(appCoreRoot, "platforms");
@@ -511,9 +510,13 @@ async function buildWeb(platform) {
       : platform === "ios-overlay"
         ? "ios"
         : platform;
+  const hostBuildScript = path.join(repoRoot, "scripts/run-app-web-build.mjs");
+  const buildScript = fs.existsSync(hostBuildScript)
+    ? hostBuildScript
+    : path.join(appCoreRoot, "scripts/build-capacitor-app.mjs");
   await run(
     process.execPath,
-    [path.join(repoRoot, "scripts/run-app-web-build.mjs")],
+    [buildScript],
     {
       cwd: repoRoot,
       env: {
@@ -2363,19 +2366,45 @@ function hasSimulatorSlice(xcframeworkDir) {
 }
 
 function patchLlamaCppCapacitorPodspecForXcframework(packageDir) {
-  const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
-  if (!fs.existsSync(podspecPath)) return;
-  const current = fs.readFileSync(podspecPath, "utf8");
-  const patched = current.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
-    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
-  );
-  if (patched !== current) {
-    fs.writeFileSync(podspecPath, patched, "utf8");
-    console.log(
-      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework.",
-    );
+  for (const podspecName of [
+    "LlamaCppCapacitor.podspec",
+    "LlamaCpp.podspec",
+  ]) {
+    const podspecPath = path.join(packageDir, podspecName);
+    if (!fs.existsSync(podspecPath)) continue;
+
+    const current = fs.readFileSync(podspecPath, "utf8");
+    const patched = current
+      .replace(
+        /s\.vendored_frameworks\s*=\s*['"]ios\/Frameworks\/llama-cpp\.framework['"]/,
+        "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+      )
+      .replace(
+        /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*[^\n]*ios\/Frameworks[^\n]*\n\s*\}/,
+        "",
+      );
+    if (patched !== current) {
+      fs.writeFileSync(podspecPath, patched, "utf8");
+      console.log(
+        `[mobile-build] Patched ${podspecName} for simulator xcframework.`,
+      );
+    }
   }
+}
+
+function moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir) {
+  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
+  if (!fs.existsSync(deviceFramework)) return;
+
+  const archivedFramework = path.join(
+    frameworksDir,
+    "llama-cpp-device.framework",
+  );
+  fs.rmSync(archivedFramework, { recursive: true, force: true });
+  fs.renameSync(deviceFramework, archivedFramework);
+  console.log(
+    "[mobile-build] Moved device-only llama.cpp framework out of simulator framework search path.",
+  );
 }
 
 async function buildIosLlamaCppSimulatorFramework(packageDir) {
@@ -2441,6 +2470,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
   if (hasSimulatorSlice(xcframeworkDir)) {
+    moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir);
     return;
   }
 
@@ -2462,6 +2492,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   await run("xcodebuild", [...createArgs, "-output", xcframeworkDir], {
     cwd: packageDir,
   });
+  moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir);
   console.log(
     "[mobile-build] Prepared llama.cpp xcframework for iOS simulator.",
   );
