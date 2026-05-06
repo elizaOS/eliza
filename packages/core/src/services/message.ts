@@ -67,7 +67,12 @@ import {
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import type { ProviderCacheEntry, State, StateValue } from "../types/state";
+import type {
+	ProviderCacheEntry,
+	SchemaRow,
+	State,
+	StateValue,
+} from "../types/state";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -559,6 +564,54 @@ const ProviderJsonArraySchema = z.array(z.unknown());
 const ProviderJsonEnvelopeSchema = z.object({
 	providers: z.array(z.unknown()),
 });
+
+function buildActionOwnershipSchema({
+	thoughtDescription,
+	actionsRequired,
+}: {
+	thoughtDescription: string;
+	actionsRequired: boolean;
+}): SchemaRow[] {
+	return [
+		{
+			field: "thought",
+			description: thoughtDescription,
+			validateField: false,
+			streamField: false,
+		},
+		{
+			field: "actions",
+			description:
+				"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+			type: "array",
+			items: { description: "One action name or action entry" },
+			required: actionsRequired,
+			validateField: false,
+			streamField: false,
+		},
+		{
+			field: "providers",
+			description:
+				"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+			type: "array",
+			items: { description: "One provider name" },
+			required: false,
+			validateField: false,
+			streamField: false,
+		},
+		{
+			field: "text",
+			description: "The text response to send to the user",
+			streamField: false,
+		},
+		{
+			field: "simple",
+			description: "Whether this is a simple response (true/false)",
+			validateField: false,
+			streamField: false,
+		},
+	];
+}
 
 export function extractPlannerProviderNames(
 	parsedToon: Record<string, unknown>,
@@ -5126,16 +5179,13 @@ export class DefaultMessageService implements IMessageService {
 				continuation.responseMessages.length > 0 &&
 				continuation.mode !== "simple"
 			) {
-				for (const responseMemory of continuation.responseMessages) {
-					responseMemory.content = responseContent;
-					await runtime.createMemory(responseMemory, "messages");
-					await this.emitMessageSent(
-						runtime,
-						responseMemory,
-						message.content.source ?? "messageHandler",
-					);
-				}
-				responseMessages.push(...continuation.responseMessages);
+				await this.persistContinuationResponseMessages(
+					runtime,
+					message,
+					responseContent,
+					continuation.responseMessages,
+					responseMessages,
+				);
 			}
 
 			if (continuation.mode === "simple") {
@@ -5151,16 +5201,13 @@ export class DefaultMessageService implements IMessageService {
 					}),
 				);
 				if (continuation.responseMessages.length > 0) {
-					for (const responseMemory of continuation.responseMessages) {
-						responseMemory.content = responseContent;
-						await runtime.createMemory(responseMemory, "messages");
-						await this.emitMessageSent(
-							runtime,
-							responseMemory,
-							message.content.source ?? "messageHandler",
-						);
-					}
-					responseMessages.push(...continuation.responseMessages);
+					await this.persistContinuationResponseMessages(
+						runtime,
+						message,
+						responseContent,
+						continuation.responseMessages,
+						responseMessages,
+					);
 				}
 				if (callback) {
 					await callback(responseContent);
@@ -5346,16 +5393,13 @@ export class DefaultMessageService implements IMessageService {
 			continuation.responseMessages.length > 0 &&
 			continuation.mode !== "simple"
 		) {
-			for (const responseMemory of continuation.responseMessages) {
-				responseMemory.content = responseContent;
-				await runtime.createMemory(responseMemory, "messages");
-				await this.emitMessageSent(
-					runtime,
-					responseMemory,
-					message.content.source ?? "messageHandler",
-				);
-			}
-			responseMessages.push(...continuation.responseMessages);
+			await this.persistContinuationResponseMessages(
+				runtime,
+				message,
+				responseContent,
+				continuation.responseMessages,
+				responseMessages,
+			);
 		}
 
 		if (continuation.mode === "simple") {
@@ -5370,16 +5414,13 @@ export class DefaultMessageService implements IMessageService {
 				}),
 			);
 			if (continuation.responseMessages.length > 0) {
-				for (const responseMemory of continuation.responseMessages) {
-					responseMemory.content = responseContent;
-					await runtime.createMemory(responseMemory, "messages");
-					await this.emitMessageSent(
-						runtime,
-						responseMemory,
-						message.content.source ?? "messageHandler",
-					);
-				}
-				responseMessages.push(...continuation.responseMessages);
+				await this.persistContinuationResponseMessages(
+					runtime,
+					message,
+					responseContent,
+					continuation.responseMessages,
+					responseMessages,
+				);
 			}
 			if (callback) {
 				await callback(responseContent);
@@ -5800,46 +5841,11 @@ Return TOON only with the continuation in the text field, starting immediately a
 					prompt: actionRescuePrompt,
 					...(promptAttachments ? { attachments: promptAttachments } : {}),
 				},
-				schema: [
-					{
-						field: "thought",
-						description:
-							"Short reasoning about whether a grounded action should own the turn",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "actions",
-						description:
-							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
-						type: "array",
-						items: { description: "One action name or action entry" },
-						required: false,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "providers",
-						description:
-							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
-						type: "array",
-						items: { description: "One provider name" },
-						required: false,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "text",
-						description: "The text response to send to the user",
-						streamField: false,
-					},
-					{
-						field: "simple",
-						description: "Whether this is a simple response (true/false)",
-						validateField: false,
-						streamField: false,
-					},
-				],
+				schema: buildActionOwnershipSchema({
+					thoughtDescription:
+						"Short reasoning about whether a grounded action should own the turn",
+					actionsRequired: false,
+				}),
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
 					preferredEncapsulation: "toon",
@@ -5907,46 +5913,11 @@ Return TOON only with the continuation in the text field, starting immediately a
 					prompt: ownershipRepairPrompt,
 					...(promptAttachments ? { attachments: promptAttachments } : {}),
 				},
-				schema: [
-					{
-						field: "thought",
-						description:
-							"Short reasoning about whether a more specific owning action should replace the current one",
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "actions",
-						description:
-							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
-						type: "array",
-						items: { description: "One action name or action entry" },
-						required: true,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "providers",
-						description:
-							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
-						type: "array",
-						items: { description: "One provider name" },
-						required: false,
-						validateField: false,
-						streamField: false,
-					},
-					{
-						field: "text",
-						description: "The text response to send to the user",
-						streamField: false,
-					},
-					{
-						field: "simple",
-						description: "Whether this is a simple response (true/false)",
-						validateField: false,
-						streamField: false,
-					},
-				],
+				schema: buildActionOwnershipSchema({
+					thoughtDescription:
+						"Short reasoning about whether a more specific owning action should replace the current one",
+					actionsRequired: true,
+				}),
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
 					preferredEncapsulation: "toon",
@@ -7193,6 +7164,25 @@ Return TOON only with the continuation in the text field, starting immediately a
 			message,
 			source,
 		});
+	}
+
+	private async persistContinuationResponseMessages(
+		runtime: IAgentRuntime,
+		sourceMessage: Memory,
+		responseContent: Content,
+		continuationMessages: Memory[],
+		responseMessages: Memory[],
+	): Promise<void> {
+		for (const responseMemory of continuationMessages) {
+			responseMemory.content = responseContent;
+			await runtime.createMemory(responseMemory, "messages");
+			await this.emitMessageSent(
+				runtime,
+				responseMemory,
+				sourceMessage.content.source ?? "messageHandler",
+			);
+		}
+		responseMessages.push(...continuationMessages);
 	}
 
 	/**

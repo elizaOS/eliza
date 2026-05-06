@@ -21,3 +21,4 @@ exclude:
   - "packages/app-core/src/api/client-base.ts"
   - "packages/app-core/src/api/ios-local-agent-kernel.ts"
   - "packages/app-core/src/state/startup-phase-restore.ts"
+  - "packages/elizaos/templates/project/apps/app/vite.config.ts"

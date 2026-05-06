@@ -2,12 +2,9 @@
 import {
   type Action,
   elizaLogger,
-  generateText,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
-  ModelClass,
-  parseToonKeyValue,
   type State,
   settings,
 } from "@elizaos/core";
@@ -23,6 +20,10 @@ import {
   type PositionInfo,
 } from "@raydium-io/raydium-sdk";
 import { Connection, type Keypair, PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import {
+  extractAndValidateConfiguration,
+  type ManagePositionsInput,
+} from "../../manage-position-configuration";
 
 const RAYDIUM_POSITION_PROVIDER = "degen-lp-raydium-position-provider";
 
@@ -61,12 +62,6 @@ interface FetchedPosition {
 interface NewPriceBounds {
   newLowerPrice: number;
   newUpperPrice: number;
-}
-
-interface ManagePositionsInput {
-  repositionThresholdBps: number;
-  intervalSeconds: number;
-  slippageToleranceBps: number;
 }
 
 interface PoolData {
@@ -156,7 +151,11 @@ export const managePositions: Action = {
     elizaLogger.log("Fetched positions:", fetchedPositions);
 
     const { signer: wallet } = await loadWallet(runtime, true);
-    const connection = new Connection(settings.SOLANA_RPC_URL!);
+    const rpcUrl = settings.SOLANA_RPC_URL;
+    if (!rpcUrl) {
+      throw new Error("SOLANA_RPC_URL is not configured");
+    }
+    const connection = new Connection(rpcUrl);
 
     await handleRepositioning(fetchedPositions, repositionThresholdBps, connection, wallet);
 
@@ -164,62 +163,6 @@ export const managePositions: Action = {
   },
   examples: [],
 };
-
-function validateManagePositionsInput(obj: Record<string, unknown>): ManagePositionsInput {
-  const repositionThresholdBps = readInteger(obj.repositionThresholdBps);
-  const intervalSeconds = readInteger(obj.intervalSeconds);
-  const slippageToleranceBps = readInteger(obj.slippageToleranceBps);
-  if (
-    repositionThresholdBps === null ||
-    intervalSeconds === null ||
-    slippageToleranceBps === null
-  ) {
-    throw new Error("Invalid input: Object does not match the ManagePositionsInput type.");
-  }
-  return { repositionThresholdBps, intervalSeconds, slippageToleranceBps };
-}
-
-function readInteger(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value)) return value;
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toLowerCase() === "null") return null;
-  const parsed = Number(trimmed);
-  return Number.isInteger(parsed) ? parsed : null;
-}
-
-export async function extractAndValidateConfiguration(
-  text: string,
-  runtime: IAgentRuntime
-): Promise<ManagePositionsInput | null> {
-  elizaLogger.log("Extracting and validating configuration from text:", text);
-
-  const prompt = `Given this message: "${text}". Extract the reposition threshold value, time interval, and slippage tolerance.
-        The threshold value and the slippage tolerance can be given in percentages or bps. You will always respond with the reposition threshold in bps.
-        Very important: Use null for each field that is not present in the message.
-        Respond with TOON only using this shape:
-        repositionThresholdBps: 120
-        intervalSeconds: 300
-        slippageToleranceBps: 50
-    `;
-
-  const content = await generateText({
-    runtime,
-    context: prompt,
-    modelClass: ModelClass.SMALL,
-  });
-
-  try {
-    const configuration = parseToonKeyValue<Record<string, unknown>>(content);
-    if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
-      throw new Error("Configuration must be a structured object");
-    }
-    return validateManagePositionsInput(configuration as Record<string, unknown>);
-  } catch (error) {
-    elizaLogger.warn("Invalid configuration detected:", error);
-    return null;
-  }
-}
 
 async function calculateNewPositionBounds(
   poolId: string,
