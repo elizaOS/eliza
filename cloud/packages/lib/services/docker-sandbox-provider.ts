@@ -434,7 +434,10 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     try {
       // Ensure volume directory exists
-      await ssh.exec(`mkdir -p ${shellQuote(volumePath)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/milady`)} ${shellQuote(`${volumePath}/eliza`)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
 
       // Pull image (may take a while on first run)
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -505,6 +508,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-retries 6",
         ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
+        `-v ${shellQuote(`${volumePath}/milady`)}:/root/.milady`,
+        `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 2139).
         // Publish both externally allocated host ports to that live listener so
         // nginx can reach /api/* via bridge_url and the UI via web_ui_port.
