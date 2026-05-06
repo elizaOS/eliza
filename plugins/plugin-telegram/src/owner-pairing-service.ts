@@ -20,12 +20,12 @@
  * command conventions (commands must match [a-z0-9_]{1,32}).
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { Context } from "telegraf";
-import { TELEGRAM_SERVICE_NAME } from "./constants";
+import { type IAgentRuntime, logger, Service } from '@elizaos/core';
+import type { Context } from 'telegraf';
+import { TELEGRAM_SERVICE_NAME } from './constants';
 
 /** Service type string used by the backend to look up this service. */
-export const TELEGRAM_OWNER_PAIRING_SERVICE_TYPE = "OWNER_PAIRING_TELEGRAM";
+export const TELEGRAM_OWNER_PAIRING_SERVICE_TYPE = 'OWNER_PAIRING_TELEGRAM';
 
 /** Maximum pairing attempts per user per window. */
 const RATE_LIMIT_MAX_ATTEMPTS = 5;
@@ -39,7 +39,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
  */
 interface OwnerBindVerifyService {
   verifyOwnerBindFromConnector(params: {
-    connector: "discord" | "telegram" | "wechat" | "matrix";
+    connector: 'discord' | 'telegram' | 'wechat' | 'matrix';
     externalId: string;
     displayHandle: string;
     code: string;
@@ -50,18 +50,18 @@ interface OwnerBindVerifyService {
 async function auditEmit(
   runtime: IAgentRuntime,
   action: string,
-  outcome: "success" | "failure",
+  outcome: 'success' | 'failure',
   metadata: Record<string, string | number | boolean>,
 ): Promise<void> {
   try {
     await runtime.emitEvent(
-      ["AUTH_AUDIT"] as string[],
+      ['AUTH_AUDIT'] as string[],
       {
         runtime,
         action,
         outcome,
         metadata,
-        source: "telegram",
+        source: 'telegram',
       } as never,
     );
   } catch {
@@ -108,12 +108,12 @@ function resolveVerifyService(
   runtime: IAgentRuntime,
 ): OwnerBindVerifyService | null {
   try {
-    const svc = runtime.getService("OWNER_BIND_VERIFY") as unknown;
+    const svc = runtime.getService('OWNER_BIND_VERIFY') as unknown;
     if (
       svc &&
-      typeof svc === "object" &&
+      typeof svc === 'object' &&
       typeof (svc as Record<string, unknown>).verifyOwnerBindFromConnector ===
-        "function"
+        'function'
     ) {
       return svc as OwnerBindVerifyService;
     }
@@ -159,17 +159,17 @@ export async function handleElizaPairCommand(
 
   if (isRateLimited(userId)) {
     logger.warn(
-      { src: "plugin:telegram:owner-pairing", userId },
-      "Rate limit hit for /eliza_pair",
+      { src: 'plugin:telegram:owner-pairing', userId },
+      'Rate limit hit for /eliza_pair',
     );
     await auditEmit(
       runtime,
-      "auth.owner.pair.telegram.rate_limited",
-      "failure",
+      'auth.owner.pair.telegram.rate_limited',
+      'failure',
       { externalId: userId },
     );
     await ctx.reply(
-      "Too many pairing attempts. Please wait a moment before trying again.",
+      'Too many pairing attempts. Please wait a moment before trying again.',
     );
     return;
   }
@@ -178,10 +178,10 @@ export async function handleElizaPairCommand(
   // Telegram delivers command text as: /eliza_pair 123456
   // or /eliza_pair@botname 123456 in group chats.
   const message = ctx.message;
-  const rawText = message && "text" in message ? message.text : undefined;
+  const rawText = message && 'text' in message ? message.text : undefined;
 
   let code: string | null = null;
-  if (typeof rawText === "string") {
+  if (typeof rawText === 'string') {
     // Strip the command token itself and optional @botname, then take the
     // next space-separated token as the code argument.
     const parts = rawText.trim().split(/\s+/);
@@ -192,7 +192,7 @@ export async function handleElizaPairCommand(
 
   if (!code?.trim()) {
     await ctx.reply(
-      "Usage: /eliza\\_pair <code> — enter the 6-digit code shown in the Eliza dashboard.",
+      'Usage: /eliza\\_pair <code> — enter the 6-digit code shown in the Eliza dashboard.',
     );
     return;
   }
@@ -200,7 +200,7 @@ export async function handleElizaPairCommand(
   code = code.trim();
   if (!isValidPairCode(code)) {
     await ctx.reply(
-      "The pairing code must be exactly 6 digits. Check the Eliza dashboard and try again.",
+      'The pairing code must be exactly 6 digits. Check the Eliza dashboard and try again.',
     );
     return;
   }
@@ -208,17 +208,17 @@ export async function handleElizaPairCommand(
   const verifySvc = resolveVerifyService(runtime);
   if (!verifySvc) {
     logger.error(
-      { src: "plugin:telegram:owner-pairing", userId },
-      "OWNER_BIND_VERIFY service not available — cannot complete pairing",
+      { src: 'plugin:telegram:owner-pairing', userId },
+      'OWNER_BIND_VERIFY service not available — cannot complete pairing',
     );
     await auditEmit(
       runtime,
-      "auth.owner.pair.telegram.service_unavailable",
-      "failure",
+      'auth.owner.pair.telegram.service_unavailable',
+      'failure',
       { externalId: userId },
     );
     await ctx.reply(
-      "Eliza could not reach the pairing service right now. Please try again in a moment.",
+      'Eliza could not reach the pairing service right now. Please try again in a moment.',
     );
     return;
   }
@@ -226,7 +226,7 @@ export async function handleElizaPairCommand(
   let result: { success: boolean; error?: string };
   try {
     result = await verifySvc.verifyOwnerBindFromConnector({
-      connector: "telegram",
+      connector: 'telegram',
       externalId: userId,
       displayHandle,
       code,
@@ -234,48 +234,48 @@ export async function handleElizaPairCommand(
   } catch (err) {
     logger.error(
       {
-        src: "plugin:telegram:owner-pairing",
+        src: 'plugin:telegram:owner-pairing',
         userId,
         error: err instanceof Error ? err.message : String(err),
       },
-      "verifyOwnerBindFromConnector threw unexpectedly",
+      'verifyOwnerBindFromConnector threw unexpectedly',
     );
     await auditEmit(
       runtime,
-      "auth.owner.pair.telegram.verify_error",
-      "failure",
+      'auth.owner.pair.telegram.verify_error',
+      'failure',
       { externalId: userId },
     );
     await ctx.reply(
-      "Something went wrong while verifying the pairing code. Please try again.",
+      'Something went wrong while verifying the pairing code. Please try again.',
     );
     return;
   }
 
   if (result.success) {
     logger.info(
-      { src: "plugin:telegram:owner-pairing", userId, displayHandle },
-      "Owner pairing completed successfully",
+      { src: 'plugin:telegram:owner-pairing', userId, displayHandle },
+      'Owner pairing completed successfully',
     );
-    await auditEmit(runtime, "auth.owner.pair.telegram.success", "success", {
+    await auditEmit(runtime, 'auth.owner.pair.telegram.success', 'success', {
       externalId: userId,
       displayHandle,
     });
-    await ctx.reply("Paired with Eliza. You can now log in via Telegram.");
+    await ctx.reply('Paired with Eliza. You can now log in via Telegram.');
   } else {
     logger.warn(
       {
-        src: "plugin:telegram:owner-pairing",
+        src: 'plugin:telegram:owner-pairing',
         userId,
         backendError: result.error,
       },
-      "Owner pairing rejected by backend",
+      'Owner pairing rejected by backend',
     );
-    await auditEmit(runtime, "auth.owner.pair.telegram.failure", "failure", {
+    await auditEmit(runtime, 'auth.owner.pair.telegram.failure', 'failure', {
       externalId: userId,
     });
     await ctx.reply(
-      "Pair code invalid or expired. Check the Eliza dashboard for a fresh code.",
+      'Pair code invalid or expired. Check the Eliza dashboard for a fresh code.',
     );
   }
 }
@@ -306,7 +306,7 @@ export class TelegramOwnerPairingServiceImpl
 {
   static serviceType = TELEGRAM_OWNER_PAIRING_SERVICE_TYPE;
   capabilityDescription =
-    "Handles Telegram-side owner pairing (command code verification) and DM login-link delivery for Eliza remote auth";
+    'Handles Telegram-side owner pairing (command code verification) and DM login-link delivery for Eliza remote auth';
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new TelegramOwnerPairingServiceImpl(runtime);
@@ -314,18 +314,18 @@ export class TelegramOwnerPairingServiceImpl
       service.registerPairCommand(runtime);
       logger.info(
         {
-          src: "plugin:telegram:owner-pairing",
+          src: 'plugin:telegram:owner-pairing',
           agentId: runtime.agentId,
         },
-        "TelegramOwnerPairingService started; /eliza_pair command registered",
+        'TelegramOwnerPairingService started; /eliza_pair command registered',
       );
     } else {
       logger.info(
         {
-          src: "plugin:telegram:owner-pairing",
+          src: 'plugin:telegram:owner-pairing',
           agentId: runtime.agentId,
         },
-        "TelegramOwnerPairingService started without /eliza_pair because OWNER_BIND_VERIFY is not registered",
+        'TelegramOwnerPairingService started without /eliza_pair because OWNER_BIND_VERIFY is not registered',
       );
     }
     return service;
@@ -346,38 +346,38 @@ export class TelegramOwnerPairingServiceImpl
    */
   private registerPairCommand(runtime: IAgentRuntime): void {
     const telegramSvc = runtime.getService(TELEGRAM_SERVICE_NAME) as unknown;
-    if (!telegramSvc || typeof telegramSvc !== "object") {
+    if (!telegramSvc || typeof telegramSvc !== 'object') {
       logger.warn(
-        { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
-        "TelegramService unavailable during owner-pairing start; /eliza_pair command not registered",
+        { src: 'plugin:telegram:owner-pairing', agentId: runtime.agentId },
+        'TelegramService unavailable during owner-pairing start; /eliza_pair command not registered',
       );
       return;
     }
 
     const bot =
-      "bot" in (telegramSvc as Record<string, unknown>)
+      'bot' in (telegramSvc as Record<string, unknown>)
         ? (telegramSvc as { bot: unknown }).bot
         : null;
 
     if (
       !bot ||
-      typeof (bot as Record<string, unknown>).command !== "function"
+      typeof (bot as Record<string, unknown>).command !== 'function'
     ) {
       logger.warn(
-        { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
-        "Telegraf bot instance not available — /eliza_pair will not be registered",
+        { src: 'plugin:telegram:owner-pairing', agentId: runtime.agentId },
+        'Telegraf bot instance not available — /eliza_pair will not be registered',
       );
       return;
     }
 
-    const telegrafBot = bot as import("telegraf").Telegraf<Context>;
-    telegrafBot.command("eliza_pair", async (ctx) => {
+    const telegrafBot = bot as import('telegraf').Telegraf<Context>;
+    telegrafBot.command('eliza_pair', async (ctx) => {
       await handleElizaPairCommand(ctx, runtime);
     });
 
     logger.debug(
-      { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
-      "/eliza_pair command registered with Telegraf bot",
+      { src: 'plugin:telegram:owner-pairing', agentId: runtime.agentId },
+      '/eliza_pair command registered with Telegraf bot',
     );
   }
 
@@ -392,18 +392,18 @@ export class TelegramOwnerPairingServiceImpl
     ) as unknown;
     const bot =
       telegramSvc &&
-      typeof telegramSvc === "object" &&
-      "bot" in (telegramSvc as Record<string, unknown>)
+      typeof telegramSvc === 'object' &&
+      'bot' in (telegramSvc as Record<string, unknown>)
         ? (telegramSvc as { bot: unknown }).bot
         : null;
 
-    if (!bot || typeof (bot as Record<string, unknown>).telegram !== "object") {
+    if (!bot || typeof (bot as Record<string, unknown>).telegram !== 'object') {
       throw new Error(
-        "Telegram bot is not available — cannot send DM login link",
+        'Telegram bot is not available — cannot send DM login link',
       );
     }
 
-    const telegrafBot = bot as import("telegraf").Telegraf<Context>;
+    const telegrafBot = bot as import('telegraf').Telegraf<Context>;
     const chatId = Number(externalId);
     if (!Number.isFinite(chatId) || chatId <= 0) {
       throw new Error(
@@ -413,15 +413,15 @@ export class TelegramOwnerPairingServiceImpl
 
     const message =
       `Click to log in to Eliza: ${link}\n\n` +
-      "_This link expires in 5 minutes. Do not share it._";
+      '_This link expires in 5 minutes. Do not share it._';
 
     try {
       await telegrafBot.telegram.sendMessage(chatId, message, {
-        parse_mode: "Markdown",
+        parse_mode: 'Markdown',
       });
       logger.info(
-        { src: "plugin:telegram:owner-pairing", externalId },
-        "Login DM link sent",
+        { src: 'plugin:telegram:owner-pairing', externalId },
+        'Login DM link sent',
       );
     } catch (err) {
       throw new Error(
