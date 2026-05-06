@@ -22,7 +22,7 @@ import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type {
   VoiceCaptureMode,
   VoicePlaybackStartEvent,
-} from "../../hooks/voice-chat-types";
+} from "../../voice/voice-chat-types";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";

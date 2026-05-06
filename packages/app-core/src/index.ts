@@ -7,15 +7,6 @@ export {
   readRequestBody,
   readRequestBodyBuffer,
 } from "@elizaos/agent";
-// Inventory constants moved to @elizaos/app-wallet — re-exported for
-// compatibility while consumers migrate.
-// TODO: remove once consumers import from @elizaos/app-wallet.
-export {
-  BSC_GAS_READY_THRESHOLD,
-  HEX_ADDRESS_RE,
-  isAvaxChainName,
-  isBscChainName,
-} from "@elizaos/app-wallet/inventory/constants";
 export type { RestartHandler } from "@elizaos/shared";
 export {
   RESTART_EXIT_CODE,
@@ -48,7 +39,6 @@ export * from "./config/index";
 export * from "./events/index";
 export * from "./hooks/useActivityEvents";
 export * from "./hooks/useBugReport";
-export * from "./hooks/useCanvasWindow";
 export * from "./hooks/useChatAvatarVoiceBridge";
 export * from "./hooks/useContextMenu";
 export {
@@ -56,7 +46,6 @@ export {
   useShortcutsHelp,
 } from "./hooks/useKeyboardShortcuts";
 export * from "./hooks/useMediaQuery";
-export * from "./hooks/useMusicPlayer";
 export * from "./hooks/useRenderGuard";
 export * from "./hooks/useSignalPairing";
 export * from "./hooks/useStreamPopoutNavigation";

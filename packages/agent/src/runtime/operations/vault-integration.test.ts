@@ -124,8 +124,19 @@ describe("vault × runtime-ops — accepted operation persists ref, never plaint
     const opId = outcome.operation.id;
 
     // Drain the manager's execution chain so the op completes.
-    await new Promise((r) => setTimeout(r, 60));
-    const finalOp = await repo.get(opId);
+    // Was: `await new Promise((r) => setTimeout(r, 60))` — a fixed 60ms
+    // sleep. Passes locally; flakes in CI on slower runners where the
+    // operation is still in `running` status when we read it. Poll
+    // until the op reaches a terminal state (or a 5s deadline).
+    const finalOp = await (async () => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const op = await repo.get(opId);
+        if (op?.status === "succeeded" || op?.status === "failed") return op;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return repo.get(opId);
+    })();
     expect(finalOp?.status).toBe("succeeded");
 
     // Invariant 1: on-disk op file MUST NOT contain the secret.
