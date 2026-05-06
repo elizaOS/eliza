@@ -16,6 +16,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { fetchWithCsrf } from "../../api/csrf-client";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -310,10 +311,10 @@ export function DesktopWorkspaceSection({
 
     try {
       const [stackResponse, consoleResponse] = await Promise.all([
-        fetch(resolveApiUrl("/api/dev/stack"), {
+        fetchWithCsrf(resolveApiUrl("/api/dev/stack"), {
           headers: { Accept: "application/json" },
         }),
-        fetch(
+        fetchWithCsrf(
           resolveApiUrl("/api/dev/console-log?maxLines=250&maxBytes=200000"),
           {
             headers: { Accept: "text/plain" },

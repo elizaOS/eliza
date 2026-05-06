@@ -97,7 +97,6 @@ function resolveSystemApkStagingDir() {
   };
 }
 const systemApkStaging = resolveSystemApkStagingDir();
-const elizaOsVendorDir = systemApkStaging.vendorDir;
 const elizaOsApkDir = systemApkStaging.apkDir;
 const elizaOsApkName = systemApkStaging.apkName;
 const platformsDir = path.join(appCoreRoot, "platforms");
@@ -2436,6 +2435,21 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
   }
 }
 
+function moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir) {
+  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
+  if (!fs.existsSync(deviceFramework)) return;
+
+  const archivedFramework = path.join(
+    frameworksDir,
+    "llama-cpp-device.framework",
+  );
+  fs.rmSync(archivedFramework, { recursive: true, force: true });
+  fs.renameSync(deviceFramework, archivedFramework);
+  console.log(
+    "[mobile-build] Moved device-only llama.cpp framework out of simulator framework search path.",
+  );
+}
+
 async function buildIosLlamaCppSimulatorFramework(packageDir) {
   if (!resolveExecutable("cmake")) {
     throw new Error(
@@ -2504,6 +2518,7 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
   if (hasSimulatorSlice(xcframeworkDir)) {
+    moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir);
     return;
   }
 

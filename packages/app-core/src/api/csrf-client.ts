@@ -17,8 +17,10 @@ import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
+import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { defaultFetchTimeoutMs } from "./request-timeout";
 import { fetchAgentTransport } from "./transport";
 
 /**
@@ -69,7 +71,10 @@ export async function fetchWithCsrf(
   const transport =
     (await androidNativeAgentTransportForUrl(url)) ??
     (await iosInProcessAgentTransportForUrl(url)) ??
+    desktopHttpTransportForUrl(url) ??
     nativeCloudHttpTransportForUrl(url) ??
     fetchAgentTransport;
-  return transport.request(url, requestInit);
+  return transport.request(url, requestInit, {
+    timeoutMs: defaultFetchTimeoutMs(url, requestInit),
+  });
 }
