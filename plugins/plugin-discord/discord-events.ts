@@ -39,6 +39,7 @@ import {
 	handleAutocomplete as handleBuiltinAutocomplete,
 	handleSlashCommand as handleBuiltinSlashCommand,
 } from "./slash-commands";
+import { recordDiscordChannelMessageSeen } from "./staleness";
 import {
 	DiscordEventTypes,
 	type DiscordListenChannelPayload,
@@ -265,6 +266,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				"Ignoring message from bot or self",
 			);
 			return;
+		}
+
+		if (service.messageManager) {
+			recordDiscordChannelMessageSeen(
+				service.messageManager,
+				message.channel.id,
+				message.id,
+			);
 		}
 
 		if (listenCids.includes(message.channel.id) && message) {
