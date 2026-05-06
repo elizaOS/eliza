@@ -147,4 +147,32 @@ describe("generateChatResponse usage reporting", () => {
       actionCallbackHistory: ["callback reply"],
     });
   });
+
+  it("counts action-only callbacks without adding visible callback history", async () => {
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ actions: ["SEARCHING"] });
+          return {
+            didRespond: true,
+            responseContent: { text: "final reply" },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result).toMatchObject({
+      text: "final reply",
+      usedActionCallbacks: true,
+    });
+    expect(result.actionCallbackHistory).toBeUndefined();
+  });
 });

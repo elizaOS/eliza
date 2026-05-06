@@ -2507,6 +2507,9 @@ export function stripReplyWhenActionOwnsTurn(
 	if (!actions || actions.length === 0) {
 		return [];
 	}
+	if (actions.length <= 1) {
+		return [...actions];
+	}
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
 	const dedupedActions: string[] = [];
