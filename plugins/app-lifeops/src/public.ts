@@ -4,11 +4,10 @@ import { registerLifeOpsAutomationNodeContributor } from "./automation-node-cont
 
 export { lifeopsPlugin } from "./routes/plugin.js";
 export {
-  blockWebsitesAction,
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,
+  ownerWebsiteBlockAction,
   requestSelfControlPermission,
-  requestWebsiteBlockingPermissionAction,
 } from "./website-blocker/public.js";
 
 registerLifeOpsAutomationNodeContributor();

@@ -1,5 +1,7 @@
 import { type Context, Hono } from "hono";
+import { userCharactersRepository } from "@/db/repositories/characters";
 import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
+import { envelope, errorEnvelope, toCompatOpResult } from "@/lib/api/compat-envelope";
 import { containersEnv } from "@/lib/config/containers-env";
 import {
   type CreateContainerInput,
@@ -8,7 +10,10 @@ import {
 } from "@/lib/services/containers/hetzner-client";
 import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
 import { dockerNodeManager } from "@/lib/services/docker-node-manager";
+import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { logger } from "@/lib/utils/logger";
 
 interface ForwardedAuth {
   userId: string;
@@ -195,6 +200,7 @@ app.post("/api/v1/cron/deployment-monitor", deploymentMonitorResponse);
 
 function agentHotPoolResponse(c: Context) {
   return handleInternal(c, async () => {
+    const healthChecks = await dockerNodeManager.healthCheckAll();
     const syncChanges = await dockerNodeManager.syncAllocatedCounts();
     const image = containersEnv.defaultAgentImage();
     const prePullEnabled = process.env.ELIZA_AGENT_HOT_POOL_PREPULL !== "false";
@@ -218,6 +224,7 @@ function agentHotPoolResponse(c: Context) {
         data: {
           image,
           prePullEnabled,
+          healthChecks: Object.fromEntries(healthChecks),
           syncedAllocatedCounts: Object.fromEntries(syncChanges),
           capacity,
           nodes,
@@ -352,6 +359,43 @@ app.post("/api/v1/admin/docker-nodes/:nodeId/health-check", (c) =>
         node: updated,
       },
     });
+  }),
+);
+
+app.delete("/api/compat/agents/:id", (c) =>
+  handle(c, async (auth) => {
+    const agentId = c.req.param("id");
+    const deleted = await elizaSandboxService.deleteAgent(agentId, auth.organizationId);
+    if (!deleted.success) {
+      const status =
+        deleted.error === "Agent not found"
+          ? 404
+          : deleted.error === "Agent provisioning is in progress"
+            ? 409
+            : 500;
+      return c.json(errorEnvelope(deleted.error), status);
+    }
+
+    const characterId = deleted.deletedSandbox.character_id;
+    const sandboxConfig = deleted.deletedSandbox.agent_config as Record<string, unknown> | null;
+    const reusesExistingCharacter = reusesExistingElizaCharacter(sandboxConfig);
+
+    if (characterId && !reusesExistingCharacter) {
+      try {
+        await userCharactersRepository.delete(characterId);
+      } catch (charErr) {
+        logger.warn(
+          "[container-control-plane] Failed linked character cleanup after agent delete",
+          {
+            agentId,
+            characterId,
+            error: charErr instanceof Error ? charErr.message : String(charErr),
+          },
+        );
+      }
+    }
+
+    return c.json(envelope(toCompatOpResult(agentId, "delete", true)));
   }),
 );
 

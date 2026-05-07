@@ -21,8 +21,8 @@ export const inboxTriageProvider: Provider = {
   description:
     "Injects pending inbox triage items into owner context. Shows urgent messages, " +
     "items needing reply, and recent auto-replies across all channels including email. " +
-    "Use OWNER_INBOX for cross-channel triage, digest, respond, Gmail search/read, and Gmail draft/send reply workflows. " +
-    "If the request is Gmail-only, OWNER_INBOX should use channel=gmail; if it is just 'my inbox', OWNER_INBOX should use the cross-channel path.",
+    "Use TRIAGE_MESSAGES for cross-channel triage, digest, respond, Gmail search/read, and Gmail draft/send reply workflows. " +
+    "If the request is Gmail-only, TRIAGE_MESSAGES should use channel=gmail; if it is just 'my inbox', TRIAGE_MESSAGES should use the cross-channel path.",
   descriptionCompressed:
     "Pending inbox triage items across all channels incl email.",
   dynamic: true,

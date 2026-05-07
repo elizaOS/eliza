@@ -72,37 +72,37 @@ interface OwnerScreenTimeParams {
 const SUBACTIONS: SubactionsMap<Subaction> = {
   summary: {
     description: "Rolling-window screen-time summary across apps and websites.",
-    descriptionCompressed: "screen-time rolling-window summary default",
+    descriptionCompressed: "rolling-window screen-time summary apps+websites",
     required: [],
     optional: ["windowDays", "source", "identifier"],
   },
   today: {
     description: "Per-day screen-time breakdown for a specific date.",
-    descriptionCompressed: "screen-time today per-day breakdown",
+    descriptionCompressed: "per-day screen-time breakdown date",
     required: [],
     optional: ["date", "source", "identifier"],
   },
   weekly: {
     description: "Screen-time over the last N days (default 7).",
-    descriptionCompressed: "screen-time last N days default 7",
+    descriptionCompressed: "screen-time last-N-days default-7",
     required: [],
     optional: ["days", "source", "identifier"],
   },
   weekly_average_by_app: {
     description: "Average screen-time per app per day across the window.",
-    descriptionCompressed: "screen-time avg per app per day across window",
+    descriptionCompressed: "avg screen-time per-app per-day window",
     required: [],
     optional: ["days", "identifier"],
   },
   by_app: {
     description: "Top apps by dwell time in the window.",
-    descriptionCompressed: "top apps by dwell time",
+    descriptionCompressed: "top apps dwell-time window",
     required: [],
     optional: ["limit", "windowDays"],
   },
   by_website: {
     description: "Top websites by dwell time in the window.",
-    descriptionCompressed: "top websites by dwell time",
+    descriptionCompressed: "top websites dwell-time window",
     required: [],
     optional: ["limit", "windowDays"],
   },
@@ -110,14 +110,14 @@ const SUBACTIONS: SubactionsMap<Subaction> = {
     description:
       "Per-app focus minutes from the macOS native activity tracker for the last N hours. macOS-only.",
     descriptionCompressed:
-      "per-app focus minutes macOS native tracker last N hours macOS-only",
+      "per-app focus mins macOS-native-tracker last-N-hours macOS-only",
     required: [],
     optional: ["windowHours"],
   },
   time_on_app: {
     description:
       "Focus time for one app (matched by app name or bundle id) over the last N hours. macOS-only.",
-    descriptionCompressed: "focus time one app name or bundle id last N hours",
+    descriptionCompressed: "focus time single-app name|bundle-id last-N-hours macOS-only",
     required: ["appNameOrBundleId"],
     optional: ["windowHours"],
   },
@@ -125,7 +125,7 @@ const SUBACTIONS: SubactionsMap<Subaction> = {
     description:
       "Browser time on one specific domain from browser-extension activity reports.",
     descriptionCompressed:
-      "browser time one domain from browser-activity reports",
+      "browser time single-domain extension-reports",
     required: ["domain"],
     optional: ["windowHours"],
   },
@@ -133,7 +133,7 @@ const SUBACTIONS: SubactionsMap<Subaction> = {
     description:
       "Per-domain focus seconds from the last snapshot pushed by the browser extension.",
     descriptionCompressed:
-      "per-domain focus seconds last pushed extension cache optional device",
+      "per-domain focus-seconds last-extension-snapshot deviceId?",
     required: [],
     optional: ["deviceId", "limit"],
   },
@@ -248,8 +248,8 @@ export const ownerScreenTimeAction: Action = {
   ],
   description:
     "Owner-only. Quantitative screen-time and activity analytics across screen-time samples, the macOS native activity tracker, and browser extension reports. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website (screen-time queries); activity_report, time_on_app, time_on_site (focus minutes from native tracker); browser_activity (per-domain pushed by browser extension).",
-  descriptionCompressed:
-    "Report screen/activity/browser focus mins: summary today weekly avg by app/site, activity report, time on app/site. Owner macOS.",
+    descriptionCompressed:
+    "screen-time+activity+browser focus mins: summary today weekly weekly-avg-by-app by-app by-website activity-report time-on-app time-on-site browser-activity owner macOS",
 
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
 

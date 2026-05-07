@@ -18,7 +18,7 @@ import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playboo
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
 import { recentConversationTexts } from "./lib/recent-context.js";
 import { INTERNAL_URL, messageText } from "./lifeops-google-helpers.js";
-import { formatPromptSection } from "./prompt-format.js";
+import { formatPromptSection } from "./lib/prompt-format.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 

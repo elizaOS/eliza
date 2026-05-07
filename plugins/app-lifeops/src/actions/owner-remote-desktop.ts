@@ -40,31 +40,31 @@ const SUBACTIONS: SubactionsMap<RemoteSubaction> = {
       "If running in local mode (ELIZA_REMOTE_LOCAL_MODE=1) no pairing code is needed; " +
       "otherwise a valid 6-digit pairing code is required.",
     descriptionCompressed:
-      "open remote session confirmed-true pairing-code 6-digit local-mode-skips",
+      "open remote session confirmed-true 6-digit-pairing local-mode-skips",
     required: ["confirmed"],
     optional: ["pairingCode"],
   },
   status: {
     description: "Look up one remote session by id via the legacy backend.",
-    descriptionCompressed: "lookup remote session by id legacy",
+    descriptionCompressed: "lookup remote session sessionId legacy-backend",
     required: ["sessionId"],
   },
   end: {
     description: "Close a remote session by id via the legacy backend.",
-    descriptionCompressed: "close remote session by id legacy",
+    descriptionCompressed: "close remote session sessionId legacy-backend",
     required: ["sessionId"],
   },
   list: {
     description:
       "List active remote sessions via RemoteSessionService with ids, statuses, ingress URLs, and local-mode hints.",
     descriptionCompressed:
-      "list active remote sessions ids status ingress local-mode-hint",
+      "list active remote sessions ids+status+ingress+local-mode-hint",
     required: [],
   },
   revoke: {
     description:
       "Revoke an active remote session by id via RemoteSessionService.",
-    descriptionCompressed: "revoke active remote session by id",
+    descriptionCompressed: "revoke active remote session sessionId",
     required: ["sessionId"],
   },
 };
@@ -319,7 +319,7 @@ export const ownerRemoteDesktopAction: Action & {
     "list (enumerate active sessions via RemoteSessionService), " +
     "revoke (revoke an active session by id via RemoteSessionService).",
   descriptionCompressed:
-    "remote desktop session lifecycle: start(confirmed pairing-code) status(sessionId) end(sessionId) list revoke(sessionId); two backends owner",
+    "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId); RemoteSessionService+legacy owner",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>

@@ -40,7 +40,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   RESPOND_TO_MESSAGE: ["social"],
   MANAGE_MESSAGE: ["social"],
   SCHEDULE_DRAFT_SEND: ["social", "automation"],
-  OWNER_DIGEST: ["social", "knowledge"],
   OWNER_CALENDAR: ["automation", "social"],
   OWNER_RELATIONSHIP: ["social"],
   OWNER_CHECKIN: ["automation"],

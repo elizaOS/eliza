@@ -14,7 +14,6 @@ import type { Constructor } from "./service-mixin-core.js";
 import { LifeOpsServiceBase } from "./service-mixin-core.js";
 import { withDefinitions } from "./service-mixin-definitions.js";
 import { withDiscord } from "./service-mixin-discord.js";
-import { withDossier } from "./service-mixin-dossier.js";
 import { withDrive } from "./service-mixin-drive.js";
 import { withEmailUnsubscribe } from "./service-mixin-email-unsubscribe.js";
 import { withGmail } from "./service-mixin-gmail.js";
@@ -53,7 +52,7 @@ const LIFEOPS_WITH_BUSINESS = withGoals(
   withDefinitions(withWorkflows(withBrowser(withReminders(LIFEOPS_WITH_DATA)))),
 );
 const LIFEOPS_WITH_X = withX(LIFEOPS_WITH_BUSINESS);
-const LIFEOPS_WITH_RELATIONS = withDossier(withRelationships(LIFEOPS_WITH_X));
+const LIFEOPS_WITH_RELATIONS = withRelationships(LIFEOPS_WITH_X);
 const LIFEOPS_WITH_DOMAIN = withEmailUnsubscribe(
   withHealth(LIFEOPS_WITH_RELATIONS),
 );

@@ -9,5 +9,5 @@ export { BrowserBridgeAdapter } from "./adapters/browser-bridge-adapter.js";
  * - Register XDmAdapter, CalendlyAdapter, BrowserBridgeAdapter via the triage service's adapter registry
  *   (find the registration pattern in @elizaos/core/features/messaging/triage/triage-service.ts).
  * - Remove any imports of the deleted action files from plugin.ts/index.ts.
- * - Add OWNER_DIGEST to the action exports.
+ * - Add OWNER_CHECKIN to the action exports.
  */

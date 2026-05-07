@@ -491,8 +491,7 @@ function captureConnectorDispatchesFromAction(
 
   if (
     actionName === "SEND_DRAFT" ||
-    actionName === "RESPOND_TO_MESSAGE" ||
-    actionName === "CROSS_CHANNEL_SEND"
+    actionName === "RESPOND_TO_MESSAGE"
   ) {
     const channels = [
       ...toStringArray(params?.channel),
@@ -505,11 +504,7 @@ function captureConnectorDispatchesFromAction(
     return;
   }
 
-  if (
-    actionName === "OWNER_DEVICE_INTENT" ||
-    actionName === "PUBLISH_DEVICE_INTENT" ||
-    actionName === "INTENT_SYNC"
-  ) {
+  if (actionName === "OWNER_DEVICE_INTENT") {
     const channels = [
       ...toStringArray(params?.channel),
       ...toStringArray(params?.channels),

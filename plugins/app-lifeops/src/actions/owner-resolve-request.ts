@@ -31,7 +31,7 @@ import {
 } from "./lib/resolve-action-args.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { executeApprovedBookTravel } from "./owner-book-travel.js";
-import { formatPromptValue } from "./prompt-format.js";
+import { formatPromptValue } from "./lib/prompt-format.js";
 
 const ACTION_NAME = "OWNER_RESOLVE_REQUEST";
 
@@ -41,13 +41,13 @@ const SUBACTIONS: SubactionsMap<ResolveSubaction> = {
   approve: {
     description:
       "Approve a queued action; reason optional in the user's language.",
-    descriptionCompressed: "approve queued action reason-optional",
+    descriptionCompressed: "approve queued action reason-optional multilingual",
     required: [],
   },
   reject: {
     description:
       "Reject a queued action; reason optional in the user's language.",
-    descriptionCompressed: "reject queued action reason-optional",
+    descriptionCompressed: "reject queued action reason-optional multilingual",
     required: [],
   },
 };

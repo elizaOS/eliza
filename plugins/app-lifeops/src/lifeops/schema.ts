@@ -21,8 +21,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------------------------
-// Wave 1+ additions — relationships, X read, screen time, scheduling,
-// dossier. All life_* prefix, text IDs, ISO timestamps.
+// Wave 1+ additions — relationships, X read, screen time, scheduling.
+// All life_* prefix, text IDs, ISO timestamps.
 //
 // TODO(schema-isolation): plugin-sql warns these tables sit in the `public`
 // schema. Moving them to `pgSchema("app_lifeops")` requires a coordinated
@@ -1408,19 +1408,6 @@ export const lifeActivityEvents = pgTable("life_activity_events", {
   createdAt: text("created_at").notNull(),
 });
 
-export const lifeDossiers = pgTable("life_dossiers", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  calendarEventId: text("calendar_event_id"),
-  subject: text("subject").notNull(),
-  generatedForAt: text("generated_for_at").notNull(),
-  contentMd: text("content_md").notNull(),
-  sourcesJson: text("sources_json").notNull().default("[]"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 // T7g — Website blocker chat integration (plan §6.8).
 // Stores block rules whose lifecycle is driven by todo completion, fixed
 // duration, or an explicit ISO target. The reconciler releases rules when
@@ -1500,7 +1487,6 @@ export const lifeOpsSchema = {
   lifeActivityEvents,
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
-  lifeDossiers,
   lifeBlockRules,
   lifeopsFeaturesTable,
 } as const;

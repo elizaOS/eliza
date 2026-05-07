@@ -829,18 +829,6 @@ describe("Action Invocation E2E", () => {
     );
 
     itIf(canRunLiveTests)(
-      "dossier request triggers OWNER_DOSSIER",
-      async () => {
-        if (!requireAction("OWNER_DOSSIER")) return;
-        await withHarness(async (h) => {
-          await h.send("Pull up a dossier on Satya Nadella.");
-          expectActionCalled(h.spy, "OWNER_DOSSIER");
-        });
-      },
-      DEFAULT_TEST_TIMEOUT_MS,
-    );
-
-    itIf(canRunLiveTests)(
       "broadcast intent triggers OWNER_DEVICE_INTENT",
       async () => {
         if (!requireAction("OWNER_DEVICE_INTENT")) return;

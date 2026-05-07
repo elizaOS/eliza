@@ -214,7 +214,7 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
           case "sms": {
             return fail(
               501,
-              `SCHEDULING_DISPATCH_UNAVAILABLE: sms dispatch for scheduling is not wired (counterparty phone=${contact.target}). Use OWNER_SEND_MESSAGE for SMS.`,
+              `SCHEDULING_DISPATCH_UNAVAILABLE: sms dispatch for scheduling is not wired (counterparty phone=${contact.target}). Use SEND_DRAFT for SMS.`,
             );
           }
           default: {

@@ -148,12 +148,12 @@ describe("NodeAutoscaler hot agent capacity", () => {
       makeNode({
         node_id: "empty-old",
         capacity: 4,
-        metadata: { provider: "hetzner-cloud", hcloudServerId: 101 },
+        metadata: { provider: "hetzner-cloud", autoscaled: true, hcloudServerId: 101 },
       }),
       makeNode({
         node_id: "agent-old",
         capacity: 4,
-        metadata: { provider: "hetzner-cloud", hcloudServerId: 102 },
+        metadata: { provider: "hetzner-cloud", autoscaled: true, hcloudServerId: 102 },
       }),
     ];
     installMocks(nodes, {
@@ -167,24 +167,51 @@ describe("NodeAutoscaler hot agent capacity", () => {
     expect(decision.shouldScaleDownNodeIds).toEqual(["empty-old"]);
   });
 
-  test("does not auto-drain manually registered static nodes", async () => {
+  test("does not auto-drain manually registered static or unmarked Hetzner nodes", async () => {
     const nodes = [
       makeNode({ node_id: "static-empty", capacity: 100, metadata: {} }),
       makeNode({
-        node_id: "hcloud-empty",
+        node_id: "hcloud-manual",
         capacity: 4,
         metadata: { provider: "hetzner-cloud", hcloudServerId: 103 },
       }),
     ];
     installMocks(nodes, {
       "static-empty": { allocated: 0, retained: 0 },
-      "hcloud-empty": { allocated: 0, retained: 0 },
+      "hcloud-manual": { allocated: 0, retained: 0 },
     });
 
     const { NodeAutoscaler } = await importAutoscaler();
     const decision = await new NodeAutoscaler(policy(), () => NOW).evaluateCapacity();
 
-    expect(decision.shouldScaleDownNodeIds).toEqual(["hcloud-empty"]);
+    expect(decision.shouldScaleDownNodeIds).toEqual([]);
+  });
+
+  test("does not drain the only healthy compatible hot node when offline rows exist", async () => {
+    const nodes = [
+      makeNode({
+        node_id: "x86-hot",
+        capacity: 8,
+        metadata: { provider: "hetzner-cloud", hcloudServerId: 104, serverType: "cpx32" },
+      }),
+      makeNode({
+        node_id: "offline-legacy",
+        capacity: 100,
+        status: "offline",
+      }),
+    ];
+    installMocks(nodes, {
+      "x86-hot": { allocated: 0, retained: 0 },
+      "offline-legacy": { allocated: 0, retained: 0 },
+    });
+
+    const { NodeAutoscaler } = await importAutoscaler();
+    const decision = await new NodeAutoscaler(policy(), () => NOW).evaluateCapacity();
+
+    expect(decision.totalCapacity).toBe(8);
+    expect(decision.totalAvailable).toBe(8);
+    expect(decision.shouldScaleDownNodeIds).toEqual([]);
+    expect(decision.reason).toBe("steady");
   });
 
   test("does not count ARM Hetzner nodes as hot capacity for amd64 agents", async () => {

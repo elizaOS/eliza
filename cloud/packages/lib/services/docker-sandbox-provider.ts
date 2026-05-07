@@ -747,12 +747,32 @@ export class DockerSandboxProvider implements SandboxProvider {
     );
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
     const inspectCmd = `docker inspect --format '{{.State.Health.Status}}' ${shellQuote(meta.containerName)}`;
+    const hostProbeCmd = `sh -lc ${shellQuote(
+      [
+        `for URL in http://127.0.0.1:${meta.bridgePort}/api/health http://127.0.0.1:${meta.webUiPort}/; do`,
+        `STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" 2>/dev/null || true);`,
+        `case "$STATUS" in 200|301|302|401) exit 0;; esac;`,
+        `done; exit 1`,
+      ].join(" "),
+    )}`;
 
     logger.info(
       `[docker-sandbox] Polling Docker health for ${meta.containerName} on ${meta.nodeId} (${meta.hostname}) (timeout: ${HEALTH_CHECK_TIMEOUT_MS / 1000}s)`,
     );
 
     while (Date.now() < deadline) {
+      try {
+        await ssh.exec(hostProbeCmd, Math.min(10_000, HEALTH_CHECK_TIMEOUT_MS));
+        logger.info(
+          `[docker-sandbox] Host HTTP probe passed for ${meta.containerName} on ${meta.nodeId}`,
+        );
+        return true;
+      } catch (err) {
+        logger.debug(
+          `[docker-sandbox] Host HTTP probe failed for ${meta.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
       try {
         const status = (
           await ssh.exec(inspectCmd, Math.min(10_000, HEALTH_CHECK_TIMEOUT_MS))
@@ -789,6 +809,30 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.warn(
       `[docker-sandbox] Docker health check timed out after ${HEALTH_CHECK_TIMEOUT_MS / 1000}s for ${meta.containerName} on ${meta.hostname}`,
     );
+    try {
+      const diagnostics = await ssh.exec(
+        [
+          `echo '--- inspect ---'`,
+          `docker inspect --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' ${shellQuote(meta.containerName)} || true`,
+          `echo '--- ports ---'`,
+          `docker port ${shellQuote(meta.containerName)} || true`,
+          `echo '--- logs ---'`,
+          `docker logs --tail 160 ${shellQuote(meta.containerName)} 2>&1 || true`,
+        ].join("; "),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      logger.warn("[docker-sandbox] Health timeout diagnostics", {
+        containerName: meta.containerName,
+        nodeId: meta.nodeId,
+        diagnostics: diagnostics.slice(-12_000),
+      });
+    } catch (diagnosticsError) {
+      logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
+        containerName: meta.containerName,
+        error:
+          diagnosticsError instanceof Error ? diagnosticsError.message : String(diagnosticsError),
+      });
+    }
     return false;
   }
 

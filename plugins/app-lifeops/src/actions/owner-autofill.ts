@@ -49,7 +49,7 @@ const SUBACTIONS: SubactionsMap<AutofillSubaction> = {
     description:
       "Request a one-field autofill via the browser extension password manager. Refused on non-whitelisted domains.",
     descriptionCompressed:
-      "one-field autofill via extension password-manager allowlist-only",
+      "autofill one field(field,domain) extension+password-manager allowlist-gated",
     required: ["field", "domain"],
     optional: ["url"],
   },
@@ -62,7 +62,7 @@ const SUBACTIONS: SubactionsMap<AutofillSubaction> = {
   whitelist_list: {
     description:
       "List the effective autofill allowlist (defaults plus user-added entries).",
-    descriptionCompressed: "effective autofill allowlist defaults+user",
+    descriptionCompressed: "list autofill allowlist defaults+user",
     required: [],
   },
 };

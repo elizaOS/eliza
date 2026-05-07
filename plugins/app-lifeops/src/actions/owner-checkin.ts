@@ -103,11 +103,13 @@ export const ownerCheckinAction: Action & {
     "DAILY_BRIEF",
     "MORNING_BRIEF",
     "EVENING_BRIEF",
+    "NIGHT_BRIEF",
     "DAY_RECAP",
     "DAILY_REVIEW",
     "START_MY_DAY",
     "END_OF_DAY",
-    "WHAT_HAPPENED_TODAY",
+    "WHATS_GOING_ON",
+    "DAILY_DIGEST",
   ],
   tags: [
     "always-include",
@@ -118,11 +120,11 @@ export const ownerCheckinAction: Action & {
   ],
   description:
     "Owner-only. Daily check-in: morning (start-of-day operating picture: overdue todos, today's meetings, " +
-    "priority inbox, X/socials, GitHub, calendar changes, follow-ups, contacted people, yesterday's wins) or " +
-    "night (end-of-day picture: today's meetings, completed wins, outstanding todos, X/socials, GitHub, " +
-    "follow-ups, inbox/calendar loose ends for tomorrow).",
+    "priority inbox via cross-channel triage, X/socials, GitHub, calendar changes, follow-ups, contacted people, " +
+    "yesterday's wins) or night (end-of-day picture: today's wins, completed sends, outstanding todos, " +
+    "X/socials, GitHub, follow-ups, inbox/calendar loose ends for tomorrow).",
   descriptionCompressed:
-    "Run owner checkin: morning overview for meetings inbox socials GitHub followups wins; night wrap for wins loose ends tomorrow.",
+    "daily checkin: morning(start-of-day overdue meetings priority-inbox socials github calendar followups wins) night(end-of-day wins outstanding loose-ends-tomorrow) owner",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   parameters: [

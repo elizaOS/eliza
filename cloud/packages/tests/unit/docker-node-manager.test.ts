@@ -88,6 +88,45 @@ describe("DockerNodeManager", () => {
     ]);
   });
 
+  test("probes unknown nodes so newly bootstrapped capacity can become available", async () => {
+    const nodes = [makeNode({ node_id: "new-node", status: "unknown", capacity: 8 })];
+    const statusUpdates: Array<{ nodeId: string; status: DockerNodeStatus }> = [];
+
+    mock.module("@/db/repositories/docker-nodes", () => ({
+      dockerNodesRepository: {
+        findEnabled: async () => nodes,
+        updateStatus: async (nodeId: string, status: DockerNodeStatus) => {
+          statusUpdates.push({ nodeId, status });
+          const node = nodes.find((candidate) => candidate.node_id === nodeId);
+          if (node) node.status = status;
+        },
+      },
+    }));
+    mock.module("@/lib/services/docker-node-workloads", () => ({
+      countAllocatedWorkloadsOnNode: async () => 0,
+      countRetainedWorkloadsOnNode: async () => 0,
+    }));
+    mock.module("@/lib/services/docker-ssh", () => ({
+      DockerSSHClient: {
+        getClient: () => ({
+          connect: async () => {},
+          exec: async () => "docker-id|x86_64",
+        }),
+      },
+    }));
+    mock.module("@/lib/utils/logger", () => ({
+      logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+    }));
+
+    const { DockerNodeManager } = await importManager();
+    const selected = await DockerNodeManager.getInstance().getAvailableNode({
+      requiredPlatform: "linux/amd64",
+    });
+
+    expect(selected?.node_id).toBe("new-node");
+    expect(statusUpdates).toEqual([{ nodeId: "new-node", status: "healthy" }]);
+  });
+
   test("skips ARM nodes when an amd64 image platform is required", async () => {
     const nodes = [
       makeNode({

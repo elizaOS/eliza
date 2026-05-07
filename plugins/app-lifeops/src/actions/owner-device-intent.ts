@@ -83,7 +83,7 @@ function validationTerminate(
   };
 }
 
-export const intentSyncAction: Action & {
+export const ownerDeviceIntentAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
@@ -187,8 +187,8 @@ export const intentSyncAction: Action & {
       message,
       state,
       actionName: ACTION_NAME,
-      actionDescription: intentSyncAction.description ?? "",
-      paramSchema: intentSyncAction.parameters ?? [],
+      actionDescription: ownerDeviceIntentAction.description ?? "",
+      paramSchema: ownerDeviceIntentAction.parameters ?? [],
       existingParams: rawParameters,
       requiredFields: ["kind", "title", "body"],
     })) as Record<string, unknown>;

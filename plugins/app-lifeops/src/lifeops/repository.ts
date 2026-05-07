@@ -29,7 +29,6 @@ import {
   type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
   type LifeOpsCrossChannelDraft,
-  type LifeOpsDossier,
   type LifeOpsFollowUp,
   type LifeOpsGmailMessageSummary,
   type LifeOpsGmailSpamReviewItem,
@@ -2031,33 +2030,6 @@ function parseSchedulingProposal(
     endAt: toText(row.end_at),
     proposedBy: toText(row.proposed_by, "agent") as LifeOpsProposalProposer,
     status: toText(row.status, "pending") as LifeOpsProposalStatus,
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
-}
-
-function parseDossier(row: Record<string, unknown>): LifeOpsDossier {
-  const rawSources = parseJsonArray(row.sources_json) as unknown[];
-  const sources = rawSources
-    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
-    .map((s) => ({
-      kind: toText(s.kind),
-      ref: toText(s.ref),
-      ...(typeof s.snippet === "string" && s.snippet.length > 0
-        ? { snippet: s.snippet }
-        : {}),
-    }));
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    calendarEventId: row.calendar_event_id
-      ? toText(row.calendar_event_id)
-      : null,
-    subject: toText(row.subject),
-    generatedForAt: toText(row.generated_for_at),
-    contentMd: toText(row.content_md, ""),
-    sources,
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
@@ -7114,90 +7086,6 @@ export class LifeOpsRepository {
     );
   }
 
-  // -----------------------------------------------------------------------
-  // Dossiers
-  // -----------------------------------------------------------------------
-
-  async upsertDossier(d: LifeOpsDossier): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO life_dossiers (
-         id, agent_id, calendar_event_id, subject, generated_for_at,
-         content_md, sources_json, metadata_json, created_at, updated_at
-       ) VALUES (
-         ${sqlQuote(d.id)},
-         ${sqlQuote(d.agentId)},
-         ${sqlText(d.calendarEventId)},
-         ${sqlQuote(d.subject)},
-         ${sqlQuote(d.generatedForAt)},
-         ${sqlQuote(d.contentMd)},
-         ${sqlJson(d.sources)},
-         ${sqlJson(d.metadata)},
-         ${sqlQuote(d.createdAt)},
-         ${sqlQuote(d.updatedAt)}
-       )
-       ON CONFLICT (id) DO UPDATE SET
-         calendar_event_id = EXCLUDED.calendar_event_id,
-         subject = EXCLUDED.subject,
-         generated_for_at = EXCLUDED.generated_for_at,
-         content_md = EXCLUDED.content_md,
-         sources_json = EXCLUDED.sources_json,
-         metadata_json = EXCLUDED.metadata_json,
-         updated_at = EXCLUDED.updated_at`,
-    );
-  }
-
-  async getDossier(
-    agentId: string,
-    id: string,
-  ): Promise<LifeOpsDossier | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM life_dossiers
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseDossier(row) : null;
-  }
-
-  async getDossierByCalendarEvent(
-    agentId: string,
-    calendarEventId: string,
-  ): Promise<LifeOpsDossier | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM life_dossiers
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND calendar_event_id = ${sqlQuote(calendarEventId)}
-        ORDER BY generated_for_at DESC
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseDossier(row) : null;
-  }
-
-  async listDossiers(
-    agentId: string,
-    opts?: { limit?: number },
-  ): Promise<LifeOpsDossier[]> {
-    const limitClause =
-      typeof opts?.limit === "number"
-        ? `LIMIT ${sqlInteger(opts.limit)}`
-        : "LIMIT 50";
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM life_dossiers
-        WHERE agent_id = ${sqlQuote(agentId)}
-        ORDER BY generated_for_at DESC
-        ${limitClause}`,
-    );
-    return rows.map(parseDossier);
-  }
 }
 
 export function createLifeOpsTaskDefinition(
