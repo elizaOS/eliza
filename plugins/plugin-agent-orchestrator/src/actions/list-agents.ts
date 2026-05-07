@@ -27,6 +27,18 @@ import {
 } from "../services/task-agent-frameworks.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 
+const deprecatedActionWarnings = new Set<string>();
+
+function warnDeprecatedSpawnSurface(
+  actionName: string,
+  replacement: string,
+): void {
+  if (deprecatedActionWarnings.has(actionName)) return;
+  deprecatedActionWarnings.add(actionName);
+  console.warn(
+    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+  );
+}
 interface TaskLike {
   sessionId: string;
   agentType: string;
@@ -49,6 +61,10 @@ function uniqueTasks(tasks: TaskLike[]): TaskLike[] {
   return result;
 }
 
+/**
+ * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
+ * Use @elizaos/plugin-acpx listAgentsAction / listTaskAgentsAction instead. This action remains during the migration window.
+ */
 export const listAgentsAction: Action = {
   name: "LIST_AGENTS",
   contexts: ["tasks", "automation", "agent_internal"],
@@ -106,6 +122,10 @@ export const listAgentsAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    warnDeprecatedSpawnSurface(
+      "listAgentsAction / listTaskAgentsAction",
+      "@elizaos/plugin-acpx listAgentsAction / listTaskAgentsAction",
+    );
     const access = await requireTaskAgentAccess(runtime, message, "interact");
     if (!access.allowed) {
       if (callback) {
@@ -275,4 +295,7 @@ export const listAgentsAction: Action = {
   ],
 };
 
+/**
+ * @deprecated Use @elizaos/plugin-acpx listTaskAgentsAction instead.
+ */
 export const listTaskAgentsAction = listAgentsAction;
