@@ -348,7 +348,8 @@ function buildNativeRequest(
 	}
 
 	const settings: NonNullable<ElizaNativeModelRequestRecord["settings"]> = {};
-	if (typeof call.temperature === "number") settings.temperature = call.temperature;
+	if (typeof call.temperature === "number")
+		settings.temperature = call.temperature;
 	if (typeof call.maxTokens === "number") settings.maxTokens = call.maxTokens;
 	if (typeof call.topP === "number") settings.topP = call.topP;
 	if (Object.keys(settings).length > 0) request.settings = settings;

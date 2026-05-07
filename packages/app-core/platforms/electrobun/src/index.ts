@@ -2,7 +2,6 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "./logger";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import Electrobun, {
 	ApplicationMenu,
@@ -38,6 +37,7 @@ import {
 	markDesktopSessionStale,
 	primeDesktopSessionAuth,
 } from "./lifecycle/desktop-session-prime";
+import { logger } from "./logger";
 import {
 	resolveBootstrapShellRenderer,
 	resolveBootstrapViewRenderer,

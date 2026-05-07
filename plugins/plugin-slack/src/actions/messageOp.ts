@@ -376,7 +376,12 @@ export const messageOp: Action = {
       await callback?.(response);
       return {
         success: true,
-        data: { op, messageTs: result.ts, channelId: targetChannelId, timeoutMs },
+        data: {
+          op,
+          messageTs: result.ts,
+          channelId: targetChannelId,
+          timeoutMs,
+        },
       };
     }
 

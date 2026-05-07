@@ -1,5 +1,5 @@
-import { logger } from "../logger";
 import { Session } from "electrobun/bun";
+import { logger } from "../logger";
 import { resolveMainWindowPartition } from "../main-window-session";
 import {
 	type DesktopSession,

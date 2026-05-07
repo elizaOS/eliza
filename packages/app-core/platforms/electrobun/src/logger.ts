@@ -1,6 +1,8 @@
 type LogMethod = (...args: unknown[]) => void;
 
-function bindConsoleMethod(method: "debug" | "error" | "info" | "log" | "warn"): LogMethod {
+function bindConsoleMethod(
+	method: "debug" | "error" | "info" | "log" | "warn",
+): LogMethod {
 	return (...args: unknown[]) => {
 		console[method](...args);
 	};

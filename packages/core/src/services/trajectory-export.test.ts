@@ -6,8 +6,8 @@ import {
 	summarizeTrajectoryCache,
 	summarizeTrajectoryUsage,
 } from "./trajectory-export";
-import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
 import type { TrajectoryDetailRecord } from "./trajectory-types";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
 
 const sampleTrajectory: TrajectoryDetailRecord = {
 	trajectoryId: "traj-1",

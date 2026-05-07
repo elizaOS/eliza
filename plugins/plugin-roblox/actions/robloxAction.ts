@@ -190,7 +190,7 @@ function withRobloxTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_ACTION_TIMEOUT_MS),
+      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_ACTION_TIMEOUT_MS)
     ),
   ]);
 }
@@ -293,7 +293,7 @@ async function handleMessage(
   const cappedContent = content.slice(0, MAX_ROBLOX_MESSAGE_LENGTH);
   await withRobloxTimeout(
     service.sendMessage(runtime.agentId, cappedContent, targetPlayerIds),
-    "roblox message",
+    "roblox message"
   );
 
   const targetText =
@@ -328,7 +328,7 @@ async function handleExecute(
       parsedAction.parameters,
       parsedAction.targetPlayerIds
     ),
-    "roblox execute",
+    "roblox execute"
   );
 
   await callback?.({ text: `Triggered Roblox action "${parsedAction.name}".`, action: actionName });
@@ -370,10 +370,7 @@ async function handleGetPlayer(
   if (identifier.type === "id") {
     user = await withRobloxTimeout(client.getUserById(identifier.value), "roblox get user");
   } else {
-    user = await withRobloxTimeout(
-      client.getUserByUsername(identifier.value),
-      "roblox get user",
-    );
+    user = await withRobloxTimeout(client.getUserByUsername(identifier.value), "roblox get user");
   }
 
   if (!user) {

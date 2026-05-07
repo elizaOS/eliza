@@ -50,10 +50,10 @@ export const knowledgeProvider: Provider = {
 				};
 			}
 
-		// Search for relevant knowledge using searchMemories with knowledge table
-		const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: queryText,
-		});
+			// Search for relevant knowledge using searchMemories with knowledge table
+			const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+				text: queryText,
+			});
 			const relevantKnowledge = await runtime.searchMemories({
 				tableName: "knowledge",
 				embedding,
@@ -61,45 +61,47 @@ export const knowledgeProvider: Provider = {
 				limit: MAX_KNOWLEDGE_ENTRIES,
 			});
 
-		if (relevantKnowledge.length === 0) {
-			return {
-				text: "",
-				values: {
-					knowledgeCount: 0,
-					hasKnowledge: false as boolean,
-				},
-				data: {
-					entries: [],
-					query: queryText,
-				},
-			} as ProviderResult;
-		}
-
-		const sections: string[] = [];
-		const knowledgeEntries: Array<{
-			id: string;
-			text: string;
-			source: string;
-		}> = [];
-
-		for (const entry of relevantKnowledge) {
-			const text = entry.content?.text;
-			if (!text) continue;
-			let knowledgeText = text;
-			if (knowledgeText.length > MAX_KNOWLEDGE_TEXT_CHARS) {
-				knowledgeText = `${knowledgeText.substring(0, MAX_KNOWLEDGE_TEXT_CHARS)}...`;
+			if (relevantKnowledge.length === 0) {
+				return {
+					text: "",
+					values: {
+						knowledgeCount: 0,
+						hasKnowledge: false as boolean,
+					},
+					data: {
+						entries: [],
+						query: queryText,
+					},
+				} as ProviderResult;
 			}
 
-			knowledgeEntries.push({
-				id: entry.id?.toString() || "",
-				text: knowledgeText,
-				source: (entry.metadata?.source as string | undefined) || "unknown",
-			});
-			sections.push(`- ${knowledgeText}`);
-		}
+			const sections: string[] = [];
+			const knowledgeEntries: Array<{
+				id: string;
+				text: string;
+				source: string;
+			}> = [];
 
-		const contextText =
-			sections.length > 0 ? `# Relevant Knowledge\n${sections.join("\n")}` : "";
+			for (const entry of relevantKnowledge) {
+				const text = entry.content?.text;
+				if (!text) continue;
+				let knowledgeText = text;
+				if (knowledgeText.length > MAX_KNOWLEDGE_TEXT_CHARS) {
+					knowledgeText = `${knowledgeText.substring(0, MAX_KNOWLEDGE_TEXT_CHARS)}...`;
+				}
+
+				knowledgeEntries.push({
+					id: entry.id?.toString() || "",
+					text: knowledgeText,
+					source: (entry.metadata?.source as string | undefined) || "unknown",
+				});
+				sections.push(`- ${knowledgeText}`);
+			}
+
+			const contextText =
+				sections.length > 0
+					? `# Relevant Knowledge\n${sections.join("\n")}`
+					: "";
 
 			return {
 				text: contextText,

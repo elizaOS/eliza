@@ -59,15 +59,15 @@ const GET_SELF_STATUS_TERMS = [
   "estado",
   "estado del sistema",
   "salud del plugin",
-	"estado do sistema",
-	"saúde do plugin",
-	"saude do plugin",
+  "estado do sistema",
+  "saúde do plugin",
+  "saude do plugin",
   "trạng thái",
   "trang thai",
   "tình trạng hệ thống",
   "tinh trang he thong",
   "katayuan",
-	"status ng system",
+  "status ng system",
 ];
 const MAX_SELF_STATUS_BRIEF_CHARS = 1200;
 const MAX_SELF_STATUS_FULL_CHARS = 8000;
@@ -134,7 +134,9 @@ export const getSelfStatusAction: Action = {
 
     const rawText = await registry.getDetail(runtime, module, detailLevel);
     const maxChars =
-      detailLevel === "full" ? MAX_SELF_STATUS_FULL_CHARS : MAX_SELF_STATUS_BRIEF_CHARS;
+      detailLevel === "full"
+        ? MAX_SELF_STATUS_FULL_CHARS
+        : MAX_SELF_STATUS_BRIEF_CHARS;
     const text =
       rawText.length <= maxChars
         ? rawText

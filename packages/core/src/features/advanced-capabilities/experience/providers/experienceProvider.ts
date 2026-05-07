@@ -73,7 +73,9 @@ export const experienceProvider: Provider = {
 
 			// Format experiences for context injection
 			const experienceText = relevantExperiences
-				.map((experience, index) => formatExperienceForPrompt(experience, index))
+				.map((experience, index) =>
+					formatExperienceForPrompt(experience, index),
+				)
 				.join("\n\n");
 
 			const contextText = `[RELEVANT EXPERIENCES]\n${experienceText}\n[/RELEVANT EXPERIENCES]`;

@@ -47,7 +47,9 @@ describe("planner-loop message stacking regression", () => {
 				// Second planner call (after first tool executed): terminal
 				return {
 					text: "",
-					toolCalls: [{ id: "tc-final", name: "REPLY", arguments: { text: "done" } }],
+					toolCalls: [
+						{ id: "tc-final", name: "REPLY", arguments: { text: "done" } },
+					],
 				};
 			}),
 		};
@@ -140,14 +142,14 @@ describe("planner-loop message stacking regression", () => {
 				if (callCount === 1) {
 					return {
 						text: "",
-						toolCalls: [
-							{ id: "tc-1", name: "LOOKUP", arguments: { q: "x" } },
-						],
+						toolCalls: [{ id: "tc-1", name: "LOOKUP", arguments: { q: "x" } }],
 					};
 				}
 				return {
 					text: "",
-					toolCalls: [{ id: "tc-end", name: "REPLY", arguments: { text: "done" } }],
+					toolCalls: [
+						{ id: "tc-end", name: "REPLY", arguments: { text: "done" } },
+					],
 				};
 			}),
 		};
@@ -203,7 +205,11 @@ describe("planner-loop message stacking regression", () => {
 					return {
 						text: "thinking",
 						toolCalls: [
-							{ id: "my-tool-id-42", name: "LOOKUP", arguments: { q: "hello" } },
+							{
+								id: "my-tool-id-42",
+								name: "LOOKUP",
+								arguments: { q: "hello" },
+							},
 						],
 					};
 				}

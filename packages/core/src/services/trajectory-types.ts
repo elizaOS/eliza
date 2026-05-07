@@ -2,8 +2,7 @@ import type { JsonValue } from "../types/primitives.ts";
 
 export const ELIZA_NATIVE_TRAJECTORY_FORMAT = "eliza_native_v1" as const;
 
-export type ElizaNativeTrajectoryFormat =
-	typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
+export type ElizaNativeTrajectoryFormat = typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
 
 export type TrajectoryStatus = "active" | "completed" | "error" | "timeout";
 

@@ -124,7 +124,10 @@ export const startTailscaleAction: Action = {
               temperature: 0.3,
             }),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Tailscale port extraction timeout')), TAILSCALE_MODEL_TIMEOUT_MS),
+              setTimeout(
+                () => reject(new Error('Tailscale port extraction timeout')),
+                TAILSCALE_MODEL_TIMEOUT_MS,
+              ),
             ),
           ]),
         ),

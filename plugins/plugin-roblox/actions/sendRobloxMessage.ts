@@ -93,7 +93,7 @@ function withRobloxTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_MESSAGE_TIMEOUT_MS),
+      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_MESSAGE_TIMEOUT_MS)
     ),
   ]);
 }
@@ -166,7 +166,7 @@ export const sendRobloxMessage: Action = {
     const cappedContent = content.slice(0, MAX_ROBLOX_MESSAGE_LENGTH);
     await withRobloxTimeout(
       service.sendMessage(runtime.agentId, cappedContent, targetPlayerIds),
-      "roblox message",
+      "roblox message"
     );
 
     const targetText =

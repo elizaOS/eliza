@@ -29,7 +29,9 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 				capturedParams.push(params);
 				return {
 					text: "",
-					toolCalls: [{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } }],
+					toolCalls: [
+						{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } },
+					],
 				};
 			}),
 		};
@@ -118,7 +120,9 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 				capturedParams.push(params);
 				return {
 					text: "",
-					toolCalls: [{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } }],
+					toolCalls: [
+						{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } },
+					],
 				};
 			}),
 		};

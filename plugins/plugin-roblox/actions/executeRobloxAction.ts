@@ -148,7 +148,7 @@ function withRobloxTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_ACTION_TIMEOUT_MS),
+      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_ACTION_TIMEOUT_MS)
     ),
   ]);
 }
@@ -276,7 +276,7 @@ export const executeRobloxAction: Action = {
         parsedAction.parameters,
         cappedTargetPlayerIds
       ),
-      "roblox action",
+      "roblox action"
     );
 
     await callback?.({

@@ -32,10 +32,10 @@ export const containerHealthProvider: Provider = {
           values: { healthyContainers: 0 },
         };
 
-    // NOTE: True health would require hitting each container's health_check_path
-    // endpoint over the network.  We approximate here using locally-cached state:
-    // a container is considered healthy when it is running, billing is active,
-    // and there is no recorded error message.
+      // NOTE: True health would require hitting each container's health_check_path
+      // endpoint over the network.  We approximate here using locally-cached state:
+      // a container is considered healthy when it is running, billing is active,
+      // and there is no recorded error message.
       const reports = running.slice(0, MAX_HEALTH_REPORTS).map((c) => ({
         id: c.id,
         name: c.name,
@@ -44,14 +44,14 @@ export const containerHealthProvider: Provider = {
         billing: c.billing_status,
       }));
 
-    const healthy = reports.filter((r) => r.healthy).length;
-    const text = [
-      `Health: ${healthy}/${reports.length} healthy`,
-      ...reports.map(
-        (r) =>
-          `  - ${r.name}: ${r.healthy ? "OK" : "UNHEALTHY"} (status=${r.status}, billing=${r.billing})`
-      ),
-    ].join("\n");
+      const healthy = reports.filter((r) => r.healthy).length;
+      const text = [
+        `Health: ${healthy}/${reports.length} healthy`,
+        ...reports.map(
+          (r) =>
+            `  - ${r.name}: ${r.healthy ? "OK" : "UNHEALTHY"} (status=${r.status}, billing=${r.billing})`
+        ),
+      ].join("\n");
 
       return {
         text,
