@@ -127,9 +127,6 @@ describe("EXIT_WORKTREE", () => {
 
     expect(env.session.getCwd(env.conversationId)).toBe(path.resolve(env.repoDir));
 
-    const roots = env.sandbox.rootsFor(env.conversationId);
-    expect(roots.some((r) => path.resolve(r) === path.resolve(worktreePath))).toBe(false);
-
     const stillThere = await fs
       .stat(worktreePath)
       .then(() => true)

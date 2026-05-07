@@ -212,9 +212,9 @@ export const taskHistoryAction: Action = {
     "TASK_STATUS_HISTORY",
   ],
   description:
-    "Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.",
+    "Query the agent-orchestrator coordinator's task threads as structured summaries (status, latestActivityAt, optional summary) without loading raw transcripts. Pick metric=list (default), count, or detail; narrow with window=active|today|yesterday|last_7_days|last_30_days, statuses, free-text search, includeArchived, and limit. Use for 'what am I working on right now', date-range summaries, topic search, task counts, or a single thread's detail — never to dump raw conversation history into context.",
   descriptionCompressed:
-    "Query task history: active work, summaries, search, thread details.",
+    "task-history:metric=list|count|detail + window + statuses + search + limit (no raw transcripts)",
   examples: [
     [
       {

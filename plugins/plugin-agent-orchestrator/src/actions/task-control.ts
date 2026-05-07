@@ -82,9 +82,9 @@ export const taskControlAction: Action = {
     "REOPEN_TASK",
   ],
   description:
-    "Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
+    "Apply a control operation to an agent-orchestrator coordinator task thread while preserving durable thread history. Operations: pause (suspend with optional note), stop (halt and keep history), resume (re-attach a session, optional follow-up instruction + agentType override), continue (send a follow-up instruction to the existing or a new session), archive (hide from active lists), reopen (restore from archive). The target thread is resolved from threadId, sessionId, or a free-text search; resume/continue accept an optional instruction.",
   descriptionCompressed:
-    "Pause/stop/resume/archive/reopen coordinator task thread.",
+    "task-control:op=pause|stop|resume|continue|archive|reopen coordinator-task-thread (threadId|sessionId|search; +note|instruction|agentType)",
   examples: [
     [
       {

@@ -63,9 +63,9 @@ export const listActiveBlocksAction: Action = {
   name: "LIST_ACTIVE_BLOCKS",
   similes: ["LIST_BLOCK_RULES", "SHOW_ACTIVE_BLOCKS", "WEBSITE_BLOCKS_STATUS"],
   description:
-    "List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
+    "Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with the LifeOps-managed block rules (id, gateType, websites, gate target — todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus / includeManagedRules. Only for website/app blocking status — do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
   descriptionCompressed:
-    "List live website blocker status and active block rules.",
+    "list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
   contexts: ["screen_time", "browser", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
   validate: async (_runtime, message) =>

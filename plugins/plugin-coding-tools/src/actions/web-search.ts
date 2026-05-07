@@ -33,9 +33,9 @@ export const webSearchAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["CODING_WEB_SEARCH", "DEV_WEB_SEARCH", "CODE_SEARCH_WEB"],
   description:
-    "Run a coding-agent web search request. This plugin reports query and domain filters when no search provider is configured; use the global WEB_SEARCH action for hosted generic web search when that plugin is available.",
+    "Record a coding-agent web search request (query plus optional allowed_domains / blocked_domains filters) so a downstream coding sub-agent can satisfy it. This plugin does not host its own search backend; it returns an unconfigured-provider notice and the structured request. For hosted generic web search use the global WEB_SEARCH action when that plugin is available.",
   descriptionCompressed:
-    "Coding web search request; reports query + filters when no provider is configured.",
+    "code-web-search:request query+allowed_domains+blocked_domains (no built-in provider)",
   parameters: [
     {
       name: "query",
@@ -57,7 +57,7 @@ export const webSearchAction: Action = {
     },
   ],
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
   ) => {

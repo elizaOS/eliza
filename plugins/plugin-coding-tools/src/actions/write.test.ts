@@ -1,9 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
-import { writeAction } from "./write.js";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { writeAction } from "./write.js";
 
 describe("WRITE", () => {
   let env: TestEnv;
@@ -18,9 +17,14 @@ describe("WRITE", () => {
 
   it("creates a new file and its parent directory", async () => {
     const file = path.join(env.tmpDir, "nested", "deeper", "out.txt");
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, content: "hello world" },
-    });
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file, content: "hello world" },
+      },
+    );
 
     expect(result.success).toBe(true);
     const onDisk = await fs.readFile(file, "utf8");
@@ -33,9 +37,14 @@ describe("WRITE", () => {
     const file = path.join(env.tmpDir, "preexisting.txt");
     await fs.writeFile(file, "original", "utf8");
 
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, content: "overwrite" },
-    });
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file, content: "overwrite" },
+      },
+    );
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("not read in this session");
@@ -48,9 +57,14 @@ describe("WRITE", () => {
     await fs.writeFile(file, "original", "utf8");
     await env.fileState.recordRead("test-room", file);
 
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, content: "fresh" },
-    });
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file, content: "fresh" },
+      },
+    );
 
     expect(result.success).toBe(true);
     const onDisk = await fs.readFile(file, "utf8");
@@ -66,9 +80,14 @@ describe("WRITE", () => {
     await new Promise((r) => setTimeout(r, 20));
     await fs.writeFile(file, "external edit", "utf8");
 
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: file, content: "agent overwrite" },
-    });
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file, content: "agent overwrite" },
+      },
+    );
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("stale_read");
@@ -76,12 +95,17 @@ describe("WRITE", () => {
 
   it("refuses to write content containing detected secret patterns", async () => {
     const file = path.join(env.tmpDir, "secret.txt");
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: {
-        file_path: file,
-        content: "AKIAABCDEFGHIJKLMNOP",
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: {
+          file_path: file,
+          content: "AKIAABCDEFGHIJKLMNOP",
+        },
       },
-    });
+    );
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("invalid_param");
@@ -90,25 +114,43 @@ describe("WRITE", () => {
   });
 
   it("rejects relative paths", async () => {
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: "rel/path.txt", content: "x" },
-    });
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: "rel/path.txt", content: "x" },
+      },
+    );
     expect(result.success).toBe(false);
     expect(result.text).toContain("invalid_param");
   });
 
-  it("rejects paths outside the configured workspace root", async () => {
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: "/etc/should-not-write.txt", content: "x" },
-    });
+  it("rejects paths under the blocklist", async () => {
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: {
+          file_path: path.join(env.blockedPath, "x.txt"),
+          content: "x",
+        },
+      },
+    );
     expect(result.success).toBe(false);
-    expect(result.text).toContain("path_outside_roots");
+    expect(result.text).toContain("path_blocked");
   });
 
   it("fails when content param is missing", async () => {
-    const result = await writeAction.handler!(env.runtime, env.message, undefined, {
-      parameters: { file_path: path.join(env.tmpDir, "x.txt") },
-    });
+    const result = await writeAction.handler?.(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: path.join(env.tmpDir, "x.txt") },
+      },
+    );
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
   });

@@ -10,6 +10,7 @@ import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import { lsAction } from "./ls.js";
 
 let tmpRoot: string;
+let blockedPath: string;
 
 interface RuntimeBundle {
   runtime: IAgentRuntime;
@@ -18,7 +19,7 @@ interface RuntimeBundle {
 
 async function buildRuntime(): Promise<RuntimeBundle> {
   const settings: Record<string, unknown> = {
-    CODING_TOOLS_WORKSPACE_ROOTS: tmpRoot,
+    CODING_TOOLS_BLOCKED_PATHS: blockedPath,
   };
   const stub = {
     getSetting: (key: string) => settings[key],
@@ -70,7 +71,7 @@ describe("LS", () => {
     const data = result.data as Record<string, unknown> | undefined;
     const entries = data?.entries as { name: string; type: string }[] | undefined;
     expect(Array.isArray(entries)).toBe(true);
-    expect(entries?.length).toBe(5);
+    expect(entries?.length).toBe(6);
 
     const types = entries?.map((e) => e.type) ?? [];
     const firstFileIndex = types.indexOf("file");
@@ -80,7 +81,7 @@ describe("LS", () => {
     const dirNames = (entries ?? [])
       .filter((e) => e.type === "dir")
       .map((e) => e.name);
-    expect(dirNames).toEqual(["bar", "foo"]);
+    expect(dirNames).toEqual(["_blocked", "bar", "foo"]);
 
     const fileNames = (entries ?? [])
       .filter((e) => e.type !== "dir")
@@ -108,18 +109,13 @@ describe("LS", () => {
     expect(names).toContain("beta.md");
   });
 
-  it("rejects a path outside the workspace roots", async () => {
+  it("rejects a path under the blocklist", async () => {
     const { runtime, message } = await buildRuntime();
-    const otherDir = await fs.mkdtemp(path.join(os.tmpdir(), "ct-ls-other-"));
-    try {
-      const result = await lsAction.handler!(runtime, message, state, {
-        parameters: { path: otherDir },
-      });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("path_outside_roots");
-    } finally {
-      await fs.rm(otherDir, { recursive: true, force: true });
-    }
+    const result = await lsAction.handler!(runtime, message, state, {
+      parameters: { path: blockedPath },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
   });
 
   it("fails when roomId is missing", async () => {

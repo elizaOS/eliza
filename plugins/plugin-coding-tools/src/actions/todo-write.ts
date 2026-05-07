@@ -102,9 +102,9 @@ export const todoWriteAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["UPDATE_TODOS", "SET_TODOS"],
   description:
-    "Replace the conversation's todo list with the provided array. Each todo has content, status (pending|in_progress|completed), and an optional activeForm describing the in-progress phrasing. The full list is replaced on every call. Use to plan multi-step work and track progress within a session.",
+    "Replace the per-conversation coding-agent todo list (keyed by roomId, kept in process memory) with the provided array. Each item is { id?: string, content: string, status: pending|in_progress|completed, activeForm?: string }; missing ids are auto-generated, missing activeForm falls back to content. The full list is overwritten on every call — pass the complete updated list, not a delta. Use to plan multi-step coding work and track progress within a session.",
   descriptionCompressed:
-    "Replace conversation todo list with {content,status,activeForm}[].",
+    "todo-write:replace conversation list [{id?,content,status:pending|in_progress|completed,activeForm?}]",
   parameters: [
     {
       name: "todos",

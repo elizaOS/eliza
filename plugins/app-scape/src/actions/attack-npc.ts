@@ -26,8 +26,8 @@ import { extractParamInt } from "./param-parser.js";
 export const attackNpc: Action = {
   name: "ATTACK_NPC",
   description:
-    "Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.",
-  descriptionCompressed: "Attack NPC by id.",
+    "Engage a nearby NPC in the SCAPE world in combat by its instance id (taken from the SCAPE_NEARBY provider's npcs list). The game server pathfinds the agent into attack range and starts combat via PlayerManager.attackNpcAsAgent. Use only when an enemy id is known and combat is desired; this is a write action that mutates world state.",
+  descriptionCompressed: "scape:attack-npc by-id (paths-into-range)",
   contexts: ["game", "automation", "world", "state"],
   roleGate: { minRole: "ADMIN" },
   similes: ["FIGHT_NPC", "KILL_NPC", "ENGAGE"],
@@ -83,8 +83,9 @@ export const attackNpc: Action = {
           setTimeout(() => reject(new Error("attack timed out")), timeoutMs),
         ),
       ]);
-      const displayText =
-        (result.message ?? (result.success ? "engaging" : "attack failed")).slice(0, 2000);
+      const displayText = (
+        result.message ?? (result.success ? "engaging" : "attack failed")
+      ).slice(0, 2000);
       callback?.({ text: displayText, action: "ATTACK_NPC" });
       return { success: result.success, text: displayText };
     } catch (error) {

@@ -22,6 +22,12 @@ export const researchAction: Action = {
 		"DELETE_RESEARCH",
 	],
 
+	subPlanner: {
+		name: "research_subplanner",
+		description:
+			"Explodes CREATE_RESEARCH, CONTINUE_RESEARCH, READ_RESEARCH, LIST_RESEARCH, EDIT_RESEARCH, DELETE_RESEARCH so the planner can chain multi-step research-thread operations.",
+	},
+
 	validate: async (): Promise<boolean> => true,
 
 	// Handler is bypassed when subActions is present — sub-planner takes over.

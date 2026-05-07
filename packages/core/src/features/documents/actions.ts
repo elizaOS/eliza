@@ -1511,6 +1511,11 @@ export const documentsAction: Action = {
 		"IMPORT_DOCUMENT_FROM_FILE",
 		"IMPORT_DOCUMENT_FROM_URL",
 	],
+	subPlanner: {
+		name: "documents_subplanner",
+		description:
+			"Explodes SEARCH_DOCUMENTS, READ_DOCUMENT, WRITE_DOCUMENT, EDIT_DOCUMENT, DELETE_DOCUMENT, LIST_DOCUMENTS, IMPORT_DOCUMENT_FROM_FILE, and IMPORT_DOCUMENT_FROM_URL so the planner can chain multi-step document-store operations.",
+	},
 	parameters: [],
 
 	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
