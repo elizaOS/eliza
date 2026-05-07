@@ -5,6 +5,7 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
 import {
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
@@ -13,7 +14,6 @@ import {
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
-import { getCloudSecret } from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 import {

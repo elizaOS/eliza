@@ -7,9 +7,11 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   Layers3,
-  ListTodo,
   MessagesSquare,
-  PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 
 import "./components/chat/chat-source-registration";
@@ -260,15 +262,13 @@ function WalletChatGuideActions() {
 }
 
 interface MobileChatSurfaceButtonProps {
-  active: boolean;
-  icon: typeof PanelLeft;
+  icon: typeof PanelLeftOpen;
   label: string;
   onClick: () => void;
   surface: MobileChatSurface;
 }
 
 function MobileChatSurfaceButton({
-  active,
   icon: Icon,
   label,
   onClick,
@@ -278,13 +278,10 @@ function MobileChatSurfaceButton({
     <button
       type="button"
       aria-label={label}
-      aria-current={active ? "page" : undefined}
       title={label}
       data-testid={`chat-mobile-surface-${surface}`}
       onClick={onClick}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/55 text-muted shadow-sm transition-colors hover:text-txt ${
-        active ? "border-accent/70 bg-accent text-accent-fg" : ""
-      }`}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted shadow-sm backdrop-blur transition-colors hover:text-txt"
     >
       <Icon className="h-4 w-4" aria-hidden />
     </button>
@@ -763,36 +760,34 @@ export function App() {
   const mobileChatControls = useMemo(() => {
     if (!isChatMobileLayout) return null;
 
+    const leftLabel = t("conversations.chats", { defaultValue: "Chats" });
+    const rightLabel = t("taskseventspanel.Title", {
+      defaultValue: "Tasks & Events",
+    });
+    const leftOpen = mobileChatSurface === "left";
+    const rightOpen = mobileChatSurface === "right";
+
     return {
-      center: (
+      // Left toggle: only render when nothing else is open OR it's the active one.
+      // Tapping again returns to center.
+      left: rightOpen ? null : (
         <MobileChatSurfaceButton
-          active={mobileChatSurface === "center"}
-          icon={MessagesSquare}
-          label={t("nav.chat", { defaultValue: "Chat" })}
-          onClick={() => setMobileChatSurface("center")}
-          surface="center"
-        />
-      ),
-      left: (
-        <MobileChatSurfaceButton
-          active={mobileChatSurface === "left"}
-          icon={PanelLeft}
-          label={t("conversations.chats", { defaultValue: "Chats" })}
-          onClick={() => setMobileChatSurface("left")}
+          icon={leftOpen ? PanelLeftClose : PanelLeftOpen}
+          label={leftOpen ? `Hide ${leftLabel}` : `Show ${leftLabel}`}
+          onClick={() => setMobileChatSurface(leftOpen ? "center" : "left")}
           surface="left"
         />
       ),
-      right: isChat ? (
-        <MobileChatSurfaceButton
-          active={mobileChatSurface === "right"}
-          icon={ListTodo}
-          label={t("taskseventspanel.Title", {
-            defaultValue: "Tasks & Events",
-          })}
-          onClick={() => setMobileChatSurface("right")}
-          surface="right"
-        />
-      ) : null,
+      // Right toggle: only on chat tab, hidden when left is open.
+      right:
+        isChat && !leftOpen ? (
+          <MobileChatSurfaceButton
+            icon={rightOpen ? PanelRightClose : PanelRightOpen}
+            label={rightOpen ? `Hide ${rightLabel}` : `Show ${rightLabel}`}
+            onClick={() => setMobileChatSurface(rightOpen ? "center" : "right")}
+            surface="right"
+          />
+        ) : null,
     };
   }, [isChat, isChatMobileLayout, mobileChatSurface, t]);
 
@@ -936,7 +931,6 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header
-            mobileCenter={mobileChatControls?.center}
             mobileLeft={mobileChatControls?.left}
             pageRightExtras={mobileChatControls?.right}
             tasksEventsPanelOpen={isChat && !isChatMobileLayout}

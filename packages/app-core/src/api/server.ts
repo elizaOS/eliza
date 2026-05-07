@@ -51,6 +51,13 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 
 export {
+  __resetCloudBaseUrlCache,
+  ensureCloudTtsApiKeyAlias,
+  resolveCloudTtsBaseUrl,
+  resolveElevenLabsApiKeyForCloudMode,
+} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
+export { resolveWalletExportRejection } from "@elizaos/plugin-wallet/lib/server-wallet-trade";
+export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
   getConfiguredCompatAgentName,
@@ -58,12 +65,6 @@ export {
   isLoopbackRemoteAddress,
   readCompatJsonBody,
 } from "./compat-route-shared";
-export {
-  __resetCloudBaseUrlCache,
-  ensureCloudTtsApiKeyAlias,
-  resolveCloudTtsBaseUrl,
-  resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
 export {
   filterConfigEnvForResponse,
   SENSITIVE_ENV_RESPONSE_KEYS,
@@ -87,7 +88,6 @@ export {
   isSafeResetStateDir,
   resolveCorsOrigin,
 } from "./server-startup";
-export { resolveWalletExportRejection } from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -152,13 +152,13 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
-import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
-import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 import {
   clearCloudSecrets,
   getCloudSecret,
 } from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
+import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
+import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
+import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 
 // ---------------------------------------------------------------------------
 // Import from extracted modules for use within this file
