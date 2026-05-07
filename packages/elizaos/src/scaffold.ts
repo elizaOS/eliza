@@ -279,9 +279,7 @@ export function resolveTemplateSourceDir(options: {
   template: TemplateDefinition;
   templatesDir: string;
 }): string {
-  const sourceTemplateId =
-    options.template.id === "project" ? "project" : options.template.id;
-  return path.join(options.templatesDir, sourceTemplateId);
+  return path.join(options.templatesDir, options.template.id);
 }
 
 function copyRenderedTreeInternal(

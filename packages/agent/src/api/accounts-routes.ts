@@ -28,6 +28,12 @@
 
 import nodeCrypto from "node:crypto";
 import { logger } from "@elizaos/core";
+import {
+  isLinkedAccountProviderId,
+  type LinkedAccountConfig,
+  type LinkedAccountProviderId,
+  type ServiceRouteAccountStrategy,
+} from "@elizaos/shared";
 import { z } from "zod";
 import {
   type AccountCredentialRecord,
@@ -54,12 +60,6 @@ import {
   type SubscriptionProvider,
 } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
-import {
-  isLinkedAccountProviderId,
-  type LinkedAccountConfig,
-  type LinkedAccountProviderId,
-  type ServiceRouteAccountStrategy,
-} from "../contracts/service-routing.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 // ─── Account pool (single source of truth) ──────────────────────────

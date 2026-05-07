@@ -19,7 +19,14 @@
  * @module first-time-setup
  */
 
-import { formatError, getStylePresets } from "@elizaos/shared";
+import type { StylePreset } from "@elizaos/shared";
+import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  formatError,
+  getStylePresets,
+  migrateLegacyRuntimeConfig,
+} from "@elizaos/shared";
 import { persistConfigEnv } from "../api/config-env.js";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
@@ -30,12 +37,6 @@ import {
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
 import { isCloudWalletEnabled } from "../config/feature-flags.js";
 import type { AgentConfig } from "../config/types.agents.js";
-import type { StylePreset } from "../contracts/onboarding.js";
-import { migrateLegacyRuntimeConfig } from "../contracts/onboarding.js";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-} from "../contracts/service-routing.js";
 import { pickRandomNames } from "./onboarding-names.js";
 
 // ---------------------------------------------------------------------------

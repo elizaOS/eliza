@@ -15,8 +15,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-ELIZA_ROOT = Path("/home/shaw/milady/eliza")
-TRAINING_ROOT = Path("/home/shaw/milady/training")
+ELIZA_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+TRAINING_ROOT = Path(__file__).parent.parent.resolve()
 OUT_PATH = TRAINING_ROOT / "data" / "prompts" / "actions-catalog.json"
 
 # ---------------------------------------------------------------------------

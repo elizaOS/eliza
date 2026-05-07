@@ -21,7 +21,7 @@
  *        - otherwise                            → cold
  */
 
-import { getOnboardingProviderFamily } from "../../contracts/onboarding.js";
+import { getOnboardingProviderFamily } from "@elizaos/shared";
 import type { OperationIntent, ReloadTier } from "./types.js";
 
 export interface ClassifyContext {

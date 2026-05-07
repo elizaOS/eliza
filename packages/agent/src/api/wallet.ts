@@ -10,9 +10,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { logger } from "@elizaos/core";
-import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { ethers } from "ethers";
-import { resolveStewardCredentialsPath } from "../config/paths.js";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -21,15 +18,16 @@ import type {
   WalletGenerateResult,
   WalletImportResult,
   WalletKeys,
-} from "../contracts/wallet.js";
+} from "@elizaos/shared";
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { ethers } from "ethers";
+import { resolveStewardCredentialsPath } from "../config/paths.js";
 import { computeValueUsd } from "./wallet-dex-prices.js";
 
 type StewardAgentPayload = {
   walletAddress?: string;
   walletAddresses?: { evm?: string; solana?: string };
 };
-
-// ── Re-exports from contracts/wallet ──────────────────────────────────
 
 export type {
   BscTradeExecuteRequest,
@@ -65,7 +63,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "../contracts/wallet.js";
+} from "@elizaos/shared";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 

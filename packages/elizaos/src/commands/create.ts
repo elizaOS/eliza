@@ -2,7 +2,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as clack from "@clack/prompts";
 import pc from "picocolors";
-import { getTemplateById, getTemplates, getTemplatesDir } from "../manifest.js";
+import {
+  getTemplateById,
+  getTemplates,
+  getTemplatesDir,
+  TEMPLATE_ICONS,
+} from "../manifest.js";
 import { getCliVersion } from "../package-info.js";
 import { writeProjectMetadata } from "../project-metadata.js";
 import {
@@ -24,11 +29,6 @@ import type {
 
 const LANGUAGE_NAMES: Record<string, string> = {
   typescript: "TypeScript",
-};
-
-const TEMPLATE_ICONS: Record<string, string> = {
-  plugin: "🔌",
-  project: "🧱",
 };
 
 function normalizeProjectName(value: string): string {

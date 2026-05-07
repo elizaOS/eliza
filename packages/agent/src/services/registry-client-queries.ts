@@ -2,7 +2,7 @@ import {
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
-} from "../contracts/apps.js";
+} from "@elizaos/shared";
 import type {
   RegistryAppInfo,
   RegistryPluginInfo,

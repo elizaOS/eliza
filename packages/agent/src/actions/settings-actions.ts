@@ -29,14 +29,14 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  getOnboardingProviderOption,
+  normalizeOnboardingProviderId,
+} from "@elizaos/shared";
+import {
   applyOnboardingConnectionConfig,
   createProviderSwitchConnection,
 } from "../api/provider-switch-config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import {
-  getOnboardingProviderOption,
-  normalizeOnboardingProviderId,
-} from "../contracts/onboarding.js";
 import { hasOwnerAccess } from "../security/access.js";
 import {
   CHARACTER_PERSISTENCE_SERVICE,

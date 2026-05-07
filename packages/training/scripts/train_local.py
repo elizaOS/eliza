@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import format_record  # noqa: E402
+from lib.attn import select_attn_impl  # noqa: E402
 
 
 def _split_named(
@@ -233,24 +234,7 @@ def main() -> int:
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
         )
-    # Pick the most aggressive flash-attention impl the silicon supports:
-    # FA-3 lands sm_90 (H100/H200) only; sm_120 Blackwell consumer/Pro GPUs
-    # are not yet supported by FA-2 prebuilt wheels (FA #1665/#1810/#1987)
-    # and a source build takes ~1h. When `flash_attn` isn't installed at all
-    # we fall back to PyTorch SDPA, which has flash + memory-efficient
-    # backends and no compile prereq.
-    attn_impl = "sdpa"
-    if device == "cuda":
-        cap = torch.cuda.get_device_capability(0)
-        try:
-            import flash_attn  # noqa: F401
-            attn_impl = "flash_attention_2"
-            if cap == (9, 0):
-                if int(getattr(flash_attn, "__version__", "0").split(".")[0]) >= 3:
-                    attn_impl = "flash_attention_3"
-        except ImportError:
-            attn_impl = "sdpa"
-        log.info("attn_implementation=%s (compute_capability=%s)", attn_impl, cap)
+    attn_impl = select_attn_impl(device)
     # device_map='auto' is incompatible with FSDP / DDP — accelerate's
     # `prepare()` rejects models that already have a device map. When we
     # launch under `accelerate launch` (RANK env set), every rank loads

@@ -40,6 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import format_record  # noqa: E402
+from lib.attn import select_attn_impl  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -242,19 +243,7 @@ def main() -> int:
         log.error("no preference pairs constructed — check pairs-dir layout")
         return 1
 
-    # FA-3 / FA-2 / SDPA selection identical to train_local.py.
-    attn_impl = "sdpa"
-    if device == "cuda":
-        cap = torch.cuda.get_device_capability(0)
-        try:
-            import flash_attn  # noqa: F401
-            attn_impl = "flash_attention_2"
-            if cap == (9, 0):
-                if int(getattr(flash_attn, "__version__", "0").split(".")[0]) >= 3:
-                    attn_impl = "flash_attention_3"
-        except ImportError:
-            attn_impl = "sdpa"
-        log.info("attn_implementation=%s (compute_capability=%s)", attn_impl, cap)
+    attn_impl = select_attn_impl(device)
 
     in_distributed = "RANK" in os.environ
     use_device_map = device == "cuda" and not in_distributed

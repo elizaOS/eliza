@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
+import { packageNameToAppDisplayName } from "@elizaos/shared";
 import { resolveStateDir } from "../config/paths.js";
-import { packageNameToAppDisplayName } from "../contracts/apps.js";
 import { readJsonFile } from "../utils/atomic-json.js";
 import {
   mergeAppMeta,

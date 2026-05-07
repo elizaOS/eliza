@@ -34,7 +34,7 @@ export interface ITrajectoryContextManager {
 	active(): TrajectoryContext | undefined;
 }
 
-class StackContextManager implements ITrajectoryContextManager {
+class TrajectoryStackContextManager implements ITrajectoryContextManager {
 	private stack: Array<TrajectoryContext | undefined> = [];
 
 	run<T>(
@@ -100,7 +100,7 @@ function initContextManagerSync(): ITrajectoryContextManager {
 			// AsyncLocalStorage unavailable — fall back to stack
 		}
 	}
-	return new StackContextManager();
+	return new TrajectoryStackContextManager();
 }
 
 function getOrCreateContextManager(): ITrajectoryContextManager {

@@ -16,6 +16,7 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
+import { toRecord } from "./utils.js";
 import type {
   CapturedAction,
   CapturedApprovalRequest,
@@ -60,12 +61,6 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function getRuntimeCaptureHooks(
@@ -366,7 +361,7 @@ function captureStateTransitionsFromValue(
 
   if (browserTask?.completed === true) {
     stateTransitions.push({
-      subject: "browser-task",
+      subject: "browser_task",
       to: "completed",
       actionName,
       at: new Date().toISOString(),
@@ -374,8 +369,8 @@ function captureStateTransitionsFromValue(
   }
   if (browserTask?.needsHuman === true) {
     stateTransitions.push({
-      subject: "browser-task",
-      to: "needs-human",
+      subject: "browser_task",
+      to: "needs_human",
       actionName,
       at: new Date().toISOString(),
     });

@@ -1,20 +1,18 @@
 import type http from "node:http";
 import { logger, stringToUuid, type UUID } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { configFileExists, loadElizaConfig } from "../config/config.js";
 import {
+  asRecord,
+  type DeploymentTargetConfig,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-  normalizeOnboardingCredentialInputs,
-} from "../contracts/onboarding.js";
-import {
-  type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
+  normalizeOnboardingCredentialInputs,
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
-} from "../contracts/service-routing.js";
+} from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.js";
+import { configFileExists, loadElizaConfig } from "../config/config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {

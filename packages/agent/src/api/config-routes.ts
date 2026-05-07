@@ -2,16 +2,14 @@ import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isElizaSettingsDebugEnabled,
+  normalizeDeploymentTargetConfig,
+  normalizeLinkedAccountsConfig,
+  normalizeServiceRoutingConfig,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import {
-  normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
-  normalizeServiceRoutingConfig,
-} from "../contracts/service-routing.js";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
