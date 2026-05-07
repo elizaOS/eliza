@@ -8,11 +8,7 @@
  * @module services/stall-classifier
  */
 
-import {
-  parseToonKeyValue,
-  type IAgentRuntime,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   buildTaskCompletionTimeline,
   extractTaskCompletionTraceRecords,
@@ -20,6 +16,7 @@ import {
 } from "pty-manager";
 import type { AgentMetricsTracker } from "./agent-metrics.js";
 import { stripAnsi } from "./ansi-utils.js";
+import { parseJsonObjectResponse } from "./json-model-output.js";
 import type {
   DecisionHistoryEntry,
   TaskContextSummary,
@@ -181,10 +178,8 @@ export function buildStallClassificationPrompt(
     `- "prompt": the text of what it's asking\n` +
     `- "suggestedResponse": what to type/send. Use "keys:enter" for TUI menu confirmation, ` +
     `"keys:down,enter" to select a non-default option, or plain text like "y" for text prompts.\n\n` +
-    `Respond with TOON only:\n` +
-    `state: waiting_for_input\n` +
-    `prompt: The exact prompt text, or blank if none.\n` +
-    `suggestedResponse: y`
+    `Respond with JSON only:\n` +
+    `{"state":"waiting_for_input","prompt":"The exact prompt text, or blank if none.","suggestedResponse":"y"}`
   );
 }
 
@@ -334,7 +329,7 @@ export async function classifyStallOutput(
 
     const parsed = parseStallClassificationResponse(result);
     if (!parsed) {
-      log(`Stall classification: no parseable TOON in LLM response`);
+      log(`Stall classification: no parseable JSON in LLM response`);
       return null;
     }
     // Map tool_running → still_working (StallClassification doesn't have tool_running).
@@ -414,12 +409,12 @@ function normalizeNullableString(value: unknown): string | undefined {
 function parseStallClassificationResponse(
   result: string,
 ): { state: string; prompt?: string; suggestedResponse?: string } | null {
-  const parsedToon = parseToonKeyValue<Record<string, unknown>>(result);
-  if (parsedToon && validStallStates.includes(String(parsedToon.state))) {
+  const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(result);
+  if (parsedJson && validStallStates.includes(String(parsedJson.state))) {
     return {
-      state: String(parsedToon.state),
-      prompt: normalizeNullableString(parsedToon.prompt),
-      suggestedResponse: normalizeNullableString(parsedToon.suggestedResponse),
+      state: String(parsedJson.state),
+      prompt: normalizeNullableString(parsedJson.prompt),
+      suggestedResponse: normalizeNullableString(parsedJson.suggestedResponse),
     };
   }
 
@@ -484,10 +479,8 @@ export function buildCombinedClassifyDecidePrompt(
     `- If the prompt asks for information NOT in the original task, set suggestedResponse to null ` +
     `(this will escalate to the human).\n` +
     `- If a PR was just created, the task is likely done — classify as "task_complete".\n\n` +
-    `Respond with TOON only:\n` +
-    `state: waiting_for_input\n` +
-    `prompt: The exact prompt text, or blank if none.\n` +
-    `suggestedResponse: y`
+    `Respond with JSON only:\n` +
+    `{"state":"waiting_for_input","prompt":"The exact prompt text, or blank if none.","suggestedResponse":"y"}`
   );
 }
 
@@ -591,7 +584,7 @@ export async function classifyAndDecideForCoordinator(
 
     const parsed = parseStallClassificationResponse(result);
     if (!parsed) {
-      log(`Combined classify+decide: no parseable TOON in LLM response`);
+      log(`Combined classify+decide: no parseable JSON in LLM response`);
       return null;
     }
 

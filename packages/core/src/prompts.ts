@@ -27,16 +27,17 @@ instructions[5]:
 - include a short reason for why this contact should be saved
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-contactName: Jane Doe
-entityId:
-categories: vip,colleague
-notes: Met at the design summit
-timezone: America/New_York
-language: English
-reason: Important collaborator to remember`;
+{
+  "contactName": "Jane Doe",
+  "categories": ["vip", "colleague"],
+  "notes": "Met at the design summit",
+  "timezone": "America/New_York",
+  "language": "English",
+  "reason": "Important collaborator to remember"
+}`;
 
 export const ADD_CONTACT_TEMPLATE = addContactTemplate;
 
@@ -44,7 +45,7 @@ export const autonomyContinuousContinueTemplate = `Your job: reflect on context,
 - Use available actions/tools when they can advance the goal.
 - Use thinking to think about and plan what you want to do.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
+- Output structure: a JSON object with a thought field plus an optional actions list. No other message text. No XML or markdown fences.
 - If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
 - If you cannot act, explain what is missing inside thought and take no action.
 - Keep the response concise, focused on the next action.
@@ -54,11 +55,10 @@ USER CONTEXT (most recent last):
 
 Your last autonomous note: "{{lastThought}}"
 
-Continue from that note. Output a TOON thought and take action if needed.
+Continue from that note. Output a JSON thought and take action if needed.
 
 Example (no action this round):
-thought: Continuing from prior note; nothing new to act on.
-actions:`;
+{"thought":"Continuing from prior note; nothing new to act on.","actions":[]}`;
 
 export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
 	autonomyContinuousContinueTemplate;
@@ -67,7 +67,7 @@ export const autonomyContinuousFirstTemplate = `Your job: reflect on context, de
 - Use available actions/tools when they can advance the goal.
 - Use thinking to think about and plan what you want to do.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
+- Output structure: a JSON object with a thought field plus an optional actions list. No other message text. No XML or markdown fences.
 - If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
 - If you cannot act, explain what is missing inside thought and take no action.
 - Keep the response concise, focused on the next action.
@@ -75,11 +75,10 @@ export const autonomyContinuousFirstTemplate = `Your job: reflect on context, de
 USER CONTEXT (most recent last):
 {{targetRoomContext}}
 
-Think briefly, then output a TOON thought and take action if needed.
+Think briefly, then output a JSON thought and take action if needed.
 
 Example (no action this round):
-thought: Inspecting current state; nothing to act on this round.
-actions:`;
+{"thought":"Inspecting current state; nothing to act on this round.","actions":[]}`;
 
 export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
 	autonomyContinuousFirstTemplate;
@@ -90,7 +89,7 @@ Your job: continue helping the user and make progress toward the task.
 - Use available actions/tools to gather information or execute steps.
 - Use thinking to think about and plan what you want to do.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
+- Output structure: a JSON object with a thought field plus an optional actions list. No other message text. No XML or markdown fences.
 - If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
 - If you cannot act, explain what is missing inside thought and take no action.
 - Keep the response concise, focused on the next action.
@@ -100,11 +99,10 @@ USER CHAT CONTEXT (most recent last):
 
 Your last autonomous note: "{{lastThought}}"
 
-Continue the task. Output a TOON thought and take action now.
+Continue the task. Output a JSON thought and take action now.
 
 Example (no action this round):
-thought: Waiting on prior step to complete; nothing to do this round.
-actions:`;
+{"thought":"Waiting on prior step to complete; nothing to do this round.","actions":[]}`;
 
 export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;
 
@@ -116,17 +114,15 @@ Your job: continue helping the user and make progress toward the task.
 - In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
 - Prefer safe, incremental steps; if unsure, gather more UI context before acting.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
+- Output structure: a JSON object with a thought field plus an optional actions list. No other message text. No XML or markdown fences.
 
 USER CHAT CONTEXT (most recent last):
 {{targetRoomContext}}
 
-Decide what to do next. Output a TOON thought, then take the most useful action.
+Decide what to do next. Output a JSON thought, then take the most useful action.
 
 Example:
-thought: Need to gather UI state before acting.
-actions[1]:
-  - name: COMPUTER_USE_INSPECT`;
+{"thought":"Need to gather UI state before acting.","actions":[{"name":"COMPUTER_USE_INSPECT"}]}`;
 
 export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
 
@@ -141,11 +137,13 @@ export const chooseOptionTemplate = `# Task: Choose an option from the available
 Analyze the options and select the most appropriate one based on the current context.
 Provide your reasoning and the selected option ID.
 
-Respond using TOON like this:
-thought: Your reasoning for the selection
-selected_id: The ID of the selected option
+Respond with JSON like this:
+{
+  "thought": "Your reasoning for the selection",
+  "selected_id": "The ID of the selected option"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above.`;
+IMPORTANT: Your response must ONLY contain the JSON object above.`;
 
 export const CHOOSE_OPTION_TEMPLATE = chooseOptionTemplate;
 
@@ -170,16 +168,18 @@ Common patterns:
 
 Extract the operation, key (if applicable), value (if applicable), level, description, and type from the user's message.
 
-Output TOON only. Return exactly one TOON document, no prose or fences.
+Output JSON only. Return exactly one JSON object, no prose or fences.
 Use only these fields:
-operation: get|set|delete|list|check
-key: OPENAI_API_KEY
-value: secret_value
-level: global|world|user
-description: short_description
-type: api_key|secret|credential|url|config
+{
+  "operation": "get|set|delete|list|check",
+  "key": "OPENAI_API_KEY",
+  "value": "secret_value",
+  "level": "global|world|user",
+  "description": "short_description",
+  "type": "api_key|secret|credential|url|config"
+}
 
-Omit unknown optional fields. No XML or JSON.`;
+Omit unknown optional fields. No XML.`;
 
 export const EXTRACT_SECRET_OPERATION_TEMPLATE = extractSecretOperationTemplate;
 
@@ -194,12 +194,14 @@ Common patterns:
 Recent Messages:
 {{recentMessages}}
 
-Output TOON only. Return exactly one TOON document, no prose or fences.
+Output JSON only. Return exactly one JSON object, no prose or fences.
 Use:
-key: OPENAI_API_KEY
-reason: why it is needed
+{
+  "key": "OPENAI_API_KEY",
+  "reason": "why it is needed"
+}
 
-If no specific secret is requested, leave key empty. No XML or JSON.`;
+If no specific secret is requested, leave key empty. No XML.`;
 
 export const EXTRACT_SECRET_REQUEST_TEMPLATE = extractSecretRequestTemplate;
 
@@ -221,12 +223,21 @@ Common patterns:
 
 Extract the secrets from the user's message. If the key name isn't explicitly specified, infer an appropriate UPPERCASE_WITH_UNDERSCORES name based on the context.
 
-Output TOON only. Return exactly one TOON document, no prose or fences.
+Output JSON only. Return exactly one JSON object, no prose or fences.
 Use:
-secrets[n]{key,value,description,type}:
-level: global|world|user
+{
+  "secrets": [
+    {
+      "key": "OPENAI_API_KEY",
+      "value": "secret_value",
+      "description": "optional description",
+      "type": "api_key|secret|credential|url|config",
+      "level": "global|world|user"
+    }
+  ]
+}
 
-Omit description/type/level when unknown. No XML or JSON.`;
+Omit description/type/level when unknown. No XML.`;
 
 export const EXTRACT_SECRETS_TEMPLATE = extractSecretsTemplate;
 
@@ -242,12 +253,14 @@ Be objective and descriptive. Focus on what you can actually see in the image ra
 
 Output:
 
-Respond using TOON like this:
-title: A concise, descriptive title for the image
-description: A brief 1-2 sentence summary of the key elements in the image
-text: An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image
+Respond with JSON like this:
+{
+  "title": "A concise, descriptive title for the image",
+  "description": "A brief 1-2 sentence summary of the key elements in the image",
+  "text": "An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const IMAGE_DESCRIPTION_TEMPLATE = imageDescriptionTemplate;
 
@@ -262,11 +275,13 @@ The prompt should be specific, descriptive, and suitable for AI image generation
 # Recent conversation:
 {{recentMessages}}
 
-Respond using TOON like this:
-thought: Your reasoning for the image prompt
-prompt: Detailed image generation prompt
+Respond with JSON like this:
+{
+  "thought": "Your reasoning for the image prompt",
+  "prompt": "Detailed image generation prompt"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above.`;
+IMPORTANT: Your response must ONLY contain the JSON object above.`;
 
 export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
 
@@ -291,13 +306,12 @@ Also extract:
 - **Topics**: List of main topics discussed (comma-separated)
 - **Key Points**: Important facts or decisions (bullet points)
 
-Respond in TOON:
-text: Your comprehensive summary here
-topics[0]: topic1
-topics[1]: topic2
-topics[2]: topic3
-keyPoints[0]: First key point
-keyPoints[1]: Second key point`;
+Respond in JSON:
+{
+  "text": "Your comprehensive summary here",
+  "topics": ["topic1", "topic2", "topic3"],
+  "keyPoints": ["First key point", "Second key point"]
+}`;
 
 export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
 
@@ -417,18 +431,25 @@ Skills, workflows, methodologies, and how-to knowledge.
 
 # Response Format
 
-memories[0]:
-  category: semantic
-  content: User is a senior TypeScript developer with 8 years of backend experience
-  confidence: 0.95
-memories[1]:
-  category: procedural
-  content: User follows TDD workflow: writes tests before implementation, runs tests after each change
-  confidence: 0.88
-memories[2]:
-  category: episodic
-  content: User led database migration from MongoDB to PostgreSQL for payment system in Q2 2024
-  confidence: 0.92`;
+{
+  "memories": [
+    {
+      "category": "semantic",
+      "content": "User is a senior TypeScript developer with 8 years of backend experience",
+      "confidence": 0.95
+    },
+    {
+      "category": "procedural",
+      "content": "User follows TDD workflow: writes tests before implementation, runs tests after each change",
+      "confidence": 0.88
+    },
+    {
+      "category": "episodic",
+      "content": "User led database migration from MongoDB to PostgreSQL for payment system in Q2 2024",
+      "confidence": 0.92
+    }
+  ]
+}`;
 
 export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 
@@ -475,27 +496,28 @@ control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions
 - STOP is a terminal control action even if it is not listed in available actions
 
-fields[5]{name,meaning}:
-- thought | short plan
-- actions | ordered list of action entries, each with a name and optional params
-- providers | comma-separated provider names, or empty
-- text | next message for {{agentName}}
-- simple | true only when text itself should be sent directly as the final reply; false when actions should run, including REPLY-driven finalization
+fields:
+- thought: short plan
+- actions: ordered list of action entries, each with a name and optional params
+- providers: provider names, or empty array
+- text: next message for {{agentName}}
+- simple: true only when text itself should be sent directly as the final reply; false when actions should run, including REPLY-driven finalization
 
 formatting:
 - wrap multi-line code in fenced code blocks
 - use inline backticks for short code identifiers
 
 output:
-TOON only. Return exactly one TOON document with the keys above. No prose before or after it. No <think>. No XML, no JSON, no markdown fences.
+JSON only. Return exactly one JSON object with the keys above. No prose before or after it. No <think>. No XML or markdown fences.
 
 Example:
-thought: Reply briefly. No extra providers needed.
-actions[1]:
-  - name: REPLY
-providers:
-text: Your message here
-simple: true`;
+{
+  "thought": "Reply briefly. No extra providers needed.",
+  "actions": [{"name": "REPLY"}],
+  "providers": [],
+  "text": "Your message here",
+  "simple": true
+}`;
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
 
@@ -536,10 +558,12 @@ keys:
 ⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action. Wait for the action to complete before deciding the task is finished.
 
 output:
-thought: Your thought here
-action: ACTION
-providers[2]: PROVIDER1,PROVIDER2
-isFinish: false`;
+{
+  "thought": "Your thought here",
+  "action": "ACTION",
+  "providers": ["PROVIDER1", "PROVIDER2"],
+  "isFinish": false
+}`;
 
 export const MULTI_STEP_DECISION_TEMPLATE = multiStepDecisionTemplate;
 
@@ -571,10 +595,11 @@ Here are the actions taken by the assistant to fulfill the request:
 
  - Review the execution trace and last reasoning step carefully
 
- - Your final output MUST be TOON in this format:
-output:
-thought: Your thought here
-text: Your final message to the user`;
+ - Your final output MUST be JSON in this format:
+{
+  "thought": "Your thought here",
+  "text": "Your final message to the user"
+}`;
 
 export const MULTI_STEP_SUMMARY_TEMPLATE = multiStepSummaryTemplate;
 
@@ -593,11 +618,13 @@ export const optionExtractionTemplate = `# Task: Extract selected task and optio
 4. If no clear selection is made, return null for both fields
 
 
-Return in TOON format:
-taskId: string_or_null
-selectedOption: OPTION_NAME_or_null
+Return JSON:
+{
+  "taskId": "string_or_null",
+  "selectedOption": "OPTION_NAME_or_null"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
 
@@ -631,13 +658,15 @@ rules[11]:
 - STOP is a terminal control action even if it is not listed in available actions
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
-thought: Your thought here
-actions[1]: ACTION
-providers[0]:
-text: Your message here
-simple: true`;
+{
+  "thought": "Your thought here",
+  "actions": ["ACTION"],
+  "providers": [],
+  "text": "Your message here",
+  "simple": true
+}`;
 
 export const POST_ACTION_DECISION_TEMPLATE = postActionDecisionTemplate;
 
@@ -665,17 +694,19 @@ Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}}
 Your response should be 1, 2, or 3 sentences (choose the length at random).
 Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
 
-Your output should be formatted as TOON like this:
-thought: Your thought here
-post: Your post text here
-imagePrompt: Optional image prompt here
+Your output should be formatted as JSON like this:
+{
+  "thought": "Your thought here",
+  "post": "Your post text here",
+  "imagePrompt": "Optional image prompt here"
+}
 
 The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
 The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
 The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
 
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const POST_CREATION_TEMPLATE = postCreationTemplate;
 
@@ -713,28 +744,32 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 4. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
 
 Output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
-Do not output JSON, XML, Markdown fences, or commentary.
-Use indexed TOON fields exactly like this:
-thought: "a self-reflective thought on the conversation"
-task_completed: false
-task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
-relationships[0]:
-  sourceEntityId: entity_initiating_interaction
-  targetEntityId: entity_being_interacted_with
-  tags[0]: dm_interaction
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
+Do not output XML, Markdown fences, or commentary.
+Use JSON fields exactly like this:
+{
+  "thought": "a self-reflective thought on the conversation",
+  "task_completed": false,
+  "task_completion_reason": "The request is still incomplete because the needed action has not happened yet.",
+  "relationships": [
+    {
+      "sourceEntityId": "entity_initiating_interaction",
+      "targetEntityId": "entity_being_interacted_with",
+      "tags": ["dm_interaction"]
+    }
+  ]
+}
 
-For additional entries, increment the index: relationships[1], tags[1], etc.
 Always include \`task_completed\` and \`task_completion_reason\`.
-If there are no relationships, omit all relationships[...] entries.
+If there are no relationships, omit the relationships field.
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;
 
 export const factExtractionTemplate = `# Task: Classify and extract facts from this message
 
-You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return TOON ops only.
+You maintain two fact stores for an AI assistant. Decide what to insert, strengthen, decay, or contradict. Return JSON ops only.
 
 Stores:
 - durable: stable identity-level claims that matter in a year.
@@ -758,44 +793,18 @@ Ops:
 Examples:
 
 Message: "I have a flat cortisol curve confirmed via lab"
-ops[1]:
-  - op: add_durable
-    claim: flat cortisol curve
-    category: health
-    structured_fields:
-      condition: flat cortisol curve
-      source: lab
-    verification_status: confirmed
+{"ops":[{"op":"add_durable","claim":"flat cortisol curve","category":"health","structured_fields":{"condition":"flat cortisol curve","source":"lab"},"verification_status":"confirmed"}]}
 
 Message: "I'm anxious this morning"
-ops[1]:
-  - op: add_current
-    claim: anxious this morning
-    category: feeling
-    structured_fields:
-      emotion: anxious
-      window: morning
+{"ops":[{"op":"add_current","claim":"anxious this morning","category":"feeling","structured_fields":{"emotion":"anxious","window":"morning"}}]}
 
 Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
 Message: "Berlin's been treating me well"
-ops[1]:
-  - op: strengthen
-    factId: fact_abc
-    reason: user reaffirmed living in Berlin
+{"ops":[{"op":"strengthen","factId":"fact_abc","reason":"user reaffirmed living in Berlin"}]}
 
 Known durable facts include: [fact_abc] (durable.identity) lives in Berlin
 Message: "Actually I moved to Tokyo last month"
-ops[2]:
-  - op: contradict
-    factId: fact_abc
-    proposedText: lives in Tokyo
-    reason: user moved to Tokyo, contradicts Berlin
-  - op: add_durable
-    claim: moved to Tokyo last month
-    category: life_event
-    structured_fields:
-      event: relocation
-      to: Tokyo
+{"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"user moved to Tokyo, contradicts Berlin"},{"op":"add_durable","claim":"moved to Tokyo last month","category":"life_event","structured_fields":{"event":"relocation","to":"Tokyo"}}]}
 
 Inputs:
 Agent Name: {{agentName}}
@@ -815,9 +824,9 @@ Latest message:
 {{message}}
 
 Output:
-TOON only. Return exactly one TOON document. No prose, no fences, no JSON, no XML, no <think>.
+JSON only. Return exactly one JSON object. No prose, no fences, no XML, no <think>.
 If nothing should change, return:
-ops[0]:`;
+{"ops":[]}`;
 
 export const FACT_EXTRACTION_TEMPLATE = factExtractionTemplate;
 
@@ -835,14 +844,16 @@ Analyze the agent's recent behavior and interactions. Consider:
 3. Were any mistakes made?
 4. What could be improved?
 
-Respond using TOON like this:
-thought: Your detailed analysis
-quality_score: Score 0-100 for overall quality
-strengths: What went well
-improvements: What could be improved
-learnings: Key takeaways for future interactions
+Respond with JSON like this:
+{
+  "thought": "Your detailed analysis",
+  "quality_score": 80,
+  "strengths": "What went well",
+  "improvements": "What could be improved",
+  "learnings": "Key takeaways for future interactions"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above.`;
+IMPORTANT: Your response must ONLY contain the JSON object above.`;
 
 export const REFLECTION_TEMPLATE = reflectionTemplate;
 
@@ -861,11 +872,13 @@ instructions[4]:
 - return only the requested contact
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-contactName: Jane Doe
-confirmed: yes`;
+{
+  "contactName": "Jane Doe",
+  "confirmed": "yes"
+}`;
 
 export const REMOVE_CONTACT_TEMPLATE = removeContactTemplate;
 
@@ -884,13 +897,15 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - This ensures the user sees clearly formatted and copyable code when relevant.
 
 Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the TOON response format without any preamble or explanation.
+Go directly to the JSON response format without any preamble or explanation.
 
-Respond using TOON like this:
-thought: Your thought here
-text: Your message here
+Respond with JSON like this:
+{
+  "thought": "Your thought here",
+  "text": "Your message here"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const REPLY_TEMPLATE = replyTemplate;
 
@@ -913,15 +928,16 @@ instructions[5]:
 - include message only when the user asked for a specific note or reminder text
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-contactName: Jane Doe
-entityId:
-scheduledAt: 2026-04-06T14:00:00.000Z
-reason: Check in on the proposal
-priority: medium
-message: Send the latest deck before the call`;
+{
+  "contactName": "Jane Doe",
+  "scheduledAt": "2026-04-06T14:00:00.000Z",
+  "reason": "Check in on the proposal",
+  "priority": "medium",
+  "message": "Send the latest deck before the call"
+}`;
 
 export const SCHEDULE_FOLLOW_UP_TEMPLATE = scheduleFollowUpTemplate;
 
@@ -941,13 +957,15 @@ instructions[5]:
 - omit fields that are not clearly requested
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-categories: vip,colleague
-searchTerm: Jane
-tags: ai,design
-intent: list`;
+{
+  "categories": ["vip", "colleague"],
+  "searchTerm": "Jane",
+  "tags": ["ai", "design"],
+  "intent": "list"
+}`;
 
 export const SEARCH_CONTACTS_TEMPLATE = searchContactsTemplate;
 
@@ -965,10 +983,10 @@ instructions[3]:
 - prefer false when uncertain
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-decision: true`;
+{"decision": true}`;
 
 export const SHOULD_FOLLOW_ROOM_TEMPLATE = shouldFollowRoomTemplate;
 
@@ -986,10 +1004,10 @@ instructions[3]:
 - prefer false when uncertain
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-decision: true`;
+{"decision": true}`;
 
 export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
 
@@ -1024,14 +1042,16 @@ decision_note:
 - talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-name: {{agentName}}
-reasoning: Direct mention and clear follow-up.
-action: RESPOND
-primaryContext: general
-secondaryContexts:`;
+{
+  "name": "{{agentName}}",
+  "reasoning": "Direct mention and clear follow-up.",
+  "action": "RESPOND",
+  "primaryContext": "general",
+  "secondaryContexts": []
+}`;
 
 export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
 
@@ -1069,14 +1089,16 @@ decision_note:
 - context routing always applies, even for IGNORE/STOP decisions
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-name: {{agentName}}
-reasoning: Direct mention asking about token balance.
-action: RESPOND
-primaryContext: wallet
-secondaryContexts: []`;
+{
+  "name": "{{agentName}}",
+  "reasoning": "Direct mention asking about token balance.",
+  "action": "RESPOND",
+  "primaryContext": "wallet",
+  "secondaryContexts": []
+}`;
 
 export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE =
 	shouldRespondWithContextTemplate;
@@ -1095,10 +1117,10 @@ instructions[3]:
 - prefer false when uncertain
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-decision: true`;
+{"decision": true}`;
 
 export const SHOULD_UNFOLLOW_ROOM_TEMPLATE = shouldUnfollowRoomTemplate;
 
@@ -1116,10 +1138,10 @@ instructions[3]:
 - prefer false when uncertain
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-decision: true`;
+{"decision": true}`;
 
 export const SHOULD_UNMUTE_ROOM_TEMPLATE = shouldUnmuteRoomTemplate;
 
@@ -1143,11 +1165,13 @@ Approach this systematically:
 
 Be thorough but concise. Prioritize depth of reasoning over length. If there are genuine unknowns, acknowledge them rather than guessing.
 
-Respond using TOON:
-thought: Your detailed internal reasoning — the full chain of thought, alternatives considered, and why you reached your conclusion
-text: Your response to the user — clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content.
+Respond with JSON:
+{
+  "thought": "Your detailed internal reasoning - the full chain of thought, alternatives considered, and why you reached your conclusion",
+  "text": "Your response to the user - clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content."
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any preamble or explanation outside of it.`;
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any preamble or explanation outside of it.`;
 
 export const THINK_TEMPLATE = thinkTemplate;
 
@@ -1168,16 +1192,18 @@ instructions[6]:
 - omit fields that are not being changed
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-contactName: Jane Doe
-operation: add_to
-categories: vip
-tags: ai,friend
-preferences: timezone:America/New_York,language:English
-customFields: company:Acme,title:Designer
-notes: Prefers async communication`;
+{
+  "contactName": "Jane Doe",
+  "operation": "add_to",
+  "categories": ["vip"],
+  "tags": ["ai", "friend"],
+  "preferences": {"timezone": "America/New_York", "language": "English"},
+  "customFields": {"company": "Acme", "title": "Designer"},
+  "notes": "Prefers async communication"
+}`;
 
 export const UPDATE_CONTACT_TEMPLATE = updateContactTemplate;
 
@@ -1204,13 +1230,12 @@ Update the summary by:
 
 The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
 
-Respond in TOON:
-text: Your updated and condensed summary here
-topics[0]: topic1
-topics[1]: topic2
-topics[2]: topic3
-keyPoints[0]: First key point
-keyPoints[1]: Second key point`;
+Respond in JSON:
+{
+  "text": "Your updated and condensed summary here",
+  "topics": ["topic1", "topic2", "topic3"],
+  "keyPoints": ["First key point", "Second key point"]
+}`;
 
 export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
 

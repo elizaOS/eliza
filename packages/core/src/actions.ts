@@ -347,13 +347,19 @@ export function parseActionParams(
 
 	const record = parsed as Record<string, unknown>;
 	const candidate =
-		record.params && typeof record.params === "object" && !Array.isArray(record.params)
+		record.params &&
+		typeof record.params === "object" &&
+		!Array.isArray(record.params)
 			? (record.params as Record<string, unknown>)
 			: record;
 	const result = new Map<string, ActionParameters>();
 
 	for (const [actionName, paramsValue] of Object.entries(candidate)) {
-		if (!paramsValue || typeof paramsValue !== "object" || Array.isArray(paramsValue)) {
+		if (
+			!paramsValue ||
+			typeof paramsValue !== "object" ||
+			Array.isArray(paramsValue)
+		) {
 			continue;
 		}
 

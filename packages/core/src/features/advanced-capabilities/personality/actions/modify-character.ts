@@ -11,7 +11,6 @@ import type {
 } from "../../../../types/index.ts";
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
-import { encodeToonValue } from "../../../../utils/toon";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
 	MAX_PREFS_PER_USER,
@@ -730,7 +729,7 @@ function parseStructuredRecord(
 
 function formatPromptData(value: unknown): string {
 	try {
-		return encodeToonValue(value);
+		return JSON.stringify(value, null, 2);
 	} catch {
 		return String(value);
 	}

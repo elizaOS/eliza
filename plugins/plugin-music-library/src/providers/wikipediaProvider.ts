@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { encodeToonValue, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { DetectedMusicEntity } from "../services/musicEntityDetectionService";
 import type { ExtractedMusicInfo } from "../services/wikipediaExtractionService";
 import type { MusicLibraryService } from "../services/musicLibraryService";
@@ -142,14 +142,18 @@ export const wikipediaProvider: Provider = {
       `[WIKIPEDIA_MUSIC Provider] Extracted info for ${extractedInfo.length} entity/entities`,
     );
 
-    const text = encodeToonValue({
-      wikipedia_music: extractedInfo.map((item) => ({
-        entity_type: item.entity.type,
-        entity_name: item.entity.name,
-        confidence: item.entity.confidence,
-        ...item.info,
-      })),
-    });
+    const text = JSON.stringify(
+      {
+        wikipedia_music: extractedInfo.map((item) => ({
+          entity_type: item.entity.type,
+          entity_name: item.entity.name,
+          confidence: item.entity.confidence,
+          ...item.info,
+        })),
+      },
+      null,
+      2,
+    );
 
     logger.debug(
       `[WIKIPEDIA_MUSIC Provider] Returning ${text.length} characters of Wikipedia context text`,

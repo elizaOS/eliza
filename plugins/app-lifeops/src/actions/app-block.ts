@@ -163,7 +163,7 @@ async function resolveAppBlockPlanWithLlm(args: {
   const prompt = [
     "Plan the app blocking action for this request.",
     "Use the current request plus recent conversation context.",
-    "Return TOON only with exactly these fields:",
+    "Return JSON only as a single object with exactly these fields:",
     "  shouldAct: boolean",
     "  response: short natural-language reply when clarification is needed",
     "  packageNames: array of Android package names to block",
@@ -184,7 +184,7 @@ async function resolveAppBlockPlanWithLlm(args: {
           .join("\n")
       : "(none available or not applicable)",
     "",
-    "Return TOON only.",
+    'Return JSON only, for example {"shouldAct":true,"response":null,"packageNames":["com.example.app"],"durationMinutes":60}.',
     formatPromptSection("Current request", currentMessage),
     formatPromptSection("Recent conversation", recentConversation),
   ].join("\n");

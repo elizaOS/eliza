@@ -352,7 +352,7 @@ function normalizeBooleanParam(value: unknown): boolean | undefined {
   return normalized === null ? undefined : normalized;
 }
 
-function relationshipParamsFromToon(
+function relationshipParamsFromJson(
   parsed: Record<string, unknown>,
 ): Partial<RelationshipParameters> {
   const params: Partial<RelationshipParameters> = {};
@@ -482,7 +482,7 @@ async function resolveRelationshipPlanWithLlm(args: {
   const prompt = [
     "Plan the RELATIONSHIP (Rolodex / follow-up) subaction for this request.",
     "The user may speak in any language.",
-    "Return TOON only with exactly these fields:",
+    "Return JSON only as a single object with exactly these fields:",
     "subaction: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, set_followup_threshold, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
@@ -499,6 +499,7 @@ async function resolveRelationshipPlanWithLlm(args: {
     "dueAt: due date/time in user wording or ISO, or null",
     "thresholdDays: positive integer cadence threshold, or null",
     "confirmed: true, false, or null",
+    'Example: {"subaction":"add_follow_up","shouldAct":true,"response":null,"intent":"follow up with Sam tomorrow","name":"Sam","channel":null,"handle":null,"email":null,"phone":null,"notes":null,"relationshipId":null,"followUpId":null,"reason":"follow up","dueAt":"tomorrow","thresholdDays":null,"confirmed":null}',
     "",
     "Choose list_contacts when the user wants to see, browse, list, or recall who is in the Rolodex.",
     "Choose add_contact when the user wants to remember a new person, store a handle, or add them to the contact list.",
@@ -543,7 +544,7 @@ async function resolveRelationshipPlanWithLlm(args: {
     subaction,
     shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
     response: normalizePlannerResponse(parsed.response),
-    params: relationshipParamsFromToon(parsed),
+    params: relationshipParamsFromJson(parsed),
   };
 }
 

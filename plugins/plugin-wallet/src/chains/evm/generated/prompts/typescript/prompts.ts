@@ -21,14 +21,14 @@ Extract the following information about the requested token bridge:
 - Amount to bridge: Must be a string representing the amount in ether (only number without coin symbol, e.g., "0.1")
 - Destination address (if specified)
 
-Respond using TOON like this:
+Respond using plain key/value text like this:
 token: token symbol or address, or empty if unknown
 fromChain: source chain from {{supportedChains}}, or empty
 toChain: destination chain from {{supportedChains}}, or empty
 amount: amount as string (e.g. 0.1), or empty
 toAddress: destination address, or empty
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const BRIDGE_TEMPLATE = bridgeTemplate;
 
@@ -46,7 +46,7 @@ Extract the following information about the requested proposal:
 - Governor address
 - Chain to execute on
 
-Respond using TOON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
+Respond using plain key/value text like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
 targets[2]: 0xTargetAddress1,0xTargetAddress2
 values[2]: 0,1000000000000000000
 calldatas[2]: 0xCalldata1,0xCalldata2
@@ -54,7 +54,7 @@ description: proposal description, or null
 governor: governor contract address, or null
 chain: chain to execute on, or null
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const EXECUTE_PROPOSAL_TEMPLATE = executeProposalTemplate;
 
@@ -72,7 +72,7 @@ Extract the following information about the requested proposal:
 - Governor address
 - Chain to execute on
 
-Respond using TOON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
+Respond using plain key/value text like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
 targets[2]: 0xTargetAddress1,0xTargetAddress2
 values[2]: 0,1000000000000000000
 calldatas[2]: 0xCalldata1,0xCalldata2
@@ -80,7 +80,7 @@ description: proposal description, or null
 governor: governor contract address, or null
 chain: chain to execute on, or null
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const PROPOSE_TEMPLATE = proposeTemplate;
 
@@ -98,7 +98,7 @@ Extract the following information about the requested proposal:
 - Governor address
 - Chain to execute on
 
-Respond using TOON like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
+Respond using plain key/value text like this. Use null for any scalar value that cannot be determined, and use empty arrays when no array values can be determined:
 targets[2]: 0xTargetAddress1,0xTargetAddress2
 values[2]: 0,1000000000000000000
 calldatas[2]: 0xCalldata1,0xCalldata2
@@ -106,7 +106,7 @@ description: proposal description, or null
 governor: governor contract address, or null
 chain: chain to execute on, or null
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const QUEUE_PROPOSAL_TEMPLATE = queueProposalTemplate;
 
@@ -122,13 +122,13 @@ Extract the following information about the requested token swap:
 - Amount to swap: Must be a string representing the amount in ether (only number without coin symbol, e.g., "0.1")
 - Chain to execute on
 
-Respond using TOON like this:
+Respond using plain key/value text like this:
 inputToken: token symbol or address being sold, or empty
 outputToken: token symbol or address being bought, or empty
 amount: amount as string (e.g. 0.1), or empty
 chain: chain from {{supportedChains}}, or empty
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const SWAP_TEMPLATE = swapTemplate;
 
@@ -136,14 +136,14 @@ export const tokenBalanceTemplate = `Extract the token ticker and blockchain fro
 
 User message: "{{userMessage}}"
 
-Respond using TOON like this:
+Respond using plain key/value text like this:
 token: TOKEN_SYMBOL
 chain: CHAIN_NAME
 
 If no token is mentioned or it's not a balance inquiry, return:
 error: Not a token balance request
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const TOKEN_BALANCE_TEMPLATE = tokenBalanceTemplate;
 
@@ -160,14 +160,14 @@ Extract the following information about the requested token transfer:
 - Token symbol or address (if not a native token transfer)
 - Additional data/calldata (if any is included)
 
-Respond using TOON like this:
+Respond using plain key/value text like this:
 fromChain: chain from {{supportedChains}}, or empty
 amount: amount as string (e.g. 0.1), or empty
 toAddress: recipient Ethereum address, or empty
 token: token symbol or address (empty for native transfer)
 data: additional calldata hex string, or empty
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const TRANSFER_TEMPLATE = transferTemplate;
 
@@ -183,12 +183,12 @@ Extract the following information about the requested vote:
 - Governor address
 - Chain to execute on
 
-Respond using TOON like this. Use null for any value that cannot be determined:
+Respond using plain key/value text like this. Use null for any value that cannot be determined:
 proposalId: proposal ID, or null
 support: 0 for against, 1 for yes, 2 for abstain, or null
 governor: governor contract address, or null
 chain: chain to execute on, or null
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
+IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
 
 export const VOTE_TEMPLATE = voteTemplate;

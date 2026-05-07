@@ -24,7 +24,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { encodeToonValue, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -144,14 +144,14 @@ function compactHit(hit: CrossChannelSearchHit) {
   };
 }
 
-function renderCrossChannelContextToon(args: {
+function renderCrossChannelContextJson(args: {
   query: string;
   hits: CrossChannelSearchHit[];
   unsupported: unknown[];
   degraded: unknown[];
   channelsWithHits: CrossChannelSearchChannel[];
 }): string {
-  return encodeToonValue({
+  return JSON.stringify({
     cross_channel_context: {
       query: args.query,
       hitCount: args.hits.length,
@@ -243,7 +243,7 @@ export const crossChannelContextProvider: Provider = {
       }
 
       return {
-        text: renderCrossChannelContextToon({
+        text: renderCrossChannelContextJson({
           query: result.query,
           hits: injected,
           unsupported: result.unsupported,

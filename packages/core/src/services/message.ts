@@ -112,7 +112,7 @@ import {
 	composePromptFromState,
 	getLocalServerUrl,
 	parseBooleanFromText,
-	parseToonKeyValue,
+	parseJSONObjectFromText,
 	truncateToCompleteSentence,
 } from "../utils";
 import {
@@ -212,8 +212,8 @@ function getPlannerActionObjectName(action: Record<string, unknown>): string {
 	return typeof rawName === "string" ? unwrapPlannerIdentifier(rawName) : "";
 }
 
-function attachInlineToonActionParams(
-	parsedToon: Record<string, unknown>,
+function attachInlinePlannerActionParams(
+	parsedPlanner: Record<string, unknown>,
 	actionName: string,
 	params: unknown,
 ): void {
@@ -221,31 +221,35 @@ function attachInlineToonActionParams(
 		return;
 	}
 
-	const existingParams = parsedToon.params;
+	const existingParams = parsedPlanner.params;
 	const nextParams =
 		isRecord(existingParams) && !Array.isArray(existingParams)
 			? { ...existingParams }
 			: {};
 	nextParams[actionName.trim().toUpperCase()] = params;
-	parsedToon.params = nextParams;
+	parsedPlanner.params = nextParams;
 }
 
 export function extractPlannerActionNames(
-	parsedToon: Record<string, unknown>,
+	parsedPlanner: Record<string, unknown>,
 ): string[] {
 	return (() => {
-		if (typeof parsedToon.actions === "string") {
-			return parsedToon.actions
+		if (typeof parsedPlanner.actions === "string") {
+			return parsedPlanner.actions
 				.split(",")
 				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 		}
-		if (Array.isArray(parsedToon.actions)) {
-			return parsedToon.actions
+		if (Array.isArray(parsedPlanner.actions)) {
+			return parsedPlanner.actions
 				.map((action) => {
 					if (isRecord(action)) {
 						const actionName = getPlannerActionObjectName(action);
-						attachInlineToonActionParams(parsedToon, actionName, action.params);
+						attachInlinePlannerActionParams(
+							parsedPlanner,
+							actionName,
+							action.params,
+						);
 						return actionName;
 					}
 					return unwrapPlannerIdentifier(String(action));
@@ -257,10 +261,10 @@ export function extractPlannerActionNames(
 }
 
 function normalizePlannerActions(
-	parsedToon: Record<string, unknown>,
+	parsedPlanner: Record<string, unknown>,
 	runtime: IAgentRuntime,
 ): string[] {
-	const normalizedActions = extractPlannerActionNames(parsedToon);
+	const normalizedActions = extractPlannerActionNames(parsedPlanner);
 
 	const finalActions =
 		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
@@ -318,7 +322,7 @@ function normalizePlannerActions(
 	}
 
 	const replyText =
-		typeof parsedToon.text === "string" ? parsedToon.text.trim() : "";
+		typeof parsedPlanner.text === "string" ? parsedPlanner.text.trim() : "";
 	if (replyText.length > 0) return ["REPLY"];
 
 	// Fallthrough: no valid action, no text. By the time the planner ran,
@@ -382,10 +386,10 @@ export function resolvePlannerActionName(
 }
 
 function normalizePlannerProviders(
-	parsedToon: Record<string, unknown>,
+	parsedPlanner: Record<string, unknown>,
 	runtime?: IAgentRuntime,
 ): string[] {
-	const providerNames = extractPlannerProviderNames(parsedToon);
+	const providerNames = extractPlannerProviderNames(parsedPlanner);
 
 	if (!runtime) {
 		return providerNames;
@@ -499,8 +503,8 @@ function extractStructuredProviderList(rawProviders: string): string[] {
 }
 
 // Schemas for LLM-emitted provider lists embedded as JSON strings inside the
-// planner TOON output. The planner sometimes returns providers as a JSON array
-// of strings or as a `{ providers: string[] }` object instead of a TOON list.
+// planner output. The planner sometimes returns providers as a JSON array of
+// strings or as a `{ providers: string[] }` object.
 // We coerce non-string entries to string and validate downstream.
 const ProviderJsonArraySchema = z.array(z.unknown());
 const ProviderJsonEnvelopeSchema = z.object({
@@ -508,9 +512,9 @@ const ProviderJsonEnvelopeSchema = z.object({
 });
 
 export function extractPlannerProviderNames(
-	parsedToon: Record<string, unknown>,
+	parsedPlanner: Record<string, unknown>,
 ): string[] {
-	const rawProviders = parsedToon.providers;
+	const rawProviders = parsedPlanner.providers;
 	if (typeof rawProviders === "string") {
 		const trimmedProviders = rawProviders.trim();
 		if (!trimmedProviders) {
@@ -1874,8 +1878,8 @@ function buildCanonicalActionRepairPrompt(args: {
 		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
 		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
 		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
-		"Return ONLY TOON with top-level fields: actions, providers, params, and optional text.",
-		"Use actions[n]: ACTION_NAME for selected actions and a params object keyed by action name when inputs are needed.",
+		"Return ONLY a JSON object with top-level fields: actions, providers, params, and optional text.",
+		'Use "actions": ["ACTION_NAME"] for selected actions and a params object keyed by action name when inputs are needed.',
 		"Do not include text unless there is truly no matching runtime action.",
 		"",
 		`user_message:\n${args.userText}`,
@@ -1892,11 +1896,15 @@ function buildCanonicalActionRepairPrompt(args: {
 		'user_message: "Pull up a dossier on Satya Nadella."',
 		"planner_actions_raw[1]: LOOKUP",
 		"output:",
-		"actions[1]: DOSSIER",
-		"providers[0]:",
-		"params:",
-		"  DOSSIER:",
-		"    subject: Satya Nadella",
+		JSON.stringify(
+			{
+				actions: ["DOSSIER"],
+				providers: [],
+				params: { DOSSIER: { subject: "Satya Nadella" } },
+			},
+			null,
+			2,
+		),
 	].join("\n");
 }
 
@@ -1954,7 +1962,7 @@ async function repairCanonicalPlannerActions(args: {
 			{
 				field: "params",
 				description:
-					"Optional TOON object keyed by action name with repaired action params",
+					"Optional JSON object keyed by action name with repaired action params",
 				type: "object",
 				required: false,
 				validateField: false,
@@ -1971,7 +1979,7 @@ async function repairCanonicalPlannerActions(args: {
 		],
 		options: {
 			modelType: ModelType.TEXT_LARGE,
-			preferredEncapsulation: "toon",
+			preferredEncapsulation: "json",
 			contextCheckLevel: 0,
 			maxRetries: 1,
 		},
@@ -2076,9 +2084,11 @@ Examples:
 	- "check disk space on this VPS with df -h" -> SHELL_COMMAND
 	- "what is the current BTC price in USD?" -> SEARCH
 
-${draftSection}Return TOON only:
-thought: short reasoning
-actions[1]: ACTION_NAME`;
+${draftSection}Return JSON only:
+{
+  "thought": "short reasoning",
+  "actions": ["ACTION_NAME"]
+}`;
 }
 
 const ROUTING_REASSESS_ACTIONS = new Set(
@@ -3132,21 +3142,21 @@ ${draftReplySection}rules[${4 + draftReplyRules.length}]:
 ${draftReplyRules.join("\n")}
 
 output:
-TOON only. Return exactly one TOON document containing only provider names. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object containing only provider names. No prose before or after it. No <think>.
 
 Examples:
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "Which file are you referring to?"
   output:
-  providers[2]: AVAILABLE_DOCUMENTS,KNOWLEDGE
+  {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
 - user asks: "what is the qa codeword from the uploaded file?"
   draft reply: "I don't have the file in my context. Which file contains the QA codeword?"
   output:
-  providers[2]: AVAILABLE_DOCUMENTS,KNOWLEDGE
+  {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
 - user asks: "thanks, that's all"
   draft reply: "Glad to help."
   output:
-  providers[0]:`;
+  {"providers":[]}`;
 }
 
 async function recoverProvidersForTurn(args: {
@@ -3181,7 +3191,7 @@ async function recoverProvidersForTurn(args: {
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "toon",
+				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
@@ -3229,7 +3239,7 @@ rules[5]:
 - return only the reply text
 
 output:
-Plain text only. No XML, JSON, TOON, bullets, or <think>.`;
+Plain text only. No XML, JSON, bullets, or <think>.`;
 }
 
 function buildKnowledgeProviderDecisionPrompt(): string {
@@ -3246,7 +3256,7 @@ rules[5]:
 - return only the structured output, with no prose
 
 output:
-TOON only. Return exactly one TOON document.
+JSON only. Return exactly one JSON object.
 
 Examples:
 - user asks: "what is the qa codeword from the uploaded file?" -> useKnowledgeProviders: true
@@ -3278,7 +3288,7 @@ async function shouldUseKnowledgeProviders(
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "toon",
+				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
@@ -3934,7 +3944,7 @@ export class DefaultMessageService implements IMessageService {
 				// dual-extractor garbling bug; consumers saw overlapping deltas that
 				// produced unintelligible TTS.
 				//
-				// The fix: a single TOON field extractor in
+				// The fix: a single structured field extractor in
 				// dynamicPromptExecFromState) now provides `accumulated` — the full
 				// extracted text — via the third StreamChunkCallback argument. Voice
 				// detection wraps the caller's callback to intercept accumulated text
@@ -4185,7 +4195,7 @@ export class DefaultMessageService implements IMessageService {
 						}, opts.timeoutDuration);
 					});
 
-					// Structured TOON streaming is handled by dynamicPromptExecFromState,
+					// Structured streaming is handled by dynamicPromptExecFromState,
 					// which receives opts.onStreamChunk directly and extracts only fields
 					// marked as streamable in the schema.
 					const streamingContext = undefined;
@@ -5505,21 +5515,21 @@ export class DefaultMessageService implements IMessageService {
 					});
 
 					if (typeof response === "string") {
-						const parsedToon = parseToonKeyValue(response);
+						const parsedJson = parseJSONObjectFromText(response);
 
-						if (parsedToon && (parsedToon.description || parsedToon.text)) {
+						if (parsedJson && (parsedJson.description || parsedJson.text)) {
 							processedAttachment.description =
-								(typeof parsedToon.description === "string"
-									? parsedToon.description
+								(typeof parsedJson.description === "string"
+									? parsedJson.description
 									: "") || "";
 							processedAttachment.title =
-								(typeof parsedToon.title === "string"
-									? parsedToon.title
+								(typeof parsedJson.title === "string"
+									? parsedJson.title
 									: "Image") || "Image";
 							processedAttachment.text =
-								(typeof parsedToon.text === "string" ? parsedToon.text : "") ||
-								(typeof parsedToon.description === "string"
-									? parsedToon.description
+								(typeof parsedJson.text === "string" ? parsedJson.text : "") ||
+								(typeof parsedJson.description === "string"
+									? parsedJson.description
 									: "") ||
 								"";
 
@@ -5534,7 +5544,7 @@ export class DefaultMessageService implements IMessageService {
 						} else {
 							runtime.logger.warn(
 								{ src: "service:message" },
-								"Failed to parse TOON response for image description",
+								"Failed to parse JSON response for image description",
 							);
 						}
 					} else if (
@@ -6251,7 +6261,7 @@ export class DefaultMessageService implements IMessageService {
 				{
 					field: "actions",
 					description:
-						"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+						"Ordered action entries. Use action names, optionally with params nested under the selected action.",
 					type: "array",
 					items: { description: "One action name or action entry" },
 					required: false,
@@ -6284,7 +6294,7 @@ export class DefaultMessageService implements IMessageService {
 			],
 			options: {
 				modelType: ModelType.ACTION_PLANNER,
-				preferredEncapsulation: "toon",
+				preferredEncapsulation: "json",
 				maxRetries: opts.maxRetries,
 				// Stream through the filtered context callback for real-time output
 				onStreamChunk: streamingCtx?.onStreamChunk,
@@ -6397,7 +6407,7 @@ Your previous response was cut off. The user already received this text:
 "${escapedStreamedText}"
 
 Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Return TOON only with the continuation in the text field, starting immediately after the last character above.`;
+Return JSON only with the continuation in the text field, starting immediately after the last character above.`;
 
 				const continuationParsed = await runtime.dynamicPromptExecFromState({
 					state,
@@ -6415,7 +6425,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 					],
 					options: {
 						modelType: ModelType.ACTION_PLANNER,
-						preferredEncapsulation: "toon",
+						preferredEncapsulation: "json",
 						contextCheckLevel: 0, // Fast mode for continuations - we trust the model
 						onStreamChunk: streamingCtx?.onStreamChunk,
 					},
@@ -6497,7 +6507,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 				prompt,
 				String(responseContent.text || ""),
 			);
-			const rescuedActionToon = await runtime.dynamicPromptExecFromState({
+			const rescuedActionJson = await runtime.dynamicPromptExecFromState({
 				state,
 				params: {
 					prompt: actionRescuePrompt,
@@ -6514,7 +6524,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 					{
 						field: "actions",
 						description:
-							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+							"Ordered action entries. Use action names, optionally with params nested under the selected action.",
 						type: "array",
 						items: { description: "One action name or action entry" },
 						required: false,
@@ -6545,31 +6555,31 @@ Return TOON only with the continuation in the text field, starting immediately a
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "toon",
+					preferredEncapsulation: "json",
 					maxRetries: 1,
 				},
 			});
 
-			if (rescuedActionToon) {
+			if (rescuedActionJson) {
 				const rescuedContent: Content = {
-					...rescuedActionToon,
-					thought: String(rescuedActionToon.thought || ""),
+					...rescuedActionJson,
+					thought: String(rescuedActionJson.thought || ""),
 					actions: normalizePlannerActions(
-						rescuedActionToon as Record<string, unknown>,
+						rescuedActionJson as Record<string, unknown>,
 						runtime,
 					),
 					providers: normalizePlannerProviders(
-						rescuedActionToon as Record<string, unknown>,
+						rescuedActionJson as Record<string, unknown>,
 						runtime,
 					),
 					text:
-						typeof rescuedActionToon.text === "string" &&
-						rescuedActionToon.text.trim().length > 0
-							? String(rescuedActionToon.text)
+						typeof rescuedActionJson.text === "string" &&
+						rescuedActionJson.text.trim().length > 0
+							? String(rescuedActionJson.text)
 							: responseContent.text,
 					simple:
-						rescuedActionToon.simple === true ||
-						rescuedActionToon.simple === "true",
+						rescuedActionJson.simple === true ||
+						rescuedActionJson.simple === "true",
 				};
 
 				if (
@@ -6604,7 +6614,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 				selectedActionName,
 				String(responseContent.text || ""),
 			);
-			const repairedOwnershipToon = await runtime.dynamicPromptExecFromState({
+			const repairedOwnershipJson = await runtime.dynamicPromptExecFromState({
 				state,
 				params: {
 					prompt: ownershipRepairPrompt,
@@ -6621,7 +6631,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 					{
 						field: "actions",
 						description:
-							"Ordered action entries. Use TOON action names, optionally with params nested under the selected action.",
+							"Ordered action entries. Use action names, optionally with params nested under the selected action.",
 						type: "array",
 						items: { description: "One action name or action entry" },
 						required: true,
@@ -6652,31 +6662,31 @@ Return TOON only with the continuation in the text field, starting immediately a
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "toon",
+					preferredEncapsulation: "json",
 					maxRetries: 1,
 				},
 			});
 
-			if (repairedOwnershipToon) {
+			if (repairedOwnershipJson) {
 				const repairedOwnershipContent: Content = {
-					...repairedOwnershipToon,
-					thought: String(repairedOwnershipToon.thought || ""),
+					...repairedOwnershipJson,
+					thought: String(repairedOwnershipJson.thought || ""),
 					actions: normalizePlannerActions(
-						repairedOwnershipToon as Record<string, unknown>,
+						repairedOwnershipJson as Record<string, unknown>,
 						runtime,
 					),
 					providers: normalizePlannerProviders(
-						repairedOwnershipToon as Record<string, unknown>,
+						repairedOwnershipJson as Record<string, unknown>,
 						runtime,
 					),
 					text:
-						typeof repairedOwnershipToon.text === "string" &&
-						repairedOwnershipToon.text.trim().length > 0
-							? String(repairedOwnershipToon.text)
+						typeof repairedOwnershipJson.text === "string" &&
+						repairedOwnershipJson.text.trim().length > 0
+							? String(repairedOwnershipJson.text)
 							: responseContent.text,
 					simple:
-						repairedOwnershipToon.simple === true ||
-						repairedOwnershipToon.simple === "true",
+						repairedOwnershipJson.simple === true ||
+						repairedOwnershipJson.simple === "true",
 				};
 
 				if (
@@ -6729,7 +6739,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "toon",
+					preferredEncapsulation: "json",
 					maxRetries: 1,
 				},
 			});
@@ -6786,7 +6796,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 
 		// Action parameter repair (Python parity):
 		// If the model selected actions with missing or invalid params, do a
-		// second pass asking for ONLY corrected TOON params.
+		// second pass asking for ONLY corrected JSON params.
 		const actionByName = new Map<string, Action>();
 		for (const action of runtime.actions) {
 			const normalizedName = action.name.trim().toUpperCase();
@@ -6947,13 +6957,21 @@ Return TOON only with the continuation in the text field, starting immediately a
 				"",
 				"# Parameter Repair",
 				"You selected actions whose params are missing or invalid.",
-				"Return ONLY TOON with a top-level params object that fixes those actions.",
+				"Return ONLY JSON with a top-level params object that fixes those actions.",
 				"Do not change the selected actions.",
 				"Example:",
-				"params:",
-				"  SEND_MESSAGE:",
-				"    target: room-or-channel-id",
-				"    text: message body",
+				JSON.stringify(
+					{
+						params: {
+							SEND_MESSAGE: {
+								target: "room-or-channel-id",
+								text: "message body",
+							},
+						},
+					},
+					null,
+					2,
+				),
 				"",
 				"Current params:",
 				existingParamBlock,
@@ -6973,7 +6991,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 					{
 						field: "params",
 						description:
-							"TOON object keyed by action name containing corrected action params",
+							"JSON object keyed by action name containing corrected action params",
 						type: "object",
 						required: true,
 						validateField: false,
@@ -6982,7 +7000,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 				],
 				options: {
 					modelType: ModelType.TEXT_LARGE,
-					preferredEncapsulation: "toon",
+					preferredEncapsulation: "json",
 					contextCheckLevel: 0,
 					maxRetries: 1,
 				},
@@ -7195,7 +7213,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 			"Hard rules:",
 			"- Stay in character. Keep your usual voice and tone.",
 			"- NEVER mention internal mechanism words such as: planner, action_planner,",
-			"  XML, TOON, JSON, schema, structured output, model, retries, sonnet,",
+			"  XML, JSON, schema, structured output, model, retries, sonnet,",
 			"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
 			"  loop, runtime, dispatch, or hand off. The user does not know or care",
 			"  what those are.",
@@ -7233,9 +7251,9 @@ Return TOON only with the continuation in the text field, starting immediately a
 					.replace(/<think>[\s\S]*?<\/think>/g, "")
 					.trim();
 				const looksStructuredReply =
-					/^TOON\b/i.test(cleaned) || /^(thought|text)\s*:/i.test(cleaned);
+					cleaned.startsWith("{") && cleaned.includes("}");
 				const parsed = looksStructuredReply
-					? parseToonKeyValue<{ text?: string }>(cleaned)
+					? parseJSONObjectFromText(cleaned)
 					: null;
 				replyText =
 					typeof parsed?.text === "string" && parsed.text.trim().length > 0
@@ -7461,7 +7479,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 					{
 						field: "params",
 						description:
-							"Optional TOON parameters for the selected action. Use a `params` object keyed by action name when the action needs input.",
+							"Optional JSON parameters for the selected action. Use a `params` object keyed by action name when the action needs input.",
 						validateField: false,
 						streamField: false,
 					},
@@ -7475,7 +7493,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 				],
 				options: {
 					modelType: ModelType.ACTION_PLANNER,
-					preferredEncapsulation: "toon",
+					preferredEncapsulation: "json",
 				},
 			});
 
@@ -7877,7 +7895,7 @@ Return TOON only with the continuation in the text field, starting immediately a
 			],
 			options: {
 				modelSize: "large",
-				preferredEncapsulation: "toon",
+				preferredEncapsulation: "json",
 				requiredFields: ["text"],
 				// Stream the final summary to the user
 				onStreamChunk: opts.onStreamChunk,

@@ -7,10 +7,10 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseToonKeyValue,
   type State,
 } from "@elizaos/core";
 import type { MusicLibraryService } from "../services/musicLibraryService";
+import { parseJsonObjectResponse } from "../utils/json";
 import { confirmationRequired, isConfirmed } from "./confirmation";
 
 interface MusicQueryIntent {
@@ -210,19 +210,21 @@ Determine:
    - keywords: Other important keywords
    - modifier: If asking for specific version (cover, remix, acoustic, live, instrumental)
 
-Respond with TOON only:
-needsResearch: true/false
-queryType: [one of the types above]
-artist: artist name if mentioned
-album: album name if mentioned
-song: song name if mentioned
-genre: genre if mentioned
-mood: mood if mentioned
-decade: decade if mentioned
-year: year if mentioned
-keywords: other important keywords
-modifier: cover|remix|acoustic|live|instrumental if requested
-searchQuery: if direct_search, the query to use`;
+Respond with JSON only:
+{
+  "needsResearch": true,
+  "queryType": "direct_search",
+  "artist": "artist name if mentioned",
+  "album": "album name if mentioned",
+  "song": "song name if mentioned",
+  "genre": "genre if mentioned",
+  "mood": "mood if mentioned",
+  "decade": "decade if mentioned",
+  "year": "year if mentioned",
+  "keywords": "other important keywords",
+  "modifier": "cover|remix|acoustic|live|instrumental if requested",
+  "searchQuery": "query to use for direct_search"
+}`;
 
     const rawResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
@@ -232,13 +234,13 @@ searchQuery: if direct_search, the query to use`;
       return null;
     }
 
-    const parsedToon = parseToonKeyValue<Record<string, unknown>>(response);
-    if (parsedToon?.queryType) {
+    const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(response);
+    if (parsedJson?.queryType) {
       return {
-        ...parsedToon,
+        ...parsedJson,
         needsResearch:
-          parsedToon.needsResearch === true ||
-          String(parsedToon.needsResearch).toLowerCase() === "true",
+          parsedJson.needsResearch === true ||
+          String(parsedJson.needsResearch).toLowerCase() === "true",
       } as unknown as MusicQueryIntent;
     }
 
@@ -287,7 +289,7 @@ const researchMusicInfo = async (
             // Use LLM to extract first single/album from discography
             const prompt = `From this artist discography, what was their first ${intent.queryType === "first_single" ? "single" : "album"}?
 
-Discography (TOON/plain text):
+Discography:
 ${formatPromptValue(artistInfo.discography).substring(0, 2000)}
 
 Respond with ONLY the song/album name, nothing else.`;
