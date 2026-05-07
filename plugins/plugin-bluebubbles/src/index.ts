@@ -8,6 +8,7 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { bluebubblesMessageOp } from "./actions/index.js";
+import { BlueBubblesN8nCredentialProvider } from "./n8n-credential-provider.js";
 import { BlueBubblesService } from "./service.js";
 import {
 	blueBubblesSetupRoutes,
@@ -31,7 +32,7 @@ const blueBubblesPlugin: Plugin = {
 	name: "bluebubbles",
 	description: "BlueBubbles iMessage bridge plugin for ElizaOS agents",
 
-	services: [BlueBubblesService],
+	services: [BlueBubblesService, BlueBubblesN8nCredentialProvider],
 	actions: [bluebubblesMessageOp],
 	providers: [],
 	routes: blueBubblesSetupRoutes,
