@@ -4,6 +4,11 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import {
+  AcpSessionStore,
+  InMemorySessionStore,
+  type SessionStoreBackend,
+} from "./session-store.js";
 import type {
   AcpEventCallback,
   AcpJsonRpcMessage,
@@ -16,7 +21,6 @@ import type {
   SessionEventCallback,
   SessionEventName,
   SessionInfo,
-  SessionStatus,
   SessionStore,
   SpawnOptions,
   SpawnResult,
@@ -30,6 +34,7 @@ type RuntimeLike = IAgentRuntime & {
     >
   >;
   services?: Map<string, unknown[]>;
+  databaseAdapter?: unknown;
   getSetting?: (key: string) => string | undefined | null;
 };
 type RuntimeLogger = NonNullable<RuntimeLike["logger"]>;
@@ -131,7 +136,9 @@ export class AcpService {
   }
 
   static async start(runtime: IAgentRuntime): Promise<AcpService> {
-    const service = new AcpService(runtime);
+    const service = new AcpService(runtime, {
+      store: createDefaultSessionStore(runtime as RuntimeLike),
+    });
     await service.start();
     const servicesMap = runtime.services as Map<string, unknown[]> | undefined;
     if (
@@ -877,92 +884,6 @@ export class AcpService {
 
 export { AcpService as AcpxSubprocessService };
 
-class InMemorySessionStore implements SessionStore {
-  private readonly sessions = new Map<string, SessionInfo>();
-
-  async create(session: SessionInfo): Promise<void> {
-    this.sessions.set(session.id, cloneSession(session));
-  }
-
-  async get(id: string): Promise<SessionInfo | null> {
-    return this.getSync(id);
-  }
-
-  getSync(id: string): SessionInfo | null {
-    const session = this.sessions.get(id);
-    return session ? cloneSession(session) : null;
-  }
-
-  async getByAcpxRecordId(recordId: string): Promise<SessionInfo | null> {
-    for (const session of this.sessions.values()) {
-      if (session.acpxRecordId === recordId) return cloneSession(session);
-    }
-    return null;
-  }
-
-  async findByScope(opts: {
-    workdir: string;
-    agentType: string;
-    name?: string;
-  }): Promise<SessionInfo | null> {
-    for (const session of this.sessions.values()) {
-      if (
-        session.workdir === opts.workdir &&
-        session.agentType === opts.agentType &&
-        session.name === opts.name
-      ) {
-        return cloneSession(session);
-      }
-    }
-    return null;
-  }
-
-  async list(): Promise<SessionInfo[]> {
-    return this.listSync();
-  }
-
-  listSync(): SessionInfo[] {
-    return Array.from(this.sessions.values()).map(cloneSession);
-  }
-
-  async update(id: string, patch: Partial<SessionInfo>): Promise<void> {
-    const current = this.sessions.get(id);
-    if (!current) return;
-    this.sessions.set(id, { ...current, ...patch });
-  }
-
-  async updateStatus(
-    id: string,
-    status: SessionStatus,
-    error?: string,
-  ): Promise<void> {
-    const current = this.sessions.get(id);
-    if (!current) return;
-    this.sessions.set(id, {
-      ...current,
-      status,
-      lastError: error,
-      lastActivityAt: new Date(),
-    });
-  }
-
-  async delete(id: string): Promise<void> {
-    this.sessions.delete(id);
-  }
-
-  async sweepStale(maxAgeMs: number): Promise<string[]> {
-    const now = Date.now();
-    const removed: string[] = [];
-    for (const [id, session] of this.sessions.entries()) {
-      if (now - session.lastActivityAt.getTime() > maxAgeMs) {
-        this.sessions.delete(id);
-        removed.push(id);
-      }
-    }
-    return removed;
-  }
-}
-
 function approvalArgs(preset: ApprovalPreset): string[] {
   switch (preset) {
     case "autonomous":
@@ -1086,6 +1007,38 @@ function boolSetting(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
+function createDefaultSessionStore(runtime: RuntimeLike): SessionStore {
+  const runtimeForStore = {
+    databaseAdapter: runtime.databaseAdapter,
+    logger: runtime.logger,
+    getSetting: (key: string) => {
+      const value = runtime.getSetting?.(key);
+      return typeof value === "string" ? value : undefined;
+    },
+  };
+  return new AcpSessionStore({
+    runtime: runtimeForStore,
+    backend: parseSessionStoreBackend(
+      runtimeForStore.getSetting("ELIZA_ACP_SESSION_STORE_BACKEND") ??
+        process.env.ELIZA_ACP_SESSION_STORE_BACKEND,
+    ),
+  });
+}
+
+function parseSessionStoreBackend(
+  value: string | undefined | null,
+): SessionStoreBackend | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (
+    normalized === "runtime-db" ||
+    normalized === "file" ||
+    normalized === "memory"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
 function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -1109,14 +1062,5 @@ function toSpawnResult(session: SessionInfo): SpawnResult {
     pid: session.pid,
     authReady: session.status !== "error" && session.status !== "errored",
     metadata: session.metadata,
-  };
-}
-
-function cloneSession(session: SessionInfo): SessionInfo {
-  return {
-    ...session,
-    createdAt: new Date(session.createdAt),
-    lastActivityAt: new Date(session.lastActivityAt),
-    metadata: session.metadata ? { ...session.metadata } : undefined,
   };
 }
