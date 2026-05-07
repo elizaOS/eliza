@@ -10,11 +10,12 @@ import { slackPinsProvider } from "./providers/slackPins";
 import { workspaceInfoProvider } from "./providers/workspaceInfo";
 
 import { SlackService } from "./service";
+import { SlackN8nCredentialProvider } from "./n8n-credential-provider";
 
 const slackPlugin: Plugin = {
   name: "slack",
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
-  services: [SlackService],
+  services: [SlackService, SlackN8nCredentialProvider],
   actions: [messageOp, readChannel, getUserInfo],
   providers: [
     workspaceInfoProvider,
