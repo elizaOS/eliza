@@ -2,8 +2,8 @@
  * Environment variable normalization helpers.
  *
  * Consolidates the `normalizeSecret` / `normalizeEnvValue` pattern that was
- * independently implemented in cloud-connection.ts, steward-bridge.ts, and
- * server-wallet-trade.ts.
+ * independently implemented in `cloud-connection.ts`, `steward-bridge.ts`,
+ * and `@elizaos/plugin-wallet/lib/server-wallet-trade`.
  */
 
 /**
@@ -36,8 +36,9 @@ export function isEnvDisabled(value: string | undefined): boolean {
 
 /**
  * Sync app brand env vars → elizaOS equivalents.
- * Extracted from identical copies in runtime/eliza.ts, api/server.ts,
- * api/server-wallet-trade.ts, api/server-startup.ts, and api/server-security.ts.
+ * Extracted from identical copies in `runtime/eliza.ts`, `api/server.ts`,
+ * `@elizaos/plugin-wallet/lib/server-wallet-trade`, `api/server-startup.ts`,
+ * and `api/server-security.ts`.
  */
 export {
   syncBrandEnvToEliza,

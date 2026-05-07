@@ -33,7 +33,7 @@ import { recordWalletTradeLedgerEntry } from "../api/wallet-trading-profile";
 import {
   canUseLocalTradeExecution as _canUseLocalTradeExecution,
   resolveTradePermissionMode as _resolveTradePermissionMode,
-} from "./server-wallet-trade";
+} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 import {
   isStewardConfigured,
   signTransactionWithOptionalSteward,

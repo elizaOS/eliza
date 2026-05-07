@@ -24,7 +24,7 @@ import {
   DEFAULT_WALLET_ROUTE_DEPENDENCIES,
   handleWalletRoutes,
 } from "../api/wallet-routes";
-import { resolveWalletExportRejection } from "./server-wallet-trade";
+import { resolveWalletExportRejection } from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 
 function ensureWalletKeysInEnvAndConfig(_config: ElizaConfig): boolean {
   // Stub — auto-provisioning is disabled by default; the wallet generate

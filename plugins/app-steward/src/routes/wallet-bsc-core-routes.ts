@@ -29,7 +29,7 @@ import {
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
-} from "./server-wallet-trade";
+} from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 
 function isAgentAutomationRequest(req: http.IncomingMessage): boolean {
   return req.headers["x-eliza-agent-automation"] === "1";

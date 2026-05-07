@@ -1,8 +1,9 @@
 /**
  * Re-export shim. The canonical implementation now lives in
  * `@elizaos/plugin-elizacloud/lib/server-cloud-tts`. Several app-core
- * server-internal modules (server.ts, server-wallet-trade.ts) import the
- * helpers via this relative path; this shim preserves that surface.
+ * server-internal modules (`server.ts`,
+ * `@elizaos/plugin-wallet/lib/server-wallet-trade`) import the helpers via
+ * this relative path; this shim preserves that surface.
  */
 export {
   __resetCloudBaseUrlCache,
