@@ -164,7 +164,7 @@ describe("trajectory routes", () => {
     expect((body.events as unknown[]).length).toBeGreaterThanOrEqual(4);
   });
 
-  it("preserves the legacy trajectory detail shape when v5 data is absent", async () => {
+  it("preserves the base trajectory detail shape when v5 data is absent", async () => {
     const logger = createLogger({
       getTrajectoryDetail: vi.fn(async () => createTrajectory()),
     });
@@ -190,12 +190,8 @@ describe("trajectory routes", () => {
     expect(body).not.toHaveProperty("contextDiffs");
   });
 
-  it("forwards context_object_events_v5 JSON export shape", async () => {
-    const exportTrajectories = vi.fn(async () => ({
-      data: "[]",
-      filename: "trajectories.json",
-      mimeType: "application/json",
-    }));
+  it("rejects non-native JSON export shapes", async () => {
+    const exportTrajectories = vi.fn();
     const logger = createLogger({ exportTrajectories });
     const response = createResponse();
 
@@ -211,15 +207,10 @@ describe("trajectory routes", () => {
       "POST",
     );
 
-    expect(exportTrajectories).toHaveBeenCalledWith(
-      expect.objectContaining({
-        format: "json",
-        jsonShape: "context_object_events_v5",
-        includePrompts: true,
-      }),
-    );
+    expect(exportTrajectories).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(400);
     expect(response.headers["content-type"]).toBe("application/json");
-    expect(response.body).toBe("[]");
+    expect(String(response.body)).toContain("eliza_native_v1");
   });
 
   it("supports JSONL trajectory export", async () => {

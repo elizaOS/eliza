@@ -1,5 +1,5 @@
 import { Button, type OverlayAppContext } from "@elizaos/app-core";
-import { ChevronLeft } from "lucide-react";
+import { Activity, ChevronLeft, History } from "lucide-react";
 import { useState } from "react";
 import type { TrajectoryListItem } from "../api-client";
 import { type PhaseName, type PhaseSummary, summarizePhases } from "../phases";
@@ -51,7 +51,6 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
 
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
         <PhaseStrip
-          label="NOW"
           live
           trajectory={state.active}
           phases={nowPhases}
@@ -65,7 +64,6 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
           }
         />
         <PhaseStrip
-          label="LAST"
           live={false}
           trajectory={state.last}
           phases={lastPhases}
@@ -89,69 +87,49 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
 }
 
 function PhaseStrip({
-  label,
   live,
   trajectory,
   phases,
   selectedPhase,
   onSelect,
 }: {
-  label: string;
   live: boolean;
   trajectory: TrajectoryListItem | null;
   phases: PhaseSummary[];
   selectedPhase: PhaseName | null;
   onSelect: (phase: PhaseName) => void;
 }) {
+  const Icon = live ? Activity : History;
   return (
     <div className="flex items-center gap-2">
-      <Label live={live}>{label}</Label>
+      <span
+        title={live ? "Current turn" : "Last turn"}
+        className={[
+          "flex w-5 shrink-0 justify-center",
+          live ? "text-blue-400" : "text-muted/60",
+        ].join(" ")}
+      >
+        <Icon
+          className={["h-3.5 w-3.5", live ? "animate-pulse" : ""].join(" ")}
+          aria-label={live ? "Current turn" : "Last turn"}
+        />
+      </span>
       {trajectory ? (
-        <>
-          <div className="flex flex-1 gap-1">
-            {phases.map((p) => (
-              <PhaseChip
-                key={p.phase}
-                phase={p.phase}
-                status={p.status}
-                summary={p.summary}
-                selected={selectedPhase === p.phase}
-                onClick={() => onSelect(p.phase)}
-              />
-            ))}
-          </div>
-          <Meta trajectory={trajectory} />
-        </>
+        <div className="flex flex-1 gap-1">
+          {phases.map((p) => (
+            <PhaseChip
+              key={p.phase}
+              phase={p.phase}
+              status={p.status}
+              summary={p.summary}
+              selected={selectedPhase === p.phase}
+              onClick={() => onSelect(p.phase)}
+            />
+          ))}
+        </div>
       ) : (
-        <span className="text-2xs text-muted/60">
-          {live ? "no active turn" : "no past turns"}
-        </span>
+        <span className="text-2xs text-muted/40">—</span>
       )}
     </div>
-  );
-}
-
-function Label({
-  live,
-  children,
-}: {
-  live: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="flex w-12 shrink-0 items-center gap-1 text-2xs font-semibold uppercase tracking-wider text-muted/70">
-      {live ? (
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-      ) : null}
-      {children}
-    </span>
-  );
-}
-
-function Meta({ trajectory }: { trajectory: TrajectoryListItem }) {
-  return (
-    <span className="hidden shrink-0 font-mono text-2xs text-muted/50 sm:inline">
-      {trajectory.id.slice(0, 6)} · {trajectory.llmCallCount}llm
-    </span>
   );
 }

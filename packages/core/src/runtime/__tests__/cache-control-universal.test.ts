@@ -77,7 +77,8 @@ describe("cacheProviderOptions — universal cache directives", () => {
 	it("promptCacheKey is at most 1024 characters", () => {
 		const longHash = "x".repeat(2000);
 		const opts = cacheProviderOptions({ prefixHash: longHash });
-		const key = (opts.eliza as Record<string, unknown>).promptCacheKey as string;
+		const key = (opts.eliza as Record<string, unknown>)
+			.promptCacheKey as string;
 		expect(key.length).toBeLessThanOrEqual(1024);
 	});
 

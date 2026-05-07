@@ -1,3 +1,5 @@
+import { Brain, CheckSquare, Inbox, Zap } from "lucide-react";
+import type { ComponentType } from "react";
 import type { PhaseName, PhaseStatus } from "../phases";
 
 interface PhaseChipProps {
@@ -16,6 +18,13 @@ const DOT: Record<PhaseStatus, string> = {
   error: "bg-red-500",
 };
 
+const ICON: Record<PhaseName, ComponentType<{ className?: string }>> = {
+  HANDLE: Inbox,
+  PLAN: Brain,
+  ACTION: Zap,
+  EVALUATE: CheckSquare,
+};
+
 export function PhaseChip({
   phase,
   status,
@@ -23,10 +32,12 @@ export function PhaseChip({
   selected,
   onClick,
 }: PhaseChipProps) {
+  const Icon = ICON[phase];
   return (
     <button
       type="button"
       onClick={onClick}
+      title={phase}
       className={[
         "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition-colors",
         selected
@@ -38,12 +49,13 @@ export function PhaseChip({
         className={["h-1.5 w-1.5 shrink-0 rounded-full", DOT[status]].join(" ")}
         aria-hidden
       />
+      <Icon className="h-3 w-3 shrink-0 text-muted/80" aria-hidden />
       <span className="text-2xs font-semibold uppercase tracking-wider text-txt">
         {phase}
       </span>
-      <span className="min-w-0 flex-1 truncate text-muted">
-        {summary ?? "—"}
-      </span>
+      {summary ? (
+        <span className="min-w-0 flex-1 truncate text-muted">{summary}</span>
+      ) : null}
     </button>
   );
 }

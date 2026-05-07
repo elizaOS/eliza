@@ -60,11 +60,8 @@ describe("trajectory task datasets", () => {
     }
     expect(example.format).toBe(ELIZA_NATIVE_TRAJECTORY_FORMAT);
     expect(example.request).toMatchObject({
+      system: "Return messageHandler JSON.",
       prompt: "final message",
-      messages: [
-        { role: "system", content: "Return messageHandler JSON." },
-        { role: "user", content: "final message" },
-      ],
     });
     expect(JSON.parse(example.response.text)).toEqual({
       messageHandler: {
@@ -121,7 +118,8 @@ describe("trajectory task datasets", () => {
     }
   });
 
-  it("accepts JSONL trajectory export text as input", () => {
+  it("rejects non-native JSONL trajectory export text", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const exportText = `${JSON.stringify(
       baseTrajectory(
         JSON.stringify({
@@ -138,7 +136,10 @@ describe("trajectory task datasets", () => {
     const examples = extractTrajectoryExamplesByTask(exportText, [
       "should_respond",
     ]);
-    expect(examples.should_respond).toHaveLength(1);
+    expect(examples.should_respond).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("expected eliza_native_v1"),
+    );
   });
 
   it("accepts multi-line native JSONL export text as input", () => {

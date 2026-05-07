@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -9,11 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,
@@ -21,6 +16,7 @@ import {
   isLifeOpsFeatureKey,
   type LifeOpsFeatureKey,
 } from "../lifeops/feature-flags.types.js";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 
@@ -167,7 +163,7 @@ export const toggleFeatureAction: Action = {
     "toggle LifeOps feature flight-booking push-notifs browser-automation escalation: enable | disable; closed feature key set",
   contexts: ["settings", "automation", "connectors"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -175,17 +171,6 @@ export const toggleFeatureAction: Action = {
     options,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      const text = "Toggling LifeOps features is restricted to the owner.";
-      await callback?.({ text });
-      return {
-        text,
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: ACTION_NAME, error: "PERMISSION_DENIED" },
-      };
-    }
-
     const params = getParams(options as HandlerOptions | undefined);
     const extracted = await extractToggleWithLlm({
       runtime,

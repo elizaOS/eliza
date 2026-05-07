@@ -1,6 +1,26 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("selectLiveProvider", () => {
+  beforeEach(() => {
+    for (const key of [
+      "CEREBRAS_API_KEY",
+      "ELIZA_E2E_CEREBRAS_API_KEY",
+      "GROQ_API_KEY",
+      "ELIZA_E2E_GROQ_API_KEY",
+      "OPENAI_API_KEY",
+      "ELIZA_E2E_OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "ELIZA_E2E_ANTHROPIC_API_KEY",
+      "GOOGLE_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "ELIZA_E2E_OPENROUTER_API_KEY",
+    ]) {
+      vi.stubEnv(key, "");
+    }
+  });
+
   afterEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
@@ -77,6 +97,7 @@ describe("selectLiveProvider", () => {
     expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
     expect(provider?.largeModel).toBe("gpt-oss-120b");
     expect(provider?.smallModel).toBe("gpt-oss-120b");
+    expect(provider?.env.MILADY_PROVIDER).toBe("cerebras");
   });
 
   it("prefers cerebras over groq when both keys are set", async () => {

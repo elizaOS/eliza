@@ -473,3 +473,5 @@ test/**/*.d.ts
 test_output/
 research/
 trajectories-eliza-cerebras/
+action-benchmark-report/
+artifacts/

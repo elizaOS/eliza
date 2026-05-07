@@ -21,7 +21,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { ContentType, logger, stringToUuid } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
@@ -281,27 +280,9 @@ export const terminalAction: Action = {
   descriptionCompressed:
     "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use START_CODING_TASK instead command output captur document attachment native planner follow-up after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
 
-  validate: async (runtime, message) => {
-    // Permission is the only gate here. Whether the action is relevant to the
-    // current request is the planner's job — not a regex / keyword scan in
-    // validate. The action's description + similes + examples are the
-    // contract the planner uses.
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
   handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may run terminal commands.",
-        data: {
-          actionName: TERMINAL_ACTION_NAME,
-          suppressPostActionContinuation: true,
-          terminal: { permissionDenied: true },
-        },
-      };
-    }
-
     const input = resolveTerminalInput(options as HandlerOptions | undefined);
     const command = input.command;
 

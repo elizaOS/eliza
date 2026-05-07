@@ -708,6 +708,7 @@ export const generateImageAction = {
   name: "GENERATE_IMAGE",
   contexts: ["general", "media"],
   contextGate: { anyOf: ["general", "media"] },
+  roleGate: { minRole: "USER" },
   description:
     "Generate an AI image. ONLY use when user EXPLICITLY requests an image/picture/photo/selfie. NEVER use for normal conversation, greetings, questions, or text responses.",
   similes: ["CREATE_IMAGE", "DRAW_IMAGE", "SHOW_IMAGE", "SEND_PICTURE", "TAKE_SELFIE"],

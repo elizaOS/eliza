@@ -1,10 +1,10 @@
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 
 import {
@@ -28,6 +28,7 @@ export const webSearchAction: Action = {
   name: "WEB_SEARCH",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: ["code", "terminal", "automation"] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["SEARCH_WEB", "GOOGLE", "BING"],
   description:
     "Run a web search and return ranked results. Stub in v1: no provider is wired in this plugin, so the action returns a placeholder success that echoes the query and any domain filters. Wire a Brave/Bing/Tavily backend before relying on this for real results.",
@@ -53,7 +54,11 @@ export const webSearchAction: Action = {
       schema: { type: "array", items: { type: "string" } },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (disable === true || disable === "true" || disable === "1") return false;
     return true;
@@ -73,8 +78,12 @@ export const webSearchAction: Action = {
       });
     }
 
-    const allowedDomains = asStringArray(readArrayParam(options, "allowed_domains"));
-    const blockedDomains = asStringArray(readArrayParam(options, "blocked_domains"));
+    const allowedDomains = asStringArray(
+      readArrayParam(options, "allowed_domains"),
+    );
+    const blockedDomains = asStringArray(
+      readArrayParam(options, "blocked_domains"),
+    );
 
     const text = `WEB_SEARCH not configured (no provider). Query: "${query}". When a provider is wired (Brave/Bing/Tavily), this action will return ranked results.`;
 

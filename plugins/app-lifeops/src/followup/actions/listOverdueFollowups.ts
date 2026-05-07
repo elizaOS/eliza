@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type { Action, ActionExample, IAgentRuntime } from "@elizaos/core";
 import {
   computeOverdueFollowups,
@@ -36,7 +35,7 @@ export const listOverdueFollowupsAction: Action = {
     "Returns an empty list when the RelationshipsService is not available.",
   contexts: ["contacts", "tasks", "calendar", "messaging"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (runtime: IAgentRuntime, _message, _state, options) => {
     const params = (options?.parameters ?? {}) as ListOverdueFollowupsParams;
     const thresholdDays =

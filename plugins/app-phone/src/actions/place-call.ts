@@ -18,7 +18,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasRoleAccess } from "@elizaos/shared/eliza-core-roles";
 
 interface PlaceCallParams {
   phoneNumber?: string;
@@ -116,8 +115,7 @@ export const placeCallAction: Action = {
   descriptionCompressed:
     "Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    if (!(await hasRoleAccess(runtime, message, "USER"))) return false;
+  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
     return hasSelectedContext(state) || hasPlaceCallIntent(message, state);
   },
 

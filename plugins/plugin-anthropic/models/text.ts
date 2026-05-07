@@ -377,7 +377,14 @@ async function generateTextWithModel(
       );
     }
     if (params.stream) {
-      return streamViaCli(runtime, params.prompt, modelName, modelType, params.maxTokens, systemPrompt);
+      return streamViaCli(
+        runtime,
+        params.prompt,
+        modelName,
+        modelType,
+        params.maxTokens,
+        systemPrompt
+      );
     }
     const result = await generateViaCli(
       runtime,

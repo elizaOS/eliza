@@ -619,12 +619,7 @@ function defToAction(def: CustomActionDef): Action {
         : { minRole: "USER" },
     similes: def.similes ?? [],
     description: def.description,
-    validate: async (runtime, message, state) => {
-      if (def.requiredRole && def.requiredRole !== "GUEST") {
-        const { hasRoleAccess } = await import("../security/access.js");
-        const allowed = await hasRoleAccess(runtime, message, def.requiredRole);
-        if (!allowed) return false;
-      }
+    validate: async (_runtime, message, state) => {
       return hasSelectedContextOrSignalSync(
         message,
         state,

@@ -80,6 +80,7 @@ export const finishAction: ActionWithParams = {
   name: "FINISH",
   contexts: FINISH_CONTEXTS,
   contextGate: { anyOf: FINISH_CONTEXTS },
+  roleGate: { minRole: "USER" },
   description:
     "Complete the task and respond to the user. Call this when all actions are done " +
     "or the user's request is fully satisfied. Provide your final response in character.",

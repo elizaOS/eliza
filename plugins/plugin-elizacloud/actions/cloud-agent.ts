@@ -420,6 +420,7 @@ export const cloudAgentAction: Action = {
   name: "CLOUD_AGENT",
   contexts: ["cloud", "automation", "admin"],
   contextGate: { anyOf: ["cloud", "automation", "admin"] },
+  roleGate: { minRole: "ADMIN" },
   description:
     "ElizaCloud agent ops router: provision a container, freeze (snapshot+stop) a running agent, resume a frozen agent from snapshot, or check credit balance and runtime estimate.",
   descriptionCompressed: "Cloud agent ops: provision, freeze, resume, check credits.",

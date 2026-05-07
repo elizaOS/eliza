@@ -192,6 +192,7 @@ export const linearIssueRouterAction: RouterAction = {
   similes: ["LINEAR_ISSUES", "MANAGE_LINEAR_ISSUE", "MANAGE_LINEAR_ISSUES"],
   contexts: ["general", "automation", "knowledge", LINEAR_ISSUE_CONTEXT],
   actionGroup: { contexts: [LINEAR_ISSUE_CONTEXT] },
+  roleGate: { minRole: "USER" },
   validate: (runtime, message) =>
     validateRouter(runtime, message, issueRoutes, /\b(linear|issue|bug|task|ticket|[a-z]+-\d+)\b/i),
   handler: (runtime, message, state, options, callback) =>
@@ -228,6 +229,7 @@ export const linearCommentRouterAction: RouterAction = {
   similes: ["LINEAR_COMMENTS", "COMMENT_LINEAR_ISSUE"],
   contexts: ["general", "automation", LINEAR_COMMENT_CONTEXT],
   actionGroup: { contexts: [LINEAR_COMMENT_CONTEXT] },
+  roleGate: { minRole: "USER" },
   validate: (runtime, message) =>
     validateRouter(runtime, message, commentRoutes, /\b(comment|reply|note|tell)\b/i),
   handler: (runtime, message, state, options, callback) =>
@@ -264,6 +266,7 @@ export const linearWorkflowRouterAction: RouterAction = {
   similes: ["LINEAR_ACTIVITY", "LINEAR_SEARCH", "LINEAR_WORKFLOW_SEARCH"],
   contexts: ["general", "automation", "knowledge", LINEAR_WORKFLOW_CONTEXT],
   actionGroup: { contexts: [LINEAR_WORKFLOW_CONTEXT] },
+  roleGate: { minRole: "USER" },
   validate: (runtime, message) =>
     validateRouter(runtime, message, workflowRoutes, /\b(linear|activity|search|issues?|bugs?)\b/i),
   handler: (runtime, message, state, options, callback) =>

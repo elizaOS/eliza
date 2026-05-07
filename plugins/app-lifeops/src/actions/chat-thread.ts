@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -8,10 +7,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts } from "./lib/recent-context.js";
@@ -231,7 +227,7 @@ export const chatThreadAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
     const runtimeLike = runtime as RuntimeLike;
     const params = ((options as { parameters?: ChatThreadParams } | undefined)

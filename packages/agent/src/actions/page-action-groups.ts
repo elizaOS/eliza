@@ -10,7 +10,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { resolveActionContexts } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 
 type PageActionGroupConfig = {
   name: string;
@@ -125,11 +124,10 @@ function createPageActionGroupAction(
     similes: config.similes ?? [],
     contexts: ["general", ...config.contexts],
     actionGroup: { contexts: config.contexts },
+    roleGate: { minRole: "OWNER" },
     description: `${config.description} Pass { action, parameters } to run one validated child action. Only the owner may use this parent action from main chat; page-scoped chats expose the child actions directly.`,
     descriptionCompressed: `${config.name}: owner-only parent action that delegates to page child actions.`,
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
-      return hasOwnerAccess(runtime, message);
-    },
+    validate: async () => true,
     handler: async (
       runtime: IAgentRuntime,
       message: Memory,
@@ -137,13 +135,6 @@ function createPageActionGroupAction(
       options?: HandlerOptions,
       callback?: HandlerCallback,
     ): Promise<ActionResult> => {
-      if (!(await hasOwnerAccess(runtime, message))) {
-        return {
-          success: false,
-          text: `Permission denied: only the owner may use ${config.name}.`,
-        };
-      }
-
       const params = readParameters(options);
       const requestedAction = params.action?.trim();
       if (!requestedAction) {

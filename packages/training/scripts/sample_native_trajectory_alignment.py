@@ -27,6 +27,7 @@ import csv
 import hashlib
 import json
 import os
+import random
 import re
 import time
 import urllib.error
@@ -57,14 +58,27 @@ REFERENCE_TRAJECTORIES_JSON = AUDIT_DIR / "runtime_reference_trajectories.json"
 REFERENCE_TRAJECTORIES_MD = AUDIT_DIR / "runtime_reference_trajectories.md"
 MODEL_CALL_SHAPES_JSON = AUDIT_DIR / "model_call_shapes.json"
 COMPOSITION_AUDIT_MD = AUDIT_DIR / "composition_audit.md"
+REAL_ELIZA_COMPARISON_JSON = AUDIT_DIR / "real_eliza_trajectory_comparison.json"
+REAL_ELIZA_COMPARISON_MD = AUDIT_DIR / "real_eliza_trajectory_comparison.md"
+REAL_ELIZA_NATIVE_ROWS_JSONL = AUDIT_DIR / "real_eliza_native_rows.jsonl"
+SYNTHESIS_TEMPLATES_JSON = AUDIT_DIR / "native_synthesis_templates.json"
+SYNTHESIS_TEMPLATES_MD = AUDIT_DIR / "native_synthesis_templates.md"
 
 SCHEMA = "eliza.native_trajectory_alignment_audit.v1"
+NATIVE_BOUNDARY_FORMAT = "eliza_native_v1"
 DEFAULT_MODEL = "gpt-oss-120b"
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
+DEFAULT_SEED = "eliza-native-audit-2026-05-07"
 
 MAX_PREVIEW_CHARS = 2_400
 MAX_JSON_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_SCAN_ROWS = 50_000
 SKIP_DIRS = {".cache", ".git", "__pycache__", "node_modules"}
+DEFAULT_REAL_TRAJECTORY_ROOTS = (
+    "trajectories",
+    "trajectories-eliza-cerebras",
+    "artifacts",
+)
 EXTENSION_PRIORITY = {
     ".jsonl": 0,
     ".parquet": 1,
@@ -134,6 +148,14 @@ def stable_hash(*parts: object, length: int = 16) -> str:
         h.update(json.dumps(part, sort_keys=True, default=str).encode("utf-8"))
         h.update(b"\0")
     return h.hexdigest()[:length]
+
+
+def stable_int(*parts: object) -> int:
+    return int(stable_hash(*parts, length=16), 16)
+
+
+def rng_for(seed: str, *parts: object) -> random.Random:
+    return random.Random(stable_int(seed, *parts))
 
 
 def compact(value: Any, limit: int = MAX_PREVIEW_CHARS) -> Any:
@@ -226,57 +248,107 @@ def sorted_candidate_files(root: Path) -> list[Path]:
     )
 
 
-def read_jsonl_samples(path: Path, limit: int) -> list[Any]:
+def read_jsonl_samples(
+    path: Path,
+    limit: int,
+    rng: random.Random,
+    *,
+    max_scan_rows: int = DEFAULT_MAX_SCAN_ROWS,
+) -> list[Any]:
     rows: list[Any] = []
     with path.open("r", encoding="utf-8", errors="replace") as f:
+        seen = 0
         for line in f:
             line = line.strip()
             if not line:
                 continue
+            seen += 1
             try:
-                rows.append(json.loads(line))
+                parsed = json.loads(line)
             except json.JSONDecodeError:
-                rows.append({"_raw": compact(line)})
-            if len(rows) >= limit:
+                parsed = {"_raw": compact(line)}
+            if len(rows) < limit:
+                rows.append(parsed)
+            else:
+                replace_at = rng.randrange(seen)
+                if replace_at < limit:
+                    rows[replace_at] = parsed
+            if max_scan_rows > 0 and seen >= max_scan_rows:
                 break
     return rows
 
 
-def read_json_samples(path: Path, limit: int) -> list[Any]:
+def read_json_samples(path: Path, limit: int, rng: random.Random) -> list[Any]:
     if path.stat().st_size > MAX_JSON_BYTES:
         with path.open("r", encoding="utf-8", errors="replace") as f:
             return [{"_raw_preview": compact(f.read(MAX_PREVIEW_CHARS))}]
     with path.open("r", encoding="utf-8", errors="replace") as f:
         raw = json.load(f)
     if isinstance(raw, list):
-        return raw[:limit]
+        if len(raw) <= limit:
+            return raw
+        return [raw[i] for i in sorted(rng.sample(range(len(raw)), limit))]
     if isinstance(raw, dict):
         for key in ("data", "rows", "examples", "records", "messages"):
             value = raw.get(key)
             if isinstance(value, list) and value:
-                return value[:limit]
+                if len(value) <= limit:
+                    return value
+                return [value[i] for i in sorted(rng.sample(range(len(value)), limit))]
         return [raw]
     return [{"value": raw}]
 
 
-def read_parquet_samples(path: Path, limit: int) -> list[Any]:
+def read_parquet_samples(
+    path: Path,
+    limit: int,
+    rng: random.Random,
+    *,
+    max_scan_rows: int = DEFAULT_MAX_SCAN_ROWS,
+) -> list[Any]:
     if pq is None:
         return [{"_parquet": "pyarrow unavailable", "path": str(path)}]
     pf = pq.ParquetFile(path)
     rows: list[Any] = []
-    for batch in pf.iter_batches(batch_size=limit):
-        rows.extend(batch.to_pylist())
-        break
-    return rows[:limit]
+    seen = 0
+    batch_size = max(128, limit * 16)
+    for batch in pf.iter_batches(batch_size=batch_size):
+        for parsed in batch.to_pylist():
+            seen += 1
+            if len(rows) < limit:
+                rows.append(parsed)
+            else:
+                replace_at = rng.randrange(seen)
+                if replace_at < limit:
+                    rows[replace_at] = parsed
+            if max_scan_rows > 0 and seen >= max_scan_rows:
+                break
+        if max_scan_rows > 0 and seen >= max_scan_rows:
+            break
+    return rows
 
 
-def read_tabular_samples(path: Path, limit: int, delimiter: str) -> list[Any]:
+def read_tabular_samples(
+    path: Path,
+    limit: int,
+    delimiter: str,
+    rng: random.Random,
+    *,
+    max_scan_rows: int = DEFAULT_MAX_SCAN_ROWS,
+) -> list[Any]:
     rows: list[Any] = []
     with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
         reader = csv.DictReader(f, delimiter=delimiter)
+        seen = 0
         for row in reader:
-            rows.append(row)
-            if len(rows) >= limit:
+            seen += 1
+            if len(rows) < limit:
+                rows.append(row)
+            else:
+                replace_at = rng.randrange(seen)
+                if replace_at < limit:
+                    rows[replace_at] = row
+            if max_scan_rows > 0 and seen >= max_scan_rows:
                 break
     return rows
 
@@ -286,32 +358,54 @@ def read_text_sample(path: Path) -> list[Any]:
         return [{"_text_preview": compact(f.read(MAX_PREVIEW_CHARS))}]
 
 
-def read_samples_from_file(path: Path, limit: int) -> list[Any]:
+def read_samples_from_file(
+    path: Path,
+    limit: int,
+    rng: random.Random,
+    *,
+    max_scan_rows: int = DEFAULT_MAX_SCAN_ROWS,
+) -> list[Any]:
     suffix = path.suffix.lower()
     try:
         if suffix == ".jsonl":
-            return read_jsonl_samples(path, limit)
+            return read_jsonl_samples(path, limit, rng, max_scan_rows=max_scan_rows)
         if suffix == ".json":
-            return read_json_samples(path, limit)
+            return read_json_samples(path, limit, rng)
         if suffix == ".parquet":
-            return read_parquet_samples(path, limit)
+            return read_parquet_samples(path, limit, rng, max_scan_rows=max_scan_rows)
         if suffix == ".csv":
-            return read_tabular_samples(path, limit, ",")
+            return read_tabular_samples(path, limit, ",", rng, max_scan_rows=max_scan_rows)
         if suffix == ".tsv":
-            return read_tabular_samples(path, limit, "\t")
+            return read_tabular_samples(path, limit, "\t", rng, max_scan_rows=max_scan_rows)
         return read_text_sample(path)
     except Exception as exc:  # noqa: BLE001 - keep audit moving.
         return [{"_read_error": f"{type(exc).__name__}: {exc}", "path": str(path)}]
 
 
-def collect_dataset_samples(entry: DatasetEntry, samples_per_source: int) -> list[dict[str, Any]]:
+def collect_dataset_samples(
+    entry: DatasetEntry,
+    samples_per_source: int,
+    *,
+    seed: str = DEFAULT_SEED,
+    max_scan_rows: int = DEFAULT_MAX_SCAN_ROWS,
+) -> list[dict[str, Any]]:
     samples: list[dict[str, Any]] = []
     files = sorted_candidate_files(entry.raw_dir)
+    rng = rng_for(seed, entry.slug)
+    rng.shuffle(files)
     for file_path in files:
         needed = samples_per_source - len(samples)
         if needed <= 0:
             break
-        for row_idx, raw in enumerate(read_samples_from_file(file_path, needed)):
+        file_rng = rng_for(seed, entry.slug, str(file_path.relative_to(entry.raw_dir)))
+        for row_idx, raw in enumerate(
+            read_samples_from_file(
+                file_path,
+                needed,
+                file_rng,
+                max_scan_rows=max_scan_rows,
+            )
+        ):
             features = infer_features(raw)
             samples.append(
                 {
@@ -325,6 +419,7 @@ def collect_dataset_samples(entry: DatasetEntry, samples_per_source: int) -> lis
                     "rowIndex": row_idx,
                     "kind": file_path.suffix.lower().lstrip(".") or "file",
                     "features": sorted(features),
+                    "nativeBoundaryComponents": native_boundary_components(features),
                     "stageSimilarity": stage_similarity(features),
                     "preview": compact(raw),
                 }
@@ -344,6 +439,7 @@ def collect_dataset_samples(entry: DatasetEntry, samples_per_source: int) -> lis
                 "rowIndex": None,
                 "kind": "placeholder",
                 "features": [],
+                "nativeBoundaryComponents": native_boundary_components(set()),
                 "stageSimilarity": stage_similarity(set()),
                 "preview": {
                     "note": "no additional readable records found for this source",
@@ -441,6 +537,25 @@ def infer_features(value: Any) -> set[str]:
     return features
 
 
+def native_boundary_components(features: set[str]) -> dict[str, bool]:
+    """Map loose raw-source features to final `eliza_native_v1` components."""
+    return {
+        "request.messages": bool(features & {"chat_messages", "current_user_message"}),
+        "request.prompt": bool(features & {"current_user_message", "planning_text"}),
+        "request.tools": "tool_schemas" in features,
+        "request.toolChoice": False,
+        "request.responseSchema": False,
+        "response.text": "user_visible_message" in features,
+        "response.toolCalls": "tool_calls" in features,
+        "response.finishReason": "tool_calls" in features,
+        "response.usage": "cache_observation" in features,
+        "tool.result.messages": "tool_results" in features,
+        "evaluation.decision": bool(features & {"evaluator_decision", "success_label"}),
+        "metadata.contexts": "context_labels" in features,
+        "cacheStats": "cache_observation" in features,
+    }
+
+
 def stage_similarity(features: set[str]) -> dict[str, float]:
     out: dict[str, float] = {}
     for stage, expected in REFERENCE_STAGE_FEATURES.items():
@@ -461,6 +576,12 @@ def summarize_samples(
     for dataset, rows in sorted(by_dataset.items()):
         feature_counts = Counter(
             feature for row in rows for feature in row.get("features", [])
+        )
+        component_counts = Counter(
+            component
+            for row in rows
+            for component, present in (row.get("nativeBoundaryComponents") or {}).items()
+            if present
         )
         stage_scores: dict[str, list[float]] = defaultdict(list)
         for row in rows:
@@ -488,7 +609,22 @@ def summarize_samples(
                 },
                 "bestObservedStage": best_stage[0],
                 "bestObservedScore": round(best_stage[1], 4),
+                "nativeComponentCoverage": {
+                    component: round(component_counts[component] / max(1, len(rows)), 4)
+                    for component in sorted(
+                        {
+                            component
+                            for row in rows
+                            for component in (row.get("nativeBoundaryComponents") or {})
+                        }
+                    )
+                },
                 "missingCriticalSignals": missing_critical_signals(feature_counts),
+                "transformationAssessment": transformation_assessment(
+                    matrix_row.get("transform"),
+                    feature_counts,
+                    component_counts,
+                ),
             }
         )
     return {
@@ -499,6 +635,46 @@ def summarize_samples(
             "datasets": len(datasets),
             "samples": len(samples),
         },
+    }
+
+
+def transformation_assessment(
+    transform: str | None,
+    feature_counts: Counter[str],
+    component_counts: Counter[str],
+) -> dict[str, Any]:
+    has_tools = feature_counts["tool_calls"] > 0
+    has_schemas = feature_counts["tool_schemas"] > 0
+    has_results = feature_counts["tool_results"] > 0
+    has_eval = feature_counts["evaluator_decision"] > 0 or feature_counts["success_label"] > 0
+    has_contexts = feature_counts["context_labels"] > 0
+    if transform == "function_calling_to_planner" and has_tools and has_schemas:
+        verdict = "good_planner_seed_needs_runtime_context"
+    elif has_tools and has_results and has_eval:
+        verdict = "strong_full_trajectory_seed"
+    elif has_tools:
+        verdict = "planner_seed_missing_execution_loop"
+    elif feature_counts["chat_messages"] > 0:
+        verdict = "message_handler_seed_only"
+    else:
+        verdict = "low_alignment_or_unreadable_sample"
+
+    improvements: list[str] = []
+    if not has_contexts:
+        improvements.append("synthesize or infer selected contexts, then mark them inferred")
+    if not has_schemas and has_tools:
+        improvements.append("backfill AI SDK/OpenAI-compatible tool schemas")
+    if has_tools and not has_results:
+        improvements.append("synthesize grounded tool-result events or pair with executable fixtures")
+    if has_results and not has_eval:
+        improvements.append("synthesize evaluator decision rows from goal, call, and result")
+    if component_counts["request.toolChoice"] == 0:
+        improvements.append("set explicit toolChoice from runtime policy: required for internal routing tools, auto for planner tools")
+
+    return {
+        "verdict": verdict,
+        "idealFinalFormat": NATIVE_BOUNDARY_FORMAT,
+        "improvements": improvements,
     }
 
 
@@ -1338,13 +1514,12 @@ def write_reference_markdown(path: Path, trajectories: list[dict[str, Any]]) -> 
 
 def write_composition_audit(path: Path, summary: dict[str, Any], trajectories: list[dict[str, Any]]) -> None:
     issue_lines = [
-        "- Stage 1, planner, and evaluator currently render one large `prompt` string; planner/evaluator do not pass `messages` or `promptSegments` into `runtime.useModel`, so provider-side chat/caching inputs are not yet the plan-v5 shape.",
-        "- Planner has `v5PlannerSchema` in code but does not pass `responseSchema`; it relies on native tool calls when tools exist or JSON parsing from text otherwise.",
-        "- Evaluator has `v5EvaluatorSchema` in code but does not pass `responseSchema`; evaluator JSON strictness is weaker than Stage 1.",
-        "- `renderContextObject()` computes segment hashes for planner recording, but the model adapters do not receive those segments as cache hints on planner/evaluator calls.",
-        "- The cloud Vercel AI Gateway adapter maps AI SDK `usage.inputTokens/outputTokens/totalTokens` to OpenAI usage, but does not preserve AI SDK `cacheReadTokens/cacheWriteTokens` in the OpenAI-compatible response.",
-        "- The cloud Vercel AI Gateway structured-output bridge currently replaces the caller response schema with `{type: object, additionalProperties: true}`.",
-        "- Tool-result messages are better supported in the cloud adapter than in most bootstrap sources: OpenAI `tool` role messages become AI SDK `tool-result` parts with recovered tool names.",
+        "- The final training row is `eliza_native_v1`: one Vercel AI SDK model boundary with `request` and `response`, not the intermediate `eliza.native_tool_calling.v1` bootstrap shape.",
+        "- Real recorder files are stage-based JSON; this audit exports their model stages back into `eliza_native_v1` rows for local smoke training.",
+        "- Newer real stages preserve `messages`, `tools`, `toolChoice`, `response`, `toolCalls`, `finishReason`, and `usage`; older stages may only have a large `prompt` plus `response`.",
+        "- `responseSchema`, `providerOptions`, and `providerMetadata` are absent in the sampled real runs, so dataset transforms should not invent them.",
+        "- Stage 1 is now native tool-call shaped when `MESSAGE_HANDLER_PLAN` is present with `toolChoice: required`; those rows are excellent routing supervision.",
+        "- Provider usage/cache counters should be copied only from live runs; bootstrap corpora should leave usage/cache fields empty.",
     ]
     lines = [
         "# Native composition audit",
@@ -1409,6 +1584,415 @@ def write_model_call_shapes(path: Path, trajectories: list[dict[str, Any]]) -> N
     )
 
 
+def iter_real_trajectory_files(roots: list[str]) -> list[Path]:
+    files: list[Path] = []
+    for raw_root in roots:
+        root = (ROOT.parent.parent / raw_root).resolve() if not Path(raw_root).is_absolute() else Path(raw_root)
+        if not root.exists():
+            continue
+        if root.name == "artifacts":
+            files.extend(root.glob("*/trajectories/**/*.json"))
+        else:
+            files.extend(root.glob("**/*.json"))
+    return sorted({path.resolve() for path in files})
+
+
+def load_real_trajectory(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(value, dict):
+        return None
+    if not value.get("trajectoryId") or not isinstance(value.get("stages"), list):
+        return None
+    return value
+
+
+def summarize_real_trajectories(paths: list[Path], seed: str, max_trajectories: int) -> dict[str, Any]:
+    loaded: list[tuple[Path, dict[str, Any]]] = []
+    for path in paths:
+        trajectory = load_real_trajectory(path)
+        if trajectory is not None:
+            loaded.append((path, trajectory))
+
+    rng = rng_for(seed, "real-eliza-trajectories")
+    sampled = loaded[:]
+    rng.shuffle(sampled)
+    sampled = sampled[:max_trajectories] if max_trajectories > 0 else sampled
+
+    stage_counts: Counter[str] = Counter()
+    model_component_counts: Counter[str] = Counter()
+    model_stage_counts: Counter[str] = Counter()
+    examples: list[dict[str, Any]] = []
+    native_rows: list[dict[str, Any]] = []
+    for path, trajectory in loaded:
+        for row in native_rows_from_recorded_trajectory(trajectory, path):
+            native_rows.append(row)
+
+    for path, trajectory in sampled:
+        stages = trajectory.get("stages") or []
+        for index, stage in enumerate(stages):
+            kind = str(stage.get("kind") or "unknown")
+            stage_counts[kind] += 1
+            model = stage.get("model") if isinstance(stage.get("model"), dict) else None
+            if model:
+                model_stage_counts[kind] += 1
+                for field in (
+                    "prompt",
+                    "messages",
+                    "tools",
+                    "toolChoice",
+                    "responseSchema",
+                    "providerOptions",
+                    "response",
+                    "toolCalls",
+                    "finishReason",
+                    "usage",
+                    "providerMetadata",
+                ):
+                    value = model.get(field)
+                    if value not in (None, "", []):
+                        model_component_counts[f"{kind}.{field}"] += 1
+                        model_component_counts[field] += 1
+                if len(examples) < 12:
+                    examples.append(
+                        {
+                            "path": str(path),
+                            "trajectoryId": trajectory.get("trajectoryId"),
+                            "stageIndex": index,
+                            "stageId": stage.get("stageId"),
+                            "kind": kind,
+                            "modelType": model.get("modelType"),
+                            "modelName": model.get("modelName"),
+                            "provider": model.get("provider"),
+                            "requestComponents": {
+                                key: key in model and model.get(key) not in (None, "", [])
+                                for key in ("prompt", "messages", "tools", "toolChoice", "responseSchema", "providerOptions")
+                            },
+                            "responseComponents": {
+                                key: key in model and model.get(key) not in (None, "", [])
+                                for key in ("response", "toolCalls", "finishReason", "usage", "providerMetadata")
+                            },
+                            "promptPreview": compact(model.get("prompt") or "", 500),
+                            "toolCallsPreview": compact(model.get("toolCalls"), 800),
+                        }
+                    )
+
+    return {
+        "schema": SCHEMA,
+        "format": NATIVE_BOUNDARY_FORMAT,
+        "discoveredFiles": len(paths),
+        "validTrajectoryFiles": len(loaded),
+        "sampledTrajectoryFiles": len(sampled),
+        "stageCounts": dict(sorted(stage_counts.items())),
+        "modelStageCounts": dict(sorted(model_stage_counts.items())),
+        "modelComponentCounts": dict(sorted(model_component_counts.items())),
+        "nativeRowsExported": len(native_rows),
+        "samples": examples,
+        "nativeRows": native_rows,
+    }
+
+
+def _status_to_native(status: Any) -> str:
+    if status == "finished":
+        return "completed"
+    if status == "errored":
+        return "error"
+    if status == "running":
+        return "active"
+    return "completed"
+
+
+def _stage_kind_to_task_type(kind: Any) -> str:
+    normalized = str(kind or "").replace("-", "_").lower()
+    if normalized == "messagehandler":
+        return "should_respond"
+    if normalized in {"planner", "subplanner"}:
+        return "action_planner"
+    if normalized == "evaluation":
+        return "evaluator"
+    return normalized or "response"
+
+
+def _usage_from_model(model: dict[str, Any]) -> dict[str, Any] | None:
+    usage = model.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    out: dict[str, Any] = {}
+    for src, dst in (
+        ("promptTokens", "promptTokens"),
+        ("completionTokens", "completionTokens"),
+        ("totalTokens", "totalTokens"),
+        ("cacheReadInputTokens", "cacheReadInputTokens"),
+        ("cacheCreationInputTokens", "cacheCreationInputTokens"),
+    ):
+        if usage.get(src) is not None:
+            out[dst] = usage[src]
+    return out or None
+
+
+def native_rows_from_recorded_trajectory(trajectory: dict[str, Any], path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    metrics = trajectory.get("metrics") if isinstance(trajectory.get("metrics"), dict) else {}
+    stages = trajectory.get("stages") or []
+    for index, stage in enumerate(stages):
+        if not isinstance(stage, dict) or not isinstance(stage.get("model"), dict):
+            continue
+        model = stage["model"]
+        request: dict[str, Any] = {}
+        if isinstance(model.get("prompt"), str) and model["prompt"].strip():
+            request["prompt"] = model["prompt"]
+        if isinstance(model.get("messages"), list) and model["messages"]:
+            request["messages"] = model["messages"]
+        for key in ("tools", "toolChoice", "responseSchema", "providerOptions"):
+            if key in model and model.get(key) is not None:
+                request[key] = model[key]
+        response: dict[str, Any] = {"text": model.get("response") if isinstance(model.get("response"), str) else ""}
+        if isinstance(model.get("toolCalls"), list):
+            response["toolCalls"] = model["toolCalls"]
+        if isinstance(model.get("finishReason"), str):
+            response["finishReason"] = model["finishReason"]
+        usage = _usage_from_model(model)
+        if usage:
+            response["usage"] = usage
+        if model.get("providerMetadata") is not None:
+            response["providerMetadata"] = model["providerMetadata"]
+
+        stage_id = str(stage.get("stageId") or f"stage-{index}")
+        row = {
+            "format": NATIVE_BOUNDARY_FORMAT,
+            "schemaVersion": 1,
+            "boundary": "vercel_ai_sdk.generateText",
+            "trajectoryId": trajectory.get("trajectoryId"),
+            "agentId": trajectory.get("agentId"),
+            "source": "recorded_eliza_runtime_stage",
+            "status": _status_to_native(trajectory.get("status")),
+            "stepId": stage_id,
+            "callId": f"{stage_id}:model",
+            "stepIndex": index,
+            "callIndex": 0,
+            "timestamp": stage.get("startedAt") or trajectory.get("startedAt") or 0,
+            "purpose": stage.get("kind"),
+            "stepType": stage.get("kind"),
+            "model": model.get("modelName") or model.get("modelType"),
+            "modelType": model.get("modelType"),
+            "provider": model.get("provider"),
+            "request": request,
+            "response": response,
+            "metadata": {
+                "task_type": _stage_kind_to_task_type(stage.get("kind")),
+                "source_dataset": "real_eliza_runtime",
+                "trajectory_id": trajectory.get("trajectoryId"),
+                "step_id": stage_id,
+                "call_id": f"{stage_id}:model",
+                "source_path": str(path),
+            },
+            "trajectoryTotals": {
+                "stepCount": len(stages),
+                "llmCallCount": sum(1 for s in stages if isinstance(s, dict) and isinstance(s.get("model"), dict)),
+                "providerAccessCount": 0,
+                "promptTokens": metrics.get("totalPromptTokens", 0),
+                "completionTokens": metrics.get("totalCompletionTokens", 0),
+                "cacheReadInputTokens": metrics.get("totalCacheReadTokens", 0),
+                "cacheCreationInputTokens": metrics.get("totalCacheCreationTokens", 0),
+            },
+            "cacheStats": {
+                "totalInputTokens": metrics.get("totalPromptTokens", 0),
+                "promptTokens": metrics.get("totalPromptTokens", 0),
+                "completionTokens": metrics.get("totalCompletionTokens", 0),
+                "cacheReadInputTokens": metrics.get("totalCacheReadTokens", 0),
+                "cacheCreationInputTokens": metrics.get("totalCacheCreationTokens", 0),
+                "cachedCallCount": 0,
+                "cacheReadCallCount": 0,
+                "cacheWriteCallCount": 0,
+                "tokenUsageEstimatedCallCount": 0,
+            },
+        }
+        if request and (response["text"] or response.get("toolCalls")):
+            rows.append(row)
+    return rows
+
+
+def write_real_eliza_markdown(path: Path, comparison: dict[str, Any]) -> None:
+    counts = comparison["modelComponentCounts"]
+    lines = [
+        "# Real Eliza trajectory comparison",
+        "",
+        f"- valid trajectory files: `{comparison['validTrajectoryFiles']}`",
+        f"- sampled trajectory files: `{comparison['sampledTrajectoryFiles']}`",
+        f"- exported native boundary rows: `{comparison['nativeRowsExported']}`",
+        "",
+        "## Observed Model-Boundary Components",
+        "",
+        "| Component | Count in sampled model stages |",
+        "| --- | ---: |",
+    ]
+    for key in (
+        "prompt",
+        "messages",
+        "tools",
+        "toolChoice",
+        "responseSchema",
+        "providerOptions",
+        "response",
+        "toolCalls",
+        "finishReason",
+        "usage",
+        "providerMetadata",
+    ):
+        lines.append(f"| `{key}` | {counts.get(key, 0)} |")
+    lines.extend(["", "## Sampled Stages", ""])
+    for sample in comparison["samples"]:
+        lines.extend(
+            [
+                f"### `{sample['trajectoryId']}` / `{sample['kind']}`",
+                "",
+                f"- file: `{sample['path']}`",
+                f"- model: `{sample.get('modelName') or sample.get('modelType')}` via `{sample.get('provider')}`",
+                f"- request: `{sample['requestComponents']}`",
+                f"- response: `{sample['responseComponents']}`",
+                "",
+            ]
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+SYNTHESIS_TEMPLATE_LIBRARY: dict[str, dict[str, Any]] = {
+    "context_routing_backfill": {
+        "target": "request/response pair for Stage 1 messageHandler",
+        "when": "dataset has chat text but no selected contexts",
+        "output": {
+            "format": NATIVE_BOUNDARY_FORMAT,
+            "request": {
+                "messages": ["runtime-style system/context registry message", "conversation up to current user turn"],
+                "tools": {"MESSAGE_HANDLER_PLAN": "strict internal routing tool"},
+                "toolChoice": "required",
+            },
+            "response": {"toolCalls": ["MESSAGE_HANDLER_PLAN({processMessage, plan.contexts, thought})"]},
+        },
+        "quality": "mark contexts as inferred unless they came from an Eliza trajectory",
+    },
+    "tool_schema_backfill": {
+        "target": "request.tools",
+        "when": "dataset has tool names/calls but lacks full JSON schemas",
+        "output": {"request": {"tools": "AI SDK tool map with inputSchema-compatible JSON schema"}},
+        "quality": "silver if source supplied schema text; bronze if schema is teacher inferred",
+    },
+    "planner_tool_call_backfill": {
+        "target": "response.toolCalls",
+        "when": "dataset has user task and tool specs but no native tool_calls array",
+        "output": {"response": {"text": "", "toolCalls": [{"toolCallId": "stable id", "toolName": "name", "input": {}}], "finishReason": "tool-calls"}},
+        "quality": "preserve source calls when present; only synthesize missing args with review required",
+    },
+    "tool_result_and_evaluator_backfill": {
+        "target": "tool result messages plus evaluator model boundary",
+        "when": "planner data has calls but no execution/evaluator loop",
+        "output": {
+            "tool_result": {"role": "tool", "tool_call_id": "call id", "content": "grounded result JSON"},
+            "evaluation": {"success": True, "decision": "FINISH|NEXT_RECOMMENDED|CONTINUE", "thought": "short reason"},
+        },
+        "quality": "bronze/synthetic unless result was actually executed in Eliza",
+    },
+    "runtime_usage_capture": {
+        "target": "response.usage/providerMetadata/cacheStats",
+        "when": "dataset lacks provider token/cache observations",
+        "output": "do not synthesize; capture from real Eliza runs only",
+        "quality": "missing is acceptable for bootstrap rows",
+    },
+}
+
+
+def dataset_synthesis_plan(summary: dict[str, Any]) -> dict[str, Any]:
+    datasets: list[dict[str, Any]] = []
+    for row in summary.get("datasets", []):
+        missing = set(row.get("missingCriticalSignals") or [])
+        coverage = row.get("nativeComponentCoverage") or {}
+        template_ids: list[str] = []
+        if coverage.get("metadata.contexts", 0) < 0.5:
+            template_ids.append("context_routing_backfill")
+        if coverage.get("request.tools", 0) < 0.5 and coverage.get("response.toolCalls", 0) > 0:
+            template_ids.append("tool_schema_backfill")
+        if "no native or recoverable tool-call signal" in missing:
+            if row.get("bestObservedStage") in {"message_handler", "planner"}:
+                template_ids.append("planner_tool_call_backfill")
+        elif coverage.get("response.toolCalls", 0) < 0.7:
+            template_ids.append("planner_tool_call_backfill")
+        if "no action-result/evaluator input signal" in missing or "no explicit evaluator success/decision labels" in missing:
+            template_ids.append("tool_result_and_evaluator_backfill")
+        if coverage.get("cacheStats", 0) == 0:
+            template_ids.append("runtime_usage_capture")
+        datasets.append(
+            {
+                "dataset": row["dataset"],
+                "transform": row.get("transform"),
+                "qualityRating": row.get("qualityRating"),
+                "bestObservedStage": row.get("bestObservedStage"),
+                "nativeComponentCoverage": coverage,
+                "missingCriticalSignals": row.get("missingCriticalSignals") or [],
+                "templateIds": list(dict.fromkeys(template_ids)),
+                "recommendedFrame": recommended_synthesis_frame(row, template_ids),
+            }
+        )
+    return {
+        "schema": SCHEMA,
+        "format": NATIVE_BOUNDARY_FORMAT,
+        "templates": SYNTHESIS_TEMPLATE_LIBRARY,
+        "datasets": datasets,
+    }
+
+
+def recommended_synthesis_frame(row: dict[str, Any], template_ids: list[str]) -> str:
+    transform = row.get("transform") or ""
+    if row.get("qualityRating") == "quarantine":
+        return "keep out of default SFT; only synthesize in a dedicated side corpus"
+    if transform == "function_calling_to_planner":
+        return "frame as planner calls: preserve source tools/calls, add Eliza message-handler context and optional evaluator rows"
+    if "dialogue" in transform:
+        return "frame as message-handler routing plus direct REPLY terminal planner rows; do not invent non-grounded external tools"
+    if "agent" in transform or "trajectory" in transform:
+        return "frame as append-only trajectory slices; normalize tool names to Eliza tools and add evaluator rows only where results are present"
+    if "runtime_usage_capture" in template_ids:
+        return "use as bootstrap request/response data; collect usage/cache only from live Eliza comparisons"
+    return "convert only the observed source signal to eliza_native_v1 and mark inferred components in metadata"
+
+
+def write_synthesis_templates_markdown(path: Path, plan: dict[str, Any]) -> None:
+    lines = [
+        "# Native synthesis templates",
+        "",
+        f"Target final format: `{NATIVE_BOUNDARY_FORMAT}`.",
+        "",
+        "## Template Library",
+        "",
+    ]
+    for template_id, template in plan["templates"].items():
+        lines.extend(
+            [
+                f"### `{template_id}`",
+                "",
+                f"- target: {template['target']}",
+                f"- when: {template['when']}",
+                f"- quality: {template['quality']}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Dataset Plans",
+            "",
+            "| Dataset | Rating | Best stage | Templates | Frame |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in plan["datasets"]:
+        templates = ", ".join(f"`{item}`" for item in row["templateIds"]) or "none"
+        lines.append(
+            f"| `{row['dataset']}` | `{row.get('qualityRating') or ''}` | `{row.get('bestObservedStage') or ''}` | {templates} | {row['recommendedFrame']} |"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     AUDIT_DIR.mkdir(parents=True, exist_ok=True)
     source_matrix = load_source_matrix()
@@ -1418,9 +2002,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     samples: list[dict[str, Any]] = []
     for entry in entries:
-        samples.extend(collect_dataset_samples(entry, args.samples_per_source))
+        samples.extend(
+            collect_dataset_samples(
+                entry,
+                args.samples_per_source,
+                seed=args.seed,
+                max_scan_rows=args.max_scan_rows,
+            )
+        )
     summary = summarize_samples(samples, source_matrix)
     trajectories = build_reference_trajectories(args)
+    real_comparison = summarize_real_trajectories(
+        iter_real_trajectory_files(args.trajectory_root),
+        args.seed,
+        args.max_real_trajectories,
+    )
+    synthesis_plan = dataset_synthesis_plan(summary)
 
     write_jsonl(DATASET_SAMPLES_JSONL, samples)
     write_json(DATASET_SIMILARITY_JSON, summary)
@@ -1428,10 +2025,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_reference_markdown(REFERENCE_TRAJECTORIES_MD, trajectories)
     write_model_call_shapes(MODEL_CALL_SHAPES_JSON, trajectories)
     write_composition_audit(COMPOSITION_AUDIT_MD, summary, trajectories)
+    real_rows = real_comparison.pop("nativeRows")
+    write_json(REAL_ELIZA_COMPARISON_JSON, real_comparison)
+    write_real_eliza_markdown(REAL_ELIZA_COMPARISON_MD, real_comparison)
+    write_jsonl(REAL_ELIZA_NATIVE_ROWS_JSONL, real_rows)
+    write_json(SYNTHESIS_TEMPLATES_JSON, synthesis_plan)
+    write_synthesis_templates_markdown(SYNTHESIS_TEMPLATES_MD, synthesis_plan)
 
     return {
         "datasets": len(entries),
         "samples": len(samples),
+        "realElizaNativeRows": len(real_rows),
         "liveCerebras": bool(args.run_cerebras and os.environ.get("CEREBRAS_API_KEY")),
         "outputs": [
             str(DATASET_SAMPLES_JSONL),
@@ -1440,16 +2044,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             str(REFERENCE_TRAJECTORIES_MD),
             str(MODEL_CALL_SHAPES_JSON),
             str(COMPOSITION_AUDIT_MD),
+            str(REAL_ELIZA_COMPARISON_JSON),
+            str(REAL_ELIZA_COMPARISON_MD),
+            str(REAL_ELIZA_NATIVE_ROWS_JSONL),
+            str(SYNTHESIS_TEMPLATES_JSON),
+            str(SYNTHESIS_TEMPLATES_MD),
         ],
     }
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Sample corpora and build v5 native trajectory alignment audit artifacts."
+        description="Sample corpora and build final eliza_native_v1 trajectory alignment audit artifacts."
     )
-    parser.add_argument("--samples-per-source", type=int, default=3)
+    parser.add_argument("--samples-per-source", type=int, default=10)
     parser.add_argument("--max-sources", type=int, default=0)
+    parser.add_argument("--seed", default=DEFAULT_SEED)
+    parser.add_argument("--max-scan-rows", type=int, default=DEFAULT_MAX_SCAN_ROWS)
+    parser.add_argument(
+        "--trajectory-root",
+        action="append",
+        default=list(DEFAULT_REAL_TRAJECTORY_ROOTS),
+        help="Recorded Eliza trajectory root. Repeatable. Defaults to local trajectories, trajectories-eliza-cerebras, and artifacts.",
+    )
+    parser.add_argument("--max-real-trajectories", type=int, default=30)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--run-cerebras", action="store_true")
     parser.add_argument("--cerebras-base-url", default=DEFAULT_BASE_URL)

@@ -4,11 +4,11 @@ import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -76,6 +76,7 @@ export const lsAction: Action = {
   name: "LS",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["LIST_DIR", "DIR"],
   description:
     "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of BASH for directory listing.",
@@ -84,18 +85,24 @@ export const lsAction: Action = {
   parameters: [
     {
       name: "path",
-      description: "Absolute path of the directory to list. Defaults to the session cwd.",
+      description:
+        "Absolute path of the directory to list. Defaults to the session cwd.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "ignore",
-      description: "Array of glob patterns to exclude (e.g. ['*.log', 'tmp/*']).",
+      description:
+        "Array of glob patterns to exclude (e.g. ['*.log', 'tmp/*']).",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const d = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (d === true || d === "true" || d === "1") return false;
     return true;
@@ -112,7 +119,10 @@ export const lsAction: Action = {
         ? String(message.roomId)
         : undefined;
     if (!conversationId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
 
     const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
@@ -147,7 +157,10 @@ export const lsAction: Action = {
 
     const ignoreRaw = readArrayParam(options, "ignore");
     const ignoreMatchers: RegExp[] = (ignoreRaw ?? [])
-      .filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+      .filter(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.length > 0,
+      )
       .map((entry) => globToRegExp(entry));
 
     let names: string[];
@@ -155,7 +168,10 @@ export const lsAction: Action = {
       names = await fs.readdir(dir);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({ reason: "io_error", message: `readdir failed: ${msg}` });
+      return failureToActionResult({
+        reason: "io_error",
+        message: `readdir failed: ${msg}`,
+      });
     }
 
     const filteredNames = names.filter(
@@ -200,7 +216,9 @@ export const lsAction: Action = {
       ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
     ];
     if (truncated) {
-      lines.push(`…[truncated, listed ${ENTRY_LIMIT} of ${totalAfterIgnore} entries]`);
+      lines.push(
+        `…[truncated, listed ${ENTRY_LIMIT} of ${totalAfterIgnore} entries]`,
+      );
     }
     const text = lines.join("\n");
 

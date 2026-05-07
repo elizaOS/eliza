@@ -17,6 +17,7 @@ rules:
 - plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email
 - never invent context ids that are not in available_contexts
 - choose plan.contexts=["simple"] (and only "simple") when the agent can answer directly from its own knowledge with no tools or external data; this is the shortcut path and includes plan.reply
+- do not choose "simple" for requests to change, persist, update, or remember agent/user settings, preferences, identity, persona, character, response style, or future behavior; select settings and any other relevant context instead
 - otherwise list every relevant context id; planning will run and tools will be selected from those contexts
 - include plan.reply only on the simple shortcut path (plan.contexts=["simple"])
 - thought is internal routing rationale and is not shown to the user

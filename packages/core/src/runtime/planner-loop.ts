@@ -272,6 +272,17 @@ export async function runPlannerLoop(
 			failures,
 		});
 
+		await maybeCompactBeforeNextModelCall({
+			trajectory,
+			config,
+			tools: params.tools,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration,
+			logger: params.runtime.logger,
+		});
+
 		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
 		trajectory.context = appendContextEvent(trajectory.context, {
@@ -447,8 +458,12 @@ function shortArgsDigest(params: Record<string, unknown> | undefined): string {
  * the tool turn, and this preserves byte-stability when text is consistent.
  */
 function toolMessageContent(result: PlannerToolResult): string {
+	const parts: string[] = [];
 	if (typeof result.text === "string" && result.text.trim().length > 0) {
-		return result.text;
+		parts.push(`text: ${result.text.trim()}`);
+	}
+	if (result.data && Object.keys(result.data).length > 0) {
+		parts.push(`data: ${stringifyForModel(result.data)}`);
 	}
 	if (result.error) {
 		const errMsg =
@@ -457,10 +472,10 @@ function toolMessageContent(result: PlannerToolResult): string {
 				: result.error instanceof Error
 					? result.error.message
 					: stringifyForModel(result.error);
-		return result.success ? errMsg : `error: ${errMsg}`;
+		parts.push(result.success ? `note: ${errMsg}` : `error: ${errMsg}`);
 	}
-	if (result.data && Object.keys(result.data).length > 0) {
-		return stringifyForModel(result.data);
+	if (parts.length > 0) {
+		return parts.join("\n");
 	}
 	return result.success ? "ok" : "failed";
 }
@@ -712,7 +727,6 @@ async function maybeCompactPlannerTrajectory(args: {
 	}
 
 	const startedAt = Date.now();
-	const compactedStepCount = compactableStepCount;
 	const compactedSteps = args.trajectory.steps.slice(0, compactableStepCount);
 	const keptSteps = args.trajectory.steps.slice(compactableStepCount);
 	const summary = buildCompactionSummary({
@@ -765,6 +779,46 @@ async function maybeCompactPlannerTrajectory(args: {
 		logger: args.logger,
 	});
 	return true;
+}
+
+async function maybeCompactBeforeNextModelCall(args: {
+	trajectory: PlannerTrajectory;
+	config: ChainingLoopConfig;
+	tools?: ToolDefinition[];
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	parentStageId?: string;
+	iteration: number;
+	logger?: PlannerRuntime["logger"];
+}): Promise<boolean> {
+	if (!args.config.compactionEnabled) {
+		return false;
+	}
+	const renderedInput = renderPlannerModelInput({
+		context: args.trajectory.context,
+		trajectory: args.trajectory,
+	});
+	const budget = buildModelInputBudget({
+		prompt: renderedInput.prompt,
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		tools: args.tools,
+		contextWindowTokens: args.config.contextWindowTokens,
+		reserveTokens: args.config.compactionReserveTokens,
+	});
+	if (!budget.shouldCompact) {
+		return false;
+	}
+	return await maybeCompactPlannerTrajectory({
+		trajectory: args.trajectory,
+		budget,
+		config: args.config,
+		recorder: args.recorder,
+		trajectoryId: args.trajectoryId,
+		parentStageId: args.parentStageId,
+		iteration: args.iteration,
+		logger: args.logger,
+	});
 }
 
 function buildCompactionSummary(args: {
@@ -874,7 +928,11 @@ async function recordPlannerStage(args: {
 	modelType: TextGenerationModelType;
 	provider?: string;
 	prompt: string;
-	modelParams: { tools?: ToolDefinition[]; toolChoice?: ToolChoice };
+	modelParams: {
+		tools?: ToolDefinition[];
+		toolChoice?: ToolChoice;
+		providerOptions?: Record<string, unknown>;
+	};
 	raw: string | GenerateTextResult;
 	parsed: ReturnType<typeof parsePlannerOutput>;
 	startedAt: number;
@@ -907,6 +965,7 @@ async function recordPlannerStage(args: {
 				messages: (args.modelParams as { messages?: ChatMessage[] }).messages,
 				tools: args.modelParams.tools,
 				toolChoice: args.modelParams.toolChoice,
+				providerOptions: args.modelParams.providerOptions,
 				response: responseText,
 				toolCalls: args.parsed.toolCalls.map<RecordedToolCall>((tc) => ({
 					id: tc.id,

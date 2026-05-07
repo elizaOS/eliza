@@ -14,7 +14,6 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 
 const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 type LogLevel = (typeof LOG_LEVELS)[number];
@@ -83,15 +82,13 @@ export const queryLogsAction: Action = {
     "Read recent log entries from the agent's in-memory log buffer. Filter by source, level (debug/info/warn/error), tags, or since-timestamp.",
   descriptionCompressed:
     "GET /api/logs tail filter source level tags since owner",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may read logs.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | QueryLogsParams
       | undefined;
@@ -224,15 +221,13 @@ export const exportLogsAction: Action = {
   description:
     "Export the agent's log buffer to JSON or CSV via POST /api/logs/export.",
   descriptionCompressed: "POST /api/logs/export json or csv buffer dump owner",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may export logs.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | ExportLogsParams
       | undefined;
@@ -338,14 +333,8 @@ export const clearLogsAction: Action = {
     "Clear the agent's in-memory log buffer via DELETE /api/logs. Owner-only destructive reset when the user wants diagnostic logs wiped or the buffer emptied.",
   descriptionCompressed:
     "DELETE /api/logs wipe in-mem agent log buffer owner-only destructive",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may clear logs.",
-      };
-    }
+  validate: async () => true,
+  handler: async (_runtime, _message): Promise<ActionResult> => {
     try {
       const resp = await fetch(`${getApiBase()}/api/logs`, {
         method: "DELETE",

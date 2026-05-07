@@ -291,6 +291,7 @@ const ticTacToePlugin: Plugin = {
   models: {
     [ModelType.TEXT_LARGE]: ticTacToeModelHandler,
     [ModelType.TEXT_SMALL]: ticTacToeModelHandler,
+    [ModelType.TEXT_EMBEDDING]: async () => new Array(384).fill(0),
   },
 };
 

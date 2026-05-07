@@ -8,7 +8,6 @@
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {
   return `http://localhost:${resolveServerOnlyPort(process.env)}`;
@@ -40,15 +39,13 @@ export const archiveCodingTaskAction: Action = {
     "Archive a coding-agent task thread by id. The thread becomes hidden from the active list but remains in history.",
   descriptionCompressed:
     "archive coding-agent task thread id thread become hidden active list remain history",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may archive coding tasks.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | CodingTaskParams
       | undefined;
@@ -124,15 +121,13 @@ export const reopenCodingTaskAction: Action = {
     "Reopen a previously-archived coding-agent task thread by id, returning it to the active list.",
   descriptionCompressed:
     "reopen previously-archive coding-agent task thread id, return active list",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may reopen coding tasks.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | CodingTaskParams
       | undefined;

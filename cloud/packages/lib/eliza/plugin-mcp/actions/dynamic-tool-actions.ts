@@ -94,6 +94,7 @@ export function createMcpToolAction(
     similes: generateSimiles(serverName, tool.name),
     contexts: MCP_ACTION_CONTEXTS,
     contextGate: { anyOf: MCP_ACTION_CONTEXTS },
+    roleGate: { minRole: "ADMIN" },
     parameters: convertJsonSchemaToActionParams(tool.inputSchema),
 
     validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
@@ -195,7 +196,10 @@ export function createMcpToolAction(
       const boundedToolOutput = truncateMcpToolOutput(toolOutput);
 
       if (result.isError) {
-        logger.error({ serverName, toolName: tool.name, output: boundedToolOutput }, "[MCP] Tool error");
+        logger.error(
+          { serverName, toolName: tool.name, output: boundedToolOutput },
+          "[MCP] Tool error",
+        );
         return {
           success: false,
           error: boundedToolOutput || "Tool execution failed",

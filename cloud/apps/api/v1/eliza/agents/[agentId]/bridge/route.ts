@@ -98,6 +98,11 @@ async function __hono_POST(
     }
 
     const rpcRequest = parsed.data as BridgeRequest;
+    if (rpcRequest.method === "message.send") {
+      const response = await elizaSandboxService.bridge(agentId, user.organization_id, rpcRequest);
+      return applyCorsHeaders(Response.json(response), CORS_METHODS);
+    }
+
     const forwarded = await forwardBridgeToControlPlane({
       ctx,
       request,

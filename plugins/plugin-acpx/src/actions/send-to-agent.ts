@@ -14,6 +14,7 @@ import {
 
 export const sendToAgentAction: Action = {
   name: "SEND_TO_AGENT",
+  roleGate: { minRole: "OWNER" },
   similes: [
     "SEND_TO_CODING_AGENT",
     "MESSAGE_CODING_AGENT",

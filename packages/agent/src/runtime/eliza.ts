@@ -3715,12 +3715,14 @@ export async function startEliza(
       config,
     );
 
-    // 8a. Apply role gating to protected plugin actions/providers.
+    // 8a. Apply legacy role redaction to protected plugin providers.
     try {
       const { applyPluginRoleGating } = await import("./plugin-role-gating.js");
       applyPluginRoleGating(runtime.plugins ?? []);
     } catch (err) {
-      logger.debug(`[eliza] Plugin role gating skipped: ${formatError(err)}`);
+      logger.debug(
+        `[eliza] Plugin provider role gating skipped: ${formatError(err)}`,
+      );
     }
 
     // 8b. Register lightweight conversation-proximity evaluator.
@@ -4177,7 +4179,7 @@ export async function startEliza(
             applyPluginRoleGating(newRuntime.plugins ?? []);
           } catch (err) {
             logger.debug(
-              `[eliza] Hot-reload plugin role gating skipped: ${formatError(err)}`,
+              `[eliza] Hot-reload plugin provider role gating skipped: ${formatError(err)}`,
             );
           }
 

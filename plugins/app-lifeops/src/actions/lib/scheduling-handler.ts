@@ -19,7 +19,6 @@
  * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -1190,7 +1189,7 @@ export const schedulingAction: Action & {
   contexts: ["calendar", "contacts", "tasks", "messaging"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -1205,15 +1204,6 @@ export const schedulingAction: Action & {
       callback,
       actionName: "OWNER_CALENDAR",
     });
-
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return respond({
-        success: false,
-        scenario: "scheduling_negotiation_access_denied",
-        fallback: "Scheduling negotiation is restricted to the owner.",
-        data: { error: "PERMISSION_DENIED" },
-      });
-    }
 
     const params =
       ((options as HandlerOptions | undefined)?.parameters as

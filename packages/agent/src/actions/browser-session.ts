@@ -2,12 +2,9 @@ import type {
   Action,
   ActionExample,
   HandlerOptions,
-  IAgentRuntime,
   Memory,
-  State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
@@ -157,7 +154,7 @@ function formatBrowserSessionResult(
 export const browserSessionAction: Action = {
   name: "BROWSER_SESSION",
   contexts: ["browser", "web", "automation"],
-  roleGate: { minRole: "ADMIN" },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "BROWSE_SITE",
     "CONTROL_BROWSER_SESSION",
@@ -169,23 +166,8 @@ export const browserSessionAction: Action = {
     "Control the Eliza browser workspace through one session surface. Uses the real desktop browser bridge or hosted Eliza Cloud browser when available, and falls back to the limited embedded web mode only when no real browser session backend is configured.",
   descriptionCompressed:
     "control Eliza browser workspace through one session surface use real desktop browser bridge host Eliza Cloud browser available, fall back limit embedd web mode real browser session backend configur",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
-    return hasOwnerAccess(runtime, message);
-  },
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may control browser sessions.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "BROWSER_SESSION" },
-      };
-    }
-
+  validate: async () => true,
+  handler: async (_runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | BrowserSessionParameters
       | undefined;

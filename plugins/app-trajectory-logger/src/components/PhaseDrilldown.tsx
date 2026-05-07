@@ -21,9 +21,12 @@ export function PhaseDrilldown({ phase }: { phase: PhaseSummary }) {
   }
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="text-xs text-muted/60">{children}</div>;
-}
+const STATUS_BORDER: Record<"ok" | "error" | "running" | "skipped", string> = {
+  ok: "border-green-500/40",
+  error: "border-red-500/40",
+  running: "border-blue-500/40 animate-pulse",
+  skipped: "border-yellow-500/40",
+};
 
 function jsonBlock(value: unknown): string {
   try {
@@ -31,6 +34,11 @@ function jsonBlock(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function previewText(text: string): string {
+  if (text.length <= 600) return text;
+  return `${text.slice(0, 600)}…  (+${text.length - 600})`;
 }
 
 function HandleBody({
@@ -44,6 +52,9 @@ function HandleBody({
     (c) => (c.stepType || c.purpose || "").toLowerCase() === "should_respond",
   );
   const decision = respond ? extractShouldRespondDecision(respond) : null;
+  const providers = [
+    ...new Set(ctx.map((p) => p.providerName).filter(Boolean)),
+  ];
   return (
     <div className="flex flex-col gap-2 text-xs">
       {decision ? (
@@ -53,33 +64,27 @@ function HandleBody({
             <span className="ml-2 text-muted">{decision.reasoning}</span>
           ) : null}
         </div>
-      ) : respond ? (
-        <Empty>(no decision parsed)</Empty>
       ) : null}
-      <div className="flex flex-wrap gap-1">
-        {ctx.length === 0 ? (
-          <Empty>no providers</Empty>
-        ) : (
-          [...new Set(ctx.map((p) => p.providerName).filter(Boolean))].map(
-            (n) => (
-              <span
-                key={n}
-                className="rounded-full border border-border/24 bg-card/40 px-1.5 py-0.5 text-2xs text-txt"
-              >
-                {n}
-              </span>
-            ),
-          )
-        )}
-      </div>
+      {providers.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {providers.map((n) => (
+            <span
+              key={n}
+              className="rounded-full border border-border/24 bg-card/40 px-1.5 py-0.5 text-2xs text-txt"
+            >
+              {n}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function PlanBody({ calls }: { calls: UILlmCall[] }) {
-  if (calls.length === 0) return <Empty>no plan calls</Empty>;
   const last = calls[calls.length - 1];
-  const text = previewResponseText((last.response ?? "").trim());
+  if (!last) return null;
+  const text = previewText((last.response ?? "").trim());
   return (
     <div className="flex flex-col gap-2 text-xs">
       {last.actionType ? (
@@ -89,55 +94,42 @@ function PlanBody({ calls }: { calls: UILlmCall[] }) {
         <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/24 bg-bg/40 p-2 text-2xs text-muted">
           {text}
         </pre>
-      ) : (
-        <Empty>(empty response)</Empty>
-      )}
+      ) : null}
     </div>
   );
 }
 
-// LLM responses can be huge embedding vectors or other dense numeric payloads
-// that bury anything useful. Trim to a sensible preview without copying the
-// whole array into the DOM.
-function previewResponseText(text: string): string {
-  if (text.length <= 600) return text;
-  return `${text.slice(0, 600)}…  (${text.length - 600} more chars)`;
-}
-
 function ActionBody({ events }: { events: UIToolEvent[] }) {
-  if (events.length === 0) return <Empty>no actions</Empty>;
+  if (events.length === 0) return null;
   return (
     <div className="flex flex-col gap-2 text-xs">
       {events.map((e) => {
-        const name = e.actionName || e.toolName || e.name || "(unknown)";
-        const errored =
-          e.type === "tool_error" || e.error || e.success === false;
-        const ok =
-          e.type === "tool_result" ||
-          e.status === "completed" ||
-          e.success === true;
+        const name = e.actionName || e.toolName || e.name || "action";
+        const status: keyof typeof STATUS_BORDER =
+          e.type === "tool_error" || e.error || e.success === false
+            ? "error"
+            : e.type === "tool_result" ||
+                e.status === "completed" ||
+                e.success === true
+              ? "ok"
+              : e.status === "skipped"
+                ? "skipped"
+                : "running";
         const args = e.args ?? e.input ?? null;
         const result = e.result ?? e.output ?? null;
         return (
           <div
             key={e.id}
-            className="rounded border border-border/24 bg-card/30 p-2"
+            className={[
+              "rounded border-l-2 bg-card/30 p-2",
+              STATUS_BORDER[status],
+            ].join(" ")}
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-mono text-txt">{name}</span>
-              <span
-                className={[
-                  "text-2xs uppercase",
-                  errored
-                    ? "text-red-400"
-                    : ok
-                      ? "text-green-400"
-                      : "text-blue-400",
-                ].join(" ")}
-              >
-                {errored ? "error" : ok ? "ok" : "running"}
-                {typeof e.durationMs === "number" ? ` · ${e.durationMs}ms` : ""}
-              </span>
+              {typeof e.durationMs === "number" ? (
+                <span className="text-2xs text-muted/60">{e.durationMs}ms</span>
+              ) : null}
             </div>
             {e.error ? (
               <div className="mt-1 text-2xs text-red-400">{e.error}</div>
@@ -166,28 +158,32 @@ function EvaluateBody({
   calls: UILlmCall[];
   events: UIEvaluationEvent[];
 }) {
-  if (events.length === 0 && calls.length === 0)
-    return <Empty>no evaluators</Empty>;
+  if (events.length === 0 && calls.length === 0) return null;
   return (
     <div className="flex flex-col gap-2 text-xs">
       {events.map((e) => {
         const name = e.evaluatorName || e.name || "evaluator";
-        const errored = e.error || e.success === false;
+        const status: keyof typeof STATUS_BORDER =
+          e.error || e.success === false
+            ? "error"
+            : e.success === true || e.status === "completed"
+              ? "ok"
+              : e.status === "skipped"
+                ? "skipped"
+                : "running";
         return (
           <div
             key={e.id}
-            className="rounded border border-border/24 bg-card/30 p-2"
+            className={[
+              "rounded border-l-2 bg-card/30 p-2",
+              STATUS_BORDER[status],
+            ].join(" ")}
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-mono text-txt">{name}</span>
-              <span
-                className={[
-                  "text-2xs uppercase",
-                  errored ? "text-red-400" : "text-green-400",
-                ].join(" ")}
-              >
-                {e.decision ?? (errored ? "error" : "ok")}
-              </span>
+              {e.decision ? (
+                <span className="text-2xs text-muted">{e.decision}</span>
+              ) : null}
             </div>
             {e.thought ? (
               <div className="mt-1 text-muted">{e.thought}</div>
@@ -198,9 +194,6 @@ function EvaluateBody({
           </div>
         );
       })}
-      {events.length === 0 && calls.length > 0 ? (
-        <Empty>{calls.length} eval llm calls</Empty>
-      ) : null}
     </div>
   );
 }

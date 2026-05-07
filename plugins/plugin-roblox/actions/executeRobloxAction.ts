@@ -206,6 +206,7 @@ export const executeRobloxAction: Action = {
   name: actionName,
   contexts: ["media", "automation"],
   contextGate: { anyOf: ["media", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["ROBLOX_RUN", "ROBLOX_TRIGGER", "ROBLOX_GAME_ACTION"],
   description:
     "Trigger a server-side Roblox game action such as move-npc, give-coins, teleport, spawn-entity, or start-event.",

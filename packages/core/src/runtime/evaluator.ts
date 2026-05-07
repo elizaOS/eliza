@@ -7,11 +7,15 @@ import {
 	type PromptSegment,
 	type TextGenerationModelType,
 } from "../types/model";
-import type { JsonValue } from "../types/primitives.ts";
 import { computePrefixHashes } from "./context-hash";
-import { renderContextObject } from "./context-renderer";
+import {
+	buildStageChatMessages,
+	cachePrefixSegments,
+	normalizePromptSegments,
+	renderContextObject,
+} from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
-import { parseJsonObject, stringifyForModel } from "./json-output";
+import { parseJsonObject } from "./json-output";
 import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
@@ -21,7 +25,10 @@ import type {
 	PlannerToolCall,
 	PlannerTrajectory,
 } from "./planner-loop";
-import { trajectoryStepsToMessages } from "./planner-loop";
+import {
+	cacheProviderOptions,
+	trajectoryStepsToMessages,
+} from "./planner-loop";
 import type {
 	RecordedStage,
 	RecordedUsage,
@@ -110,6 +117,13 @@ export async function runEvaluator(
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 	});
+	const providerOptions = withModelInputBudgetProviderOptions(
+		cacheProviderOptions({
+			prefixHash,
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+		}),
+		modelInputBudget,
+	);
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
 	const raw = await params.runtime.useModel(
@@ -119,13 +133,7 @@ export async function runEvaluator(
 			messages: renderedInput.messages,
 			responseSchema: v5EvaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
-			providerOptions: withModelInputBudgetProviderOptions(
-				cacheProviderOptions({
-					prefixHash,
-					segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-				}),
-				modelInputBudget,
-			),
+			providerOptions,
 		},
 		params.provider,
 	);
@@ -150,6 +158,7 @@ export async function runEvaluator(
 		provider: params.provider,
 		prompt,
 		messages: renderedInput.messages,
+		providerOptions,
 		raw,
 		output,
 		startedAt,
@@ -171,6 +180,7 @@ async function recordEvaluationStage(args: {
 	provider?: string;
 	prompt: string;
 	messages?: ChatMessage[];
+	providerOptions?: Record<string, unknown>;
 	raw: string | { text?: string; object?: unknown; providerMetadata?: unknown };
 	output: EvaluatorOutput;
 	startedAt: number;
@@ -205,6 +215,7 @@ async function recordEvaluationStage(args: {
 				messages: args.messages,
 				tools: [],
 				toolCalls: [],
+				providerOptions: args.providerOptions,
 				response: responseText,
 				usage,
 				costUsd: usage ? computeCallCostUsd(modelName, usage) : undefined,
@@ -297,12 +308,9 @@ function renderEvaluatorModelInput(params: {
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
-	// Legacy prompt string still serializes as JSON for hash/segment consistency.
-	const trajectoryContent = `trajectory:\n${stringifyForModel(params.trajectory)}`;
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
 		{ content: `evaluator_stage:\n${instructions}`, stable: false },
-		{ content: trajectoryContent, stable: false },
 	]);
 	const prompt = promptSegments.map((segment) => segment.content).join("");
 	// Use proper assistant/tool message pairs so the evaluator sees the same
@@ -347,91 +355,6 @@ function renderMessagesFromPrompt(
 				]
 			: [{ role: "user", content: prompt }];
 	return { prompt, messages, promptSegments };
-}
-
-function compactPromptSegments(segments: PromptSegment[]): PromptSegment[] {
-	return segments.filter((segment) => segment.content.length > 0);
-}
-
-function normalizePromptSegments(segments: PromptSegment[]): PromptSegment[] {
-	return compactPromptSegments(
-		segments.map((segment, index) => ({
-			...segment,
-			content: `${index === 0 ? "" : "\n\n"}${segment.content.trim()}`,
-		})),
-	);
-}
-
-function segmentBlock(segment: PromptSegment): string {
-	const content = segment.content.trim();
-	const label = (segment as PromptSegment & { label?: unknown }).label;
-	return typeof label === "string" && label ? `${label}:\n${content}` : content;
-}
-
-function buildStageChatMessages(args: {
-	contextSegments: PromptSegment[];
-	stageLabel: string;
-	instructions: string;
-	dynamicBlocks: string[];
-	stepMessages: ChatMessage[];
-}): ChatMessage[] {
-	const stableContext = args.contextSegments
-		.filter((segment) => segment.stable)
-		.map(segmentBlock)
-		.filter(Boolean);
-	const dynamicContext = args.contextSegments
-		.filter((segment) => !segment.stable)
-		.map(segmentBlock)
-		.filter(Boolean);
-	const systemContent = [
-		...stableContext,
-		`${args.stageLabel}:\n${args.instructions}`,
-	]
-		.filter(Boolean)
-		.join("\n\n");
-	const userContent = [...dynamicContext, ...args.dynamicBlocks]
-		.map((block) => block.trim())
-		.filter(Boolean)
-		.join("\n\n");
-	return [
-		{ role: "system", content: systemContent },
-		{ role: "user", content: userContent },
-		...args.stepMessages,
-	];
-}
-
-function cachePrefixSegments(segments: PromptSegment[]): PromptSegment[] {
-	const prefix: PromptSegment[] = [];
-	for (const segment of segments) {
-		if (!segment.stable) break;
-		prefix.push(segment);
-	}
-	return prefix.length > 0 ? prefix : segments.slice(0, 1);
-}
-
-function cacheProviderOptions(args: {
-	prefixHash: string;
-	segmentHashes?: readonly string[];
-}): Record<string, JsonValue | object | undefined> {
-	const promptCacheKey = `v5:${args.prefixHash}`.slice(0, 1024);
-	return {
-		eliza: {
-			promptCacheKey,
-			prefixHash: args.prefixHash,
-			...(args.segmentHashes ? { segmentHashes: [...args.segmentHashes] } : {}),
-		},
-		cerebras: {
-			promptCacheKey,
-			prompt_cache_key: promptCacheKey,
-		},
-		openai: {
-			promptCacheKey,
-			promptCacheRetention: "24h",
-		},
-		gateway: {
-			caching: "auto",
-		},
-	};
 }
 
 export function parseEvaluatorOutput(

@@ -21,6 +21,7 @@ import {
 
 export const spawnAgentAction = {
   name: "SPAWN_AGENT",
+  roleGate: { minRole: "OWNER" },
   similes: [
     "SPAWN_CODING_AGENT",
     "START_CODING_AGENT",

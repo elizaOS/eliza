@@ -15,6 +15,7 @@ import {
 
 export const stopAgentAction: Action = {
   name: "STOP_AGENT",
+  roleGate: { minRole: "OWNER" },
   similes: [
     "STOP_CODING_AGENT",
     "KILL_CODING_AGENT",

@@ -1,4 +1,4 @@
-import path from "path";
+import path from "node:path";
 
 type TupleSkillResult = [number, string, string | null];
 type SkillExecutionResult = string | TupleSkillResult;

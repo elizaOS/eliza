@@ -16,12 +16,10 @@ import type {
   Action,
   ActionExample,
   HandlerOptions,
-  IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasRoleAccess } from "../security/access.js";
 import { resolveDesktopBrowserWorkspaceTargetTabId } from "../services/browser-workspace-desktop.js";
 import { runLaunchpadImageGeneration } from "../services/launchpads/image-generator.js";
 import { runLaunchpad } from "../services/launchpads/launchpad-engine.js";
@@ -101,8 +99,7 @@ export const launchpadLaunchAction: Action = {
     "Drive an in-app browser tab through a launchpad (four.meme or flap.sh, both on BNB Chain) to launch a token while the user watches. Generates token metadata + image, fills the form with realistic cursor movement, and stops at the wallet confirmation sheet — the user approves each transaction. Use dryRun: 'stop-before-tx' for testnet runs.",
   descriptionCompressed:
     "drive in-app browser tab through launchpad (four meme flap sh, both BNB Chain) launch token user watch generate token metadata + image, fill form w/ realistic cursor movement, stop wallet confirmation sheet user approve each transaction use dryrun: stop-before-tx testnet run",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasRoleAccess(runtime, message, "USER"),
+  validate: async () => true,
   handler: async (runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)
       ?.parameters as unknown as LaunchpadLaunchParameters | undefined;

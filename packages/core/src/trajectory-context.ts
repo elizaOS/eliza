@@ -5,6 +5,8 @@
  * synchronously to avoid race with first message processing).
  * Browser: stack-based fallback.
  */
+
+import type { RoleGateRole } from "./types/contexts";
 import { StackContextManager } from "./utils/stack-context-manager";
 
 export interface TrajectoryContext {
@@ -17,6 +19,8 @@ export interface TrajectoryContext {
 	roomId?: string;
 	/** Source message identifier associated with the active trajectory context. */
 	messageId?: string;
+	/** Sender role resolved for the active message, used for prompt identity and role-aware logging. */
+	userRole?: RoleGateRole;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
 	/**

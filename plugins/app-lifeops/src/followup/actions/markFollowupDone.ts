@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -70,7 +69,7 @@ export const markFollowupDoneAction: Action = {
     "Ambiguous names return a clarifying response without modifying any contact.",
   contexts: ["contacts", "tasks", "calendar", "messaging"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     _message,

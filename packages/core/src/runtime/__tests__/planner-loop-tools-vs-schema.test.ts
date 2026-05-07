@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ModelType, type ToolDefinition } from "../../types/model";
+import type { ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
 
 /**

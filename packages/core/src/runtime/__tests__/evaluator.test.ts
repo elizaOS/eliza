@@ -70,6 +70,7 @@ describe("v5 evaluator skeleton", () => {
 			trajectory: {
 				context: { id: "ctx" },
 				steps: [],
+				archivedSteps: [],
 				plannedQueue: [],
 				evaluatorOutputs: [],
 			},
@@ -148,6 +149,7 @@ describe("v5 evaluator skeleton", () => {
 						},
 					},
 				],
+				archivedSteps: [],
 				plannedQueue: [],
 				evaluatorOutputs: [],
 			},

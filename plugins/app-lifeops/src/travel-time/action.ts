@@ -2,7 +2,6 @@
  * T8a — COMPUTE_TRAVEL_BUFFER action.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -36,7 +35,7 @@ export const computeTravelBufferAction: Action = {
     "Compute a travel-time buffer (in minutes) for an upcoming calendar event using Google Maps Distance Matrix. Fails explicitly when Maps configuration, addresses, or provider responses are unavailable.",
   contexts: ["calendar", "tasks", "contacts"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,

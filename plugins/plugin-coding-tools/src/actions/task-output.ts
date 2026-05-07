@@ -1,11 +1,11 @@
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -35,10 +35,12 @@ export const taskOutputAction: Action = {
   name: "TASK_OUTPUT",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: ["code", "terminal", "automation"] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["GET_TASK_OUTPUT"],
   description:
     "Read captured output and current status of a background BASH task. Pass block=true to wait for completion (or until timeout) before returning.",
-  descriptionCompressed: "Read background shell task output (optionally blocking).",
+  descriptionCompressed:
+    "Read background shell task output (optionally blocking).",
   parameters: [
     {
       name: "task_id",
@@ -48,7 +50,8 @@ export const taskOutputAction: Action = {
     },
     {
       name: "block",
-      description: "If true, wait for the task to finish (or until timeout) before returning.",
+      description:
+        "If true, wait for the task to finish (or until timeout) before returning.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -60,7 +63,11 @@ export const taskOutputAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (disable === true || disable === "true" || disable === "1") return false;
     return true;
@@ -73,7 +80,10 @@ export const taskOutputAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     if (!message.roomId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
 
     const taskId = readStringParam(options, "task_id");
@@ -120,7 +130,9 @@ export const taskOutputAction: Action = {
       const stdoutT = truncate(rec.stdout, STREAM_CAP_CHARS);
       const stderrT = truncate(rec.stderr, STREAM_CAP_CHARS);
       const exitLine =
-        rec.exitCode === undefined ? "exit_code: <none>" : `exit_code: ${rec.exitCode}`;
+        rec.exitCode === undefined
+          ? "exit_code: <none>"
+          : `exit_code: ${rec.exitCode}`;
       const lines = [`task_id: ${rec.id}`, `status: ${rec.status}`, exitLine];
       if (stdoutT.text.length > 0) {
         lines.push("--- stdout ---");
@@ -142,7 +154,8 @@ export const taskOutputAction: Action = {
         cwd: rec.cwd,
       });
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
+      const messageText =
+        error instanceof Error ? error.message : String(error);
       return failureToActionResult({
         reason: "internal",
         message: `task output failed: ${messageText.slice(0, 500)}`,

@@ -7,7 +7,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   extractHostedCloudPage,
   isHostedCloudToolingConfigured,
@@ -48,32 +47,20 @@ function formatExtractPreview(
 export const extractPageAction: Action = {
   name: "EXTRACT_PAGE",
   contexts: ["web", "browser", "knowledge"],
-  roleGate: { minRole: "ADMIN" },
+  roleGate: { minRole: "OWNER" },
   similes: ["SCRAPE_PAGE", "FETCH_PAGE", "READ_WEB_PAGE", "EXTRACT_WEB_PAGE"],
   description:
     "Extract page content through Eliza Cloud hosted tools. Returns cleaned markdown plus optional HTML, links, screenshot data, and page metadata.",
   descriptionCompressed:
     "extract page content through Eliza Cloud host tool return clean markdown plus optional HTML, link, screenshot data, page metadata",
   validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+    _runtime: IAgentRuntime,
+    _message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return false;
-    }
     return isHostedCloudToolingConfigured(process.env);
   },
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may extract pages.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "EXTRACT_PAGE" },
-      };
-    }
-
+  handler: async (_runtime, message, _state, options) => {
     if (!isHostedCloudToolingConfigured(process.env)) {
       return {
         text: "Page extraction requires Eliza Cloud hosted tools to be configured.",

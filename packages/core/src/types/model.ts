@@ -358,6 +358,12 @@ export interface GenerateTextParams
 	onStreamChunk?: StreamChunkCallback;
 	user?: string;
 	/**
+	 * Provider-neutral system instruction for text-generation calls. When omitted,
+	 * runtime/provider layers may derive it from the leading system message or
+	 * character identity.
+	 */
+	system?: string;
+	/**
 	 * Optional multimodal attachments for the current turn. Providers that
 	 * support native file/image inputs can send these directly alongside the
 	 * prompt; others may ignore them and rely on prompt-only fallbacks.

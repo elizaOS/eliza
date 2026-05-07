@@ -7,7 +7,6 @@
  */
 
 import type { Action, ActionExample } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
@@ -50,19 +49,11 @@ export const goLiveAction: Action = {
     "Start the live stream, broadcasting to the active destination (Twitch, YouTube, etc.).",
   descriptionCompressed:
     "start live stream, broadcast active destination (Twitch, YouTube, etc)",
-  validate: async (runtime, message, state) => {
-    if (!(await hasOwnerAccess(runtime, message))) return false;
+  validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "stream_control");
   },
 
-  handler: async (runtime, message) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may control the live stream.",
-        success: false,
-      };
-    }
-
+  handler: async (_runtime, _message) => {
     try {
       const result = await apiPost("/api/stream/live");
       if (!result.ok) {
@@ -141,19 +132,11 @@ export const goOfflineAction: Action = {
     "tears it down and releases the capture and RTMP resources.",
   descriptionCompressed:
     "stop active live stream take agent offline use owner say go offline, end stream, stop stream, shut down broadcast pair action GO_LIVE start new stream; one tear down release capture RTMP resource",
-  validate: async (runtime, message, state) => {
-    if (!(await hasOwnerAccess(runtime, message))) return false;
+  validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "stream_control");
   },
 
-  handler: async (runtime, message) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may control the live stream.",
-        success: false,
-      };
-    }
-
+  handler: async (_runtime, _message) => {
     try {
       const result = await apiPost("/api/stream/offline");
       if (!result.ok) {

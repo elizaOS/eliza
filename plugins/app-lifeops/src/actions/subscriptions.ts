@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -8,14 +7,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts } from "./lib/recent-context.js";
 import { INTERNAL_URL, messageText } from "./lifeops-google-helpers.js";
@@ -552,8 +548,7 @@ export const subscriptionsAction: Action & {
   ],
 
   suppressPostActionContinuation: true,
-  validate: async (runtime: IAgentRuntime, message: Memory) =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

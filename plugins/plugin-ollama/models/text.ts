@@ -1,5 +1,11 @@
 import type { GenerateTextParams, IAgentRuntime, ModelTypeName } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  logger,
+  ModelType,
+  renderChatMessagesForPrompt,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
 import { generateText, type LanguageModel } from "ai";
 import { createOllama } from "ollama-ai-provider";
 
@@ -32,7 +38,6 @@ type GenerateTextParamsWithNativeOptions = GenerateTextParams & {
 
 function assertNoUnsupportedNativeOptions(params: GenerateTextParamsWithNativeOptions): void {
   const unsupported = [
-    params.messages ? "messages" : undefined,
     params.tools ? "tools" : undefined,
     params.toolChoice ? "toolChoice" : undefined,
     params.responseSchema ? "responseSchema" : undefined,
@@ -145,9 +150,16 @@ async function handleTextWithModelType(
     logger.log(`[Ollama] Using ${modelType} model: ${model}`);
     await ensureModelAvailable(model, baseURL, customFetch);
 
+    const system = resolveEffectiveSystemPrompt({
+      params,
+      fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+    });
     return await generateOllamaText(runtime, ollama, modelType, model, {
-      prompt,
-      system: runtime.character?.system ?? undefined,
+      prompt:
+        renderChatMessagesForPrompt(params.messages, {
+          omitDuplicateSystem: system,
+        }) ?? prompt,
+      system,
       temperature,
       maxTokens,
       frequencyPenalty,

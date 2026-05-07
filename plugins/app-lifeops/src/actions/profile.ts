@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -367,19 +366,9 @@ export const profileAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime, message) => {
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
   handler: async (runtime, message, state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "",
-        success: false,
-        data: { error: "PERMISSION_DENIED" },
-      };
-    }
-
     const resolved = await resolveActionArgs<ProfileSubaction, ProfileParams>({
       runtime,
       message,

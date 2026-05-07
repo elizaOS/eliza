@@ -1,11 +1,11 @@
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -26,6 +26,7 @@ export const taskStopAction: Action = {
   name: "TASK_STOP",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: ["code", "terminal", "automation"] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["KILL_TASK", "STOP_TASK"],
   description:
     "Terminate a running background BASH task by id. Sends SIGTERM (and SIGKILL after a grace period). Returns the task's terminal status.",
@@ -38,7 +39,11 @@ export const taskStopAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (disable === true || disable === "true" || disable === "1") return false;
     return true;
@@ -51,7 +56,10 @@ export const taskStopAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     if (!message.roomId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
 
     const taskId = readStringParam(options, "task_id");
@@ -99,7 +107,9 @@ export const taskStopAction: Action = {
         });
       }
 
-      coreLogger.debug(`${CODING_TOOLS_LOG_PREFIX} TASK_STOP signaled ${taskId}`);
+      coreLogger.debug(
+        `${CODING_TOOLS_LOG_PREFIX} TASK_STOP signaled ${taskId}`,
+      );
 
       // Wait briefly so the caller sees the post-kill status; SIGTERM almost
       // always lands well before the grace window expires.
@@ -113,7 +123,8 @@ export const taskStopAction: Action = {
         exit_code: final?.exitCode ?? null,
       });
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
+      const messageText =
+        error instanceof Error ? error.message : String(error);
       return failureToActionResult({
         reason: "internal",
         message: `task stop failed: ${messageText.slice(0, 500)}`,

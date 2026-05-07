@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -503,7 +502,6 @@ export const xAction: Action & {
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message, state) => {
-    if (!(await hasOwnerAccess(runtime, message))) return false;
     if (!hasXReadContext(message, state) && !hasXReadIntent(message, state)) {
       const params = (message.content ?? {}) as Record<string, unknown>;
       if (
@@ -562,14 +560,6 @@ export const xAction: Action & {
     options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "",
-        success: false,
-        data: { error: "PERMISSION_DENIED" },
-      };
-    }
-
     const params = (options?.parameters ?? {}) as XReadActionParams;
     const intent = (params.intent ?? messageText(message) ?? "").trim();
     const explicitSubaction = normalizeSubaction(params.subaction);

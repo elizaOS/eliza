@@ -19,6 +19,7 @@ export const oauthListAction: ActionWithParams = {
   name: "OAUTH_LIST",
   contexts: ["connectors", "settings"],
   contextGate: { anyOf: ["connectors", "settings"] },
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "LIST_CONNECTIONS",
     "SHOW_CONNECTIONS",
