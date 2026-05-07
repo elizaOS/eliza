@@ -41,7 +41,6 @@ export interface EvaluatorRuntime {
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
-			prompt?: string;
 			messages: ChatMessage[];
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
@@ -124,7 +123,6 @@ export async function runEvaluator(
 	const raw = await params.runtime.useModel(
 		modelType,
 		{
-			prompt: renderedInput.prompt,
 			messages: renderedInput.messages,
 			responseSchema: v5EvaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
@@ -151,7 +149,6 @@ export async function runEvaluator(
 		iteration: params.iteration ?? 1,
 		modelType: String(modelType),
 		provider: params.provider,
-		prompt: renderedInput.prompt,
 		messages: renderedInput.messages,
 		providerOptions,
 		raw,
@@ -173,7 +170,6 @@ async function recordEvaluationStage(args: {
 	iteration: number;
 	modelType: string;
 	provider?: string;
-	prompt?: string;
 	messages?: ChatMessage[];
 	providerOptions?: Record<string, unknown>;
 	raw: string | { text?: string; object?: unknown; providerMetadata?: unknown };
@@ -206,7 +202,6 @@ async function recordEvaluationStage(args: {
 				modelType: args.modelType,
 				modelName,
 				provider: args.provider ?? "default",
-				prompt: args.prompt,
 				messages: args.messages,
 				tools: [],
 				toolCalls: [],
@@ -285,7 +280,6 @@ function renderEvaluatorModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 }): {
-	prompt: string;
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 } {
@@ -299,7 +293,6 @@ function renderEvaluatorModelInput(params: {
 		...renderedContext.promptSegments,
 		{ content: `evaluator_stage:\n${instructions}`, stable: false },
 	]);
-	const prompt = promptSegments.map((segment) => segment.content).join("");
 	// Use proper assistant/tool message pairs so the evaluator sees the same
 	// native tool-calling format as the planner. The trajectory JSON is NOT
 	// included in dynamicBlocks — it is conveyed through stepMessages.
@@ -310,7 +303,7 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { prompt, messages, promptSegments };
+	return { messages, promptSegments };
 }
 
 export function parseEvaluatorOutput(

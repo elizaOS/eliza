@@ -703,6 +703,9 @@ Your response should include the valid XML block and nothing else.`;
  * Represents an action that allows the agent to generate an image using a generated prompt.
  *
  * This action can be used in a chain where the agent needs to visualize or illustrate a concept, emotion, or scene.
+ * Cloud affiliate loads instead of the cloud assistant/bootstrap path and does
+ * not co-load with the local agent/core runtime, so it intentionally mirrors the
+ * canonical GENERATE_IMAGE action name while preserving cloud-specific behavior.
  */
 export const generateImageAction = {
   name: "GENERATE_IMAGE",

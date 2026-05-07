@@ -98,7 +98,11 @@ export const listActiveBlocksAction: Action = {
         text:
           sections.join("\n") ||
           "Managed block rule listing was not requested.",
-        data: { rules: [], liveStatus },
+        data: {
+          actionName: "LIST_ACTIVE_BLOCKS",
+          rules: [],
+          liveStatus,
+        },
       };
     }
 
@@ -107,7 +111,11 @@ export const listActiveBlocksAction: Action = {
       return {
         success: true,
         text: sections.join("\n"),
-        data: { rules: [], liveStatus },
+        data: {
+          actionName: "LIST_ACTIVE_BLOCKS",
+          rules: [],
+          liveStatus,
+        },
       };
     }
 
@@ -132,7 +140,7 @@ export const listActiveBlocksAction: Action = {
     return {
       success: true,
       text: sections.join("\n"),
-      data: { rules, liveStatus },
+      data: { actionName: "LIST_ACTIVE_BLOCKS", rules, liveStatus },
     };
   },
   parameters: [

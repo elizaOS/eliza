@@ -2,7 +2,7 @@
  * Trajectory introspection actions.
  *
  * QUERY_TRAJECTORIES        → GET /api/trajectories
- * EXPORT_TRAJECTORY_DATASET → POST /api/trajectories/export
+ * EXPORT_TRAJECTORIES (was EXPORT_TRAJECTORY_DATASET) → POST /api/trajectories/export
  * ANNOTATE_TRAJECTORY       → wraps annotateActiveTrajectoryStep utility
  */
 
@@ -192,10 +192,14 @@ interface ExportTrajectoriesParams {
 }
 
 export const exportTrajectoryDatasetAction: Action = {
-  name: "EXPORT_TRAJECTORY_DATASET",
+  name: "EXPORT_TRAJECTORIES",
   contexts: ["agent_internal", "admin", "knowledge", "files"],
   roleGate: { minRole: "OWNER" },
-  similes: ["DUMP_TRAJECTORIES", "DOWNLOAD_TRAJECTORIES"],
+  similes: [
+    "EXPORT_TRAJECTORY_DATASET",
+    "DUMP_TRAJECTORIES",
+    "DOWNLOAD_TRAJECTORIES",
+  ],
   description:
     "Export trajectory data as JSON, JSONL, CSV, ART, or ZIP via /api/trajectories/export. Returns the response size; the agent does not stream the bytes back to the user.",
   descriptionCompressed:
@@ -252,7 +256,7 @@ export const exportTrajectoryDatasetAction: Action = {
         text: `Exported trajectory dataset as ${format} (${sizeBytes} bytes).`,
         values: { format, sizeBytes },
         data: {
-          actionName: "EXPORT_TRAJECTORY_DATASET",
+          actionName: "EXPORT_TRAJECTORIES",
           format,
           sizeBytes,
         },

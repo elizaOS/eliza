@@ -158,7 +158,9 @@ async function handleTextWithModelType(
       prompt:
         renderChatMessagesForPrompt(params.messages, {
           omitDuplicateSystem: system,
-        }) ?? prompt,
+        }) ??
+        prompt ??
+        "",
       system,
       temperature,
       maxTokens,

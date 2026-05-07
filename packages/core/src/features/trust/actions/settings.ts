@@ -620,7 +620,7 @@ async function generateErrorResponse(
 }
 
 export const updateSettingsAction: ElizaAction = {
-	name: "UPDATE_SETTINGS",
+	name: "TRUST_UPDATE_SETTINGS",
 	contexts: ["settings", "admin"],
 	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
@@ -714,7 +714,7 @@ export const updateSettingsAction: ElizaAction = {
 					success: false,
 					text: "No server found where you are the owner",
 					data: {
-						actionName: "UPDATE_SETTINGS",
+						actionName: "TRUST_UPDATE_SETTINGS",
 						error: "NO_SERVER_OWNERSHIP",
 					},
 				};
@@ -726,7 +726,7 @@ export const updateSettingsAction: ElizaAction = {
 				return {
 					success: false,
 					text: "No server ID found",
-					data: { actionName: "UPDATE_SETTINGS", error: "NO_SERVER_ID" },
+					data: { actionName: "TRUST_UPDATE_SETTINGS", error: "NO_SERVER_ID" },
 				};
 			}
 
@@ -738,7 +738,7 @@ export const updateSettingsAction: ElizaAction = {
 					success: false,
 					text: "No settings state found for server",
 					data: {
-						actionName: "UPDATE_SETTINGS",
+						actionName: "TRUST_UPDATE_SETTINGS",
 						error: "NO_SETTINGS_STATE",
 					},
 				};
@@ -778,7 +778,7 @@ export const updateSettingsAction: ElizaAction = {
 						success: false,
 						text: "Failed to retrieve updated settings state",
 						data: {
-							actionName: "UPDATE_SETTINGS",
+							actionName: "TRUST_UPDATE_SETTINGS",
 							error: "SETTINGS_RETRIEVAL_FAILED",
 						},
 					};
@@ -796,7 +796,7 @@ export const updateSettingsAction: ElizaAction = {
 					success: true,
 					text: updateResults.messages.join(". "),
 					data: {
-						actionName: "UPDATE_SETTINGS",
+						actionName: "TRUST_UPDATE_SETTINGS",
 						success: true,
 						updatedSettings: extractedSettings,
 						messages: updateResults.messages,
@@ -809,7 +809,7 @@ export const updateSettingsAction: ElizaAction = {
 					success: false,
 					text: "No settings were updated from your message",
 					data: {
-						actionName: "UPDATE_SETTINGS",
+						actionName: "TRUST_UPDATE_SETTINGS",
 						success: false,
 						reason: "NO_VALID_SETTINGS_FOUND",
 					},
@@ -825,7 +825,7 @@ export const updateSettingsAction: ElizaAction = {
 				success: false,
 				text: "An error occurred while updating settings",
 				data: {
-					actionName: "UPDATE_SETTINGS",
+					actionName: "TRUST_UPDATE_SETTINGS",
 					error: error instanceof Error ? error.message : "UNKNOWN_ERROR",
 				},
 			};

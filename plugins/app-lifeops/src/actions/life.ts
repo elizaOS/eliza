@@ -1997,7 +1997,14 @@ export const lifeAction: Action & {
     // render a user-visible message — any streamed tokens from the outer
     // LLM reply already landed before this handler runs.
     if (await isForeignPageScope(runtime, message)) {
-      return { success: false, text: "" };
+      return {
+        success: false,
+        text: "",
+        data: {
+          actionName: "LIFE",
+          reason: "foreign_page_scope",
+        },
+      };
     }
 
     const rawParams = (options as HandlerOptions | undefined)?.parameters as

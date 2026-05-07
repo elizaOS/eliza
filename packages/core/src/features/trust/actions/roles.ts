@@ -116,7 +116,7 @@ function extractRoleAssignments(result: unknown): RoleAssignment[] {
 }
 
 export const updateRoleAction: ElizaAction = {
-	name: "UPDATE_ROLE",
+	name: "TRUST_UPDATE_ROLE",
 	contexts: ["admin", "settings"],
 	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
@@ -214,7 +214,7 @@ export const updateRoleAction: ElizaAction = {
 			return {
 				success: false,
 				data: {
-					actionName: "UPDATE_ROLE",
+					actionName: "TRUST_UPDATE_ROLE",
 					success: false,
 					error: "World not found",
 				},
@@ -311,13 +311,13 @@ export const updateRoleAction: ElizaAction = {
 		if (!result?.length) {
 			await callback?.({
 				text: "No valid role assignments found in the request.",
-				actions: ["UPDATE_ROLE"],
+				actions: ["TRUST_UPDATE_ROLE"],
 				source: "discord",
 			});
 			return {
 				success: false,
 				data: {
-					actionName: "UPDATE_ROLE",
+					actionName: "TRUST_UPDATE_ROLE",
 					success: false,
 					message: "No valid role assignments found",
 				},
@@ -343,7 +343,7 @@ export const updateRoleAction: ElizaAction = {
 			if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
 				await callback?.({
 					text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-					actions: ["UPDATE_ROLE"],
+					actions: ["TRUST_UPDATE_ROLE"],
 					source: "discord",
 				});
 				continue;
@@ -360,7 +360,7 @@ export const updateRoleAction: ElizaAction = {
 
 			await callback?.({
 				text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-				actions: ["UPDATE_ROLE"],
+				actions: ["TRUST_UPDATE_ROLE"],
 				source: "discord",
 			});
 		}
@@ -373,7 +373,7 @@ export const updateRoleAction: ElizaAction = {
 		return {
 			success: worldUpdated,
 			data: {
-				actionName: "UPDATE_ROLE",
+				actionName: "TRUST_UPDATE_ROLE",
 				success: worldUpdated,
 				updatedRoles,
 				totalProcessed: result.length,
@@ -398,7 +398,7 @@ export const updateRoleAction: ElizaAction = {
 				name: "{{name3}}",
 				content: {
 					text: "Updated {{name2}}'s role to ADMIN.",
-					actions: ["UPDATE_ROLE"],
+					actions: ["TRUST_UPDATE_ROLE"],
 				},
 			},
 		],
@@ -414,7 +414,7 @@ export const updateRoleAction: ElizaAction = {
 				name: "{{name3}}",
 				content: {
 					text: "Updated alice's role to ADMIN.\nUpdated bob's role to ADMIN.",
-					actions: ["UPDATE_ROLE"],
+					actions: ["TRUST_UPDATE_ROLE"],
 				},
 			},
 		],

@@ -49,7 +49,7 @@ export const coreActionsSpec = {
       parameters: ["subaction", "chain", "fromToken", "amount", "recipient", "mode", "dryRun"],
     },
     {
-      name: "SWAP",
+      name: "SOLANA_SWAP",
       description:
         "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
       descriptionCompressed: "Solana token swap: SOL or SPL tokens via Jupiter routing.",
@@ -94,7 +94,7 @@ export const allActionsSpec = {
       parameters: ["subaction", "chain", "fromToken", "amount", "recipient", "mode", "dryRun"],
     },
     {
-      name: "SWAP",
+      name: "SOLANA_SWAP",
       description:
         "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
       descriptionCompressed: "Solana token swap: SOL or SPL tokens via Jupiter routing.",

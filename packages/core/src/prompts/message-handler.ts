@@ -16,7 +16,13 @@ rules:
 - choose processMessage=STOP when the user asks the agent to stop or disengage
 - plan.contexts is a list of context ids drawn from available_contexts, such as calendar or email
 - never invent context ids that are not in available_contexts
-- choose plan.contexts=["simple"] (and only "simple") when the agent can answer directly from its own knowledge with no tools or external data; this is the shortcut path and includes plan.reply
+- choose plan.contexts=["simple"] (and only "simple") when ALL of the following are true:
+    * the message is purely conversational, a greeting, or a factual question the agent can answer from training alone
+    * no external data, system state, person, document, file, schedule, calendar, email, memory, or provider is mentioned or implied
+    * no action verbs like search, find, get, fetch, save, send, create, update, delete, run, execute, or call are present
+    * the answer would not meaningfully change if checked against up-to-date information, world state, or memory
+    * when uncertain: prefer planning over simple
+- never choose "simple" if the message names a person, place, file, document, or data source; asks about schedules or past interactions ("what did I say earlier", "what's on my calendar", "how many X"); or would benefit from any tool call even if the agent could fabricate a plausible answer
 - do not choose "simple" for requests to change, persist, update, or remember agent/user settings, preferences, identity, persona, character, response style, or future behavior; select settings and any other relevant context instead
 - otherwise list every relevant context id; planning will run and tools will be selected from those contexts
 - include plan.reply only on the simple shortcut path (plan.contexts=["simple"])

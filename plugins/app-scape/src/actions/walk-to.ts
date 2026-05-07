@@ -1,12 +1,12 @@
 /**
- * WALK_TO — moves the agent toward a world tile via
+ * SCAPE_WALK_TO — moves the agent toward a world tile via
  * `ScapeGameService.executeAction("walkTo")`, which calls the xRSPS
  * bot-SDK and routes through the same `PlayerManager.moveAgent`
  * pathway human clients use.
  *
  * Expected LLM response format:
  *
- *   action: WALK_TO
+ *   action: SCAPE_WALK_TO
  *   x: 3222
  *   z: 3218
  *   run: true
@@ -25,7 +25,7 @@ import { hasActionRequest, resolveActionText } from "../shared-state.js";
 import { extractParamBool, extractParamInt } from "./param-parser.js";
 
 export const walkTo: Action = {
-  name: "WALK_TO",
+  name: "SCAPE_WALK_TO",
   description:
     "Walk the agent toward a specific world tile (x, z). Use this to move to banks, NPCs, resource nodes, or just to explore.",
   descriptionCompressed: "Walk to coordinate.",
@@ -61,7 +61,7 @@ export const walkTo: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (runtime.getService("scape_game") == null) return false;
-    return hasActionRequest(message, "WALK_TO");
+    return hasActionRequest(message, "SCAPE_WALK_TO");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -75,7 +75,7 @@ export const walkTo: Action = {
     ) as unknown as ScapeGameService | null;
     if (!service) {
       const errMsg = "'scape game service not available.";
-      callback?.({ text: errMsg, action: "WALK_TO" });
+      callback?.({ text: errMsg, action: "SCAPE_WALK_TO" });
       return { success: false, text: errMsg };
     }
 
@@ -86,8 +86,8 @@ export const walkTo: Action = {
 
     if (x === null || z === null) {
       const errMsg =
-        "WALK_TO requires x: N and z: N params. Example: x: 3222; z: 3218";
-      callback?.({ text: errMsg, action: "WALK_TO" });
+        "SCAPE_WALK_TO requires x: N and z: N params. Example: x: 3222; z: 3218";
+      callback?.({ text: errMsg, action: "SCAPE_WALK_TO" });
       return { success: false, text: errMsg };
     }
 
@@ -107,13 +107,13 @@ export const walkTo: Action = {
 
       const displayText =
         (result.message ?? (result.success ? "walking..." : "walk failed")).slice(0, 2000);
-      callback?.({ text: displayText, action: "WALK_TO" });
+      callback?.({ text: displayText, action: "SCAPE_WALK_TO" });
       return { success: result.success, text: displayText };
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown walk failure.";
       const displayText = `walk failed: ${message}`;
-      callback?.({ text: displayText, action: "WALK_TO" });
+      callback?.({ text: displayText, action: "SCAPE_WALK_TO" });
       return {
         success: false,
         text: displayText,

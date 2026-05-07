@@ -364,7 +364,7 @@ async function generateText(
         runtime,
         modelType,
         data.model || model,
-        normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt, text),
+        normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt ?? "", text),
       );
       return text;
     },

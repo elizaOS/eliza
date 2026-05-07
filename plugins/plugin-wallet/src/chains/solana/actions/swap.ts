@@ -50,7 +50,7 @@ async function getTokenFromWallet(
 
 import { swapTemplate } from "../generated/prompts/typescript/prompts.js";
 
-const spec = requireActionSpec("SWAP");
+const spec = requireActionSpec("SOLANA_SWAP");
 
 type ExtractedSwapParams = {
   inputTokenSymbol?: string | null;

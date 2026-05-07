@@ -362,7 +362,7 @@ export function resolveRs2004RouterAction(
 
 export function formatRs2004RouterPrompt(): string {
   const walkTo =
-    "  WALK_TO: walk to a coordinate or named destination\n    params: destination: name OR x: N, z: N";
+    "  RS_2004_WALK_TO: walk to a coordinate or named destination\n    params: destination: name OR x: N, z: N";
   const routers = RS_2004_ACTION_ROUTER_DEFINITIONS.map((router) => {
     const subactions = router.subactions
       .map(

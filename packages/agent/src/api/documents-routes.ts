@@ -15,13 +15,19 @@ export interface DocumentRouteContext extends RouteRequestContext {
 export type KnowledgeRouteContext = DocumentRouteContext;
 
 type KnowledgeRoutesModule = {
-  handleKnowledgeRoutes?: (ctx: DocumentRouteContext) => Promise<boolean> | boolean;
+  handleKnowledgeRoutes?: (
+    ctx: DocumentRouteContext,
+  ) => Promise<boolean> | boolean;
 };
 
 export async function handleDocumentsRoutes(
   ctx: DocumentRouteContext,
 ): Promise<boolean> {
-  if (!ctx.pathname.startsWith("/api/knowledge") && !ctx.pathname.startsWith("/api/documents")) return false;
+  if (
+    !ctx.pathname.startsWith("/api/knowledge") &&
+    !ctx.pathname.startsWith("/api/documents")
+  )
+    return false;
 
   try {
     const loaded = (await import(

@@ -20,12 +20,12 @@ import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { CodingWorkspaceService } from "../services/workspace-service.js";
 
 export const finalizeWorkspaceAction: Action = {
-  name: "FINALIZE_WORKSPACE",
+  name: "SUBMIT_WORKSPACE",
   contexts: ["code", "tasks", "automation", "agent_internal"],
   contextGate: { anyOf: ["code", "tasks", "automation", "agent_internal"] },
   roleGate: { minRole: "USER" },
 
-  similes: ["COMMIT_AND_PR", "CREATE_PR", "SUBMIT_CHANGES", "FINISH_WORKSPACE"],
+  similes: ["FINALIZE_WORKSPACE", "COMMIT_AND_PR", "CREATE_PR", "SUBMIT_CHANGES", "FINISH_WORKSPACE"],
 
   description:
     "Finalize workspace changes by committing, pushing, and optionally creating a pull request. " +
@@ -43,7 +43,7 @@ export const finalizeWorkspaceAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I'll commit and create a pull request.",
-          action: "FINALIZE_WORKSPACE",
+          action: "SUBMIT_WORKSPACE",
         },
       },
     ],
@@ -56,7 +56,7 @@ export const finalizeWorkspaceAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Finalizing the workspace and creating PR.",
-          action: "FINALIZE_WORKSPACE",
+          action: "SUBMIT_WORKSPACE",
         },
       },
     ],

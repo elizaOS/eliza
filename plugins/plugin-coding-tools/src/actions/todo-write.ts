@@ -150,6 +150,9 @@ export const todoWriteAction: Action = {
       return failureToActionResult({
         reason: "missing_param",
         message: "missing roomId",
+      }, {
+        actionName: "TODO_WRITE",
+        reason: "missing_room_id",
       });
     }
 
@@ -158,6 +161,9 @@ export const todoWriteAction: Action = {
       return failureToActionResult({
         reason: "missing_param",
         message: "todos is required and must be an array",
+      }, {
+        actionName: "TODO_WRITE",
+        reason: "missing_todos",
       });
     }
 
@@ -168,6 +174,10 @@ export const todoWriteAction: Action = {
         return failureToActionResult({
           reason: "invalid_param",
           message: parsed.error,
+        }, {
+          actionName: "TODO_WRITE",
+          reason: "invalid_todo",
+          index: i,
         });
       }
       newTodos.push(parsed.todo);
@@ -194,6 +204,7 @@ export const todoWriteAction: Action = {
     if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {
+      actionName: "TODO_WRITE",
       oldTodos,
       newTodos,
       completedCount,

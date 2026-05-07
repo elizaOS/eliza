@@ -2,7 +2,7 @@
  * Runtime introspection actions — surface the live agent runtime to callers.
  *
  * GET_RUNTIME_STATUS         → GET /api/runtime
- * DESCRIBE_REGISTERED_ACTIONS → reads runtime.actions in-process
+ * LIST_ACTIONS (was DESCRIBE_REGISTERED_ACTIONS) → reads runtime.actions in-process
  * RELOAD_RUNTIME_CONFIG       → POST /api/config/reload
  * RESTART_RUNTIME             → POST /api/restart
  */
@@ -131,10 +131,14 @@ interface DescribeActionsParams {
 }
 
 export const describeRegisteredActionsAction: Action = {
-  name: "DESCRIBE_REGISTERED_ACTIONS",
+  name: "LIST_ACTIONS",
   contexts: ["admin", "agent_internal", "settings"],
   roleGate: { minRole: "OWNER" },
-  similes: ["LIST_ACTIONS", "REGISTERED_ACTIONS", "AVAILABLE_ACTIONS"],
+  similes: [
+    "DESCRIBE_REGISTERED_ACTIONS",
+    "REGISTERED_ACTIONS",
+    "AVAILABLE_ACTIONS",
+  ],
   description:
     "List all actions currently registered on the runtime, with descriptions. Optionally filter by name substring (case-insensitive).",
   descriptionCompressed:
@@ -173,7 +177,7 @@ export const describeRegisteredActionsAction: Action = {
       text: [header, "", ...lines].join("\n"),
       values: { count: matched.length, totalRegistered: all.length },
       data: {
-        actionName: "DESCRIBE_REGISTERED_ACTIONS",
+        actionName: "LIST_ACTIONS",
         filter: filterRaw,
         actions: matched.map((action) => ({
           name: action.name,
@@ -202,7 +206,7 @@ export const describeRegisteredActionsAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Registered N action(s)...",
-          action: "DESCRIBE_REGISTERED_ACTIONS",
+          action: "LIST_ACTIONS",
         },
       },
     ],

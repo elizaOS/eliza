@@ -6,9 +6,9 @@
  * accounts — the mailbox the agent itself holds for autonomous outbound
  * and inbound.
  *
- * Currently a stub: returns `not_configured` when no agent mailbox is wired.
- * Placed in the registry now so the planner can see the distinction and we
- * have a clear landing spot when agent-mailbox integration is implemented.
+ * Returns `not_configured` until an agent mailbox is wired. Placed in the
+ * registry now so the planner can distinguish the agent's own mailbox from
+ * the owner's inbox.
  */
 
 import type {
@@ -43,7 +43,11 @@ function notConfigured(subaction: string | undefined): ActionResult {
       "The agent's own inbox is not configured yet. Wire an agent-scoped " +
       "mailbox (e.g. an Eliza Cloud inbox or a dedicated IMAP/SMTP account) " +
       "before using AGENT_INBOX. For the OWNER's inbox, use TRIAGE_MESSAGES.",
-    values: { success: false, error: "AGENT_INBOX_NOT_CONFIGURED" },
+    values: {
+      success: false,
+      actionName: "AGENT_INBOX",
+      error: "AGENT_INBOX_NOT_CONFIGURED",
+    },
     data: {
       actionName: "AGENT_INBOX",
       subaction: subaction ?? null,
@@ -131,9 +135,8 @@ export const agentInboxAction: Action = {
         | AgentInboxParameters
         | undefined) ?? {};
     const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
-    // Stub: the agent does not yet have a configured mailbox. Return a
-    // clean not-configured result so the planner gets an unambiguous signal
-    // rather than an exception.
+    // No agent-scoped mailbox is configured yet. Return a clean result so the
+    // planner gets an unambiguous signal rather than an exception.
     return notConfigured(subaction || undefined);
   },
 

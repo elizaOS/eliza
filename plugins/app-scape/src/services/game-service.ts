@@ -95,7 +95,7 @@ interface EventLogEntry {
  * the dispatcher's switch can branch on a single label.
  */
 const STANDALONE_ACTION_NAMES: ReadonlySet<string> = new Set([
-  "WALK_TO",
+  "SCAPE_WALK_TO",
   "ATTACK_NPC",
   "CHAT_PUBLIC",
 ]);
@@ -614,7 +614,7 @@ ${actionList}
 
 # Instructions
 - Walk somewhere interesting. Explore. Don't stand still.
-- SCAPE_GAME with subaction walk_to takes absolute world coordinates. Use your current position (${self.x}, ${self.z}) as a reference and pick a nearby tile to move toward.
+- SCAPE_WALK_TO takes absolute world coordinates. Use your current position (${self.x}, ${self.z}) as a reference and pick a nearby tile to move toward.
 - Do NOT repeat a failed action with the same params — try something different.
 - Keep responses short. Pick ONE action and provide its params.
 
@@ -633,7 +633,7 @@ Your choice:`;
 
     const params = this.extractParamsFromParsedResponse(parsed);
 
-    // Standalone actions: WALK_TO, ATTACK_NPC, CHAT_PUBLIC.
+    // Standalone actions: SCAPE_WALK_TO, ATTACK_NPC, CHAT_PUBLIC.
     if (STANDALONE_ACTION_NAMES.has(action)) {
       return {
         actionName: action,

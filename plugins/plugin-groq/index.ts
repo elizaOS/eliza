@@ -45,7 +45,9 @@ function resolveGroqPrompt(params: GenerateTextParams, systemPrompt: string | un
   return (
     renderChatMessagesForPrompt(params.messages, {
       omitDuplicateSystem: systemPrompt,
-    }) ?? params.prompt
+    }) ??
+    params.prompt ??
+    ""
   );
 }
 

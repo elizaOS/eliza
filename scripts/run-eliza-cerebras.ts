@@ -188,14 +188,16 @@ function makeMockAction(opts: {
 function buildMockActions(): Action[] {
   const webSearch = makeMockAction({
     name: "WEB_SEARCH",
-    description: "Search the web for information",
+    description:
+      "Search the public web for current information. Use for factual lookups, recent events, or anything outside the agent's prior knowledge.",
     contexts: ["web", "browser"],
     parameters: [
       {
         name: "q",
-        description: "Search query string",
+        description: "Search query string. Plain natural language is fine.",
         required: true,
         schema: { type: "string" },
+        examples: ["eliza chatbot history", "weather in Paris today"],
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
@@ -223,20 +225,24 @@ function buildMockActions(): Action[] {
 
   const writeDocument = makeMockAction({
     name: "WRITE_DOCUMENT",
-    description: "Save content as a new document in the agent's document store",
+    description:
+      "Save content as a new document in the agent's document store. Use to persist research findings, summaries, or notes for later retrieval.",
     contexts: ["documents", "web"],
     parameters: [
       {
         name: "content",
-        description: "Document body to save",
+        description:
+          "Full text body of the document. Markdown is fine; do not summarize or truncate.",
         required: true,
         schema: { type: "string" },
       },
       {
         name: "title",
-        description: "Optional document title",
+        description:
+          "Short human-readable title used for retrieval. Defaults to a generated id when omitted.",
         required: false,
         schema: { type: "string" },
+        examples: ["Eliza research summary"],
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
@@ -258,7 +264,8 @@ function buildMockActions(): Action[] {
 
   const brokenAction = makeMockAction({
     name: "BROKEN_ACTION",
-    description: "A deliberately broken action for testing failure paths",
+    description:
+      "Deliberately failing action used to exercise the evaluator's failure path. Always returns success=false. Call this when the user explicitly requests it for testing.",
     contexts: ["broken_action"],
     parameters: [],
     handler: async () => {
@@ -278,14 +285,17 @@ function buildMockActions(): Action[] {
 
   const calendarListEvents = makeMockAction({
     name: "CALENDAR_LIST_EVENTS",
-    description: "List calendar events in a given time range",
+    description:
+      "List the user's calendar events in a given time window. Use to check availability before scheduling, or to find existing meetings to summarize.",
     contexts: ["calendar"],
     parameters: [
       {
         name: "range",
-        description: "Time range to list events for, e.g. 'today', 'this week'",
+        description:
+          "Time window for the listing — natural-language phrases like 'today', 'this week', or 'next 7 days' are accepted.",
         required: false,
         schema: { type: "string" },
+        examples: ["today", "this week", "next 7 days"],
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
@@ -309,26 +319,32 @@ function buildMockActions(): Action[] {
 
   const calendarCreateEvent = makeMockAction({
     name: "CALENDAR_CREATE_EVENT",
-    description: "Create a new calendar event and optionally invite attendees",
+    description:
+      "Create a new calendar event for the user. Use for scheduling meetings, reminders, or any time-bound commitment that should appear on the calendar.",
     contexts: ["calendar"],
     parameters: [
       {
         name: "title",
-        description: "Event title",
+        description: "Short human-readable event title shown on the calendar.",
         required: true,
         schema: { type: "string" },
+        examples: ["Team standup", "1:1 with Bob"],
       },
       {
         name: "time",
-        description: "Event time in ISO-8601 or natural language",
+        description:
+          "Event start time. ISO-8601 (e.g. 2025-06-15T15:00:00) or natural language ('tomorrow at 9am') are both accepted.",
         required: true,
         schema: { type: "string" },
+        examples: ["2025-06-15T15:00:00", "tomorrow at 9am"],
       },
       {
         name: "attendees",
-        description: "Comma-separated list of attendee email addresses",
+        description:
+          "Comma-separated list of attendee email addresses. Leave empty for personal events.",
         required: false,
         schema: { type: "string" },
+        examples: ["alice@example.com,bob@example.com"],
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
@@ -360,24 +376,28 @@ function buildMockActions(): Action[] {
 
   const emailDraft = makeMockAction({
     name: "EMAIL_DRAFT",
-    description: "Draft an email message to be reviewed before sending",
+    description:
+      "Create an email draft for the user to review before sending. Use when the user asks to compose, draft, or prepare an email — never to send mail directly.",
     contexts: ["email"],
     parameters: [
       {
         name: "to",
-        description: "Recipient email address",
+        description: "Recipient email address (single address).",
         required: true,
         schema: { type: "string" },
+        examples: ["alice@example.com"],
       },
       {
         name: "subject",
-        description: "Email subject line",
+        description: "Email subject line. Keep concise; one short phrase.",
         required: true,
         schema: { type: "string" },
+        examples: ["Meeting agenda"],
       },
       {
         name: "body",
-        description: "Email body content",
+        description:
+          "Full email body. Plain text or markdown. Include greeting, content, and signature when relevant.",
         required: true,
         schema: { type: "string" },
       },
@@ -402,24 +422,27 @@ function buildMockActions(): Action[] {
 
   const emailSend = makeMockAction({
     name: "EMAIL_SEND",
-    description: "Send an email message immediately",
+    description:
+      "Send an email message immediately on the user's behalf. Use only when the user has explicitly authorized sending; for compose-only requests prefer EMAIL_DRAFT.",
     contexts: ["email"],
     parameters: [
       {
         name: "to",
-        description: "Recipient email address",
+        description: "Recipient email address (single address).",
         required: true,
         schema: { type: "string" },
+        examples: ["alice@example.com"],
       },
       {
         name: "subject",
-        description: "Email subject line",
+        description: "Email subject line. Keep concise; one short phrase.",
         required: true,
         schema: { type: "string" },
       },
       {
         name: "body",
-        description: "Email body content",
+        description:
+          "Full email body. Plain text or markdown. Include greeting, content, and signature when relevant.",
         required: true,
         schema: { type: "string" },
       },

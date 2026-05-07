@@ -99,9 +99,7 @@ function textOf(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
-function readOptions(
-  options?: HandlerOptions | Record<string, unknown>,
-): Record<string, unknown> {
+function readOptions(options?: HandlerOptions | Record<string, unknown>): Record<string, unknown> {
   const direct = (options ?? {}) as Record<string, unknown>;
   const parameters =
     direct.parameters && typeof direct.parameters === "object"
@@ -121,7 +119,7 @@ function normalizeOp(value: unknown): LinearOp | null {
 
 function selectRoute(
   message: Memory,
-  options?: HandlerOptions | Record<string, unknown>,
+  options?: HandlerOptions | Record<string, unknown>
 ): LinearRoute | null {
   const opts = readOptions(options);
   const requested = normalizeOp(opts.op ?? opts.subaction);
@@ -192,7 +190,7 @@ export const linearAction: Action = {
     message: Memory,
     state: State | undefined,
     options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const route = selectRoute(message, options);
     if (!route) {

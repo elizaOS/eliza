@@ -289,6 +289,20 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			roleGate: { minRole: "ADMIN" },
 		},
 		{
+			id: "phone",
+			label: "Phone",
+			description:
+				"Phone-based messaging and voice calls (SMS, iMessage, RCS, dialing).",
+			selectionGuidance:
+				"Select for SMS or text messages by phone number, iMessage on macOS/iOS, or for placing or receiving phone calls.",
+			covers: ["SMS", "text messages", "iMessage", "phone calls"],
+			sensitivity: "private",
+			cacheScope: "turn",
+			parent: "messaging",
+			aliases: ["sms", "voice"],
+			roleGate: { minRole: "ADMIN" },
+		},
+		{
 			id: "social_posting",
 			label: "Social Posting",
 			description: "Public posts and social actions on platforms like X.",

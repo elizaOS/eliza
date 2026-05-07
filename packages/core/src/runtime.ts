@@ -68,6 +68,7 @@ import {
 import {
 	type Action,
 	type ActionContext,
+	type ActionMode,
 	type ActionResult,
 	type Agent,
 	ChannelType,
@@ -139,7 +140,7 @@ import {
 	type UUID,
 	type World,
 } from "./types";
-import type { RoleGateRole } from "./types/contexts";
+import type { AgentContext, RoleGateRole } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
@@ -3673,6 +3674,158 @@ export class AgentRuntime implements IAgentRuntime {
 			]);
 		}
 		return evaluators;
+	}
+
+	/**
+	 * Run actions whose `mode` matches the given hook position. Replaces
+	 * the legacy evaluator path: the runtime fires this from fixed places in
+	 * the message pipeline (see services/message.ts). DURING modes execute
+	 * handlers in parallel; all other hook modes run sequentially in
+	 * `modePriority` ascending order. CONTEXT hooks are gated by
+	 * `selectedContexts` overlapping the action's `contexts`.
+	 */
+	async runActionsByMode(
+		mode: ActionMode,
+		message: Memory,
+		state?: State,
+		options?: {
+			didRespond?: boolean;
+			callback?: HandlerCallback;
+			responses?: Memory[];
+			selectedContexts?: readonly AgentContext[];
+		},
+	): Promise<Action[]> {
+		let candidates = this.actions.filter((action) => action.mode === mode);
+
+		if (
+			mode === "CONTEXT_BEFORE" ||
+			mode === "CONTEXT_DURING" ||
+			mode === "CONTEXT_AFTER"
+		) {
+			const selected = new Set(options?.selectedContexts ?? []);
+			candidates = candidates.filter((action) => {
+				const tags = action.contexts ?? [];
+				return tags.some((tag) => selected.has(tag));
+			});
+		}
+
+		candidates = candidates
+			.slice()
+			.sort(
+				(a, b) =>
+					(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
+					a.name.localeCompare(b.name),
+			);
+		if (candidates.length === 0) return [];
+
+		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
+
+		const runtimeRef = this as unknown as IAgentRuntime;
+		const validated: Action[] = [];
+		await Promise.all(
+			candidates.map(async (action) => {
+				try {
+					const ok = await action.validate(runtimeRef, message, state);
+					if (ok) validated.push(action);
+				} catch (err) {
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							mode,
+							err: err instanceof Error ? err.message : String(err),
+						},
+						"runActionsByMode validate failed",
+					);
+				}
+			}),
+		);
+		if (validated.length === 0) return [];
+
+		validated.sort(
+			(a, b) =>
+				(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
+				a.name.localeCompare(b.name),
+		);
+
+		const composedState =
+			state ?? (await this.composeState(message, ["RECENT_MESSAGES"]));
+
+		const messageId = message.id;
+		const roomId = message.roomId;
+		const worldId = message.worldId ?? roomId;
+
+		const runOne = async (action: Action) => {
+			await this.emitEvent(EventType.ACTION_STARTED, {
+				runtime: runtimeRef,
+				messageId,
+				roomId,
+				world: worldId,
+				content: {
+					text: `Executing ${mode} action: ${action.name}`,
+					actions: [action.name],
+					actionStatus: "executing",
+					source: message.content?.source,
+				},
+			}).catch(() => {});
+
+			let success = true;
+			let errorMsg: string | undefined;
+			try {
+				await action.handler(
+					runtimeRef,
+					message,
+					composedState,
+					{ mode },
+					options?.callback,
+					options?.responses,
+				);
+			} catch (err) {
+				success = false;
+				errorMsg = err instanceof Error ? err.message : String(err);
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						action: action.name,
+						mode,
+						err: errorMsg,
+					},
+					"runActionsByMode handler failed",
+				);
+			}
+
+			await this.emitEvent(EventType.ACTION_COMPLETED, {
+				runtime: runtimeRef,
+				messageId,
+				roomId,
+				world: worldId,
+				content: {
+					text: success
+						? `${mode} action ${action.name} completed`
+						: `${mode} action ${action.name} failed: ${errorMsg ?? "unknown"}`,
+					actions: [action.name],
+					actionStatus: success ? "completed" : "failed",
+					source: message.content?.source,
+					error: errorMsg,
+				},
+			}).catch(() => {});
+		};
+
+		const isDuring =
+			mode === "ALWAYS_DURING" ||
+			mode === "CONTEXT_DURING" ||
+			mode === "MESSAGE_DURING";
+		if (isDuring) {
+			await Promise.all(validated.map(runOne));
+		} else {
+			for (const action of validated) {
+				await runOne(action);
+			}
+		}
+
+		return validated;
 	}
 
 	// highly SQL optimized queries

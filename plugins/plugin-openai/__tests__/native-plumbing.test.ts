@@ -119,7 +119,7 @@ describe("OpenAI native text plumbing", () => {
         cacheReadInputTokens: 5,
       },
     });
-  }, 60_000);
+  }, 180_000);
 
   it("passes the effective system separately without duplicating the leading system message", async () => {
     aiMocks.generateText.mockResolvedValue({

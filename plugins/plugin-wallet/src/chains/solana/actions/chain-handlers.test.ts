@@ -57,11 +57,12 @@ describe("Solana service registration", () => {
 });
 
 describe("Solana generated action specs", () => {
-  it("does not expose the legacy SWAP_SOLANA action name", () => {
+  it("uses a chain-specific swap action spec name", () => {
     const names = allActionDocs.map((doc) => doc.name);
 
     expect(names).toContain("SOLANA_TRANSFER");
-    expect(names).toContain("SWAP");
+    expect(names).toContain("SOLANA_SWAP");
+    expect(names).not.toContain("SWAP");
     expect(names).not.toContain("SWAP_SOLANA");
     expect(names).not.toContain("TRANSFER");
   });

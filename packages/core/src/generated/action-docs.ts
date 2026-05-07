@@ -2431,63 +2431,6 @@ export const allActionsSpec = {
 				"Generate image from conversation context. Use to visualize or illustrate.",
 		},
 		{
-			name: "ACTIVATE_N8N_WORKFLOW",
-			description:
-				"Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
-			parameters: [
-				{
-					name: "workflowId",
-					description: "Optional exact n8n workflow id to activate.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional exact n8n workflow id to activate.",
-				},
-				{
-					name: "workflowName",
-					description: "Optional workflow name to activate.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional workflow name to activate.",
-				},
-				{
-					name: "query",
-					description:
-						"Optional natural-language description of the workflow to activate.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional natural-language description of the workflow to activate.",
-				},
-			],
-			descriptionCompressed:
-				"activate n8n workflow start process trigger run automatically identify workflow ID, name, semantic description language",
-			similes: [
-				"ACTIVATE_WORKFLOW",
-				"ENABLE_WORKFLOW",
-				"START_WORKFLOW",
-				"TURN_ON_WORKFLOW",
-			],
-			exampleCalls: [
-				{
-					user: "Use ACTIVATE_N8N_WORKFLOW with the provided parameters.",
-					actions: ["ACTIVATE_N8N_WORKFLOW"],
-					params: {
-						ACTIVATE_N8N_WORKFLOW: {
-							workflowId: "example",
-							workflowName: "example",
-							query: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "ASK_USER_QUESTION",
 			description:
 				"Broadcast 1-4 structured questions back to the user. Each question has a short header, a full question string, and optional multi-choice options with descriptions and previews. This is a structured-question broadcast surface — the action returns the question payload as data so a UI layer can render it; the action does NOT block waiting for an answer. UI integration is pending; for now treat the response as a published question, not as an interactive prompt.",
@@ -2582,7 +2525,7 @@ export const allActionsSpec = {
 		{
 			name: "BASH",
 			description:
-				"Execute a shell command via /bin/bash -c <command>. Runs in the session cwd unless an explicit cwd inside the sandbox roots is supplied. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Respects the sandbox command denylist.",
+				"Execute a shell command via /bin/bash -c <command>. Runs in the session cwd by default. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Paths under the configured blocklist (e.g. ~/pvt, ~/Library, ~/.ssh) are off-limits as cwd.",
 			parameters: [
 				{
 					name: "command",
@@ -2620,13 +2563,13 @@ export const allActionsSpec = {
 				{
 					name: "cwd",
 					description:
-						"Absolute working directory; must resolve inside the configured workspace roots. Defaults to the session cwd.",
+						"Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Absolute working directory. must resolve inside the configured workspace roots. Defaults to the session cwd.",
+						"Absolute working directory. must not resolve under a blocked path. Defaults to the session cwd.",
 				},
 				{
 					name: "run_in_background",
@@ -2640,8 +2583,7 @@ export const allActionsSpec = {
 						"If true, return a task_id immediately. Use TASK_OUTPUT to poll and TASK_STOP to terminate.",
 				},
 			],
-			descriptionCompressed:
-				"Run a shell command (foreground or background) within sandbox roots.",
+			descriptionCompressed: "Run a shell command (foreground or background).",
 			similes: ["SHELL", "EXEC", "RUN_COMMAND"],
 			exampleCalls: [
 				{
@@ -3811,59 +3753,67 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "DEACTIVATE_N8N_WORKFLOW",
-			description:
-				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+			name: "CREATE_WORKSPACE",
+			description: "Create a git workspace for coding tasks. ",
 			parameters: [
 				{
-					name: "workflowId",
-					description: "Optional exact n8n workflow id to deactivate.",
+					name: "repo",
+					description: "Git repository URL to clone.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Optional exact n8n workflow id to deactivate.",
+					descriptionCompressed: "Create git workspace for coding tasks.",
 				},
 				{
-					name: "workflowName",
-					description: "Optional workflow name to deactivate.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional workflow name to deactivate.",
-				},
-				{
-					name: "query",
+					name: "baseBranch",
 					description:
-						"Optional natural-language description of the workflow to deactivate.",
+						"Base branch to create feature branch from (default: main).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Optional natural-language description of the workflow to deactivate.",
+						"Base branch to create feature branch from (default: main).",
+				},
+				{
+					name: "useWorktree",
+					description: "Create a git worktree instead of a full clone.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Create a git worktree instead of a full clone.",
+				},
+				{
+					name: "parentWorkspaceId",
+					description: "Parent workspace ID for worktree creation.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Parent workspace ID for worktree creation.",
 				},
 			],
 			descriptionCompressed:
-				"deactivate n8n workflow stop process trigger run automatically identify workflow ID, name, semantic description language",
+				"create git workspace cod task clone repository create git worktree isolat development",
 			similes: [
-				"DEACTIVATE_WORKFLOW",
-				"DISABLE_WORKFLOW",
-				"STOP_WORKFLOW",
-				"PAUSE_WORKFLOW",
-				"TURN_OFF_WORKFLOW",
+				"PROVISION_WORKSPACE",
+				"CLONE_REPO",
+				"SETUP_WORKSPACE",
+				"PREPARE_WORKSPACE",
 			],
 			exampleCalls: [
 				{
-					user: "Use DEACTIVATE_N8N_WORKFLOW with the provided parameters.",
-					actions: ["DEACTIVATE_N8N_WORKFLOW"],
+					user: "Use CREATE_WORKSPACE with the provided parameters.",
+					actions: ["CREATE_WORKSPACE"],
 					params: {
-						DEACTIVATE_N8N_WORKFLOW: {
-							workflowId: "example",
-							workflowName: "example",
-							query: "example",
+						CREATE_WORKSPACE: {
+							repo: "example",
+							baseBranch: "example",
+							useWorktree: false,
+							parentWorkspaceId: "example",
 						},
 					},
 				},
@@ -3897,70 +3847,6 @@ export const allActionsSpec = {
 					params: {
 						DELETE_LINEAR_ISSUE: {
 							issueId: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "DELETE_N8N_WORKFLOW",
-			description:
-				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
-			parameters: [
-				{
-					name: "workflowId",
-					description: "Optional exact n8n workflow id to delete.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional exact n8n workflow id to delete.",
-				},
-				{
-					name: "workflowName",
-					description: "Optional workflow name to delete.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional workflow name to delete.",
-				},
-				{
-					name: "query",
-					description:
-						"Optional natural-language description of the workflow to delete.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional natural-language description of the workflow to delete.",
-				},
-				{
-					name: "confirmed",
-					description: "Whether the user has confirmed permanent deletion.",
-					required: false,
-					schema: {
-						type: "boolean",
-						default: false,
-					},
-					descriptionCompressed:
-						"Whether user has confirmed permanent deletion.",
-				},
-			],
-			descriptionCompressed:
-				"delete n8n workflow permanently action cannot undone identify workflow ID, name, semantic description language",
-			similes: ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
-			exampleCalls: [
-				{
-					user: "Use DELETE_N8N_WORKFLOW with the provided parameters.",
-					actions: ["DELETE_N8N_WORKFLOW"],
-					params: {
-						DELETE_N8N_WORKFLOW: {
-							workflowId: "example",
-							workflowName: "example",
-							query: "example",
-							confirmed: false,
 						},
 					},
 				},
@@ -4763,104 +4649,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "FINALIZE_WORKSPACE",
-			description:
-				"Finalize workspace changes by committing, pushing, and optionally creating a pull request. ",
-			parameters: [
-				{
-					name: "workspaceId",
-					description:
-						"ID of the workspace to finalize. Uses current workspace if not specified.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Commit, push, opt. create PR for workspace changes.",
-				},
-				{
-					name: "commitMessage",
-					description: "Commit message for the changes.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Commit msg for the changes.",
-				},
-				{
-					name: "prTitle",
-					description: "Title for the pull request.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Title for the pull request.",
-				},
-				{
-					name: "prBody",
-					description: "Body/description for the pull request.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Body/description for the pull request.",
-				},
-				{
-					name: "baseBranch",
-					description: "Base branch for the PR (e.g., main, develop).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Base branch for the PR (e. g. , main, develop).",
-				},
-				{
-					name: "draft",
-					description: "Create as draft PR.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed: "Create as draft PR.",
-				},
-				{
-					name: "skipPR",
-					description: "Skip PR creation, only commit and push.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed: "Skip PR creation, only commit and push.",
-				},
-			],
-			descriptionCompressed:
-				"finalize workspace change commit, push, optionally create pull request use after task agent complete task",
-			similes: [
-				"COMMIT_AND_PR",
-				"CREATE_PR",
-				"SUBMIT_CHANGES",
-				"FINISH_WORKSPACE",
-			],
-			exampleCalls: [
-				{
-					user: "Use FINALIZE_WORKSPACE with the provided parameters.",
-					actions: ["FINALIZE_WORKSPACE"],
-					params: {
-						FINALIZE_WORKSPACE: {
-							workspaceId: "example",
-							commitMessage: "example",
-							prTitle: "example",
-							prBody: "example",
-							baseBranch: "example",
-							draft: false,
-							skipPR: false,
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "FORM_RESTORE",
 			description: "Restore a previously stashed form session",
 			parameters: [
@@ -5355,46 +5143,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "IMESSAGE_SEND_MESSAGE",
-			description: "Send a text message via iMessage (macOS only)",
-			parameters: [
-				{
-					name: "text",
-					description: "Message text to send.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "msg text to send.",
-				},
-				{
-					name: "to",
-					description: "Phone number, email address, or current conversation.",
-					required: false,
-					schema: {
-						type: "string",
-						default: "current",
-					},
-					descriptionCompressed:
-						"Phone number, email address, or current convo.",
-				},
-			],
-			descriptionCompressed: "Send iMessage (macOS).",
-			similes: ["SEND_IMESSAGE", "IMESSAGE_TEXT", "TEXT_IMESSAGE", "SEND_IMSG"],
-			exampleCalls: [
-				{
-					user: "Use IMESSAGE_SEND_MESSAGE with the provided parameters.",
-					actions: ["IMESSAGE_SEND_MESSAGE"],
-					params: {
-						IMESSAGE_SEND_MESSAGE: {
-							text: "example",
-							to: "current",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "INSTAGRAM_REPLY",
 			description:
 				"Reply on Instagram. mode=comment posts a comment on a media post (target=mediaId, text=comment). mode=dm sends a direct message to a thread (target=threadId, text=message).",
@@ -5484,6 +5232,58 @@ export const allActionsSpec = {
 					params: {
 						INSTALL_SKILL: {
 							slug: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "LINEAR",
+			description:
+				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, get_activity, clear_activity, search_issues. Inferred from...",
+				},
+			],
+			descriptionCompressed:
+				"Linear: create/get/update/delete issue, create comment, search issues, get/clear activity.",
+			similes: [
+				"LINEAR_ISSUE",
+				"LINEAR_ISSUES",
+				"LINEAR_COMMENT",
+				"LINEAR_COMMENTS",
+				"LINEAR_WORKFLOW",
+				"LINEAR_ACTIVITY",
+				"LINEAR_SEARCH",
+				"CREATE_LINEAR_ISSUE",
+				"GET_LINEAR_ISSUE",
+				"UPDATE_LINEAR_ISSUE",
+				"DELETE_LINEAR_ISSUE",
+				"MANAGE_LINEAR_ISSUE",
+				"MANAGE_LINEAR_ISSUES",
+				"CREATE_LINEAR_COMMENT",
+				"COMMENT_LINEAR_ISSUE",
+				"GET_LINEAR_ACTIVITY",
+				"CLEAR_LINEAR_ACTIVITY",
+				"SEARCH_LINEAR_ISSUES",
+				"LINEAR_WORKFLOW_SEARCH",
+			],
+			exampleCalls: [
+				{
+					user: "Use LINEAR with the provided parameters.",
+					actions: ["LINEAR"],
+					params: {
+						LINEAR: {
+							op: "example",
 						},
 					},
 				},
@@ -6447,9 +6247,121 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "N8N",
+			description:
+				"Manage n8n workflows. Operations: create (build new), modify (edit existing), activate (enable), deactivate (disable), delete (with confirmation), executions (get run history).",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Operation: create, modify, activate, deactivate, delete, or executions. If omitted, inferred from message text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Operation: create, modify, activate, deactivate, delete, or executions. If omitted, inferred from msg text.",
+				},
+				{
+					name: "workflowId",
+					description:
+						"Exact n8n workflow id. When omitted, the workflow is matched semantically.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Exact n8n workflow id. When omitted, the workflow is matched semantically.",
+				},
+				{
+					name: "workflowName",
+					description:
+						"Workflow name fragment for fuzzy matching (executions only).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Workflow name fragment for fuzzy matching (executions only).",
+				},
+				{
+					name: "limit",
+					description:
+						"Max executions to return (executions only). Default 10.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Max executions to return (executions only). Default 10.",
+				},
+				{
+					name: "description",
+					description:
+						"Natural-language description (create/modify only). If omitted, derived from message.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Natural-language description (create/modify only). If omitted, derived from msg.",
+				},
+			],
+			descriptionCompressed:
+				"n8n workflow: create, modify, activate, deactivate, delete, executions.",
+			similes: [
+				"WORKFLOW",
+				"N8N_WORKFLOW",
+				"CREATE_WORKFLOW",
+				"BUILD_WORKFLOW",
+				"GENERATE_WORKFLOW",
+				"CREATE_N8N_WORKFLOW",
+				"MODIFY_WORKFLOW",
+				"UPDATE_WORKFLOW",
+				"EDIT_WORKFLOW",
+				"MODIFY_EXISTING_N8N_WORKFLOW",
+				"ACTIVATE_WORKFLOW",
+				"DEACTIVATE_WORKFLOW",
+				"DELETE_WORKFLOW",
+				"ENABLE_WORKFLOW",
+				"DISABLE_WORKFLOW",
+				"STOP_WORKFLOW",
+				"PAUSE_WORKFLOW",
+				"TURN_ON_WORKFLOW",
+				"TURN_OFF_WORKFLOW",
+				"START_WORKFLOW",
+				"REMOVE_WORKFLOW",
+				"DESTROY_WORKFLOW",
+				"ACTIVATE_N8N_WORKFLOW",
+				"DEACTIVATE_N8N_WORKFLOW",
+				"DELETE_N8N_WORKFLOW",
+				"GET_EXECUTIONS",
+				"SHOW_EXECUTIONS",
+				"EXECUTION_HISTORY",
+				"WORKFLOW_RUNS",
+				"WORKFLOW_EXECUTIONS",
+				"GET_N8N_EXECUTIONS",
+			],
+			exampleCalls: [
+				{
+					user: "Use N8N with the provided parameters.",
+					actions: ["N8N"],
+					params: {
+						N8N: {
+							op: "example",
+							workflowId: "example",
+							workflowName: "example",
+							limit: 1,
+							description: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "NOSTR_PUBLISH_NOTE",
 			description:
-				"Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; use NOSTR_SEND_DM for private messages.",
+				"Publish a Nostr text note (kind:1) to the configured relays. Use for short broadcast posts; private messages should be sent via SEND_MESSAGE (which routes through the Nostr DM connector).",
 			parameters: [
 				{
 					name: "text",
@@ -6525,45 +6437,6 @@ export const allActionsSpec = {
 							name: "example",
 							about: "example",
 							picture: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "NOSTR_SEND_DM",
-			description: "Send an encrypted direct message via Nostr (NIP-04)",
-			parameters: [
-				{
-					name: "text",
-					description: "Direct message text to send.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Direct msg text to send.",
-				},
-				{
-					name: "toPubkey",
-					description: "Recipient npub, hex pubkey, or current.",
-					required: false,
-					schema: {
-						type: "string",
-						default: "current",
-					},
-					descriptionCompressed: "Recipient npub, hex pubkey, or current.",
-				},
-			],
-			descriptionCompressed: "send encrypt direct message via Nostr (NIP-04)",
-			similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
-			exampleCalls: [
-				{
-					user: "Use NOSTR_SEND_DM with the provided parameters.",
-					actions: ["NOSTR_SEND_DM"],
-					params: {
-						NOSTR_SEND_DM: {
-							text: "example",
-							toPubkey: "current",
 						},
 					},
 				},
@@ -7255,67 +7128,74 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "PROVISION_WORKSPACE",
-			description: "Create a git workspace for coding tasks. ",
+			name: "POST_TO_SOCIAL",
+			description:
+				"Publish a public post to a social network (X, Bluesky, Farcaster, Nostr). Platform is selected by the `platform` parameter (or inferred from the message text). Optional `replyTo` references the parent post id/uri/hash.",
 			parameters: [
 				{
-					name: "repo",
-					description: "Git repository URL to clone.",
+					name: "platform",
+					description: "Target social network: x, bluesky, farcaster, nostr.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Create git workspace for coding tasks.",
+					descriptionCompressed:
+						"Target social network: x, bluesky, farcaster, nostr.",
 				},
 				{
-					name: "baseBranch",
+					name: "text",
 					description:
-						"Base branch to create feature branch from (default: main).",
+						"Post body. Falls back to the user message text when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Base branch to create feature branch from (default: main).",
+						"Post body. Falls back to user msg text when omitted.",
 				},
 				{
-					name: "useWorktree",
-					description: "Create a git worktree instead of a full clone.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"Create a git worktree instead of a full clone.",
-				},
-				{
-					name: "parentWorkspaceId",
-					description: "Parent workspace ID for worktree creation.",
+					name: "replyTo",
+					description:
+						"Parent post id (X tweet id), uri (Bluesky), hash (Farcaster), or event id (Nostr). Optional.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Parent workspace ID for worktree creation.",
+					descriptionCompressed:
+						"Parent post id (X tweet id), uri (Bluesky), hash (Farcaster), or event id (Nostr). Optional.",
 				},
 			],
 			descriptionCompressed:
-				"create git workspace cod task clone repository create git worktree isolat development",
+				"Post to social network: x, bluesky, farcaster, nostr.",
 			similes: [
-				"CREATE_WORKSPACE",
-				"CLONE_REPO",
-				"SETUP_WORKSPACE",
-				"PREPARE_WORKSPACE",
+				"POST",
+				"PUBLISH",
+				"BROADCAST",
+				"SHARE",
+				"SOCIAL_POST",
+				"PUBLISH_POST",
+				"SEND_X_POST",
+				"POST_X",
+				"TWEET",
+				"POST_BLUESKY",
+				"POST_TO_BLUESKY",
+				"BLUESKY_POST",
+				"FARCASTER_CAST",
+				"SEND_CAST",
+				"POST_CAST",
+				"NOSTR_PUBLISH_NOTE",
+				"NOSTR_NOTE",
+				"POST_NOSTR_NOTE",
 			],
 			exampleCalls: [
 				{
-					user: "Use PROVISION_WORKSPACE with the provided parameters.",
-					actions: ["PROVISION_WORKSPACE"],
+					user: "Use POST_TO_SOCIAL with the provided parameters.",
+					actions: ["POST_TO_SOCIAL"],
 					params: {
-						PROVISION_WORKSPACE: {
-							repo: "example",
-							baseBranch: "example",
-							useWorktree: false,
-							parentWorkspaceId: "example",
+						POST_TO_SOCIAL: {
+							platform: "example",
+							text: "example",
+							replyTo: "example",
 						},
 					},
 				},
@@ -7624,6 +7504,115 @@ export const allActionsSpec = {
 							recipient: "example",
 							text: "example",
 							confirmed: false,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "RS_2004_WALK_TO",
+			description:
+				"Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
+			parameters: [
+				{
+					name: "destination",
+					description: "Optional named destination (overrides x/z).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Named destination.",
+				},
+				{
+					name: "x",
+					description: "Target world X coordinate.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target x.",
+				},
+				{
+					name: "z",
+					description: "Target world Z coordinate.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target z.",
+				},
+				{
+					name: "reason",
+					description: "Optional reason logged with the walk.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Walk reason.",
+				},
+			],
+			similes: ["MOVE_TO", "GOTO"],
+			exampleCalls: [
+				{
+					user: "Use RS_2004_WALK_TO with the provided parameters.",
+					actions: ["RS_2004_WALK_TO"],
+					params: {
+						RS_2004_WALK_TO: {
+							destination: "example",
+							x: 1,
+							z: 1,
+							reason: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
+		},
+		{
+			name: "SCAPE_WALK_TO",
+			description:
+				"Walk the agent toward a specific world tile (x, z). Use this to move to banks, NPCs, resource nodes, or just to explore.",
+			parameters: [
+				{
+					name: "x",
+					description: "Target world X coordinate.",
+					required: true,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target x.",
+				},
+				{
+					name: "z",
+					description: "Target world Z coordinate.",
+					required: true,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target z.",
+				},
+				{
+					name: "run",
+					description: "Whether to run toward the target when possible.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Run toggle.",
+				},
+			],
+			descriptionCompressed: "Walk to coordinate.",
+			similes: ["MOVE_TO", "GO_TO", "TRAVEL_TO", "HEAD_TO"],
+			exampleCalls: [
+				{
+					user: "Use SCAPE_WALK_TO with the provided parameters.",
+					actions: ["SCAPE_WALK_TO"],
+					params: {
+						SCAPE_WALK_TO: {
+							x: 1,
+							z: 1,
+							run: false,
 						},
 					},
 				},
@@ -8100,6 +8089,51 @@ export const allActionsSpec = {
 				"Set a recurring follow-up cadence threshold (in days) for a specific contact.",
 		},
 		{
+			name: "SHOPIFY",
+			description:
+				"Manage a Shopify store. Operations: products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers), search (catalog-wide search). Op is inferred from the message text when not explicitly provided.",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Operation to perform. One of: products, inventory, orders, customers, search. Inferred from message text when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Operation to perform. One of: products, inventory, orders, customers, search. Inferred from msg text when omitted.",
+				},
+			],
+			descriptionCompressed:
+				"Shopify: products, inventory, orders, customers, search.",
+			similes: [
+				"STORE",
+				"SHOPIFY_STORE",
+				"MANAGE_SHOPIFY_PRODUCTS",
+				"MANAGE_SHOPIFY_INVENTORY",
+				"MANAGE_SHOPIFY_ORDERS",
+				"MANAGE_SHOPIFY_CUSTOMERS",
+				"SEARCH_SHOPIFY_STORE",
+				"SEARCH_SHOPIFY",
+				"SHOPIFY_PRODUCTS",
+				"SHOPIFY_ORDERS",
+				"SHOPIFY_INVENTORY",
+				"SHOPIFY_CUSTOMERS",
+			],
+			exampleCalls: [
+				{
+					user: "Use SHOPIFY with the provided parameters.",
+					actions: ["SHOPIFY"],
+					params: {
+						SHOPIFY: {
+							op: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "SIGNAL_READ_RECENT_MESSAGES",
 			description:
 				"Read the most recent Signal messages across active conversations",
@@ -8131,6 +8165,52 @@ export const allActionsSpec = {
 					params: {
 						SIGNAL_READ_RECENT_MESSAGES: {
 							limit: 10,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "SKILL",
+			description:
+				"Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
+			parameters: [
+				{
+					name: "op",
+					description:
+						"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from msg text when omitted.",
+				},
+			],
+			descriptionCompressed:
+				"Skill catalog: search, details, sync, toggle, install, uninstall.",
+			similes: [
+				"SKILLS",
+				"SKILL_CATALOG",
+				"SEARCH_SKILLS",
+				"GET_SKILL_DETAILS",
+				"SYNC_SKILL_CATALOG",
+				"TOGGLE_SKILL",
+				"INSTALL_SKILL",
+				"UNINSTALL_SKILL",
+				"BROWSE_SKILLS",
+				"LIST_SKILLS",
+				"REFRESH_SKILLS",
+				"ENABLE_SKILL",
+				"DISABLE_SKILL",
+			],
+			exampleCalls: [
+				{
+					user: "Use SKILL with the provided parameters.",
+					actions: ["SKILL"],
+					params: {
+						SKILL: {
+							op: "example",
 						},
 					},
 				},
@@ -8337,109 +8417,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "SPAWN_AGENT",
-			description:
-				"Spawn a specific task agent inside an existing workspace when you need direct control. ",
-			parameters: [
-				{
-					name: "agentType",
-					description:
-						"Specific task-agent framework to spawn. Options: claude (Claude Code), codex (OpenAI Codex), gemini (Google Gemini), aider, pi, shell (generic shell). ",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Specific task-agent framework to spawn. Options: claude (Claude Code), codex (OpenAI Codex), gemini (Google Gemini), aider, pi, shell (generic shell).",
-				},
-				{
-					name: "workdir",
-					description:
-						"Working directory for the agent. Defaults to current directory.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Spawn task agent in existing workspace for direct control.",
-				},
-				{
-					name: "task",
-					description:
-						"Open-ended task or prompt to send to the task agent once spawned.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Open-ended task or prompt to send to the task agent once spawned.",
-				},
-				{
-					name: "memoryContent",
-					description:
-						"Instructions or shared context to write to the task agent's memory file before spawning.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Instructions or shared context to write to the task agent's memory file before spawning.",
-				},
-				{
-					name: "approvalPreset",
-					description:
-						"OPTIONAL permission preset. Leave UNSET for normal coding/research tasks — the runtime defaults to 'autonomous' which gives the agent full tools including shell, the helpers it needs to work effectively, and standard --dangerously-skip-permissions (the orchestrator runs in a sandbox so this is safe). Only set this when the user EXPLICITLY asks for a constrained agent: 'readonly' for a true audit-only review (no shell, no writes, no web), 'standard' or 'permissive' for unusual approval flows. Picking 'readonly' for normal tasks breaks bash helper scripts and is almost never what the user wants.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["readonly", "standard", "permissive", "autonomous"],
-					},
-					descriptionCompressed:
-						"OPTIONAL permission preset. Leave UNSET for normal coding/research tasks - the runtime defaults to 'autonomous' which gives agent full tools including shell...",
-				},
-				{
-					name: "keepAliveAfterComplete",
-					description:
-						"Keep the spawned task-agent session alive after a completed turn so it can receive another tracked task.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"Keep the spawned task-agent session alive after a completed turn so it can receive another tracked task.",
-				},
-			],
-			descriptionCompressed:
-				"Spawn task agent in existing workspace for async coding/research; returns session id for follow-up.",
-			similes: [
-				"SPAWN_CODING_AGENT",
-				"START_CODING_AGENT",
-				"LAUNCH_CODING_AGENT",
-				"CREATE_CODING_AGENT",
-				"SPAWN_CODER",
-				"RUN_CODING_AGENT",
-				"SPAWN_SUB_AGENT",
-				"START_TASK_AGENT",
-				"CREATE_AGENT",
-			],
-			exampleCalls: [
-				{
-					user: "Use SPAWN_AGENT with the provided parameters.",
-					actions: ["SPAWN_AGENT"],
-					params: {
-						SPAWN_AGENT: {
-							agentType: "example",
-							workdir: "example",
-							task: "example",
-							memoryContent: "example",
-							approvalPreset: "readonly",
-							keepAliveAfterComplete: false,
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "STOP_AGENT",
 			description:
 				"Stop a running task-agent session, terminating the session and cleaning up resources.",
@@ -8486,6 +8463,105 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Stop a running task-agent session, terminating the session and cleaning up resources.",
+		},
+		{
+			name: "SUBMIT_WORKSPACE",
+			description:
+				"Finalize workspace changes by committing, pushing, and optionally creating a pull request. ",
+			parameters: [
+				{
+					name: "workspaceId",
+					description:
+						"ID of the workspace to finalize. Uses current workspace if not specified.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Commit, push, opt. create PR for workspace changes.",
+				},
+				{
+					name: "commitMessage",
+					description: "Commit message for the changes.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Commit msg for the changes.",
+				},
+				{
+					name: "prTitle",
+					description: "Title for the pull request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Title for the pull request.",
+				},
+				{
+					name: "prBody",
+					description: "Body/description for the pull request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Body/description for the pull request.",
+				},
+				{
+					name: "baseBranch",
+					description: "Base branch for the PR (e.g., main, develop).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Base branch for the PR (e. g. , main, develop).",
+				},
+				{
+					name: "draft",
+					description: "Create as draft PR.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Create as draft PR.",
+				},
+				{
+					name: "skipPR",
+					description: "Skip PR creation, only commit and push.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Skip PR creation, only commit and push.",
+				},
+			],
+			descriptionCompressed:
+				"finalize workspace change commit, push, optionally create pull request use after task agent complete task",
+			similes: [
+				"FINALIZE_WORKSPACE",
+				"COMMIT_AND_PR",
+				"CREATE_PR",
+				"SUBMIT_CHANGES",
+				"FINISH_WORKSPACE",
+			],
+			exampleCalls: [
+				{
+					user: "Use SUBMIT_WORKSPACE with the provided parameters.",
+					actions: ["SUBMIT_WORKSPACE"],
+					params: {
+						SUBMIT_WORKSPACE: {
+							workspaceId: "example",
+							commitMessage: "example",
+							prTitle: "example",
+							prBody: "example",
+							baseBranch: "example",
+							draft: false,
+							skipPR: false,
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "SUMMARIZE_FEED",
@@ -9201,50 +9277,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "TWITCH_SEND_MESSAGE",
-			description: "Send a message to a Twitch channel",
-			parameters: [
-				{
-					name: "text",
-					description: "Chat message text to send.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Chat msg text to send.",
-				},
-				{
-					name: "channel",
-					description: "Twitch channel name, without #, or current.",
-					required: false,
-					schema: {
-						type: "string",
-						default: "current",
-					},
-					descriptionCompressed: "Twitch channel name, without #, or current.",
-				},
-			],
-			descriptionCompressed: "send message Twitch channel",
-			similes: [
-				"SEND_TWITCH_MESSAGE",
-				"TWITCH_CHAT",
-				"CHAT_TWITCH",
-				"SAY_IN_TWITCH",
-			],
-			exampleCalls: [
-				{
-					user: "Use TWITCH_SEND_MESSAGE with the provided parameters.",
-					actions: ["TWITCH_SEND_MESSAGE"],
-					params: {
-						TWITCH_SEND_MESSAGE: {
-							text: "example",
-							channel: "current",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "UNINSTALL_SKILL",
 			description:
 				"Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
@@ -9280,66 +9312,6 @@ export const allActionsSpec = {
 			parameters: [],
 			descriptionCompressed: "Invoke an enabled skill by slug.",
 			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
-		},
-		{
-			name: "WALK_TO",
-			description:
-				"Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
-			parameters: [
-				{
-					name: "destination",
-					description: "Optional named destination (overrides x/z).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Named destination.",
-				},
-				{
-					name: "x",
-					description: "Target world X coordinate.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Target x.",
-				},
-				{
-					name: "z",
-					description: "Target world Z coordinate.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Target z.",
-				},
-				{
-					name: "reason",
-					description: "Optional reason logged with the walk.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Walk reason.",
-				},
-			],
-			similes: ["MOVE_TO", "GOTO"],
-			exampleCalls: [
-				{
-					user: "Use WALK_TO with the provided parameters.",
-					actions: ["WALK_TO"],
-					params: {
-						WALK_TO: {
-							destination: "example",
-							x: 1,
-							z: 1,
-							reason: "example",
-						},
-					},
-				},
-			],
-			descriptionCompressed:
-				"Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
 		},
 		{
 			name: "WALLET_PREPARE",
@@ -9505,64 +9477,6 @@ export const allActionsSpec = {
 						WEB_FETCH: {
 							url: "example",
 							prompt: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "WEB_SEARCH",
-			description:
-				"Run a web search and return ranked results. Stub in v1: no provider is wired in this plugin, so the action returns a placeholder success that echoes the query and any domain filters. Wire a Brave/Bing/Tavily backend before relying on this for real results.",
-			parameters: [
-				{
-					name: "query",
-					description: "Search query string.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Search query string.",
-				},
-				{
-					name: "allowed_domains",
-					description: "Optional list of domains to restrict results to.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed:
-						"Optional list of domains to restrict results to.",
-				},
-				{
-					name: "blocked_domains",
-					description: "Optional list of domains to exclude from results.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed:
-						"Optional list of domains to exclude from results.",
-				},
-			],
-			descriptionCompressed:
-				"Web search (stub — no backend configured; echoes query + filters).",
-			similes: ["SEARCH_WEB", "GOOGLE", "BING"],
-			exampleCalls: [
-				{
-					user: "Use WEB_SEARCH with the provided parameters.",
-					actions: ["WEB_SEARCH"],
-					params: {
-						WEB_SEARCH: {
-							query: "example",
-							allowed_domains: "example",
-							blocked_domains: "example",
 						},
 					},
 				},

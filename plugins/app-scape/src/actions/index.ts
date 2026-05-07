@@ -2,7 +2,7 @@
  * Action registry for `@elizaos/app-scape`.
  *
  * Five planner-facing actions:
- *   - WALK_TO       (standalone)
+ *   - SCAPE_WALK_TO (standalone)
  *   - ATTACK_NPC    (standalone)
  *   - CHAT_PUBLIC   (standalone)
  *   - JOURNAL_OP    (router: set-goal | complete-goal | remember)
