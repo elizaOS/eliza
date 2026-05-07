@@ -8,12 +8,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
 } from "../services/ShopifyService.js";
 import type { Customer } from "../types.js";
+import { getActionOptions } from "./confirmation.js";
+import { parseJsonObject } from "./json.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,36 +42,49 @@ type CustomerIntent =
   | { action: "list"; query: string | null }
   | { action: "search"; query: string };
 
+function readNullableString(value: unknown): string | null {
+  return typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.trim().toLowerCase() !== "null"
+    ? value.trim()
+    : null;
+}
+
+function readCustomerIntent(options?: HandlerOptions): CustomerIntent | null {
+  const params = getActionOptions(options);
+  const candidate =
+    params.intent && typeof params.intent === "object"
+      ? (params.intent as Record<string, unknown>)
+      : params;
+  const action = candidate.action;
+  const query = readNullableString(candidate.query);
+  if (action === "list") {
+    return { action, query };
+  }
+  if (action === "search" && query) {
+    return { action, query };
+  }
+  return null;
+}
+
 async function classifyIntent(
   runtime: IAgentRuntime,
   text: string,
 ): Promise<CustomerIntent | null> {
   const prompt = `Analyze the user message and determine what customer action they want.
-Respond with TOON only in one of these shapes:
-action: list
-query:
+Respond with JSON only in one of these shapes:
+{"action":"list","query":null}
 
-action: search
-query: customer name, email, or other search term
+{"action":"search","query":"customer name, email, or other search term"}
 
 User message: "${text}"
 `;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseToonKeyValue<Record<string, unknown>>(response);
-    const action = parsed?.action;
-    const query =
-      typeof parsed?.query === "string" &&
-      parsed.query.trim().length > 0 &&
-      parsed.query.trim().toLowerCase() !== "null"
-        ? parsed.query.trim()
-        : null;
-    if (action === "list") {
-      return { action, query };
-    }
-    if (action === "search" && query) {
-      return { action, query };
+    const parsed = parseJsonObject<Record<string, unknown>>(response);
+    if (parsed?.action) {
+      return readCustomerIntent(parsed as HandlerOptions);
     }
   }
   return null;
@@ -123,7 +138,7 @@ export const manageCustomersAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: HandlerOptions,
+    options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
@@ -136,7 +151,8 @@ export const manageCustomersAction: Action = {
 
     const text =
       typeof message.content?.text === "string" ? message.content.text : "";
-    const intent = await classifyIntent(runtime, text);
+    const intent =
+      readCustomerIntent(options) ?? (await classifyIntent(runtime, text));
 
     if (!intent) {
       await callback?.({
@@ -190,6 +206,21 @@ export const manageCustomersAction: Action = {
       return { success: false, error: msg };
     }
   },
+
+  parameters: [
+    {
+      name: "action",
+      description: "Customer action. One of: list, search.",
+      required: false,
+      schema: { type: "string" as const, enum: ["list", "search"] },
+    },
+    {
+      name: "query",
+      description: "Customer name, email, or other Shopify customer search term.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
 
   examples,
 };

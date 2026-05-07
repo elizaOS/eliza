@@ -8,7 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -19,6 +19,7 @@ import {
   getActionOptions,
   isConfirmed,
 } from "./confirmation.js";
+import { parseJsonObject } from "./json.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,24 +99,21 @@ async function classifyIntent(
   text: string,
 ): Promise<InventoryIntent | null> {
   const prompt = `Analyze the user message and determine what inventory action they want.
-Respond with TOON only in one of these shapes:
-action: check
-productQuery: product name or SKU to check
+Respond with JSON only in one of these shapes:
+{"action":"check","productQuery":"product name or SKU to check"}
 
-action: adjust
-productQuery: product name
-delta: 5
-reason: reason
-  (delta is positive to add stock, negative to remove stock)
+{"action":"adjust","productQuery":"product name","delta":5,"reason":"reason"}
 
-action: locations
+{"action":"locations"}
+
+For adjust, delta is positive to add stock and negative to remove stock.
 
 User message: "${text}"
 `;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+    const parsed = parseJsonObject<Record<string, unknown>>(response);
     if (parsed?.action) {
       return readInventoryIntent(parsed as HandlerOptions);
     }

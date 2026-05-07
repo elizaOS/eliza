@@ -8,7 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import {
   SHOPIFY_SERVICE_TYPE,
   type ShopifyService,
@@ -19,6 +19,7 @@ import {
   getActionOptions,
   isConfirmed,
 } from "./confirmation.js";
+import { parseJsonObject } from "./json.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,29 +112,19 @@ async function classifyIntent(
   text: string,
 ): Promise<ProductIntent | null> {
   const prompt = `Analyze the user message and determine what product action they want.
-Respond with TOON only in one of these shapes:
-action: list
-query: search term
+Respond with JSON only in one of these shapes:
+{"action":"list","query":"search term"}
 
-action: create
-title: product title
-description: description
-productType: type
-vendor: vendor
-status: ACTIVE or DRAFT
+{"action":"create","title":"product title","description":"description","productType":"type","vendor":"vendor","status":"ACTIVE"}
 
-action: update
-identifier: product title or handle to find
-title: new title
-description: new description
-status: ACTIVE or DRAFT or ARCHIVED
+{"action":"update","identifier":"product title or handle to find","title":"new title","description":"new description","status":"ACTIVE"}
 
 User message: "${text}"
 `;
 
   for (let i = 0; i < 2; i++) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const parsed = parseToonKeyValue<Record<string, unknown>>(response);
+    const parsed = parseJsonObject<Record<string, unknown>>(response);
     if (parsed?.action) {
       return readProductIntent(parsed as HandlerOptions);
     }
