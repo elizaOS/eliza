@@ -227,7 +227,7 @@ export class AcpService {
 
     if (result.code !== 0) {
       const message = this.classifyExitError(result.code, result.stderr);
-      await this.store.updateStatus(id, "error", message);
+      await this.store.updateStatus(id, "errored", message);
       this.emitSessionEvent(id, "error", {
         message,
         exitCode: result.code,
@@ -340,7 +340,7 @@ export class AcpService {
 
     const message =
       promptResult.error ?? `acpx prompt failed with stopReason ${stopReason}`;
-    await this.store.updateStatus(sessionId, "error", message);
+    await this.store.updateStatus(sessionId, "errored", message);
     this.emitSessionEvent(sessionId, "error", {
       message,
       stopReason,
@@ -409,17 +409,13 @@ export class AcpService {
     this.outputBuffers.delete(sessionId);
   }
 
-  listSessions(): SessionInfo[] {
-    if (this.store instanceof InMemorySessionStore)
-      return this.store.listSync();
-    // TODO(W4): clarify with W6 whether compatibility callers can accept async list fallback.
-    return [];
+  async listSessions(): Promise<SessionInfo[]> {
+    return this.store.list();
   }
 
-  getSession(sessionId: string): SessionInfo | undefined {
-    if (this.store instanceof InMemorySessionStore)
-      return this.store.getSync(sessionId) ?? undefined;
-    return undefined;
+  async getSession(sessionId: string): Promise<SessionInfo | undefined> {
+    const session = await this.store.get(sessionId);
+    return session ?? undefined;
   }
 
   onSessionEvent(handler: SessionEventCallback): () => void {
@@ -818,7 +814,8 @@ export class AcpService {
   private async enforceSessionLimit(): Promise<void> {
     const sessions = await this.store.list();
     const active = sessions.filter(
-      (s) => !["stopped", "error", "errored", "completed"].includes(s.status),
+      (s) =>
+        !["stopped", "errored", "completed", "cancelled"].includes(s.status),
     );
     if (active.length >= this.maxSessions)
       throw new Error(`acpx max session limit reached (${this.maxSessions})`);
@@ -1091,7 +1088,7 @@ function toSpawnResult(session: SessionInfo): SpawnResult {
     acpxSessionId: session.acpxSessionId,
     agentSessionId: session.agentSessionId,
     pid: session.pid,
-    authReady: session.status !== "error" && session.status !== "errored",
+    authReady: session.status !== "errored",
     metadata: session.metadata,
   };
 }

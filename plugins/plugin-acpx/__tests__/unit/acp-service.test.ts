@@ -157,7 +157,7 @@ describe("AcpService", () => {
 
     expect(result.name).toBe("s1");
     expect(result.status).toBe("ready");
-    expect(service.listSessions()).toHaveLength(1);
+    expect(await service.listSessions()).toHaveLength(1);
     expect(events.some(([, event]) => event === "ready")).toBe(true);
     expect(spawnMock).toHaveBeenCalledWith(
       "acpx",
@@ -274,7 +274,7 @@ describe("AcpService", () => {
     expect(eventSessionIds).not.toContain("protocol-session");
     expect(acpSessionIds).toContain(sessionId);
     expect(acpSessionIds).not.toContain("protocol-session");
-    expect(service.getSession(sessionId)?.acpxSessionId).toBe(
+    expect((await service.getSession(sessionId))?.acpxSessionId).toBe(
       "protocol-session",
     );
   });
@@ -330,7 +330,7 @@ describe("AcpService", () => {
     const result = await sent;
     expect(result.stopReason).toBe("cancelled");
     expect(result.error).toBeUndefined();
-    expect(service.getSession(sessionId)?.status).toBe("cancelled");
+    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
     expect(events).toContain("cancelled");
     expect(events).not.toContain("error");
   });
@@ -480,7 +480,7 @@ describe("AcpService", () => {
     await waitForSpawn(create);
     closeOk(create);
     const { sessionId } = await spawned;
-    const session = service.getSession(sessionId);
+    const session = await service.getSession(sessionId);
     expect(session).toBeTruthy();
     await (
       service as unknown as {
