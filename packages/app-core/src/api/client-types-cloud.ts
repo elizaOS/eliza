@@ -4,6 +4,14 @@
 // ---------------------------------------------------------------------------
 
 import type {
+  TrajectoryExportOptions as CoreTrajectoryExportOptions,
+  TrajectoryListOptions as CoreTrajectoryListOptions,
+  TrajectoryListResult as CoreTrajectoryListResult,
+  TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
+  TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
+  TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
+} from "@elizaos/core";
+import type {
   AppSessionConfig,
   AppUiExtensionConfig,
   AppViewerConfig,
@@ -594,32 +602,19 @@ export interface AppStopResult {
 }
 
 // Trajectories
-export interface TrajectoryRecord {
-  id: string;
-  agentId: string;
+export interface TrajectoryRecord extends CoreTrajectorySummaryRecord {
   roomId: string | null;
   entityId: string | null;
   conversationId: string | null;
-  source: string;
-  scenarioId?: string | null;
-  batchId?: string | null;
-  status: "active" | "completed" | "error";
-  startTime: number;
-  endTime: number | null;
-  durationMs: number | null;
-  llmCallCount: number;
-  providerAccessCount: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
   metadata: Record<string, unknown>;
-  createdAt: string;
   updatedAt: string;
 }
 
-export interface TrajectoryLlmCall {
+export interface TrajectoryLlmCall extends CoreTrajectoryLlmCallRecord {
   id: string;
   trajectoryId: string;
   stepId: string;
+  timestamp: number;
   model: string;
   systemPrompt: string;
   userPrompt: string;
@@ -628,23 +623,18 @@ export interface TrajectoryLlmCall {
   maxTokens: number;
   purpose: string;
   actionType: string;
-  stepType?: string;
-  tags?: string[];
   latencyMs: number;
-  promptTokens?: number;
-  completionTokens?: number;
-  timestamp: number;
   createdAt: string;
 }
 
-export interface TrajectoryProviderAccess {
+export interface TrajectoryProviderAccess
+  extends CoreTrajectoryProviderAccessRecord {
   id: string;
   trajectoryId: string;
   stepId: string;
   providerName: string;
   purpose: string;
   data: Record<string, unknown>;
-  query?: Record<string, unknown>;
   timestamp: number;
   createdAt: string;
 }
@@ -870,24 +860,10 @@ export interface TrajectoryCacheStatsData {
   sizeBytes?: number;
 }
 
-export interface TrajectoryListOptions {
-  limit?: number;
-  offset?: number;
-  source?: string;
-  scenarioId?: string;
-  batchId?: string;
-  status?: "active" | "completed" | "error";
-  startDate?: string;
-  endDate?: string;
-  search?: string;
-}
+export type TrajectoryListOptions = CoreTrajectoryListOptions;
 
-export interface TrajectoryListResult {
-  trajectories: TrajectoryRecord[];
-  total: number;
-  offset: number;
-  limit: number;
-}
+export interface TrajectoryListResult
+  extends CoreTrajectoryListResult<TrajectoryRecord> {}
 
 export interface TrajectoryDetailResult {
   trajectory: TrajectoryRecord;
@@ -917,14 +893,9 @@ export interface TrajectoryConfig {
   enabled: boolean;
 }
 
-export interface TrajectoryExportOptions {
+export type TrajectoryExportOptions = CoreTrajectoryExportOptions & {
   format: TrajectoryExportFormat;
-  jsonShape?: "legacy" | "context_object_events_v5";
-  includePrompts?: boolean;
-  trajectoryIds?: string[];
-  startDate?: string;
-  endDate?: string;
-}
+};
 
 // ERC-8004 Registry & Drop types
 export interface RegistryStatus {
