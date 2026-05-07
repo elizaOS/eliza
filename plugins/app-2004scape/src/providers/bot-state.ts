@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -9,15 +8,15 @@ import {
 import type { BotState } from "../sdk/types.js";
 
 function providerText(value: unknown): string {
-  return encodeToonValue({ rs_2004_bot_state: value });
+  return JSON.stringify({ rs_2004_bot_state: value }, null, 2);
 }
 
 export const botStateProvider: Provider = {
   name: "RS_SDK_BOT_STATE",
   description:
-    "Full TOON game state for the 2004scape bot: player, skills, inventory, equipment, nearby entities, messages, and combat.",
+    "Full JSON game state for the 2004scape bot: player, skills, inventory, equipment, nearby entities, messages, and combat.",
   descriptionCompressed:
-    "TOON game state: player, skills, inventory, equipment, nearby, combat.",
+    "JSON game state: player, skills, inventory, equipment, nearby, combat.",
 
   async get(
     runtime: IAgentRuntime,

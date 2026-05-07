@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -30,13 +29,13 @@ export const visionProvider: Provider = {
           sceneDescription: "Vision service is not available.",
           cameraStatus: "No camera connected",
         },
-        text: encodeToonValue({
+        text: JSON.stringify({
           visual_perception: {
             visionAvailable: false,
             sceneDescription: "Vision service is not available.",
             cameraStatus: "No camera connected",
           },
-        }),
+        }, null, 2),
         data: { hasVision: false },
       };
     }
@@ -290,12 +289,12 @@ export const visionProvider: Provider = {
 
     return {
       values,
-      text: encodeToonValue({
+      text: JSON.stringify({
         visual_perception: {
           summary: perceptionText,
           ...values,
         },
-      }),
+      }, null, 2),
       data,
     };
   },

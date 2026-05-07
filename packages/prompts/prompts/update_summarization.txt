@@ -21,7 +21,7 @@ Update the summary by:
 
 The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
 
-Respond in TOON:
+Respond in JSON:
 text: Your updated and condensed summary here
 topics[0]: topic1
 topics[1]: topic2

@@ -28,13 +28,13 @@ import {
 import { MessageCircle, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import type { UserCharacter } from "@/db/schemas";
+import type { UserCharacterDto } from "@/types/cloud-api";
 import type { AffiliateTheme } from "@/lib/config/affiliate-themes";
 import { getThemeCSSVariables } from "@/lib/config/affiliate-themes";
 import { EmailCaptureModal } from "./email-capture-modal";
 
 interface CharacterIntroPageProps {
-  character: UserCharacter;
+  character: UserCharacterDto;
   onEmailSubmit: (email: string) => Promise<void>;
   onSkip: () => void;
   onAuthenticatedStart?: () => void;

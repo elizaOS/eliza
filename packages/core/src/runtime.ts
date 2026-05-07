@@ -52,6 +52,8 @@ import {
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
+	type TrajectoryProviderAccessLogger,
+	type TrajectoryRuntimeLlmCallLogger,
 	withActionStep,
 	withEvaluatorStep,
 	withProviderStep,
@@ -323,8 +325,6 @@ function resolveDynamicPromptModelType(
 /**
  * Resolves the default structured-output format from a setting value.
  * Used by `dynamicPromptExecFromState` when no per-call preference is given.
- * Accepts legacy `toon` as an alias for JSON so old callers do not keep the
- * runtime on the former TOON prompt contract.
  */
 export function resolveDefaultOutputFormat(
 	raw: unknown,
@@ -332,8 +332,6 @@ export function resolveDefaultOutputFormat(
 	if (typeof raw !== "string") return "JSON";
 	switch (raw.trim().toLowerCase()) {
 		case "json":
-			return "JSON";
-		case "toon":
 			return "JSON";
 		default:
 			return "JSON";
@@ -2880,31 +2878,17 @@ export class AgentRuntime implements IAgentRuntime {
 			const actionResults: ActionResult[] = [];
 			let accumulatedState = state;
 
-			function normalizeAction(actionString: string) {
-				return actionString.toLowerCase().replace(/_/g, "");
-			}
-			const normalizedActions = this.actions.map((action) => {
-				const normalizedName = normalizeAction(action.name);
-				const normalizedSimiles = action.similes
-					? action.similes.map((simile) => normalizeAction(simile))
-					: [];
-				return {
-					action,
-					normalizedName,
-					normalizedSimiles,
-				};
-			});
 			const actionByName = new Map<string, Action>();
-			for (const entry of normalizedActions) {
-				if (!actionByName.has(entry.normalizedName)) {
-					actionByName.set(entry.normalizedName, entry.action);
+			for (const action of this.actions) {
+				if (!actionByName.has(action.name)) {
+					actionByName.set(action.name, action);
 				}
 			}
 			this.logger.trace(
 				{
 					src: "agent",
 					agentId: this.agentId,
-					actions: this.actions.map((a) => normalizeAction(a.name)),
+					actions: this.actions.map((a) => a.name),
 				},
 				"Available actions",
 			);
@@ -2933,66 +2917,7 @@ export class AgentRuntime implements IAgentRuntime {
 					{ src: "agent", agentId: this.agentId, action: responseAction },
 					"Processing action",
 				);
-				const normalizedResponseAction = normalizeAction(responseAction);
-
-				// First try exact match
-				let action = actionByName.get(normalizedResponseAction);
-
-				if (!action) {
-					// Then try fuzzy matching
-					for (const entry of normalizedActions) {
-						if (
-							entry.normalizedName.includes(normalizedResponseAction) ||
-							normalizedResponseAction.includes(entry.normalizedName)
-						) {
-							action = entry.action;
-							break;
-						}
-					}
-				}
-
-				if (!action) {
-					// Try similes
-					for (const entry of normalizedActions) {
-						const exactSimileMatch = entry.normalizedSimiles.find(
-							(simile) => simile === normalizedResponseAction,
-						);
-
-						if (exactSimileMatch) {
-							action = entry.action;
-							this.logger.debug(
-								{
-									src: "agent",
-									agentId: this.agentId,
-									action: action.name,
-									match: "simile",
-								},
-								"Action resolved via simile",
-							);
-							break;
-						}
-
-						const fuzzySimileMatch = entry.normalizedSimiles.find(
-							(simile) =>
-								simile.includes(normalizedResponseAction) ||
-								normalizedResponseAction.includes(simile),
-						);
-
-						if (fuzzySimileMatch) {
-							action = entry.action;
-							this.logger.debug(
-								{
-									src: "agent",
-									agentId: this.agentId,
-									action: action.name,
-									match: "fuzzy",
-								},
-								"Action resolved via fuzzy match",
-							);
-							break;
-						}
-					}
-				}
+				const action = actionByName.get(responseAction.trim());
 				if (!action) {
 					const errorMsg = `Action not found: ${responseAction}`;
 					this.logger.error(
@@ -4029,8 +3954,8 @@ export class AgentRuntime implements IAgentRuntime {
 				? trajectoryStepIdFromMessage
 				: getTrajectoryContext()?.trajectoryStepId;
 
-		// If we're running inside a trajectory step, always bypass the state cache so
-		// providers are executed and can be logged for training/benchmark traces.
+		// When composing state for a recorded trajectory step, execute providers
+		// instead of serving a stale cached state so provider accesses are logged.
 		if (trajectoryStepId) {
 			skipCache = true;
 		}
@@ -4082,22 +4007,9 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		// Optional trajectory logging service (no-op by default).
-		type TrajectoryLogger = Service & {
-			logProviderAccess: (params: {
-				stepId: string;
-				providerName: string;
-				data: Record<string, string | number | boolean | null>;
-				purpose: string;
-				query?: Record<string, string | number | boolean | null>;
-				runId?: string;
-				roomId?: string;
-				messageId?: string;
-				executionTraceId?: string;
-			}) => void;
-		};
-		const trajLogger = (await this._ensureServiceStarted(
-			"trajectories",
-		)) as TrajectoryLogger | null;
+		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
+			| (Service & TrajectoryProviderAccessLogger)
+			| null;
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
@@ -5308,32 +5220,12 @@ export class AgentRuntime implements IAgentRuntime {
 	}): Promise<void> {
 		if (this.initResolver) return;
 
-		type TrajectoryLogger = Service & {
-			logLlmCall: (params: {
-				stepId: string;
-				model: string;
-				systemPrompt: string;
-				userPrompt: string;
-				response: string;
-				temperature: number;
-				maxTokens: number;
-				purpose: string;
-				actionType: string;
-				latencyMs: number;
-				modelSlot?: string;
-				runId?: string;
-				roomId?: string;
-				messageId?: string;
-				executionTraceId?: string;
-			}) => void;
-		};
-
 		try {
 			const trajCtx = getTrajectoryContext();
 			const stepId = trajCtx?.trajectoryStepId;
-			const trajLogger = (await this._ensureServiceStarted(
-				"trajectories",
-			)) as TrajectoryLogger | null;
+			const trajLogger = (await this._ensureServiceStarted("trajectories")) as
+				| (Service & TrajectoryRuntimeLlmCallLogger)
+				| null;
 			if (!stepId || !trajLogger) return;
 
 			const tempRaw = isPlainObject(args.modelParams)
@@ -5593,8 +5485,8 @@ export class AgentRuntime implements IAgentRuntime {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "toon";
-			forceFormat?: "json" | "toon";
+			preferredEncapsulation?: "json";
+			forceFormat?: "json";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -6750,7 +6642,7 @@ ${section_end}`;
 	}
 
 	private buildValidationOutputInstructions({
-		format,
+		format: _format,
 		schema,
 		perFieldCodes,
 		includeFirstCheckpoint,

@@ -21,7 +21,7 @@ instructions[6]:
 - include a short thought describing the change
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
 thought: Sarah should become an admin.

@@ -15,11 +15,11 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { App } from "@/db/schemas";
+import type { AppDto } from "@/types/cloud-api";
 import { PromoteAppDialog } from "@/packages/ui/src/components/promotion/promote-app-dialog";
 
 interface AppPromoteProps {
-  app: App;
+  app: AppDto;
 }
 
 interface PromotionSuggestions {

@@ -1,6 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import type { SignalService } from "../service";
 import { getSignalContactDisplayName, SIGNAL_SERVICE_NAME } from "../types";
 
@@ -61,7 +60,7 @@ export const signalContactsProvider: Provider = {
       values: {
         contactCount: entries.length,
       },
-      text: encode({
+      text: JSON.stringify({
         signal_contacts: {
           count: entries.length,
           items: entries,

@@ -44,11 +44,6 @@ sys.path.insert(0, str(SCRIPTS))
 
 from lib.runtime_phases import PHASE_OOB, classify_phase  # noqa: E402
 
-try:
-    from lib.toon import ToonDecoder  # noqa: E402
-except Exception:  # pragma: no cover - only hit when Bun deps are absent
-    ToonDecoder = None  # type: ignore[assignment]
-
 
 DATASETS_FILE = ROOT / "datasets.yaml"
 RAW_DIR = ROOT / "data" / "raw"
@@ -133,7 +128,7 @@ TRANSFORM_PROFILES: dict[str, TransformProfile] = {
         "gold",
         ("wallet", "payments", "messaging", "security"),
         ("already in canonical ElizaRecord shape", "strong safety and scam-defense coverage"),
-        ("legacy outputs may still be TOON", "native evaluator labels are partial"),
+        ("legacy outputs may still be non-JSON", "native evaluator labels are partial"),
         1.0,
     ),
     "claude_distill": profile(
@@ -151,7 +146,7 @@ TRANSFORM_PROFILES: dict[str, TransformProfile] = {
         "gold",
         ("general", "messaging", "memory"),
         ("real deployed Eliza trajectories", "multi-turn agent behavior"),
-        ("local corpus must be provided separately", "upstream response formats include XML/YAML/JSON/TOON"),
+        ("local corpus must be provided separately", "upstream response formats include mixed legacy envelopes"),
         1.0,
     ),
     "scam_defense_corpus": profile(
@@ -762,7 +757,7 @@ def tools_from_eliza(record: dict[str, Any], calls: list[dict[str, Any]] | None 
     return [out[k] for k in sorted(out)]
 
 
-def decode_expected(raw: str, decoder: Any | None) -> tuple[Any, str, str | None]:
+def decode_expected(raw: str, _decoder: Any | None = None) -> tuple[Any, str, str | None]:
     text = (raw or "").strip()
     if not text:
         return {}, "inferred", "empty expectedResponse"
@@ -770,13 +765,8 @@ def decode_expected(raw: str, decoder: Any | None) -> tuple[Any, str, str | None
         try:
             return json.loads(text), "native_direct", None
         except json.JSONDecodeError:
-            pass
-    if decoder is not None:
-        try:
-            return decoder.decode(text), "legacy_toon_compat", None
-        except Exception as e:  # noqa: BLE001
-            return {"text": text}, "inferred", f"TOON decode failed: {e}"
-    return {"text": text}, "inferred", "TOON decoder unavailable"
+            return {"text": text}, "inferred", "JSON decode failed"
+    return {"text": text}, "inferred", "non-JSON legacy expectedResponse"
 
 
 def ensure_dict(value: Any) -> dict[str, Any]:
@@ -1140,7 +1130,7 @@ def transform_normalized(
 ) -> dict[str, Any]:
     NATIVE_RECORDS_DIR.mkdir(parents=True, exist_ok=True)
     NATIVE_ERRORS_DIR.mkdir(parents=True, exist_ok=True)
-    decoder = ToonDecoder() if ToonDecoder is not None else None
+    decoder = None
     manifest: dict[str, Any] = {"schema": "eliza.native_tool_calling.transform_manifest.v1", "sources": []}
     totals = {"in": 0, "out": 0, "errors": 0, "skipped": 0}
 

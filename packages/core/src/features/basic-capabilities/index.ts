@@ -122,16 +122,16 @@ export {
 } from "../plugin-manager/index.ts";
 
 // ============================================================================
-// Structured TOON response interfaces.
+// Structured JSON response interfaces.
 // ============================================================================
 
-interface ImageDescriptionToon {
+interface ImageDescriptionJson {
 	description?: string;
 	title?: string;
 	text?: string;
 }
 
-interface MessageHandlerToon {
+interface MessageHandlerJson {
 	thought?: string;
 	actions?: string | string[];
 	providers?: string | string[];
@@ -139,7 +139,7 @@ interface MessageHandlerToon {
 	simple?: boolean;
 }
 
-interface PostCreationToon {
+interface PostCreationJson {
 	post?: string;
 	thought?: string;
 }
@@ -299,7 +299,7 @@ export async function processAttachments(
 			if (typeof response === "string") {
 				const parsedJson = parseJSONObjectFromText(
 					response,
-				) as ImageDescriptionToon | null;
+				) as ImageDescriptionJson | null;
 
 				if (parsedJson && (parsedJson.description || parsedJson.text)) {
 					processedAttachment.description = parsedJson.description ?? "";
@@ -319,7 +319,7 @@ export async function processAttachments(
 				} else {
 					runtime.logger.warn(
 						{ src: "basic-capabilities", agentId: runtime.agentId },
-						"Failed to parse TOON response for image description",
+						"Failed to parse JSON response for image description",
 					);
 				}
 			} else if (
@@ -644,7 +644,7 @@ const postGeneratedHandler = async ({
 
 		const parsedJson = parseJSONObjectFromText(
 			response,
-		) as MessageHandlerToon | null;
+		) as MessageHandlerJson | null;
 		if (parsedJson) {
 			const actionsRaw = parsedJson.actions;
 			const providersRaw = parsedJson.providers;
@@ -701,11 +701,11 @@ const postGeneratedHandler = async ({
 		prompt: postPrompt,
 	});
 
-	const parsedToonResponse = parseJSONObjectFromText(
+	const parsedJsonResponse = parseJSONObjectFromText(
 		structuredResponseText,
-	) as PostCreationToon | null;
+	) as PostCreationJson | null;
 
-	if (!parsedToonResponse) {
+	if (!parsedJsonResponse) {
 		runtime.logger.error(
 			{
 				src: "basic-capabilities",
@@ -724,7 +724,7 @@ const postGeneratedHandler = async ({
 		return cleanedText;
 	}
 
-	const cleanedText = cleanupPostText(parsedToonResponse.post ?? "");
+	const cleanedText = cleanupPostText(parsedJsonResponse.post ?? "");
 	const stateData = state.data;
 	const stateDataProviders = stateData?.providers;
 	const RM =
@@ -796,7 +796,7 @@ const postGeneratedHandler = async ({
 				text: cleanedText,
 				source,
 				channelType: ChannelType.FEED,
-				thought: parsedToonResponse.thought ?? "",
+				thought: parsedJsonResponse.thought ?? "",
 				type: "post",
 			},
 			roomId: message.roomId,

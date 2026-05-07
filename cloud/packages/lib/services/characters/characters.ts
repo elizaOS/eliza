@@ -441,9 +441,9 @@ export class CharactersService {
     // Check if owned by an affiliate anonymous user
     const isAffiliateUser = owner.email?.includes("@anonymous.elizacloud.ai") || false;
     const isAnonymous = owner.is_anonymous === true;
-    const hasNoPrivyId = !owner.privy_user_id;
+    const hasNoStewardId = !owner.steward_user_id;
 
-    if (isAffiliateUser && (isAnonymous || hasNoPrivyId)) {
+    if (isAffiliateUser && (isAnonymous || hasNoStewardId)) {
       return {
         claimable: true,
         ownerId: owner.id,

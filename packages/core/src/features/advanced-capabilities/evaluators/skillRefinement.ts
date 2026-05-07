@@ -28,44 +28,14 @@ import type {
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
-
-interface TrajectoryStep {
-	timestamp: number;
-	llmCalls?: Array<{
-		systemPrompt?: string;
-		userPrompt?: string;
-		response?: string;
-		actionType?: string;
-		purpose?: string;
-	}>;
-	usedSkills?: string[];
-}
-
-interface Trajectory {
-	trajectoryId: string;
-	agentId: string;
-	startTime: number;
-	endTime?: number;
-	steps?: TrajectoryStep[];
-	metrics?: { finalStatus?: string };
-	metadata?: Record<string, unknown>;
-}
-
-interface TrajectoryListItem {
-	id: string;
-	status: string;
-	stepCount?: number;
-	endTime: number | null;
-	metadata?: Record<string, unknown>;
-}
-
-interface TrajectoryServiceShape {
-	listTrajectories?: (options: {
-		limit?: number;
-		status?: string;
-	}) => Promise<{ trajectories: TrajectoryListItem[] }>;
-	getTrajectoryDetail?: (trajectoryId: string) => Promise<Trajectory | null>;
-}
+import {
+	formatTrajectoryForPrompt,
+	getTrajectoryService,
+	parseJsonObject,
+	type SkillTrajectoryService,
+	type SkillTrajectory as Trajectory,
+	type SkillTrajectoryListItem as TrajectoryListItem,
+} from "./trajectory-evaluator-utils.ts";
 
 const EVAL_NAME = "SKILL_REFINEMENT";
 const EVAL_DESCRIPTION =
@@ -115,20 +85,6 @@ function getActiveSkillsDir(): string {
 
 function getProposedSkillsDir(): string {
 	return join(resolveStateDir(), "skills", "curated", "proposed");
-}
-
-function parseJsonObject(raw: string): Record<string, unknown> | null {
-	const fenceMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i);
-	const jsonText = fenceMatch ? fenceMatch[1] : raw.trim();
-	if (!jsonText) return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(jsonText);
-	} catch {
-		return null;
-	}
-	if (!parsed || typeof parsed !== "object") return null;
-	return parsed as Record<string, unknown>;
 }
 
 function parseRefinementResponse(raw: unknown): RefinementDraft | null {
@@ -305,46 +261,10 @@ function pickMostRecent(
 	return sorted[0];
 }
 
-function getTrajectoryService(
-	runtime: IAgentRuntime,
-): TrajectoryServiceShape | null {
-	const svc = runtime.getService("trajectories");
-	if (!svc) return null;
-	const shape = svc as unknown as TrajectoryServiceShape;
-	if (
-		typeof shape.listTrajectories !== "function" ||
-		typeof shape.getTrajectoryDetail !== "function"
-	) {
-		return null;
-	}
-	return shape;
-}
-
 function locateActiveSkill(name: string): string | null {
 	const skillPath = join(getActiveSkillsDir(), name, "SKILL.md");
 	if (existsSync(skillPath)) return skillPath;
 	return null;
-}
-
-function formatTrajectoryForPrompt(trajectory: Trajectory): string {
-	const lines: string[] = [];
-	lines.push(`Trajectory: ${trajectory.trajectoryId}`);
-	lines.push(`Final status: ${trajectory.metrics?.finalStatus ?? "unknown"}`);
-	let stepIdx = 0;
-	for (const step of trajectory.steps ?? []) {
-		stepIdx += 1;
-		lines.push(`--- Step ${stepIdx} ---`);
-		for (const call of step.llmCalls ?? []) {
-			lines.push(`[${call.purpose ?? call.actionType ?? "step"}]`);
-			if (call.userPrompt) {
-				lines.push(`USER: ${call.userPrompt.slice(0, 600)}`);
-			}
-			if (call.response) {
-				lines.push(`AGENT: ${call.response.slice(0, 600)}`);
-			}
-		}
-	}
-	return lines.join("\n");
 }
 
 export const skillRefinementEvaluator: Evaluator = {
@@ -384,7 +304,9 @@ export const skillRefinementEvaluator: Evaluator = {
 
 		const refinedNames: string[] = [];
 		const proposedNames: string[] = [];
-		const trajectoryDigest = formatTrajectoryForPrompt(trajectory);
+		const trajectoryDigest = formatTrajectoryForPrompt(trajectory, {
+			statusLabel: "Final status",
+		});
 
 		for (const skillName of skills) {
 			const activePath = locateActiveSkill(skillName);
@@ -586,7 +508,7 @@ export const skillRefinementEvaluator: Evaluator = {
 
 interface GradientRefinementInput {
 	runtime: IAgentRuntime;
-	trajectoryService: TrajectoryServiceShape;
+	trajectoryService: SkillTrajectoryService;
 	skillName: string;
 	skillBody: string;
 }
@@ -695,7 +617,7 @@ async function loadOptimizerModule(): Promise<OptimizerModule | null> {
 }
 
 async function collectSkillTrajectories(
-	service: TrajectoryServiceShape,
+	service: SkillTrajectoryService,
 	skillName: string,
 ): Promise<Trajectory[]> {
 	if (!service.listTrajectories || !service.getTrajectoryDetail) return [];

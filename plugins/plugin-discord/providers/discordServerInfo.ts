@@ -5,7 +5,6 @@ import type {
 	ProviderResult,
 	State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
@@ -98,7 +97,7 @@ export const discordServerInfoProvider: Provider = {
 				memberCount: entry.memberCount,
 				channelCount: entry.channelCount,
 			},
-			text: encode({ discord_server: entry }),
+			text: JSON.stringify({ discord_server: entry }),
 		};
 	},
 };

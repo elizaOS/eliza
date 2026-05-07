@@ -37,7 +37,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import type { App } from "@/db/schemas";
+import type { AppDto as App } from "@/types/cloud-api";
 
 interface AppsTableProps {
   apps: App[];

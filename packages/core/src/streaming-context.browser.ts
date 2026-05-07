@@ -12,6 +12,7 @@ import type {
 	IStreamingContextManager,
 	StreamingContext,
 } from "./streaming-context";
+import { StackContextManager as BaseStackContextManager } from "./utils/stack-context-manager";
 
 export type { StreamingContext } from "./streaming-context";
 
@@ -20,24 +21,9 @@ export type { StreamingContext } from "./streaming-context";
  * Safe because browser typically has 1 runtime per request.
  * Supports nested contexts via stack push/pop.
  */
-export class StackContextManager implements IStreamingContextManager {
-	private stack: Array<StreamingContext | undefined> = [];
-
-	run<T>(context: StreamingContext | undefined, fn: () => T): T {
-		this.stack.push(context);
-		try {
-			return fn();
-		} finally {
-			this.stack.pop();
-		}
-	}
-
-	active(): StreamingContext | undefined {
-		return this.stack.length > 0
-			? this.stack[this.stack.length - 1]
-			: undefined;
-	}
-}
+export class StackContextManager
+	extends BaseStackContextManager<StreamingContext | undefined>
+	implements IStreamingContextManager {}
 
 /**
  * Create and return a configured Stack context manager.

@@ -211,7 +211,7 @@ class DiscordService {
    */
   async logUserSignup(userData: {
     userId: string;
-    privyUserId: string;
+    stewardUserId: string;
     email?: string | null;
     name?: string | null;
     walletAddress?: string | null;
@@ -227,8 +227,8 @@ class DiscordService {
         inline: true,
       },
       {
-        name: "Privy ID",
-        value: `\`${userData.privyUserId}\``,
+        name: "Steward ID",
+        value: `\`${userData.stewardUserId}\``,
         inline: true,
       },
       {

@@ -9,13 +9,13 @@
 Based on the request, determine what information about the entity should be updated.
 Only update fields that the user has explicitly requested to change.
 
-Respond using TOON like this:
+Respond using JSON like this:
 thought: Your reasoning for the entity update
 entity_id: The entity ID to update
 updates[1]{name,value}:
   field_name,new_value
 
-IMPORTANT: Your response must ONLY contain the TOON document above.
+IMPORTANT: Your response must ONLY contain the JSON object above.
 
 
 

@@ -1,6 +1,6 @@
 /**
  * Synthetic dataset generator for fine-tuning the shouldRespond + context-routing
- * classifier and the action planner.
+ * messageHandler router and the action planner.
  *
  * Architecture:
  * 1. Takes scenario blueprints and expands each into N variants
@@ -82,8 +82,8 @@ export interface TrainingSample {
   agentName: string;
   /** The conversation messages (multi-turn) */
   messages: ConversationMessage[];
-  /** Expected classifier output */
-  expectedOutput: ClassifierOutput;
+  /** Expected messageHandler routing output */
+  expectedOutput: RoutingOutput;
   /** Metadata for filtering/analysis */
   metadata: SampleMetadata;
 }
@@ -95,7 +95,7 @@ export interface ConversationMessage {
   content: string;
 }
 
-export interface ClassifierOutput {
+export interface RoutingOutput {
   decision: "RESPOND" | "IGNORE" | "STOP";
   primaryContext: AgentContext;
   secondaryContexts: AgentContext[];
@@ -105,7 +105,7 @@ export interface ClassifierOutput {
 
 export interface MessageHandlerTrainingOutput {
   messageHandler: {
-    action: ClassifierOutput["decision"];
+    action: RoutingOutput["decision"];
     simple: boolean;
     contexts: AgentContext[];
     thought: string;
@@ -448,7 +448,7 @@ function randomParticipants(count: number, exclude: string[] = []): string[] {
 // ==================== Prompt construction ====================
 
 function buildTeacherSystemPrompt(): string {
-  return `You are a synthetic data generator for training an AI agent's message classifier.
+  return `You are a synthetic data generator for training an AI agent's v5 messageHandler router.
 Your task is to generate realistic multi-turn group chat conversations.
 
 IMPORTANT RULES:
@@ -457,7 +457,7 @@ IMPORTANT RULES:
 3. Messages should feel natural - casual, varied length, sometimes with typos.
 4. Group chats should have 3-6 participants plus optionally the agent.
 5. The agent's messages (when present) should be clearly from an AI assistant.
-6. NEVER include the expected classifier output in the conversation itself.
+6. NEVER include the expected messageHandler routing output in the conversation itself.
 7. Messages should be diverse in tone: some short, some long, some with emoji.
 
 Output format:
@@ -520,7 +520,7 @@ Remember:
 - Each message has "name" and "content"
 - Make it feel natural and realistic
 - Vary message lengths and tones
-- The last message should be the one the classifier evaluates`;
+- The last message should be the one the messageHandler router evaluates`;
 }
 
 function stripOutputFences(raw: string): string {
@@ -694,7 +694,7 @@ export async function generateSample(
     content: m.content,
   }));
 
-  const expectedOutput: ClassifierOutput = {
+  const expectedOutput: RoutingOutput = {
     decision: blueprint.decision,
     primaryContext: blueprint.primaryContext,
     secondaryContexts: blueprint.secondaryContexts ?? [],
@@ -828,7 +828,7 @@ export function toGeminiFormat(
     includeContextRouting,
   );
   const userContent = buildShouldRespondUserPrompt(sample);
-  const modelContent = buildClassifierJsonResponse(
+  const modelContent = buildMessageHandlerJsonResponse(
     sample,
     includeContextRouting,
   );
@@ -974,7 +974,7 @@ function buildShouldRespondUserPrompt(sample: TrainingSample): string {
   ].join("\n");
 }
 
-function buildClassifierJsonResponse(
+function buildMessageHandlerJsonResponse(
   sample: TrainingSample,
   includeContextRouting: boolean,
 ): string {

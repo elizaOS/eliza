@@ -15,10 +15,11 @@
  * - Gemini 2.5 Flash Image: $0.01/image (from pricing-constants)
  */
 
+import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/billing";
 import { IMAGE_GENERATION_COST } from "@/lib/pricing-constants";
 
 /** Platform markup: 20% on all AI costs */
-export const PLATFORM_MARKUP = 1.2;
+export const PLATFORM_MARKUP = PLATFORM_MARKUP_MULTIPLIER;
 
 // Base costs (what AI providers charge us)
 const BASE_IMAGE_COST = IMAGE_GENERATION_COST;

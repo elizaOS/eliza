@@ -12,7 +12,7 @@
  *   If `runtime` is omitted (e.g. isolated unit tests), that same in-memory path is used.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 
 import {
   durableReplayAbortReservation,
@@ -93,9 +93,10 @@ export async function replayGuardTryBegin(
     for (const k of keys) inflight.add(k);
     return true;
   } catch (err) {
-    console.error(
-      "[x402] replayGuardTryBegin failed:",
-      err instanceof Error ? err.message : String(err),
+    logger.error(
+      `[x402] replayGuardTryBegin failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
     );
     return false;
   }

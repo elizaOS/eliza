@@ -12,7 +12,7 @@ The user might express searches in various ways:
 - "Bugs that are almost done" → label + state filter
 - "Show me the oldest open issues" → state + sort order
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 query: General search text for title or description
 states: Comma-separated state names such as In Progress, Done, Todo, or Backlog
 assignees: Comma-separated assignee names or emails; use me for current user
@@ -31,6 +31,5 @@ sort:
 limit: Number of issues to show; default 10
 
 Only include fields that are clearly mentioned or implied. For "my" issues, set assignees to me. Output only the fields, with no prose before or after them.
-
 
 

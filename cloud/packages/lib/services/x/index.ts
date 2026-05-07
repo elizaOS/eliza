@@ -1,3 +1,4 @@
+import { DEFAULT_MARKUP_RATE, type MarkupBreakdown } from "@elizaos/billing";
 import {
   type SendTweetV2Params,
   type TTweetv2Expansion,
@@ -12,7 +13,6 @@ import { creditsService } from "@/lib/services/credits";
 import type { OAuthConnectionRole } from "@/lib/services/oauth/types";
 import { twitterAutomationService } from "@/lib/services/twitter-automation";
 import { logger } from "@/lib/utils/logger";
-import { DEFAULT_MARKUP_RATE, type MarkupBreakdown } from "../../../billing/src";
 
 export type XOperation = "status" | "post" | "dm.send" | "dm.digest" | "dm.curate" | "feed.read";
 

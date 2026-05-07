@@ -1,5 +1,5 @@
 import {
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type Action,
   type ActionResult,
   type HandlerCallback,
@@ -31,7 +31,7 @@ function coerceParamValue(value: unknown): unknown {
 }
 
 function paramsFromText(text: string): ParamsRecord {
-  const parsed = parseToonKeyValue<ParamsRecord>(text);
+  const parsed = parseJSONObjectFromText(text) as ParamsRecord | null;
   if (!parsed) return {};
   const nested = isRecord(parsed.params) ? parsed.params : {};
   const params: ParamsRecord = { ...parsed, ...nested };
@@ -161,7 +161,7 @@ function dispatchJournalOp(
 function createRouterAction(definition: ScapeRouterDefinition): Action {
   return {
     name: definition.name,
-    description: `${definition.description} Return TOON: action: ${definition.name}, op: one of ${definition.subactions.map((s) => s.name).join("|")}.`,
+    description: `${definition.description} Return JSON with action: ${definition.name}, op: one of ${definition.subactions.map((s) => s.name).join("|")}.`,
     descriptionCompressed: definition.descriptionCompressed,
     similes: definition.subactions.map((subaction) => subaction.description),
     examples: [],
@@ -179,7 +179,7 @@ function createRouterAction(definition: ScapeRouterDefinition): Action {
       {
         name: "params",
         description:
-          "Optional TOON object containing the fields required by the chosen op.",
+          "Optional JSON object containing the fields required by the chosen op.",
         descriptionCompressed: "Op fields.",
         required: false,
         schema: { type: "object" },

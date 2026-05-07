@@ -28,28 +28,28 @@ import type {
 	ChannelSpiderState,
 } from "./types";
 
-function formatToonScalar(value: unknown): string {
+function formatJsonScalar(value: unknown): string {
 	if (value == null) return "";
 	if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
 	if (typeof value === "number" || typeof value === "boolean") {
 		return String(value);
 	}
 	if (Array.isArray(value)) {
-		return value.map((item) => formatToonScalar(item)).join(", ");
+		return value.map((item) => formatJsonScalar(item)).join(", ");
 	}
 	if (typeof value === "object") {
 		return Object.entries(value as Record<string, unknown>)
-			.map(([key, entry]) => `${key}:${formatToonScalar(entry)}`)
+			.map(([key, entry]) => `${key}:${formatJsonScalar(entry)}`)
 			.join(", ");
 	}
 	return String(value);
 }
 
-function formatSpiderStateToon(state: ChannelSpiderState): string {
+function formatSpiderStateJson(state: ChannelSpiderState): string {
 	return [
 		"state:",
 		...Object.entries(state).map(
-			([key, value]) => `  ${key}: ${formatToonScalar(value)}`,
+			([key, value]) => `  ${key}: ${formatJsonScalar(value)}`,
 		),
 	].join("\n");
 }
@@ -276,7 +276,7 @@ export async function saveSpiderState(
 			entityId,
 			roomId,
 			content: {
-				text: formatSpiderStateToon(state),
+				text: formatSpiderStateJson(state),
 				source: "discord-spider",
 			},
 			metadata: {

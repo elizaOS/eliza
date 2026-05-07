@@ -1,8 +1,6 @@
 /**
  * inventory provider — packs the agent's inventory + equipment into
- * TOON tables. This is where TOON's header-row + CSV-data layout pays
- * off dramatically: a full 28-slot inventory goes from ~280 JSON
- * tokens to ~90 TOON tokens.
+ * compact JSON context.
  *
  * Empty slots are elided (PR 5 may surface free-slot count as a
  * separate field once the LLM has a reason to care about it).
@@ -15,7 +13,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 import type { ScapeGameService } from "../services/game-service.js";
 
@@ -40,7 +37,7 @@ export const inventoryProvider: Provider = {
     const eq = snapshot.equipment;
 
     return {
-      text: encode({
+      text: JSON.stringify({
         scape_inventory: {
           count: inv.length,
           capacity: 28,

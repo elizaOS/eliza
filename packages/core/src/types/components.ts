@@ -558,7 +558,7 @@ export interface ActionContext {
  * @param chunk - Delta text since the last emission for this field.
  * @param messageId - Streaming session / message identifier (UUID or opaque string).
  * @param accumulated - Full extracted text so far for the streaming field.
- *   Present when the emission originates from a TOON field extractor.
+ *   Present when the emission originates from a structured field extractor.
  *   Undefined for raw-token streams (useModel without an extractor) where no
  *   field-level accumulation exists.
  */

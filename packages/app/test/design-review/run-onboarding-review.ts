@@ -20,7 +20,7 @@ import {
 } from "@playwright/test";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { startMockApiServer } from "../electrobun-packaged/mock-api";
-import { getFreePort } from "../utils/get-free-port";
+import { getFreePort } from "../utils/get-free-port.mjs";
 
 // ---------------------------------------------------------------------------
 // Types

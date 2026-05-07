@@ -26,7 +26,7 @@ function createRuntime(service: unknown): IAgentRuntime {
 }
 
 describe("Birdeye portfolio provider factory", () => {
-  it("creates a portfolio provider that fetches holdings and renders TOON", async () => {
+  it("creates a portfolio provider that fetches holdings and renders JSON", async () => {
     const service = {
       fetchWalletTokenList: vi.fn(async () => ({
         wallet: WALLET,
@@ -113,7 +113,7 @@ describe("Birdeye portfolio provider factory", () => {
     );
   });
 
-  it("formats legacy portfolio wrappers as TOON holdings", () => {
+  it("formats legacy portfolio wrappers as JSON holdings", () => {
     const legacy: WalletPortfolioResponse = {
       success: true,
       data: {

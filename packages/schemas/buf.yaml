@@ -10,6 +10,8 @@ lint:
     - STANDARD
   except:
     - FIELD_NOT_REQUIRED
+    # The proto graph intentionally contains cross-package references between
+    # service and domain messages; keep this narrow exception visible here.
     - PACKAGE_NO_IMPORT_CYCLE
 breaking:
   use:

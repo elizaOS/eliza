@@ -13,7 +13,7 @@ import {
   type MockApiServer,
   startMockApiServer,
 } from "../electrobun-packaged/mock-api";
-import { getFreePort } from "../utils/get-free-port";
+import { getFreePort } from "../utils/get-free-port.mjs";
 
 type ShellMode = "companion" | "native";
 type ViewId =

@@ -5,23 +5,15 @@
  * error responses and proper HTTP status codes.
  */
 
+import { ApiError as CanonicalApiError, type ApiErrorCode } from "@/lib/api/cloud-worker-errors";
+
 // Avoid framework-specific response helpers in the Worker bundle; use native `Response.json`.
 type JsonResponse = Response;
 const JsonResponse = {
   json: (body: unknown, init?: ResponseInit): Response => Response.json(body, init),
 };
 
-export type ApiErrorCode =
-  | "authentication_required"
-  | "session_auth_required"
-  | "invalid_credentials"
-  | "access_denied"
-  | "resource_not_found"
-  | "rate_limit_exceeded"
-  | "validation_error"
-  | "insufficient_credits"
-  | "session_not_ready"
-  | "internal_error";
+export type { ApiErrorCode };
 
 interface ApiErrorOptions {
   code: ApiErrorCode;
@@ -33,26 +25,10 @@ interface ApiErrorOptions {
 /**
  * Base API Error class with proper HTTP status and error code
  */
-export class ApiError extends Error {
-  public readonly code: ApiErrorCode;
-  public readonly status: number;
-  public readonly details?: Record<string, unknown>;
-
+export class ApiError extends CanonicalApiError {
   constructor(options: ApiErrorOptions) {
-    super(options.message);
+    super(options);
     this.name = "ApiError";
-    this.code = options.code;
-    this.status = options.status;
-    this.details = options.details;
-  }
-
-  toJSON() {
-    return {
-      success: false,
-      error: this.message,
-      code: this.code,
-      ...(this.details && { details: this.details }),
-    };
   }
 }
 
@@ -164,6 +140,9 @@ export class SessionNotReadyError extends ApiError {
  * Uses error type checking instead of fragile string matching
  */
 export function getErrorStatusCode(error: unknown): number {
+  if (error instanceof CanonicalApiError) {
+    return error.status;
+  }
   if (error instanceof ApiError) {
     return error.status;
   }
@@ -265,6 +244,9 @@ function inferApiErrorCodeFromHttpStatus(status: number): ApiErrorCode {
  * Avoids leaking internal details
  */
 export function getSafeErrorMessage(error: unknown): string {
+  if (error instanceof CanonicalApiError) {
+    return error.message;
+  }
   if (error instanceof ApiError) {
     return error.message;
   }
@@ -323,6 +305,9 @@ export function caughtErrorJson(error: unknown): {
   body: Record<string, unknown>;
 } {
   const status = getErrorStatusCode(error);
+  if (error instanceof CanonicalApiError) {
+    return { status, body: error.toJSON() };
+  }
   if (error instanceof ApiError) {
     return { status, body: error.toJSON() };
   }
@@ -369,7 +354,10 @@ export function errorToResponse(error: unknown): Response {
   const status = getErrorStatusCode(error);
   const message = getSafeErrorMessage(error);
 
-  const body = error instanceof ApiError ? error.toJSON() : { success: false, error: message };
+  const body =
+    error instanceof CanonicalApiError || error instanceof ApiError
+      ? error.toJSON()
+      : { success: false, error: message };
 
   return new Response(JSON.stringify(body), {
     status,

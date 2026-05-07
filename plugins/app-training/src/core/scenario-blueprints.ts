@@ -601,7 +601,7 @@ const ACTION_RECIPES: ScenarioRecipe[] = [
     minContextTurns: 10,
     maxContextTurns: 22,
     description: "long-context request",
-    hint: "Make the lead-in long and partly unrelated so the classifier must use the recent window rather than just the final line.",
+    hint: "Make the lead-in long and partly unrelated so the messageHandler router must use the recent window rather than just the final line.",
   },
 ];
 

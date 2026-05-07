@@ -8,7 +8,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type State,
   withStandaloneTrajectory,
 } from "@elizaos/core";
@@ -79,7 +79,7 @@ async function extractSwapParams(
       })
   );
 
-  return parseToonKeyValue(result) as ExtractedSwapParams;
+  return parseJSONObjectFromText(result) as ExtractedSwapParams;
 }
 
 function toAmount(value: string | number | null | undefined): number | null {

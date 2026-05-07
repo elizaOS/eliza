@@ -133,7 +133,10 @@ const fetchPositions = async (
 
     const fetchedPositionsStatistics: FetchedPositionStatistics[] = await Promise.all(
       positions.map(async (position) => {
-        const pool = poolsMap.get(position.poolId.toString())!;
+        const pool = poolsMap.get(position.poolId.toString());
+        if (!pool) {
+          throw new Error(`Missing pool metadata for pool ID ${position.poolId.toString()}`);
+        }
 
         // Calculate price and range information
         const currentPrice = pool.currentPrice;

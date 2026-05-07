@@ -6,7 +6,7 @@ import {
 import type { ContextEvent, ContextObject } from "../../types/context-object";
 
 describe("context object trajectory JSON export", () => {
-	it("serializes v5 context events as JSON without TOON conversion", () => {
+	it("serializes v5 context events as JSON without legacy conversion", () => {
 		const event: ContextEvent = {
 			id: "evt-1",
 			type: "message",
@@ -49,6 +49,6 @@ describe("context object trajectory JSON export", () => {
 				events: [event],
 			}),
 		);
-		expect(serialized).not.toContain("TOON");
+		expect(serialized).not.toContain("legacy structured output");
 	});
 });

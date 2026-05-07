@@ -53,22 +53,3 @@ export type JsonObject = BufJsonObject;
  * Type alias for JSON-serializable values
  */
 export type JsonValue = BufJsonValue;
-
-/**
- * Helper to convert a proto message to a plain JSON object.
- * Uses a properly constrained type to avoid unsafe casts.
- */
-export function toJson<T extends JsonObject>(message: T): JsonObject {
-	// The @bufbuild/protobuf types are already plain objects
-	return message;
-}
-
-/**
- * Helper to create a proto message from a plain object
- */
-export function fromJson<T extends object>(
-	schema: { new (): T },
-	json: JsonObject,
-): T {
-	return Object.assign(new schema(), json);
-}

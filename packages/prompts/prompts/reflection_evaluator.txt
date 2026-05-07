@@ -42,9 +42,9 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 6. Always include a short `task_completion_reason` grounded in the conversation and action results.
 
 Output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 Do not output JSON, XML, Markdown fences, or commentary.
-Use indexed TOON fields exactly like this:
+Use JSON fields exactly like this:
 thought: "a self-reflective thought on the conversation"
 task_completed: false
 task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
@@ -63,7 +63,7 @@ Always include `task_completed` and `task_completion_reason`.
 If there are no durable new facts, omit all facts[...] entries.
 If there are no relationships, omit all relationships[...] entries.
 
-IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.
+IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.
 
 
 

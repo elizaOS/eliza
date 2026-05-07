@@ -123,8 +123,7 @@ export async function sendToken(
     args: [to, rawAmount],
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (ctx.walletClient as any).sendTransaction({
+  return ctx.walletClient.sendTransaction({
     account: ctx.account,
     to: tokenAddress,
     data,
@@ -148,8 +147,7 @@ export async function sendNative(
 ): Promise<Hash> {
   const rawAmount = parseAmount(amount, 18);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (ctx.walletClient as any).sendTransaction({
+  return ctx.walletClient.sendTransaction({
     account: ctx.account,
     to,
     value: rawAmount,

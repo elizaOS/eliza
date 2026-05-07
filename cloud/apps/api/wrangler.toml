@@ -124,7 +124,6 @@ LLM_TRAJECTORY_STORAGE = "r2"
 # file and leave a note in cloud/INFRA.md).
 #
 #   DATABASE_URL                       Neon Postgres
-#   DATABASE_URL_EU_READ               (optional) EU read replica
 #   STEWARD_API_URL                    Optional Steward base URL override;
 #       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
 #   STEWARD_SESSION_SECRET             HS256 secret for Steward JWT verify (jose); MUST match Steward host

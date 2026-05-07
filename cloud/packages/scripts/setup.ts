@@ -59,9 +59,6 @@ function isPlaceholderValue(value: string | undefined): boolean {
   if (!value) return false;
 
   return (
-    value === "your_privy_app_id_here" ||
-    value === "your_privy_client_id_here" ||
-    value === "your_privy_app_secret_here" ||
     value === "replace_with_strong_random_secret" ||
     value.includes("your-redis.upstash.io") ||
     value.includes("default:token@your-redis.upstash.io") ||

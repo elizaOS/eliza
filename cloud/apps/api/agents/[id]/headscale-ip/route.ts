@@ -25,6 +25,14 @@ function getInternalToken(c: AppContext): string | null {
   return null;
 }
 
+function getExpectedInternalToken(c: AppContext): string | null {
+  for (const key of ["HEADSCALE_INTERNAL_TOKEN", "CONTAINER_CONTROL_PLANE_TOKEN"] as const) {
+    const value = ((c.env[key] as string | undefined) ?? "").trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 /**
  * Constant-time string comparison. Workers has no `node:crypto.timingSafeEqual`
  * but we can fall back to a length-equal XOR loop using TextEncoder bytes —
@@ -47,9 +55,9 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   const agentId = c.req.param("id") ?? "";
 
-  const expectedToken = ((c.env.HEADSCALE_INTERNAL_TOKEN as string | undefined) ?? "").trim();
+  const expectedToken = getExpectedInternalToken(c);
   if (!expectedToken) {
-    console.error("[headscale-ip] HEADSCALE_INTERNAL_TOKEN is not configured");
+    console.error("[headscale-ip] internal lookup token is not configured");
     return c.json({ error: "internal auth not configured" }, 503);
   }
 

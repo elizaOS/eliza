@@ -19,7 +19,7 @@ The user might express this in various ways:
 - "Reply to COM2-7: Thanks for the update"
 - "Let the payment issue know that it's blocked by API changes"
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 issueId: Direct issue ID if explicitly mentioned (for example ENG-123)
 issueDescription: Description or keywords of the issue if no ID was provided
 commentBody: The actual comment content to add
@@ -34,7 +34,7 @@ export const createIssueTemplate = `Given the user's request, extract the inform
 
 User request: "{{userMessage}}"
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 title: Brief, clear issue title
 description: Detailed description of the issue
 teamKey: Team key if mentioned, such as ENG or PROD
@@ -50,7 +50,7 @@ export const deleteIssueTemplate = `Given the user's request to delete/archive a
 
 User request: "{{userMessage}}"
 
-Respond with TOON/plain text only:
+Respond with JSON/plain text only:
 issueId: The issue identifier, such as ENG-123 or COM2-7
 
 Output only the field, with no prose before or after it.`;
@@ -69,7 +69,7 @@ The user might ask for activity in various ways:
 - "Recent comment activity" → action type + recency
 - "Failed operations this week" → success filter + time range
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 timeRange:
   period: today, yesterday, this-week, last-week, or this-month
   from: ISO datetime if a specific start is mentioned
@@ -96,7 +96,7 @@ The user might reference an issue by:
 - Recency (e.g., "the latest bug", "most recent issue")
 - Team context (e.g., "newest issue in ELIZA team")
 
-Respond with TOON/plain text only. Use directId when an issue ID is explicitly mentioned:
+Respond with JSON/plain text only. Use directId when an issue ID is explicitly mentioned:
 directId: Issue ID such as ENG-123
 
 When no issue ID is provided, use searchBy fields:
@@ -127,7 +127,7 @@ The user might ask for projects in various ways:
 - "Completed projects" → filter by state
 - "Projects starting next month" → filter by start date
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 teamFilter: Team name or key if mentioned
 stateFilter: active, planned, completed, or all
 dateFilter:
@@ -155,7 +155,7 @@ The user might ask for teams in various ways:
 - "Active teams" → teams with recent activity
 - "Frontend and backend teams" → multiple team types
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 nameFilter: Keywords to search in team names
 specificTeam: Specific team name or key if looking for one team
 myTeams: true if the user wants their teams; otherwise omit
@@ -180,7 +180,7 @@ The user might express searches in various ways:
 - "Bugs that are almost done" → label + state filter
 - "Show me the oldest open issues" → state + sort order
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 query: General search text for title or description
 states: Comma-separated state names such as In Progress, Done, Todo, or Backlog
 assignees: Comma-separated assignee names or emails; use me for current user
@@ -206,7 +206,7 @@ export const updateIssueTemplate = `Given the user's request to update a Linear 
 
 User request: "{{userMessage}}"
 
-Respond with TOON/plain text only. Use this shape:
+Respond with JSON/plain text only. Use this shape:
 issueId: Issue identifier such as ENG-123 or COM2-7
 updates:
   title: New title if changing the title
@@ -220,3 +220,4 @@ updates:
 Only include fields that are being updated. Output only the fields, with no prose before or after them.`;
 
 export const UPDATE_ISSUE_TEMPLATE = updateIssueTemplate;
+

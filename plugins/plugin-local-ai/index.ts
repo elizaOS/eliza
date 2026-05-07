@@ -13,13 +13,7 @@ import type {
   ObjectGenerationParams,
   TextEmbeddingParams,
 } from "@elizaos/core";
-import {
-  EventType,
-  type IAgentRuntime,
-  logger,
-  ModelType,
-  type Plugin,
-} from "@elizaos/core";
+import { EventType, type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
 import {
   getLlama,
   type Llama,

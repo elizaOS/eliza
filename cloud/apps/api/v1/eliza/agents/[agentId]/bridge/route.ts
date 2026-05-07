@@ -5,7 +5,7 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -16,6 +16,51 @@ const bridgeRequestSchema = z.object({
   params: z.record(z.string(), z.unknown()).optional(),
 });
 
+const CONTROL_PLANE_URL_KEYS = [
+  "CONTAINER_CONTROL_PLANE_URL",
+  "CONTAINER_SIDECAR_URL",
+  "HETZNER_CONTAINER_CONTROL_PLANE_URL",
+] as const;
+
+function readControlPlaneEnv(c: AppContext | undefined, keys: readonly string[]): string | null {
+  if (!c?.env) return null;
+  for (const key of keys) {
+    const value = c.env[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+async function forwardBridgeToControlPlane(params: {
+  ctx?: AppContext;
+  request: Request;
+  agentId: string;
+  user: { id: string; organization_id: string };
+  body: BridgeRequest;
+}): Promise<Response | null> {
+  const baseUrl = readControlPlaneEnv(params.ctx, CONTROL_PLANE_URL_KEYS);
+  if (!baseUrl) return null;
+
+  const target = new URL(baseUrl);
+  target.pathname = `/api/v1/eliza/agents/${encodeURIComponent(params.agentId)}/bridge`;
+
+  const headers = new Headers(params.request.headers);
+  headers.delete("host");
+  const internalToken = readControlPlaneEnv(params.ctx, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
+  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  headers.set("content-type", "application/json");
+  headers.set("x-eliza-user-id", params.user.id);
+  headers.set("x-eliza-organization-id", params.user.organization_id);
+
+  return fetch(target, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(params.body),
+    redirect: "manual",
+    signal: AbortSignal.timeout(120_000),
+  });
+}
+
 /**
  * POST /api/v1/eliza/agents/[agentId]/bridge
  * Forward a JSON-RPC request to the sandbox bridge server.
@@ -25,7 +70,11 @@ const bridgeRequestSchema = z.object({
  *   - status.get    {}
  *   - heartbeat     {}
  */
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+  ctx?: AppContext,
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -47,6 +96,17 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
     }
 
     const rpcRequest = parsed.data as BridgeRequest;
+    const forwarded = await forwardBridgeToControlPlane({
+      ctx,
+      request,
+      agentId,
+      user,
+      body: rpcRequest,
+    });
+    if (forwarded) {
+      return applyCorsHeaders(forwarded, CORS_METHODS);
+    }
+
     const response = await elizaSandboxService.bridge(agentId, user.organization_id, rpcRequest);
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);
@@ -58,6 +118,6 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }, c),
 );
 export default __hono_app;

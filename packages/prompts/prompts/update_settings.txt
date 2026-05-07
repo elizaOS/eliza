@@ -9,12 +9,12 @@
 Based on the request, determine which settings to update.
 Only update settings that the user has explicitly requested.
 
-Respond using TOON like this:
+Respond using JSON like this:
 thought: Your reasoning for the settings changes
 updates[1]{key,value}:
   setting_key,new_value
 
-IMPORTANT: Your response must ONLY contain the TOON document above.
+IMPORTANT: Your response must ONLY contain the JSON object above.
 
 
 

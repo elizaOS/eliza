@@ -5,12 +5,7 @@ import {
 	getActiveRoutingContexts,
 	parseContextRoutingMetadata,
 } from "../../../utils/context-routing.ts";
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
+import { asRecord } from "../../../utils/type-guards.ts";
 
 function asString(value: unknown): string | null {
 	if (typeof value !== "string") return null;

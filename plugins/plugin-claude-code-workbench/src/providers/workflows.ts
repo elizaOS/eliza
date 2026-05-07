@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -10,7 +9,7 @@ import type { ClaudeCodeWorkbenchService } from "../services/workbench-service.t
 
 /**
  * Provider that surfaces the allowlisted Claude Code workbench workflows as
- * a TOON-encoded table. Replaces the legacy `CLAUDE_CODE_WORKBENCH_LIST`
+ * a JSON table. Replaces the legacy `CLAUDE_CODE_WORKBENCH_LIST`
  * action — listing capabilities is read-only context for the planner, not a
  * mutating action that needs its own dispatch.
  */
@@ -30,7 +29,7 @@ export const claudeCodeWorkbenchWorkflowsProvider: Provider = {
 
     if (!service) {
       return {
-        text: encodeToonValue({ workbenchWorkflows: [] }),
+        text: JSON.stringify({ workbenchWorkflows: [] }, null, 2),
         values: { workbenchWorkflowsAvailable: false },
         data: { available: false, workflows: [] },
       };
@@ -46,7 +45,7 @@ export const claudeCodeWorkbenchWorkflowsProvider: Provider = {
     }));
 
     return {
-      text: encodeToonValue({ workbenchWorkflows: rows }),
+      text: JSON.stringify({ workbenchWorkflows: rows }, null, 2),
       values: { workbenchWorkflowsAvailable: true },
       data: { available: true, workflows },
     };

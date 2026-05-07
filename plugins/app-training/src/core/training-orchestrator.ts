@@ -147,6 +147,41 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function baselinePlaceholder(task: TrajectoryTrainingTask): string {
+  return `# baseline placeholder for ${task}`;
+}
+
+const V5_PLANNER_BASELINE = `task: Plan the next native tool calls for the current ContextObject.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}
+
+rules:
+- use only tools exposed in the current context object
+- plan the smallest grounded queue of useful tool calls
+- include arguments only when grounded in the user request or prior tool results
+- if the task is complete or the only next step is speaking to the user, return no toolCalls and set messageToUser
+- do not invent tool names, connector names, providers, ids, or benchmark ids
+
+return:
+JSON object only. No markdown, no prose, no XML, no legacy formats.`;
+
+function firstStringExport(
+  promptModule: Record<string, unknown>,
+  names: readonly string[],
+): string | null {
+  for (const name of names) {
+    const value = promptModule[name];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function pathForTask(
   paths: TrajectoryTaskDatasetExport["paths"],
   task: TrajectoryTrainingTask,
@@ -347,36 +382,48 @@ async function persistOptimizedPromptArtifact(
 }
 
 /**
- * Pull the live runtime template for the task. Falls back to a generic
- * placeholder when the runtime cannot expose its template (e.g. cron tests
- * that pass a stub runtime).
+ * Pull the live runtime template for the task. Falls back to the v5 planner
+ * baseline for action-planner training, or a generic placeholder for other
+ * tasks when the runtime cannot expose its template.
  */
 async function loadBaselineForTask(
   task: TrajectoryTrainingTask,
 ): Promise<string> {
   const prompts = await import("@elizaos/core").catch(() => null);
   if (!prompts) {
-    return `# baseline placeholder for ${task}`;
+    return task === "action_planner"
+      ? V5_PLANNER_BASELINE
+      : baselinePlaceholder(task);
   }
   const promptModule = prompts as Record<string, unknown>;
   switch (task) {
     case "should_respond":
     case "context_routing":
-      return typeof promptModule.shouldRespondTemplate === "string"
-        ? promptModule.shouldRespondTemplate
-        : `# baseline placeholder for ${task}`;
+      return (
+        firstStringExport(promptModule, [
+          "shouldRespondTemplate",
+          "messageHandlerTemplate",
+        ]) ?? baselinePlaceholder(task)
+      );
     case "response":
-      return typeof promptModule.messageHandlerTemplate === "string"
-        ? promptModule.messageHandlerTemplate
-        : `# baseline placeholder for ${task}`;
+      return (
+        firstStringExport(promptModule, [
+          "messageHandlerTemplate",
+          "replyTemplate",
+        ]) ?? baselinePlaceholder(task)
+      );
     case "action_planner":
-      return typeof promptModule.multiStepDecisionTemplate === "string"
-        ? promptModule.multiStepDecisionTemplate
-        : `# baseline placeholder for ${task}`;
+      return (
+        firstStringExport(promptModule, [
+          "v5PlannerTemplate",
+          "plannerTemplate",
+        ]) ?? V5_PLANNER_BASELINE
+      );
     case "media_description":
-      return typeof promptModule.imageDescriptionTemplate === "string"
-        ? promptModule.imageDescriptionTemplate
-        : `# baseline placeholder for ${task}`;
+      return (
+        firstStringExport(promptModule, ["imageDescriptionTemplate"]) ??
+        baselinePlaceholder(task)
+      );
   }
 }
 

@@ -46,18 +46,7 @@ export function cloudServiceApisBaseUrl(
   runtime: RuntimeSettings,
   service: string,
 ): { baseUrl: string; headers: Record<string, string> } | null {
-  if (!isCloudConnected(runtime)) return null;
-  const cloudApiKey = getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY");
-  if (cloudApiKey === null) return null;
-  const cloudBaseRaw =
-    getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
-    CLOUD_BASE_FALLBACK;
-  const cloudBase = stripTrailingSlashes(cloudBaseRaw);
-  const svc = service.replace(/^\/+|\/+$/g, "");
-  return {
-    baseUrl: `${cloudBase}/apis/${svc}`,
-    headers: { Authorization: `Bearer ${cloudApiKey}` },
-  };
+  return buildCloudProxyRoute(runtime, service);
 }
 
 function stripTrailingSlashes(url: string): string {
@@ -72,6 +61,24 @@ function getSettingAsString(
   if (raw === null || raw === undefined) return null;
   const str = String(raw).trim();
   return str.length > 0 ? str : null;
+}
+
+function buildCloudProxyRoute(
+  runtime: RuntimeSettings,
+  service: string,
+): { baseUrl: string; headers: Record<string, string> } | null {
+  if (!isCloudConnected(runtime)) return null;
+  const cloudApiKey = getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY");
+  if (cloudApiKey === null) return null;
+  const cloudBaseRaw =
+    getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
+    CLOUD_BASE_FALLBACK;
+  const cloudBase = stripTrailingSlashes(cloudBaseRaw);
+  const svc = service.replace(/^\/+|\/+$/g, "");
+  return {
+    baseUrl: `${cloudBase}/apis/${svc}`,
+    headers: { Authorization: `Bearer ${cloudApiKey}` },
+  };
 }
 
 /**
@@ -117,19 +124,11 @@ export function resolveCloudRoute(
     };
   }
 
-  if (isCloudConnected(runtime)) {
-    const cloudApiKey = getSettingAsString(
-      runtime,
-      "ELIZAOS_CLOUD_API_KEY",
-    ) as string;
-    const cloudBaseRaw =
-      getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
-      CLOUD_BASE_FALLBACK;
-    const cloudBase = stripTrailingSlashes(cloudBaseRaw);
+  const cloudRoute = buildCloudProxyRoute(runtime, spec.service);
+  if (cloudRoute) {
     return {
       source: "cloud-proxy",
-      baseUrl: `${cloudBase}/apis/${spec.service}`,
-      headers: { Authorization: `Bearer ${cloudApiKey}` },
+      ...cloudRoute,
       reason: "cloud proxy: ELIZAOS_CLOUD_API_KEY",
     };
   }

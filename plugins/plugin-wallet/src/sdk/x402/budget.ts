@@ -111,8 +111,9 @@ export class X402BudgetTracker {
     if (filter?.service) {
       logs = logs.filter((l) => l.service === filter.service);
     }
-    if (filter?.since) {
-      logs = logs.filter((l) => l.timestamp >= filter.since!);
+    if (filter?.since !== undefined) {
+      const since = filter.since;
+      logs = logs.filter((l) => l.timestamp >= since);
     }
     return logs;
   }

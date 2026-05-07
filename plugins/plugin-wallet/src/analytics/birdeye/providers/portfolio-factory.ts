@@ -2,7 +2,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type { WalletPortfolioResponse } from "../types/api/wallet";
-import { extractChain, formatToonScalar, formatToonTable } from "../utils";
+import { extractChain, formatJsonScalar, formatJsonTable } from "../utils";
 
 type PortfolioService = {
   fetchWalletTokenList?: (
@@ -24,11 +24,11 @@ export interface BirdeyePortfolioProviderOptions {
   includeTrades?: boolean;
 }
 
-function statusToon(name: string, status: string, reason: string): string {
+function statusJson(name: string, status: string, reason: string): string {
   return [
     `${name}:`,
-    `  status: ${formatToonScalar(status)}`,
-    `  reason: ${formatToonScalar(reason)}`,
+    `  status: ${formatJsonScalar(status)}`,
+    `  reason: ${formatJsonScalar(reason)}`,
   ].join("\n");
 }
 
@@ -44,7 +44,7 @@ export const formatPortfolio = (response: WalletPortfolioResponse) => {
   const items = portfolio.items ?? [];
   if (!items.length) return "holdings[0]: []";
 
-  return formatToonTable(
+  return formatJsonTable(
     "holdings",
     items.map((item) => ({
       symbol: item.symbol || "unknown",
@@ -83,10 +83,10 @@ function formatPortfolioProviderText({
   const lines = [
     "birdeye_wallet_portfolio:",
     "  status: ok",
-    `  wallet: ${formatToonScalar(normalized.wallet ?? wallet)}`,
-    `  chain: ${formatToonScalar(chain)}`,
-    `  totalUsd: ${formatToonScalar(normalized.totalUsd ?? 0)}`,
-    formatToonTable(
+    `  wallet: ${formatJsonScalar(normalized.wallet ?? wallet)}`,
+    `  chain: ${formatJsonScalar(chain)}`,
+    `  totalUsd: ${formatJsonScalar(normalized.totalUsd ?? 0)}`,
+    formatJsonTable(
       "  holdings",
       holdings.slice(0, 20).map((item) => ({
         symbol: item.symbol || "unknown",
@@ -112,7 +112,7 @@ function formatPortfolioProviderText({
   if (trades) {
     lines.push(`  tradeCount: ${trades.length}`);
     lines.push(
-      formatToonTable(
+      formatJsonTable(
         "  trades",
         trades.slice(0, 10).map((trade) => ({
           txHash: trade.txHash ?? "unknown",
@@ -164,7 +164,7 @@ export function createBirdeyePortfolioProvider(
           );
           return {
             values: {},
-            text: statusToon(
+            text: statusJson(
               "birdeye_wallet_portfolio",
               "error",
               "missing BIRDEYE_WALLET_ADDR",
@@ -182,7 +182,7 @@ export function createBirdeyePortfolioProvider(
           );
           return {
             values: {},
-            text: statusToon(
+            text: statusJson(
               "birdeye_wallet_portfolio",
               "unavailable",
               includeTrades
@@ -232,7 +232,7 @@ export function createBirdeyePortfolioProvider(
 
         return {
           values: {},
-          text: statusToon(
+          text: statusJson(
             "birdeye_wallet_portfolio",
             "error",
             isConfigError

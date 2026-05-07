@@ -376,12 +376,6 @@ export function parseActionParams(
 	return result;
 }
 
-/**
- * Backward-compatible export name for older callers. Runtime-owned paths use
- * JSON/native params; this alias intentionally no longer parses TOON strings.
- */
-export const parseToonActionParams = parseActionParams;
-
 function parseActionParamsJson(input: string): Record<string, unknown> | null {
 	const trimmed = input.trim();
 	if (!trimmed) {

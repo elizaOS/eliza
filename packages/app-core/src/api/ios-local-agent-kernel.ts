@@ -1,5 +1,5 @@
-import { getBootConfig } from "../config/boot-config-store";
 import { asRecord } from "@elizaos/shared";
+import { getBootConfig } from "../config/boot-config-store";
 import {
   findCatalogModel,
   MODEL_CATALOG,

@@ -35,7 +35,6 @@ import {
   db,
   dbRead,
   dbWrite,
-  getCurrentRegion,
   getDbConnectionInfo,
 } from "./client";
 
@@ -144,11 +143,7 @@ export function getWriteDb(): Database {
 export function logDbRouting(): void {
   const info = getDbConnectionInfo();
   logger.info("[DB Routing]", {
-    region: info.currentRegion,
-    deployRegion: info.region || "local",
-    hasEuReadReplica: info.hasEuReadReplica,
-    readsRouteToEu: info.readsRouteToEu,
-    writesRouteTo: info.writesRouteTo,
+    databaseUrlConfigured: info.databaseUrlConfigured,
   });
 }
 
@@ -167,4 +162,4 @@ export function getDbRoutingInfo() {
 // ============================================================================
 
 export type { Database };
-export { db, dbRead, dbWrite, getCurrentRegion, getDbConnectionInfo };
+export { db, dbRead, dbWrite, getDbConnectionInfo };

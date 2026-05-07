@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useStewardAuth } from "@/lib/hooks/use-session-auth";
 import { useChatStore } from "@/lib/stores/chat-store";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import type { SettingsTab } from "../types";
 
 interface AccountStats {
@@ -32,7 +32,7 @@ interface AccountStats {
 }
 
 interface AccountTabProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
   onTabChange: (tab: SettingsTab) => void;
 }
 

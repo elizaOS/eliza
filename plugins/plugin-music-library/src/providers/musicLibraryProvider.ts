@@ -53,31 +53,35 @@ export const musicLibraryProvider: Provider = {
         const recentSongs = await getRecentSongs(runtime, 10);
 
         return {
-          text: JSON.stringify({
-            music_library: {
-              total_tracks: stats.totalSongs,
-              total_plays: stats.totalPlays,
-              most_played: stats.mostPlayed ?? null,
-              top_tracks: mostPlayed.map((song, index) => ({
-                rank: index + 1,
-                title: song.title,
-                artist: song.artist || song.channel || "Unknown Artist",
-                play_count: song.playCount,
-                duration: song.duration,
-              })),
-              recent_tracks: recentSongs.map((song, index) => ({
-                rank: index + 1,
-                title: song.title,
-                artist: song.artist || song.channel || "Unknown Artist",
-                play_count: song.playCount,
-                last_played: formatTimeAgo(Date.now() - song.lastPlayed),
-              })),
-              note:
-                stats.totalSongs === 0
-                  ? "Library is empty. Tracks are added as they are played."
-                  : 'References like "it", "that", or "this song" usually mean the most recent track.',
+          text: JSON.stringify(
+            {
+              music_library: {
+                total_tracks: stats.totalSongs,
+                total_plays: stats.totalPlays,
+                most_played: stats.mostPlayed ?? null,
+                top_tracks: mostPlayed.map((song, index) => ({
+                  rank: index + 1,
+                  title: song.title,
+                  artist: song.artist || song.channel || "Unknown Artist",
+                  play_count: song.playCount,
+                  duration: song.duration,
+                })),
+                recent_tracks: recentSongs.map((song, index) => ({
+                  rank: index + 1,
+                  title: song.title,
+                  artist: song.artist || song.channel || "Unknown Artist",
+                  play_count: song.playCount,
+                  last_played: formatTimeAgo(Date.now() - song.lastPlayed),
+                })),
+                note:
+                  stats.totalSongs === 0
+                    ? "Library is empty. Tracks are added as they are played."
+                    : 'References like "it", "that", or "this song" usually mean the most recent track.',
+              },
             },
-          }, null, 2),
+            null,
+            2,
+          ),
         };
       }
 
@@ -87,17 +91,21 @@ export const musicLibraryProvider: Provider = {
       }
 
       return {
-        text: JSON.stringify({
-          recent_music: recentSongs.map((song, index) => ({
-            rank: index + 1,
-            title: song.title,
-            artist: song.artist || song.channel || "Unknown Artist",
-            play_count: song.playCount,
-            last_played: formatTimeAgo(Date.now() - song.lastPlayed),
-          })),
-          reference_note:
-            'References like "it", "that", or "this song" usually mean the most recent track.',
-        }, null, 2),
+        text: JSON.stringify(
+          {
+            recent_music: recentSongs.map((song, index) => ({
+              rank: index + 1,
+              title: song.title,
+              artist: song.artist || song.channel || "Unknown Artist",
+              play_count: song.playCount,
+              last_played: formatTimeAgo(Date.now() - song.lastPlayed),
+            })),
+            reference_note:
+              'References like "it", "that", or "this song" usually mean the most recent track.',
+          },
+          null,
+          2,
+        ),
       };
     } catch (error) {
       logger.error(

@@ -15,7 +15,7 @@ instructions[6]:
 - omit fields that are not being changed
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
 contactName: Jane Doe

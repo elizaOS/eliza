@@ -1,8 +1,4 @@
-import {
-  type IAgentRuntime,
-  logger,
-  ModelType,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "../utils/json";
 
 const MUSIC_ENTITY_DETECTION_SERVICE_NAME = "musicEntityDetection";

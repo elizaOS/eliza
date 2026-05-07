@@ -66,7 +66,7 @@ function extractIdentifier(text: string, params: Record<string, unknown>): Playe
   return null;
 }
 
-function formatPlayerToon(user: RobloxUser): string {
+function formatPlayerJson(user: RobloxUser): string {
   const lines: string[] = ["robloxPlayer:"];
   lines.push(`id: ${user.id}`);
   lines.push(`username: ${user.username}`);
@@ -86,7 +86,7 @@ function formatPlayerToon(user: RobloxUser): string {
 export const robloxPlayerProvider: Provider = {
   name: providerName,
   description:
-    "Resolve a Roblox player by ID or username from the current message and surface their public profile as TOON.",
+    "Resolve a Roblox player by ID or username from the current message and surface their public profile as JSON context.",
   descriptionCompressed: "Look up Roblox player by id or username.",
   get: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> => {
     const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
@@ -135,7 +135,7 @@ export const robloxPlayerProvider: Provider = {
     user.avatarUrl = avatarUrl;
 
     return {
-      text: formatPlayerToon(user),
+      text: formatPlayerJson(user),
       data: {
         resolved: true,
         userId: user.id,

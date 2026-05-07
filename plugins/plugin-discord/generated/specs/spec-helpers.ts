@@ -72,13 +72,13 @@ const legacyActionSpecAliases: Readonly<
   READ_CHANNEL: {
     target: "DISCORD_CHANNEL_OP",
     description: "Read or summarize recent Discord channel messages.",
-    descriptionCompressed: "Read recent Discord channel msgs.",
+    descriptionCompressed: "Read recent Discord channel messages.",
     similes: ["DISCORD_READ_CHANNEL", "DISCORD_READ_MESSAGES", "DISCORD_SHOW_MESSAGES"],
   },
   SEARCH_MESSAGES: {
     target: "DISCORD_CHANNEL_OP",
     description: "Search Discord messages in a channel.",
-    descriptionCompressed: "Search Discord channel msgs.",
+    descriptionCompressed: "Search Discord channel messages.",
     similes: ["DISCORD_SEARCH_MESSAGES", "DISCORD_FIND_MESSAGES"],
   },
   SEND_MESSAGE: {

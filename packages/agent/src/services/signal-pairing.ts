@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
+import { logger } from "@elizaos/core";
 
 const LOG_PREFIX = "[signal-pairing]";
 const SIGNAL_NATIVE_MODULE_ID = "@elizaos/signal-native";
@@ -411,7 +412,7 @@ export class SignalPairingSession {
       if (this.aborted) return;
 
       const errMsg = String(err);
-      console.error(`${LOG_PREFIX} Linking failed:`, errMsg);
+      logger.error(`${LOG_PREFIX} Linking failed: ${errMsg}`);
 
       this.qrDataUrl = null;
       this.lastError = errMsg;
@@ -460,7 +461,7 @@ export class SignalPairingSession {
       const imported = await import(/* @vite-ignore */ moduleSpecifier);
       return imported as SignalNativeModule;
     } catch (error) {
-      console.info(
+      logger.info(
         `${LOG_PREFIX} Signal native module unavailable, using signal-cli pairing: ${String(error)}`,
       );
       return null;
@@ -471,7 +472,7 @@ export class SignalPairingSession {
     native: SignalNativeModule,
     qrCode: QrCodeModule,
   ): Promise<void> {
-    console.info(`${LOG_PREFIX} Starting device linking with signal-native...`);
+    logger.info(`${LOG_PREFIX} Starting device linking with signal-native...`);
     const provisioningUrl = await native.linkDevice(
       this.options.authDir,
       DEFAULT_SIGNAL_DEVICE_NAME,
@@ -494,9 +495,7 @@ export class SignalPairingSession {
       qrDataUrl,
     });
 
-    console.info(
-      `${LOG_PREFIX} QR code generated, waiting for user to scan...`,
-    );
+    logger.info(`${LOG_PREFIX} QR code generated, waiting for user to scan...`);
 
     await native.finishLink(this.options.authDir);
     if (this.aborted) return;
@@ -508,7 +507,7 @@ export class SignalPairingSession {
       uuid = profile.uuid;
       phoneNumber = profile.phoneNumber ?? "";
     } catch (error) {
-      console.warn(
+      logger.warn(
         `${LOG_PREFIX} Failed to read Signal profile after linking: ${String(error)}`,
       );
     }
@@ -526,7 +525,7 @@ export class SignalPairingSession {
       throw new Error(missingSignalCliMessage(this.options.cliPath));
     }
 
-    console.info(`${LOG_PREFIX} Starting device linking with signal-cli...`);
+    logger.info(`${LOG_PREFIX} Starting device linking with signal-cli...`);
 
     const child = spawn(
       cliPath,
@@ -657,7 +656,7 @@ export class SignalPairingSession {
       phoneNumber: this.phoneNumber ?? undefined,
     });
 
-    console.info(
+    logger.info(
       `${LOG_PREFIX} Device linked successfully${phoneNumber ? ` (${phoneNumber})` : ""}`,
     );
   }
@@ -675,7 +674,7 @@ export class SignalPairingSession {
       );
       return parseSignalCliAccountsOutput(stdout);
     } catch (error) {
-      console.warn(
+      logger.warn(
         `${LOG_PREFIX} Failed to read linked Signal account: ${String(error)}`,
       );
       return null;

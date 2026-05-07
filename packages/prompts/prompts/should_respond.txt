@@ -16,9 +16,9 @@ available_contexts:
 {{availableContexts}}
 
 context_routing:
-- primaryContext: choose one context from available_contexts, or "general" if none apply
-- secondaryContexts: optional comma-separated list of additional relevant contexts
-- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
+- contexts: list zero or more context ids from available_contexts
+- use [] when no tool or context provider is needed
+- if contexts is non-empty, planning will run and simple will be ignored
 
 decision_note:
 - respond only when the latest message is talking TO {{agentName}}
@@ -30,12 +30,13 @@ decision_note:
 - talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+JSON only. Return exactly one JSON object. No prose before or after it. No <think>.
 
 Example:
-name: {{agentName}}
-reasoning: Direct mention and clear follow-up.
-action: RESPOND
-primaryContext: general
-secondaryContexts:
-evidenceTurnIds:
+{
+  "action": "RESPOND",
+  "simple": true,
+  "contexts": [],
+  "thought": "Direct mention and clear follow-up.",
+  "reply": "Short direct reply when no context is needed."
+}

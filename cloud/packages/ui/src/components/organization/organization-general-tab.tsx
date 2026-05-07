@@ -11,10 +11,10 @@
 import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
 import { format } from "date-fns";
 import { Calendar } from "lucide-react";
-import type { Organization } from "@/db/schemas";
+import type { OrganizationDto } from "@/types/cloud-api";
 
 interface OrganizationGeneralTabProps {
-  organization: Organization;
+  organization: OrganizationDto;
 }
 
 export function OrganizationGeneralTab({ organization }: OrganizationGeneralTabProps) {

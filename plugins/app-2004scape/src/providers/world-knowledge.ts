@@ -1,5 +1,4 @@
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -82,8 +81,8 @@ function trainingRecommendation(skillName: string, level: number) {
 export const worldKnowledgeProvider: Provider = {
   name: "RS_SDK_WORLD_KNOWLEDGE",
   description:
-    "TOON game world knowledge: nearest bank, skill training recommendations, and warnings.",
-  descriptionCompressed: "TOON nearest bank, skill tips, warnings.",
+    "JSON game world knowledge: nearest bank, skill training recommendations, and warnings.",
+  descriptionCompressed: "JSON nearest bank, skill tips, warnings.",
 
   async get(
     runtime: IAgentRuntime,
@@ -96,9 +95,9 @@ export const worldKnowledgeProvider: Provider = {
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
       return {
-        text: encodeToonValue({
+        text: JSON.stringify({
           rs_2004_world_knowledge: { status: "not_in_game" },
-        }),
+        }, null, 2),
       };
     }
 
@@ -143,14 +142,14 @@ export const worldKnowledgeProvider: Provider = {
     }
 
     return {
-      text: encodeToonValue({
+      text: JSON.stringify({
         rs_2004_world_knowledge: {
           status: "ready",
           nearestBank: nearestBank(x, z),
           training: trainable,
           warnings,
         },
-      }),
+      }, null, 2),
     };
   },
 };

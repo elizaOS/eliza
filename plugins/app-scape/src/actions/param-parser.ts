@@ -1,12 +1,12 @@
-import { parseToonKeyValue } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core";
 
 /**
- * Tiny TOON field parser used by Action handlers to pull parameters out of the
+ * Tiny JSON field parser used by Action handlers to pull parameters out of the
  * LLM response string.
  */
 
 function parsedParams(text: string): Record<string, unknown> {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+  const parsed = parseJSONObjectFromText(text) as Record<string, unknown> | null;
   const nested =
     parsed && typeof parsed.params === "object" && !Array.isArray(parsed.params)
       ? (parsed.params as Record<string, unknown>)

@@ -11,10 +11,10 @@
 import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { Invoice } from "@/db/schemas";
+import type { InvoiceDto } from "@/types/cloud-api";
 
 interface InvoiceDetailClientProps {
-  invoice: Invoice;
+  invoice: InvoiceDto;
 }
 
 export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {

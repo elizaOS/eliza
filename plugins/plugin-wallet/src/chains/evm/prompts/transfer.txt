@@ -11,11 +11,13 @@ Extract the following information about the requested token transfer:
 - Token symbol or address (if not a native token transfer)
 - Additional data/calldata (if any is included)
 
-Respond using TOON like this:
-fromChain: chain from {{supportedChains}}, or empty
-amount: amount as string (e.g. 0.1), or empty
-toAddress: recipient Ethereum address, or empty
-token: token symbol or address (empty for native transfer)
-data: additional calldata hex string, or empty
+Respond using JSON like this:
+{
+  "fromChain": "chain from {{supportedChains}}, or empty",
+  "amount": "amount as string (e.g. 0.1), or empty",
+  "toAddress": "recipient Ethereum address, or empty",
+  "token": "token symbol or address (empty for native transfer)",
+  "data": "additional calldata hex string, or empty"
+}
 
-IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.
+IMPORTANT: Your response must ONLY contain the JSON object above. No preamble or explanation.

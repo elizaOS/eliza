@@ -1,8 +1,4 @@
 import type { AgentRuntime } from "@elizaos/core";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CodeTaskService = any;
-
 import {
   type AutocompleteItem,
   CombinedAutocompleteProvider,
@@ -15,6 +11,7 @@ import { StatusBar } from "./components/StatusBar.js";
 import { TaskPane } from "./components/TaskPane.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
+import { getCodeTaskService } from "./lib/get-code-task-service.js";
 import { useStore } from "./lib/store.js";
 
 // handleTaskSlashCommand was removed with the legacy orchestrator service.
@@ -269,9 +266,7 @@ export class App {
     agentClient.setRuntime(this.runtime);
 
     // Get task service and sync tasks to UI
-    const service = this.runtime.getService(
-      "CODE_TASK",
-    ) as CodeTaskService | null;
+    const service = getCodeTaskService(this.runtime);
     if (service) {
       const state = useStore.getState();
       const storedTaskId = state.currentTaskId;
@@ -338,9 +333,7 @@ export class App {
     if (this.didCheckInterruptedTasks) return;
     this.didCheckInterruptedTasks = true;
 
-    const service = this.runtime.getService(
-      "CODE_TASK",
-    ) as CodeTaskService | null;
+    const service = getCodeTaskService(this.runtime);
     if (!service) return;
 
     try {
@@ -459,9 +452,7 @@ export class App {
   ): Promise<boolean> {
     const state = useStore.getState();
     const { currentRoomId, addMessage, rooms } = state;
-    const service = this.runtime.getService(
-      "CODE_TASK",
-    ) as CodeTaskService | null;
+    const service = getCodeTaskService(this.runtime);
 
     switch (command.toLowerCase()) {
       // Sub-agent selection
@@ -783,9 +774,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
         return;
       }
 
-      const service = this.runtime.getService(
-        "CODE_TASK",
-      ) as CodeTaskService | null;
+      const service = getCodeTaskService(this.runtime);
       if (!service) {
         state.addMessage(
           state.currentRoomId,
@@ -862,9 +851,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
         },
       });
 
-      const service = this.runtime.getService(
-        "CODE_TASK",
-      ) as CodeTaskService | null;
+      const service = getCodeTaskService(this.runtime);
       const currentTask = service ? await service.getCurrentTask() : null;
       if (currentTask?.id) {
         useStore.setState((s) => ({

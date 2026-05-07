@@ -8,11 +8,11 @@
  */
 
 import { Badge, BrandCard, Progress } from "@elizaos/cloud-ui";
-import type { AnalyticsData } from "@/lib/actions/analytics";
+import type { AnalyticsDataDto } from "@/types/cloud-api";
 import { CostAlerts } from "@/packages/ui/src/components/analytics/cost-alerts";
 
 interface CostInsightsCardProps {
-  costTrending: AnalyticsData["costTrending"];
+  costTrending: AnalyticsDataDto["costTrending"];
   creditBalance: number;
 }
 

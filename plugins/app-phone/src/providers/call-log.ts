@@ -15,7 +15,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 const CALL_LOG_LIMIT = 50;
 
@@ -55,7 +54,7 @@ export const phoneCallLogProvider: Provider = {
       }));
 
       return {
-        text: encode({
+        text: JSON.stringify({
           phone_call_log: {
             count: entries.length,
             items: entries,

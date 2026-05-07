@@ -3,7 +3,7 @@
  *
  * This catalog maps every known action and provider to one or more AgentContext
  * categories. It is used by:
- * 1. The shouldRespondAndRouteContext classifier prompt
+ * 1. The v5 messageHandler context-routing prompt
  * 2. The synthetic dataset generator (to scope scenarios per context)
  * 3. The planner (to filter actions/providers by active context)
  *

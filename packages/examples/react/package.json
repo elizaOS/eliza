@@ -3,8 +3,11 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-pglite-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-pglite-assets.mjs",
     "build": "tsc && vite build",
+    "prepreview": "node scripts/copy-pglite-assets.mjs",
     "preview": "vite preview",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

@@ -6,7 +6,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonKeyValue,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import { formatEther, type Hex, parseEther } from "viem";
@@ -96,7 +96,7 @@ export async function buildTransferDetails(
     modelType: ModelType.TEXT_SMALL,
   });
 
-  const parsedResponse = parseToonKeyValue(llmResponse);
+  const parsedResponse = parseJSONObjectFromText(llmResponse) as Record<string, unknown> | null;
 
   if (!parsedResponse) {
     throw new EVMError(

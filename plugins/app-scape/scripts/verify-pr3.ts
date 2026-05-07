@@ -5,7 +5,7 @@
  * requiring the full eliza runtime to be booted. Flow:
  *
  *   1. Import the SDK types + codec and round-trip an action frame
- *      through TOON encode/decode.
+ *      through JSON encode/decode.
  *   2. Import the BotSdk class and verify its public API shape.
  *   3. Import ScapeGameService and verify it's registered in the
  *      Plugin's `services` array.
@@ -25,7 +25,7 @@ import appScapePlugin, {
   type PerceptionSnapshot,
   ScapeGameService,
 } from "@elizaos/app-scape";
-import { decodeServerFrame, encodeClientFrame } from "../src/sdk/toon.js";
+import { decodeServerFrame, encodeClientFrame } from "../src/sdk/json.js";
 
 function assertTrue(label: string, ok: boolean): void {
   if (ok) {
@@ -89,8 +89,8 @@ async function main(): Promise<void> {
   assertTrue("mgr.isConnected() = false", mgr.isConnected() === false);
   assertTrue("mgr.getStatus() = 'idle'", mgr.getStatus() === "idle");
 
-  // 4. TOON codec round-trip through the plugin's wrapper
-  console.log("\n[4] TOON codec round-trip");
+  // 4. JSON codec round-trip through the plugin's wrapper
+  console.log("\n[4] JSON codec round-trip");
   const clientFrame = {
     kind: "action" as const,
     action: "walkTo" as const,

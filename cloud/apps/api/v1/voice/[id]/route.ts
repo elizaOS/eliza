@@ -7,7 +7,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  *
  * GET/PATCH/DELETE /api/v1/voice/[id]
  * Manage individual voices.
- * Supports both Privy session and API key authentication.
+ * Supports both session and API key authentication.
  *
  * WHY THIS EXISTS:
  * ----------------

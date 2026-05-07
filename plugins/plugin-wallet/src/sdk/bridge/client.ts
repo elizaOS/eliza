@@ -15,6 +15,7 @@
 // BridgeModule — CCTP V2 cross-chain USDC bridge for AgentWallet
 // Non-custodial: all signing is done locally via the agent's WalletClient.
 import {
+  type Chain,
   createPublicClient,
   getContract,
   type Hash,
@@ -35,6 +36,7 @@ import {
   optimism,
   polygon,
 } from "viem/chains";
+import { requireWalletAccount } from "../wallet-core.js";
 import {
   ERC20BridgeAbi,
   MessageTransmitterV2Abi,
@@ -64,7 +66,7 @@ import {
  * Chains without built-in viem definitions use custom definitions.
  * Solana is NOT included — use bridge/solana.ts for EVM↔Solana bridging.
  */
-const VIEM_CHAINS: Record<EVMBridgeChain, any> = {
+const VIEM_CHAINS: Record<EVMBridgeChain, Chain> = {
   base,
   ethereum: mainnet,
   optimism,
@@ -96,6 +98,7 @@ const VIEM_CHAINS: Record<EVMBridgeChain, any> = {
 
 export class BridgeModule {
   private readonly walletClient: WalletClient;
+  private readonly signerAccount: ReturnType<typeof requireWalletAccount>;
   private readonly publicClient: PublicClient;
   private readonly fromChain: EVMBridgeChain;
 
@@ -104,12 +107,7 @@ export class BridgeModule {
     fromChain: EVMBridgeChain = "base",
     options: { rpcUrl?: string } = {},
   ) {
-    if (!walletClient.account) {
-      throw new BridgeError(
-        "NO_WALLET_CLIENT",
-        "WalletClient must have an account attached. Use privateKeyToAccount() or similar to attach a signer.",
-      );
-    }
+    this.signerAccount = requireWalletAccount(walletClient);
     this.walletClient = walletClient;
     this.fromChain = fromChain;
     this.fromRpcUrl = options.rpcUrl;
@@ -126,7 +124,7 @@ export class BridgeModule {
   ): Promise<BridgeResult> {
     const startMs = Date.now();
     this.validateBridgeParams(amount, toChain);
-    const account = this.walletClient.account!;
+    const account = this.signerAccount;
     const recipient = options.destinationAddress ?? account.address;
     const minFinalityThreshold =
       options.minFinalityThreshold ?? FINALITY_THRESHOLD.FAST;
@@ -172,7 +170,7 @@ export class BridgeModule {
     options: BridgeOptions = {},
   ): Promise<BurnResult> {
     this.validateBridgeParams(amount, toChain);
-    const account = this.walletClient.account!;
+    const account = this.signerAccount;
     const recipient = options.destinationAddress ?? account.address;
     const minFinalityThreshold =
       options.minFinalityThreshold ?? FINALITY_THRESHOLD.FAST;
@@ -209,7 +207,7 @@ export class BridgeModule {
   }
 
   async getUsdcBalance(): Promise<bigint> {
-    const account = this.walletClient.account!;
+    const account = this.signerAccount;
     const usdc = getContract({
       address: USDC_CONTRACT[this.fromChain],
       abi: ERC20BridgeAbi,
@@ -219,7 +217,7 @@ export class BridgeModule {
   }
 
   async getUsdcAllowance(): Promise<bigint> {
-    const account = this.walletClient.account!;
+    const account = this.signerAccount;
     const usdc = getContract({
       address: USDC_CONTRACT[this.fromChain],
       abi: ERC20BridgeAbi,
@@ -232,7 +230,7 @@ export class BridgeModule {
   }
 
   private async approveUsdc(amount: bigint): Promise<void> {
-    const account = this.walletClient.account!;
+    const account = this.signerAccount;
     const spender = TOKEN_MESSENGER_V2[this.fromChain];
     const usdcAddress = USDC_CONTRACT[this.fromChain];
     const usdc = getContract({
@@ -273,7 +271,7 @@ export class BridgeModule {
     minFinalityThreshold: number,
     maxFee: bigint,
   ): Promise<BurnResult> {
-    const account = this.walletClient.account!;
+    const account = this.signerAccount;
     const destinationDomain = CCTP_DOMAIN_IDS[toChain];
     const messengerAddress = TOKEN_MESSENGER_V2[this.fromChain];
     const usdcAddress = USDC_CONTRACT[this.fromChain];
@@ -421,7 +419,7 @@ export class BridgeModule {
     toChain: EVMBridgeChain,
     destinationRpcUrl?: string,
   ): Promise<Hash> {
-    const account = this.walletClient.account!;
+    const account = this.signerAccount;
     const transmitterAddress = MESSAGE_TRANSMITTER_V2[toChain];
     const destChain = VIEM_CHAINS[toChain];
     const destPublicClient = createPublicClient({

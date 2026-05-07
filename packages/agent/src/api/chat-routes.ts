@@ -240,7 +240,7 @@ async function generateMobileLocalSimpleReply(
   const prompt = [
     system,
     "",
-    "Mobile local mode: answer the user directly. Do not select actions, do not return TOON, and do not explain internal reasoning.",
+    "Mobile local mode: answer the user directly. Do not select actions, do not return structured control output, and do not explain internal reasoning.",
     "If the user asks for exact words, output exactly those words and nothing else.",
     "",
     `User: ${userText}`,

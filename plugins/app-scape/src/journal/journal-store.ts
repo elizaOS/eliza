@@ -1,12 +1,11 @@
 /**
- * JournalStore — atomic TOON-file persistence for the Scape Journal.
+ * JournalStore — atomic JSON-file persistence for the Scape Journal.
  *
  * Mirrors the xRSPS `AccountStore` pattern (scrypt hashes) and
  * `PlayerPersistence` pattern (game state) — same atomic rename-on-
  * write, same defensive "load returns fresh on corruption" behavior
- * — but the on-disk format is **TOON**, not JSON, so the provider
- * can mmap-style read the file into the LLM prompt with no
- * transcoding step.
+ * — and stores the on-disk format as JSON so the app and trajectory tooling
+ * can inspect journal state directly.
  *
  * Concurrency: synchronous. One journal per agent, one agent per
  * session. The bot-SDK does not spawn multiple concurrent sessions
@@ -22,8 +21,6 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { decode, encode } from "@toon-format/toon";
 
 import {
   type JournalGoal,
@@ -75,11 +72,11 @@ export class JournalStore {
   constructor(private readonly options: JournalStoreOptions) {
     const root = options.rootDir ?? defaultRootDir();
     const safeName = sanitizeFilename(options.agentId);
-    this.filePath = join(root, `${safeName}.toon`);
+    this.filePath = join(root, `${safeName}.json`);
     this.state = this.loadOrCreate();
   }
 
-  /** Absolute path to the TOON journal file for this agent. */
+  /** Absolute path to the JSON journal file for this agent. */
   getFilePath(): string {
     return this.filePath;
   }
@@ -228,7 +225,7 @@ export class JournalStore {
     }
     try {
       const raw = readFileSync(this.filePath, "utf-8");
-      const parsed = decode(raw);
+      const parsed = JSON.parse(raw);
       if (isJournalState(parsed)) {
         return parsed;
       }
@@ -259,9 +256,9 @@ export class JournalStore {
     try {
       const dir = dirname(this.filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      const toon = encode(this.state as unknown as Record<string, unknown>);
+      const json = JSON.stringify(this.state);
       const tmp = `${this.filePath}.tmp`;
-      writeFileSync(tmp, toon);
+      writeFileSync(tmp, json);
       renameSync(tmp, this.filePath);
     } catch (err) {
       console.error(`[scape-journal] failed to save ${this.filePath}:`, err);

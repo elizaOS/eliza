@@ -970,8 +970,8 @@ function inferParametersFromDescription(description) {
     .filter(Boolean);
 }
 
-function inferParametersFromToonTemplate(src) {
-  const marker = "Respond with TOON only:";
+function inferParametersFromJsonTemplate(src) {
+  const marker = "Respond with JSON only:";
   const markerIndex = src.indexOf(marker);
   if (markerIndex < 0) return [];
   const templateEnd = src.indexOf("`", markerIndex);
@@ -985,10 +985,10 @@ function inferParametersFromToonTemplate(src) {
     descByName.set(match[1], match[2].trim());
   }
 
-  const toonBlock = src.slice(markerIndex + marker.length, templateEnd);
+  const jsonBlock = src.slice(markerIndex + marker.length, templateEnd);
   const params = [];
   const seen = new Set();
-  for (const line of toonBlock.split(/\r?\n/)) {
+  for (const line of jsonBlock.split(/\r?\n/)) {
     const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
     if (!match) continue;
     const name = match[1];
@@ -1012,7 +1012,7 @@ function inferParametersFromToonTemplate(src) {
     params.push(
       buildParamDoc(
         name,
-        descByName.get(name) ?? `TOON parameter ${name}.`,
+        descByName.get(name) ?? `JSON parameter ${name}.`,
         schema,
       ),
     );
@@ -1229,19 +1229,19 @@ function main() {
         extractTopLevelLiteralProp(obj.objectText, "parameters"),
       );
       const descriptionParameters = inferParametersFromDescription(description);
-      const toonTemplateParameters =
+      const jsonTemplateParameters =
         explicitParameters.length === 0 &&
         descriptionParameters.length === 0 &&
         (name.endsWith("_OP") || description.toLowerCase().includes("router"))
-          ? inferParametersFromToonTemplate(src)
+          ? inferParametersFromJsonTemplate(src)
           : [];
       const parameters =
         explicitParameters.length > 0
           ? explicitParameters
           : descriptionParameters.length > 0
             ? descriptionParameters
-            : toonTemplateParameters.length > 0
-              ? toonTemplateParameters
+            : jsonTemplateParameters.length > 0
+              ? jsonTemplateParameters
               : inferParameters(obj.objectText);
       const exampleCalls = buildExampleCallForAction(name, parameters);
 

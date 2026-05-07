@@ -9,8 +9,6 @@
     "noEmit": true,
     "composite": true,
     "strict": true,
-    "ignoreDeprecations": "6.0",
-    "downlevelIteration": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,
@@ -18,5 +16,5 @@
     "allowJs": true,
     "types": ["node"]
   },
-  "exclude": ["_test_bad.ts", "code.ts"]
+  "exclude": ["code.ts"]
 }

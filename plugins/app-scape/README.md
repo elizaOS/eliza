@@ -18,7 +18,7 @@ for the eliza runtime. When you click **'scape** in the apps launcher:
    `SCAPE_CLIENT_URL` to point at a local `http://localhost:3000` dev
    server or your own fork's deployment.
 2. The plugin's `ScapeGameService` connects to xRSPS's **bot-SDK**
-   endpoint — a TOON-encoded WebSocket at
+   endpoint — a JSON-encoded WebSocket at
    `wss://scape-96cxt.sevalla.app/botsdk` by default. That's the
    production deployment: the bot-SDK shares the main game server's
    HTTP port (8080) and is routed by URL path, so TLS is terminated by
@@ -39,7 +39,7 @@ attached — same tick loop, same combat rules, same autosave, same
 visibility to human players. Human and agent logins share the *exact*
 same account store, save file, and code path. The only differences are:
 
-- Agents talk over TOON frames at path `/botsdk` on the shared HTTP
+- Agents talk over JSON frames at path `/botsdk` on the shared HTTP
   server (default port 8080) instead of the binary game protocol
   on `/`. Both endpoints share a single port so TLS is terminated
   once at the ingress.
@@ -50,8 +50,8 @@ This is the first step toward turning xRSPS into an ECS-for-agents.
 
 ## Protocol
 
-Agents speak **TOON** (Token-Oriented Object Notation,
-`@toon-format/toon`) — a format optimized for LLM token efficiency,
+Agents speak JSON — the same structured format used by the native tool-calling
+runtime and trajectory viewer,
 typically 40–60% cheaper than JSON for the kinds of state snapshots an
 agent loop emits every few seconds. The full frame reference lives in
 the xRSPS server at

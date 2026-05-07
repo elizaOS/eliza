@@ -20,10 +20,10 @@ import {
   TableRow,
 } from "@elizaos/cloud-ui";
 import { formatDistanceToNowStrict } from "date-fns";
-import type { AnalyticsData } from "@/lib/actions/analytics";
+import type { AnalyticsDataDto } from "@/types/cloud-api";
 
 interface TopUsersTableProps {
-  users: AnalyticsData["userBreakdown"];
+  users: AnalyticsDataDto["userBreakdown"];
 }
 
 const numberFormatter = new Intl.NumberFormat();

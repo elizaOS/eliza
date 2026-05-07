@@ -23,6 +23,13 @@
  */
 export const DEFAULT_MARKUP_RATE = 0.2;
 
+/**
+ * Platform markup multiplier applied to provider costs.
+ *
+ * 1.2 means the user is billed provider cost plus 20%.
+ */
+export const PLATFORM_MARKUP_MULTIPLIER = 1 + DEFAULT_MARKUP_RATE;
+
 export interface MarkupBreakdown {
   /** Raw provider cost in USD. */
   rawCost: number;

@@ -12,7 +12,7 @@
  *
  * We keep the global as a backward-compat fallback but prefer reading
  * directly from `message.content.text`, and every Action's `validate()`
- * now requires the current message to actually contain a matching TOON
+ * now requires the current message to actually contain a matching JSON
  * action field. That narrows Action dispatch to messages that were produced
  * for this plugin, and prevents stale-state leakage on any other path.
  *
@@ -28,7 +28,7 @@
  *     ↳ handler(runtime, message, …)          ← reads message.content.text
  */
 
-import { parseToonKeyValue, type Memory } from "@elizaos/core";
+import { parseJSONObjectFromText, type Memory } from "@elizaos/core";
 
 let currentLlmResponse = "";
 
@@ -65,7 +65,7 @@ export function hasActionRequest(
 ): boolean {
   const text = message?.content?.text;
   if (typeof text !== "string" || text.length === 0) return false;
-  const parsed = parseToonKeyValue<Record<string, unknown>>(text);
+  const parsed = parseJSONObjectFromText(text) as Record<string, unknown> | null;
   if (!parsed) return false;
   const expected = normalizeActionName(actionName);
   return extractActionNames(parsed).some(

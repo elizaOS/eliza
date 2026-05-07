@@ -94,8 +94,9 @@ export class NewsDataService extends Service {
         const categoryRegex =
           /<category>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/category>/gs;
         const categories: string[] = [];
-        let categoryMatch;
-        while ((categoryMatch = categoryRegex.exec(itemXml)) !== null) {
+        for (;;) {
+          const categoryMatch = categoryRegex.exec(itemXml);
+          if (categoryMatch === null) break;
           const cat = categoryMatch[1].trim();
           if (cat) {
             categories.push(cat);

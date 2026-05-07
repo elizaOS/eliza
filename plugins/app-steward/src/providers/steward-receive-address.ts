@@ -2,7 +2,7 @@
  * stewardReceiveAddress provider — wallet receive addresses for the planner.
  *
  * Replaces the legacy GET_RECEIVE_ADDRESS action. Fetches
- * `/api/wallet/addresses` and renders a TOON-encoded summary so the LLM can
+ * `/api/wallet/addresses` and renders a JSON-encoded summary so the LLM can
  * surface the user's deposit address without invoking a mutating action.
  *
  * @module providers/steward-receive-address
@@ -16,7 +16,6 @@ import type {
   State,
 } from "@elizaos/core";
 import type { WalletAddresses } from "@elizaos/shared";
-import { encode } from "@toon-format/toon";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,
@@ -69,7 +68,7 @@ export const stewardReceiveAddressProvider: Provider = {
     }
 
     return {
-      text: encode({ steward_receive_address: snapshot }),
+      text: JSON.stringify({ steward_receive_address: snapshot }),
       data: { snapshot },
     };
   },

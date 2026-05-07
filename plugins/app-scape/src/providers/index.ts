@@ -2,7 +2,7 @@
  * Provider registry for `@elizaos/app-scape`.
  *
  * Providers are the "read" side of the game-agent contract — they
- * format pieces of the current perception snapshot into compact TOON
+ * format pieces of the current perception snapshot into compact JSON
  * blocks that the autonomous loop injects into the LLM prompt. Every
  * snapshot read flows through a provider so:
  *

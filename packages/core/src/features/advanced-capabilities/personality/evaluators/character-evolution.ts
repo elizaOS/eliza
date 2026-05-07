@@ -92,7 +92,7 @@ export function normalizeStringList(value: unknown): string[] | undefined {
 }
 
 /**
- * Parse a flat TOON record into a typed TriggerAnalysis.
+ * Parse a flat structured record into a typed TriggerAnalysis.
  * Returns null when the record is missing or has no valid trigger field.
  */
 export function parseTriggerAnalysis(
@@ -108,7 +108,7 @@ export function parseTriggerAnalysis(
 }
 
 /**
- * Build an EvolutionModifications object from flat TOON fields.
+ * Build an EvolutionModifications object from flat JSON fields.
  * Uses || delimiters for list fields and style_all/style_chat/style_post for style.
  */
 export function buildModifications(
@@ -140,7 +140,7 @@ export function buildModifications(
 }
 
 /**
- * Parse a flat TOON record into a typed EvolutionAnalysis.
+ * Parse a flat structured record into a typed EvolutionAnalysis.
  */
 export function parseEvolutionAnalysis(
 	raw: Record<string, unknown>,
@@ -398,7 +398,7 @@ Example:
 				maxTokens: 1000,
 			});
 
-			// Parse the evolution suggestion from TOON
+			// Parse the evolution suggestion from structured output
 			const raw = parseStructuredRecord(response as string);
 			if (!raw) {
 				logger.warn(

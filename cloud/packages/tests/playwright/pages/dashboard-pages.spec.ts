@@ -320,7 +320,6 @@ async function mockDashboardRouteApis(page: Page): Promise<void> {
     organization_id: testOrganization.id,
     role: "admin",
     steward_user_id: null,
-    privy_user_id: null,
     telegram_id: null,
     telegram_username: null,
     telegram_first_name: null,

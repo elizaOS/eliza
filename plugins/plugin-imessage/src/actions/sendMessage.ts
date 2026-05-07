@@ -10,7 +10,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, logger, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import type { IMessageService } from "../service.js";
 import { IMESSAGE_SERVICE_NAME, isValidIMessageTarget, normalizeIMessageTarget } from "../types.js";
 
@@ -25,9 +25,11 @@ Extract the following:
 1. text: The message content to send
 2. to: The recipient (phone number, email, or "current" to reply)
 
-Respond with TOON only:
-text: message to send
-to: phone/email or current
+Respond with JSON only, with no prose or fences:
+{
+  "text": "message to send",
+  "to": "phone/email or current"
+}
 `;
 
 interface SendMessageParams {
@@ -36,27 +38,12 @@ interface SendMessageParams {
 }
 
 function parseSendMessageParams(response: string): SendMessageParams | null {
-  const toon = parseToonKeyValue<Record<string, unknown>>(response);
-  if (toon?.text) {
+  const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
+  if (parsed?.text) {
     return {
-      text: String(toon.text),
-      to: String(toon.to || "current"),
+      text: String(parsed.text),
+      to: String(parsed.to || "current"),
     };
-  }
-
-  try {
-    const parsed = JSON.parse(response) as unknown;
-    if (parsed && typeof parsed === "object" && "text" in parsed) {
-      const record = parsed as Record<string, unknown>;
-      if (record.text) {
-        return {
-          text: String(record.text),
-          to: String(record.to || "current"),
-        };
-      }
-    }
-  } catch {
-    return null;
   }
 
   return null;

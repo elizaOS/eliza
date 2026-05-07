@@ -79,7 +79,7 @@ interface ContainerMeta {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DOCKER_IMAGE = containersEnv.defaultAgentImage();
+const DOCKER_IMAGE_OVERRIDE = containersEnv.defaultAgentImageOverride();
 const DOCKER_NETWORK = containersEnv.dockerNetwork();
 let hasWarnedMissingStewardTenantApiKey = false;
 
@@ -343,10 +343,11 @@ export class DockerSandboxProvider implements SandboxProvider {
   private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
     const { agentId, agentName, environmentVars, organizationId } = config;
 
-    // Resolve Docker image: explicit config > env var > hardcoded default
-    // DOCKER_IMAGE (from env) takes precedence over per-agent DB override.
-    // This prevents stale images from being sticky after the env is updated.
-    const resolvedImage = DOCKER_IMAGE || config.dockerImage || "ghcr.io/elizaos/eliza:latest";
+    // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
+    // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
+    // overrides are not accidentally shadowed by the generic Eliza default.
+    const resolvedImage =
+      DOCKER_IMAGE_OVERRIDE || config.dockerImage || "ghcr.io/elizaos/eliza:latest";
     const imagePlatform = containersEnv.defaultAgentImagePlatform();
     const platformFlags = dockerPlatformFlag(imagePlatform);
 

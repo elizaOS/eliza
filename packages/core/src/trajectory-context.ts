@@ -5,6 +5,8 @@
  * synchronously to avoid race with first message processing).
  * Browser: stack-based fallback.
  */
+import { StackContextManager } from "./utils/stack-context-manager";
+
 export interface TrajectoryContext {
 	/** Active trajectory identifier, when the logger separates trajectory and step ids. */
 	trajectoryId?: string;
@@ -32,28 +34,6 @@ export interface ITrajectoryContextManager {
 		fn: () => T | Promise<T>,
 	): T | Promise<T>;
 	active(): TrajectoryContext | undefined;
-}
-
-class TrajectoryStackContextManager implements ITrajectoryContextManager {
-	private stack: Array<TrajectoryContext | undefined> = [];
-
-	run<T>(
-		context: TrajectoryContext | undefined,
-		fn: () => T | Promise<T>,
-	): T | Promise<T> {
-		this.stack.push(context);
-		try {
-			return fn();
-		} finally {
-			this.stack.pop();
-		}
-	}
-
-	active(): TrajectoryContext | undefined {
-		return this.stack.length > 0
-			? this.stack[this.stack.length - 1]
-			: undefined;
-	}
 }
 
 // Initialize the context manager synchronously in Node.js so that
@@ -100,7 +80,7 @@ function initContextManagerSync(): ITrajectoryContextManager {
 			// AsyncLocalStorage unavailable — fall back to stack
 		}
 	}
-	return new TrajectoryStackContextManager();
+	return new StackContextManager<TrajectoryContext | undefined>();
 }
 
 function getOrCreateContextManager(): ITrajectoryContextManager {

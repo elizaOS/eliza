@@ -13,7 +13,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * plane sidecar.
  */
 
-import { verifyCronSecret } from "@/lib/api/cron-auth";
+import { verifyCronSecret } from "@/lib/auth/cron";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
 async function handleDeploymentMonitor(c: AppContext, env?: AppEnv["Bindings"]) {

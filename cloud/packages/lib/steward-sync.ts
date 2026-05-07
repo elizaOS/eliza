@@ -1,12 +1,11 @@
 /**
  * Steward User Synchronization
  *
- * Resolves a Steward JWT to an eliza-cloud user. Mirrors privy-sync.ts pattern
- * for backward compatibility but is significantly simpler because:
+ * Resolves a Steward JWT to an eliza-cloud user.
  *
  * 1. Steward JWTs contain email/userId/walletAddress directly (no third-party API call)
  * 2. No anonymous user upgrade path (Steward doesn't have anonymous users)
- * 3. Uses steward_user_id column instead of privy_user_id
+ * 3. Uses steward_user_id as the canonical external auth identity
  */
 
 import { organizationInvitesRepository } from "@/db/repositories/organization-invites";
@@ -297,7 +296,7 @@ export async function syncUserFromSteward(
       discordService
         .logUserSignup({
           userId: userWithOrg.id,
-          privyUserId: userWithOrg.privy_user_id || "",
+          stewardUserId: userWithOrg.steward_user_id || "",
           email: userWithOrg.email || null,
           name: userWithOrg.name || null,
           walletAddress: userWithOrg.wallet_address || null,
@@ -497,7 +496,7 @@ export async function syncUserFromSteward(
             // migration drafts depend on (see
             // packages/db/migrations/_drafts_steward_link/README.md, Phase 2).
             // The match-by-email or match-by-wallet branches above find the
-            // existing Privy-keyed row, and this block writes the
+            // existing auth row, and this block writes the
             // steward_user_id link onto both `users` and `user_identities`.
             // The drafted Phase 3 migration will not run until the
             // unlinked-active-user count hits zero, which depends on this
@@ -600,7 +599,7 @@ export async function syncUserFromSteward(
   discordService
     .logUserSignup({
       userId: userWithOrg.id,
-      privyUserId: userWithOrg.privy_user_id || "",
+      stewardUserId: userWithOrg.steward_user_id || "",
       email: userWithOrg.email || null,
       name: userWithOrg.name || null,
       walletAddress: userWithOrg.wallet_address || null,

@@ -9,7 +9,7 @@ The user might reference an issue by:
 - Recency (e.g., "the latest bug", "most recent issue")
 - Team context (e.g., "newest issue in ELIZA team")
 
-Respond with TOON/plain text only. Use directId when an issue ID is explicitly mentioned:
+Respond with JSON/plain text only. Use directId when an issue ID is explicitly mentioned:
 directId: Issue ID such as ENG-123
 
 When no issue ID is provided, use searchBy fields:
@@ -23,6 +23,5 @@ searchBy:
   type: bug, feature, or task if mentioned
 
 Only include fields that are clearly mentioned or implied. Output only the fields, with no prose before or after them.
-
 
 

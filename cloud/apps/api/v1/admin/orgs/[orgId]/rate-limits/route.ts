@@ -16,7 +16,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { z } from "zod";
 import { orgRateLimitOverridesRepository } from "@/db/repositories/org-rate-limit-overrides";
 import { organizationsRepository } from "@/db/repositories/organizations";
-import { requireAdminWithResponse } from "@/lib/api/admin-auth";
+import { requireAdminWithResponse } from "@/lib/auth/admin";
 import { getOrgTier, invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
 import { logger } from "@/lib/utils/logger";
 

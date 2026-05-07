@@ -10,10 +10,10 @@
 
 import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
 import { Calendar, CheckCircle2, Info, Wallet, XCircle } from "lucide-react";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface AccountDetailsProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 export function AccountDetails({ user }: AccountDetailsProps) {

@@ -10,7 +10,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseToonActionParams,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { NostrService } from "../service.js";
@@ -21,12 +21,11 @@ const PUBLISH_NOTE_TEMPLATE = `# Task: Extract a Nostr note (kind:1) from the co
 Recent conversation:
 {{recentMessages}}
 
-Extract the text content of the note to publish. Output a TOON action-call block:
+Extract the text content of the note to publish. Respond with JSON only, no prose or fences:
 
-actions: NOSTR_PUBLISH_NOTE
-params:
-  NOSTR_PUBLISH_NOTE:
-    text: the note content here
+{
+  "text": "the note content here"
+}
 `;
 
 interface PublishNoteParams {
@@ -90,9 +89,8 @@ export const publishNote: Action = {
       let params: PublishNoteParams | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-        const parsed = parseToonActionParams(String(response));
-        const actionParams = parsed.get("NOSTR_PUBLISH_NOTE");
-        const candidateText = actionParams?.text;
+        const parsed = parseJSONObjectFromText(String(response)) as Record<string, unknown> | null;
+        const candidateText = parsed?.text;
         if (typeof candidateText === "string" && candidateText.trim()) {
           params = { text: candidateText.trim() };
           break;

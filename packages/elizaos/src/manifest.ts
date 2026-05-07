@@ -20,10 +20,7 @@ export function loadManifest(): TemplatesManifest {
   }
 
   const packageRoot = getPackageRoot();
-  const candidates = [
-    path.join(packageRoot, "templates-manifest.json"),
-    path.join(packageRoot, "..", "templates-manifest.json"),
-  ];
+  const candidates = [path.join(packageRoot, "templates-manifest.json")];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {

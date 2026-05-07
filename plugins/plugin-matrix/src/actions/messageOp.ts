@@ -14,7 +14,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { composePromptFromState, ModelType, parseToonKeyValue } from "@elizaos/core";
+import { composePromptFromState, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import type { MatrixService } from "../service.js";
 import { isValidMatrixRoomAlias, isValidMatrixRoomId, MATRIX_SERVICE_NAME } from "../types.js";
 
@@ -43,17 +43,20 @@ Operations:
 - send: send a message to a Matrix room. Provide \`text\` and \`roomId\` (!room:server, #alias:server, or "current").
 - react: react to a Matrix event with an emoji. Provide \`emoji\` and \`eventId\` (starts with $).
 
-Respond with TOON only:
-op: send
-text:
-roomId: current
-emoji:
-eventId:`;
+Respond with JSON only, with no prose or fences:
+{
+  "op": "send",
+  "text": "",
+  "roomId": "current",
+  "emoji": "",
+  "eventId": ""
+}`;
 
 function parseInfo(raw: unknown): MatrixOpInfo | null {
-  const parsed = parseToonKeyValue<Record<string, unknown>>(
-    typeof raw === "string" ? raw : String(raw)
-  );
+  const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : String(raw)) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) {
     return null;
   }

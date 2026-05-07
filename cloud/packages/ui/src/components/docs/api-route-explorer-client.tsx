@@ -2,15 +2,12 @@
 
 import { useMemo, useState } from "react";
 
-import type {
-  DiscoveredApiRoute,
-  HttpMethod,
-} from "@/lib/docs/api-route-discovery";
+import type { DiscoveredApiRouteDto, HttpMethod } from "@/types/cloud-api";
 import { cn } from "@/lib/utils";
 
 type RouteGroup = {
   group: string;
-  routes: DiscoveredApiRoute[];
+  routes: DiscoveredApiRouteDto[];
 };
 
 // Pretty group names for display
@@ -57,7 +54,7 @@ function methodBadgeClass(method: HttpMethod) {
   }
 }
 
-function isProbablyPublic(route: DiscoveredApiRoute) {
+function isProbablyPublic(route: DiscoveredApiRouteDto) {
   const p = route.path;
   if (p.includes("/api/v1/admin/")) return false;
   if (p.includes("/api/v1/cron/")) return false;
@@ -91,7 +88,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function generateCurlExample(route: DiscoveredApiRoute): string {
+function generateCurlExample(route: DiscoveredApiRouteDto): string {
   const method = route.methods[0] ?? "GET";
   const isBodyMethod = ["POST", "PUT", "PATCH"].includes(method);
 
@@ -109,7 +106,7 @@ function generateCurlExample(route: DiscoveredApiRoute): string {
 export function ApiRouteExplorerClient({
   routes,
 }: {
-  routes: DiscoveredApiRoute[];
+  routes: DiscoveredApiRouteDto[];
 }) {
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -135,7 +132,7 @@ export function ApiRouteExplorerClient({
   }, [query, routes, showAll]);
 
   const groups = useMemo<RouteGroup[]>(() => {
-    const map = new Map<string, DiscoveredApiRoute[]>();
+    const map = new Map<string, DiscoveredApiRouteDto[]>();
     for (const r of filtered) {
       const key = groupKeyForPath(r.path);
       const list = map.get(key) ?? [];

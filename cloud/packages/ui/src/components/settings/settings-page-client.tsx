@@ -11,7 +11,7 @@
 import { DashboardPageContainer, useSetPageHeader } from "@elizaos/cloud-ui";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import { SettingsTabs } from "./settings-tabs";
 import { AccountTab } from "./tabs/account-tab";
 import { AnalyticsTab } from "./tabs/analytics-tab";
@@ -24,7 +24,7 @@ import { UsageTab } from "./tabs/usage-tab";
 import type { SettingsTab } from "./types";
 
 interface SettingsPageClientProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 export function SettingsPageClient({ user }: SettingsPageClientProps) {

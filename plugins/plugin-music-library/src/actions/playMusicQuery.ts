@@ -234,7 +234,8 @@ Respond with JSON only:
       return null;
     }
 
-    const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(response);
+    const parsedJson =
+      parseJsonObjectResponse<Record<string, unknown>>(response);
     if (parsedJson?.queryType) {
       return {
         ...parsedJson,

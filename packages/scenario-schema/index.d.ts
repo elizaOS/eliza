@@ -338,4 +338,6 @@ export type ScenarioDefinition = {
   [key: string]: unknown;
 };
 
+export declare const FINAL_CHECK_KEYS: ReadonlyMap<string, ReadonlySet<string>>;
+
 export function scenario<const T extends ScenarioDefinition>(value: T): T;

@@ -1006,6 +1006,7 @@ function overlayAndroid() {
     fs.mkdirSync(dstJava, { recursive: true });
     for (const file of [
       "GatewayConnectionService.java",
+      "AgentPlugin.java",
       "MainActivity.java",
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",

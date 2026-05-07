@@ -11,9 +11,19 @@
 
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 
+function normalizeEnvValue(value: string): string {
+  return value
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\\n$/g, "")
+    .trim();
+}
+
 function pick(...candidates: (string | undefined)[]): string | undefined {
   for (const candidate of candidates) {
-    if (candidate && candidate.length > 0) return candidate;
+    if (!candidate) continue;
+    const normalized = normalizeEnvValue(candidate);
+    if (normalized.length > 0) return normalized;
   }
   return undefined;
 }
@@ -34,7 +44,7 @@ export const containersEnv = {
   /** SSH user for connecting to Docker nodes. Defaults to "root". */
   sshUser(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER) ?? "root";
+    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.MILADY_SSH_USER) ?? "root";
   },
 
   /** Docker network name created on every node. Containers attach to this. */
@@ -79,10 +89,17 @@ export const containersEnv = {
    * without code changes.
    */
   defaultAgentImage(): string {
+    return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:latest";
+  },
+
+  /** Explicit operator-pinned agent image, without the hardcoded fallback. */
+  defaultAgentImageOverride(): string | undefined {
     const env = getCloudAwareEnv();
-    return (
-      pick(env.ELIZA_AGENT_IMAGE, env.CONTAINERS_DEFAULT_IMAGE, env.AGENT_DOCKER_IMAGE) ??
-      "ghcr.io/elizaos/eliza:latest"
+    return pick(
+      env.ELIZA_AGENT_IMAGE,
+      env.CONTAINERS_DEFAULT_IMAGE,
+      env.AGENT_DOCKER_IMAGE,
+      env.MILADY_DOCKER_IMAGE,
     );
   },
 
@@ -98,6 +115,7 @@ export const containersEnv = {
         env.ELIZA_AGENT_IMAGE_PLATFORM,
         env.CONTAINERS_DEFAULT_IMAGE_PLATFORM,
         env.AGENT_DOCKER_PLATFORM,
+        env.MILADY_DOCKER_PLATFORM,
       ) ?? "linux/amd64"
     );
   },
@@ -115,13 +133,16 @@ export const containersEnv = {
   /** Application port baked into the canonical Eliza agent image. */
   agentPort(): string {
     const env = getCloudAwareEnv();
-    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "3000";
+    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT, env.MILADY_AGENT_PORT) ?? "3000";
   },
 
   /** Bridge port the agent listens on inside the container (for agent-server bridge). */
   agentBridgePort(): string {
     const env = getCloudAwareEnv();
-    return pick(env.ELIZA_AGENT_BRIDGE_PORT, env.AGENT_BRIDGE_INTERNAL_PORT) ?? "31337";
+    return (
+      pick(env.ELIZA_AGENT_BRIDGE_PORT, env.AGENT_BRIDGE_INTERNAL_PORT, env.MILADY_BRIDGE_INTERNAL_PORT) ??
+      "31337"
+    );
   },
 
   /** Legacy "ELIZA_PORT" — kept as a transitional env var for the agent image. */

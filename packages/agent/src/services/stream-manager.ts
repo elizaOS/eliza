@@ -365,7 +365,7 @@ class StreamManager {
     this.ffmpeg.stderr?.on("data", (chunk: Buffer) => {
       const line = chunk.toString().trim();
       if (line) {
-        console.log(`[FFmpeg] ${line}`);
+        logger.debug(`[FFmpeg] ${line}`);
       }
     });
 

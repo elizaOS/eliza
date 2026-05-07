@@ -1,3 +1,4 @@
+import { asRecord as asSharedRecord } from "@elizaos/shared";
 import {
   Button,
   ConfirmDialog,
@@ -33,8 +34,8 @@ import {
 } from "../policy-controls";
 import { StewardLogo } from "../steward/injected";
 
-const asRecord = (v: unknown): Record<string, unknown> =>
-  typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+const asRecord = (value: unknown): Record<string, unknown> =>
+  asSharedRecord(value) ?? {};
 
 /** Static hour options to avoid array-index-as-key lint issues. */
 const HOUR_FROM_OPTIONS = Array.from({ length: 24 }, (_, i) => ({

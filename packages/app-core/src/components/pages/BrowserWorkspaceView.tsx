@@ -1,8 +1,8 @@
+import { Capacitor } from "@capacitor/core";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
 } from "@elizaos/plugin-browser-bridge/contracts";
-import { Capacitor } from "@capacitor/core";
 import {
   Button,
   ConfirmDialog,

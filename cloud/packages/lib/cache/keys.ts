@@ -59,11 +59,9 @@ export const CacheKeys = {
     byId: (id: string) => `user:id:${id}:v1`,
     byEmail: (email: string) => `user:email:${email}:v1`,
     byStewardId: (stewardId: string) => `user:steward:${stewardId}:v1`,
-    byPrivyId: (privyId: string) => `user:privy:${privyId}:v1`,
     withOrg: (id: string) => `user:with-org:${id}:v1`,
     byEmailWithOrg: (email: string) => `user:email-with-org:${email}:v1`,
     byStewardIdWithOrg: (stewardId: string) => `user:steward-with-org:${stewardId}:v1`,
-    byPrivyIdWithOrg: (privyId: string) => `user:privy-with-org:${privyId}:v1`,
     byWalletAddress: (address: string) => `user:wallet:${address}:v1`,
     byWalletAddressWithOrg: (address: string) => `user:wallet-with-org:${address}:v1`,
     pattern: () => `user:*`,
@@ -255,11 +253,9 @@ export const CacheTTL = {
     byId: 600, // 10 minutes
     byEmail: 600, // 10 minutes (was 300s)
     byStewardId: 600,
-    byPrivyId: 600,
     withOrg: 600,
     byEmailWithOrg: 600,
     byStewardIdWithOrg: 600,
-    byPrivyIdWithOrg: 600,
     byWalletAddress: 600,
     byWalletAddressWithOrg: 600,
   },

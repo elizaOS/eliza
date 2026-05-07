@@ -12,11 +12,11 @@
 import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
 import { DollarSign, Info, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import type { SettingsTab } from "../types";
 
 interface UsageTabProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
   onTabChange: (tab: SettingsTab) => void;
 }
 

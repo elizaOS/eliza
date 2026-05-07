@@ -1,7 +1,7 @@
 /**
  * @module plugin-app-control/actions/app-list
  *
- * list sub-mode: combine installed apps + running runs into TOON text,
+ * list sub-mode: combine installed apps + running runs into structured text,
  * plus structured `data` for clients.
  */
 

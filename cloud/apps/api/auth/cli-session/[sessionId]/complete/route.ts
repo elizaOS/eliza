@@ -1,7 +1,7 @@
 /**
  * POST /api/auth/cli-session/[sessionId]/complete
  * Complete CLI authentication for a session. Called by the web UI after
- * the user logs in via Privy.
+ * the user logs in.
  */
 
 import { Hono } from "hono";

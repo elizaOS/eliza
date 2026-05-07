@@ -309,7 +309,7 @@ Use these when designing non-trivial changes:
 - `/agents/runtime-and-lifecycle` — startup, restarts, and lifecycle
 - `/plugins/architecture` — plugin load order, providers, and extension points
 
-Read only the sections relevant to your current change. Historical implementation write-ups may still exist in the repository under `docs/plans/` for contracts referenced from source code.
+Read only the sections relevant to your current change.
 
 ### Advanced contributor tracks (pick one)
 

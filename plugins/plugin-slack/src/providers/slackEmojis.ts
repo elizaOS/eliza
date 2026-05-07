@@ -6,7 +6,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import type { SlackService } from "../service";
 import { ServiceType } from "../types";
 
@@ -77,7 +76,7 @@ export const slackEmojisProvider: Provider = {
         emojiCount: totalCount,
         displayedCount: entries.length,
       },
-      text: encode({
+      text: JSON.stringify({
         slack_emojis: {
           total: totalCount,
           shown: entries.length,

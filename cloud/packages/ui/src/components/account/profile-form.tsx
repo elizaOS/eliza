@@ -23,7 +23,7 @@ import Image from "@elizaos/cloud-ui/runtime/image";
 import { Check, ImagePlus, Loader2, Mail, Shield, Upload, User, X } from "lucide-react";
 import { useCallback, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface ProfileActionResult {
   success: boolean;
@@ -116,7 +116,7 @@ const VALID_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 interface ProfileFormProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 export function ProfileForm({ user }: ProfileFormProps) {

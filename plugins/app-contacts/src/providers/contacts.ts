@@ -15,7 +15,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 
 export const CONTACTS_PROVIDER_NAME = "androidContacts";
 
@@ -59,7 +58,7 @@ export const contactsProvider: Provider = {
       const entries = contacts.map(toEntry);
 
       return {
-        text: encode({
+        text: JSON.stringify({
           android_contacts: {
             count: entries.length,
             items: entries,

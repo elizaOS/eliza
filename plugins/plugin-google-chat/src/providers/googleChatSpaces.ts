@@ -1,10 +1,9 @@
 /**
- * Google Chat spaces provider — TOON-encoded list of spaces the bot is in.
+ * Google Chat spaces provider — JSON-encoded list of spaces the bot is in.
  */
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import type { GoogleChatService } from "../service.js";
 import { GOOGLE_CHAT_SERVICE_NAME, getSpaceDisplayName, isDirectMessage } from "../types.js";
 
@@ -60,7 +59,7 @@ export const googleChatSpacesProvider: Provider = {
       values: {
         spaceCount: entries.length,
       },
-      text: encode({
+      text: JSON.stringify({
         google_chat_spaces: {
           count: entries.length,
           items: entries,

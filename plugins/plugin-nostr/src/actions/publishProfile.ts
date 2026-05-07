@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseToonActionParams,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { NostrService } from "../service.js";
@@ -21,18 +21,17 @@ Based on the conversation, determine what profile information to update.
 Recent conversation:
 {{recentMessages}}
 
-Output a TOON action-call block listing only the fields to update:
+Respond with JSON only, no prose or fences, listing only the fields to update:
 
-actions: NOSTR_PUBLISH_PROFILE
-params:
-  NOSTR_PUBLISH_PROFILE:
-    name: optional display name
-    about: optional bio
-    picture: optional profile picture URL
-    banner: optional banner URL
-    nip05: optional user@domain.com
-    lud16: optional lightning address
-    website: optional website URL`;
+{
+  "name": "optional display name",
+  "about": "optional bio",
+  "picture": "optional profile picture URL",
+  "banner": "optional banner URL",
+  "nip05": "optional user@domain.com",
+  "lud16": "optional lightning address",
+  "website": "optional website URL"
+}`;
 
 export const publishProfile: Action = {
   name: "NOSTR_PUBLISH_PROFILE",
@@ -75,8 +74,10 @@ export const publishProfile: Action = {
         prompt,
       });
 
-      const parsed = parseToonActionParams(String(response));
-      const actionParams = parsed.get("NOSTR_PUBLISH_PROFILE");
+      const actionParams = parseJSONObjectFromText(String(response)) as Record<
+        string,
+        unknown
+      > | null;
       if (actionParams) {
         profileInfo = {
           name: actionParams.name ? String(actionParams.name) : undefined,

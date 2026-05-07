@@ -7,10 +7,6 @@ description: How to set up a development environment, follow code conventions, a
 
 Welcome to Eliza! This guide covers development environment setup and contribution workflow.
 
-<Info>
-For the full contribution process including the Agent Review Bot and agents-only PR workflow, see the [Contribution Guide](/guides/contribution-guide).
-</Info>
-
 ## Table of Contents
 
 1. [Getting Started](#getting-started)

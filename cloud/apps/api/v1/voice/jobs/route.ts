@@ -7,7 +7,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  *
  * GET /api/v1/voice/jobs
  * Gets all active voice cloning jobs.
- * Supports both Privy session and API key authentication.
+ * Supports both session and API key authentication.
  *
  * WHY THIS EXISTS:
  * ----------------

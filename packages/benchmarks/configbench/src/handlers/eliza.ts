@@ -189,10 +189,14 @@ async function sendMessageAndWaitForResponse(
   text: string,
   timeoutMs = 120_000,
 ): Promise<Content> {
+  if (!user.id) {
+    throw new Error("Cannot send benchmark message without a user entity id");
+  }
+
   const message: Memory = {
     id: createUniqueUuid(rt, `${user.id}-${Date.now()}-${Math.random()}`),
     agentId: rt.agentId,
-    entityId: user.id!,
+    entityId: user.id,
     roomId: room.id,
     content: { text, source: "configbench" },
     createdAt: Date.now(),
@@ -393,8 +397,9 @@ export const elizaHandler: Handler = {
     const agentResponses: string[] = [];
 
     // Create test user
+    const userId = asUUID(crypto.randomUUID());
     const user: Entity = {
-      id: asUUID(crypto.randomUUID()),
+      id: userId,
       names: ["Benchmark User"],
       agentId: runtime.agentId,
       metadata: { type: "user" },
@@ -423,7 +428,7 @@ export const elizaHandler: Handler = {
     };
     await runtime.createRoom(room);
     await runtime.ensureParticipantInRoom(runtime.agentId, room.id);
-    await runtime.ensureParticipantInRoom(user.id!, room.id);
+    await runtime.ensureParticipantInRoom(userId, room.id);
 
     // Track secrets before scenario
     const secretsBefore = await collectSecrets(runtime);

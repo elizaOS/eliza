@@ -1,15 +1,8 @@
 import { getTrajectoryContext } from "../../trajectory-context.ts";
+import type { TrajectoryProviderAccessLogger } from "../../trajectory-utils.ts";
 import type { IAgentRuntime, Memory } from "../../types/index.ts";
 
-type TrajectoryLogger = {
-	logProviderAccess?: (params: {
-		stepId: string;
-		providerName: string;
-		data: Record<string, string | number | boolean | null>;
-		purpose: string;
-		query?: Record<string, string | number | boolean | null>;
-	}) => void;
-};
+type TrajectoryLogger = Partial<TrajectoryProviderAccessLogger>;
 
 function resolveTrajectoryStepId(message?: Memory): string | null {
 	const metadata = message?.metadata as

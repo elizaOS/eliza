@@ -1,7 +1,7 @@
 /**
  * WalletProvider — abstraction for agent wallet management.
  *
- * Allows pluggable wallet backends (Privy, Steward, etc.) while
+ * Allows pluggable wallet backends while
  * presenting a uniform interface to the rest of the application.
  *
  * Phase 1: The concrete routing lives in server-wallets.ts using
@@ -28,7 +28,7 @@ export interface WalletInfo {
   /** On-chain public address. */
   address: string;
   /** Which provider manages this wallet. */
-  provider: "privy" | "steward";
+  provider: "steward";
   /** Chain type. */
   chainType: "evm" | "solana";
 }

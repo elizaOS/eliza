@@ -145,6 +145,19 @@ async function applyDiscoveredApiBaseUrl(
   refs.apiBaseUrl.value = discovered;
 }
 
+async function renderResolvedState(
+  refs: FormRefs,
+  state: BackgroundState,
+): Promise<void> {
+  const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
+  renderState(refs, state, discoveredApiBaseUrl);
+  if (discoveredApiBaseUrl) {
+    refs.apiBaseUrl.value = discoveredApiBaseUrl;
+  } else {
+    await applyDiscoveredApiBaseUrl(refs, state);
+  }
+}
+
 async function sendMessage<T extends PopupRequest>(
   request: T,
 ): Promise<PopupResponse> {
@@ -200,13 +213,7 @@ async function refresh(refs: FormRefs): Promise<void> {
     refs.statusDetail.textContent = response.error;
     return;
   }
-  const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-  renderState(refs, response.state, discoveredApiBaseUrl);
-  if (discoveredApiBaseUrl) {
-    refs.apiBaseUrl.value = discoveredApiBaseUrl;
-  } else {
-    await applyDiscoveredApiBaseUrl(refs, response.state);
-  }
+  await renderResolvedState(refs, response.state);
   if (!response.state.config && !autoPairAttempted) {
     autoPairAttempted = true;
     refs.statusTitle.textContent = "Looking for Eliza in this browser";
@@ -216,13 +223,7 @@ async function refresh(refs: FormRefs): Promise<void> {
       type: "browser-bridge:auto-pair",
     });
     if (autoPairResponse.ok && autoPairResponse.state) {
-      const nextDiscoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-      renderState(refs, autoPairResponse.state, nextDiscoveredApiBaseUrl);
-      if (nextDiscoveredApiBaseUrl) {
-        refs.apiBaseUrl.value = nextDiscoveredApiBaseUrl;
-      } else {
-        await applyDiscoveredApiBaseUrl(refs, autoPairResponse.state);
-      }
+      await renderResolvedState(refs, autoPairResponse.state);
       return;
     }
     if (!autoPairResponse.ok) {
@@ -263,13 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
       refs.statusDetail.textContent = response.error;
       return;
     }
-    const nextDiscoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-    renderState(refs, response.state, nextDiscoveredApiBaseUrl);
-    if (nextDiscoveredApiBaseUrl) {
-      refs.apiBaseUrl.value = nextDiscoveredApiBaseUrl;
-    } else {
-      await applyDiscoveredApiBaseUrl(refs, response.state);
-    }
+    await renderResolvedState(refs, response.state);
   });
 
   refs.saveButton.addEventListener("click", async () => {
@@ -283,9 +278,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     autoPairAttempted = true;
-    const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-    renderState(refs, response.state, discoveredApiBaseUrl);
-    await applyDiscoveredApiBaseUrl(refs, response.state);
+    await renderResolvedState(refs, response.state);
   });
 
   refs.importButton.addEventListener("click", async () => {
@@ -308,9 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     refs.pairingJson.value = "";
     autoPairAttempted = true;
-    const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-    renderState(refs, response.state, discoveredApiBaseUrl);
-    await applyDiscoveredApiBaseUrl(refs, response.state);
+    await renderResolvedState(refs, response.state);
   });
 
   refs.syncButton.addEventListener("click", async () => {
@@ -320,9 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
       refs.statusDetail.textContent = response.error;
       return;
     }
-    const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-    renderState(refs, response.state, discoveredApiBaseUrl);
-    await applyDiscoveredApiBaseUrl(refs, response.state);
+    await renderResolvedState(refs, response.state);
   });
 
   refs.clearButton.addEventListener("click", async () => {
@@ -334,8 +323,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     autoPairAttempted = false;
-    const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-    renderState(refs, response.state, discoveredApiBaseUrl);
-    await applyDiscoveredApiBaseUrl(refs, response.state);
+    await renderResolvedState(refs, response.state);
   });
 });

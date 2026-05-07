@@ -12,7 +12,7 @@ The user might ask for projects in various ways:
 - "Completed projects" → filter by state
 - "Projects starting next month" → filter by start date
 
-Respond with TOON/plain text only. Use these fields:
+Respond with JSON/plain text only. Use these fields:
 teamFilter: Team name or key if mentioned
 stateFilter: active, planned, completed, or all
 dateFilter:
@@ -24,6 +24,5 @@ leadFilter: Project lead name if mentioned
 showAll: true if the user explicitly asks for all projects; otherwise omit
 
 Only include fields that are clearly mentioned. Output only the fields, with no prose before or after them.
-
 
 

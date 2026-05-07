@@ -9,6 +9,7 @@ import type { Memory } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
+import { asRecord } from "../../../../utils/type-guards.ts";
 import { composePrompt } from "../../../../utils.ts";
 import { EXTRACT_EXPERIENCES_TEMPLATE } from "../generated/prompts/typescript/prompts.ts";
 import type { ExperienceService } from "../service";
@@ -320,12 +321,6 @@ export const experienceEvaluator: Evaluator = {
 		};
 	},
 };
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === "object" && value !== null
-		? (value as Record<string, unknown>)
-		: null;
-}
 
 function readStringArray(value: unknown): string[] {
 	if (!Array.isArray(value)) {

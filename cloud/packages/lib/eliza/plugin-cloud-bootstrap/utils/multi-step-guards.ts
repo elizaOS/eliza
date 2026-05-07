@@ -1,3 +1,4 @@
+import { parseJSONObjectFromText } from "@elizaos/core";
 import type { ParsedMultiStepDecision } from "../types";
 
 const BUILT_IN_RESPONSE_ACTIONS = new Set(["REPLY", "NONE"]);
@@ -40,6 +41,10 @@ function normalizeBoolean(value: string | boolean | undefined): boolean | undefi
   }
 
   return undefined;
+}
+
+function getNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function parseParameters(parameters: ParsedMultiStepDecision["parameters"]): {
@@ -147,18 +152,17 @@ function parseNativeToolCall(call: NativeToolCallLike): ParsedMultiStepDecision 
 }
 
 export function parseNativeMultiStepDecision(raw: string): ParsedMultiStepDecision | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  const parsed = parseJSONObjectFromText(raw);
 
   if (!parsed || typeof parsed !== "object") {
     return null;
   }
 
   const value = parsed as Record<string, unknown>;
+  const thought = getNonEmptyString(value.thought);
+  const messageToUser = getNonEmptyString(
+    value.messageToUser ?? value.message_to_user ?? value.text ?? value.response,
+  );
   const toolCalls = value.tool_calls ?? value.toolCalls;
   if (Array.isArray(toolCalls) && toolCalls.length > 0) {
     const call = parseNativeToolCall(toolCalls[0] as NativeToolCallLike);
@@ -166,9 +170,18 @@ export function parseNativeMultiStepDecision(raw: string): ParsedMultiStepDecisi
       return null;
     }
     return {
-      thought: typeof value.thought === "string" ? value.thought : undefined,
+      thought,
       ...call,
       isFinish: value.isFinish as string | boolean | undefined,
+    };
+  }
+
+  if (Array.isArray(toolCalls) && toolCalls.length === 0 && messageToUser) {
+    return {
+      thought,
+      action: "FINISH",
+      parameters: { response: messageToUser },
+      isFinish: true,
     };
   }
 
@@ -179,11 +192,19 @@ export function parseNativeMultiStepDecision(raw: string): ParsedMultiStepDecisi
         ? value.name
         : undefined;
   if (!directAction) {
+    if (messageToUser) {
+      return {
+        thought,
+        action: "FINISH",
+        parameters: { response: messageToUser },
+        isFinish: true,
+      };
+    }
     return null;
   }
 
   return {
-    thought: typeof value.thought === "string" ? value.thought : undefined,
+    thought,
     action: directAction,
     parameters:
       parseNativeToolArguments(value.parameters) ??

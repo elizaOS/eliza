@@ -1,15 +1,19 @@
-Respond using TOON with only the extracted values. Use null for any value that cannot be determined.
+Respond using JSON with only the extracted values. Use null for any value that cannot be determined.
 
 Example responses:
 For SPL tokens:
-tokenAddress: BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump
-recipient: 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa
-amount: 1000
+{
+  "tokenAddress": "BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump",
+  "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+  "amount": 1000
+}
 
 For SOL:
-tokenAddress: null
-recipient: 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa
-amount: 1.5
+{
+  "tokenAddress": null,
+  "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+  "amount": 1.5
+}
 
 {{recentMessages}}
 
@@ -18,7 +22,6 @@ Extract the following information about the requested transfer:
 - Recipient wallet address
 - Amount to transfer
 
-IMPORTANT: Your response must ONLY contain the TOON document. No preamble or explanation.
-
+IMPORTANT: Your response must ONLY contain the JSON object. No preamble or explanation.
 
 

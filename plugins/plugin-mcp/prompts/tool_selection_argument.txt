@@ -10,10 +10,10 @@ The reasoning behind this selection is: "{{toolSelectionName.reasoning}}"
 2. All parameter values must be extracted from the conversation context and must be concrete, usable values.
 3. Avoid placeholders or generic terms unless explicitly provided by the user.
 
-Respond with compact TOON/plain text only.
+Respond with compact JSON only.
 
 ## STRICT FORMAT REQUIREMENTS
-- The response MUST be one TOON document.
+- The response MUST be one JSON object.
 - DO NOT wrap it in triple backticks, code blocks, or include any explanatory text.
 - DO NOT include comments anywhere.
 - DO NOT use placeholders (e.g., "replace with...", "example", "your...", etc.)
@@ -22,7 +22,7 @@ Respond with compact TOON/plain text only.
 - All values must be fully grounded in user input or inferred contextually.
 - No missing fields unless they are explicitly optional in the schema.
 - All types must match the schema (strings, numbers, booleans).
-- Put all executable parameters under the indented toolArguments block.
+- Put all executable parameters under the toolArguments object.
 
 ## RESPONSE STRUCTURE
 Your response MUST contain ONLY these two top-level keys:
@@ -30,16 +30,20 @@ Your response MUST contain ONLY these two top-level keys:
 2. reasoning - a short explanation of how the values were inferred from the conversation.
 
 ## EXAMPLE RESPONSE
-toolArguments:
-  owner: facebook
-  repo: react
-  path: README.md
-  branch: main
-reasoning: The user wants to see the README from the facebook/react repository based on our conversation.
+{
+  "toolArguments": {
+    "owner": "facebook",
+    "repo": "react",
+    "path": "README.md",
+    "branch": "main"
+  },
+  "reasoning": "The user wants to see the README from the facebook/react repository based on our conversation."
+}
 
 If the tool takes no arguments, use an empty toolArguments block:
-toolArguments:
-reasoning: The selected tool does not require arguments for this request.
-
+{
+  "toolArguments": {},
+  "reasoning": "The selected tool does not require arguments for this request."
+}
 
 

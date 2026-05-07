@@ -61,7 +61,6 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
     }
 
     // DB fallback (legacy wallet rows linked by character_id, kept until
-    // the operator runs the Privy → Steward wallet migration).
     if (agent.character_id) {
       const walletRecord = await db.query.agentServerWallets.findFirst({
         where: eq(agentServerWallets.character_id, agent.character_id),
@@ -73,7 +72,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
             data: {
               agentId,
               walletAddress: walletRecord.address,
-              walletProvider: walletRecord.wallet_provider,
+              walletProvider: "steward",
               walletStatus: "active",
               balance: null,
               chain: walletRecord.chain_type === "evm" ? "base" : walletRecord.chain_type,

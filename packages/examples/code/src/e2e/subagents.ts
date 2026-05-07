@@ -3,12 +3,10 @@ import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CodeTaskService = any;
-
 import { initializeAgent, shutdownAgent } from "../lib/agent.js";
 import { setCwd } from "../lib/cwd.js";
-import type { SubAgentType } from "../types.js";
+import { getCodeTaskService } from "../lib/get-code-task-service.js";
+import type { CodeTaskService, SubAgentType } from "../types.js";
 
 type RunResult = {
   type: SubAgentType;
@@ -175,7 +173,7 @@ async function main(): Promise<void> {
 
   const runtime = await initializeAgent();
   try {
-    const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
+    const service = getCodeTaskService(runtime);
     if (!service) {
       throw new Error("CodeTaskService not available");
     }

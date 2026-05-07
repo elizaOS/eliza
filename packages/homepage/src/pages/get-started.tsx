@@ -29,15 +29,17 @@ import {
   getAuthToken,
   type TelegramAuthData,
 } from "@/lib/context/auth-context";
+import {
+  buildElizaSmsHref,
+  ELIZA_PHONE_FORMATTED,
+  ELIZA_PHONE_NUMBER,
+  getWhatsAppNumber,
+} from "@/lib/contact";
 import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
 
 // ============================================================================
 // Constants
 // ============================================================================
-
-const ELIZA_PHONE_NUMBER = "+14245074963";
-const ELIZA_PHONE_FORMATTED = "+1 (424) 507-4963";
-const IMESSAGE_GREETING = "Hey Eliza, what can you do?";
 
 /**
  * Key used to store the Discord OAuth CSRF state in sessionStorage.
@@ -134,10 +136,6 @@ function getTelegramBotUsername(): string {
 
 function getTelegramBotId(): string {
   return (import.meta.env.VITE_TELEGRAM_BOT_ID || "").trim();
-}
-
-function getWhatsAppNumber(): string {
-  return import.meta.env.VITE_WHATSAPP_PHONE_NUMBER || ELIZA_PHONE_NUMBER;
 }
 
 function getDiscordClientId(): string {
@@ -803,8 +801,7 @@ export default function GetStartedPage() {
    * Open iMessage with pre-populated greeting
    */
   const handleOpenMessages = () => {
-    const encodedBody = encodeURIComponent(IMESSAGE_GREETING);
-    window.location.href = `sms:${ELIZA_PHONE_NUMBER}&body=${encodedBody}`;
+    window.location.href = buildElizaSmsHref();
   };
 
   /**

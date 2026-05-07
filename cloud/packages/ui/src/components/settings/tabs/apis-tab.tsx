@@ -32,10 +32,10 @@ import { Copy, Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { type ClientApiKey, copyApiKeyToClipboard, listClientApiKeys } from "@/lib/client/api-keys";
-import type { UserWithOrganization } from "@/lib/types";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface ApisTabProps {
-  user: UserWithOrganization;
+  user: UserWithOrganizationDto;
 }
 
 interface ModalState {

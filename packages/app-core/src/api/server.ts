@@ -56,7 +56,6 @@ export {
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
 } from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
-export { resolveWalletExportRejection } from "@elizaos/plugin-wallet/lib/server-wallet-trade";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -88,6 +87,7 @@ export {
   isSafeResetStateDir,
   resolveCorsOrigin,
 } from "./server-startup";
+export { resolveWalletExportRejection } from "./server-wallet-trade";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,

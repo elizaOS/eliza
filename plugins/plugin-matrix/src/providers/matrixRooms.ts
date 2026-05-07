@@ -1,6 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
-import { encode } from "@toon-format/toon";
 import type { MatrixService } from "../service.js";
 import { MATRIX_SERVICE_NAME } from "../types.js";
 
@@ -57,7 +56,7 @@ export const matrixRoomsProvider: Provider = {
       values: {
         roomCount: entries.length,
       },
-      text: encode({
+      text: JSON.stringify({
         matrix_rooms: {
           count: entries.length,
           items: entries,

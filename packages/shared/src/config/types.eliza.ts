@@ -767,6 +767,11 @@ export type ElizaConfig = {
     presetId?: string;
     /** Owner display name set during onboarding or via LifeOps. */
     ownerName?: string;
+    /**
+     * Pinned/favorite apps shown in the dashboard header. Owned by the
+     * server so the agent can mutate them via /api/apps/favorites.
+     */
+    favoriteApps?: string[];
   };
   knowledge?: KnowledgeConfig;
   roles?: RolesConfig;

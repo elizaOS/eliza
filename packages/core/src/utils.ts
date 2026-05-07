@@ -15,14 +15,7 @@ import {
 } from "./utils/deterministic";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
-import {
-	mergeStructuredRecords,
-	normalizeStructuredRecord,
-	tryParseLooseToonRecord,
-	tryParseToonValue,
-} from "./utils/toon";
-
-export { encodeToonValue } from "./utils/toon";
+import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -587,67 +580,18 @@ export const formatMessages = ({
 		.join("\n");
 };
 
-export const formatTimestamp = (messageDate: number) => {
-	const now = new Date();
-	const diff = now.getTime() - messageDate;
-
-	const absDiff = Math.abs(diff);
-	const seconds = Math.floor(absDiff / 1000);
-	const minutes = Math.floor(seconds / 60);
-	const hours = Math.floor(minutes / 60);
-	const days = Math.floor(hours / 24);
-
-	if (absDiff < 60000) {
-		return "just now";
-	}
-	if (minutes < 60) {
-		return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
-	}
-	if (hours < 24) {
-		return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
-	}
-	return `${days} day${days !== 1 ? "s" : ""} ago`;
-};
-
-/**
- * Legacy TOON structured-output parser retained for compatibility with older
- * feature code. New runtime-owned prompt paths should use JSON parsing instead.
- */
-export function parseToonKeyValue<T = Record<string, unknown>>(
-	text: string,
-): T | null {
-	if (!text) return null;
-
-	const parsedToon = normalizeStructuredRecord(tryParseToonValue(text));
-	const parsedLooseToon = normalizeStructuredRecord(
-		tryParseLooseToonRecord(text),
-	);
-	const mergedStructuredToon = mergeStructuredRecords(
-		parsedToon,
-		parsedLooseToon,
-	);
-	if (mergedStructuredToon) {
-		return mergedStructuredToon as T;
-	}
-
-	return null;
-}
+export const formatTimestamp = formatTimestampBase;
 
 /**
  * Legacy structured-response parser.
  *
  * Prefer JSON structured output for new prompts. This compatibility helper keeps
- * older XML-based cloud prompts working while still accepting legacy TOON
- * response shapes first.
+ * older XML-based cloud prompts working while native tool-calling migration
+ * finishes those surfaces.
  */
 export function parseKeyValueXml<T = Record<string, unknown>>(
 	text: string,
 ): T | null {
-	const parsedToon = parseToonKeyValue<Record<string, unknown>>(text);
-	if (parsedToon) {
-		return parsedToon as T;
-	}
-
 	if (!text) return null;
 
 	let xmlContent: string | null = null;

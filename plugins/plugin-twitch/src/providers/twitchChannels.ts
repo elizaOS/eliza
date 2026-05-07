@@ -6,7 +6,6 @@
  */
 
 import {
-  encodeToonValue,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -17,7 +16,7 @@ import type { TwitchService } from "../service.js";
 import { TWITCH_SERVICE_NAME } from "../types.js";
 
 function providerText(value: unknown): string {
-  return encodeToonValue({ twitch_channels: value });
+  return JSON.stringify({ twitch_channels: value }, null, 2);
 }
 
 export const twitchChannelsProvider: Provider = {
