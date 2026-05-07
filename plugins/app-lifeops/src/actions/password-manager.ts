@@ -1,13 +1,10 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
   type ActionExample,
   type ActionResult,
   type HandlerOptions,
-  type IAgentRuntime,
   logger,
-  type Memory,
 } from "@elizaos/core";
 import {
   injectCredentialToClipboard,
@@ -146,14 +143,9 @@ export const passwordManagerAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return failure("PERMISSION_DENIED");
-    }
-
     try {
       const rawParameters = (options as HandlerOptions | undefined)?.parameters;
       const rawParams = ((typeof rawParameters === "object" &&

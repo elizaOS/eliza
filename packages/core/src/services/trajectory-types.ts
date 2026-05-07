@@ -2,8 +2,15 @@ import type { JsonValue } from "../types/primitives.ts";
 
 export const ELIZA_NATIVE_TRAJECTORY_FORMAT = "eliza_native_v1" as const;
 
-export type ElizaNativeTrajectoryFormat =
-	typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
+export type ElizaNativeTrajectoryFormat = typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;
+
+export const ELIZA_NATIVE_MODEL_BOUNDARIES = [
+	"vercel_ai_sdk.generateText",
+	"vercel_ai_sdk.streamText",
+] as const;
+
+export type ElizaNativeModelBoundary =
+	(typeof ELIZA_NATIVE_MODEL_BOUNDARIES)[number];
 
 export type TrajectoryStatus = "active" | "completed" | "error" | "timeout";
 
@@ -71,6 +78,7 @@ export interface TrajectoryLlmCallRecord {
 	messages?: unknown[];
 	tools?: unknown;
 	toolChoice?: unknown;
+	output?: unknown;
 	responseSchema?: unknown;
 	providerOptions?: unknown;
 	response?: string;
@@ -201,14 +209,16 @@ export interface TrajectoryFlattenedLlmCallRecord
 
 export interface ElizaNativeModelRequestRecord {
 	prompt?: string;
+	system?: string;
 	messages?: unknown[];
 	tools?: unknown;
 	toolChoice?: unknown;
+	output?: unknown;
 	responseSchema?: unknown;
 	providerOptions?: unknown;
 	settings?: {
 		temperature?: number;
-		maxTokens?: number;
+		maxOutputTokens?: number;
 		topP?: number;
 	};
 }
@@ -252,7 +262,7 @@ export interface ElizaNativeTrajectoryRow
 	> {
 	format: ElizaNativeTrajectoryFormat;
 	schemaVersion: 1;
-	boundary: "vercel_ai_sdk.generateText";
+	boundary: ElizaNativeModelBoundary;
 	request: ElizaNativeModelRequestRecord;
 	response: ElizaNativeModelResponseRecord;
 	metadata: Record<string, unknown>;
@@ -260,10 +270,7 @@ export interface ElizaNativeTrajectoryRow
 	cacheStats: TrajectoryCacheStatsRecord;
 }
 
-export type TrajectoryJsonShape =
-	| "legacy"
-	| "context_object_events_v5"
-	| ElizaNativeTrajectoryFormat;
+export type TrajectoryJsonShape = ElizaNativeTrajectoryFormat;
 
 export type TrajectoryExportFormat = "json" | "jsonl" | "csv" | "art" | "zip";
 

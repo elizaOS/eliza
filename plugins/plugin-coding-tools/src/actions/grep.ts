@@ -1,11 +1,11 @@
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -34,13 +34,16 @@ import {
 const DEFAULT_HEAD_LIMIT = 250;
 
 function isValidMode(value: string | undefined): value is RipgrepMode {
-  return value === "content" || value === "files_with_matches" || value === "count";
+  return (
+    value === "content" || value === "files_with_matches" || value === "count"
+  );
 }
 
 export const grepAction: Action = {
   name: "GREP",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["SEARCH_CONTENT", "RIPGREP", "RG"],
   description:
     "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of BASH for content search.",
@@ -68,7 +71,8 @@ export const grepAction: Action = {
     },
     {
       name: "type",
-      description: "Optional ripgrep file type passed via -t (e.g. 'js', 'py').",
+      description:
+        "Optional ripgrep file type passed via -t (e.g. 'js', 'py').",
       required: false,
       schema: { type: "string" },
     },
@@ -77,7 +81,10 @@ export const grepAction: Action = {
       description:
         "How to render matches: 'content' returns matching lines, 'files_with_matches' returns file paths, 'count' returns per-file counts. Defaults to 'files_with_matches'.",
       required: false,
-      schema: { type: "string", enum: ["content", "files_with_matches", "count"] },
+      schema: {
+        type: "string",
+        enum: ["content", "files_with_matches", "count"],
+      },
     },
     {
       name: "-A",
@@ -123,7 +130,11 @@ export const grepAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const d = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (d === true || d === "true" || d === "1") return false;
     return true;
@@ -140,7 +151,10 @@ export const grepAction: Action = {
         ? String(message.roomId)
         : undefined;
     if (!conversationId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
 
     const pattern = readStringParam(options, "pattern");
@@ -213,7 +227,8 @@ export const grepAction: Action = {
 
       if (readBoolParam(options, "case_insensitive") === true)
         rgOptions.caseInsensitive = true;
-      if (readBoolParam(options, "multiline") === true) rgOptions.multiline = true;
+      if (readBoolParam(options, "multiline") === true)
+        rgOptions.multiline = true;
 
       const result = await rg.search(rgOptions, mode);
 
@@ -261,7 +276,8 @@ export const grepAction: Action = {
       }
 
       const truncated = headTruncated || result.truncated;
-      const text = outputLines.length === 0 ? "no matches" : outputLines.join("\n");
+      const text =
+        outputLines.length === 0 ? "no matches" : outputLines.join("\n");
 
       coreLogger.debug(
         `${CODING_TOOLS_LOG_PREFIX} GREP pattern=${JSON.stringify(pattern)} mode=${mode} matches=${outputLines.length} truncated=${truncated}`,
@@ -275,7 +291,8 @@ export const grepAction: Action = {
         truncated,
       });
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
+      const messageText =
+        error instanceof Error ? error.message : String(error);
       return failureToActionResult({
         reason: "internal",
         message: `grep failed: ${messageText.slice(0, 500)}`,

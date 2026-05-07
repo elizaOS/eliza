@@ -5,10 +5,7 @@
  * shaping used by the agent runtime trajectory logger implementations.
  */
 
-import {
-  serializeTrajectoryExport,
-  type JsonValue,
-} from "@elizaos/core";
+import { type JsonValue, serializeTrajectoryExport } from "@elizaos/core";
 import type {
   Trajectory,
   TrajectoryExportOptions,

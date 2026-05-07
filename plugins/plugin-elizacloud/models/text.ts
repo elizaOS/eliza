@@ -4,7 +4,13 @@ import type {
   ModelTypeName,
   TextStreamResult,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  logger,
+  ModelType,
+  renderChatMessagesForPrompt,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
 import type { LanguageModel } from "ai";
 import { createOpenAIClient } from "../providers/openai";
 import {
@@ -174,13 +180,21 @@ function buildGenerateParams(
     params.stopSequences.length > 0
       ? params.stopSequences
       : undefined;
+  const systemPrompt = resolveEffectiveSystemPrompt({
+    params,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
+  const promptText =
+    renderChatMessagesForPrompt(params.messages, {
+      omitDuplicateSystem: systemPrompt,
+    }) ?? prompt;
 
   const generateParams = {
     model,
     ...(userContent
       ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt: prompt }),
-    system: runtime.character.system ?? undefined,
+      : { prompt: promptText }),
+    system: systemPrompt,
     ...(stopSequences ? { stopSequences } : {}),
     maxOutputTokens: maxTokens,
     experimental_telemetry: {
@@ -188,7 +202,7 @@ function buildGenerateParams(
     },
   };
 
-  return { generateParams, modelName, modelType, prompt };
+  return { generateParams, modelName, modelType, prompt: promptText, systemPrompt };
 }
 
 async function generateTextWithModel(
@@ -196,7 +210,7 @@ async function generateTextWithModel(
   modelType: TextModelType,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const { modelName, prompt } = buildGenerateParams(runtime, modelType, params);
+  const { modelName, prompt, systemPrompt } = buildGenerateParams(runtime, modelType, params);
 
   logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
 
@@ -214,10 +228,10 @@ async function generateTextWithModel(
     role: "system" | "user";
     content: Array<{ type: "input_text"; text: string }>;
   }> = [];
-  if (runtime.character.system) {
+  if (systemPrompt) {
     input.push({
       role: "system",
-      content: [{ type: "input_text", text: runtime.character.system }],
+      content: [{ type: "input_text", text: systemPrompt }],
     });
   }
   input.push({

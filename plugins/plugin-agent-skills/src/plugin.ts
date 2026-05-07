@@ -12,13 +12,8 @@
 
 import type { Action, IAgentRuntime, Plugin, Provider } from "@elizaos/core";
 
-import { getSkillDetailsAction } from "./actions/get-skill-details";
-import { installSkillAction } from "./actions/install-skill";
 // Actions
-import { searchSkillsAction } from "./actions/search-skills";
-import { syncCatalogAction } from "./actions/sync-catalog";
-import { toggleSkillAction } from "./actions/toggle-skill";
-import { uninstallSkillAction } from "./actions/uninstall-skill";
+import { skillAction } from "./actions/skill";
 import { useSkillAction } from "./actions/use-skill";
 // Providers
 import { enabledSkillsProvider } from "./providers/enabled-skills";
@@ -45,12 +40,7 @@ const ALL_SERVICES: PluginServiceClass[] = [
 
 const ALL_ACTIONS: Action[] = [
 	useSkillAction, // Canonical entry point — invoke an enabled skill by slug
-	searchSkillsAction, // Browse/search available skills
-	getSkillDetailsAction, // Get info about a specific skill
-	syncCatalogAction, // Manual catalog sync
-	toggleSkillAction, // Enable/disable skills
-	installSkillAction, // Explicit install from registry
-	uninstallSkillAction, // Uninstall non-bundled skills
+	skillAction, // Catalog management: search/details/sync/toggle/install/uninstall
 ];
 
 const ALL_PROVIDERS: Provider[] = [

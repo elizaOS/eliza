@@ -3,11 +3,11 @@ import * as fs from "node:fs/promises";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -34,6 +34,7 @@ export const readAction: Action = {
   name: "READ",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["READ_FILE", "CAT", "OPEN_FILE"],
   description:
     "Read the contents of a file at an absolute path. Returns numbered lines, capped by a per-call line limit and a per-file byte limit. Use offset/limit to paginate through large files. Required before WRITE/EDIT can mutate an existing file.",
@@ -76,7 +77,10 @@ export const readAction: Action = {
         ? String(message.roomId)
         : undefined;
     if (!conversationId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
 
     const filePath = readStringParam(options, "file_path");
@@ -124,7 +128,10 @@ export const readAction: Action = {
       stat = await fs.stat(resolved);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({ reason: "io_error", message: `stat failed: ${msg}` });
+      return failureToActionResult({
+        reason: "io_error",
+        message: `stat failed: ${msg}`,
+      });
     }
 
     if (!stat.isFile()) {
@@ -146,7 +153,10 @@ export const readAction: Action = {
       buffer = await fs.readFile(resolved);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({ reason: "io_error", message: `read failed: ${msg}` });
+      return failureToActionResult({
+        reason: "io_error",
+        message: `read failed: ${msg}`,
+      });
     }
 
     if (buffer.includes(0)) {
@@ -160,9 +170,16 @@ export const readAction: Action = {
     const lines = text.split("\n");
     const totalLines = lines.length;
 
-    const offset = Math.max(0, Math.floor(readNumberParam(options, "offset") ?? 0));
+    const offset = Math.max(
+      0,
+      Math.floor(readNumberParam(options, "offset") ?? 0),
+    );
     const requestedLimit = readNumberParam(options, "limit");
-    const defaultLimit = readPositiveIntSetting(runtime, "CODING_TOOLS_MAX_READ_LINES", 2000);
+    const defaultLimit = readPositiveIntSetting(
+      runtime,
+      "CODING_TOOLS_MAX_READ_LINES",
+      2000,
+    );
     const limit = Math.max(1, Math.floor(requestedLimit ?? defaultLimit));
 
     const endExclusive = Math.min(totalLines, offset + limit);

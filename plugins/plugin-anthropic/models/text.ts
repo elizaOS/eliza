@@ -4,7 +4,13 @@ import type {
   ModelTypeName,
   TextStreamResult,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  dropDuplicateLeadingSystemMessage,
+  logger,
+  ModelType,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
 import {
   generateText,
   type JSONSchema7,
@@ -183,15 +189,17 @@ function buildSegmentedUserContent(
   return content;
 }
 
-function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl | undefined {
+function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
+  // cache_control is always emitted for stable segments — Anthropic requires it.
+  // TTL is configurable via ANTHROPIC_PROMPT_CACHE_TTL ("5m" | "1h"); default is "5m".
   const ttlSetting = runtime.getSetting("ANTHROPIC_PROMPT_CACHE_TTL");
   if (typeof ttlSetting === "string") {
     const ttl = ttlSetting.trim().toLowerCase();
-    if (ttl === "5m" || ttl === "1h") {
-      return { type: "ephemeral", ttl };
+    if (ttl === "1h") {
+      return { type: "ephemeral", ttl: "1h" };
     }
   }
-  return undefined;
+  return { type: "ephemeral" };
 }
 
 function normalizeAnthropicUsage(
@@ -357,6 +365,10 @@ async function generateTextWithModel(
 ): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as unknown as GenerateTextParamsWithProviderOptions;
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
+  const systemPrompt = resolveEffectiveSystemPrompt({
+    params: paramsWithAttachments,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
 
   if (getAuthMode(runtime) === "cli") {
     if (shouldReturnNativeResult) {
@@ -365,14 +377,22 @@ async function generateTextWithModel(
       );
     }
     if (params.stream) {
-      return streamViaCli(runtime, params.prompt, modelName, modelType, params.maxTokens);
+      return streamViaCli(
+        runtime,
+        params.prompt,
+        modelName,
+        modelType,
+        params.maxTokens,
+        systemPrompt
+      );
     }
     const result = await generateViaCli(
       runtime,
       params.prompt,
       modelName,
       modelType,
-      params.maxTokens
+      params.maxTokens,
+      systemPrompt
     );
     return result.text;
   }
@@ -384,12 +404,14 @@ async function generateTextWithModel(
   logger.log(`[Anthropic] Using ${modelType} model: ${modelName}`);
 
   const resolved = resolveTextParams(params, modelName, cotBudget);
+  // cache_control is always-on: getRuntimeCacheControl always returns a value.
+  // Callers can still override by supplying anthropic.cacheControl in providerOptions.
   const runtimeCacheControl = getRuntimeCacheControl(runtime);
   const providerOptions: ProviderOptions = {
     ...resolved.providerOptions,
     anthropic: {
       ...(resolved.providerOptions.anthropic ?? {}),
-      ...(!resolved.providerOptions.anthropic?.cacheControl && runtimeCacheControl
+      ...(!resolved.providerOptions.anthropic?.cacheControl
         ? { cacheControl: runtimeCacheControl }
         : {}),
     },
@@ -420,8 +442,21 @@ async function generateTextWithModel(
     metadata: agentName ? { agentName } : undefined,
   };
 
+  const wireMessages = dropDuplicateLeadingSystemMessage(
+    paramsWithAttachments.messages,
+    systemPrompt
+  );
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
-    ? { messages: paramsWithAttachments.messages }
+    ? wireMessages && wireMessages.length > 0
+      ? { messages: wireMessages }
+      : {
+          messages: [
+            {
+              role: "user" as const,
+              content: userContent ?? resolved.prompt,
+            },
+          ],
+        }
     : {
         messages: [
           {
@@ -433,7 +468,7 @@ async function generateTextWithModel(
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
     ...promptOrMessages,
-    system: runtime.character.system ?? undefined,
+    system: systemPrompt,
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],
     frequencyPenalty: resolved.frequencyPenalty,

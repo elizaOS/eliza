@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
   type ActionExample,
@@ -809,8 +808,7 @@ export const voiceCallAction: Action & {
   contexts: ["contacts", "messaging", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
   parameters: [
     {
@@ -856,15 +854,6 @@ export const voiceCallAction: Action & {
   ],
 
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may place voice calls.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: ACTION_NAME, error: "PERMISSION_DENIED" },
-      };
-    }
-
     const resolved = await resolveActionArgs<
       VoiceCallSubaction,
       VoiceCallParams

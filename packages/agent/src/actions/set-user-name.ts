@@ -20,7 +20,6 @@ import {
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   fetchConfiguredOwnerName,
   OWNER_NAME_MAX_LENGTH,
@@ -54,7 +53,7 @@ function recentMessagesMentionName(state: State): boolean {
 export const setUserNameAction: Action = {
   name: "SET_USER_NAME",
   contexts: [...SET_USER_NAME_CONTEXTS],
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
 
   similes: ["REMEMBER_NAME", "SAVE_NAME", "SET_NAME"],
 
@@ -65,10 +64,9 @@ export const setUserNameAction: Action = {
   descriptionCompressed:
     "save user preferr display name address personally use user tell name ask call someth silent side action produce chat text",
 
-  validate: async (runtime, message, state) => {
+  validate: async (_runtime, message, state) => {
     const content = message.content as Record<string, unknown> | undefined;
     if (content?.source !== "client_chat") return false;
-    if (!(await hasOwnerAccess(runtime, message))) return false;
 
     const selectedContextMatches = hasSelectedActionContext(
       message,
@@ -89,15 +87,7 @@ export const setUserNameAction: Action = {
     );
   },
 
-  handler: async (runtime, _message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, _message))) {
-      return {
-        text: "",
-        success: false,
-        data: { error: "PERMISSION_DENIED" },
-      };
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | { name?: string }
       | undefined;

@@ -17,10 +17,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import {
-  getTrajectoryContext,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { getTrajectoryContext, runWithTrajectoryContext } from "@elizaos/core";
 
 type BrowserWorkspaceActionRequest = BrowserWorkspaceCommand;
 
@@ -916,6 +913,7 @@ export const manageElizaBrowserWorkspaceAction: Action = {
   name: "MANAGE_ELIZA_BROWSER_WORKSPACE",
   contexts: ["browser", "web", "files", "code", "automation"],
   contextGate: { anyOf: ["browser", "web", "files", "code", "automation"] },
+  roleGate: { minRole: "OWNER" },
   description: JSON.stringify({
     browser_workspace_action: {
       purpose:
@@ -1378,7 +1376,10 @@ export const manageElizaBrowserWorkspaceAction: Action = {
           steps: stepResults.slice(0, maxBrowserBatchSteps),
           value: stepResults.at(-1)?.value,
         };
-        const text = formatBrowserWorkspaceCommandResult(result).slice(0, maxActionResultBytes);
+        const text = formatBrowserWorkspaceCommandResult(result).slice(
+          0,
+          maxActionResultBytes,
+        );
         await callback?.({ text });
         return { success: true, text, data: result };
       } catch (error) {
@@ -1390,7 +1391,10 @@ export const manageElizaBrowserWorkspaceAction: Action = {
 
     try {
       const result = await executeBrowserWorkspaceCommand(request);
-      const text = formatBrowserWorkspaceCommandResult(result).slice(0, maxActionResultBytes);
+      const text = formatBrowserWorkspaceCommandResult(result).slice(
+        0,
+        maxActionResultBytes,
+      );
       await callback?.({ text });
       return { success: true, text, data: result };
     } catch (error) {

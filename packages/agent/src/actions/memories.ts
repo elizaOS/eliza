@@ -1,15 +1,14 @@
 /**
  * Memory introspection actions.
  *
- * RECALL_MEMORY_FILTERED → GET /api/memories/browse or /api/memories/by-entity/:id
- * FORGET_MEMORY          → DELETE /api/memories/:id
- * EDIT_MEMORY            → PATCH /api/memories/:id (server re-embeds)
+ * SEARCH_MEMORIES (was RECALL_MEMORY_FILTERED) → GET /api/memories/browse or /api/memories/by-entity/:id
+ * DELETE_MEMORY   (was FORGET_MEMORY)          → DELETE /api/memories/:id
+ * UPDATE_MEMORY   (was EDIT_MEMORY)            → PATCH /api/memories/:id (server re-embeds)
  */
 
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {
   return `http://localhost:${resolveServerOnlyPort(process.env)}`;
@@ -43,23 +42,26 @@ interface MemoryBrowseResponseShape {
 }
 
 export const recallMemoryFilteredAction: Action = {
-  name: "RECALL_MEMORY_FILTERED",
+  name: "SEARCH_MEMORIES",
   contexts: ["memory", "knowledge", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-  similes: ["BROWSE_MEMORIES", "FILTER_MEMORIES", "FIND_MEMORIES"],
+  similes: [
+    "RECALL_MEMORY_FILTERED",
+    "BROWSE_MEMORIES",
+    "FILTER_MEMORIES",
+    "FIND_MEMORIES",
+  ],
   description:
     "Recall memories filtered by type, entityId, roomId, or text query. Routes to /api/memories/by-entity when entityId is supplied; otherwise /api/memories/browse.",
   descriptionCompressed:
     "recall memory filter type, entityid, roomid, text query route / api/memories/by-entity entityid suppli; otherwise / api/memories/browse",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may inspect memories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | RecallMemoryParams
       | undefined;
@@ -114,7 +116,7 @@ export const recallMemoryFilteredAction: Action = {
         ].join("\n"),
         values: { count: memories.length, total: data.total ?? null },
         data: {
-          actionName: "RECALL_MEMORY_FILTERED",
+          actionName: "SEARCH_MEMORIES",
           memories,
           total: data.total,
           offset: data.offset,
@@ -170,7 +172,7 @@ export const recallMemoryFilteredAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Found N memory item(s)...",
-          action: "RECALL_MEMORY_FILTERED",
+          action: "SEARCH_MEMORIES",
         },
       },
     ],
@@ -187,23 +189,21 @@ interface ForgetMemoryParams {
 }
 
 export const forgetMemoryAction: Action = {
-  name: "FORGET_MEMORY",
+  name: "DELETE_MEMORY",
   contexts: ["memory", "knowledge", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-  similes: ["DELETE_MEMORY", "REMOVE_MEMORY"],
+  similes: ["FORGET_MEMORY", "REMOVE_MEMORY"],
   description:
     "Permanently delete a memory by id. Requires explicit confirm:true.",
   descriptionCompressed:
     "permanently delete memory id require explicit confirm: true",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may forget memories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | ForgetMemoryParams
       | undefined;
@@ -246,7 +246,7 @@ export const forgetMemoryAction: Action = {
         success: true,
         text: `Forgot memory ${memoryId}.`,
         values: { memoryId },
-        data: { actionName: "FORGET_MEMORY", memoryId },
+        data: { actionName: "DELETE_MEMORY", memoryId },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -288,23 +288,21 @@ interface EditMemoryResponseShape {
 }
 
 export const editMemoryAction: Action = {
-  name: "EDIT_MEMORY",
+  name: "UPDATE_MEMORY",
   contexts: ["memory", "knowledge", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-  similes: ["UPDATE_MEMORY", "MODIFY_MEMORY"],
+  similes: ["EDIT_MEMORY", "MODIFY_MEMORY"],
   description:
     "Edit the text of an existing memory. Server re-embeds the new text. Requires explicit confirm:true.",
   descriptionCompressed:
     "edit text exist memory server re-embed new text require explicit confirm: true",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may edit memories.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | EditMemoryParams
       | undefined;
@@ -359,7 +357,7 @@ export const editMemoryAction: Action = {
         text: `Updated memory ${memoryId}.`,
         values: { memoryId },
         data: {
-          actionName: "EDIT_MEMORY",
+          actionName: "UPDATE_MEMORY",
           memoryId,
           memory: data.memory ?? null,
         },

@@ -30,6 +30,7 @@ export const oauthRevokeAction: ActionWithParams = {
   name: "OAUTH_REVOKE",
   contexts: ["connectors", "settings", "secrets"],
   contextGate: { anyOf: ["connectors", "settings", "secrets"] },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "DISCONNECT",
     "REMOVE_CONNECTION",

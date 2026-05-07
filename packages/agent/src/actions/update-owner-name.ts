@@ -9,7 +9,6 @@
  */
 
 import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   fetchConfiguredOwnerName,
   OWNER_NAME_MAX_LENGTH,
@@ -30,9 +29,7 @@ export const updateOwnerNameAction: Action = {
   descriptionCompressed:
     "update configur owner display name owner-only persist eliza json ui ownername field, same path Relationships owner-edit field write",
 
-  validate: async (runtime, message) => {
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
   parameters: [
     {
@@ -43,16 +40,7 @@ export const updateOwnerNameAction: Action = {
     },
   ],
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "UPDATE_OWNER_NAME" },
-      };
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as UpdateOwnerNameParams;
     const raw = typeof params.name === "string" ? params.name.trim() : "";

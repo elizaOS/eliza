@@ -10,7 +10,7 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
-import { ModelType, type IAgentRuntime, type Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 // Side-effect: register coding-agent HTTP routes with the runtime route registry.
 import "./register-routes.js";
 import { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
@@ -18,12 +18,6 @@ import { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
 import { manageIssuesAction } from "./actions/manage-issues.js";
 // Actions - Workspace management
 import { provisionWorkspaceAction } from "./actions/provision-workspace.js";
-import { sendToAgentAction } from "./actions/send-to-agent.js";
-// Actions - PTY management
-import { spawnAgentAction } from "./actions/spawn-agent.js";
-// Actions - Task launcher
-import { startCodingTaskAction } from "./actions/start-coding-task.js";
-import { stopAgentAction } from "./actions/stop-agent.js";
 import { taskControlAction } from "./actions/task-control.js";
 import { taskHistoryAction } from "./actions/task-history.js";
 import { taskShareAction } from "./actions/task-share.js";
@@ -33,54 +27,12 @@ import { activeWorkspaceContextProvider } from "./providers/active-workspace-con
 // Services
 import { PTYService } from "./services/pty-service.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
-import {
-  codexCliImageDescriptionModel,
-  codexCliTextModel,
-  isCodexModelProviderEnabled,
-  readCodexModelProviderPriority,
-} from "./services/codex-model-provider.js";
 
 export const taskAgentPlugin: Plugin = {
   name: "@elizaos/plugin-agent-orchestrator",
   description:
-    "Orchestrate open-ended task agents (Claude Code, Codex, Gemini CLI, Aider, Pi, etc.) via PTY sessions, " +
-    "manage workspaces, track current task status, and keep background work moving while the main agent stays in conversation",
-
-  init(_config, runtime) {
-    if (!isCodexModelProviderEnabled(runtime)) {
-      return;
-    }
-
-    const priority = readCodexModelProviderPriority(runtime);
-    const textHandler = codexCliTextModel as unknown as Parameters<
-      IAgentRuntime["registerModel"]
-    >[1];
-    for (const modelType of [
-      ModelType.TEXT_NANO,
-      ModelType.TEXT_SMALL,
-      ModelType.TEXT_MEDIUM,
-      ModelType.TEXT_LARGE,
-      ModelType.TEXT_MEGA,
-      ModelType.RESPONSE_HANDLER,
-      ModelType.ACTION_PLANNER,
-      ModelType.TEXT_COMPLETION,
-    ]) {
-      runtime.registerModel(
-        modelType,
-        textHandler,
-        taskAgentPlugin.name,
-        priority,
-      );
-    }
-    runtime.registerModel(
-      ModelType.IMAGE_DESCRIPTION,
-      codexCliImageDescriptionModel as unknown as Parameters<
-        IAgentRuntime["registerModel"]
-      >[1],
-      taskAgentPlugin.name,
-      priority,
-    );
-  },
+    "Provide workspace, issue, task history, task control, and task sharing support for ACPX-backed task agents. " +
+    "Load @elizaos/plugin-acpx for the canonical CREATE_TASK, SPAWN_AGENT, SEND_TO_AGENT, STOP_AGENT, and LIST_AGENTS action surface.",
 
   // SwarmCoordinator and auth callback wiring is done in PTYService.start()
   // which ElizaOS calls reliably via the services lifecycle.
@@ -91,12 +43,6 @@ export const taskAgentPlugin: Plugin = {
 
   // Actions expose capabilities to the agent
   actions: [
-    // Task launcher (provision + spawn in one step)
-    startCodingTaskAction,
-    // PTY session management (for direct control)
-    spawnAgentAction,
-    sendToAgentAction,
-    stopAgentAction,
     taskHistoryAction,
     taskControlAction,
     taskShareAction,
@@ -136,23 +82,9 @@ export type {
   WriteMemoryOptions,
 } from "coding-agent-adapters";
 export { finalizeWorkspaceAction } from "./actions/finalize-workspace.js";
-export {
-  listAgentsAction,
-  listTaskAgentsAction,
-} from "./actions/list-agents.js";
 export { manageIssuesAction } from "./actions/manage-issues.js";
 export { provisionWorkspaceAction } from "./actions/provision-workspace.js";
-export {
-  sendToAgentAction,
-  sendToTaskAgentAction,
-} from "./actions/send-to-agent.js";
-export {
-  spawnAgentAction,
-  spawnTaskAgentAction,
-} from "./actions/spawn-agent.js";
 // Re-export actions
-export { startCodingTaskAction } from "./actions/start-coding-task.js";
-export { stopAgentAction, stopTaskAgentAction } from "./actions/stop-agent.js";
 export { taskControlAction } from "./actions/task-control.js";
 export { taskHistoryAction } from "./actions/task-history.js";
 export { taskShareAction } from "./actions/task-share.js";

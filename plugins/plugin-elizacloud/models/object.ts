@@ -1,5 +1,5 @@
 import type { IAgentRuntime, JsonValue, ObjectGenerationParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { buildCanonicalSystemPrompt, logger, ModelType } from "@elizaos/core";
 import { getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { getJsonRepairFunction } from "../utils/helpers";
@@ -119,10 +119,11 @@ async function generateObjectByModelType(
     role: "system" | "user";
     content: Array<{ type: "input_text"; text: string }>;
   }> = [];
-  if (runtime.character.system) {
+  const systemPrompt = buildCanonicalSystemPrompt({ character: runtime.character });
+  if (systemPrompt) {
     input.push({
       role: "system",
-      content: [{ type: "input_text", text: runtime.character.system }],
+      content: [{ type: "input_text", text: systemPrompt }],
     });
   }
   input.push({

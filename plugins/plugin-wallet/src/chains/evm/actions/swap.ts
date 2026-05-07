@@ -7,7 +7,7 @@ import {
   isConfirmed,
 } from "./helpers";
 
-const spec = requireActionSpec("SWAP");
+const spec = requireActionSpec("EVM_SWAP");
 
 import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import {

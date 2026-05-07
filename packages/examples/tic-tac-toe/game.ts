@@ -291,6 +291,7 @@ const ticTacToePlugin: Plugin = {
   models: {
     [ModelType.TEXT_LARGE]: ticTacToeModelHandler,
     [ModelType.TEXT_SMALL]: ticTacToeModelHandler,
+    [ModelType.TEXT_EMBEDDING]: async () => new Array(384).fill(0),
   },
 };
 
@@ -395,6 +396,7 @@ async function createSession(): Promise<GameSession> {
   });
 
   await runtime.initialize();
+  runtime.evaluators.length = 0;
 
   const game = new TicTacToeGame();
   const roomId = stringToUuid("tic-tac-toe-room");
@@ -749,8 +751,11 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  main().catch((error) => {
-    console.error("Fatal error:", error);
-    process.exit(1);
-  });
+  main().then(
+    () => process.exit(0),
+    (error) => {
+      console.error("Fatal error:", error);
+      process.exit(1);
+    },
+  );
 }

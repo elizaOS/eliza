@@ -27,7 +27,7 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-code": "2.0.0-alpha.6",
+    "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-goals": "2.0.0-alpha.10",
     "@elizaos/plugin-shell": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",

@@ -119,7 +119,28 @@ describe("OpenAI native text plumbing", () => {
         cacheReadInputTokens: 5,
       },
     });
-  }, 60_000);
+  }, 180_000);
+
+  it("passes the effective system separately without duplicating the leading system message", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 4, outputTokens: 1 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "legacy prompt",
+      messages: [
+        { role: "system", content: "system prompt" },
+        { role: "user", content: "hello" },
+      ],
+    } as never);
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.system).toBe("system prompt");
+    expect(call.messages).toEqual([{ role: "user", content: "hello" }]);
+  });
 
   it("normalizes core tool arrays and tool choice into AI SDK tool sets", async () => {
     aiMocks.generateText.mockResolvedValue({

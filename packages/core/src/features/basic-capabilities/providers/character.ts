@@ -1,4 +1,6 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { buildCanonicalSystemPrompt } from "../../../runtime/system-prompt.ts";
+import { getTrajectoryContext } from "../../../trajectory-context.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -297,15 +299,18 @@ export const characterProvider: Provider = {
 		const adjectiveSentence = adjectiveString
 			? `${agentName} is ${adjectiveString}`
 			: "";
+		const identity = buildCanonicalSystemPrompt({
+			character,
+			userRole: getTrajectoryContext()?.userRole,
+		});
 		// Combine all text sections
 		const text = [
-			bio,
+			identity,
 			adjectiveSentence,
 			topicSentence,
 			topics,
 			directions,
 			examples,
-			system,
 		]
 			.filter(Boolean)
 			.join("\n\n");

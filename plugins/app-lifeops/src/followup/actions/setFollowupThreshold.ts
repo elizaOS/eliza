@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -43,7 +42,7 @@ export const setFollowupThresholdAction: Action = {
     "Requires a positive integer threshold and either contactId or an unambiguous contactName.",
   contexts: ["contacts", "tasks", "calendar", "settings"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     _message,

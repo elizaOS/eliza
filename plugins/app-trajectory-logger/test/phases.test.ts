@@ -10,46 +10,17 @@ import { extractShouldRespondDecision, summarizePhases } from "../src/phases";
 function makeTrajectory(
   overrides: Partial<TrajectoryListItem> = {},
 ): TrajectoryListItem {
-  return {
-    id: "t1",
-    agentId: "a1",
-    roomId: null,
-    entityId: null,
-    conversationId: null,
-    source: "chat",
-    status: "active",
-    startTime: 0,
-    endTime: null,
-    durationMs: null,
-    llmCallCount: 0,
-    providerAccessCount: 0,
-    totalPromptTokens: 0,
-    totalCompletionTokens: 0,
-    metadata: {},
-    createdAt: "",
-    updatedAt: "",
-    ...overrides,
-  };
+  return { id: "t1", status: "active", llmCallCount: 0, ...overrides };
 }
 
 function makeLlmCall(overrides: Partial<UILlmCall>): UILlmCall {
   return {
-    id: overrides.id ?? "c1",
-    trajectoryId: "t1",
-    stepId: "s1",
+    id: "c1",
     model: "gpt-x",
-    systemPrompt: "",
-    userPrompt: "",
     response: "",
-    temperature: 0,
-    maxTokens: 0,
     purpose: "",
     actionType: "",
     stepType: "",
-    tags: [],
-    latencyMs: 0,
-    timestamp: 0,
-    createdAt: "",
     ...overrides,
   };
 }
@@ -150,7 +121,7 @@ describe("summarizePhases", () => {
     });
     const action = summarizePhases(detail).find((p) => p.phase === "ACTION");
     expect(action?.status).toBe("error");
-    expect(action?.summary).toBe("POSTGRES_QUERY ✗");
+    expect(action?.summary).toBe("POSTGRES_QUERY");
   });
 
   it("marks the latest finished phase as 'active' for in-flight trajectories with idle tail", () => {

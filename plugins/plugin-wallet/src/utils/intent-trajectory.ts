@@ -11,6 +11,8 @@
  */
 
 import {
+  buildCanonicalSystemPrompt,
+  getTrajectoryContext,
   type IAgentRuntime,
   logActiveTrajectoryLlmCall,
   ModelType,
@@ -55,10 +57,14 @@ export async function runIntentModel(
     temperature,
   } = params;
 
-  const systemPrompt = runtime.character?.system ?? "";
+  const systemPrompt = buildCanonicalSystemPrompt({
+    character: runtime.character,
+    userRole: getTrajectoryContext()?.userRole,
+  });
   const modelLabel = String(modelType);
   const modelParams = {
     prompt: template,
+    system: systemPrompt,
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
   };

@@ -1,4 +1,3 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -345,17 +344,8 @@ export const bookTravelAction: Action & {
   contexts: ["calendar", "contacts", "tasks", "payments", "finance", "browser"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   handler: async (runtime, message, state, options, callback) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "BOOK_TRAVEL", error: "PERMISSION_DENIED" },
-      };
-    }
-
     try {
       await requireFeatureEnabled(runtime, "travel.book_flight");
     } catch (error) {

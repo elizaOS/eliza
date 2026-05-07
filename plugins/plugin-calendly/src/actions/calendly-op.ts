@@ -301,6 +301,7 @@ export const calendlyOpAction: Action = {
   name: CalendlyActions.CALENDLY_OP,
   contexts: [...CALENDLY_CONTEXTS],
   contextGate: { anyOf: [...CALENDLY_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
   similes: [
     "BOOK_CALENDLY",
     "CALENDLY_BOOK_SLOT",

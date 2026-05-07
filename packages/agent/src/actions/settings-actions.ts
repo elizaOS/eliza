@@ -37,7 +37,6 @@ import {
   createProviderSwitchConnection,
 } from "../api/provider-switch-config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   CHARACTER_PERSISTENCE_SERVICE,
   type ElizaCharacterPersistenceService,
@@ -71,7 +70,7 @@ async function loadTrainingConfigModule(): Promise<TrainingConfigModule> {
   return import(TRAINING_CONFIG_MODULE) as Promise<TrainingConfigModule>;
 }
 
-function denyPermission() {
+function _denyPermission() {
   return {
     text: "Permission denied: only the owner may change Settings.",
     success: false,
@@ -139,13 +138,9 @@ export const updateIdentityAction: Action = {
   descriptionCompressed:
     "update agent display name and/or system prompt mirror Basics section Settings page least one name system provide change persist runtime character, agent metadata, on-disk config",
 
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return denyPermission();
-    }
-
+  handler: async (runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | UpdateIdentityParams
       | undefined;
@@ -281,13 +276,9 @@ export const updateAiProviderAction: Action = {
   descriptionCompressed:
     "switch active AI/LLM provider (e g anthropic, openai, openrouter, gemini, groq, ollama, elizacloud) mirror Providers section Settings page optionally accept API key model override runtime restart pick up new provider",
 
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return denyPermission();
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | UpdateAiProviderParams
       | undefined;
@@ -481,13 +472,9 @@ export const toggleCapabilityAction: Action = {
   descriptionCompressed:
     "enable disable high-level capability surface (wallet, browser, computeruse) mirror Capabilities section Settings page persist config ui capability capability preference survive restart",
 
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return denyPermission();
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | ToggleCapabilityParams
       | undefined;
@@ -628,13 +615,9 @@ export const toggleAutoTrainingAction: Action = {
   descriptionCompressed:
     "enable disable auto-train, optionally tune trigger threshold (trajectory per task) cooldown (hour) mirror Capabilities Auto-training row Settings page",
 
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return denyPermission();
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | ToggleAutoTrainingParams
       | undefined;

@@ -93,7 +93,7 @@ function withRobloxTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_MESSAGE_TIMEOUT_MS),
+      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_MESSAGE_TIMEOUT_MS)
     ),
   ]);
 }
@@ -102,6 +102,7 @@ export const sendRobloxMessage: Action = {
   name: actionName,
   contexts: ["media", "messaging"],
   contextGate: { anyOf: ["media", "messaging"] },
+  roleGate: { minRole: "USER" },
   similes: ["ROBLOX_SEND", "ROBLOX_CHAT", "ROBLOX_ANNOUNCE"],
   description:
     "Send a chat or announcement message into the connected Roblox experience, optionally targeting specific player IDs.",
@@ -166,7 +167,7 @@ export const sendRobloxMessage: Action = {
     const cappedContent = content.slice(0, MAX_ROBLOX_MESSAGE_LENGTH);
     await withRobloxTimeout(
       service.sendMessage(runtime.agentId, cappedContent, targetPlayerIds),
-      "roblox message",
+      "roblox message"
     );
 
     const targetText =

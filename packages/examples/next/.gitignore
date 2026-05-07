@@ -2,3 +2,4 @@
 node_modules/
 dist/
 public/pglite/
+.next-build/

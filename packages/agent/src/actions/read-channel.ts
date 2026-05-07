@@ -9,7 +9,6 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { formatSpeakerLabel } from "../providers/conversation-utils.js";
-import { hasAdminAccess } from "../security/access.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 import { extractActionParamsViaLlm } from "./extract-params.js";
 
@@ -111,21 +110,11 @@ export const readChannelAction: Action = {
   descriptionCompressed:
     "read message channel connect platform default: recent message support date range message limit result include line number easy reference copy clipboard",
 
-  validate: async (runtime, message, state) => {
-    if (!(await hasAdminAccess(runtime, message))) return false;
+  validate: async (_runtime, message, state) => {
     return hasContextSignalSyncForKey(message, state, "read_channel");
   },
 
   handler: async (runtime, message, state, options) => {
-    if (!(await hasAdminAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner or admins may read channels.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "READ_CHANNEL" },
-      };
-    }
-
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as ReadChannelParams;
     const params = (await extractActionParamsViaLlm<ReadChannelParams>({

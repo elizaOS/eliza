@@ -40,6 +40,7 @@ export type TrajectoryLlmCallDetails = {
 	messages?: unknown[];
 	tools?: unknown;
 	toolChoice?: unknown;
+	output?: unknown;
 	responseSchema?: unknown;
 	providerOptions?: unknown;
 	response: string;

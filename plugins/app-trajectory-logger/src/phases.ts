@@ -43,7 +43,9 @@ function phaseOf(call: UILlmCall): PhaseName | null {
   return null;
 }
 
-function shouldRespondDecision(call: UILlmCall): string | null {
+export function extractShouldRespondDecision(
+  call: UILlmCall,
+): { decision: string; reasoning?: string } | null {
   const text = (call.response ?? "").trim();
   if (!text) return null;
   const m = text.match(/\{[\s\S]*\}/);
@@ -51,32 +53,18 @@ function shouldRespondDecision(call: UILlmCall): string | null {
     try {
       const obj = JSON.parse(m[0]) as Record<string, unknown>;
       const a = obj.action ?? obj.decision ?? obj.shouldRespond;
-      if (typeof a === "string" && a.length > 0) return a.toUpperCase();
+      if (typeof a === "string" && a.length > 0) {
+        const r = obj.reasoning ?? obj.rationale;
+        return typeof r === "string"
+          ? { decision: a.toUpperCase(), reasoning: r }
+          : { decision: a.toUpperCase() };
+      }
     } catch {
       /* fall through */
     }
   }
   const word = text.match(/\b(RESPOND|REPLY|ANSWER|IGNORE|STOP|SKIP)\b/i);
-  return word ? word[0].toUpperCase() : null;
-}
-
-export function extractShouldRespondDecision(
-  call: UILlmCall,
-): { decision: string; reasoning?: string } | null {
-  const decision = shouldRespondDecision(call);
-  if (!decision) return null;
-  let reasoning: string | undefined;
-  const m = (call.response ?? "").match(/\{[\s\S]*\}/);
-  if (m) {
-    try {
-      const obj = JSON.parse(m[0]) as Record<string, unknown>;
-      const r = obj.reasoning ?? obj.rationale;
-      if (typeof r === "string") reasoning = r;
-    } catch {
-      /* ignore */
-    }
-  }
-  return reasoning ? { decision, reasoning } : { decision };
+  return word ? { decision: word[0].toUpperCase() } : null;
 }
 
 export function summarizePhases(
@@ -159,12 +147,15 @@ function summarizeHandle(
     (c) => (c.stepType || c.purpose || "").toLowerCase() === "should_respond",
   );
   if (respond) {
-    const d = shouldRespondDecision(respond);
-    if (d) {
-      const skip = /IGNORE|STOP|SKIP/i.test(d);
-      return { status: skip ? "skipped" : "done", summary: d.toLowerCase() };
+    const parsed = extractShouldRespondDecision(respond);
+    if (parsed) {
+      const skip = /IGNORE|STOP|SKIP/i.test(parsed.decision);
+      return {
+        status: skip ? "skipped" : "done",
+        summary: parsed.decision.toLowerCase(),
+      };
     }
-    return { status: "done", summary: "decided" };
+    return { status: "done", summary: null };
   }
   if (llmCalls.length > 0 || providerAccesses.length > 0) {
     return { status: "done", summary: `${providerAccesses.length} ctx` };
@@ -178,8 +169,7 @@ function summarizePlan(llmCalls: UILlmCall[]): {
 } {
   const last = llmCalls[llmCalls.length - 1];
   if (!last) return { status: "idle", summary: null };
-  if (last.actionType) return { status: "done", summary: last.actionType };
-  return { status: "done", summary: "respond" };
+  return { status: "done", summary: last.actionType || null };
 }
 
 function summarizeAction(events: UIToolEvent[]): {
@@ -190,14 +180,14 @@ function summarizeAction(events: UIToolEvent[]): {
   const e = events[events.length - 1];
   const name = e.actionName || e.toolName || e.name || "action";
   if (e.type === "tool_error" || e.error || e.success === false) {
-    return { status: "error", summary: `${name} ✗` };
+    return { status: "error", summary: name };
   }
   if (
     e.type === "tool_result" ||
     e.status === "completed" ||
     e.success === true
   ) {
-    return { status: "done", summary: `${name} ✓` };
+    return { status: "done", summary: name };
   }
   if (e.status === "skipped") return { status: "skipped", summary: name };
   return { status: "active", summary: name };
@@ -211,12 +201,12 @@ function summarizeEvaluate(
     const e = events[events.length - 1];
     const name = e.evaluatorName || e.name || "evaluator";
     if (e.error || e.success === false) {
-      return { status: "error", summary: `${name} ✗` };
+      return { status: "error", summary: name };
     }
     if (e.decision)
       return { status: "done", summary: `${name}: ${e.decision}` };
     return { status: "done", summary: name };
   }
-  if (llmCalls.length > 0) return { status: "done", summary: "evaluated" };
+  if (llmCalls.length > 0) return { status: "done", summary: null };
   return { status: "idle", summary: null };
 }

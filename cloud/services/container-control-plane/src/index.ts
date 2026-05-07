@@ -556,6 +556,40 @@ app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
   }),
 );
 
+app.post("/api/v1/eliza/agents/:id/stream", (c) =>
+  handle(c, async (auth) => {
+    const agentId = c.req.param("id");
+    const body = (await c.req.json().catch(() => null)) as BridgeRequest | null;
+    const streamHeaders = {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    };
+
+    if (!body || typeof body !== "object" || body.jsonrpc !== "2.0" || body.method !== "message.send") {
+      return new Response(
+        `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
+        { status: 400, headers: streamHeaders },
+      );
+    }
+
+    const response = await elizaSandboxService.bridgeStream(agentId, auth.organizationId, body);
+    if (!response?.body) {
+      return new Response(
+        `event: error\ndata: ${JSON.stringify({ message: "Sandbox is not running or unreachable" })}\n\n`,
+        { status: 200, headers: streamHeaders },
+      );
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: streamHeaders,
+    });
+  }),
+);
+
 app.post("/api/v1/containers", (c) =>
   handle(c, async (auth) => {
     const body = await readJsonObject(c);

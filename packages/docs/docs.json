@@ -755,7 +755,7 @@
             "pages": [
               "plugin-registry/browser",
               "plugin-registry/computeruse",
-              "plugin-registry/code",
+              "plugin-registry/coding-tools",
               "plugin-registry/cli-plugin",
               "plugin-registry/mcp",
               "plugin-registry/pdf",

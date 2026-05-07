@@ -30,30 +30,28 @@ function estimateTokensFromChars(chars: number): number {
 }
 
 export function estimateModelInputTokens(args: {
-	prompt?: string;
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
 	tools?: readonly ToolDefinition[];
 }): number {
-	const promptChars =
-		args.promptSegments && args.promptSegments.length > 0
-			? args.promptSegments.reduce(
-					(total, segment) => total + textLength(segment.content),
-					0,
-				)
-			: textLength(args.prompt);
 	const messageChars =
 		args.messages?.reduce(
 			(total, message) => total + textLength(message.content),
 			0,
 		) ?? 0;
+	const segmentChars =
+		args.messages && args.messages.length > 0
+			? 0
+			: (args.promptSegments?.reduce(
+					(total, segment) => total + textLength(segment.content),
+					0,
+				) ?? 0);
 	const toolChars =
 		args.tools?.reduce((total, tool) => total + textLength(tool), 0) ?? 0;
-	return estimateTokensFromChars(promptChars + messageChars + toolChars);
+	return estimateTokensFromChars(segmentChars + messageChars + toolChars);
 }
 
 export function buildModelInputBudget(args: {
-	prompt?: string;
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
 	tools?: readonly ToolDefinition[];

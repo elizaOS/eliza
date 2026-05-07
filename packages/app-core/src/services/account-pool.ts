@@ -1049,14 +1049,6 @@ function installSubscriptionSelectorShim(pool: AccountPool): void {
 }
 
 /**
- * @deprecated kept for compatibility with the WS2 spec naming. Use
- * {@link getDefaultAccountPool}.
- */
-export function createDefaultAccountPool(): AccountPool {
-  return getDefaultAccountPool();
-}
-
-/**
  * Resets the cached singleton. Test-only.
  */
 export function __resetDefaultAccountPoolForTests(): void {

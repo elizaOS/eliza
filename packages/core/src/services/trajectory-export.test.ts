@@ -6,8 +6,8 @@ import {
 	summarizeTrajectoryCache,
 	summarizeTrajectoryUsage,
 } from "./trajectory-export";
-import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
 import type { TrajectoryDetailRecord } from "./trajectory-types";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
 
 const sampleTrajectory: TrajectoryDetailRecord = {
 	trajectoryId: "traj-1",
@@ -29,9 +29,14 @@ const sampleTrajectory: TrajectoryDetailRecord = {
 			llmCalls: [
 				{
 					callId: "call-1",
+					actionType: "ai.generateText",
+					provider: "vercel-ai-sdk",
 					systemPrompt: "You are helpful.",
 					userPrompt: "Say hello",
+					output: { type: "object", name: "Greeting" },
+					responseSchema: { type: "object" },
 					response: "Hello there",
+					maxTokens: 128,
 					promptTokens: 100,
 					completionTokens: 25,
 					cacheReadInputTokens: 60,
@@ -87,23 +92,16 @@ describe("trajectory-export", () => {
 		});
 	});
 
-	it("supports explicit legacy jsonl while defaulting jsonl to native rows", () => {
+	it("exports native JSON and JSONL rows by default", () => {
 		expect(resolveJsonShape("jsonl", undefined)).toBe(
 			ELIZA_NATIVE_TRAJECTORY_FORMAT,
 		);
 		expect(resolveJsonShape("json", undefined)).toBe(
 			ELIZA_NATIVE_TRAJECTORY_FORMAT,
 		);
-
-		const legacy = serializeTrajectoryExport([sampleTrajectory], {
-			format: "jsonl",
-			jsonShape: "legacy",
-		});
-		const legacyLines = String(legacy.data).trim().split("\n");
-		expect(legacyLines).toHaveLength(1);
-		expect(JSON.parse(legacyLines[0] ?? "")).toMatchObject({
-			trajectoryId: "traj-1",
-		});
+		expect(() =>
+			resolveJsonShape("jsonl", "context_object_events_v5" as never),
+		).toThrow(/Only eliza_native_v1 is supported/);
 
 		const native = serializeTrajectoryExport([sampleTrajectory], {
 			format: "jsonl",
@@ -114,9 +112,110 @@ describe("trajectory-export", () => {
 			format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
 			boundary: "vercel_ai_sdk.generateText",
 			callId: "call-1",
+			request: {
+				system: "You are helpful.",
+				prompt: "Say hello",
+				output: { type: "object", name: "Greeting" },
+				settings: { maxOutputTokens: 128 },
+			},
 			response: {
 				text: "Hello there",
 			},
 		});
+
+		const nativeJson = serializeTrajectoryExport([sampleTrajectory], {
+			format: "json",
+		});
+		const rows = JSON.parse(String(nativeJson.data)) as Array<{
+			format: string;
+		}>;
+		expect(rows[0]?.format).toBe(ELIZA_NATIVE_TRAJECTORY_FORMAT);
+	});
+
+	it("prefers native request messages over stale systemPrompt fallbacks", () => {
+		const trajectory: TrajectoryDetailRecord = {
+			trajectoryId: "traj-native",
+			agentId: "agent-1",
+			startTime: 1,
+			steps: [
+				{
+					stepId: "step-1",
+					timestamp: 1,
+					llmCalls: [
+						{
+							callId: "call-1",
+							systemPrompt: "stale system",
+							userPrompt: "stale user",
+							messages: [
+								{
+									role: "system",
+									content:
+										"Character system.\n\n# About Test Agent\nBio.\n\nuser_role: ADMIN",
+								},
+								{ role: "user", content: "fresh user" },
+							],
+							response: "fresh response",
+						},
+					],
+				},
+			],
+		};
+
+		const native = serializeTrajectoryExport([trajectory], { format: "jsonl" });
+		const row = JSON.parse(String(native.data).trim()) as {
+			request: {
+				system?: string;
+				prompt?: string;
+				messages: Array<{ role: string; content: string }>;
+			};
+		};
+		expect(row.request.system).toBeUndefined();
+		expect(row.request.prompt).toBeUndefined();
+		expect(row.request.messages[0]?.content).toContain("user_role: ADMIN");
+
+		const art = serializeTrajectoryExport([trajectory], {
+			format: "art",
+		});
+		const artRow = JSON.parse(String(art.data).trim()) as {
+			messages: Array<{ role: string; content: string }>;
+		};
+		expect(artRow?.messages[0]).toMatchObject({
+			role: "system",
+			content: expect.stringContaining("user_role: ADMIN"),
+		});
+		expect(artRow?.messages[1]).toMatchObject({
+			role: "user",
+			content: "fresh user",
+		});
+	});
+
+	it("marks streaming SDK rows with the streamText boundary", () => {
+		const trajectory: TrajectoryDetailRecord = {
+			trajectoryId: "traj-stream",
+			agentId: "agent-1",
+			startTime: 1,
+			steps: [
+				{
+					stepId: "step-1",
+					timestamp: 1,
+					llmCalls: [
+						{
+							callId: "call-1",
+							actionType: "ai.streamText",
+							provider: "vercel-ai-sdk",
+							systemPrompt: "stream system",
+							userPrompt: "stream user",
+							response: "stream response",
+						},
+					],
+				},
+			],
+		};
+
+		const native = serializeTrajectoryExport([trajectory], { format: "jsonl" });
+		const row = JSON.parse(String(native.data).trim()) as {
+			boundary: string;
+		};
+		expect(row.boundary).toBe("vercel_ai_sdk.streamText");
 	});
 });

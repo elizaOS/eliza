@@ -6,7 +6,6 @@
  * (`gatePluginSessionForHostedApp`).
  */
 
-import { hasRoleAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   HandlerOptions,
@@ -23,6 +22,7 @@ export const emoteAction: Action = {
   name: "PLAY_EMOTE",
   contexts: ["media", "general"],
   contextGate: { anyOf: ["media", "general"] },
+  roleGate: { minRole: "USER" },
 
   similes: [
     "EMOTE",
@@ -48,7 +48,6 @@ export const emoteAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state) => {
     if (runtime.character?.settings?.DISABLE_EMOTES) return false;
-    if (!(await hasRoleAccess(runtime, message, "USER"))) return false;
     const source = (message?.content as Record<string, unknown>)?.source;
     return source === "client_chat";
   },

@@ -13,11 +13,14 @@ export { TwitchService } from "./service.js";
 // Types
 export * from "./types.js";
 
-import { twitchChannelAction } from "./actions/channelRouter.js";
 // Actions
-import { sendMessage } from "./actions/sendMessage.js";
+// TWITCH_SEND_MESSAGE was a standalone action that duplicated the
+// MessageConnector path. The connector (registered by TwitchService.
+// registerSendHandlers) is now the canonical send path; SEND_MESSAGE
+// routes through it. Channel management lives in TWITCH_CHANNEL_OP.
+import { twitchChannelAction } from "./actions/channelRouter.js";
 
-export { sendMessage, twitchChannelAction };
+export { twitchChannelAction };
 
 import { twitchChannelsProvider } from "./providers/twitchChannels.js";
 import { userContextProvider } from "./providers/userContext.js";
@@ -37,7 +40,7 @@ const twitchPlugin: Plugin = {
 
   services: [TwitchService],
 
-  actions: [twitchChannelAction, sendMessage],
+  actions: [twitchChannelAction],
 
   providers: [userContextProvider, twitchChannelsProvider],
 

@@ -32,20 +32,13 @@
  *     the safer behaviour is fill-only and let the user click submit.
  */
 
-import type {
-  Action,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
+import type { Action, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   getAutofillAllowed,
   getSavedLogin,
   listSavedLogins,
 } from "@elizaos/vault";
-import { hasOwnerAccess } from "../security/access.js";
 import {
   evaluateBrowserWorkspaceTab,
   isBrowserWorkspaceBridgeConfigured,
@@ -163,23 +156,8 @@ export const browserAutofillLoginAction: Action = {
     "Autofill saved credentials into an open Eliza browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow = 1`).",
   descriptionCompressed:
     "autofill save credential open Eliza browser tab request domain require user pre-authorize agent autofill domain via Settings - Vault - Logins (cred domain: autoallow 1)",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
-    return hasOwnerAccess(runtime, message);
-  },
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        text: "Permission denied: only the owner may run BROWSER_AUTOFILL_LOGIN.",
-        success: false,
-        values: { success: false, error: "PERMISSION_DENIED" },
-        data: { actionName: "BROWSER_AUTOFILL_LOGIN" },
-      };
-    }
-
+  validate: async () => true,
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | BrowserAutofillLoginParameters
       | undefined;
@@ -340,7 +318,10 @@ export const browserAutofillLoginAction: Action = {
       rawResult &&
       typeof rawResult === "object" &&
       typeof (rawResult as { reason?: unknown }).reason === "string"
-        ? (rawResult as { reason: string }).reason.slice(0, MAX_FILL_REASON_CHARS)
+        ? (rawResult as { reason: string }).reason.slice(
+            0,
+            MAX_FILL_REASON_CHARS,
+          )
         : null;
 
     logger.info(

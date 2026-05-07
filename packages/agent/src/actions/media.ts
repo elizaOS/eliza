@@ -2,7 +2,7 @@
  * Media Generation Actions
  *
  * Provides runtime actions for generating and analyzing media:
- * - GENERATE_IMAGE: Text-to-image generation
+ * - GENERATE_MEDIA_IMAGE: Text-to-image generation through configured media providers
  * - GENERATE_VIDEO: Text-to-video generation
  * - GENERATE_AUDIO: Text-to-audio/music generation
  * - ANALYZE_IMAGE: Vision/image analysis
@@ -207,11 +207,11 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
 }
 
 // ============================================================================
-// GENERATE_IMAGE Action
+// GENERATE_MEDIA_IMAGE Action
 // ============================================================================
 
 export const generateImageAction: Action = {
-  name: "GENERATE_IMAGE",
+  name: "GENERATE_MEDIA_IMAGE",
   contexts: ["general", "media", "files"],
   roleGate: { minRole: "USER" },
 

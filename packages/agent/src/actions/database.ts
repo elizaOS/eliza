@@ -17,7 +17,6 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {
   return `http://localhost:${resolveServerOnlyPort(process.env)}`;
@@ -65,15 +64,13 @@ export const listDatabaseTablesAction: Action = {
     "List all tables in the agent's database, with row counts and column metadata when available.",
   descriptionCompressed:
     "list table agent database, w/ row count column metadata available",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may inspect the database.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     try {
       const resp = await fetch(`${getApiBase()}/api/database/tables`, {
         signal: AbortSignal.timeout(15_000),
@@ -172,15 +169,13 @@ export const getTableDataAction: Action = {
     "Fetch a page of rows from a database table. Supports limit, offset, sortBy, and sortDir.",
   descriptionCompressed:
     "fetch page row database table support limit, offset, sortby, sortdir",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may read database tables.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | GetTableDataParams
       | undefined;
@@ -360,15 +355,13 @@ export const executeDatabaseQueryAction: Action = {
     "Execute a SQL query against the agent's database. Read-only by default — pass allowWrites:true to permit mutations.",
   descriptionCompressed:
     "execute SQL query against agent database read-only default pass allowwrite: true permit mutation",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may execute SQL queries.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | ExecuteQueryParams
       | undefined;
@@ -546,19 +539,17 @@ export const searchVectorsAction: Action = {
     "Search the agent's vector store for semantically similar items via /api/database/vectors/search. Embeds the query with the runtime's TEXT_EMBEDDING model and returns top-k matches with similarity scores.",
   descriptionCompressed:
     "search agent vector store semantically similar item via / api/database/vectors/search embed query w/ runtime TEXT_EMBEDDING model return top-k match w/ similarity score",
-  validate: async (runtime, message) => {
+  validate: async (runtime, _message) => {
     registerVectorSearchCategory(runtime);
-    await hasOwnerAccess(runtime, message);
     return false;
   },
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (
+    runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     registerVectorSearchCategory(runtime);
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may search vectors.",
-      };
-    }
 
     const params = (options as HandlerOptions | undefined)?.parameters as
       | SearchVectorsParams

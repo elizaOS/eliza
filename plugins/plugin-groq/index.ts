@@ -8,11 +8,14 @@ import type {
   RecordLlmCallDetails,
 } from "@elizaos/core";
 import {
+  buildCanonicalSystemPrompt,
   EventType,
   type GenerateTextParams,
   logger,
   ModelType,
   recordLlmCall,
+  renderChatMessagesForPrompt,
+  resolveEffectiveSystemPrompt,
 } from "@elizaos/core";
 import { APICallError, generateObject, generateText } from "ai";
 
@@ -27,6 +30,26 @@ const DEFAULT_TTS_VOICE = "autumn";
 const DEFAULT_TTS_RESPONSE_FORMAT = "wav";
 const DEFAULT_TRANSCRIPTION_MODEL = "whisper-large-v3-turbo";
 const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+
+function resolveGroqSystemPrompt(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): string | undefined {
+  return resolveEffectiveSystemPrompt({
+    params,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
+}
+
+function resolveGroqPrompt(params: GenerateTextParams, systemPrompt: string | undefined): string {
+  return (
+    renderChatMessagesForPrompt(params.messages, {
+      omitDuplicateSystem: systemPrompt,
+    }) ??
+    params.prompt ??
+    ""
+  );
+}
 
 type ProviderUsage = {
   inputTokens?: number;
@@ -430,9 +453,10 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_NANO);
 
+      const system = resolveGroqSystemPrompt(runtime, params);
       return generateWithRetry(runtime, groq, ModelType.TEXT_NANO, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
+        prompt: resolveGroqPrompt(params, system),
+        system,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
         frequencyPenalty: params.frequencyPenalty ?? 0.7,
@@ -445,9 +469,10 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_SMALL);
 
+      const system = resolveGroqSystemPrompt(runtime, params);
       return generateWithRetry(runtime, groq, ModelType.TEXT_SMALL, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
+        prompt: resolveGroqPrompt(params, system),
+        system,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
         frequencyPenalty: params.frequencyPenalty ?? 0.7,
@@ -460,9 +485,10 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_MEDIUM);
 
+      const system = resolveGroqSystemPrompt(runtime, params);
       return generateWithRetry(runtime, groq, ModelType.TEXT_MEDIUM, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
+        prompt: resolveGroqPrompt(params, system),
+        system,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
         frequencyPenalty: params.frequencyPenalty ?? 0.7,
@@ -475,9 +501,10 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_LARGE);
 
+      const system = resolveGroqSystemPrompt(runtime, params);
       return generateWithRetry(runtime, groq, ModelType.TEXT_LARGE, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
+        prompt: resolveGroqPrompt(params, system),
+        system,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
         frequencyPenalty: params.frequencyPenalty ?? 0.7,
@@ -490,9 +517,10 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.TEXT_MEGA);
 
+      const system = resolveGroqSystemPrompt(runtime, params);
       return generateWithRetry(runtime, groq, ModelType.TEXT_MEGA, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
+        prompt: resolveGroqPrompt(params, system),
+        system,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
         frequencyPenalty: params.frequencyPenalty ?? 0.7,
@@ -505,9 +533,10 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.RESPONSE_HANDLER);
 
+      const system = resolveGroqSystemPrompt(runtime, params);
       return generateWithRetry(runtime, groq, ModelType.RESPONSE_HANDLER, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
+        prompt: resolveGroqPrompt(params, system),
+        system,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
         frequencyPenalty: params.frequencyPenalty ?? 0.7,
@@ -520,9 +549,10 @@ export const groqPlugin: Plugin = {
       const groq = createGroqClient(runtime);
       const model = getTextModelForType(runtime, ModelType.ACTION_PLANNER);
 
+      const system = resolveGroqSystemPrompt(runtime, params);
       return generateWithRetry(runtime, groq, ModelType.ACTION_PLANNER, model, {
-        prompt: params.prompt,
-        system: runtime.character.system,
+        prompt: resolveGroqPrompt(params, system),
+        system,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
         frequencyPenalty: params.frequencyPenalty ?? 0.7,

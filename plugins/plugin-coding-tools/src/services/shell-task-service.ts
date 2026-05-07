@@ -22,6 +22,16 @@ export interface SpawnOptions {
   description?: string;
   env?: Record<string, string>;
   shell?: string;
+  /**
+   * If provided, spawn `binaryOverride` with `argsOverride` directly instead
+   * of the default `<shell> -c <command>`. Used by the OS-sandbox layer to
+   * wrap bash invocations (sandbox-exec / bwrap). The record's `command`
+   * field is still kept for display/logging.
+   */
+  binaryOverride?: string;
+  argsOverride?: string[];
+  /** Called once the spawned process has exited, regardless of status. */
+  onFinalize?: () => void;
 }
 
 const STDOUT_CAP_BYTES = 2_000_000;
@@ -83,7 +93,9 @@ export class ShellTaskService extends Service {
   start_(opts: SpawnOptions): ShellTaskRecord {
     const id = `task-${randomUUID().slice(0, 8)}`;
     const shell = opts.shell ?? "/bin/bash";
-    const proc = spawn(shell, ["-c", opts.command], {
+    const binary = opts.binaryOverride ?? shell;
+    const args = opts.argsOverride ?? ["-c", opts.command];
+    const proc = spawn(binary, args, {
       cwd: opts.cwd,
       env: { ...process.env, ...(opts.env ?? {}) },
       stdio: ["ignore", "pipe", "pipe"],
@@ -120,6 +132,15 @@ export class ShellTaskService extends Service {
         rec.stderr += chunk.toString("utf8");
       }
     });
+    const finalize = () => {
+      if (opts.onFinalize) {
+        try {
+          opts.onFinalize();
+        } catch {
+          // ignore finalizer errors
+        }
+      }
+    };
     proc.on("close", (code, signal) => {
       rec.endedAt = Date.now();
       rec.exitCode = typeof code === "number" ? code : null as unknown as number;
@@ -132,6 +153,7 @@ export class ShellTaskService extends Service {
         for (const w of ws) w();
         this.waiters.delete(id);
       }
+      finalize();
     });
     proc.on("error", (err) => {
       rec.stderr += `\n${err.message}`;
@@ -143,6 +165,7 @@ export class ShellTaskService extends Service {
         for (const w of ws) w();
         this.waiters.delete(id);
       }
+      finalize();
     });
 
     return rec;

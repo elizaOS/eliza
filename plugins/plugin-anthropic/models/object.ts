@@ -1,5 +1,10 @@
 import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  logger,
+  ModelType,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
 import { generateText, type JSONSchema7, type ModelMessage, type ToolSet } from "ai";
 import { createAnthropicClient } from "../providers";
 import type {
@@ -138,7 +143,11 @@ async function generateObjectByModelType(
   const schema = params.schema as JsonSchema | undefined;
   const isReflection = isReflectionSchema(schema);
   const jsonPrompt = buildJsonPrompt(params.prompt);
-  const systemPrompt = buildSystemPrompt(runtime.character.system, isReflection);
+  const characterSystem = resolveEffectiveSystemPrompt({
+    params,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
+  const systemPrompt = buildSystemPrompt(characterSystem, isReflection);
   const temperature = params.temperature ?? 0.2;
   const runtimeCacheControl = getRuntimeCacheControl(runtime);
   const rawProviderOptions = (params as ObjectGenerationParamsWithProviderOptions).providerOptions;

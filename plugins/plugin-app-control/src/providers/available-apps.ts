@@ -43,66 +43,66 @@ export const availableAppsProvider: Provider = {
 				client.listAppRuns(),
 			]);
 
-		if (installed.length === 0 && runs.length === 0) {
-			return { text: "" };
-		}
+			if (installed.length === 0 && runs.length === 0) {
+				return { text: "" };
+			}
 
-		const runsByApp = new Map<string, number>();
-		for (const run of runs) {
-			runsByApp.set(run.appName, (runsByApp.get(run.appName) ?? 0) + 1);
-		}
+			const runsByApp = new Map<string, number>();
+			for (const run of runs) {
+				runsByApp.set(run.appName, (runsByApp.get(run.appName) ?? 0) + 1);
+			}
 
-		const listedInstalled = installed.slice(0, MAX_LISTED);
-		const overflow = installed.length - listedInstalled.length;
+			const listedInstalled = installed.slice(0, MAX_LISTED);
+			const overflow = installed.length - listedInstalled.length;
 
-		const lines: string[] = [];
-		lines.push("available_apps:");
-		lines.push(`  installedCount: ${installed.length}`);
-		lines.push(`  runningCount: ${runs.length}`);
-		lines.push("  actions: APP mode=launch | relaunch | create");
-		if (listedInstalled.length > 0) {
-			lines.push(
-				`apps[${listedInstalled.length}]{name,displayName,pluginName,running}:`,
-			);
-			for (const app of listedInstalled) {
-				const running = runsByApp.get(app.name) ?? 0;
+			const lines: string[] = [];
+			lines.push("available_apps:");
+			lines.push(`  installedCount: ${installed.length}`);
+			lines.push(`  runningCount: ${runs.length}`);
+			lines.push("  actions: APP mode=launch | relaunch | create");
+			if (listedInstalled.length > 0) {
 				lines.push(
-					`  ${app.name},${app.displayName},${app.pluginName},${running}`,
+					`apps[${listedInstalled.length}]{name,displayName,pluginName,running}:`,
 				);
+				for (const app of listedInstalled) {
+					const running = runsByApp.get(app.name) ?? 0;
+					lines.push(
+						`  ${app.name},${app.displayName},${app.pluginName},${running}`,
+					);
+				}
+				if (overflow > 0) {
+					lines.push(`truncated: ${overflow}`);
+				}
+			} else {
+				lines.push("apps[0]:");
 			}
-			if (overflow > 0) {
-				lines.push(`truncated: ${overflow}`);
-			}
-		} else {
-			lines.push("apps[0]:");
-		}
 
-		const orphanRuns = runs
-			.filter((r) => !installed.some((app) => app.name === r.appName))
-			.slice(0, MAX_ORPHAN_RUNS);
-		if (orphanRuns.length > 0) {
-			lines.push(
-				`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
-			);
-			for (const run of orphanRuns) {
+			const orphanRuns = runs
+				.filter((r) => !installed.some((app) => app.name === r.appName))
+				.slice(0, MAX_ORPHAN_RUNS);
+			if (orphanRuns.length > 0) {
 				lines.push(
-					`  ${run.runId},${run.appName},${run.displayName},${run.status}`,
+					`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
 				);
+				for (const run of orphanRuns) {
+					lines.push(
+						`  ${run.runId},${run.appName},${run.displayName},${run.status}`,
+					);
+				}
 			}
-		}
 
-		return {
-			text: lines.join("\n"),
-			values: {
-				installedAppCount: installed.length,
-				runningAppCount: runs.length,
-			},
-			data: {
-				installed: listedInstalled,
-				runs: runs.slice(0, MAX_RUNS_RETURNED),
-				truncated: overflow > 0,
-			},
-		};
+			return {
+				text: lines.join("\n"),
+				values: {
+					installedAppCount: installed.length,
+					runningAppCount: runs.length,
+				},
+				data: {
+					installed: listedInstalled,
+					runs: runs.slice(0, MAX_RUNS_RETURNED),
+					truncated: overflow > 0,
+				},
+			};
 		} catch {
 			return { text: "", values: {}, data: {} };
 		}

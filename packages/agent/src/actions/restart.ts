@@ -30,7 +30,6 @@ import {
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
 import { requestRestart } from "../runtime/restart.js";
-import { hasOwnerAccess } from "../security/access.js";
 
 /** Small delay (ms) before restarting so the response has time to flush. */
 const SHUTDOWN_DELAY_MS = 1_500;
@@ -102,22 +101,11 @@ export const restartAction: Action = {
   descriptionCompressed:
     "restart agent process stop runtime, rebuild source file change, relaunch pick up new code, config, plugin",
 
-  validate: async (runtime, message, _state) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return false;
-    }
-
+  validate: async (_runtime, message, _state) => {
     return isExplicitRestartRequest(message);
   },
 
   handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may restart the agent.",
-      };
-    }
-
     // Guard: only restart when the user explicitly asked. The runtime
     // doesn't call validate before handler, and the LLM can fuzzy-match
     // RESTART_AGENT from action loops or stray text fragments. Without

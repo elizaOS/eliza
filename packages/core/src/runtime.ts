@@ -17,12 +17,12 @@ import {
 import { parseActionParams, validateActionParams } from "./actions";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
-import { createTaskClipboardService } from "./features/advanced-capabilities/clipboard/services/taskClipboardService";
 import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
 } from "./features/basic-capabilities/index";
+import { createTaskClipboardService } from "./features/working-memory/taskClipboardService";
 import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
@@ -34,8 +34,15 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
+import { checkSenderRole } from "./roles";
+import { satisfiesRoleGate } from "./runtime/context-gates";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import {
+	buildCanonicalSystemPrompt,
+	resolveEffectiveSystemPrompt,
+	textFromChatMessageContent,
+} from "./runtime/system-prompt";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -61,6 +68,7 @@ import {
 import {
 	type Action,
 	type ActionContext,
+	type ActionMode,
 	type ActionResult,
 	type Agent,
 	ChannelType,
@@ -132,6 +140,7 @@ import {
 	type UUID,
 	type World,
 } from "./types";
+import type { AgentContext, RoleGateRole } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
@@ -260,6 +269,8 @@ const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_MEGA,
 	ModelType.RESPONSE_HANDLER,
 	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_SMALL,
+	ModelType.TEXT_REASONING_LARGE,
 	ModelType.TEXT_COMPLETION,
 ];
 
@@ -2757,6 +2768,35 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private async resolveProcessActionUserRoles(
+		message: Memory,
+	): Promise<RoleGateRole[]> {
+		if (
+			typeof message.entityId === "string" &&
+			message.entityId === this.agentId
+		) {
+			return ["OWNER"];
+		}
+
+		try {
+			const result = await checkSenderRole(this as IAgentRuntime, message);
+			if (result?.role) {
+				return [result.role as RoleGateRole];
+			}
+		} catch (error) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"processActions sender role lookup failed; defaulting to USER",
+			);
+		}
+
+		return ["USER"];
+	}
+
 	async processActions(
 		message: Memory,
 		responses: Memory[],
@@ -2814,6 +2854,8 @@ export class AgentRuntime implements IAgentRuntime {
 		const hasMultipleActions = allActions.length > 1 && actionPlanningEnabled;
 		const parentRunId = this.getCurrentRunId();
 		const runId = this.createRunId();
+		const processActionUserRoles =
+			await this.resolveProcessActionUserRoles(message);
 
 		// Create action plan if multiple actions
 		let actionPlan:
@@ -2964,6 +3006,47 @@ export class AgentRuntime implements IAgentRuntime {
 						});
 					}
 
+					actionIndex++;
+					continue;
+				}
+				if (
+					action.roleGate &&
+					!satisfiesRoleGate(processActionUserRoles, action.roleGate)
+				) {
+					const errorMsg = `Action ${action.name} is not allowed for the current role`;
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							roleGate: action.roleGate,
+							userRoles: processActionUserRoles,
+						},
+						"Skipping role-gated action",
+					);
+
+					if (actionPlan?.steps?.[actionIndex]) {
+						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+							status: "failed",
+							error: errorMsg,
+						});
+					}
+
+					const actionMemory: Memory = {
+						id: uuidv4() as UUID,
+						entityId: message.entityId,
+						roomId: message.roomId,
+						worldId: message.worldId,
+						content: {
+							thought: errorMsg,
+							source: "auto",
+							type: "action_result",
+							actionName: action.name,
+							actionStatus: "failed",
+							runId,
+						},
+					};
+					await this.createMemory(actionMemory, "messages");
 					actionIndex++;
 					continue;
 				}
@@ -3591,6 +3674,158 @@ export class AgentRuntime implements IAgentRuntime {
 			]);
 		}
 		return evaluators;
+	}
+
+	/**
+	 * Run actions whose `mode` matches the given hook position. Replaces
+	 * the legacy evaluator path: the runtime fires this from fixed places in
+	 * the message pipeline (see services/message.ts). DURING modes execute
+	 * handlers in parallel; all other hook modes run sequentially in
+	 * `modePriority` ascending order. CONTEXT hooks are gated by
+	 * `selectedContexts` overlapping the action's `contexts`.
+	 */
+	async runActionsByMode(
+		mode: ActionMode,
+		message: Memory,
+		state?: State,
+		options?: {
+			didRespond?: boolean;
+			callback?: HandlerCallback;
+			responses?: Memory[];
+			selectedContexts?: readonly AgentContext[];
+		},
+	): Promise<Action[]> {
+		let candidates = this.actions.filter((action) => action.mode === mode);
+
+		if (
+			mode === "CONTEXT_BEFORE" ||
+			mode === "CONTEXT_DURING" ||
+			mode === "CONTEXT_AFTER"
+		) {
+			const selected = new Set(options?.selectedContexts ?? []);
+			candidates = candidates.filter((action) => {
+				const tags = action.contexts ?? [];
+				return tags.some((tag) => selected.has(tag));
+			});
+		}
+
+		candidates = candidates
+			.slice()
+			.sort(
+				(a, b) =>
+					(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
+					a.name.localeCompare(b.name),
+			);
+		if (candidates.length === 0) return [];
+
+		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
+
+		const runtimeRef = this as unknown as IAgentRuntime;
+		const validated: Action[] = [];
+		await Promise.all(
+			candidates.map(async (action) => {
+				try {
+					const ok = await action.validate(runtimeRef, message, state);
+					if (ok) validated.push(action);
+				} catch (err) {
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							mode,
+							err: err instanceof Error ? err.message : String(err),
+						},
+						"runActionsByMode validate failed",
+					);
+				}
+			}),
+		);
+		if (validated.length === 0) return [];
+
+		validated.sort(
+			(a, b) =>
+				(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
+				a.name.localeCompare(b.name),
+		);
+
+		const composedState =
+			state ?? (await this.composeState(message, ["RECENT_MESSAGES"]));
+
+		const messageId = message.id;
+		const roomId = message.roomId;
+		const worldId = message.worldId ?? roomId;
+
+		const runOne = async (action: Action) => {
+			await this.emitEvent(EventType.ACTION_STARTED, {
+				runtime: runtimeRef,
+				messageId,
+				roomId,
+				world: worldId,
+				content: {
+					text: `Executing ${mode} action: ${action.name}`,
+					actions: [action.name],
+					actionStatus: "executing",
+					source: message.content?.source,
+				},
+			}).catch(() => {});
+
+			let success = true;
+			let errorMsg: string | undefined;
+			try {
+				await action.handler(
+					runtimeRef,
+					message,
+					composedState,
+					{ mode },
+					options?.callback,
+					options?.responses,
+				);
+			} catch (err) {
+				success = false;
+				errorMsg = err instanceof Error ? err.message : String(err);
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						action: action.name,
+						mode,
+						err: errorMsg,
+					},
+					"runActionsByMode handler failed",
+				);
+			}
+
+			await this.emitEvent(EventType.ACTION_COMPLETED, {
+				runtime: runtimeRef,
+				messageId,
+				roomId,
+				world: worldId,
+				content: {
+					text: success
+						? `${mode} action ${action.name} completed`
+						: `${mode} action ${action.name} failed: ${errorMsg ?? "unknown"}`,
+					actions: [action.name],
+					actionStatus: success ? "completed" : "failed",
+					source: message.content?.source,
+					error: errorMsg,
+				},
+			}).catch(() => {});
+		};
+
+		const isDuring =
+			mode === "ALWAYS_DURING" ||
+			mode === "CONTEXT_DURING" ||
+			mode === "MESSAGE_DURING";
+		if (isDuring) {
+			await Promise.all(validated.map(runOne));
+		} else {
+			for (const action of validated) {
+				await runOne(action);
+			}
+		}
+
+		return validated;
 	}
 
 	// highly SQL optimized queries
@@ -4719,11 +4954,66 @@ export class AgentRuntime implements IAgentRuntime {
 	/**
 	 * Helper to log model calls to the database (used by both streaming and non-streaming paths)
 	 */
+	private buildRuntimeSystemPrompt(): string | undefined {
+		const prompt = buildCanonicalSystemPrompt({
+			character: this.character,
+			userRole: getTrajectoryContext()?.userRole,
+		});
+		return prompt || undefined;
+	}
+
+	private attachEffectiveSystemPrompt(
+		modelKey: string,
+		params: unknown,
+	): string | undefined {
+		if (
+			!TEXT_GENERATION_MODEL_KEYS.includes(modelKey) ||
+			!isPlainObject(params)
+		) {
+			return undefined;
+		}
+		const paramsRecord = params as Record<
+			string,
+			JsonValue | object | undefined
+		>;
+		const systemPrompt = resolveEffectiveSystemPrompt({
+			params,
+			fallback: this.buildRuntimeSystemPrompt(),
+		});
+		if (systemPrompt !== undefined && !Object.hasOwn(paramsRecord, "system")) {
+			paramsRecord.system = systemPrompt;
+		}
+		return systemPrompt;
+	}
+
+	private getFirstUserPromptFromMessages(
+		messages: unknown,
+	): string | undefined {
+		if (!Array.isArray(messages)) {
+			return undefined;
+		}
+		for (const message of messages) {
+			if (!message || typeof message !== "object" || Array.isArray(message)) {
+				continue;
+			}
+			const record = message as { role?: unknown; content?: unknown };
+			if (record.role !== "user") {
+				continue;
+			}
+			const content = textFromChatMessageContent(record.content);
+			if (content) {
+				return content;
+			}
+		}
+		return undefined;
+	}
+
 	private logModelCall(
 		modelType: string,
 		modelKey: string,
 		_params: unknown,
 		promptContent: string | null,
+		systemPrompt: string | undefined,
 		elapsedTime: number,
 		provider: string | undefined,
 		response: unknown,
@@ -4755,7 +5045,7 @@ export class AgentRuntime implements IAgentRuntime {
 						modelType,
 						modelKey,
 						prompt: promptContent ?? undefined,
-						systemPrompt: this.character.system ?? undefined,
+						systemPrompt,
 						runId: this.getCurrentRunId(),
 						timestamp: Date.now(),
 						executionTime: elapsedTime,
@@ -4959,6 +5249,8 @@ export class AgentRuntime implements IAgentRuntime {
 				requestedModelKey === ModelType.TEXT_MEGA ||
 				requestedModelKey === ModelType.RESPONSE_HANDLER ||
 				requestedModelKey === ModelType.ACTION_PLANNER ||
+				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
+				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
 				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
@@ -5006,6 +5298,16 @@ export class AgentRuntime implements IAgentRuntime {
 			paramsAsStreaming.stream = shouldStream;
 			delete paramsAsStreaming.onStreamChunk;
 		}
+
+		const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
+			String(resolvedModelKey),
+		)
+			? String(resolvedModelKey)
+			: requestedModelKey;
+		const effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
+			textModelKey,
+			modelParams,
+		);
 
 		await this.invokePipelineHooks(
 			"pre_model",
@@ -5131,6 +5433,7 @@ export class AgentRuntime implements IAgentRuntime {
 				resolvedModelKey,
 				params,
 				promptContent,
+				effectiveSystemPrompt,
 				elapsedTime,
 				resolvedModel?.provider ?? provider,
 				resultRef.current,
@@ -5186,6 +5489,7 @@ export class AgentRuntime implements IAgentRuntime {
 			resolvedModelKey,
 			params,
 			promptContent,
+			effectiveSystemPrompt,
 			elapsedTime,
 			resolvedModel?.provider ?? provider,
 			resultRef.current,
@@ -5243,6 +5547,15 @@ export class AgentRuntime implements IAgentRuntime {
 			const paramsRecord = isPlainObject(args.modelParams)
 				? (args.modelParams as Record<string, unknown>)
 				: {};
+			const systemPrompt =
+				resolveEffectiveSystemPrompt({
+					params: args.modelParams,
+					fallback: this.buildRuntimeSystemPrompt(),
+				}) ?? "";
+			const userPrompt =
+				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+				args.promptContent ??
+				"";
 			const resultRecord = isPlainObject(args.result)
 				? (args.result as Record<string, unknown>)
 				: {};
@@ -5257,15 +5570,12 @@ export class AgentRuntime implements IAgentRuntime {
 				model: args.resolvedModelKey,
 				modelType: args.modelType,
 				provider: args.provider,
-				systemPrompt:
-					typeof this.character.system === "string"
-						? this.character.system
-						: "",
-				userPrompt: args.promptContent ?? "",
+				systemPrompt,
+				userPrompt,
 				prompt:
 					typeof paramsRecord.prompt === "string"
 						? paramsRecord.prompt
-						: (args.promptContent ?? ""),
+						: userPrompt,
 				messages: Array.isArray(paramsRecord.messages)
 					? paramsRecord.messages
 					: undefined,
@@ -5320,22 +5630,14 @@ export class AgentRuntime implements IAgentRuntime {
 		const modelType = options?.modelType ?? ModelType.TEXT_LARGE;
 
 		let prompt = input;
+		let system: string | undefined;
 
 		// Add character context if requested
 		if (includeCharacter && this.character) {
 			const c = this.character;
 			const parts: string[] = [];
 
-			// Add bio
-			const bioText = Array.isArray(c.bio) ? c.bio.join(" ") : c.bio;
-			if (bioText) {
-				parts.push(`# About ${c.name}\n${bioText}`);
-			}
-
-			// Add system prompt
-			if (c.system) {
-				parts.push(c.system);
-			}
+			system = this.buildRuntimeSystemPrompt();
 
 			// Add style directives (all + chat)
 			const styles = [...(c.style?.all || []), ...(c.style?.chat || [])];
@@ -5361,6 +5663,7 @@ export class AgentRuntime implements IAgentRuntime {
 			repetitionPenalty: options?.repetitionPenalty,
 			frequencyPenalty: options?.frequencyPenalty,
 			presencePenalty: options?.presencePenalty,
+			system,
 			stopSequences: options?.stopSequences,
 			// User identifier for provider tracking/analytics - auto-populates from character name if not provided
 			// Explicitly set empty string or null will be preserved (not overridden)
@@ -5529,8 +5832,6 @@ export class AgentRuntime implements IAgentRuntime {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json";
-			forceFormat?: "json";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -5707,14 +6008,9 @@ export class AgentRuntime implements IAgentRuntime {
 			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
-			let format: StructuredResponseFormat = resolveDefaultOutputFormat(
+			const format: StructuredResponseFormat = resolveDefaultOutputFormat(
 				this.getSetting("PROMPT_OUTPUT_FORMAT"),
 			);
-			const requestedFormat =
-				options.forceFormat ?? options.preferredEncapsulation;
-			if (requestedFormat) {
-				format = resolveDefaultOutputFormat(requestedFormat);
-			}
 
 			/**
 			 * Rough token count estimate for logging/debugging purposes only.

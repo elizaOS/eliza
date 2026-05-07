@@ -119,6 +119,7 @@ async function appendLlmCall(
     messages: Array.isArray(params.messages) ? params.messages : undefined,
     tools: params.tools,
     toolChoice: params.toolChoice,
+    output: params.output,
     responseSchema: params.responseSchema,
     providerOptions: params.providerOptions,
     response: fullResponse,

@@ -15,6 +15,7 @@
  */
 
 import {
+  ELIZA_NATIVE_MODEL_BOUNDARIES,
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type ElizaNativeTrajectoryRow,
 } from "@elizaos/core";
@@ -30,16 +31,43 @@ import type {
 } from "./dataset-generator.js";
 
 type TuningMessage = { role?: string; content?: unknown; parts?: unknown };
+const NATIVE_MODEL_BOUNDARIES = new Set<string>(ELIZA_NATIVE_MODEL_BOUNDARIES);
 
 function getTuningMessages(
   parsed: ElizaNativeTrainingExample,
 ): TuningMessage[] | null {
   const row = parsed as ElizaNativeTrajectoryRow & {
     messages?: TuningMessage[];
+    request?: { system?: unknown; messages?: unknown; prompt?: unknown };
   };
   if (row.format === ELIZA_NATIVE_TRAJECTORY_FORMAT) {
+    const out: TuningMessage[] = [];
+    const system = row.request?.system;
+    if (typeof system === "string" && system.length > 0) {
+      out.push({ role: "system", content: system });
+    }
     const msgs = row.request?.messages;
-    return Array.isArray(msgs) ? (msgs as TuningMessage[]) : null;
+    if (Array.isArray(msgs)) {
+      for (const msg of msgs as TuningMessage[]) {
+        if (
+          msg.role === "system" &&
+          out.length > 0 &&
+          out[0]?.role === "system" &&
+          out[0]?.content === msg.content
+        ) {
+          continue;
+        }
+        out.push(msg);
+      }
+    }
+    if (
+      !out.some((msg) => msg.role === "user") &&
+      typeof row.request?.prompt === "string" &&
+      row.request.prompt.length > 0
+    ) {
+      out.push({ role: "user", content: row.request.prompt });
+    }
+    return out.length > 0 ? out : null;
   }
   return null;
 }
@@ -236,7 +264,7 @@ export function validateElizaNativeExample(jsonLine: string): {
 
   const messages = getTuningMessages(parsed);
   if (!messages) {
-    errors.push("Missing eliza_native_v1.request.messages");
+    errors.push("Missing eliza_native_v1 request system/messages/prompt");
     return { valid: false, errors };
   }
 
@@ -244,6 +272,9 @@ export function validateElizaNativeExample(jsonLine: string): {
   if (native.format !== ELIZA_NATIVE_TRAJECTORY_FORMAT) {
     errors.push(`format must be ${ELIZA_NATIVE_TRAJECTORY_FORMAT}`);
     return { valid: false, errors };
+  }
+  if (!NATIVE_MODEL_BOUNDARIES.has(native.boundary)) {
+    errors.push("boundary must be a supported Vercel AI SDK model boundary");
   }
 
   if (messages.length < 2) {

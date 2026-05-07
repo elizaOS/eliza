@@ -408,41 +408,12 @@ def diversify_record(
 
 
 # ---------------------------------------------------------------------------
-# TOON round-trip acceptance check
+# Acceptance check (no-op: TOON decoder removed in native v5)
 # ---------------------------------------------------------------------------
 
-def _toon_decode_or_none(s: str):
-    try:
-        sys.path.insert(0, str(ROOT / "scripts"))
-        from lib.toon import decode  # type: ignore
-    except Exception:
-        return None  # decoder unavailable: skip the check, don't crash
-    try:
-        return decode(s)
-    except Exception:
-        return False
-
-
 def _acceptance_check(sample: list[str]) -> dict:
-    """Decode the last N rewritten TOONs through the canonical decoder.
-
-    Returns {"checked": int, "ok": int, "failed": int, "skipped": bool}.
-    `skipped` flips true when bun/decoder is unavailable in this env.
-    """
-    if not sample:
-        return {"checked": 0, "ok": 0, "failed": 0, "skipped": False}
-    first = _toon_decode_or_none(sample[0])
-    if first is None:
-        return {"checked": 0, "ok": 0, "failed": 0, "skipped": True}
-    ok = 1 if first is not False else 0
-    failed = 0 if first is not False else 1
-    for s in sample[1:]:
-        r = _toon_decode_or_none(s)
-        if r is False:
-            failed += 1
-        else:
-            ok += 1
-    return {"checked": len(sample), "ok": ok, "failed": failed, "skipped": False}
+    """Acceptance check is skipped — TOON decoder is not available in native v5."""
+    return {"checked": 0, "ok": 0, "failed": 0, "skipped": True}
 
 
 # ---------------------------------------------------------------------------
@@ -517,9 +488,6 @@ def main() -> int:
     thought_rw = Rewriter(applicable, stream="assistant_thought")
     per_source_hits: dict[str, Counter] = defaultdict(Counter)
 
-    sample_for_check: list[str] = []
-    sample_window = 100
-
     stats = {
         "total": 0,
         "decode_errors": 0,
@@ -547,14 +515,6 @@ def main() -> int:
             if hits:
                 stats["records_changed"] += 1
                 stats["total_replacements"] += hits
-                er = rec.get("expectedResponse")
-                if isinstance(er, str):
-                    if len(sample_for_check) < sample_window:
-                        sample_for_check.append(er)
-                    else:
-                        # rolling tail of the last 100 changed records
-                        sample_for_check.pop(0)
-                        sample_for_check.append(er)
             else:
                 stats["records_skipped"] += 1
             fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -576,9 +536,6 @@ def main() -> int:
 
     elapsed = round(time.time() - t0, 1)
 
-    # Acceptance check on a 100-record tail of the rewritten outputs.
-    accept = _acceptance_check(sample_for_check)
-
     summary = {
         "input": str(in_path),
         "output": str(out_path),
@@ -599,19 +556,11 @@ def main() -> int:
         },
         "applicable_ngrams": sorted(applicable.keys()),
         "flagged_for_manual_review": flagged,
-        "toon_acceptance_check": accept,
     }
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     print(json.dumps(summary["totals"], indent=2), file=sys.stderr)
     print(f"[ngram-diversify] summary -> {summary_path}", file=sys.stderr)
     print(f"[ngram-diversify] output -> {out_path}", file=sys.stderr)
-    if accept.get("failed", 0):
-        print(
-            f"[ngram-diversify] WARNING: {accept['failed']}/{accept['checked']} "
-            "rewritten TOON docs failed round-trip decode",
-            file=sys.stderr,
-        )
-        return 3
     return 0
 
 

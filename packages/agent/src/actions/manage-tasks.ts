@@ -25,7 +25,6 @@ import {
   toWorkbenchTask,
   WORKBENCH_TASK_TAG,
 } from "../api/workbench-helpers.js";
-import { hasOwnerAccess } from "../security/access.js";
 import { readTriggerConfig } from "../triggers/runtime.js";
 import { hasSelectedActionContext } from "./context-signal.js";
 
@@ -89,7 +88,7 @@ export function looksLikeTaskIntent(text: string): boolean {
 export const manageTasksAction: Action = {
   name: MANAGE_TASKS_ACTION,
   contexts: [...MANAGE_TASKS_CONTEXTS],
-  roleGate: { minRole: "ADMIN" },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "CREATE_TASK",
     "ADD_TASK",
@@ -106,7 +105,6 @@ export const manageTasksAction: Action = {
     "Workbench task CRUD+list NL-in-message owner SMALL-model extract",
 
   validate: async (runtime, message, state) => {
-    if (!(await hasOwnerAccess(runtime, message))) return false;
     if (hasSelectedActionContext(message, state, MANAGE_TASKS_CONTEXTS)) {
       return true;
     }
@@ -138,10 +136,6 @@ export const manageTasksAction: Action = {
     const text = (message.content.text ?? "").trim();
     if (!text) {
       return { success: false, text: "No task instruction provided." };
-    }
-
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return { success: false, text: "Permission denied." };
     }
 
     try {

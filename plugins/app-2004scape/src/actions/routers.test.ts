@@ -23,11 +23,11 @@ function makeMemory(text: string): Memory {
 }
 
 describe("2004scape action routers", () => {
-  it("registers WALK_TO + 6 *_OP routers and no legacy actions", () => {
+  it("registers RS_2004_WALK_TO + 6 *_OP routers and no legacy actions", () => {
     const names = rsSdkActions.map((action) => action.name);
 
     expect(names).toEqual([
-      "WALK_TO",
+      "RS_2004_WALK_TO",
       "SKILL_OP",
       "INVENTORY_OP",
       "BANK_OP",
@@ -75,7 +75,7 @@ describe("2004scape action routers", () => {
     });
   });
 
-  it("dispatches WALK_TO with coordinate params", async () => {
+  it("dispatches RS_2004_WALK_TO with coordinate params", async () => {
     const calls: Array<{
       actionType: string;
       params: Record<string, unknown>;
@@ -97,7 +97,7 @@ describe("2004scape action routers", () => {
 
     await rs2004WalkToAction.handler(
       runtime,
-      makeMemory("action: WALK_TO\nx: 3222\nz: 3218"),
+      makeMemory("action: RS_2004_WALK_TO\nx: 3222\nz: 3218"),
       undefined,
       {},
     );

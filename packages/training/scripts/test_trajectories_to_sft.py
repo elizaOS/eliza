@@ -90,6 +90,13 @@ def test_rejects_non_native_rows():
     assert list(t.examples_from_record(row)) == []
 
 
+def test_rejects_native_rows_without_model_boundary():
+    row = native_row()
+    row.pop("boundary")
+
+    assert list(t.examples_from_record(row)) == []
+
+
 def test_read_jsonl_expands_native_records(tmp_path):
     path = tmp_path / "export.jsonl"
     path.write_text(json.dumps(native_row()) + "\n", encoding="utf-8")

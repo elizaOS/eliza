@@ -20,8 +20,8 @@ import type {
 	StewardSidecar,
 	StewardSidecarStatus,
 } from "@elizaos/app-core/services/steward-sidecar";
-import { logger } from "../logger";
 import { getBrandConfig } from "../brand-config";
+import { logger } from "../logger";
 
 // ---------------------------------------------------------------------------
 // Types

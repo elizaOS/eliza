@@ -148,7 +148,7 @@ function withRobloxTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_ACTION_TIMEOUT_MS),
+      setTimeout(() => reject(new Error(`${label} timed out`)), ROBLOX_ACTION_TIMEOUT_MS)
     ),
   ]);
 }
@@ -206,6 +206,7 @@ export const executeRobloxAction: Action = {
   name: actionName,
   contexts: ["media", "automation"],
   contextGate: { anyOf: ["media", "automation"] },
+  roleGate: { minRole: "USER" },
   similes: ["ROBLOX_RUN", "ROBLOX_TRIGGER", "ROBLOX_GAME_ACTION"],
   description:
     "Trigger a server-side Roblox game action such as move-npc, give-coins, teleport, spawn-entity, or start-event.",
@@ -276,7 +277,7 @@ export const executeRobloxAction: Action = {
         parsedAction.parameters,
         cappedTargetPlayerIds
       ),
-      "roblox action",
+      "roblox action"
     );
 
     await callback?.({

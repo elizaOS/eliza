@@ -23,7 +23,11 @@ import {
 	createContextObject,
 } from "../runtime/context-object";
 import type { ContextRegistry } from "../runtime/context-registry";
-import { renderContextObject } from "../runtime/context-renderer";
+import {
+	normalizePromptSegments,
+	renderContextObject,
+	segmentBlock,
+} from "../runtime/context-renderer";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -45,6 +49,7 @@ import {
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
+	type PlannerLoopParams,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -52,6 +57,7 @@ import {
 	runPlannerLoop,
 } from "../runtime/planner-loop";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
+import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
 	createJsonFileTrajectoryRecorder,
 	isTrajectoryRecordingEnabled,
@@ -62,7 +68,10 @@ import {
 	getModelStreamChunkDeliveryDepth,
 	runWithStreamingContext,
 } from "../streaming-context";
-import { runWithTrajectoryContext } from "../trajectory-context";
+import {
+	getTrajectoryContext,
+	runWithTrajectoryContext,
+} from "../trajectory-context";
 import type {
 	Action,
 	ActionResult,
@@ -627,7 +636,25 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
+	// CURRENT_TIME is dynamic and would otherwise be filtered out before
+	// reaching the response handler. The wall-clock time is a baseline
+	// signal for nearly every routing decision (scheduling, freshness of
+	// recent messages, "today/tomorrow" parsing), so it's always-on here.
+	"CURRENT_TIME",
 ];
+
+/**
+ * Subset used when building the v5 `ContextObject`. RECENT_MESSAGES is dropped
+ * here because the canonical user turn already lands as a `message:user:`
+ * segment inside the planner/evaluator user message — re-injecting the same
+ * text via the RECENT_MESSAGES provider produced a duplicate `# Received
+ * Message` block alongside `message:user:` on every Stage 2/3 call. Multi-turn
+ * conversation history can land as proper assistant/user chat turns in a
+ * follow-up; we do NOT currently render it as text in the user turn.
+ */
+const V5_RESPONSE_STATE_PROVIDERS = CORE_RESPONSE_STATE_PROVIDERS.filter(
+	(name) => name !== "RECENT_MESSAGES",
+);
 
 const V5_MODEL_CONTEXT_PROVIDER_EXCLUSIONS = new Set([
 	"ACTIONS",
@@ -1108,19 +1135,6 @@ function appendStateProviderEvents(
 	}
 }
 
-function renderCharacterBio(value: unknown): string {
-	if (typeof value === "string") {
-		return value.trim();
-	}
-	if (Array.isArray(value)) {
-		return value
-			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-			.filter(Boolean)
-			.join(" ");
-	}
-	return "";
-}
-
 function createV5MessageContextObject(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1162,8 +1176,8 @@ function createV5MessageContextObject(args: {
 		events,
 		args.state,
 		hasInboundBenchmarkContext(args.message)
-			? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
-			: CORE_RESPONSE_STATE_PROVIDERS,
+			? [...V5_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
+			: V5_RESPONSE_STATE_PROVIDERS,
 	);
 
 	events.push({
@@ -1211,22 +1225,10 @@ function createV5MessageContextObject(args: {
 		}
 	}
 
-	const characterContent = [
-		args.runtime.character.name
-			? `agent_name: ${args.runtime.character.name}`
-			: "",
-		renderCharacterBio(args.runtime.character.bio)
-			? `# About ${args.runtime.character.name ?? "the agent"}\n${renderCharacterBio(
-					args.runtime.character.bio,
-				)}`
-			: "",
-		typeof args.runtime.character.system === "string"
-			? args.runtime.character.system
-			: "",
-	]
-		.filter(Boolean)
-		.join("\n")
-		.trim();
+	const systemPrompt = buildCanonicalSystemPrompt({
+		character: args.runtime.character,
+		userRole: args.userRoles?.[0],
+	});
 	const expandedTools = events
 		.filter((event) => event.type === "tool" && "tool" in event)
 		.map((event) => {
@@ -1251,11 +1253,11 @@ function createV5MessageContextObject(args: {
 			selectedContexts: [...(args.selectedContexts ?? [])],
 		},
 		staticPrefix: {
-			characterPrompt: characterContent
+			systemPrompt: systemPrompt
 				? {
-						id: "character",
-						label: "character",
-						content: characterContent,
+						id: "system",
+						label: "system",
+						content: systemPrompt,
 						stable: true,
 					}
 				: undefined,
@@ -1263,6 +1265,17 @@ function createV5MessageContextObject(args: {
 		},
 		trajectoryPrefix: {
 			selectedContexts: [...(args.selectedContexts ?? [])],
+			// Pass the rich definitions (id + description + selectionGuidance)
+			// for the selected contexts so the downstream planner can reason
+			// about each selected context, not just its bare id. The renderer
+			// at context-renderer.ts:420 emits these as JSON in a stable
+			// prompt segment.
+			contextDefinitions:
+				args.selectedContexts && args.availableContexts
+					? args.availableContexts.filter((def) =>
+							args.selectedContexts?.includes(def.id),
+						)
+					: [],
 			expandedTools,
 			createdAtStageId: "message-handler",
 		},
@@ -1355,27 +1368,6 @@ export function formatAvailableContextsForPrompt(
 		.join("\n");
 }
 
-function renderContextSegmentBlock(segment: {
-	content: string;
-	label?: string;
-	id?: string;
-	stable?: boolean;
-}): string {
-	const label = segment.label ?? segment.id ?? "context";
-	return `${label}:\n${segment.content.trim()}`;
-}
-
-function normalizeMessageHandlerPromptSegments(
-	segments: PromptSegment[],
-): PromptSegment[] {
-	return segments
-		.filter((segment) => segment.content.trim().length > 0)
-		.map((segment, index) => ({
-			...segment,
-			content: `${index === 0 ? "" : "\n\n"}${segment.content.trim()}`,
-		}));
-}
-
 function renderV5MessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean },
@@ -1405,7 +1397,6 @@ function renderV5MessageHandlerModelInput(
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: { directMessage?: boolean },
 ): {
-	prompt: string;
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 } {
@@ -1420,23 +1411,21 @@ function renderV5MessageHandlerModelInput(
 	const dynamicSegments = rendered.promptSegments.filter(
 		(segment) => !segment.stable,
 	);
-	const promptSegments = normalizeMessageHandlerPromptSegments([
+	const promptSegments = normalizePromptSegments([
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
 		...dynamicSegments,
 	]);
-	const prompt = promptSegments.map((segment) => segment.content).join("");
-	const systemContent = normalizeMessageHandlerPromptSegments([
+	const systemContent = normalizePromptSegments([
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
 	])
-		.map((segment) => renderContextSegmentBlock(segment))
+		.map(segmentBlock)
 		.join("\n\n");
-	const userContent = normalizeMessageHandlerPromptSegments(dynamicSegments)
-		.map((segment) => renderContextSegmentBlock(segment))
+	const userContent = normalizePromptSegments(dynamicSegments)
+		.map(segmentBlock)
 		.join("\n\n");
 	return {
-		prompt,
 		messages: [
 			{ role: "system", content: systemContent },
 			{ role: "user", content: userContent },
@@ -1561,6 +1550,7 @@ interface ExecuteV5PlannedToolCallParams {
 	tools?: ToolDefinition[];
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
+	plannerLoopConfig?: PlannerLoopParams["config"];
 }
 
 async function executeV5PlannedToolCall(
@@ -1580,6 +1570,7 @@ async function executeV5PlannedToolCall(
 			evaluate: args.evaluate,
 			evaluatorEffects: args.evaluatorEffects,
 			provider: args.provider,
+			config: args.plannerLoopConfig,
 			recorder: args.recorder,
 			trajectoryId: args.trajectoryId,
 		});
@@ -1638,7 +1629,7 @@ function collectPreviousActionResults(
 	trajectory: PlannerTrajectory,
 ): ActionResult[] {
 	const results: ActionResult[] = [];
-	for (const step of trajectory.steps) {
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.result || !step.toolCall) {
 			continue;
 		}
@@ -1666,14 +1657,18 @@ export async function runV5MessageRuntimeStage1(args: {
 	message: Memory;
 	state: State;
 	responseId: UUID;
+	plannerLoopConfig?: PlannerLoopParams["config"];
 }): Promise<V5MessageRuntimeStage1Result> {
-	const senderRole = await resolveStage1SenderRole(args.runtime, args.message);
+	const senderRole =
+		getTrajectoryContext()?.userRole ??
+		(await resolveStage1SenderRole(args.runtime, args.message));
 	const availableContexts = listAvailableContextsForRole(
 		args.runtime.contexts,
 		senderRole,
 	);
 	const context = createV5MessageContextObject({
 		...args,
+		userRoles: [senderRole],
 		availableContexts,
 	});
 
@@ -1715,7 +1710,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			availableContexts,
 			{ directMessage: directMessageChannel },
 		);
-		const messageHandlerPrompt = messageHandlerInput.prompt;
 		const stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
@@ -1735,30 +1729,55 @@ export async function runV5MessageRuntimeStage1(args: {
 				directMessage: directMessageChannel,
 			}),
 		];
+		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
+			cacheProviderOptions({
+				prefixHash: stage1PrefixHash,
+				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+			}),
+			buildModelInputBudget({
+				messages: messageHandlerInput.messages,
+				promptSegments: messageHandlerInput.promptSegments,
+				tools: messageHandlerTools,
+			}),
+		);
+
+		// MESSAGE_BEFORE (blocking): hooks fire right before the Stage 1 model
+		// call. Used to inject providers / facts / relationships into the
+		// stable prefix.
+		await args.runtime.runActionsByMode(
+			"MESSAGE_BEFORE",
+			args.message,
+			args.state,
+		);
+
+		// MESSAGE_DURING (non-blocking): fire-and-forget alongside the model
+		// call. We don't await — the user contract is "during". Errors are
+		// logged inside `runActionsByMode`.
+		void args.runtime
+			.runActionsByMode("MESSAGE_DURING", args.message, args.state)
+			.catch(() => {});
+
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
-				prompt: messageHandlerPrompt,
 				messages: messageHandlerInput.messages,
 				promptSegments: messageHandlerInput.promptSegments,
 				tools: messageHandlerTools,
 				toolChoice: "required",
-				providerOptions: withModelInputBudgetProviderOptions(
-					cacheProviderOptions({
-						prefixHash: stage1PrefixHash,
-						segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-					}),
-					buildModelInputBudget({
-						prompt: messageHandlerPrompt,
-						messages: messageHandlerInput.messages,
-						promptSegments: messageHandlerInput.promptSegments,
-						tools: messageHandlerTools,
-					}),
-				),
+				providerOptions: messageHandlerProviderOptions,
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
 		const messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+
+		// MESSAGE_AFTER (blocking): hooks fire after Stage 1 returns and the
+		// routing decision is parsed, but before the runtime acts on it.
+		// Lets a hook inspect / mutate the parsed plan.
+		await args.runtime.runActionsByMode(
+			"MESSAGE_AFTER",
+			args.message,
+			args.state,
+		);
 
 		if (!messageHandler) {
 			throw new Error(
@@ -1770,10 +1789,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			await recordMessageHandlerStage({
 				recorder,
 				trajectoryId,
-				prompt: messageHandlerPrompt,
 				messages: messageHandlerInput.messages,
 				tools: messageHandlerTools,
 				toolChoice: "required",
+				providerOptions: messageHandlerProviderOptions,
 				raw: rawMessageHandler,
 				parsed: messageHandler,
 				startedAt: messageHandlerStartedAt,
@@ -1877,9 +1896,26 @@ export async function runV5MessageRuntimeStage1(args: {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
 		};
+
+		// CONTEXT_BEFORE (blocking): hooks tagged with one of the selected
+		// contexts run after Stage 1 routes, before the planner loop begins.
+		await args.runtime.runActionsByMode(
+			"CONTEXT_BEFORE",
+			args.message,
+			plannerState,
+			{ selectedContexts },
+		);
+		// CONTEXT_DURING (non-blocking): runs in parallel with the planner.
+		void args.runtime
+			.runActionsByMode("CONTEXT_DURING", args.message, plannerState, {
+				selectedContexts,
+			})
+			.catch(() => {});
+
 		const plannerResult = await runPlannerLoop({
 			runtime: plannerRuntime,
 			context: plannerContextWithDecision,
+			config: args.plannerLoopConfig,
 			tools: plannerTools.length > 0 ? plannerTools : undefined,
 			evaluatorEffects,
 			recorder,
@@ -1900,6 +1936,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					evaluatorEffects,
 					recorder,
 					trajectoryId,
+					plannerLoopConfig: args.plannerLoopConfig,
 				}),
 			evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
 				runEvaluator({
@@ -1911,6 +1948,17 @@ export async function runV5MessageRuntimeStage1(args: {
 					trajectoryId,
 				}),
 		});
+
+		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
+		// the response is delivered. Lets a context post-process planner
+		// output (e.g. enrich the reply with context-specific data).
+		await args.runtime.runActionsByMode(
+			"CONTEXT_AFTER",
+			args.message,
+			plannerState,
+			{ selectedContexts },
+		);
+
 		const plannedText = String(plannerResult.finalMessage ?? "").trim();
 
 		return {
@@ -1951,10 +1999,10 @@ export async function runV5MessageRuntimeStage1(args: {
 async function recordMessageHandlerStage(args: {
 	recorder: TrajectoryRecorder;
 	trajectoryId: string;
-	prompt: string;
 	messages?: ChatMessage[];
 	tools?: ToolDefinition[];
 	toolChoice?: unknown;
+	providerOptions?: Record<string, unknown>;
 	raw: string | GenerateTextResult;
 	parsed?: MessageHandlerResult;
 	startedAt: number;
@@ -1980,10 +2028,10 @@ async function recordMessageHandlerStage(args: {
 				modelType: String(ModelType.RESPONSE_HANDLER),
 				modelName,
 				provider: "default",
-				prompt: args.prompt,
 				messages: args.messages,
 				tools: args.tools,
 				toolChoice: args.toolChoice,
+				providerOptions: args.providerOptions,
 				response: responseText,
 				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
@@ -2511,7 +2559,6 @@ async function _repairCanonicalPlannerActions(args: {
 		],
 		options: {
 			modelType: ModelType.TEXT_LARGE,
-			preferredEncapsulation: "json",
 			contextCheckLevel: 0,
 			maxRetries: 1,
 		},
@@ -3699,7 +3746,6 @@ async function _recoverProvidersForTurn(args: {
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
@@ -3796,7 +3842,6 @@ async function shouldUseKnowledgeProviders(
 			],
 			options: {
 				modelType: ModelType.TEXT_LARGE,
-				preferredEncapsulation: "json",
 				contextCheckLevel: 0,
 				maxRetries: 1,
 			},
@@ -4379,6 +4424,14 @@ export class DefaultMessageService implements IMessageService {
 					callback,
 					source,
 				});
+				// ALWAYS_BEFORE (blocking): hooks run for every message before
+				// any pipeline work. Use for cheap heuristic preprocessing
+				// (identity extraction, dispute detection) whose results may
+				// influence Stage 1 routing.
+				await runtime.runActionsByMode("ALWAYS_BEFORE", message);
+				// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
+				// rest of the pipeline. Telemetry, logging, side effects.
+				void runtime.runActionsByMode("ALWAYS_DURING", message).catch(() => {});
 			} catch (error) {
 				runtime.logger.warn(
 					{
@@ -4406,18 +4459,24 @@ export class DefaultMessageService implements IMessageService {
 					: undefined;
 		}
 
+		const senderRole = await resolveStage1SenderRole(runtime, message);
+		const trajectoryContextBase = {
+			runId: runtime.getCurrentRunId?.(),
+			roomId: message.roomId,
+			messageId: message.id,
+			userRole: senderRole,
+		};
+
 		return await runWithTrajectoryContext<MessageProcessingResult>(
 			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
 				? {
+						...trajectoryContextBase,
 						...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
 							? { trajectoryId: trajectoryId.trim() }
 							: {}),
 						trajectoryStepId: trajectoryStepId.trim(),
-						runId: runtime.getCurrentRunId?.(),
-						roomId: message.roomId,
-						messageId: message.id,
 					}
-				: undefined,
+				: trajectoryContextBase,
 			async (): Promise<MessageProcessingResult> => {
 				// Determine shouldRespondModel from options or runtime settings
 				const shouldRespondModelSetting = runtime.getSetting(
@@ -5483,13 +5542,24 @@ export class DefaultMessageService implements IMessageService {
 		// Clean up the response ID
 		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 
-		// Run evaluators before ending the turn because reflection can now mark
-		// the task incomplete and trigger another continuation/action pass.
+		// ALWAYS_AFTER (blocking): replaces the legacy evaluator path. Fires
+		// after the response is delivered (or the routing decision is final
+		// for IGNORE/STOP). The legacy `runtime.evaluate()` runs alongside
+		// during the migration; once all evaluators are ported to actions,
+		// the evaluator subsystem will be deleted.
+		const didRespondGate =
+			shouldRespondToMessage && !isStopResponse(responseContent);
+		const runAlwaysAfterActions = () =>
+			runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
+				didRespond: didRespondGate,
+				responses: responseMessages,
+			});
+
 		const runEvaluate = () =>
 			runtime.evaluate(
 				message,
 				state,
-				shouldRespondToMessage && !isStopResponse(responseContent),
+				didRespondGate,
 				async (content) => {
 					runtime.logger.debug(
 						{ src: "service:message", content },
@@ -5515,7 +5585,7 @@ export class DefaultMessageService implements IMessageService {
 				responseMessages,
 			);
 
-		await runEvaluate();
+		await Promise.all([runEvaluate(), runAlwaysAfterActions()]);
 
 		// Flush the deferred simple-mode reply after evaluators have had a chance
 		// to attach callbacks. Chaining is handled inside the v5 planner loop.

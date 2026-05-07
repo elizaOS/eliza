@@ -127,7 +127,7 @@ const KNOWLEDGE_CATEGORY: SearchCategoryRegistration = {
     },
   ],
   resultSchemaSummary:
-    "StoredKnowledgeItem[] with id, content.text, similarity, metadata, and worldId.",
+    "StoredDocument[] with id, content.text, similarity, metadata, and worldId.",
   capabilities: ["semantic", "documents", "fragments"],
   source: "core:knowledge",
   serviceType: "knowledge",
@@ -667,7 +667,7 @@ export const searchAction: Action = {
   similes: [
     "SEARCH_WEB",
     "WEB_SEARCH",
-    "SEARCH_KNOWLEDGE",
+    "SEARCH_DOCUMENTS",
     "SEARCH_PLUGINS",
     "SEARCH_VECTORS",
     "SEARCH_CONVERSATIONS",
@@ -678,6 +678,7 @@ export const searchAction: Action = {
   descriptionCompressed:
     "search registered backend by category query filters limit freshness",
   contexts: ["general", "knowledge", "browser", "system", "social"],
+  roleGate: { minRole: "USER" },
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

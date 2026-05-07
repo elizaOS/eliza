@@ -5,14 +5,15 @@ import type {
   TrajectoryLlmCall,
 } from "@elizaos/agent/types/trajectory";
 import {
+  ELIZA_NATIVE_MODEL_BOUNDARIES,
   buildElizaNativeTrajectoryRows,
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type ElizaNativeTrajectoryRow,
 } from "@elizaos/core";
 import {
   extractElizaNativeRowsFromExportText,
-  extractTrajectoriesFromExportText,
   listTrajectoryCallEntries,
+  parseTrajectoryExportText,
 } from "./trajectory-consumer.js";
 
 export type ElizaNativeTrainingExample = ElizaNativeTrajectoryRow;
@@ -68,6 +69,8 @@ const TASK_FILE_NAMES: Record<TrajectoryTrainingTask, string> = {
   response: "response_trajectories.jsonl",
   media_description: "media_description_trajectories.jsonl",
 };
+
+const NATIVE_MODEL_BOUNDARIES = new Set<string>(ELIZA_NATIVE_MODEL_BOUNDARIES);
 
 type TaskExampleMap = Record<TrajectoryTrainingTask, ElizaNativeTrainingExample[]>;
 type TaskCountMap = Record<TrajectoryTrainingTask, number>;
@@ -362,6 +365,47 @@ function buildExampleForTask(
   };
 }
 
+function hasNativeRequestPayload(row: ElizaNativeTrajectoryRow): boolean {
+  const request = row.request;
+  if (!request || typeof request !== "object") {
+    return false;
+  }
+  if (typeof request.prompt === "string" && request.prompt.length > 0) {
+    return true;
+  }
+  if (Array.isArray(request.messages) && request.messages.length > 0) {
+    return true;
+  }
+  return false;
+}
+
+function hasNativeResponsePayload(row: ElizaNativeTrajectoryRow): boolean {
+  const response = row.response;
+  if (!response || typeof response !== "object") {
+    return false;
+  }
+  if (typeof response.text === "string" && response.text.length > 0) {
+    return true;
+  }
+  return Array.isArray(response.toolCalls) && response.toolCalls.length > 0;
+}
+
+function isNativeRowUsableForTask(
+  row: ElizaNativeTrajectoryRow,
+  task: TrajectoryTrainingTask,
+): boolean {
+  if (!NATIVE_MODEL_BOUNDARIES.has(row.boundary)) {
+    return false;
+  }
+  if (!hasNativeRequestPayload(row) || !hasNativeResponsePayload(row)) {
+    return false;
+  }
+  if (task === "should_respond" || task === "context_routing") {
+    return normalizeMessageHandlerJson(row.response.text ?? "") !== null;
+  }
+  return true;
+}
+
 function collectTrajectoryExamplesByTask(
   trajectoriesInput: Trajectory[] | string,
   tasks?: readonly TrajectoryTrainingTask[],
@@ -370,10 +414,12 @@ function collectTrajectoryExamplesByTask(
     typeof trajectoriesInput === "string"
       ? extractElizaNativeRowsFromExportText(trajectoriesInput)
       : [];
+  const nonNativeRowCount =
+    typeof trajectoriesInput === "string" && nativeRows.length === 0
+      ? parseTrajectoryExportText(trajectoriesInput).length
+      : 0;
   const trajectories =
-    typeof trajectoriesInput === "string"
-      ? extractTrajectoriesFromExportText(trajectoriesInput)
-      : trajectoriesInput;
+    typeof trajectoriesInput === "string" ? [] : trajectoriesInput;
   const requestedTasks = new Set<TrajectoryTrainingTask>(
     tasks ?? [
       "should_respond",
@@ -389,8 +435,8 @@ function collectTrajectoryExamplesByTask(
   let llmCallCount = 0;
   let skippedNonNativeRows = 0;
   const warnings: string[] = [];
-  const warnSkip = (message: string): void => {
-    skippedNonNativeRows += 1;
+  const warnSkip = (message: string, count = 1): void => {
+    skippedNonNativeRows += count;
     warnings.push(message);
     console.warn(message);
   };
@@ -404,6 +450,12 @@ function collectTrajectoryExamplesByTask(
         normalizeTrainingTask(row.stepType) ??
         normalizeTrainingTask(row.actionType);
       if (!task || !requestedTasks.has(task)) {
+        continue;
+      }
+      if (!isNativeRowUsableForTask(row, task)) {
+        warnSkip(
+          `[trajectory-task-datasets] skipped native ${task} row from trajectory ${row.trajectoryId} call ${row.callId}; expected exact request payload and model response`,
+        );
         continue;
       }
       examples[task].push(row);
@@ -420,6 +472,13 @@ function collectTrajectoryExamplesByTask(
       skippedNonNativeRows,
       warnings,
     };
+  }
+
+  if (nonNativeRowCount > 0) {
+    warnSkip(
+      `[trajectory-task-datasets] skipped ${nonNativeRowCount} non-native trajectory row(s); expected eliza_native_v1`,
+      nonNativeRowCount,
+    );
   }
 
   for (const trajectory of trajectories) {
@@ -476,9 +535,7 @@ export async function exportTrajectoryTaskDatasets(
 
   const extraction = collectTrajectoryExamplesByTask(trajectories, tasks);
   const normalizedTrajectories =
-    typeof trajectories === "string"
-      ? extractTrajectoriesFromExportText(trajectories)
-      : trajectories;
+    typeof trajectories === "string" ? [] : trajectories;
   const nativeRows =
     typeof trajectories === "string"
       ? extractElizaNativeRowsFromExportText(trajectories)

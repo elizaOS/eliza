@@ -274,6 +274,94 @@ export const getEntityDetails = throwingExport("getEntityDetails");
 export const splitChunks = throwingExport("splitChunks");
 export const createMessageMemory = throwingExport("createMessageMemory");
 
+function renderSystemPromptBio(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (!Array.isArray(value)) return "";
+  return value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function textFromChatMessageContent(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object" || Array.isArray(part)) return "";
+      const text = (part as { text?: unknown }).text;
+      return typeof text === "string" ? text.trim() : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+export function buildCanonicalSystemPrompt(args: {
+  character?: { name?: unknown; system?: unknown; bio?: unknown } | null;
+  userRole?: unknown;
+}): string {
+  const character = args.character;
+  const system = typeof character?.system === "string" ? character.system.trim() : "";
+  const bio = renderSystemPromptBio(character?.bio);
+  const name =
+    typeof character?.name === "string" && character.name.trim()
+      ? character.name.trim()
+      : "the agent";
+  const role = typeof args.userRole === "string" ? args.userRole.trim().toUpperCase() : "";
+  return [
+    system,
+    bio ? `# About ${name}\n${bio}` : "",
+    role ? `user_role: ${role}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+export function resolveEffectiveSystemPrompt(args: {
+  params?: unknown;
+  fallback?: string | null;
+}): string | undefined {
+  const params =
+    args.params && typeof args.params === "object" && !Array.isArray(args.params)
+      ? (args.params as Record<string, unknown>)
+      : null;
+  if (params && Object.hasOwn(params, "system")) {
+    return typeof params.system === "string" ? params.system.trim() || undefined : undefined;
+  }
+  const messages = params?.messages;
+  if (Array.isArray(messages) && messages.length > 0) {
+    const first = messages[0] as { role?: unknown; content?: unknown };
+    if (first?.role === "system") {
+      const system = textFromChatMessageContent(first.content);
+      if (system) return system;
+    }
+  }
+  const fallback = typeof args.fallback === "string" ? args.fallback.trim() : "";
+  return fallback || undefined;
+}
+
+export function renderChatMessagesForPrompt(
+  messages: Array<{ role?: unknown; content?: unknown }> | undefined,
+  options: { omitDuplicateSystem?: string } = {},
+): string {
+  if (!Array.isArray(messages)) return "";
+  const omitDuplicateSystem = options.omitDuplicateSystem?.trim();
+  return messages
+    .filter((message, index) => {
+      if (index !== 0 || !omitDuplicateSystem || message?.role !== "system") return true;
+      return textFromChatMessageContent(message.content) !== omitDuplicateSystem;
+    })
+    .map((message) => {
+      const role = typeof message?.role === "string" ? message.role : "user";
+      const content = textFromChatMessageContent(message?.content);
+      return content ? `${role}: ${content}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function getRequestContext(): undefined {
   return undefined;
 }
@@ -372,6 +460,9 @@ export default {
   asUUID,
   splitChunks,
   createMessageMemory,
+  buildCanonicalSystemPrompt,
+  resolveEffectiveSystemPrompt,
+  renderChatMessagesForPrompt,
   getRequestContext,
   Service,
   AgentRuntime,

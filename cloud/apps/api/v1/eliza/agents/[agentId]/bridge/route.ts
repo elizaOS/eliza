@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
+import type { BridgeRequest, BridgeResponse } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
+const MESSAGE_SEND_ATTEMPTS = 6;
+const MESSAGE_SEND_RETRY_DELAY_MS = 2_500;
 
 const bridgeRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
@@ -63,6 +65,31 @@ async function forwardBridgeToControlPlane(params: {
   });
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isSandboxBridgeUnreachable(response: BridgeResponse): boolean {
+  return (
+    !!response.error &&
+    response.error.code === -32000 &&
+    response.error.message === "Sandbox bridge is unreachable"
+  );
+}
+
+async function sendMessageWithIngressWarmup(
+  agentId: string,
+  organizationId: string,
+  rpcRequest: BridgeRequest,
+) {
+  let latest = await elizaSandboxService.bridge(agentId, organizationId, rpcRequest);
+  for (let attempt = 1; attempt < MESSAGE_SEND_ATTEMPTS && isSandboxBridgeUnreachable(latest); attempt++) {
+    await delay(MESSAGE_SEND_RETRY_DELAY_MS);
+    latest = await elizaSandboxService.bridge(agentId, organizationId, rpcRequest);
+  }
+  return latest;
+}
+
 /**
  * POST /api/v1/eliza/agents/[agentId]/bridge
  * Forward a JSON-RPC request to the sandbox bridge server.
@@ -98,6 +125,15 @@ async function __hono_POST(
     }
 
     const rpcRequest = parsed.data as BridgeRequest;
+    if (rpcRequest.method === "message.send") {
+      const response = await sendMessageWithIngressWarmup(
+        agentId,
+        user.organization_id,
+        rpcRequest,
+      );
+      return applyCorsHeaders(Response.json(response), CORS_METHODS);
+    }
+
     const forwarded = await forwardBridgeToControlPlane({
       ctx,
       request,

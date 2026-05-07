@@ -156,6 +156,7 @@ export const testResponseAction = {
   name: "TEST_RESPONSE",
   contexts: CHARACTER_BUILDER_CONTEXTS,
   contextGate: { anyOf: CHARACTER_BUILDER_CONTEXTS },
+  roleGate: { minRole: "USER" },
   parameters: [
     {
       name: "testPrompt",

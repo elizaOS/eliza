@@ -3,7 +3,6 @@ import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
 } from "@elizaos/agent/api/conversation-metadata";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   HandlerOptions,
@@ -1986,7 +1985,6 @@ export const lifeAction: Action & {
     if (await isForeignPageScope(runtime, message)) {
       return false;
     }
-    return hasOwnerAccess(runtime, message);
   },
   handler: async (runtime, message, state, options) => {
     // Defense-in-depth at dispatch time: validate() above excludes LIFE
@@ -1999,24 +1997,13 @@ export const lifeAction: Action & {
     // render a user-visible message — any streamed tokens from the outer
     // LLM reply already landed before this handler runs.
     if (await isForeignPageScope(runtime, message)) {
-      return { success: false, text: "" };
-    }
-    if (!(await hasOwnerAccess(runtime, message))) {
-      const fallback =
-        "Life management is restricted to the owner and the agent.";
       return {
         success: false,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent: normalizeLifeInputText(messageText(message)),
-          scenario: "reply_only",
-          fallback,
-          context: {
-            reason: "access_restricted",
-          },
-        }),
+        text: "",
+        data: {
+          actionName: "LIFE",
+          reason: "foreign_page_scope",
+        },
       };
     }
 

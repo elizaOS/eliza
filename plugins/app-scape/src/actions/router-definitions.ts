@@ -7,7 +7,7 @@
  *   - JOURNAL_OP: set-goal, complete-goal, remember
  *   - INVENTORY_OP: eat, drop
  *
- * The remaining verbs (WALK_TO, ATTACK_NPC, CHAT_PUBLIC) stay as
+ * The remaining verbs (SCAPE_WALK_TO, ATTACK_NPC, CHAT_PUBLIC) stay as
  * standalone actions because their parameter shapes do not overlap.
  */
 

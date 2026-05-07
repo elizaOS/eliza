@@ -7,7 +7,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { BlockRuleWriter } from "../block-rule-service.js";
 
 interface ReleaseBlockParams {
@@ -16,7 +15,12 @@ interface ReleaseBlockParams {
   reason?: unknown;
 }
 
-const RELEASE_BLOCK_CONTEXTS = ["screen_time", "browser", "tasks", "automation"] as const;
+const RELEASE_BLOCK_CONTEXTS = [
+  "screen_time",
+  "browser",
+  "tasks",
+  "automation",
+] as const;
 const RELEASE_BLOCK_KEYWORDS = [
   "release",
   "unblock",
@@ -66,24 +70,39 @@ function hasSelectedContext(state: State | undefined): boolean {
       if (typeof item === "string") selected.add(item);
     }
   };
-  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
-  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
-  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
-    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
     | undefined;
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return RELEASE_BLOCK_CONTEXTS.some((context) => selected.has(context));
 }
 
-function hasReleaseBlockIntent(message: Memory, state: State | undefined): boolean {
+function hasReleaseBlockIntent(
+  message: Memory,
+  state: State | undefined,
+): boolean {
   const text = [
     typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
   ]
     .join("\n")
     .toLowerCase();
-  return RELEASE_BLOCK_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+  return RELEASE_BLOCK_KEYWORDS.some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
 }
 
 export const releaseBlockAction: Action = {
@@ -97,11 +116,10 @@ export const releaseBlockAction: Action = {
   contextGate: { anyOf: [...RELEASE_BLOCK_CONTEXTS] },
   roleGate: { minRole: "OWNER" },
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
   ): Promise<boolean> => {
-    if (!(await hasOwnerAccess(runtime, message))) return false;
     return hasSelectedContext(state) || hasReleaseBlockIntent(message, state);
   },
   handler: async (

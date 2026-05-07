@@ -188,14 +188,16 @@ function makeMockAction(opts: {
 function buildMockActions(): Action[] {
   const webSearch = makeMockAction({
     name: "WEB_SEARCH",
-    description: "Search the web for information",
+    description:
+      "Search the public web for current information. Use for factual lookups, recent events, or anything outside the agent's prior knowledge.",
     contexts: ["web", "browser"],
     parameters: [
       {
         name: "q",
-        description: "Search query string",
+        description: "Search query string. Plain natural language is fine.",
         required: true,
         schema: { type: "string" },
+        examples: ["eliza chatbot history", "weather in Paris today"],
       },
     ],
     handler: async (_rt, _msg, _state, options) => {
@@ -221,37 +223,49 @@ function buildMockActions(): Action[] {
     },
   });
 
-  const clipboardWrite = makeMockAction({
-    name: "CLIPBOARD_WRITE",
-    description: "Write content to the system clipboard",
-    contexts: ["general", "files", "web"],
+  const writeDocument = makeMockAction({
+    name: "WRITE_DOCUMENT",
+    description:
+      "Save content as a new document in the agent's document store. Use to persist research findings, summaries, or notes for later retrieval.",
+    contexts: ["documents", "web"],
     parameters: [
       {
         name: "content",
-        description: "Text content to write to clipboard",
+        description:
+          "Full text body of the document. Markdown is fine; do not summarize or truncate.",
         required: true,
         schema: { type: "string" },
       },
+      {
+        name: "title",
+        description:
+          "Short human-readable title used for retrieval. Defaults to a generated id when omitted.",
+        required: false,
+        schema: { type: "string" },
+        examples: ["Eliza research summary"],
+      },
     ],
     handler: async (_rt, _msg, _state, options) => {
-      const content =
-        ((options.parameters as Record<string, unknown>)?.content as string) ??
-        "";
+      const params = options.parameters as Record<string, unknown>;
+      const content = (params?.content as string) ?? "";
+      const title = (params?.title as string) ?? "Untitled";
+      const docId = `doc-${Date.now()}`;
       printStage(
         "TOOL",
-        `CLIPBOARD_WRITE called with content="${content.slice(0, 60)}..."`,
+        `WRITE_DOCUMENT called: title="${title}", content="${content.slice(0, 60)}..."`,
       );
       return {
         success: true,
-        text: "Content written to clipboard successfully.",
-        data: { actionName: "CLIPBOARD_WRITE", written: content },
+        text: `Document '${title}' saved with id ${docId}.`,
+        data: { actionName: "WRITE_DOCUMENT", documentId: docId, title },
       };
     },
   });
 
   const brokenAction = makeMockAction({
     name: "BROKEN_ACTION",
-    description: "A deliberately broken action for testing failure paths",
+    description:
+      "Deliberately failing action used to exercise the evaluator's failure path. Always returns success=false. Call this when the user explicitly requests it for testing.",
     contexts: ["broken_action"],
     parameters: [],
     handler: async () => {
@@ -265,7 +279,247 @@ function buildMockActions(): Action[] {
     },
   });
 
-  return [webSearch, clipboardWrite, brokenAction];
+  // -------------------------------------------------------------------
+  // Calendar mock actions — for multi-context scenario
+  // -------------------------------------------------------------------
+
+  const calendarListEvents = makeMockAction({
+    name: "CALENDAR_LIST_EVENTS",
+    description:
+      "List the user's calendar events in a given time window. Use to check availability before scheduling, or to find existing meetings to summarize.",
+    contexts: ["calendar"],
+    parameters: [
+      {
+        name: "range",
+        description:
+          "Time window for the listing — natural-language phrases like 'today', 'this week', or 'next 7 days' are accepted.",
+        required: false,
+        schema: { type: "string" },
+        examples: ["today", "this week", "next 7 days"],
+      },
+    ],
+    handler: async (_rt, _msg, _state, options) => {
+      const range =
+        ((options.parameters as Record<string, unknown>)?.range as string) ??
+        "today";
+      printStage("TOOL", `CALENDAR_LIST_EVENTS called with range="${range}"`);
+      return {
+        success: true,
+        text: `Found 2 events for '${range}': Team standup at 9am, 1:1 with Bob at 3pm.`,
+        data: {
+          actionName: "CALENDAR_LIST_EVENTS",
+          events: [
+            { id: "ev1", title: "Team standup", time: "09:00" },
+            { id: "ev2", title: "1:1 with Bob", time: "15:00" },
+          ],
+        },
+      };
+    },
+  });
+
+  const calendarCreateEvent = makeMockAction({
+    name: "CALENDAR_CREATE_EVENT",
+    description:
+      "Create a new calendar event for the user. Use for scheduling meetings, reminders, or any time-bound commitment that should appear on the calendar.",
+    contexts: ["calendar"],
+    parameters: [
+      {
+        name: "title",
+        description: "Short human-readable event title shown on the calendar.",
+        required: true,
+        schema: { type: "string" },
+        examples: ["Team standup", "1:1 with Bob"],
+      },
+      {
+        name: "time",
+        description:
+          "Event start time. ISO-8601 (e.g. 2025-06-15T15:00:00) or natural language ('tomorrow at 9am') are both accepted.",
+        required: true,
+        schema: { type: "string" },
+        examples: ["2025-06-15T15:00:00", "tomorrow at 9am"],
+      },
+      {
+        name: "attendees",
+        description:
+          "Comma-separated list of attendee email addresses. Leave empty for personal events.",
+        required: false,
+        schema: { type: "string" },
+        examples: ["alice@example.com,bob@example.com"],
+      },
+    ],
+    handler: async (_rt, _msg, _state, options) => {
+      const params = options.parameters as Record<string, unknown>;
+      const title = (params?.title as string) ?? "Untitled meeting";
+      const time = (params?.time as string) ?? "TBD";
+      const attendees = (params?.attendees as string) ?? "";
+      printStage(
+        "TOOL",
+        `CALENDAR_CREATE_EVENT called: title="${title}", time="${time}", attendees="${attendees}"`,
+      );
+      return {
+        success: true,
+        text: `Meeting '${title}' created at ${time}${attendees ? ` with ${attendees}` : ""}.`,
+        data: {
+          actionName: "CALENDAR_CREATE_EVENT",
+          eventId: `ev-${Date.now()}`,
+          title,
+          time,
+          attendees,
+        },
+      };
+    },
+  });
+
+  // -------------------------------------------------------------------
+  // Email mock actions — for multi-context scenario
+  // -------------------------------------------------------------------
+
+  const emailDraft = makeMockAction({
+    name: "EMAIL_DRAFT",
+    description:
+      "Create an email draft for the user to review before sending. Use when the user asks to compose, draft, or prepare an email — never to send mail directly.",
+    contexts: ["email"],
+    parameters: [
+      {
+        name: "to",
+        description: "Recipient email address (single address).",
+        required: true,
+        schema: { type: "string" },
+        examples: ["alice@example.com"],
+      },
+      {
+        name: "subject",
+        description: "Email subject line. Keep concise; one short phrase.",
+        required: true,
+        schema: { type: "string" },
+        examples: ["Meeting agenda"],
+      },
+      {
+        name: "body",
+        description:
+          "Full email body. Plain text or markdown. Include greeting, content, and signature when relevant.",
+        required: true,
+        schema: { type: "string" },
+      },
+    ],
+    handler: async (_rt, _msg, _state, options) => {
+      const params = options.parameters as Record<string, unknown>;
+      const to = (params?.to as string) ?? "unknown@example.com";
+      const subject = (params?.subject as string) ?? "(no subject)";
+      printStage("TOOL", `EMAIL_DRAFT called: to="${to}", subject="${subject}"`);
+      return {
+        success: true,
+        text: `Email draft created: to=${to}, subject="${subject}".`,
+        data: {
+          actionName: "EMAIL_DRAFT",
+          draftId: `draft-${Date.now()}`,
+          to,
+          subject,
+        },
+      };
+    },
+  });
+
+  const emailSend = makeMockAction({
+    name: "EMAIL_SEND",
+    description:
+      "Send an email message immediately on the user's behalf. Use only when the user has explicitly authorized sending; for compose-only requests prefer EMAIL_DRAFT.",
+    contexts: ["email"],
+    parameters: [
+      {
+        name: "to",
+        description: "Recipient email address (single address).",
+        required: true,
+        schema: { type: "string" },
+        examples: ["alice@example.com"],
+      },
+      {
+        name: "subject",
+        description: "Email subject line. Keep concise; one short phrase.",
+        required: true,
+        schema: { type: "string" },
+      },
+      {
+        name: "body",
+        description:
+          "Full email body. Plain text or markdown. Include greeting, content, and signature when relevant.",
+        required: true,
+        schema: { type: "string" },
+      },
+    ],
+    handler: async (_rt, _msg, _state, options) => {
+      const params = options.parameters as Record<string, unknown>;
+      const to = (params?.to as string) ?? "unknown@example.com";
+      const subject = (params?.subject as string) ?? "(no subject)";
+      printStage("TOOL", `EMAIL_SEND called: to="${to}", subject="${subject}"`);
+      return {
+        success: true,
+        text: `Email sent to ${to} with subject "${subject}".`,
+        data: {
+          actionName: "EMAIL_SEND",
+          messageId: `msg-${Date.now()}`,
+          to,
+          subject,
+        },
+      };
+    },
+  });
+
+  // -------------------------------------------------------------------
+  // RESEARCH — umbrella action with subActions for sub-planner scenario.
+  // The real runtime triggers runSubPlanner automatically when it sees
+  // `action.subActions.length > 0`, so this handler never runs.
+  // Scoped to its own `research_workflow` context so it does not bleed
+  // into the chain-2-tools scenario, which expects flat WEB_SEARCH +
+  // WRITE_DOCUMENT calls under the `web`/`documents` contexts.
+  // -------------------------------------------------------------------
+
+  const research = {
+    ...makeMockAction({
+      name: "RESEARCH",
+      description:
+        "Research a topic on the web and save the findings as a document.",
+      contexts: ["research_workflow"],
+      parameters: [
+        {
+          name: "query",
+          description: "Topic to research",
+          required: true,
+          schema: { type: "string" },
+        },
+        {
+          name: "title",
+          description: "Title for the saved document",
+          required: false,
+          schema: { type: "string" },
+        },
+      ],
+      handler: async () => {
+        printStage(
+          "TOOL",
+          "RESEARCH handler called — should not be invoked directly; sub-planner should have dispatched",
+        );
+        return {
+          success: false,
+          text: "Should not be called directly — sub-planner dispatch expected.",
+          error: "direct-call-not-expected",
+          data: { actionName: "RESEARCH" },
+        };
+      },
+    }),
+    subActions: ["WEB_SEARCH", "WRITE_DOCUMENT"],
+  } as unknown as ReturnType<typeof makeMockAction>;
+
+  return [
+    webSearch,
+    writeDocument,
+    brokenAction,
+    calendarListEvents,
+    calendarCreateEvent,
+    emailDraft,
+    emailSend,
+    research,
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +621,19 @@ async function buildRuntime(
     selectionGuidance:
       "Select when the user explicitly asks to run BROKEN_ACTION or validate action failure handling.",
     covers: ["BROKEN_ACTION", "failure-path validation"],
+    sensitivity: "public",
+    cacheStable: true,
+    cacheScope: "global",
+    roleGate: { minRole: "USER" },
+  });
+  runtime.contexts.tryRegister({
+    id: "research_workflow",
+    label: "Research Workflow",
+    description:
+      "Bundled umbrella research workflows that combine web lookup with saving findings as a document. Distinct from raw web search.",
+    selectionGuidance:
+      "Select when the user explicitly asks for a titled or labeled research artifact (e.g. 'with title X', 'save findings as Y', 'research and store under name Z'). Do NOT select for plain 'search and save' requests.",
+    covers: ["RESEARCH", "titled research output", "umbrella research workflow"],
     sensitivity: "public",
     cacheStable: true,
     cacheScope: "global",

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ModelType, type ToolDefinition } from "../../types/model";
+import type { ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
 
 /**
@@ -29,7 +29,9 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 				capturedParams.push(params);
 				return {
 					text: "",
-					toolCalls: [{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } }],
+					toolCalls: [
+						{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } },
+					],
 				};
 			}),
 		};
@@ -118,7 +120,9 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 				capturedParams.push(params);
 				return {
 					text: "",
-					toolCalls: [{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } }],
+					toolCalls: [
+						{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } },
+					],
 				};
 			}),
 		};

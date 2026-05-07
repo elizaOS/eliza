@@ -15,7 +15,6 @@ import type {
   ScratchpadTopicDto,
   ScratchpadTopicResponse,
 } from "@elizaos/shared/contracts";
-import { hasOwnerAccess } from "../security/access.js";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -148,15 +147,13 @@ export const scratchpadAddAction: Action = {
     "Create a scratchpad topic with a title and text body. The server validates title, text, topic cap, and token limit.",
   descriptionCompressed:
     "create scratchpad topic w/ title text body server validate title, text, topic cap, token limit",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may create scratchpad topics.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = getParameters(options as HandlerOptions | undefined);
     const title = readStringParam(params, "title");
     const text = readStringParam(params, "text");
@@ -226,15 +223,13 @@ export const scratchpadReadAction: Action = {
     "Fetch one scratchpad topic by id from GET /api/knowledge/scratchpad/topics/:id and return full title, summary, token counts, and body text. Owner-only.",
   descriptionCompressed:
     "GET scratchpad topic by topicId return full text owner-only",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may read scratchpad topics.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = getParameters(options as HandlerOptions | undefined);
     const topicId = readStringParam(params, "topicId");
     if (!topicId) return missingParam("topicId");
@@ -290,15 +285,13 @@ export const scratchpadSearchAction: Action = {
     "Search scratchpad topics using the knowledge-backed search route.",
   descriptionCompressed:
     "search scratchpad topic use knowledge-back search route",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may search scratchpad topics.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = getParameters(options as HandlerOptions | undefined);
     const query = readStringParam(params, "query");
     if (!query) return missingParam("query");
@@ -366,15 +359,13 @@ export const scratchpadReplaceAction: Action = {
     "Replace an existing scratchpad topic by id. Requires confirm:true because it overwrites the topic body.",
   descriptionCompressed:
     "replace exist scratchpad topic id require confirm: true bc overwrite topic body",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may replace scratchpad topics.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = getParameters(options as HandlerOptions | undefined);
     const topicId = readStringParam(params, "topicId");
     const title = readStringParam(params, "title");
@@ -447,15 +438,13 @@ export const scratchpadDeleteAction: Action = {
     "Delete a scratchpad topic by id. Requires confirm:true because it removes the topic and its fragments.",
   descriptionCompressed:
     "delete scratchpad topic id require confirm: true bc remove topic fragment",
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may delete scratchpad topics.",
-      };
-    }
-
+  validate: async () => true,
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params = getParameters(options as HandlerOptions | undefined);
     const topicId = readStringParam(params, "topicId");
     if (!topicId) return missingParam("topicId");

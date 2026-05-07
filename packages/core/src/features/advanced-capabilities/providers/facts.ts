@@ -212,119 +212,121 @@ const factsProvider: Provider = {
 	): Promise<ProviderResult> => {
 		try {
 			const recentMessages = await runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			limit: 10,
-			unique: false,
-		});
-
-		// Build the embedding seed from the most recent five message bodies.
-		const lastMessageLines: string[] = [];
-		for (
-			let i = recentMessages.length - 1;
-			i >= 0 && lastMessageLines.length < 5;
-			i -= 1
-		) {
-			lastMessageLines.push(recentMessages[i]?.content.text ?? "");
-		}
-		lastMessageLines.reverse();
-		const last5Messages = lastMessageLines.join("\n");
-
-		const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: last5Messages,
-		});
-
-		// Two parallel searches, one room-scoped and one entity-scoped, both
-		// over the `facts` table. We over-fetch so that the in-memory kind
-		// partition still leaves enough candidates per kind after filtering.
-		// The runtime search API does not accept metadata filters today, so
-		// the partition happens in TS below.
-		//
-		// We deliberately omit `query` here. Passing a query triggers BM25
-		// lexical reranking inside `runtime.searchMemories`, which silently
-		// drops candidates with zero token overlap and short-circuits the
-		// embedding-similarity ranking we already rely on. The provider
-		// re-ranks by `confidence × timeWeight(kind, age)` immediately
-		// afterward, so adding a lexical filter on top would just hide
-		// otherwise-relevant facts.
-		const relatedEntityIds = await getRelatedEntityIds(
-			runtime,
-			message.entityId,
-		);
-		const [roomFacts, ...entityFactPools] = await Promise.all([
-			runtime.searchMemories({
-				tableName: "facts",
-				embedding,
+				tableName: "messages",
 				roomId: message.roomId,
-				worldId: message.worldId,
-				limit: CANDIDATE_POOL_PER_SEARCH,
-			}),
-			...relatedEntityIds.map((entityId) =>
+				limit: 10,
+				unique: false,
+			});
+
+			// Build the embedding seed from the most recent five message bodies.
+			const lastMessageLines: string[] = [];
+			for (
+				let i = recentMessages.length - 1;
+				i >= 0 && lastMessageLines.length < 5;
+				i -= 1
+			) {
+				lastMessageLines.push(recentMessages[i]?.content.text ?? "");
+			}
+			lastMessageLines.reverse();
+			const last5Messages = lastMessageLines.join("\n");
+
+			const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+				text: last5Messages,
+			});
+
+			// Two parallel searches, one room-scoped and one entity-scoped, both
+			// over the `facts` table. We over-fetch so that the in-memory kind
+			// partition still leaves enough candidates per kind after filtering.
+			// The runtime search API does not accept metadata filters today, so
+			// the partition happens in TS below.
+			//
+			// We deliberately omit `query` here. Passing a query triggers BM25
+			// lexical reranking inside `runtime.searchMemories`, which silently
+			// drops candidates with zero token overlap and short-circuits the
+			// embedding-similarity ranking we already rely on. The provider
+			// re-ranks by `confidence × timeWeight(kind, age)` immediately
+			// afterward, so adding a lexical filter on top would just hide
+			// otherwise-relevant facts.
+			const relatedEntityIds = await getRelatedEntityIds(
+				runtime,
+				message.entityId,
+			);
+			const [roomFacts, ...entityFactPools] = await Promise.all([
 				runtime.searchMemories({
-					embedding,
 					tableName: "facts",
-					entityId,
+					embedding,
+					roomId: message.roomId,
+					worldId: message.worldId,
 					limit: CANDIDATE_POOL_PER_SEARCH,
 				}),
-			),
-		]);
-		const entityFacts = entityFactPools.flat();
+				...relatedEntityIds.map((entityId) =>
+					runtime.searchMemories({
+						embedding,
+						tableName: "facts",
+						entityId,
+						limit: CANDIDATE_POOL_PER_SEARCH,
+					}),
+				),
+			]);
+			const entityFacts = entityFactPools.flat();
 
-		const dedupedPool = dedupeById([...roomFacts, ...entityFacts]);
-		const { durable: durableCandidates, current: currentCandidates } =
-			partitionByKind(dedupedPool);
+			const dedupedPool = dedupeById([...roomFacts, ...entityFacts]);
+			const { durable: durableCandidates, current: currentCandidates } =
+				partitionByKind(dedupedPool);
 
-		const nowMs = Date.now();
-		const durableFacts = rankByScore(durableCandidates, "durable", nowMs).slice(
-			0,
-			TOP_PER_KIND,
-		);
-		const currentFacts = rankByScore(currentCandidates, "current", nowMs).slice(
-			0,
-			TOP_PER_KIND,
-		);
-		const allFacts = [...durableFacts, ...currentFacts];
+			const nowMs = Date.now();
+			const durableFacts = rankByScore(
+				durableCandidates,
+				"durable",
+				nowMs,
+			).slice(0, TOP_PER_KIND);
+			const currentFacts = rankByScore(
+				currentCandidates,
+				"current",
+				nowMs,
+			).slice(0, TOP_PER_KIND);
+			const allFacts = [...durableFacts, ...currentFacts];
 
-		if (allFacts.length === 0) {
-			return {
-				values: { facts: "" },
-				data: {
-					facts: allFacts,
-					durableFacts,
-					currentFacts,
-				},
-				text: "No facts available.",
-			};
-		}
+			if (allFacts.length === 0) {
+				return {
+					values: { facts: "" },
+					data: {
+						facts: allFacts,
+						durableFacts,
+						currentFacts,
+					},
+					text: "No facts available.",
+				};
+			}
 
-		const agentName = runtime.character.name ?? "Agent";
-		const senderName =
-			(typeof message.content.senderName === "string" &&
-				message.content.senderName) ||
-			(typeof message.content.name === "string" && message.content.name) ||
-			"the speaker";
+			const agentName = runtime.character.name ?? "Agent";
+			const senderName =
+				(typeof message.content.senderName === "string" &&
+					message.content.senderName) ||
+				(typeof message.content.name === "string" && message.content.name) ||
+				"the speaker";
 
-		const sections: string[] = [];
-		if (durableFacts.length > 0) {
-			const durableHeader = `Things ${agentName} knows about ${senderName}:`;
-			sections.push(
-				`${durableHeader}\n${formatLines(durableFacts, "durable")}`,
-			);
-		}
-		if (currentFacts.length > 0) {
-			const currentHeader = `What's currently happening for ${senderName}:`;
-			sections.push(
-				`${currentHeader}\n${formatLines(currentFacts, "current")}`,
-			);
-		}
+			const sections: string[] = [];
+			if (durableFacts.length > 0) {
+				const durableHeader = `Things ${agentName} knows about ${senderName}:`;
+				sections.push(
+					`${durableHeader}\n${formatLines(durableFacts, "durable")}`,
+				);
+			}
+			if (currentFacts.length > 0) {
+				const currentHeader = `What's currently happening for ${senderName}:`;
+				sections.push(
+					`${currentHeader}\n${formatLines(currentFacts, "current")}`,
+				);
+			}
 
-		const text = sections.join("\n\n");
-		const formattedFacts = [
-			formatLines(durableFacts, "durable"),
-			formatLines(currentFacts, "current"),
-		]
-			.filter((part) => part.length > 0)
-			.join("\n");
+			const text = sections.join("\n\n");
+			const formattedFacts = [
+				formatLines(durableFacts, "durable"),
+				formatLines(currentFacts, "current"),
+			]
+				.filter((part) => part.length > 0)
+				.join("\n");
 
 			return {
 				values: { facts: formattedFacts },

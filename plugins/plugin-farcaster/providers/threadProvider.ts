@@ -87,12 +87,56 @@ export const farcasterThreadProvider: Provider = {
       };
     }
 
-    let threadMessages;
     try {
-      threadMessages = await messageService.getThread({
+      const threadMessages = await messageService.getThread({
         agentId: runtime.agentId,
         castHash,
       });
+
+      if (!threadMessages || threadMessages.length === 0) {
+        runtime.logger.debug(
+          { castHash },
+          "[FarcasterThreadProvider] No thread messages retrieved for cast."
+        );
+        return {
+          text: "No Farcaster thread context available.",
+          data: { available: false, castHash, count: 0 },
+        };
+      }
+
+      const shownThreadMessages = threadMessages.slice(-MAX_THREAD_MESSAGES_IN_STATE);
+      const formattedThread = shownThreadMessages
+        .map((msg, index) => {
+          const time = formatTimestamp(msg.timestamp);
+          const username = msg.username || msg.userId || "unknown";
+          const marker = index === shownThreadMessages.length - 1 ? "→" : "•";
+          const text =
+            msg.text && msg.text.trim().length > 0 ? truncateCastText(msg.text) : "<no text>";
+          return `${marker} [${time}] @${username}: ${text}`;
+        })
+        .join("\n");
+
+      return {
+        text: `# Farcaster Thread Context\n${formattedThread}`,
+        data: {
+          available: true,
+          castHash,
+          count: threadMessages.length,
+          shown: shownThreadMessages.length,
+          truncated: threadMessages.length > shownThreadMessages.length,
+        },
+        values: {
+          farcasterThread: formattedThread,
+          farcasterCastHash: castHash,
+          farcasterCurrentCastText: truncateCastText(
+            threadMessages[threadMessages.length - 1]?.text ?? ""
+          ),
+          farcasterParentCastText:
+            threadMessages.length > 1
+              ? truncateCastText(threadMessages[threadMessages.length - 2]?.text ?? "")
+              : "",
+        },
+      };
     } catch (error) {
       return {
         text: "Unable to load Farcaster thread context.",
@@ -104,50 +148,5 @@ export const farcasterThreadProvider: Provider = {
         values: {},
       };
     }
-
-    if (!threadMessages || threadMessages.length === 0) {
-      runtime.logger.debug(
-        { castHash },
-        "[FarcasterThreadProvider] No thread messages retrieved for cast."
-      );
-      return {
-        text: "No Farcaster thread context available.",
-        data: { available: false, castHash, count: 0 },
-      };
-    }
-
-    const shownThreadMessages = threadMessages.slice(-MAX_THREAD_MESSAGES_IN_STATE);
-    const formattedThread = shownThreadMessages
-      .map((msg, index) => {
-        const time = formatTimestamp(msg.timestamp);
-        const username = msg.username || msg.userId || "unknown";
-        const marker = index === shownThreadMessages.length - 1 ? "→" : "•";
-        const text =
-          msg.text && msg.text.trim().length > 0 ? truncateCastText(msg.text) : "<no text>";
-        return `${marker} [${time}] @${username}: ${text}`;
-      })
-      .join("\n");
-
-    return {
-      text: `# Farcaster Thread Context\n${formattedThread}`,
-      data: {
-        available: true,
-        castHash,
-        count: threadMessages.length,
-        shown: shownThreadMessages.length,
-        truncated: threadMessages.length > shownThreadMessages.length,
-      },
-      values: {
-        farcasterThread: formattedThread,
-        farcasterCastHash: castHash,
-        farcasterCurrentCastText: truncateCastText(
-          threadMessages[threadMessages.length - 1]?.text ?? ""
-        ),
-        farcasterParentCastText:
-          threadMessages.length > 1
-            ? truncateCastText(threadMessages[threadMessages.length - 2]?.text ?? "")
-            : "",
-      },
-    };
   },
 };

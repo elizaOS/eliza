@@ -12,7 +12,7 @@ function makeRuntime(settings: Record<string, unknown> = {}): IAgentRuntime {
 const message = {} as Memory;
 const state: State | undefined = undefined;
 
-describe("WEB_SEARCH (stub)", () => {
+describe("CODE_WEB_SEARCH (stub)", () => {
   it("returns success with stub:true and echoes the query", async () => {
     const runtime = makeRuntime();
     const result = await webSearchAction.handler!(runtime, message, state, {

@@ -4,6 +4,7 @@ import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
 	Action,
+	ActionMode,
 	ActionResult,
 	AgentContext,
 	Evaluator,
@@ -324,6 +325,27 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		responses?: Memory[],
 	): Promise<Evaluator[] | null>;
 
+	/**
+	 * Run actions whose `mode` matches one of the 9 hook positions
+	 * (ALWAYS_x/CONTEXT_x/MESSAGE_x). The runtime fires this at fixed
+	 * positions in the message pipeline. CONTEXT_x hooks are gated by
+	 * `options.selectedContexts` overlapping the action's `contexts`.
+	 * x_DURING modes execute handlers in parallel; all other hook modes
+	 * run sequentially in `modePriority` order. ACTION_STARTED /
+	 * ACTION_COMPLETED events fire so the v5 dashboard surfaces hook runs.
+	 */
+	runActionsByMode(
+		mode: ActionMode,
+		message: Memory,
+		state?: State,
+		options?: {
+			didRespond?: boolean;
+			callback?: HandlerCallback;
+			responses?: Memory[];
+			selectedContexts?: readonly AgentContext[];
+		},
+	): Promise<Action[]>;
+
 	registerProvider(provider: Provider): void;
 
 	registerAction(action: Action): void;
@@ -578,8 +600,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json";
-			forceFormat?: "json";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;

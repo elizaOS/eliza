@@ -11,6 +11,18 @@ import { getCoordinator } from "../services/pty-service.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import { resolveTaskThreadTarget } from "./task-thread-target.js";
 
+const deprecatedActionWarnings = new Set<string>();
+
+function warnDeprecatedSpawnSurface(
+  actionName: string,
+  replacement: string,
+): void {
+  if (deprecatedActionWarnings.has(actionName)) return;
+  deprecatedActionWarnings.add(actionName);
+  console.warn(
+    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+  );
+}
 type TaskControlOperation =
   | "pause"
   | "stop"
@@ -51,6 +63,10 @@ function inferOperation(
   return null;
 }
 
+/**
+ * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
+ * Use @elizaos/plugin-acpx session control actions instead. This action remains during the migration window.
+ */
 export const taskControlAction: Action = {
   name: "TASK_CONTROL",
   contexts: ["tasks", "automation", "agent_internal"],
@@ -109,6 +125,10 @@ export const taskControlAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    warnDeprecatedSpawnSurface(
+      "taskControlAction",
+      "@elizaos/plugin-acpx session control actions",
+    );
     const access = await requireTaskAgentAccess(runtime, message, "interact");
     if (!access.allowed) {
       if (callback) {

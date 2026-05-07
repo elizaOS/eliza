@@ -4,7 +4,13 @@ import type {
   RecordLlmCallDetails,
 } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
-import { logger, recordLlmCall } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  logger,
+  recordLlmCall,
+  renderChatMessagesForPrompt,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
 import {
   createGoogleGenAI,
   getActionPlannerModel,
@@ -105,6 +111,27 @@ function buildPromptParts(prompt: string, attachments?: ChatAttachment[]) {
   return parts;
 }
 
+function resolveGoogleSystemInstruction(
+  runtime: IAgentRuntime,
+  params: GenerateTextParamsWithAttachments,
+): string | undefined {
+  return resolveEffectiveSystemPrompt({
+    params,
+    fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
+  });
+}
+
+function resolveGooglePrompt(
+  params: GenerateTextParamsWithAttachments,
+  systemInstruction: string | undefined,
+): string {
+  return (
+    renderChatMessagesForPrompt(params.messages, {
+      omitDuplicateSystem: systemInstruction,
+    }) ?? params.prompt
+  );
+}
+
 function getModelNameForType(
   runtime: IAgentRuntime,
   modelType: string,
@@ -192,14 +219,14 @@ async function generateContentWithTrajectory(
 
 export async function handleTextSmall(
   runtime: IAgentRuntime,
-  {
-    prompt,
+  params: GenerateTextParamsWithAttachments,
+): Promise<string> {
+  const {
     stopSequences = [],
     maxTokens = 8192,
     temperature = 0.7,
     attachments,
-  }: GenerateTextParamsWithAttachments,
-): Promise<string> {
+  } = params;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -210,13 +237,14 @@ export async function handleTextSmall(
   logger.log(`[TEXT_SMALL] Using model: ${modelName}`);
 
   try {
-    const systemInstruction = runtime.character.system || undefined;
+    const systemInstruction = resolveGoogleSystemInstruction(runtime, params);
+    const promptText = resolveGooglePrompt(params, systemInstruction);
     return await generateContentWithTrajectory(
       runtime,
       genAI,
       modelName,
       TEXT_SMALL_MODEL_TYPE,
-      prompt,
+      promptText,
       systemInstruction,
       temperature,
       maxTokens,
@@ -224,8 +252,13 @@ export async function handleTextSmall(
         model: modelName,
         contents:
           (attachments?.length ?? 0) > 0
-            ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
-            : prompt,
+            ? [
+                {
+                  role: "user",
+                  parts: buildPromptParts(promptText, attachments),
+                },
+              ]
+            : promptText,
         config: {
           temperature,
           topK: 40,
@@ -247,14 +280,14 @@ export async function handleTextSmall(
 
 export async function handleTextLarge(
   runtime: IAgentRuntime,
-  {
-    prompt,
+  params: GenerateTextParamsWithAttachments,
+): Promise<string> {
+  const {
     stopSequences = [],
     maxTokens = 8192,
     temperature = 0.7,
     attachments,
-  }: GenerateTextParamsWithAttachments,
-): Promise<string> {
+  } = params;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -265,13 +298,14 @@ export async function handleTextLarge(
   logger.log(`[TEXT_LARGE] Using model: ${modelName}`);
 
   try {
-    const systemInstruction = runtime.character.system || undefined;
+    const systemInstruction = resolveGoogleSystemInstruction(runtime, params);
+    const promptText = resolveGooglePrompt(params, systemInstruction);
     return await generateContentWithTrajectory(
       runtime,
       genAI,
       modelName,
       TEXT_LARGE_MODEL_TYPE,
-      prompt,
+      promptText,
       systemInstruction,
       temperature,
       maxTokens,
@@ -279,8 +313,13 @@ export async function handleTextLarge(
         model: modelName,
         contents:
           (attachments?.length ?? 0) > 0
-            ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
-            : prompt,
+            ? [
+                {
+                  role: "user",
+                  parts: buildPromptParts(promptText, attachments),
+                },
+              ]
+            : promptText,
         config: {
           temperature,
           topK: 40,
@@ -338,14 +377,14 @@ export async function handleActionPlanner(
 async function handleTextWithType(
   runtime: IAgentRuntime,
   modelType: string,
-  {
-    prompt,
+  params: GenerateTextParamsWithAttachments,
+): Promise<string> {
+  const {
     stopSequences = [],
     maxTokens = 8192,
     temperature = 0.7,
     attachments,
-  }: GenerateTextParamsWithAttachments,
-): Promise<string> {
+  } = params;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -356,13 +395,14 @@ async function handleTextWithType(
   logger.log(`[${modelType}] Using model: ${modelName}`);
 
   try {
-    const systemInstruction = runtime.character.system || undefined;
+    const systemInstruction = resolveGoogleSystemInstruction(runtime, params);
+    const promptText = resolveGooglePrompt(params, systemInstruction);
     return await generateContentWithTrajectory(
       runtime,
       genAI,
       modelName,
       modelType,
-      prompt,
+      promptText,
       systemInstruction,
       temperature,
       maxTokens,
@@ -370,8 +410,13 @@ async function handleTextWithType(
         model: modelName,
         contents:
           (attachments?.length ?? 0) > 0
-            ? [{ role: "user", parts: buildPromptParts(prompt, attachments) }]
-            : prompt,
+            ? [
+                {
+                  role: "user",
+                  parts: buildPromptParts(promptText, attachments),
+                },
+              ]
+            : promptText,
         config: {
           temperature,
           topK: 40,

@@ -13,6 +13,18 @@ import type {
   TaskThreadStatus,
 } from "../services/task-registry.js";
 
+const deprecatedActionWarnings = new Set<string>();
+
+function warnDeprecatedSpawnSurface(
+  actionName: string,
+  replacement: string,
+): void {
+  if (deprecatedActionWarnings.has(actionName)) return;
+  deprecatedActionWarnings.add(actionName);
+  console.warn(
+    `[plugin-agent-orchestrator] ${actionName} is deprecated. Use ${replacement} from @elizaos/plugin-acpx instead.`,
+  );
+}
 type HistoryMetric = "list" | "count" | "detail";
 type HistoryWindow =
   | "active"
@@ -183,6 +195,10 @@ function renderThreadLine(entry: {
   return `- ${entry.title} [${entry.status}] (${activity})${entry.summary ? `: ${entry.summary}` : ""}`;
 }
 
+/**
+ * @deprecated The plugin-agent-orchestrator PTY spawn surface is deprecated.
+ * Use @elizaos/plugin-acpx session history/list actions instead. This action remains during the migration window.
+ */
 export const taskHistoryAction: Action = {
   name: "TASK_HISTORY",
   contexts: ["tasks", "automation", "agent_internal"],
@@ -239,6 +255,10 @@ export const taskHistoryAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
+    warnDeprecatedSpawnSurface(
+      "taskHistoryAction",
+      "@elizaos/plugin-acpx session history/list actions",
+    );
     const access = await requireTaskAgentAccess(runtime, message, "interact");
     if (!access.allowed) {
       if (callback) {

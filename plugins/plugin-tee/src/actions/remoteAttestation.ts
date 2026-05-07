@@ -15,6 +15,7 @@ export const remoteAttestationAction: Action = {
   name: "REMOTE_ATTESTATION",
   contexts: ["admin", "secrets", "agent_internal"],
   contextGate: { anyOf: ["admin", "secrets", "agent_internal"] },
+  roleGate: { minRole: "ADMIN" },
 
   similes: [
     "REMOTE_ATTESTATION",
@@ -46,7 +47,7 @@ export const remoteAttestationAction: Action = {
     const __avKeywordOk =
       __avKeywords.length > 0 &&
       __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = new RegExp("\\b(?:remote|attestation)\\b", "i");
+    const __avRegex = /\b(?:remote|attestation)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
     const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";

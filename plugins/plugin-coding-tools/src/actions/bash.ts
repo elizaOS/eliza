@@ -2,11 +2,11 @@ import * as fs from "node:fs/promises";
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -75,9 +75,9 @@ export const bashAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["SHELL", "EXEC", "RUN_COMMAND"],
   description:
-    "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd unless an explicit cwd inside the sandbox roots is supplied. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Respects the sandbox command denylist.",
+    "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd by default. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Paths under the configured blocklist (e.g. ~/pvt, ~/Library, ~/.ssh) are off-limits as cwd.",
   descriptionCompressed:
-    "Run a shell command (foreground or background) within sandbox roots.",
+    "Run a shell command (foreground or background).",
   parameters: [
     {
       name: "command",
@@ -93,14 +93,15 @@ export const bashAction: Action = {
     },
     {
       name: "timeout",
-      description: "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+      description:
+        "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "cwd",
       description:
-        "Absolute working directory; must resolve inside the configured workspace roots. Defaults to the session cwd.",
+        "Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
       required: false,
       schema: { type: "string" },
     },
@@ -112,7 +113,11 @@ export const bashAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (disable === true || disable === "true" || disable === "1") return false;
     return true;
@@ -133,10 +138,14 @@ export const bashAction: Action = {
     }
     const description = readStringParam(options, "description");
     const cwdParam = readStringParam(options, "cwd");
-    const runInBackground = readBoolParam(options, "run_in_background") ?? false;
+    const runInBackground =
+      readBoolParam(options, "run_in_background") ?? false;
 
     if (!message.roomId) {
-      return failureToActionResult({ reason: "missing_param", message: "no roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "no roomId",
+      });
     }
     const conversationId = String(message.roomId);
 
@@ -156,20 +165,12 @@ export const bashAction: Action = {
       });
     }
 
-    const cmdCheck = sandbox.validateCommand(command);
-    if (!cmdCheck.ok) {
-      return failureToActionResult({
-        reason: "command_denied",
-        message: `${cmdCheck.message} (pattern=${cmdCheck.pattern})`,
-      });
-    }
-
     let cwd: string;
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
       if (!v.ok) {
         return failureToActionResult({
-          reason: v.reason === "outside_roots" ? "path_outside_roots" : "path_blocked",
+          reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
           message: v.message,
         });
       }
@@ -189,22 +190,7 @@ export const bashAction: Action = {
       }
       cwd = v.resolved;
     } else {
-      const defaultCwd = session.getCwd(conversationId);
-      const v = await sandbox.validatePath(conversationId, defaultCwd);
-      if (v.ok) {
-        cwd = v.resolved;
-      } else {
-        // Default cwd outside configured roots: fall back to first root so we
-        // never spawn into an unsealed location.
-        const roots = sandbox.rootsFor(conversationId);
-        if (roots.length === 0) {
-          return failureToActionResult({
-            reason: "internal",
-            message: "no workspace roots configured",
-          });
-        }
-        cwd = roots[0]!;
-      }
+      cwd = session.getCwd(conversationId);
     }
 
     const defaultTimeout = readPositiveIntSetting(
@@ -217,13 +203,20 @@ export const bashAction: Action = {
       "CODING_TOOLS_BASH_BG_BUDGET_MS",
       DEFAULT_BG_BUDGET_MS,
     );
-    const timeout = clampTimeout(readNumberParam(options, "timeout"), defaultTimeout);
+    const timeout = clampTimeout(
+      readNumberParam(options, "timeout"),
+      defaultTimeout,
+    );
 
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} BASH ${runInBackground ? "(bg)" : "(fg)"} cwd=${cwd} timeout=${timeout}ms`,
     );
 
-    const startOpts: { command: string; cwd: string; description?: string } = {
+    const startOpts: {
+      command: string;
+      cwd: string;
+      description?: string;
+    } = {
       command,
       cwd,
     };
@@ -265,11 +258,8 @@ export const bashAction: Action = {
       );
     }
 
-    // Still running. If timeout <= bg_budget, the timeout fired first → kill.
-    // Otherwise the foreground budget elapsed → auto-promote.
     if (timeout <= bgBudget) {
       tasks.stop_(rec.id);
-      // Brief grace so any flushed output is captured before we report.
       await tasks.waitFor(rec.id, 500);
       const final = tasks.get(rec.id);
       const took = (final?.endedAt ?? Date.now()) - startedAt;

@@ -237,17 +237,21 @@ export const manageZones = {
         });
       }
 
-      const text =
-        (zoneTextFromOptions(_options)?.toLowerCase() ||
-          message.content.text?.toLowerCase() ||
-          "").slice(0, maxCommandBytes);
+      const text = (
+        zoneTextFromOptions(_options)?.toLowerCase() ||
+        message.content.text?.toLowerCase() ||
+        ""
+      ).slice(0, maxCommandBytes);
 
       // Parse command
       if (text.includes("create zone")) {
         return Promise.race([
           handleCreateZone(zoneManager, text, effectiveCallback, source),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("zone operation timed out")), timeoutMs),
+            setTimeout(
+              () => reject(new Error("zone operation timed out")),
+              timeoutMs,
+            ),
           ),
         ]);
       } else if (text.includes("delete zone") || text.includes("remove zone")) {

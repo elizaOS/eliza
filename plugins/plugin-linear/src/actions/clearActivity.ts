@@ -78,7 +78,10 @@ export const clearActivityAction: Action = {
       await Promise.race([
         linearService.clearActivityLog(),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Linear clear activity timeout")), CLEAR_ACTIVITY_TIMEOUT_MS)
+          setTimeout(
+            () => reject(new Error("Linear clear activity timeout")),
+            CLEAR_ACTIVITY_TIMEOUT_MS
+          )
         ),
       ]);
 

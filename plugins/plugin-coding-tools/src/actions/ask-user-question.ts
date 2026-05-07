@@ -1,11 +1,11 @@
 import {
   type Action,
   type ActionResult,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger as coreLogger,
 } from "@elizaos/core";
 
 import {
@@ -31,7 +31,11 @@ export interface Question {
 const MIN_QUESTIONS = 1;
 const MAX_QUESTIONS = 4;
 
-function parseOption(raw: unknown, qIdx: number, oIdx: number): QuestionOption | { error: string } {
+function parseOption(
+  raw: unknown,
+  qIdx: number,
+  oIdx: number,
+): QuestionOption | { error: string } {
   if (!raw || typeof raw !== "object") {
     return { error: `questions[${qIdx}].options[${oIdx}] must be an object` };
   }
@@ -48,7 +52,10 @@ function parseOption(raw: unknown, qIdx: number, oIdx: number): QuestionOption |
   return out;
 }
 
-function parseQuestion(raw: unknown, idx: number): Question | { error: string } {
+function parseQuestion(
+  raw: unknown,
+  idx: number,
+): Question | { error: string } {
   if (!raw || typeof raw !== "object") {
     return { error: `questions[${idx}] must be an object` };
   }
@@ -74,7 +81,9 @@ function parseQuestion(raw: unknown, idx: number): Question | { error: string } 
 
   if (obj.options !== undefined) {
     if (!Array.isArray(obj.options)) {
-      return { error: `questions[${idx}].options must be an array when provided` };
+      return {
+        error: `questions[${idx}].options must be an array when provided`,
+      };
     }
     if (obj.options.length > 0) {
       const opts: QuestionOption[] = [];
@@ -112,6 +121,7 @@ export const askUserQuestionAction: Action = {
   name: "ASK_USER_QUESTION",
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: ["code", "terminal", "automation"] },
+  roleGate: { minRole: "ADMIN" },
   similes: ["ASK", "CLARIFY"],
   description:
     "Broadcast 1-4 structured questions back to the user. Each question has a short header, a full question string, and optional multi-choice options with descriptions and previews. This is a structured-question broadcast surface — the action returns the question payload as data so a UI layer can render it; the action does NOT block waiting for an answer. UI integration is pending; for now treat the response as a published question, not as an interactive prompt.",
@@ -149,7 +159,11 @@ export const askUserQuestionAction: Action = {
       },
     },
   ],
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ) => {
     const disable = runtime.getSetting?.("CODING_TOOLS_DISABLE");
     if (disable === true || disable === "true" || disable === "1") return false;
     return true;
@@ -163,7 +177,10 @@ export const askUserQuestionAction: Action = {
   ): Promise<ActionResult> => {
     const conversationId = message.roomId ? String(message.roomId) : undefined;
     if (!conversationId) {
-      return failureToActionResult({ reason: "missing_param", message: "missing roomId" });
+      return failureToActionResult({
+        reason: "missing_param",
+        message: "missing roomId",
+      });
     }
 
     const rawQuestions = readArrayParam(options, "questions");
@@ -173,7 +190,10 @@ export const askUserQuestionAction: Action = {
         message: "questions is required and must be an array",
       });
     }
-    if (rawQuestions.length < MIN_QUESTIONS || rawQuestions.length > MAX_QUESTIONS) {
+    if (
+      rawQuestions.length < MIN_QUESTIONS ||
+      rawQuestions.length > MAX_QUESTIONS
+    ) {
       return failureToActionResult({
         reason: "invalid_param",
         message: `questions must contain ${MIN_QUESTIONS}-${MAX_QUESTIONS} items, got ${rawQuestions.length}`,
@@ -184,7 +204,10 @@ export const askUserQuestionAction: Action = {
     for (let i = 0; i < rawQuestions.length; i++) {
       const parsed = parseQuestion(rawQuestions[i], i);
       if ("error" in parsed) {
-        return failureToActionResult({ reason: "invalid_param", message: parsed.error });
+        return failureToActionResult({
+          reason: "invalid_param",
+          message: parsed.error,
+        });
       }
       questions.push(parsed);
     }

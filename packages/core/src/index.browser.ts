@@ -22,7 +22,7 @@ export {
 	type FetchKnowledgeFromUrlOptions,
 	fetchKnowledgeFromUrl,
 	isYouTubeUrl,
-} from "./features/knowledge/index";
+} from "./features/documents/index";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 export * from "./memory";
@@ -32,7 +32,9 @@ export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
+export * from "./runtime/system-prompt";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";

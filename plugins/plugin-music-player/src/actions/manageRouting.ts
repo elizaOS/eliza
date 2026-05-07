@@ -242,10 +242,11 @@ export const manageRouting = {
         );
       }
 
-      const text =
-        (routingTextFromOptions(_options)?.toLowerCase() ||
-          message.content.text?.toLowerCase() ||
-          "").slice(0, maxCommandBytes);
+      const text = (
+        routingTextFromOptions(_options)?.toLowerCase() ||
+        message.content.text?.toLowerCase() ||
+        ""
+      ).slice(0, maxCommandBytes);
 
       // Parse command
       if (text.includes("set mode") || text.includes("switch mode")) {
@@ -257,14 +258,20 @@ export const manageRouting = {
         return Promise.race([
           handleStartRouting(routingService, text, effectiveCallback, source),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("routing operation timed out")), timeoutMs),
+            setTimeout(
+              () => reject(new Error("routing operation timed out")),
+              timeoutMs,
+            ),
           ),
         ]);
       } else if (text.includes("stop routing")) {
         return Promise.race([
           handleStopRouting(routingService, text, effectiveCallback, source),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("routing stop timed out")), timeoutMs),
+            setTimeout(
+              () => reject(new Error("routing stop timed out")),
+              timeoutMs,
+            ),
           ),
         ]);
       } else if (

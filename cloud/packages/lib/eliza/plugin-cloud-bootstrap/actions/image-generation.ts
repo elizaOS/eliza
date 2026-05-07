@@ -1,4 +1,11 @@
-/** GENERATE_IMAGE Action - Generates an image based on a prompt. */
+/**
+ * Cloud-local GENERATE_IMAGE mirror.
+ *
+ * The canonical local-runtime GENERATE_IMAGE semantics live in
+ * @elizaos/core advanced capabilities. Cloud bootstrap runs in cloud assistant
+ * deployments instead of the local agent/core action stack, so this keeps the
+ * public cloud planner action name while preserving callback/result parity.
+ */
 import {
   type ActionExample,
   type ActionResult,
@@ -126,6 +133,7 @@ export const generateImageAction: ActionWithParams = {
   name: "GENERATE_IMAGE",
   contexts: IMAGE_CONTEXTS,
   contextGate: { anyOf: IMAGE_CONTEXTS },
+  roleGate: { minRole: "USER" },
   similes: ["DRAW", "CREATE_IMAGE", "RENDER_IMAGE", "VISUALIZE"],
   description:
     "Generates an image based on a prompt. Use when the user wants to visualize, illustrate, or see something visually.",

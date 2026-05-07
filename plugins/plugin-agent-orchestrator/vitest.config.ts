@@ -11,7 +11,6 @@ export default defineConfig({
     include: [
       "src/__tests__/task-agent-live.e2e.test.ts",
       "src/__tests__/coding-task-launch-failure-message.test.ts",
-      "src/__tests__/codex-model-provider.test.ts",
       "src/__tests__/task-agent-frameworks.test.ts",
       "src/__tests__/skill-manifest.test.ts",
       "src/__tests__/skill-recommender.test.ts",

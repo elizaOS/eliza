@@ -234,8 +234,9 @@ async function generateText(
   model: string,
   params: GenerateTextParams,
 ): Promise<string | TextStreamResult> {
+  const promptText = params.prompt ?? "";
   const messages: ChatMessage[] = [];
-  messages.push({ role: "user", content: params.prompt });
+  messages.push({ role: "user", content: promptText });
 
   const body: Record<string, unknown> = {
     model,
@@ -261,7 +262,7 @@ async function generateText(
       {
         model,
         systemPrompt: "",
-        userPrompt: params.prompt,
+        userPrompt: promptText,
         temperature: params.temperature ?? 0,
         maxTokens: params.maxTokens ?? 0,
         purpose: "external_llm",
@@ -322,7 +323,7 @@ async function generateText(
           runtime,
           modelType,
           responseModel,
-          usage ?? estimateUsage(params.prompt, fullText),
+          usage ?? estimateUsage(promptText, fullText),
         );
         return fullText;
       },
@@ -334,7 +335,7 @@ async function generateText(
     {
       model,
       systemPrompt: "",
-      userPrompt: params.prompt,
+      userPrompt: promptText,
       temperature: params.temperature ?? 0,
       maxTokens: params.maxTokens ?? 0,
       purpose: "external_llm",
@@ -363,7 +364,7 @@ async function generateText(
         runtime,
         modelType,
         data.model || model,
-        normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt, text),
+        normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt ?? "", text),
       );
       return text;
     },

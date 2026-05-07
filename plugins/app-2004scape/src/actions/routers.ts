@@ -260,7 +260,7 @@ const WALK_TO_DESCRIPTION_COMPRESSED =
   "Walk to coordinate or named destination.";
 
 export const rs2004WalkToAction: Action = {
-  name: "WALK_TO",
+  name: "RS_2004_WALK_TO",
   description:
     "Walk to a coordinate or named destination. Provide either destination: name OR x: N, z: N.",
   descriptionCompressed: WALK_TO_DESCRIPTION_COMPRESSED,
@@ -310,7 +310,7 @@ export const rs2004WalkToAction: Action = {
   ): Promise<RouterActionResult> => {
     const service = getRsSdkGameService(runtime);
     if (!service) {
-      return routerError("WALK_TO", "Game service not available.");
+      return routerError("RS_2004_WALK_TO", "Game service not available.");
     }
 
     const params = {
@@ -319,13 +319,13 @@ export const rs2004WalkToAction: Action = {
     };
     try {
       const result = await service.executeAction("walkTo", params);
-      callback?.({ text: result.message, action: "WALK_TO" });
+      callback?.({ text: result.message, action: "RS_2004_WALK_TO" });
       return toRouterResult(result);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown walk failure.";
-      const text = `WALK_TO failed: ${message}`;
-      callback?.({ text, action: "WALK_TO" });
+      const text = `RS_2004_WALK_TO failed: ${message}`;
+      callback?.({ text, action: "RS_2004_WALK_TO" });
       return { success: false, text, error: message };
     }
   },

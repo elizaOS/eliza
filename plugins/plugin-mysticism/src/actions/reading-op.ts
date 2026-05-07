@@ -457,6 +457,7 @@ export const readingOpAction: Action = {
   name: "READING_OP",
   contexts: ["knowledge", "general"],
   contextGate: { anyOf: ["knowledge", "general"] },
+  roleGate: { minRole: "USER" },
   similes: [
     "TAROT_READING",
     "READ_TAROT",

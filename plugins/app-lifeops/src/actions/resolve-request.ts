@@ -16,6 +16,7 @@ import {
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
+import { executeApprovedBookTravel } from "./book-travel.js";
 import {
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,
@@ -26,7 +27,6 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
-import { executeApprovedBookTravel } from "./book-travel.js";
 
 const ACTION_NAME = "RESOLVE_REQUEST";
 
@@ -394,7 +394,7 @@ export const resolveRequestAction: Action & {
     "approve|reject pending request from queue: send_email send_message book_travel voice_call multilingual",
   contexts: ["email", "messaging", "calendar", "tasks", "contacts", "payments"],
   roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+  validate: async () => true,
   parameters: [
     {
       name: "subaction",
@@ -418,9 +418,6 @@ export const resolveRequestAction: Action & {
     },
   ],
   handler: async (runtime, message, state, options, callback) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return denied("PERMISSION_DENIED");
-    }
     const resolved = await resolveActionArgs<
       ResolveSubaction,
       ResolveRequestParameters

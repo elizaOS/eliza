@@ -169,7 +169,10 @@ export const updateIssueAction: Action = {
           prompt: prompt,
         }),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Linear update extraction timeout")), LINEAR_MODEL_TIMEOUT_MS)
+          setTimeout(
+            () => reject(new Error("Linear update extraction timeout")),
+            LINEAR_MODEL_TIMEOUT_MS
+          )
         ),
       ]);
 
@@ -225,11 +228,13 @@ export const updateIssueAction: Action = {
         if (assignee) {
           const cleanAssignee = assignee.replace(/^@/, "");
           const users = await linearService.getUsers();
-          const user = users.slice(0, LINEAR_LOOKUP_LIMIT).find(
-            (u) =>
-              u.email === cleanAssignee ||
-              u.name.toLowerCase().includes(cleanAssignee.toLowerCase())
-          );
+          const user = users
+            .slice(0, LINEAR_LOOKUP_LIMIT)
+            .find(
+              (u) =>
+                u.email === cleanAssignee ||
+                u.name.toLowerCase().includes(cleanAssignee.toLowerCase())
+            );
           if (user) {
             updates.assigneeId = user.id;
           } else {
@@ -247,11 +252,13 @@ export const updateIssueAction: Action = {
           } else {
             const states = await linearService.getWorkflowStates(teamId);
 
-            const state = states.slice(0, LINEAR_LOOKUP_LIMIT).find(
-              (s) =>
-                s.name.toLowerCase() === status.toLowerCase() ||
-                s.type.toLowerCase() === status.toLowerCase()
-            );
+            const state = states
+              .slice(0, LINEAR_LOOKUP_LIMIT)
+              .find(
+                (s) =>
+                  s.name.toLowerCase() === status.toLowerCase() ||
+                  s.type.toLowerCase() === status.toLowerCase()
+              );
 
             if (state) {
               updates.stateId = state.id;

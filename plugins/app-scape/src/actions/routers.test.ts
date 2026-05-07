@@ -21,11 +21,11 @@ function makeMemory(text: string): Memory {
 }
 
 describe("scape action registry", () => {
-  it("registers WALK_TO, ATTACK_NPC, CHAT_PUBLIC standalone plus JOURNAL_OP and INVENTORY_OP routers", () => {
+  it("registers SCAPE_WALK_TO, ATTACK_NPC, CHAT_PUBLIC standalone plus JOURNAL_OP and INVENTORY_OP routers", () => {
     const names = scapeActions.map((action) => action.name);
 
     expect(names).toEqual([
-      "WALK_TO",
+      "SCAPE_WALK_TO",
       "ATTACK_NPC",
       "CHAT_PUBLIC",
       "JOURNAL_OP",

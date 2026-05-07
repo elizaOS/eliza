@@ -1,6 +1,6 @@
-import { logger } from "./logger";
 import { resolveDesktopApiPort } from "@elizaos/shared";
 import { DEFAULT_API_PORT } from "./constants";
+import { logger } from "./logger";
 
 type ExternalApiBaseEnvKey =
 	| "ELIZA_DESKTOP_TEST_API_BASE"

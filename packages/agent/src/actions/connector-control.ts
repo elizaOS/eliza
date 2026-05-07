@@ -20,7 +20,6 @@
 import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {
   const port = resolveServerOnlyPort(process.env);
@@ -88,11 +87,12 @@ async function fetchConnectors(base: string): Promise<PluginInfoShape[]> {
 // ---------------------------------------------------------------------------
 
 export const toggleConnectorAction: Action = {
-  name: "TOGGLE_CONNECTOR",
+  name: "SET_CONNECTOR_ENABLED",
   contexts: ["connectors", "settings", "admin"],
   roleGate: { minRole: "OWNER" },
 
   similes: [
+    "TOGGLE_CONNECTOR",
     "ENABLE_CONNECTOR",
     "DISABLE_CONNECTOR",
     "FLIP_CONNECTOR",
@@ -106,18 +106,9 @@ export const toggleConnectorAction: Action = {
   descriptionCompressed:
     "enable disable connector (plugin connector category, discord, telegram, slack) pass enabl true turn enabl false turn off",
 
-  validate: async (runtime, message) => {
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may toggle connectors.",
-      };
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;
     const connectorId =
       typeof params?.connectorId === "string" ? params.connectorId.trim() : "";
@@ -212,12 +203,12 @@ export const toggleConnectorAction: Action = {
 // ---------------------------------------------------------------------------
 
 export const saveConnectorConfigAction: Action = {
-  name: "SAVE_CONNECTOR_CONFIG",
+  name: "CONFIGURE_CONNECTOR",
   contexts: ["connectors", "settings", "secrets", "admin"],
   roleGate: { minRole: "OWNER" },
 
   similes: [
-    "CONFIGURE_CONNECTOR",
+    "SAVE_CONNECTOR_CONFIG",
     "SET_CONNECTOR_CONFIG",
     "UPDATE_CONNECTOR_CONFIG",
     "CONNECTOR_SETTINGS",
@@ -230,18 +221,9 @@ export const saveConnectorConfigAction: Action = {
   descriptionCompressed:
     "save connector configuration (API key, token, endpoint) run automatic connection test use user provide credential connector like Discord, Telegram, Slack",
 
-  validate: async (runtime, message) => {
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may configure connectors.",
-      };
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;
     const connectorId =
       typeof params?.connectorId === "string" ? params.connectorId.trim() : "";
@@ -402,18 +384,9 @@ export const disconnectConnectorAction: Action = {
   descriptionCompressed:
     "disconnect connector sign account, drop session credential, stop sender route connector-specific disconnect endpoint available, otherwise disable plugin",
 
-  validate: async (runtime, message) => {
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may disconnect connectors.",
-      };
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters;
     const connectorId =
       typeof params?.connectorId === "string" ? params.connectorId.trim() : "";
@@ -546,18 +519,9 @@ export const listConnectorsAction: Action = {
   descriptionCompressed:
     "list connector known agent (plugin connector category) enabled/active state",
 
-  validate: async (runtime, message) => {
-    return hasOwnerAccess(runtime, message);
-  },
+  validate: async () => true,
 
-  handler: async (runtime, message, _state, options) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may list connectors.",
-      };
-    }
-
+  handler: async (_runtime, _message, _state, options) => {
     try {
       const base = getApiBase();
       const params = (options as HandlerOptions | undefined)?.parameters as
