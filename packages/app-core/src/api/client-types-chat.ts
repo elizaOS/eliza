@@ -444,6 +444,21 @@ export interface N8nWorkflow {
   connections?: N8nConnectionMap;
 }
 
+export interface N8nWorkflowExecution {
+  id: string;
+  status: "success" | "error" | "running" | "waiting" | "canceled" | "crashed" | "new" | "unknown";
+  startedAt: string;
+  stoppedAt?: string | null;
+  mode?: string;
+  workflowId?: string;
+  data?: {
+    resultData?: {
+      error?: { message?: string };
+      lastNodeExecuted?: string;
+    };
+  };
+}
+
 /**
  * One missing credential entry on a workflow generate response. `authUrl` is
  * a `eliza://settings/connectors/<provider>` deep-link the UI may surface.

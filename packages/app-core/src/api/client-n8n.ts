@@ -10,6 +10,7 @@ import { ElizaClient } from "./client-base";
 import type {
   N8nStatusResponse,
   N8nWorkflow,
+  N8nWorkflowExecution,
   N8nWorkflowGenerateRequest,
   N8nWorkflowGenerateResponse,
   N8nWorkflowResolveClarificationRequest,
@@ -40,6 +41,10 @@ declare module "./client-base" {
     deactivateN8nWorkflow(id: string): Promise<N8nWorkflow>;
     deleteN8nWorkflow(id: string): Promise<{ ok: boolean }>;
     startN8nSidecar(): Promise<{ ok: boolean }>;
+    getN8nWorkflowExecutions(
+      id: string,
+      limit?: number,
+    ): Promise<N8nWorkflowExecution[]>;
   }
 }
 
@@ -171,4 +176,15 @@ ElizaClient.prototype.startN8nSidecar = async function (
   return this.fetch<{ ok: boolean }>("/api/n8n/sidecar/start", {
     method: "POST",
   });
+};
+
+ElizaClient.prototype.getN8nWorkflowExecutions = async function (
+  this: ElizaClient,
+  id: string,
+  limit = 10,
+): Promise<N8nWorkflowExecution[]> {
+  const result = await this.fetch<{ executions?: N8nWorkflowExecution[] }>(
+    `/api/n8n/workflows/${encodeURIComponent(id)}/executions?limit=${limit}`,
+  );
+  return result.executions ?? [];
 };
