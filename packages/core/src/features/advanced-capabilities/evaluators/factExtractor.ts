@@ -21,6 +21,7 @@
 
 import { v4 } from "uuid";
 import type {
+	Action,
 	ActionResult,
 	Evaluator,
 	IAgentRuntime,
@@ -29,7 +30,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
+import { ActionMode, ModelType } from "../../../types/index.ts";
 import type {
 	CurrentFactCategory,
 	CustomMetadata,
@@ -863,10 +864,30 @@ async function handler(
 	};
 }
 
-export const factExtractorEvaluator: Evaluator = {
+/**
+ * Fact extraction as an `ALWAYS_AFTER` action (replaces the legacy evaluator).
+ * Migration target: fold into Stage 1 messageHandler so its single LLM call
+ * also returns factOps[].
+ */
+export const factExtractorAction: Action = {
 	name: "FACT_EXTRACTOR",
 	description:
 		"Single-call fact extractor: classifies and reconciles user claims into the two-store fact memory (durable + current) per message.",
+	similes: ["EXTRACT_FACTS", "FACT_CLASSIFIER", "FACT_OPS"],
+	mode: ActionMode.ALWAYS_AFTER,
+	modePriority: 50,
+	examples: [],
+	validate: validate as Action["validate"],
+	handler: handler as Action["handler"],
+};
+
+/**
+ * @deprecated Re-exported as an evaluator only so legacy registrations don't
+ * break during migration. New code should register `factExtractorAction`.
+ */
+export const factExtractorEvaluator: Evaluator = {
+	name: "FACT_EXTRACTOR",
+	description: factExtractorAction.description,
 	similes: ["EXTRACT_FACTS", "FACT_CLASSIFIER", "FACT_OPS"],
 	alwaysRun: false,
 	examples: [],

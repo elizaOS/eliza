@@ -4,6 +4,7 @@ import { getEntityDetails } from "../../../entities.ts";
 import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { reflectionEvaluatorTemplate } from "../../../prompts.ts";
 import type {
+	Action,
 	ActionResult,
 	Entity,
 	EvaluationExample,
@@ -13,7 +14,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
-import { asUUID, ModelType } from "../../../types/index.ts";
+import { ActionMode, asUUID, ModelType } from "../../../types/index.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { composePrompt, parseJSONObjectFromText } from "../../../utils.ts";
 import {
@@ -873,24 +874,47 @@ async function handler(
 	};
 }
 
+const reflectionValidate = async (
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<boolean> => {
+	if (!message.content?.text?.trim()) {
+		return false;
+	}
+	const lastMessageId = await runtime.getCache<string>(
+		`${message.roomId}-reflection-last-processed`,
+	);
+	return lastMessageId !== (message.id ?? "");
+};
+
+/**
+ * Reflection as an `ALWAYS_AFTER` action. Replaces the legacy evaluator.
+ *
+ * Migration target: shrink the schema to just experience extraction +
+ * 1–10 performance score once relationship updates and fact extraction
+ * have been folded into Stage 1.
+ */
+export const reflectionAction: Action = {
+	name: spec.name,
+	description: spec.description,
+	similes: spec.similes ? [...spec.similes] : [],
+	mode: ActionMode.ALWAYS_AFTER,
+	modePriority: 100,
+	examples: [],
+	validate: reflectionValidate as Action["validate"],
+	handler: handler as Action["handler"],
+};
+
+/**
+ * @deprecated Re-exported as an evaluator only so legacy registrations don't
+ * break during migration. New code should register `reflectionAction`.
+ */
 export const reflectionEvaluator: Evaluator = {
 	name: spec.name,
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? false,
 	examples: (spec.examples ?? []) as EvaluationExample[],
-	validate: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-	): Promise<boolean> => {
-		if (!message.content?.text?.trim()) {
-			return false;
-		}
-
-		const lastMessageId = await runtime.getCache<string>(
-			`${message.roomId}-reflection-last-processed`,
-		);
-		return lastMessageId !== (message.id ?? "");
-	},
+	validate: reflectionValidate,
 	handler,
 };
