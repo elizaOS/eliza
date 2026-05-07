@@ -203,15 +203,54 @@ function shouldReturnNativeResult(params: GenerateTextParams): boolean {
   return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
 }
 
-function toMessages(runtime: IAgentRuntime, params: GenerateTextParams): ChatMessage[] {
-  const messages = params.messages
+/**
+ * Convert a ChatMessage (camelCase) to the OpenAI-compatible HTTP API format
+ * (snake_case). Cerebras's /v1/chat/completions endpoint rejects `toolCalls`
+ * and `toolCallId` — it requires `tool_calls` and `tool_call_id`.
+ */
+function toCerebrasApiMessage(msg: ChatMessage): Record<string, unknown> {
+  if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
+    return {
+      role: "assistant",
+      content: msg.content ?? null,
+      tool_calls: msg.toolCalls.map((tc) => ({
+        id: tc.id,
+        type: tc.type ?? "function",
+        function: {
+          name: typeof tc.name === "string" ? tc.name : "",
+          arguments:
+            typeof tc.arguments === "string"
+              ? tc.arguments
+              : JSON.stringify(tc.arguments ?? {}),
+        },
+      })),
+    };
+  }
+  if (msg.role === "tool") {
+    return {
+      role: "tool",
+      tool_call_id: msg.toolCallId ?? "",
+      content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content ?? ""),
+    };
+  }
+  // system / user / developer / assistant (no tool calls)
+  return {
+    role: msg.role,
+    content: msg.content ?? null,
+    ...(msg.name ? { name: msg.name } : {}),
+  };
+}
+
+function toMessages(runtime: IAgentRuntime, params: GenerateTextParams): Record<string, unknown>[] {
+  const messages: ChatMessage[] = params.messages
     ? [...params.messages]
     : [{ role: "user" as const, content: params.prompt }];
   const system = runtime.character?.system;
-  if (system && !messages.some((message) => message.role === "system")) {
-    return [{ role: "system", content: system }, ...messages];
-  }
-  return messages;
+  const withSystem: ChatMessage[] =
+    system && !messages.some((message) => message.role === "system")
+      ? [{ role: "system", content: system }, ...messages]
+      : messages;
+  return withSystem.map(toCerebrasApiMessage);
 }
 
 /**
