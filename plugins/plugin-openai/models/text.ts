@@ -884,7 +884,7 @@ async function generateTextByModelType(
   });
 
   if (result.usage) {
-    emitModelUsageEvent(runtime, modelType, params.prompt, result.usage);
+    emitModelUsageEvent(runtime, modelType, params.prompt ?? "", result.usage);
   }
 
   if (shouldReturnNativeResult) {
