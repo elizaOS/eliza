@@ -1,7 +1,6 @@
 import { type Plugin, elizaLogger } from '@elizaos/core';
-import { startTailscaleAction } from './actions/start-tailscale';
-import { stopTailscaleAction } from './actions/stop-tailscale';
-import { getTailscaleStatusAction } from './actions/get-tailscale-status';
+import { tailscaleAction } from './actions/tailscale';
+import { tailscaleStatusProvider } from './providers/tailscale-status';
 import { selectTunnelBackend } from './services/TunnelBackendSelector';
 import { TailscaleTestSuite } from './__tests__/TailscaleTestSuite';
 
@@ -10,11 +9,16 @@ import { TailscaleTestSuite } from './__tests__/TailscaleTestSuite';
  * registers exactly one Tailscale backend (local or cloud) under a backend
  * specific serviceType. Consumers should stay backend-agnostic via
  * `getTunnelService(runtime)`.
+ *
+ * Single TAILSCALE action handles start/stop. Live status flows through the
+ * `tailscaleStatus` provider every turn, so reading tunnel state does not need
+ * a dedicated action dispatch.
  */
 export const tailscalePlugin: Plugin = {
   name: 'tailscale',
   description: 'Tunnel plugin with local Tailscale serve/funnel and cloud-proxy backends.',
-  actions: [startTailscaleAction, stopTailscaleAction, getTailscaleStatusAction],
+  actions: [tailscaleAction],
+  providers: [tailscaleStatusProvider],
   tests: [new TailscaleTestSuite()],
   init: async (_config, runtime) => {
     const decision = selectTunnelBackend(runtime);
