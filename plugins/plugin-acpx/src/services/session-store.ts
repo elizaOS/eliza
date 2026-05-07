@@ -229,6 +229,10 @@ export class InMemorySessionStore implements SessionStore {
   }
 
   async get(id: string): Promise<SessionInfo | null> {
+    return this.getSync(id);
+  }
+
+  getSync(id: string): SessionInfo | null {
     const session = this.sessions.get(id);
     return session ? cloneSession(session) : null;
   }
@@ -258,6 +262,10 @@ export class InMemorySessionStore implements SessionStore {
   }
 
   async list(filter?: SessionFilter): Promise<SessionInfo[]> {
+    return this.listSync(filter);
+  }
+
+  listSync(filter?: SessionFilter): SessionInfo[] {
     return [...this.sessions.values()]
       .filter((session) => matchesFilter(session, filter))
       .map(cloneSession);
