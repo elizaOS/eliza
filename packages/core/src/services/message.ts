@@ -1113,11 +1113,79 @@ function createV5MessageContextObject(args: {
 	});
 }
 
-function renderV5MessageHandlerPrompt(context: ContextObject): string {
-	return v5MessageHandlerTemplate.replace(
-		"{{contextObject}}",
-		JSON.stringify(context, null, 2),
-	);
+/**
+ * Format the role-filtered context catalog as a compact bullet list for the
+ * Stage 1 prompt. Each line is `- <id>: <description>` (or just `- <id>` when
+ * no description is available). Order is preserved from the registry, which
+ * keeps the rendered prefix byte-stable across iterations.
+ */
+export function formatAvailableContextsForPrompt(
+	contexts: readonly ContextDefinition[],
+): string {
+	if (contexts.length === 0) {
+		return "(no contexts registered)";
+	}
+	return contexts
+		.map((definition) => {
+			const description = definition.description?.trim();
+			return description
+				? `- ${definition.id}: ${description}`
+				: `- ${definition.id}`;
+		})
+		.join("\n");
+}
+
+function renderV5MessageHandlerPrompt(
+	context: ContextObject,
+	availableContexts: readonly ContextDefinition[] = [],
+): string {
+	return v5MessageHandlerTemplate
+		.replace("{{contextObject}}", JSON.stringify(context, null, 2))
+		.replace(
+			"{{availableContexts}}",
+			formatAvailableContextsForPrompt(availableContexts),
+		);
+}
+
+/**
+ * Resolve the calling sender's role for context-catalog filtering.
+ *
+ * This is best-effort: when there is no world context (DM-only sessions,
+ * benchmarks, tests), `checkSenderRole` returns null and we fall through to a
+ * conservative default. Owner-only messages always pass the agent's own
+ * messages without a world lookup.
+ */
+async function resolveStage1SenderRole(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<RoleGateRole> {
+	if (typeof message.entityId === "string" && message.entityId === runtime.agentId) {
+		return "OWNER";
+	}
+	try {
+		const result = await checkSenderRole(runtime, message);
+		if (result?.role) {
+			return result.role as RoleGateRole;
+		}
+	} catch (error) {
+		runtime.logger.debug(
+			{ src: "service:message", error },
+			"Stage 1 sender role lookup failed; defaulting to USER",
+		);
+	}
+	// No world metadata — fall back to USER. This matches the lenient default
+	// in plugin-role-gating so local-only usage isn't blocked.
+	return "USER";
+}
+
+function listAvailableContextsForRole(
+	registry: ContextRegistry | undefined,
+	role: RoleGateRole,
+): ContextDefinition[] {
+	if (!registry) {
+		return [];
+	}
+	return registry.listAvailable(role);
 }
 
 interface ExecuteV5PlannedToolCallParams {
@@ -1240,10 +1308,15 @@ export async function runV5MessageRuntimeStage1(args: {
 	responseId: UUID;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const context = createV5MessageContextObject(args);
+	const senderRole = await resolveStage1SenderRole(args.runtime, args.message);
+	const availableContexts = listAvailableContextsForRole(
+		args.runtime.contexts,
+		senderRole,
+	);
 	const rawMessageHandler = (await args.runtime.useModel(
 		ModelType.RESPONSE_HANDLER,
 		{
-			prompt: renderV5MessageHandlerPrompt(context),
+			prompt: renderV5MessageHandlerPrompt(context, availableContexts),
 			responseFormat: { type: "json_object" },
 			responseSchema: v5MessageHandlerSchema,
 		},

@@ -148,6 +148,7 @@ function installMocks(state: MockState): void {
         }
         return state.enqueueResult;
       },
+      triggerImmediate: async () => undefined,
     },
   }));
 
